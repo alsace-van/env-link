@@ -1,1445 +1,1069 @@
 /**
- * AccessoryCatalogFormDialog.tsx
- * Version: 1.12
+ * AccessoriesCatalogView.tsx
+ * Version: 1.58
  * Date: 2025-12-20
- * Description: Formulaire d'ajout/édition d'accessoire avec type combi (chargeur+convertisseur)
+ * Description: Vue catalogue des accessoires avec onglets compacts et contraste hover amélioré
  */
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Search,
+  Trash2,
+  Edit,
+  Plus,
+  LayoutGrid,
+  LayoutList,
+  ChevronDown,
+  ChevronRight,
+  Store,
+  Package,
+  FileText,
+  Settings,
+  AlertCircle,
+  CheckCircle2,
+  RefreshCcw,
+  ExternalLink,
+  TrendingDown,
+  TrendingUp,
+  ShoppingCart,
+  // Icônes pour les catégories
+  Zap,
+  Battery,
+  Sun,
+  Lightbulb,
+  Bed,
+  Droplets,
+  Sofa,
+  Thermometer,
+  Flame,
+  UtensilsCrossed,
+  Archive,
+  Lock,
+  Fan,
+  Snowflake,
+  Home,
+  Hammer,
+  Wrench,
+  Car,
+  Gauge,
+  Cable,
+  Plug,
+  Grid3X3,
+  FolderOpen,
+} from "lucide-react";
 import { toast } from "sonner";
-import { Plus, X, ImagePlus, Trash2, FileText } from "lucide-react";
-import DescriptionEditorDialog from "./DescriptionEditorDialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import StockStatusManager from "@/components/StockStatusManager";
+import { useProjectData } from "@/contexts/ProjectDataContext";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import AccessoryCatalogFormDialog from "@/components/AccessoryCatalogFormDialog";
+import CategoryManagementDialog from "@/components/CategoryManagementDialog";
+import AccessoryImportExportDialog from "@/components/AccessoryImportExportDialog";
+import { ShippingFeesSidebar } from "@/components/ShippingFeesSidebar";
+import { NoticeSearchDialog } from "@/components/NoticeSearchDialog";
+import WishlistDialog from "@/components/WishlistDialog";
+import { CatalogBulkManager } from "@/components/catalog/CatalogBulkManager";
+import { CatalogSyncManager } from "@/components/catalog/CatalogSyncManager";
+
+// 🔥 Fonction pour décoder les entités HTML
+const decodeHtmlEntities = (text: string | null | undefined): string => {
+  if (!text) return "";
+  const doc = new DOMParser().parseFromString(text, "text/html");
+  return doc.documentElement.textContent || text;
+};
+
+// 🎨 Fonction pour obtenir l'icône d'une catégorie
+const getCategoryIcon = (categoryName: string) => {
+  const name = categoryName.toLowerCase();
+
+  // Électricité
+  if (name.includes("électri") || name.includes("electri")) return Zap;
+  if (name.includes("batterie")) return Battery;
+  if (name.includes("solaire") || name.includes("panneau")) return Sun;
+  if (name.includes("câble") || name.includes("cable")) return Cable;
+
+  // Éclairage
+  if (
+    name.includes("éclairage") ||
+    name.includes("eclairage") ||
+    name.includes("lumière") ||
+    name.includes("lumiere") ||
+    name.includes("led") ||
+    name.includes("spot")
+  )
+    return Lightbulb;
+
+  // Couchage
+  if (name.includes("couchage") || name.includes("matelas") || name.includes("lit") || name.includes("sommier"))
+    return Bed;
+
+  // Eau / Plomberie
+  if (
+    name.includes("eau") ||
+    name.includes("plomberie") ||
+    name.includes("robinet") ||
+    name.includes("réservoir") ||
+    name.includes("reservoir")
+  )
+    return Droplets;
+
+  // Mobilier
+  if (name.includes("mobilier") || name.includes("meuble") || name.includes("rangement") || name.includes("placard"))
+    return Sofa;
+
+  // Isolation
+  if (name.includes("isolation") || name.includes("thermique")) return Thermometer;
+
+  // Chauffage
+  if (name.includes("chauffage") || name.includes("chauffer")) return Flame;
+
+  // Cuisine
+  if (
+    name.includes("cuisine") ||
+    name.includes("cuisson") ||
+    name.includes("plaque") ||
+    name.includes("réchaud") ||
+    name.includes("rechaud")
+  )
+    return UtensilsCrossed;
+
+  // Réfrigération
+  if (
+    name.includes("frigo") ||
+    name.includes("réfrig") ||
+    name.includes("refrig") ||
+    name.includes("glacière") ||
+    name.includes("glaciere")
+  )
+    return Snowflake;
+
+  // Ventilation
+  if (name.includes("ventil") || name.includes("aération") || name.includes("aeration")) return Fan;
+
+  // Sécurité
+  if (name.includes("sécurité") || name.includes("securite") || name.includes("alarme") || name.includes("serrure"))
+    return Lock;
+
+  // Aménagement / Structure
+  if (name.includes("aménagement") || name.includes("amenagement") || name.includes("structure")) return Home;
+  if (name.includes("outillage") || name.includes("outil")) return Hammer;
+  if (name.includes("quincaillerie") || name.includes("visserie")) return Wrench;
+
+  // Véhicule
+  if (
+    name.includes("véhicule") ||
+    name.includes("vehicule") ||
+    name.includes("carrosserie") ||
+    name.includes("vitre") ||
+    name.includes("fenêtre") ||
+    name.includes("fenetre")
+  )
+    return Car;
+
+  // Régulation / Monitoring
+  if (name.includes("régul") || name.includes("regul") || name.includes("mppt") || name.includes("monitor"))
+    return Gauge;
+
+  // Branchement / Connexion
+  if (name.includes("prise") || name.includes("connect") || name.includes("branch")) return Plug;
+
+  // Consommables
+  if (name.includes("consommable") || name.includes("fourniture")) return Archive;
+
+  // Sans catégorie
+  if (name.includes("sans catégorie") || name.includes("sans categorie")) return FolderOpen;
+
+  // Par défaut
+  return Package;
+};
 
 interface Category {
   id: string;
   nom: string;
   parent_id: string | null;
+  user_id: string;
+  icon?: string; // Emoji stocké dans la base
 }
 
-interface AccessoryCatalogFormDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSuccess: () => void;
-  accessory?: {
-    id: string;
-    nom: string;
-    marque?: string;
-    category_id?: string | null;
-    prix_reference?: number;
-    prix_vente_ttc?: number;
-    marge_pourcent?: number;
-    marge_nette?: number;
-    fournisseur?: string;
-    description?: string;
-    description_media?: any;
-    url_produit?: string;
-    type_electrique?: string | null;
-    poids_kg?: number | null;
-    longueur_mm?: number | null;
-    largeur_mm?: number | null;
-    hauteur_mm?: number | null;
-    puissance_watts?: number | null;
-    intensite_amperes?: number | null;
-    capacite_ah?: number | null;
-    tension_volts?: number | null;
-    volume_litres?: number | null;
-    couleur?: string | null;
-    image_url?: string | null;
-  } | null;
+interface AccessoryOption {
+  id: string;
+  nom: string;
+  prix_reference?: number;
+  prix_vente_ttc?: number;
+  marge_pourcent?: number;
+  marge_nette?: number;
 }
 
-const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: AccessoryCatalogFormDialogProps) => {
-  const [formData, setFormData] = useState({
-    nom: "",
-    marque: "",
-    category_id: "",
-    prix_reference: "",
-    prix_vente_ttc: "",
-    marge_pourcent: "",
-    marge_nette: "",
-    fournisseur: "",
-    description: "",
-    url_produit: "",
-    type_electrique: "",
-    poids_kg: "",
-    longueur_mm: "",
-    largeur_mm: "",
-    hauteur_mm: "",
-    puissance_watts: "",
-    intensite_amperes: "",
-    capacite_ah: "",
-    tension_volts: "",
-    volume_litres: "",
-  });
-  const [couleurs, setCouleurs] = useState<string[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+interface Accessory {
+  id: string;
+  nom: string;
+  marque?: string;
+  category_id?: string | null;
+  prix_reference?: number;
+  prix_vente_ttc?: number;
+  marge_pourcent?: number;
+  fournisseur?: string;
+  description?: string;
+  url_produit?: string;
+  type_electrique?: string;
+  poids_kg?: number;
+  longueur_mm?: number;
+  largeur_mm?: number;
+  hauteur_mm?: number;
+  puissance_watts?: number;
+  intensite_amperes?: number;
+  capacite_ah?: number;
+  tension_volts?: number;
+  volume_litres?: number;
+  available_in_shop?: boolean;
+  image_url?: string | null;
+  categories?: Category;
+  accessory_options?: AccessoryOption[];
+  stock_status?: "in_stock" | "on_order" | "out_of_stock";
+  stock_quantity?: number | null;
+  delivery_date?: string | null;
+  tracking_number?: string | null;
+  expected_delivery_date?: string | null;
+  stock_notes?: string | null;
+  supplier_order_ref?: string | null;
+  last_stock_update?: string | null;
+  needs_completion?: boolean;
+  imported_at?: string | null;
+  last_price_check?: string | null;
+  prix_public_ttc?: number;
+}
+
+const AccessoriesCatalogView = () => {
+  const { refreshData } = useProjectData();
+  const [accessories, setAccessories] = useState<Accessory[]>([]);
+  const [filteredAccessories, setFilteredAccessories] = useState<Accessory[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
-  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [newCategoryParent, setNewCategoryParent] = useState<string | null>(null);
-  const [parentCategoryId, setParentCategoryId] = useState<string>("");
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [descriptionEditorOpen, setDescriptionEditorOpen] = useState(false);
-  const [descriptionMedia, setDescriptionMedia] = useState<Array<{ type: "image" | "pdf"; url: string; name: string }>>(
-    [],
-  );
+  const [searchTerm, setSearchTerm] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [selectedAccessory, setSelectedAccessory] = useState<Accessory | null>(null);
+  const [isCategoryManagementOpen, setIsCategoryManagementOpen] = useState(false);
+  const [isImportExportOpen, setIsImportExportOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "grid">(() => {
+    const saved = localStorage.getItem("accessories-view-mode");
+    return (saved as "list" | "grid") || "list";
+  });
+  const [expandedOptions, setExpandedOptions] = useState<Set<string>>(new Set());
+  const [isShippingFeesOpen, setIsShippingFeesOpen] = useState(false);
+  const [isNoticeDialogOpen, setIsNoticeDialogOpen] = useState(false);
+  const [selectedAccessoryForNotice, setSelectedAccessoryForNotice] = useState<Accessory | null>(null);
+  const [activeTab, setActiveTab] = useState<string>("__all__");
+  const [showNeedsCompletion, setShowNeedsCompletion] = useState(false);
+  const [isWishlistOpen, setIsWishlistOpen] = useState(false);
 
-  // Fournisseurs (autocomplete)
-  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
-  const [supplierSearch, setSupplierSearch] = useState("");
-  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
+  // Compter les articles à compléter
+  const needsCompletionCount = accessories.filter((a) => a.needs_completion).length;
 
-  // Options payantes
-  const [options, setOptions] = useState<
-    Array<{
-      id?: string;
-      nom: string;
-      prix_reference: string;
-      prix_vente_ttc: string;
-      marge_pourcent: string;
-      marge_nette: string;
-    }>
-  >([]);
-  const [loadingOptions, setLoadingOptions] = useState(false);
+  const handleStatusChange = () => {
+    loadAccessories();
+    refreshData();
+  };
 
-  // Charger les catégories et options quand le dialogue s'ouvre
-  useEffect(() => {
-    if (isOpen) {
-      setCategoriesLoaded(false);
-      loadCategories();
-      loadSuppliers();
-      if (accessory) {
-        loadOptions(accessory.id);
-      } else {
-        setOptions([]);
-      }
-    }
-  }, [isOpen, accessory?.id]);
+  const handleLinkNotice = (accessory: Accessory) => {
+    setSelectedAccessoryForNotice(accessory);
+    setIsNoticeDialogOpen(true);
+  };
 
-  // Charger les fournisseurs
-  const loadSuppliers = async () => {
-    const { data } = await supabase.from("suppliers").select("id, name").order("name");
-    if (data) {
-      setSuppliers(data);
+  // Ouvrir l'URL du produit pour mise à jour du prix via l'extension
+  const handleUpdatePrice = (accessory: Accessory) => {
+    if (accessory.url_produit) {
+      window.open(accessory.url_produit, "_blank");
+      toast.info("Ouvrez l'extension Van Price pour mettre à jour le prix", { duration: 5000 });
+    } else {
+      toast.error("Pas d'URL produit enregistrée pour cet article");
     }
   };
 
-  // Filtrer les fournisseurs selon la recherche
-  const filteredSuppliers = suppliers.filter((s) =>
-    s.name.toLowerCase().includes((supplierSearch || formData.fournisseur || "").toLowerCase()),
-  );
-
-  // Initialiser le formulaire une fois les catégories chargées
   useEffect(() => {
-    if (isOpen && categoriesLoaded) {
-      if (accessory) {
-        // Mode édition - utiliser ?? pour préserver les valeurs null
-        setFormData({
-          nom: accessory.nom,
-          marque: accessory.marque ?? "",
-          category_id: accessory.category_id ?? "",
-          prix_reference: accessory.prix_reference?.toString() ?? "",
-          prix_vente_ttc: accessory.prix_vente_ttc?.toString() ?? "",
-          marge_pourcent: accessory.marge_pourcent?.toString() ?? "",
-          marge_nette: accessory.marge_nette?.toString() ?? "",
-          fournisseur: accessory.fournisseur ?? "",
-          description: accessory.description ?? "",
-          url_produit: accessory.url_produit ?? "",
-          type_electrique: accessory.type_electrique ?? "",
-          poids_kg: accessory.poids_kg?.toString() ?? "",
-          longueur_mm: accessory.longueur_mm?.toString() ?? "",
-          largeur_mm: accessory.largeur_mm?.toString() ?? "",
-          hauteur_mm: accessory.hauteur_mm?.toString() ?? "",
-          puissance_watts: accessory.puissance_watts?.toString() ?? "",
-          intensite_amperes: accessory.intensite_amperes?.toString() ?? "",
-          capacite_ah: accessory.capacite_ah?.toString() ?? "",
-          tension_volts: accessory.tension_volts?.toString() ?? "",
-          volume_litres: accessory.volume_litres?.toString() ?? "",
-        });
+    loadAccessories();
+    loadCategories();
+  }, []);
 
-        // Charger les couleurs depuis le JSON
-        if (accessory.couleur) {
-          try {
-            const parsedCouleurs =
-              typeof accessory.couleur === "string" ? JSON.parse(accessory.couleur) : accessory.couleur;
-            setCouleurs(Array.isArray(parsedCouleurs) ? parsedCouleurs : [accessory.couleur]);
-          } catch {
-            // Si ce n'est pas du JSON, c'est une ancienne valeur simple
-            setCouleurs([accessory.couleur]);
-          }
-        } else {
-          setCouleurs([]);
-        }
+  useEffect(() => {
+    localStorage.setItem("accessories-view-mode", viewMode);
+  }, [viewMode]);
 
-        // Charger les médias de description
-        if (accessory.description_media) {
-          try {
-            const parsedMedia =
-              typeof accessory.description_media === "string"
-                ? JSON.parse(accessory.description_media)
-                : accessory.description_media;
-            setDescriptionMedia(Array.isArray(parsedMedia) ? parsedMedia : []);
-          } catch {
-            setDescriptionMedia([]);
-          }
-        } else {
-          setDescriptionMedia([]);
-        }
+  useEffect(() => {
+    let filtered = accessories;
 
-        // Initialiser la catégorie parente si l'accessoire a une catégorie
-        if (accessory.category_id) {
-          const selectedCategory = categories.find((c) => c.id === accessory.category_id);
-          if (selectedCategory?.parent_id) {
-            // C'est une sous-catégorie
-            setParentCategoryId(selectedCategory.parent_id);
-          } else if (selectedCategory) {
-            // C'est une catégorie principale
-            setParentCategoryId("");
-          }
-        }
-      } else {
-        // Mode création
-        setFormData({
-          nom: "",
-          marque: "",
-          category_id: "",
-          prix_reference: "",
-          prix_vente_ttc: "",
-          marge_pourcent: "",
-          marge_nette: "",
-          fournisseur: "",
-          description: "",
-          url_produit: "",
-          type_electrique: "",
-          poids_kg: "",
-          longueur_mm: "",
-          largeur_mm: "",
-          hauteur_mm: "",
-          puissance_watts: "",
-          intensite_amperes: "",
-          capacite_ah: "",
-          tension_volts: "",
-          volume_litres: "",
-        });
-        setCouleurs([]);
-        setDescriptionMedia([]);
-        setParentCategoryId("");
-        setImagePreview(null);
-        setImageFile(null);
-      }
-
-      // Charger l'image si elle existe
-      if (accessory?.image_url) {
-        setImagePreview(accessory.image_url);
-      } else {
-        setImagePreview(null);
-      }
+    // Filtre "À compléter"
+    if (showNeedsCompletion) {
+      filtered = filtered.filter((acc) => acc.needs_completion === true);
     }
-  }, [isOpen, categoriesLoaded, accessory?.id, categories]);
+
+    if (searchTerm) {
+      filtered = filtered.filter(
+        (acc) =>
+          acc.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          acc.marque?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          acc.fournisseur?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          acc.categories?.nom.toLowerCase().includes(searchTerm.toLowerCase()),
+      );
+    }
+
+    setFilteredAccessories(filtered);
+  }, [searchTerm, accessories, showNeedsCompletion]);
+
+  // Grouper les accessoires par catégorie principale
+  const groupedAccessories = () => {
+    interface CategoryGroup {
+      mainCategory: string;
+      mainCategoryId: string | null;
+      mainCategoryIcon?: string; // Emoji de la catégorie
+      subGroups: Map<string, Accessory[]>;
+    }
+
+    const mainGroups = new Map<string, CategoryGroup>();
+
+    filteredAccessories.forEach((accessory) => {
+      if (!accessory.category_id) {
+        if (!mainGroups.has("Sans catégorie")) {
+          mainGroups.set("Sans catégorie", {
+            mainCategory: "Sans catégorie",
+            mainCategoryId: null,
+            mainCategoryIcon: "📁",
+            subGroups: new Map([["Sans catégorie", []]]),
+          });
+        }
+        mainGroups.get("Sans catégorie")!.subGroups.get("Sans catégorie")!.push(accessory);
+        return;
+      }
+
+      const category = accessory.categories;
+      if (!category) return;
+
+      const mainCategory = category.parent_id ? categories.find((c) => c.id === category.parent_id) : category;
+
+      if (!mainCategory) return;
+
+      const mainCategoryName = mainCategory.nom;
+
+      if (!mainGroups.has(mainCategoryName)) {
+        mainGroups.set(mainCategoryName, {
+          mainCategory: mainCategoryName,
+          mainCategoryId: mainCategory.id,
+          mainCategoryIcon: mainCategory.icon,
+          subGroups: new Map(),
+        });
+      }
+
+      const group = mainGroups.get(mainCategoryName)!;
+      const subCategoryName = category.parent_id ? category.nom : "Général";
+
+      if (!group.subGroups.has(subCategoryName)) {
+        group.subGroups.set(subCategoryName, []);
+      }
+
+      group.subGroups.get(subCategoryName)!.push(accessory);
+    });
+
+    return mainGroups;
+  };
+
+  const loadAccessories = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("accessories_catalog")
+      .select("*, categories(*), accessory_options(*)")
+      .order("nom", { ascending: true });
+
+    if (error) {
+      toast.error("Erreur lors du chargement du catalogue");
+      console.error(error);
+    } else {
+      const typedData = (data || []) as Accessory[];
+      setAccessories(typedData);
+      setFilteredAccessories(typedData);
+    }
+    setLoading(false);
+  };
 
   const loadCategories = async () => {
     const { data, error } = await supabase.from("categories").select("*").order("nom");
 
-    if (!error && data) {
-      setCategories(data);
-      setCategoriesLoaded(true);
+    if (error) {
+      console.error("Erreur lors du chargement des catégories:", error);
+    } else {
+      setCategories(data || []);
     }
   };
 
-  const loadOptions = async (accessoryId: string) => {
-    setLoadingOptions(true);
-    const { data, error } = await supabase
-      .from("accessory_options")
-      .select("*")
-      .eq("accessory_id", accessoryId)
-      .order("created_at");
-
-    if (!error && data) {
-      setOptions(
-        data.map((opt) => ({
-          id: opt.id,
-          nom: opt.nom,
-          prix_reference: opt.prix_reference?.toString() ?? "",
-          prix_vente_ttc: opt.prix_vente_ttc?.toString() ?? "",
-          marge_pourcent: opt.marge_pourcent?.toString() ?? "",
-          marge_nette: opt.marge_nette?.toString() ?? "",
-        })),
-      );
-    }
-    setLoadingOptions(false);
-  };
-
-  const handleAddOption = () => {
-    setOptions([
-      ...options,
-      {
-        nom: "",
-        prix_reference: "",
-        prix_vente_ttc: "",
-        marge_pourcent: "",
-        marge_nette: "",
-      },
-    ]);
-  };
-
-  const handleRemoveOption = (index: number) => {
-    setOptions(options.filter((_, i) => i !== index));
-  };
-
-  const handleOptionChange = (
-    index: number,
-    field: "nom" | "prix_reference" | "prix_vente_ttc" | "marge_pourcent",
-    value: string,
-  ) => {
-    const newOptions = [...options];
-    newOptions[index] = { ...newOptions[index], [field]: value };
-    setOptions(newOptions);
-  };
-
-  const handleOptionPricingChange = (
-    index: number,
-    field: "prix_reference" | "prix_vente_ttc" | "marge_pourcent",
-    value: string,
-  ) => {
-    const newOptions = [...options];
-    const option = { ...newOptions[index], [field]: value };
-    const TVA = 1.2; // 20% TVA
-
-    // Calcul bidirectionnel basé sur le champ modifié
-    if (field === "prix_reference") {
-      // Si on modifie le prix d'achat
-      const prixReference = parseFloat(option.prix_reference);
-      if (!isNaN(prixReference) && prixReference > 0) {
-        if (option.marge_pourcent && parseFloat(option.marge_pourcent) !== 0) {
-          // Calculer le prix TTC à partir du prix d'achat + marge
-          const margePourcent = parseFloat(option.marge_pourcent);
-          const prixVenteHT = prixReference * (1 + margePourcent / 100);
-          option.prix_vente_ttc = (prixVenteHT * TVA).toFixed(2);
-          option.marge_nette = (prixVenteHT - prixReference).toFixed(2);
-        } else if (option.prix_vente_ttc && parseFloat(option.prix_vente_ttc) > 0) {
-          // Calculer la marge à partir du prix d'achat + prix TTC
-          const prixVenteTTC = parseFloat(option.prix_vente_ttc);
-          const prixVenteHT = prixVenteTTC / TVA;
-          option.marge_pourcent = (((prixVenteHT - prixReference) / prixReference) * 100).toFixed(2);
-          option.marge_nette = (prixVenteHT - prixReference).toFixed(2);
-        }
-      }
-    } else if (field === "marge_pourcent") {
-      // Si on modifie la marge
-      const margePourcent = parseFloat(option.marge_pourcent);
-      if (!isNaN(margePourcent)) {
-        if (option.prix_reference && parseFloat(option.prix_reference) > 0) {
-          // Calculer le prix TTC à partir de la marge + prix d'achat
-          const prixReference = parseFloat(option.prix_reference);
-          const prixVenteHT = prixReference * (1 + margePourcent / 100);
-          option.prix_vente_ttc = (prixVenteHT * TVA).toFixed(2);
-          option.marge_nette = (prixVenteHT - prixReference).toFixed(2);
-        } else if (option.prix_vente_ttc && parseFloat(option.prix_vente_ttc) > 0) {
-          // Calculer le prix d'achat à partir de la marge + prix TTC
-          const prixVenteTTC = parseFloat(option.prix_vente_ttc);
-          const prixVenteHT = prixVenteTTC / TVA;
-          option.prix_reference = (prixVenteHT / (1 + margePourcent / 100)).toFixed(2);
-          const prixReference = parseFloat(option.prix_reference);
-          option.marge_nette = (prixVenteHT - prixReference).toFixed(2);
-        }
-      }
-    } else if (field === "prix_vente_ttc") {
-      // Si on modifie le prix TTC
-      const prixVenteTTC = parseFloat(option.prix_vente_ttc);
-      if (!isNaN(prixVenteTTC) && prixVenteTTC > 0) {
-        const prixVenteHT = prixVenteTTC / TVA;
-        if (option.prix_reference && parseFloat(option.prix_reference) > 0) {
-          // Calculer la marge à partir du prix TTC + prix d'achat
-          const prixReference = parseFloat(option.prix_reference);
-          option.marge_pourcent = (((prixVenteHT - prixReference) / prixReference) * 100).toFixed(2);
-          option.marge_nette = (prixVenteHT - prixReference).toFixed(2);
-        } else if (option.marge_pourcent && parseFloat(option.marge_pourcent) !== 0) {
-          // Calculer le prix d'achat à partir du prix TTC + marge
-          const margePourcent = parseFloat(option.marge_pourcent);
-          option.prix_reference = (prixVenteHT / (1 + margePourcent / 100)).toFixed(2);
-          const prixReference = parseFloat(option.prix_reference);
-          option.marge_nette = (prixVenteHT - prixReference).toFixed(2);
-        }
-      }
-    }
-
-    newOptions[index] = option;
-    setOptions(newOptions);
-  };
-
-  const handleAddCouleur = () => {
-    setCouleurs([...couleurs, ""]);
-  };
-
-  const handleRemoveCouleur = (index: number) => {
-    setCouleurs(couleurs.filter((_, i) => i !== index));
-  };
-
-  const handleCouleurChange = (index: number, value: string) => {
-    const newCouleurs = [...couleurs];
-    newCouleurs[index] = value;
-    setCouleurs(newCouleurs);
-  };
-
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error("L'image ne doit pas dépasser 5 MB");
-        return;
-      }
-      setImageFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleRemoveImage = () => {
-    setImageFile(null);
-    setImagePreview(null);
-  };
-
-  const handleCreateCategory = async () => {
-    if (!newCategoryName.trim()) {
-      toast.error("Veuillez entrer un nom de catégorie");
-      return;
-    }
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      toast.error("Vous devez être connecté");
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("categories")
-      .insert({
-        nom: newCategoryName.trim(),
-        parent_id: newCategoryParent,
-        user_id: user.id,
-      })
-      .select()
-      .single();
+  const handleDelete = async (id: string) => {
+    const { error } = await supabase.from("accessories_catalog").delete().eq("id", id);
 
     if (error) {
-      toast.error("Erreur lors de la création de la catégorie");
+      toast.error("Erreur lors de la suppression");
       console.error(error);
     } else {
-      toast.success("Catégorie créée");
-      setFormData({ ...formData, category_id: data.id });
-      setIsCreatingCategory(false);
-      setNewCategoryName("");
-      setNewCategoryParent(null);
-      loadCategories();
+      toast.success("Accessoire supprimé du catalogue");
+      loadAccessories();
     }
+    setDeleteId(null);
   };
 
-  const handlePricingChange = (field: "prix_reference" | "prix_vente_ttc" | "marge_pourcent", value: string) => {
-    const newFormData = { ...formData, [field]: value };
-    const TVA = 1.2; // 20% TVA
+  const handleToggleShopAvailability = async (id: string, currentStatus: boolean) => {
+    const { error } = await supabase
+      .from("accessories_catalog")
+      .update({ available_in_shop: !currentStatus })
+      .eq("id", id);
 
-    // Calcul bidirectionnel basé sur le champ modifié
-    if (field === "prix_reference") {
-      // Si on modifie le prix d'achat
-      const prixReference = parseFloat(newFormData.prix_reference);
-      if (!isNaN(prixReference) && prixReference > 0) {
-        if (newFormData.marge_pourcent && parseFloat(newFormData.marge_pourcent) !== 0) {
-          // Calculer le prix TTC à partir du prix d'achat + marge
-          const margePourcent = parseFloat(newFormData.marge_pourcent);
-          const prixVenteHT = prixReference * (1 + margePourcent / 100);
-          newFormData.prix_vente_ttc = (prixVenteHT * TVA).toFixed(2);
-          newFormData.marge_nette = (prixVenteHT - prixReference).toFixed(2);
-        } else if (newFormData.prix_vente_ttc && parseFloat(newFormData.prix_vente_ttc) > 0) {
-          // Calculer la marge à partir du prix d'achat + prix TTC
-          const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
-          const prixVenteHT = prixVenteTTC / TVA;
-          newFormData.marge_pourcent = (((prixVenteHT - prixReference) / prixReference) * 100).toFixed(2);
-          newFormData.marge_nette = (prixVenteHT - prixReference).toFixed(2);
-        }
-      }
-    } else if (field === "marge_pourcent") {
-      // Si on modifie la marge
-      const margePourcent = parseFloat(newFormData.marge_pourcent);
-      if (!isNaN(margePourcent)) {
-        if (newFormData.prix_reference && parseFloat(newFormData.prix_reference) > 0) {
-          // Calculer le prix TTC à partir de la marge + prix d'achat
-          const prixReference = parseFloat(newFormData.prix_reference);
-          const prixVenteHT = prixReference * (1 + margePourcent / 100);
-          newFormData.prix_vente_ttc = (prixVenteHT * TVA).toFixed(2);
-          newFormData.marge_nette = (prixVenteHT - prixReference).toFixed(2);
-        } else if (newFormData.prix_vente_ttc && parseFloat(newFormData.prix_vente_ttc) > 0) {
-          // Calculer le prix d'achat à partir de la marge + prix TTC
-          const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
-          const prixVenteHT = prixVenteTTC / TVA;
-          newFormData.prix_reference = (prixVenteHT / (1 + margePourcent / 100)).toFixed(2);
-          const prixReference = parseFloat(newFormData.prix_reference);
-          newFormData.marge_nette = (prixVenteHT - prixReference).toFixed(2);
-        }
-      }
-    } else if (field === "prix_vente_ttc") {
-      // Si on modifie le prix TTC
-      const prixVenteTTC = parseFloat(newFormData.prix_vente_ttc);
-      if (!isNaN(prixVenteTTC) && prixVenteTTC > 0) {
-        const prixVenteHT = prixVenteTTC / TVA;
-        if (newFormData.prix_reference && parseFloat(newFormData.prix_reference) > 0) {
-          // Calculer la marge à partir du prix TTC + prix d'achat
-          const prixReference = parseFloat(newFormData.prix_reference);
-          newFormData.marge_pourcent = (((prixVenteHT - prixReference) / prixReference) * 100).toFixed(2);
-          newFormData.marge_nette = (prixVenteHT - prixReference).toFixed(2);
-        } else if (newFormData.marge_pourcent && parseFloat(newFormData.marge_pourcent) !== 0) {
-          // Calculer le prix d'achat à partir du prix TTC + marge
-          const margePourcent = parseFloat(newFormData.marge_pourcent);
-          newFormData.prix_reference = (prixVenteHT / (1 + margePourcent / 100)).toFixed(2);
-          const prixReference = parseFloat(newFormData.prix_reference);
-          newFormData.marge_nette = (prixVenteHT - prixReference).toFixed(2);
-        }
-      }
-    }
-
-    setFormData(newFormData);
-  };
-
-  const handleElectricalChange = (field: "puissance_watts" | "intensite_amperes" | "tension_volts", value: string) => {
-    const newFormData = { ...formData, [field]: value };
-
-    // Utiliser la tension sélectionnée ou 12V par défaut
-    const voltage = field === "tension_volts" ? parseFloat(value) || 12 : parseFloat(formData.tension_volts) || 12;
-
-    if (field === "puissance_watts" && value) {
-      // Calculate intensity from power: I = P / U
-      const power = parseFloat(value);
-      if (!isNaN(power) && power > 0) {
-        newFormData.intensite_amperes = (power / voltage).toFixed(2);
-      }
-    } else if (field === "intensite_amperes" && value) {
-      // Calculate power from intensity: P = U × I
-      const intensity = parseFloat(value);
-      if (!isNaN(intensity) && intensity > 0) {
-        newFormData.puissance_watts = (intensity * voltage).toFixed(1);
-      }
-    } else if (field === "tension_volts" && value) {
-      // Recalculer l'intensité si la puissance existe
-      const power = parseFloat(formData.puissance_watts);
-      if (!isNaN(power) && power > 0) {
-        newFormData.intensite_amperes = (power / voltage).toFixed(2);
-      }
-    }
-
-    setFormData(newFormData);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      toast.error("Vous devez être connecté");
-      setIsSubmitting(false);
-      return;
-    }
-
-    let savedAccessoryId = accessory?.id;
-    let imageUrl = accessory?.image_url || null;
-
-    // Upload de l'image si nécessaire
-    if (imageFile) {
-      const fileExt = imageFile.name.split(".").pop();
-      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage.from("accessory-images").upload(fileName, imageFile);
-
-      if (uploadError) {
-        toast.error("Erreur lors de l'upload de l'image");
-        console.error(uploadError);
-        setIsSubmitting(false);
-        return;
-      }
-
-      const { data: urlData } = supabase.storage.from("accessory-images").getPublicUrl(fileName);
-
-      imageUrl = urlData.publicUrl;
-    } else if (imagePreview === null && accessory?.image_url) {
-      // Supprimer l'ancienne image
-      const oldPath = accessory.image_url.split("/accessory-images/")[1];
-      if (oldPath) {
-        await supabase.storage.from("accessory-images").remove([oldPath]);
-      }
-      imageUrl = null;
-    }
-
-    if (accessory) {
-      // Mode édition - Marquer comme complété automatiquement
-      const { error } = await supabase
-        .from("accessories_catalog")
-        .update({
-          nom: formData.nom,
-          marque: formData.marque || null,
-          category_id: formData.category_id || null,
-          prix_reference: formData.prix_reference ? parseFloat(formData.prix_reference) : null,
-          prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
-          marge_pourcent: formData.marge_pourcent ? parseFloat(formData.marge_pourcent) : null,
-          fournisseur: formData.fournisseur || null,
-          description: formData.description || null,
-          url_produit: formData.url_produit || null,
-          type_electrique: formData.type_electrique || null,
-          poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
-          longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
-          largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
-          hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
-          puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
-          intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
-          capacite_ah: formData.capacite_ah ? parseFloat(formData.capacite_ah) : null,
-          tension_volts: formData.tension_volts ? parseFloat(formData.tension_volts) : null,
-          volume_litres: formData.volume_litres ? parseFloat(formData.volume_litres) : null,
-          couleur: couleurs.length > 0 ? JSON.stringify(couleurs.filter((c) => c.trim())) : null,
-          description_media: descriptionMedia.length > 0 ? JSON.stringify(descriptionMedia) : null,
-          image_url: imageUrl,
-          needs_completion: false, // Marquer comme complété après édition
-        })
-        .eq("id", accessory.id);
-
-      if (error) {
-        toast.error("Erreur lors de la modification");
-        console.error(error);
-        setIsSubmitting(false);
-        return;
-      }
-
-      // ✅ SYNCHRONISATION BIDIRECTIONNELLE : Mettre à jour les dépenses liées
-      const { error: syncError } = await supabase
-        .from("project_expenses")
-        .update({
-          nom_accessoire: formData.nom,
-          marque: formData.marque || null,
-          prix: formData.prix_reference ? parseFloat(formData.prix_reference) : null,
-          prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
-          marge_pourcent: formData.marge_pourcent ? parseFloat(formData.marge_pourcent) : null,
-          fournisseur: formData.fournisseur || null,
-          type_electrique: formData.type_electrique || null,
-          poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
-          puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
-          intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
-        })
-        .eq("accessory_id", accessory.id);
-
-      if (syncError) {
-        console.warn("Erreur sync dépenses liées:", syncError);
-        // Ne pas bloquer - les données du catalogue sont déjà sauvegardées
-      } else {
-        console.log("[Catalogue] Dépenses liées synchronisées");
-      }
+    if (error) {
+      toast.error("Erreur lors de la mise à jour");
+      console.error(error);
     } else {
-      // Mode création
-      const { data: newAccessory, error } = await supabase
-        .from("accessories_catalog")
-        .insert({
-          nom: formData.nom,
-          marque: formData.marque || null,
-          category_id: formData.category_id || null,
-          prix_reference: formData.prix_reference ? parseFloat(formData.prix_reference) : null,
-          prix_vente_ttc: formData.prix_vente_ttc ? parseFloat(formData.prix_vente_ttc) : null,
-          marge_pourcent: formData.marge_pourcent ? parseFloat(formData.marge_pourcent) : null,
-          fournisseur: formData.fournisseur || null,
-          description: formData.description || null,
-          url_produit: formData.url_produit || null,
-          type_electrique: formData.type_electrique || null,
-          poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
-          longueur_mm: formData.longueur_mm ? parseInt(formData.longueur_mm) : null,
-          largeur_mm: formData.largeur_mm ? parseInt(formData.largeur_mm) : null,
-          hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
-          puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
-          intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
-          capacite_ah: formData.capacite_ah ? parseFloat(formData.capacite_ah) : null,
-          tension_volts: formData.tension_volts ? parseFloat(formData.tension_volts) : null,
-          volume_litres: formData.volume_litres ? parseFloat(formData.volume_litres) : null,
-          couleur: couleurs.length > 0 ? JSON.stringify(couleurs.filter((c) => c.trim())) : null,
-          description_media: descriptionMedia.length > 0 ? JSON.stringify(descriptionMedia) : null,
-          image_url: imageUrl,
-          user_id: user.id,
-        })
-        .select()
-        .single();
-
-      if (error) {
-        toast.error("Erreur lors de l'ajout");
-        console.error(error);
-        setIsSubmitting(false);
-        return;
-      }
-
-      savedAccessoryId = newAccessory.id;
+      toast.success(!currentStatus ? "Ajouté à la boutique" : "Retiré de la boutique");
+      loadAccessories();
     }
-
-    // Gérer les options
-    if (savedAccessoryId) {
-      // Supprimer les options existantes qui ne sont plus dans la liste
-      const existingOptionIds = options.filter((opt) => opt.id).map((opt) => opt.id!);
-      if (accessory) {
-        const { error: deleteError } = await supabase
-          .from("accessory_options")
-          .delete()
-          .eq("accessory_id", savedAccessoryId)
-          .not("id", "in", `(${existingOptionIds.length > 0 ? existingOptionIds.join(",") : "'none'"})`);
-
-        if (deleteError) {
-          console.error("Erreur lors de la suppression des options:", deleteError);
-        }
-      }
-
-      // Ajouter ou mettre à jour les options
-      for (const option of options) {
-        if (option.nom && option.prix_vente_ttc) {
-          if (option.id) {
-            // Mettre à jour l'option existante
-            const { error: updateError } = await supabase
-              .from("accessory_options")
-              .update({
-                nom: option.nom,
-                prix_reference: option.prix_reference ? parseFloat(option.prix_reference) : 0,
-                prix_vente_ttc: parseFloat(option.prix_vente_ttc),
-                marge_pourcent: option.marge_pourcent ? parseFloat(option.marge_pourcent) : 0,
-                marge_nette: option.marge_nette ? parseFloat(option.marge_nette) : 0,
-              })
-              .eq("id", option.id);
-
-            if (updateError) {
-              console.error("Erreur lors de la mise à jour d'une option:", updateError);
-            }
-          } else {
-            // Créer une nouvelle option
-            const { error: insertError } = await supabase.from("accessory_options").insert({
-              accessory_id: savedAccessoryId,
-              nom: option.nom,
-              prix_reference: option.prix_reference ? parseFloat(option.prix_reference) : 0,
-              prix_vente_ttc: parseFloat(option.prix_vente_ttc),
-              marge_pourcent: option.marge_pourcent ? parseFloat(option.marge_pourcent) : 0,
-              marge_nette: option.marge_nette ? parseFloat(option.marge_nette) : 0,
-            });
-
-            if (insertError) {
-              console.error("Erreur lors de l'ajout d'une option:", insertError);
-            }
-          }
-        }
-      }
-    }
-
-    toast.success(accessory ? "Accessoire modifié" : "Accessoire ajouté au catalogue");
-    onSuccess();
-    onClose();
-
-    setIsSubmitting(false);
   };
 
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{accessory ? "Modifier l'accessoire" : "Ajouter un accessoire au catalogue"}</DialogTitle>
-        </DialogHeader>
+  const handleEdit = (accessory: Accessory) => {
+    setSelectedAccessory(accessory);
+    setIsFormOpen(true);
+  };
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="nom">
-                Nom <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="nom"
-                type="text"
-                required
-                value={formData.nom}
-                onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Ex: Panneau solaire 400W"
-                autoComplete="off"
-              />
-            </div>
+  const handleAdd = () => {
+    setSelectedAccessory(null);
+    setIsFormOpen(true);
+  };
 
-            <div className="space-y-2">
-              <Label htmlFor="marque">Marque</Label>
-              <Input
-                id="marque"
-                type="text"
-                value={formData.marque}
-                onChange={(e) => setFormData({ ...formData, marque: e.target.value })}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Ex: Victron Energy"
-                autoComplete="off"
-              />
-            </div>
-          </div>
+  const handleFormClose = () => {
+    setIsFormOpen(false);
+    setSelectedAccessory(null);
+  };
 
-          <div className="space-y-2">
-            {isCreatingCategory ? (
-              <div className="space-y-3 p-4 border rounded-lg bg-muted/50">
-                <div className="flex items-center justify-between">
-                  <Label className="text-base font-semibold">Nouvelle catégorie</Label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setIsCreatingCategory(false);
-                      setNewCategoryName("");
-                      setNewCategoryParent(null);
-                    }}
-                  >
-                    Annuler
-                  </Button>
+  const handleFormSuccess = () => {
+    loadAccessories();
+    handleFormClose();
+  };
+
+  // Marquer un article comme complété (column may not be in generated types yet)
+  const handleMarkAsCompleted = async (id: string) => {
+    // @ts-ignore - needs_completion column exists but not in generated types
+    const { error } = await supabase.from("accessories_catalog").update({ needs_completion: false }).eq("id", id);
+
+    if (error) {
+      toast.error("Erreur lors de la mise à jour");
+      console.error(error);
+    } else {
+      toast.success("Article marqué comme complété !");
+      loadAccessories();
+    }
+  };
+
+  const handleAccessoryDrop = async (accessoryId: string, categoryId: string | null) => {
+    const { error } = await supabase
+      .from("accessories_catalog")
+      .update({ category_id: categoryId })
+      .eq("id", accessoryId);
+
+    if (error) {
+      toast.error("Erreur lors du changement de catégorie");
+      console.error(error);
+    } else {
+      toast.success("Catégorie mise à jour");
+      loadAccessories();
+    }
+  };
+
+  // Fonction pour rendre une carte accessoire
+  const renderAccessoryCard = (accessory: Accessory) => (
+    <Card
+      key={accessory.id}
+      className={accessory.needs_completion ? "border-orange-300 bg-orange-50/50 dark:bg-orange-950/20" : ""}
+    >
+      <CardContent className="p-4">
+        {viewMode === "list" ? (
+          <>
+            {/* Bandeau "À compléter" */}
+            {accessory.needs_completion && (
+              <div className="flex items-center justify-between mb-3 pb-2 border-b border-orange-200 bg-orange-100 dark:bg-orange-900/30 -mx-4 -mt-4 px-4 py-2 rounded-t-lg">
+                <div className="flex items-center gap-2 text-orange-700 dark:text-orange-400">
+                  <AlertCircle className="h-4 w-4" />
+                  <span className="text-sm font-medium">Article importé - À compléter</span>
+                  {accessory.imported_at && (
+                    <span className="text-xs text-orange-500">
+                      (importé le {new Date(accessory.imported_at).toLocaleDateString("fr-FR")})
+                    </span>
+                  )}
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="new_category_name">Nom de la catégorie</Label>
-                  <Input
-                    id="new_category_name"
-                    type="text"
-                    value={newCategoryName}
-                    onChange={(e) => {
-                      // Force la mise à jour du state
-                      setNewCategoryName(e.target.value);
-                    }}
-                    onKeyDown={(e) => {
-                      e.stopPropagation();
-                      // Permettre Enter pour créer la catégorie
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleCreateCategory();
-                      } else if (e.key === "Escape") {
-                        e.preventDefault();
-                        setIsCreatingCategory(false);
-                        setNewCategoryName("");
-                        setNewCategoryParent(null);
-                      }
-                    }}
-                    placeholder="Ex: Panneaux solaires"
-                    autoComplete="off"
-                    spellCheck="false"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="category_parent">Catégorie parente (optionnel)</Label>
-                  <Select
-                    value={newCategoryParent || "none"}
-                    onValueChange={(value) => setNewCategoryParent(value === "none" ? null : value)}
-                  >
-                    <SelectTrigger id="category_parent">
-                      <SelectValue placeholder="Aucune (catégorie principale)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Aucune (catégorie principale)</SelectItem>
-                      {categories
-                        .filter((cat) => cat.parent_id === null)
-                        .map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id}>
-                            {cat.nom}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <Button type="button" onClick={handleCreateCategory} className="w-full">
-                  Créer la catégorie
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs border-green-500 text-green-600 hover:bg-green-50"
+                  onClick={() => handleMarkAsCompleted(accessory.id)}
+                >
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  Marquer complété
                 </Button>
               </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <Label htmlFor="parent_category_id">Catégorie principale</Label>
-                  <Select
-                    value={parentCategoryId || "none"}
-                    onValueChange={(value) => {
-                      if (value === "__create__") {
-                        setIsCreatingCategory(true);
-                      } else {
-                        const newParentId = value === "none" ? "" : value;
-                        setParentCategoryId(newParentId);
-                        // Si la catégorie n'a pas de sous-catégories, on l'assigne directement
-                        const hasSubcategories = newParentId && categories.some((cat) => cat.parent_id === newParentId);
-                        if (newParentId && !hasSubcategories) {
-                          setFormData({ ...formData, category_id: newParentId });
-                        } else {
-                          setFormData({ ...formData, category_id: "" });
-                        }
-                      }
-                    }}
-                  >
-                    <SelectTrigger id="parent_category_id">
-                      <SelectValue placeholder="Sélectionner une catégorie principale" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-background z-50">
-                      <SelectItem value="__create__">+ Créer une nouvelle catégorie</SelectItem>
-                      <SelectItem value="none">Aucune catégorie</SelectItem>
-                      {categories
-                        .filter((cat) => cat.parent_id === null)
-                        .map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id}>
-                            {cat.nom}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {parentCategoryId && categories.some((cat) => cat.parent_id === parentCategoryId) && (
-                  <div className="space-y-2">
-                    <Label htmlFor="subcategory_id">Sous-catégorie</Label>
-                    <Select
-                      value={formData.category_id || "none"}
-                      onValueChange={(value) => {
-                        setFormData({ ...formData, category_id: value === "none" ? parentCategoryId : value });
-                      }}
-                    >
-                      <SelectTrigger id="subcategory_id">
-                        <SelectValue placeholder="Sélectionner une sous-catégorie" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-background z-50">
-                        <SelectItem value="none">Aucune sous-catégorie</SelectItem>
-                        {categories
-                          .filter((cat) => cat.parent_id === parentCategoryId)
-                          .map((cat) => (
-                            <SelectItem key={cat.id} value={cat.id}>
-                              {cat.nom}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </div>
             )}
-          </div>
-
-          <div className="space-y-2">
-            <Label>Image de l'accessoire (optionnelle)</Label>
-            {imagePreview ? (
-              <div className="relative">
-                <img src={imagePreview} alt="Aperçu" className="w-full h-48 object-contain rounded-lg border" />
+            <div className="flex items-start gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-4 flex-1">
+                <div className="md:col-span-2">
+                  <div className="font-medium">{decodeHtmlEntities(accessory.nom)}</div>
+                  {accessory.marque && <div className="text-sm text-muted-foreground">{accessory.marque}</div>}
+                </div>
+                <div className="md:col-span-1">
+                  {accessory.categories ? (
+                    <Badge variant="secondary">{accessory.categories.nom}</Badge>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">Sans catégorie</span>
+                  )}
+                </div>
+                <div className="md:col-span-1 text-sm">
+                  {accessory.prix_reference && (
+                    <div>
+                      <span className="text-muted-foreground">HT: </span>
+                      {accessory.prix_reference.toFixed(2)} €
+                    </div>
+                  )}
+                  {accessory.prix_vente_ttc && (
+                    <div>
+                      <span className="text-muted-foreground">TTC: </span>
+                      {accessory.prix_vente_ttc.toFixed(2)} €
+                    </div>
+                  )}
+                </div>
+                <div className="md:col-span-1 text-sm">
+                  {accessory.puissance_watts && (
+                    <div>
+                      <span className="text-muted-foreground">P: </span>
+                      {accessory.puissance_watts} W
+                    </div>
+                  )}
+                  {accessory.intensite_amperes && (
+                    <div>
+                      <span className="text-muted-foreground">I: </span>
+                      {accessory.intensite_amperes} A
+                    </div>
+                  )}
+                </div>
+                <div className="md:col-span-1 text-sm text-muted-foreground">
+                  {accessory.fournisseur && <div>{accessory.fournisseur}</div>}
+                </div>
+              </div>
+              <div className="flex gap-1 flex-shrink-0">
+                {/* Bouton mise à jour prix */}
+                {accessory.url_produit && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleUpdatePrice(accessory)}
+                    title={`Actualiser le prix${accessory.last_price_check ? ` (vérifié le ${new Date(accessory.last_price_check).toLocaleDateString("fr-FR")})` : ""}`}
+                    className="text-blue-500 hover:text-blue-600 hover:bg-blue-50"
+                  >
+                    <RefreshCcw className="h-4 w-4" />
+                  </Button>
+                )}
+                <div
+                  className="flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-500/10 cursor-pointer"
+                  title={accessory.available_in_shop ? "Retirer de la boutique" : "Ajouter à la boutique"}
+                  onClick={() => handleToggleShopAvailability(accessory.id, accessory.available_in_shop || false)}
+                >
+                  <Store
+                    className={`h-4 w-4 ${accessory.available_in_shop ? "text-primary" : "text-muted-foreground"}`}
+                  />
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => handleLinkNotice(accessory)} title="Lier une notice">
+                  <FileText className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => handleEdit(accessory)}>
+                  <Edit className="h-4 w-4" />
+                </Button>
                 <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  className="absolute top-2 right-2"
-                  onClick={handleRemoveImage}
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setDeleteId(accessory.id)}
+                  className="text-destructive hover:text-destructive"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
-            ) : (
-              <div className="border-2 border-dashed rounded-lg p-8 text-center">
-                <Input type="file" accept="image/*" onChange={handleImageChange} className="hidden" id="image-upload" />
-                <Label htmlFor="image-upload" className="cursor-pointer">
-                  <ImagePlus className="h-12 w-12 mx-auto mb-2 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Cliquez pour ajouter une image (max 5 MB)</p>
-                </Label>
-              </div>
-            )}
-          </div>
-
-          <Separator />
-
-          <div className="space-y-2">
-            <Label className="text-base font-semibold">Calcul de prix (remplir 2 sur 3)</Label>
-            <div className="grid grid-cols-4 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="prix_reference">Prix d'achat HT (€)</Label>
-                <Input
-                  id="prix_reference"
-                  type="number"
-                  step="0.01"
-                  value={formData.prix_reference}
-                  onChange={(e) => handlePricingChange("prix_reference", e.target.value)}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  placeholder="Prix d'achat HT"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="prix_vente">Prix de vente TTC (€)</Label>
-                <Input
-                  id="prix_vente"
-                  type="number"
-                  step="0.01"
-                  value={formData.prix_vente_ttc}
-                  onChange={(e) => handlePricingChange("prix_vente_ttc", e.target.value)}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  placeholder="Prix de vente"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="marge">Marge (%)</Label>
-                <Input
-                  id="marge"
-                  type="number"
-                  step="0.01"
-                  value={formData.marge_pourcent}
-                  onChange={(e) => handlePricingChange("marge_pourcent", e.target.value)}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  placeholder="% de marge"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="marge_euros">Marge nette (€)</Label>
-                <Input
-                  id="marge_euros"
-                  type="text"
-                  value={
-                    formData.prix_reference && formData.prix_vente_ttc
-                      ? (parseFloat(formData.prix_vente_ttc) / 1.2 - parseFloat(formData.prix_reference)).toFixed(2)
-                      : ""
-                  }
-                  readOnly
-                  disabled
-                  placeholder="Auto"
-                  className="bg-muted"
-                />
-              </div>
             </div>
-          </div>
 
-          <Separator />
+            {/* Gestion du stock */}
+            <div className="mt-3 pt-3 border-t">
+              <StockStatusManager
+                accessoryId={accessory.id}
+                accessoryName={decodeHtmlEntities(accessory.nom)}
+                currentStatus={accessory.stock_status || "in_stock"}
+                currentQuantity={accessory.stock_quantity || 0}
+                deliveryDate={accessory.delivery_date}
+                trackingNumber={accessory.tracking_number}
+                onStatusChange={handleStatusChange}
+              />
+            </div>
 
-          <div className="grid grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="type_electrique">Type électrique</Label>
-              <Select
-                value={formData.type_electrique || "none"}
-                onValueChange={(value) => setFormData({ ...formData, type_electrique: value === "none" ? "" : value })}
+            {/* Options collapsible */}
+            {accessory.accessory_options && accessory.accessory_options.length > 0 && (
+              <Collapsible
+                open={expandedOptions.has(accessory.id)}
+                onOpenChange={() => {
+                  setExpandedOptions((prev) => {
+                    const newSet = new Set(prev);
+                    if (newSet.has(accessory.id)) {
+                      newSet.delete(accessory.id);
+                    } else {
+                      newSet.add(accessory.id);
+                    }
+                    return newSet;
+                  });
+                }}
+                className="mt-3"
               >
-                <SelectTrigger id="type_electrique">
-                  <SelectValue placeholder="Sélectionner" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Non applicable</SelectItem>
-                  <SelectItem value="producteur">🟡 Producteur (panneau)</SelectItem>
-                  <SelectItem value="stockage">🟢 Stockage (batterie)</SelectItem>
-                  <SelectItem value="regulateur">🔵 Régulateur (MPPT)</SelectItem>
-                  <SelectItem value="convertisseur">🟣 Convertisseur (DC→AC)</SelectItem>
-                  <SelectItem value="chargeur">🟠 Chargeur (230V, booster)</SelectItem>
-                  <SelectItem value="combi">🟤 Combi (chargeur + convertisseur)</SelectItem>
-                  <SelectItem value="consommateur">🔴 Consommateur</SelectItem>
-                  <SelectItem value="neutre">⚪ Accessoire (fusible, bornier...)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* ✅ Sélecteur de tension - placé en premier */}
-            <div className="space-y-2">
-              <Label htmlFor="tension">Tension</Label>
-              <Select
-                value={formData.tension_volts || "12"}
-                onValueChange={(value) => handleElectricalChange("tension_volts", value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Choisir la tension" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="12">12V (Batterie auxiliaire)</SelectItem>
-                  <SelectItem value="24">24V (Camion/Bus)</SelectItem>
-                  <SelectItem value="230">230V (Secteur)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="puissance">Puissance (W)</Label>
-              <Input
-                id="puissance"
-                type="number"
-                step="0.1"
-                value={formData.puissance_watts}
-                onChange={(e) => handleElectricalChange("puissance_watts", e.target.value)}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Ex: 400"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="intensite">Intensité (A) @ {formData.tension_volts || "12"}V</Label>
-              <Input
-                id="intensite"
-                type="number"
-                step="0.1"
-                value={formData.intensite_amperes}
-                onChange={(e) => handleElectricalChange("intensite_amperes", e.target.value)}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Ex: 33.3"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="capacite">Capacité (Ah)</Label>
-              <Input
-                id="capacite"
-                type="number"
-                step="0.1"
-                value={formData.capacite_ah}
-                onChange={(e) => setFormData({ ...formData, capacite_ah: e.target.value })}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Ex: 100"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="volume">Volume (L)</Label>
-              <Input
-                id="volume"
-                type="number"
-                step="0.1"
-                value={formData.volume_litres}
-                onChange={(e) => setFormData({ ...formData, volume_litres: e.target.value })}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Ex: 80"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="poids">Poids (kg)</Label>
-              <Input
-                id="poids"
-                type="number"
-                step="0.01"
-                value={formData.poids_kg}
-                onChange={(e) => setFormData({ ...formData, poids_kg: e.target.value })}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="Ex: 12.5"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Dimensions (mm)</Label>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="longueur" className="text-xs text-muted-foreground">
-                  Longueur
-                </Label>
-                <Input
-                  id="longueur"
-                  type="number"
-                  value={formData.longueur_mm}
-                  onChange={(e) => setFormData({ ...formData, longueur_mm: e.target.value })}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="largeur" className="text-xs text-muted-foreground">
-                  Largeur
-                </Label>
-                <Input
-                  id="largeur"
-                  type="number"
-                  value={formData.largeur_mm}
-                  onChange={(e) => setFormData({ ...formData, largeur_mm: e.target.value })}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="hauteur" className="text-xs text-muted-foreground">
-                  Hauteur
-                </Label>
-                <Input
-                  id="hauteur"
-                  type="number"
-                  value={formData.hauteur_mm}
-                  onChange={(e) => setFormData({ ...formData, hauteur_mm: e.target.value })}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  placeholder="0"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Couleurs disponibles</Label>
-              <Button type="button" onClick={handleAddCouleur} size="sm" variant="outline">
-                <Plus className="h-4 w-4 mr-1" />
-                Ajouter une couleur
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Si des couleurs sont définies, elles seront proposées lors de la configuration du kit
-            </p>
-            {couleurs.length > 0 ? (
-              <div className="space-y-2">
-                {couleurs.map((couleur, index) => (
-                  <div key={index} className="flex gap-2">
-                    <Select
-                      value={couleur || "none"}
-                      onValueChange={(value) => handleCouleurChange(index, value === "none" ? "" : value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Sélectionner une couleur" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Aucune</SelectItem>
-                        <SelectItem value="Noir">Noir</SelectItem>
-                        <SelectItem value="Blanc">Blanc</SelectItem>
-                        <SelectItem value="Gris">Gris</SelectItem>
-                        <SelectItem value="Rouge">Rouge</SelectItem>
-                        <SelectItem value="Bleu">Bleu</SelectItem>
-                        <SelectItem value="Vert">Vert</SelectItem>
-                        <SelectItem value="Jaune">Jaune</SelectItem>
-                        <SelectItem value="Orange">Orange</SelectItem>
-                        <SelectItem value="Marron">Marron</SelectItem>
-                        <SelectItem value="Beige">Beige</SelectItem>
-                        <SelectItem value="Violet">Violet</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveCouleur(index)}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">Aucune couleur ajoutée</p>
-            )}
-          </div>
-
-          <Separator />
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-base font-semibold">Options payantes</Label>
-              <Button type="button" onClick={handleAddOption} size="sm" variant="outline">
-                <Plus className="h-4 w-4 mr-1" />
-                Ajouter une option
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Ajoutez des options supplémentaires que les clients pourront sélectionner pour ce produit
-            </p>
-            {loadingOptions ? (
-              <p className="text-sm text-muted-foreground">Chargement...</p>
-            ) : options.length > 0 ? (
-              <div className="space-y-4">
-                {options.map((option, index) => (
-                  <div key={index} className="border rounded-lg p-4 space-y-3">
-                    <div className="flex gap-2 items-start">
-                      <div className="flex-1 space-y-1">
-                        <Label htmlFor={`option-nom-${index}`} className="text-xs">
-                          Nom de l'option
-                        </Label>
-                        <Input
-                          id={`option-nom-${index}`}
-                          value={option.nom}
-                          onChange={(e) => handleOptionChange(index, "nom", e.target.value)}
-                          onKeyDown={(e) => e.stopPropagation()}
-                          placeholder="Ex: Câble de 5m supplémentaire"
-                        />
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRemoveOption(index)}
-                        className="mt-5"
+                <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  {expandedOptions.has(accessory.id) ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                  <Package className="h-4 w-4" />
+                  Options ({accessory.accessory_options.length})
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2">
+                  <div className="bg-muted/30 rounded-md p-2 space-y-1.5">
+                    {accessory.accessory_options.map((option) => (
+                      <div
+                        key={option.id}
+                        className="text-xs space-y-0.5 border-b border-border/50 pb-1.5 last:border-0 last:pb-0"
                       >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-
-                    <div className="grid grid-cols-4 gap-2">
-                      <div className="space-y-1">
-                        <Label htmlFor={`option-prix-ref-${index}`} className="text-xs">
-                          Prix achat HT (€)
-                        </Label>
-                        <Input
-                          id={`option-prix-ref-${index}`}
-                          type="number"
-                          step="0.01"
-                          value={option.prix_reference}
-                          onChange={(e) => handleOptionPricingChange(index, "prix_reference", e.target.value)}
-                          onKeyDown={(e) => e.stopPropagation()}
-                          placeholder="0.00"
-                        />
+                        <div className="font-medium">{option.nom}</div>
+                        <div className="flex gap-3 text-muted-foreground">
+                          {option.prix_reference !== null && option.prix_reference !== undefined && (
+                            <span>Achat: {option.prix_reference.toFixed(2)} €</span>
+                          )}
+                          {option.marge_pourcent !== null && option.marge_pourcent !== undefined && (
+                            <span>Marge: {option.marge_pourcent.toFixed(1)} %</span>
+                          )}
+                          {option.prix_vente_ttc !== null && option.prix_vente_ttc !== undefined && (
+                            <span>Vente: {option.prix_vente_ttc.toFixed(2)} €</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="space-y-1">
-                        <Label htmlFor={`option-prix-vente-${index}`} className="text-xs">
-                          Prix vente TTC (€)
-                        </Label>
-                        <Input
-                          id={`option-prix-vente-${index}`}
-                          type="number"
-                          step="0.01"
-                          value={option.prix_vente_ttc}
-                          onChange={(e) => handleOptionPricingChange(index, "prix_vente_ttc", e.target.value)}
-                          onKeyDown={(e) => e.stopPropagation()}
-                          placeholder="0.00"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor={`option-marge-pct-${index}`} className="text-xs">
-                          Marge (%)
-                        </Label>
-                        <Input
-                          id={`option-marge-pct-${index}`}
-                          type="number"
-                          step="0.01"
-                          value={option.marge_pourcent}
-                          onChange={(e) => handleOptionPricingChange(index, "marge_pourcent", e.target.value)}
-                          onKeyDown={(e) => e.stopPropagation()}
-                          placeholder="0.00"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label htmlFor={`option-marge-nette-${index}`} className="text-xs">
-                          Marge nette (€)
-                        </Label>
-                        <Input
-                          id={`option-marge-nette-${index}`}
-                          type="number"
-                          step="0.01"
-                          value={option.marge_nette}
-                          disabled
-                          onKeyDown={(e) => e.stopPropagation()}
-                          placeholder="0.00"
-                          className="bg-muted"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">Aucune option ajoutée</p>
-            )}
-          </div>
-
-          <Separator />
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="fournisseur">Fournisseur</Label>
-              <div className="relative">
-                <Input
-                  id="fournisseur"
-                  type="text"
-                  value={formData.fournisseur}
-                  onChange={(e) => {
-                    setFormData({ ...formData, fournisseur: e.target.value });
-                    setShowSupplierDropdown(true);
-                  }}
-                  onFocus={() => setShowSupplierDropdown(true)}
-                  onBlur={() => setTimeout(() => setShowSupplierDropdown(false), 200)}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  placeholder="Rechercher un fournisseur..."
-                  autoComplete="off"
-                />
-                {showSupplierDropdown && formData.fournisseur && filteredSuppliers.length > 0 && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                    {filteredSuppliers.slice(0, 10).map((supplier) => (
-                      <button
-                        key={supplier.id}
-                        type="button"
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 focus:bg-gray-100"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          setFormData({ ...formData, fournisseur: supplier.name });
-                          setShowSupplierDropdown(false);
-                        }}
-                      >
-                        {supplier.name}
-                      </button>
                     ))}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+          </>
+        ) : (
+          // Mode Grid
+          <>
+            {/* Badge "À compléter" en mode Grid */}
+            {accessory.needs_completion && (
+              <div className="flex items-center justify-between mb-2 p-2 bg-orange-100 dark:bg-orange-900/30 rounded-md -mx-1 -mt-1">
+                <div className="flex items-center gap-1 text-orange-700 dark:text-orange-400">
+                  <AlertCircle className="h-3 w-3" />
+                  <span className="text-xs font-medium">À compléter</span>
+                </div>
+                <button
+                  className="text-xs text-green-600 hover:text-green-700 flex items-center gap-1"
+                  onClick={() => handleMarkAsCompleted(accessory.id)}
+                >
+                  <CheckCircle2 className="h-3 w-3" />
+                  OK
+                </button>
+              </div>
+            )}
+            <CardHeader className="p-0 mb-3">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <CardTitle className="text-base mb-1">{decodeHtmlEntities(accessory.nom)}</CardTitle>
+                  {accessory.marque && <div className="text-sm text-muted-foreground">{accessory.marque}</div>}
+                </div>
+                <div className="flex gap-1">
+                  <div
+                    className="p-1 rounded hover:bg-blue-500/10 cursor-pointer"
+                    onClick={() => handleToggleShopAvailability(accessory.id, accessory.available_in_shop || false)}
+                  >
+                    <Store
+                      className={`h-4 w-4 ${accessory.available_in_shop ? "text-primary" : "text-muted-foreground"}`}
+                    />
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEdit(accessory)}>
+                    <Edit className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-destructive"
+                    onClick={() => setDeleteId(accessory.id)}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+
+            <div className="space-y-2 text-sm">
+              {accessory.categories && <Badge variant="secondary">{accessory.categories.nom}</Badge>}
+              <div className="grid grid-cols-2 gap-2">
+                {accessory.prix_reference && (
+                  <div>
+                    <span className="text-muted-foreground">HT: </span>
+                    {accessory.prix_reference.toFixed(2)} €
+                  </div>
+                )}
+                {accessory.prix_vente_ttc && (
+                  <div>
+                    <span className="text-muted-foreground">TTC: </span>
+                    {accessory.prix_vente_ttc.toFixed(2)} €
                   </div>
                 )}
               </div>
+              {accessory.fournisseur && <div className="text-muted-foreground">{accessory.fournisseur}</div>}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="url_produit">URL du produit</Label>
-              <Input
-                id="url_produit"
-                type="url"
-                value={formData.url_produit}
-                onChange={(e) => setFormData({ ...formData, url_produit: e.target.value })}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="https://..."
+            {/* Gestion du stock */}
+            <div className="pt-3 border-t mt-3">
+              <StockStatusManager
+                accessoryId={accessory.id}
+                accessoryName={decodeHtmlEntities(accessory.nom)}
+                currentStatus={accessory.stock_status || "in_stock"}
+                currentQuantity={accessory.stock_quantity || 0}
+                deliveryDate={accessory.delivery_date}
+                trackingNumber={accessory.tracking_number}
+                onStatusChange={handleStatusChange}
               />
             </div>
-          </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Description</Label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setDescriptionEditorOpen(true)}
-                className="flex items-center gap-2"
-              >
-                <FileText className="h-4 w-4" />
-                {formData.description ? "Modifier" : "Ajouter"}
+  return (
+    <div className="relative">
+      <Card>
+        <CardHeader>
+          <CardTitle>Catalogue d'Accessoires</CardTitle>
+          <CardDescription>Votre catalogue personnel partagé entre tous vos projets</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {/* Barre d'outils */}
+          <div className="mb-4 flex gap-4 flex-wrap">
+            <div className="flex-1 relative min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Rechercher un accessoire..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <div className="flex gap-1 border rounded-md p-1">
+              <Button variant={viewMode === "list" ? "default" : "ghost"} size="sm" onClick={() => setViewMode("list")}>
+                <LayoutList className="h-4 w-4" />
+              </Button>
+              <Button variant={viewMode === "grid" ? "default" : "ghost"} size="sm" onClick={() => setViewMode("grid")}>
+                <LayoutGrid className="h-4 w-4" />
               </Button>
             </div>
-            {formData.description ? (
-              <div
-                className="text-sm text-muted-foreground border rounded-md p-3 bg-muted/20 max-h-24 overflow-auto cursor-pointer hover:bg-muted/30 transition-colors"
-                onClick={() => setDescriptionEditorOpen(true)}
+            {/* Bouton filtre "À compléter" */}
+            {needsCompletionCount > 0 && (
+              <Button
+                onClick={() => setShowNeedsCompletion(!showNeedsCompletion)}
+                variant={showNeedsCompletion ? "default" : "outline"}
+                className={
+                  showNeedsCompletion
+                    ? "bg-orange-500 hover:bg-orange-600"
+                    : "border-orange-400 text-orange-600 hover:bg-orange-50"
+                }
               >
-                {formData.description.length > 200
-                  ? formData.description.substring(0, 200) + "..."
-                  : formData.description}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground italic">Aucune description</p>
+                <AlertCircle className="h-4 w-4 mr-2" />À compléter
+                <Badge variant="secondary" className="ml-2 bg-orange-100 text-orange-700">
+                  {needsCompletionCount}
+                </Badge>
+              </Button>
             )}
+            <Button
+              onClick={() => setIsWishlistOpen(true)}
+              variant="outline"
+              className="border-green-400 text-green-600 hover:bg-green-50"
+            >
+              <ShoppingCart className="h-4 w-4 mr-2" />
+              Liste de souhaits
+            </Button>
+            <CatalogBulkManager onComplete={() => loadAccessories()} />
+            <CatalogSyncManager onComplete={() => loadAccessories()} />
+            <Button onClick={() => setIsImportExportOpen(true)} variant="outline">
+              Import/Export
+            </Button>
+            <Button onClick={handleAdd}>
+              <Plus className="h-4 w-4 mr-2" />
+              Ajouter un accessoire
+            </Button>
           </div>
 
-          <div className="flex gap-2 justify-end pt-4">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Annuler
-            </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "En cours..." : accessory ? "Modifier" : "Ajouter"}
-            </Button>
-          </div>
-        </form>
+          {/* Onglets style moderne */}
+          <div className="border rounded-xl overflow-hidden shadow-sm">
+            {/* Barre d'onglets */}
+            <div className="bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-850 border-b overflow-x-auto">
+              <div className="flex items-stretch min-w-max gap-0.5 p-1">
+                {/* Onglet Toutes */}
+                <button
+                  onClick={() => setActiveTab("__all__")}
+                  className={`
+                    px-2.5 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5
+                    ${
+                      activeTab === "__all__"
+                        ? "bg-white dark:bg-gray-900 text-primary shadow-md ring-1 ring-primary/30"
+                        : "hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-700 dark:hover:text-blue-300 text-muted-foreground"
+                    }
+                  `}
+                >
+                  <FolderOpen className="h-3.5 w-3.5" />
+                  Toutes
+                  <Badge
+                    variant={activeTab === "__all__" ? "default" : "secondary"}
+                    className={`text-[10px] px-1.5 py-0 h-4 font-semibold ${activeTab === "__all__" ? "bg-primary/90" : "bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200"}`}
+                  >
+                    {filteredAccessories.length}
+                  </Badge>
+                </button>
 
-        {/* Modale éditeur de description */}
-        <DescriptionEditorDialog
-          open={descriptionEditorOpen}
-          onOpenChange={setDescriptionEditorOpen}
-          value={formData.description}
-          media={descriptionMedia}
-          onSave={(value, media) => {
-            setFormData({ ...formData, description: value });
-            setDescriptionMedia(media);
-          }}
-          title={`Description - ${formData.nom || "Nouvel article"}`}
-          accessoryId={accessory?.id}
-        />
-      </DialogContent>
-    </Dialog>
+                {/* Onglets par catégorie */}
+                {Array.from(groupedAccessories()).map(([mainCategoryName, group]) => {
+                  const totalCount = Array.from(group.subGroups.values()).reduce((acc, items) => acc + items.length, 0);
+                  const isActive = activeTab === mainCategoryName;
+                  const CategoryIcon = getCategoryIcon(mainCategoryName);
+                  const hasEmoji = group.mainCategoryIcon && group.mainCategoryIcon.length > 0;
+
+                  return (
+                    <button
+                      key={mainCategoryName}
+                      onClick={() => setActiveTab(mainCategoryName)}
+                      className={`
+                        px-2.5 py-1.5 text-xs font-medium rounded-md transition-all duration-200 whitespace-nowrap flex items-center gap-1.5
+                        ${
+                          isActive
+                            ? "bg-white dark:bg-gray-900 text-primary shadow-md ring-1 ring-primary/30"
+                            : "hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-700 dark:hover:text-blue-300 text-muted-foreground"
+                        }
+                      `}
+                    >
+                      {hasEmoji ? (
+                        <span className="text-sm">{group.mainCategoryIcon}</span>
+                      ) : (
+                        <CategoryIcon className={`h-3.5 w-3.5 ${isActive ? "text-primary" : ""}`} />
+                      )}
+                      {mainCategoryName}
+                      <Badge
+                        variant={isActive ? "default" : "secondary"}
+                        className={`text-[10px] px-1.5 py-0 h-4 font-semibold ${isActive ? "bg-primary/90" : "bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200"}`}
+                      >
+                        {totalCount}
+                      </Badge>
+                    </button>
+                  );
+                })}
+
+                {/* Bouton pour gérer les catégories */}
+                <button
+                  onClick={() => setIsCategoryManagementOpen(true)}
+                  className="px-2 py-1.5 rounded-md text-muted-foreground hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-700 dark:hover:text-blue-300 transition-all duration-200 flex items-center gap-1"
+                  title="Gérer les catégories"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Contenu de l'onglet */}
+            <div className="p-4 bg-white dark:bg-gray-900 min-h-[400px]">
+              {loading ? (
+                <div className="text-center py-12">Chargement...</div>
+              ) : filteredAccessories.length === 0 ? (
+                <div className="py-12 text-center">
+                  <p className="text-muted-foreground mb-4">
+                    {searchTerm ? "Aucun accessoire trouvé" : "Aucun accessoire dans le catalogue"}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Ajoutez votre premier accessoire en cliquant sur le bouton ci-dessus
+                  </p>
+                </div>
+              ) : activeTab === "__all__" ? (
+                // Afficher toutes les catégories
+                <div className="space-y-6">
+                  {Array.from(groupedAccessories()).map(([mainCategoryName, group]) => {
+                    const CategoryIcon = getCategoryIcon(mainCategoryName);
+                    const hasEmoji = group.mainCategoryIcon && group.mainCategoryIcon.length > 0;
+                    return (
+                      <div key={mainCategoryName}>
+                        <div className="flex items-center gap-2 mb-3 pb-2 border-b border-primary/30">
+                          {hasEmoji ? (
+                            <span className="text-xl">{group.mainCategoryIcon}</span>
+                          ) : (
+                            <CategoryIcon className="h-5 w-5 text-primary" />
+                          )}
+                          <h3 className="text-lg font-semibold text-primary">{mainCategoryName}</h3>
+                          <Badge variant="outline">
+                            {Array.from(group.subGroups.values()).reduce((acc, items) => acc + items.length, 0)}{" "}
+                            article(s)
+                          </Badge>
+                        </div>
+
+                        {Array.from(group.subGroups).map(([subCategoryName, items]) => (
+                          <div key={`${mainCategoryName}-${subCategoryName}`} className="mb-4">
+                            {group.subGroups.size > 1 && (
+                              <div className="flex items-center gap-2 mb-2 ml-2">
+                                <span className="text-sm font-medium text-muted-foreground">↳ {subCategoryName}</span>
+                                <Badge variant="outline" className="text-xs">
+                                  {items.length}
+                                </Badge>
+                              </div>
+                            )}
+                            <div
+                              className={
+                                viewMode === "grid"
+                                  ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                                  : "space-y-3"
+                              }
+                            >
+                              {items.map((accessory) => renderAccessoryCard(accessory))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                // Afficher uniquement la catégorie sélectionnée
+                (() => {
+                  const group = groupedAccessories().get(activeTab);
+                  if (!group) return <div className="text-center py-12 text-muted-foreground">Catégorie vide</div>;
+
+                  return (
+                    <div className="space-y-4">
+                      {Array.from(group.subGroups).map(([subCategoryName, items]) => (
+                        <div key={`${activeTab}-${subCategoryName}`}>
+                          {group.subGroups.size > 1 && (
+                            <div className="flex items-center gap-2 mb-3 pb-2 border-b">
+                              <h4 className="font-medium">{subCategoryName}</h4>
+                              <Badge variant="outline">{items.length}</Badge>
+                            </div>
+                          )}
+                          <div
+                            className={
+                              viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-3"
+                            }
+                          >
+                            {items.map((accessory) => renderAccessoryCard(accessory))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()
+              )}
+            </div>
+          </div>
+
+          {/* Dialogs */}
+          <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Êtes-vous sûr de vouloir supprimer cet accessoire du catalogue ? Cette action est irréversible.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Annuler</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => deleteId && handleDelete(deleteId)}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Supprimer
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <AccessoryCatalogFormDialog
+            isOpen={isFormOpen}
+            onClose={handleFormClose}
+            onSuccess={handleFormSuccess}
+            accessory={selectedAccessory}
+          />
+
+          <CategoryManagementDialog
+            isOpen={isCategoryManagementOpen}
+            onClose={() => setIsCategoryManagementOpen(false)}
+            onSuccess={() => {
+              loadCategories();
+              loadAccessories();
+            }}
+            categories={categories}
+          />
+
+          <AccessoryImportExportDialog
+            isOpen={isImportExportOpen}
+            onClose={() => setIsImportExportOpen(false)}
+            onSuccess={loadAccessories}
+            categories={categories}
+          />
+
+          <ShippingFeesSidebar
+            isOpen={isShippingFeesOpen}
+            onClose={() => setIsShippingFeesOpen(false)}
+            onFeesChange={loadAccessories}
+          />
+
+          {selectedAccessoryForNotice && (
+            <NoticeSearchDialog
+              isOpen={isNoticeDialogOpen}
+              onClose={() => {
+                setIsNoticeDialogOpen(false);
+                setSelectedAccessoryForNotice(null);
+              }}
+              accessoryId={selectedAccessoryForNotice.id}
+              accessoryMarque={selectedAccessoryForNotice.marque}
+              accessoryNom={selectedAccessoryForNotice.nom}
+              onSuccess={() => {
+                loadAccessories();
+                setIsNoticeDialogOpen(false);
+                setSelectedAccessoryForNotice(null);
+              }}
+            />
+          )}
+
+          {/* Dialog wishlist */}
+          <WishlistDialog open={isWishlistOpen} onOpenChange={setIsWishlistOpen} />
+
+          {/* Bouton rond fixe pour les frais de port */}
+          <Button
+            onClick={() => setIsShippingFeesOpen(true)}
+            className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-shadow z-50"
+            title="Gérer les frais de port"
+          >
+            <Package className="h-6 w-6" />
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
   );
 };
 
-export default AccessoryCatalogFormDialog;
+export default AccessoriesCatalogView;
