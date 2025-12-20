@@ -1,8 +1,8 @@
 /**
  * AccessoriesCatalogView.tsx
- * Version: 1.58
+ * Version: 1.60
  * Date: 2025-12-20
- * Description: Vue catalogue des accessoires avec onglets compacts et contraste hover amélioré
+ * Description: Vue catalogue avec badges type électrique colorés (⚡ Conso, ☀️ Prod, etc.)
  */
 
 import { useState, useEffect } from "react";
@@ -189,6 +189,34 @@ const getCategoryIcon = (categoryName: string) => {
 
   // Par défaut
   return Package;
+};
+
+// Fonction pour obtenir l'icône et la couleur du type électrique
+const getElectricalTypeInfo = (
+  type: string | undefined | null,
+): { icon: string; bgColor: string; textColor: string; label: string } | null => {
+  if (!type) return null;
+
+  switch (type) {
+    case "producteur":
+      return { icon: "☀️", bgColor: "bg-yellow-100", textColor: "text-yellow-700", label: "Prod" };
+    case "stockage":
+      return { icon: "🔋", bgColor: "bg-green-100", textColor: "text-green-700", label: "Stock" };
+    case "regulateur":
+      return { icon: "⚡", bgColor: "bg-blue-100", textColor: "text-blue-700", label: "Régul" };
+    case "convertisseur":
+      return { icon: "🔌", bgColor: "bg-purple-100", textColor: "text-purple-700", label: "Conv" };
+    case "chargeur":
+      return { icon: "🔌", bgColor: "bg-orange-100", textColor: "text-orange-700", label: "Charg" };
+    case "combi":
+      return { icon: "⚡", bgColor: "bg-amber-100", textColor: "text-amber-700", label: "Combi" };
+    case "consommateur":
+      return { icon: "⚡", bgColor: "bg-red-100", textColor: "text-red-700", label: "Conso" };
+    case "neutre":
+      return { icon: "○", bgColor: "bg-gray-100", textColor: "text-gray-500", label: "Neutre" };
+    default:
+      return null;
+  }
 };
 
 interface Category {
@@ -520,7 +548,17 @@ const AccessoriesCatalogView = () => {
             <div className="flex items-start gap-4">
               <div className="grid grid-cols-1 md:grid-cols-6 gap-4 flex-1">
                 <div className="md:col-span-2">
-                  <div className="font-medium">{decodeHtmlEntities(accessory.nom)}</div>
+                  <div className="font-medium flex items-center gap-2">
+                    {decodeHtmlEntities(accessory.nom)}
+                    {getElectricalTypeInfo(accessory.type_electrique) && (
+                      <span
+                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${getElectricalTypeInfo(accessory.type_electrique)?.bgColor} ${getElectricalTypeInfo(accessory.type_electrique)?.textColor}`}
+                      >
+                        {getElectricalTypeInfo(accessory.type_electrique)?.icon}{" "}
+                        {getElectricalTypeInfo(accessory.type_electrique)?.label}
+                      </span>
+                    )}
+                  </div>
                   {accessory.marque && <div className="text-sm text-muted-foreground">{accessory.marque}</div>}
                 </div>
                 <div className="md:col-span-1">
@@ -688,7 +726,17 @@ const AccessoriesCatalogView = () => {
             <CardHeader className="p-0 mb-3">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <CardTitle className="text-base mb-1">{decodeHtmlEntities(accessory.nom)}</CardTitle>
+                  <CardTitle className="text-base mb-1 flex items-center gap-2 flex-wrap">
+                    {decodeHtmlEntities(accessory.nom)}
+                    {getElectricalTypeInfo(accessory.type_electrique) && (
+                      <span
+                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${getElectricalTypeInfo(accessory.type_electrique)?.bgColor} ${getElectricalTypeInfo(accessory.type_electrique)?.textColor}`}
+                      >
+                        {getElectricalTypeInfo(accessory.type_electrique)?.icon}{" "}
+                        {getElectricalTypeInfo(accessory.type_electrique)?.label}
+                      </span>
+                    )}
+                  </CardTitle>
                   {accessory.marque && <div className="text-sm text-muted-foreground">{accessory.marque}</div>}
                 </div>
                 <div className="flex gap-1">
@@ -926,9 +974,9 @@ const AccessoriesCatalogView = () => {
                         {Array.from(group.subGroups).map(([subCategoryName, items]) => (
                           <div key={`${mainCategoryName}-${subCategoryName}`} className="mb-4">
                             {group.subGroups.size > 1 && (
-                              <div className="flex items-center gap-2 mb-2 ml-2">
-                                <span className="text-sm font-medium text-muted-foreground">↳ {subCategoryName}</span>
-                                <Badge variant="outline" className="text-xs">
+                              <div className="flex items-center gap-2 mb-2 ml-4 pb-1 border-b border-muted/50">
+                                <span className="text-base font-semibold text-foreground/80">↳ {subCategoryName}</span>
+                                <Badge variant="secondary" className="text-xs font-medium">
                                   {items.length}
                                 </Badge>
                               </div>
@@ -960,8 +1008,10 @@ const AccessoriesCatalogView = () => {
                         <div key={`${activeTab}-${subCategoryName}`}>
                           {group.subGroups.size > 1 && (
                             <div className="flex items-center gap-2 mb-3 pb-2 border-b">
-                              <h4 className="font-medium">{subCategoryName}</h4>
-                              <Badge variant="outline">{items.length}</Badge>
+                              <h4 className="text-base font-semibold text-foreground/80">↳ {subCategoryName}</h4>
+                              <Badge variant="secondary" className="font-medium">
+                                {items.length}
+                              </Badge>
                             </div>
                           )}
                           <div
