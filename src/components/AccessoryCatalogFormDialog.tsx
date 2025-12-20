@@ -1,3 +1,10 @@
+/**
+ * AccessoryCatalogFormDialog.tsx
+ * Version: 1.12
+ * Date: 2025-12-20
+ * Description: Formulaire d'ajout/édition d'accessoire avec type combi (chargeur+convertisseur)
+ */
+
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -1029,8 +1036,9 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                   <SelectItem value="producteur">🟡 Producteur (panneau)</SelectItem>
                   <SelectItem value="stockage">🟢 Stockage (batterie)</SelectItem>
                   <SelectItem value="regulateur">🔵 Régulateur (MPPT)</SelectItem>
-                  <SelectItem value="convertisseur">🟣 Convertisseur (DC/AC)</SelectItem>
+                  <SelectItem value="convertisseur">🟣 Convertisseur (DC→AC)</SelectItem>
                   <SelectItem value="chargeur">🟠 Chargeur (230V, booster)</SelectItem>
+                  <SelectItem value="combi">🟤 Combi (chargeur + convertisseur)</SelectItem>
                   <SelectItem value="consommateur">🔴 Consommateur</SelectItem>
                   <SelectItem value="neutre">⚪ Accessoire (fusible, bornier...)</SelectItem>
                 </SelectContent>
