@@ -1,7 +1,7 @@
 // ============================================
 // EnergyBalance.tsx
 // Bilan énergétique du projet
-// VERSION: 2.4 - Ajout chargeurs (230V, booster) comme sources d'énergie
+// VERSION: 2.5 - Ajout type combi (chargeur + convertisseur combiné)
 // ============================================
 
 import { useEffect, useState, useRef } from "react";
@@ -346,13 +346,19 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
   };
 
   const categorizeItems = (itemsList: ElectricalItem[]) => {
-    // Les chargeurs (230V, booster) sont inclus avec les producteurs car ils déterminent la puissance de charge
+    // Les chargeurs (230V, booster) et combis sont inclus avec les producteurs car ils déterminent la puissance de charge
     const producers = itemsList.filter(
-      (item) => item.type_electrique === "producteur" || item.type_electrique === "chargeur",
+      (item) =>
+        item.type_electrique === "producteur" ||
+        item.type_electrique === "chargeur" ||
+        item.type_electrique === "combi",
     );
     const consumers = itemsList.filter((item) => item.type_electrique === "consommateur");
     const storage = itemsList.filter((item) => item.type_electrique === "stockage");
-    const converters = itemsList.filter((item) => item.type_electrique === "convertisseur");
+    // Les combis apparaissent aussi dans les convertisseurs car ils ont cette double fonction
+    const converters = itemsList.filter(
+      (item) => item.type_electrique === "convertisseur" || item.type_electrique === "combi",
+    );
 
     return { producers, consumers, storage, converters };
   };
@@ -368,9 +374,12 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
   };
 
   const calculateTotalProduction = (itemsList: ElectricalItem[]) => {
-    // Les chargeurs (230V, booster) sont inclus car ils déterminent la puissance de charge
+    // Les chargeurs (230V, booster) et combis sont inclus car ils déterminent la puissance de charge
     const producers = itemsList.filter(
-      (item) => item.type_electrique === "producteur" || item.type_electrique === "chargeur",
+      (item) =>
+        item.type_electrique === "producteur" ||
+        item.type_electrique === "chargeur" ||
+        item.type_electrique === "combi",
     );
     return producers.reduce((total, item) => {
       const power = item.puissance_watts || 0;
@@ -803,7 +812,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                   <div className="space-y-6">
                     {renderItemsTable(
                       categorizeItems(items).producers,
-                      "Sources d'énergie (producteurs + chargeurs)",
+                      "Sources d'énergie (producteurs + chargeurs + combis)",
                       <TrendingUp className="h-5 w-5 text-green-600" />,
                       "production",
                     )}
@@ -821,7 +830,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                     )}
                     {renderItemsTable(
                       categorizeItems(items).converters,
-                      "Convertisseurs",
+                      "Convertisseurs (+ combis)",
                       <Zap className="h-5 w-5 text-purple-600" />,
                       null,
                     )}
@@ -864,9 +873,12 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                   <div className="space-y-6">
                     {renderItemsTable(
                       (draftItems as ElectricalItem[]).filter(
-                        (i) => i.type_electrique === "producteur" || i.type_electrique === "chargeur",
+                        (i) =>
+                          i.type_electrique === "producteur" ||
+                          i.type_electrique === "chargeur" ||
+                          i.type_electrique === "combi",
                       ),
-                      "Sources d'énergie (producteurs + chargeurs)",
+                      "Sources d'énergie (producteurs + chargeurs + combis)",
                       <TrendingUp className="h-5 w-5 text-green-600" />,
                       "production",
                       true,
@@ -886,8 +898,10 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                       true,
                     )}
                     {renderItemsTable(
-                      (draftItems as ElectricalItem[]).filter((i) => i.type_electrique === "convertisseur"),
-                      "Convertisseurs",
+                      (draftItems as ElectricalItem[]).filter(
+                        (i) => i.type_electrique === "convertisseur" || i.type_electrique === "combi",
+                      ),
+                      "Convertisseurs (+ combis)",
                       <Zap className="h-5 w-5 text-purple-600" />,
                       null,
                       true,
