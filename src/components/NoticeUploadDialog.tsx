@@ -1,3 +1,10 @@
+/**
+ * NoticeUploadDialog.tsx
+ * Version: 1.1
+ * Date: 2025-12-20
+ * Description: Modale d'ajout de notice - taille réduite et compacte
+ */
+
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { CardDescription } from "@/components/ui/card";
@@ -276,31 +283,31 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Ajouter une notice</DialogTitle>
           <CardDescription>
             Renseignez les informations de la notice et liez-la éventuellement à un accessoire
           </CardDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
+        <div className="grid gap-3 py-2">
           {/* Zone de drag and drop */}
-          <div className="grid gap-2">
+          <div className="grid gap-1.5">
             <Label>Fichier notice (PDF)</Label>
             <div
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+              className={`border-2 border-dashed rounded-lg p-4 text-center transition-colors ${
                 isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
               }`}
             >
               {selectedFile ? (
                 <div className="flex items-center justify-center gap-3">
-                  <FileText className="h-8 w-8 text-primary" />
+                  <FileText className="h-6 w-6 text-primary" />
                   <div className="flex-1 text-left">
-                    <p className="font-medium">{selectedFile.name}</p>
-                    <p className="text-sm text-muted-foreground">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
+                    <p className="font-medium text-sm">{selectedFile.name}</p>
+                    <p className="text-xs text-muted-foreground">{(selectedFile.size / 1024 / 1024).toFixed(2)} MB</p>
                   </div>
                   <Button type="button" variant="ghost" size="icon" onClick={() => setSelectedFile(null)}>
                     <X className="h-4 w-4" />
@@ -308,12 +315,13 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
                 </div>
               ) : (
                 <>
-                  <Upload className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground mb-2">Glissez-déposez votre fichier PDF ici</p>
-                  <p className="text-xs text-muted-foreground mb-4">ou</p>
+                  <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-xs text-muted-foreground mb-1">Glissez-déposez votre fichier PDF ici</p>
+                  <p className="text-xs text-muted-foreground mb-2">ou</p>
                   <Button
                     type="button"
                     variant="outline"
+                    size="sm"
                     onClick={() => document.getElementById("file-input")?.click()}
                   >
                     Parcourir les fichiers
@@ -331,8 +339,10 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
           </div>
 
           {/* URL alternative */}
-          <div className="grid gap-2">
-            <Label htmlFor="url">Ou URL de la notice</Label>
+          <div className="grid gap-1.5">
+            <Label htmlFor="url" className="text-sm">
+              Ou URL de la notice
+            </Label>
             <Input
               id="url"
               value={urlNotice}
@@ -340,26 +350,33 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
               placeholder="https://..."
               type="url"
               disabled={!!selectedFile}
+              className="h-9"
             />
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="titre">Titre *</Label>
+          <div className="grid gap-1.5">
+            <Label htmlFor="titre" className="text-sm">
+              Titre *
+            </Label>
             <Input
               id="titre"
               value={titre}
               onChange={(e) => setTitre(e.target.value)}
               placeholder="Titre de la notice"
+              className="h-9"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="marque">Marque</Label>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="marque" className="text-sm">
+                Marque
+              </Label>
               <div className="relative">
                 <Input
                   id="marque"
                   value={marque}
+                  className="h-9"
                   onChange={(e) => {
                     setMarque(e.target.value);
                     setMarquePopoverOpen(true);
@@ -425,18 +442,29 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
                 )}
               </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="modele">Modèle</Label>
-              <Input id="modele" value={modele} onChange={(e) => setModele(e.target.value)} placeholder="Modèle" />
+            <div className="grid gap-1.5">
+              <Label htmlFor="modele" className="text-sm">
+                Modèle
+              </Label>
+              <Input
+                id="modele"
+                value={modele}
+                onChange={(e) => setModele(e.target.value)}
+                placeholder="Modèle"
+                className="h-9"
+              />
             </div>
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="categorie">Catégorie</Label>
+          <div className="grid gap-1.5">
+            <Label htmlFor="categorie" className="text-sm">
+              Catégorie
+            </Label>
             <div className="relative">
               <Input
                 id="categorie"
                 value={categorie}
+                className="h-9"
                 onChange={(e) => {
                   setCategorie(e.target.value);
                   setCategoriePopoverOpen(true);
@@ -450,7 +478,7 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
                 autoComplete="off"
               />
               {categoriePopoverOpen && (
-                <div className="absolute z-[100] top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-md max-h-[200px] overflow-auto">
+                <div className="absolute z-[100] top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-md max-h-[150px] overflow-auto">
                   {(() => {
                     const filteredCategories = existingCategories.filter(
                       (cat) => !categorie || cat.toLowerCase().includes(categorie.toLowerCase()),
@@ -511,21 +539,26 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
             </div>
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="description">Description</Label>
+          <div className="grid gap-1.5">
+            <Label htmlFor="description" className="text-sm">
+              Description
+            </Label>
             <Textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Description de la notice"
-              rows={3}
+              rows={2}
+              className="resize-none"
             />
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="accessory">Lier à un accessoire (optionnel)</Label>
+          <div className="grid gap-1.5">
+            <Label htmlFor="accessory" className="text-sm">
+              Lier à un accessoire (optionnel)
+            </Label>
             <Select value={selectedAccessoryId} onValueChange={setSelectedAccessoryId}>
-              <SelectTrigger>
+              <SelectTrigger className="h-9">
                 <SelectValue placeholder="Sélectionner un accessoire" />
               </SelectTrigger>
               <SelectContent>
@@ -538,7 +571,7 @@ export const NoticeUploadDialog = ({ trigger, onSuccess, preselectedAccessoryId 
             </Select>
           </div>
 
-          <Button onClick={handleSubmit} disabled={isUploading} className="w-full">
+          <Button onClick={handleSubmit} disabled={isUploading} className="w-full h-9">
             {isUploading ? (
               "Ajout en cours..."
             ) : (
