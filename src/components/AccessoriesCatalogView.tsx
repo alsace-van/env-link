@@ -1,8 +1,8 @@
 /**
  * AccessoriesCatalogView.tsx
- * Version: 1.60
+ * Version: 1.61
  * Date: 2025-12-20
- * Description: Vue catalogue avec badges type électrique colorés (⚡ Conso, ☀️ Prod, etc.)
+ * Description: Vue catalogue avec badges type électrique sur une seule ligne (whitespace-nowrap)
  */
 
 import { useState, useEffect } from "react";
@@ -552,7 +552,7 @@ const AccessoriesCatalogView = () => {
                     {decodeHtmlEntities(accessory.nom)}
                     {getElectricalTypeInfo(accessory.type_electrique) && (
                       <span
-                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${getElectricalTypeInfo(accessory.type_electrique)?.bgColor} ${getElectricalTypeInfo(accessory.type_electrique)?.textColor}`}
+                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap ${getElectricalTypeInfo(accessory.type_electrique)?.bgColor} ${getElectricalTypeInfo(accessory.type_electrique)?.textColor}`}
                       >
                         {getElectricalTypeInfo(accessory.type_electrique)?.icon}{" "}
                         {getElectricalTypeInfo(accessory.type_electrique)?.label}
@@ -730,7 +730,7 @@ const AccessoriesCatalogView = () => {
                     {decodeHtmlEntities(accessory.nom)}
                     {getElectricalTypeInfo(accessory.type_electrique) && (
                       <span
-                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${getElectricalTypeInfo(accessory.type_electrique)?.bgColor} ${getElectricalTypeInfo(accessory.type_electrique)?.textColor}`}
+                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap ${getElectricalTypeInfo(accessory.type_electrique)?.bgColor} ${getElectricalTypeInfo(accessory.type_electrique)?.textColor}`}
                       >
                         {getElectricalTypeInfo(accessory.type_electrique)?.icon}{" "}
                         {getElectricalTypeInfo(accessory.type_electrique)?.label}
