@@ -1,8 +1,8 @@
 /**
  * AccessoriesCatalogView.tsx
- * Version: 1.57
+ * Version: 1.58
  * Date: 2025-12-20
- * Description: Vue catalogue des accessoires avec onglets de catégories redesignés
+ * Description: Vue catalogue des accessoires avec onglets compacts et contraste hover amélioré
  */
 
 import { useState, useEffect } from "react";
@@ -819,24 +819,24 @@ const AccessoriesCatalogView = () => {
           <div className="border rounded-xl overflow-hidden shadow-sm">
             {/* Barre d'onglets */}
             <div className="bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-850 border-b overflow-x-auto">
-              <div className="flex items-stretch min-w-max gap-1 p-1.5">
+              <div className="flex items-stretch min-w-max gap-0.5 p-1">
                 {/* Onglet Toutes */}
                 <button
                   onClick={() => setActiveTab("__all__")}
                   className={`
-                    px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 flex items-center gap-2
+                    px-2.5 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1.5
                     ${
                       activeTab === "__all__"
-                        ? "bg-white dark:bg-gray-900 text-primary shadow-md ring-1 ring-primary/20 -translate-y-px"
-                        : "hover:bg-white/80 dark:hover:bg-gray-700 hover:text-primary hover:shadow-sm text-muted-foreground"
+                        ? "bg-white dark:bg-gray-900 text-primary shadow-md ring-1 ring-primary/30"
+                        : "hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-700 dark:hover:text-blue-300 text-muted-foreground"
                     }
                   `}
                 >
-                  <FolderOpen className="h-4 w-4" />
+                  <FolderOpen className="h-3.5 w-3.5" />
                   Toutes
                   <Badge
                     variant={activeTab === "__all__" ? "default" : "secondary"}
-                    className={`text-xs font-semibold ${activeTab === "__all__" ? "bg-primary/90" : "bg-gray-200 dark:bg-gray-600"}`}
+                    className={`text-[10px] px-1.5 py-0 h-4 font-semibold ${activeTab === "__all__" ? "bg-primary/90" : "bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200"}`}
                   >
                     {filteredAccessories.length}
                   </Badge>
@@ -854,23 +854,23 @@ const AccessoriesCatalogView = () => {
                       key={mainCategoryName}
                       onClick={() => setActiveTab(mainCategoryName)}
                       className={`
-                        px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 whitespace-nowrap flex items-center gap-2
+                        px-2.5 py-1.5 text-xs font-medium rounded-md transition-all duration-200 whitespace-nowrap flex items-center gap-1.5
                         ${
                           isActive
-                            ? "bg-white dark:bg-gray-900 text-primary shadow-md ring-1 ring-primary/20 -translate-y-px"
-                            : "hover:bg-white/80 dark:hover:bg-gray-700 hover:text-primary hover:shadow-sm text-muted-foreground"
+                            ? "bg-white dark:bg-gray-900 text-primary shadow-md ring-1 ring-primary/30"
+                            : "hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-700 dark:hover:text-blue-300 text-muted-foreground"
                         }
                       `}
                     >
                       {hasEmoji ? (
-                        <span className="text-base">{group.mainCategoryIcon}</span>
+                        <span className="text-sm">{group.mainCategoryIcon}</span>
                       ) : (
-                        <CategoryIcon className={`h-4 w-4 ${isActive ? "text-primary" : ""}`} />
+                        <CategoryIcon className={`h-3.5 w-3.5 ${isActive ? "text-primary" : ""}`} />
                       )}
                       {mainCategoryName}
                       <Badge
                         variant={isActive ? "default" : "secondary"}
-                        className={`text-xs font-semibold ${isActive ? "bg-primary/90" : "bg-gray-200 dark:bg-gray-600"}`}
+                        className={`text-[10px] px-1.5 py-0 h-4 font-semibold ${isActive ? "bg-primary/90" : "bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200"}`}
                       >
                         {totalCount}
                       </Badge>
@@ -881,10 +881,10 @@ const AccessoriesCatalogView = () => {
                 {/* Bouton pour gérer les catégories */}
                 <button
                   onClick={() => setIsCategoryManagementOpen(true)}
-                  className="px-3 py-2 rounded-lg text-muted-foreground hover:bg-white/80 dark:hover:bg-gray-700 hover:text-primary hover:shadow-sm transition-all duration-200 flex items-center gap-1"
+                  className="px-2 py-1.5 rounded-md text-muted-foreground hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-700 dark:hover:text-blue-300 transition-all duration-200 flex items-center gap-1"
                   title="Gérer les catégories"
                 >
-                  <Settings className="h-4 w-4" />
+                  <Settings className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>
