@@ -1,7 +1,7 @@
 // ============================================
 // EnergyBalance.tsx
 // Bilan énergétique du projet
-// VERSION: 2.3 - Fix requêtes catalogue (sans jointure Supabase)
+// VERSION: 2.4 - Ajout chargeurs (230V, booster) comme sources d'énergie
 // ============================================
 
 import { useEffect, useState, useRef } from "react";
@@ -346,7 +346,10 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
   };
 
   const categorizeItems = (itemsList: ElectricalItem[]) => {
-    const producers = itemsList.filter((item) => item.type_electrique === "producteur");
+    // Les chargeurs (230V, booster) sont inclus avec les producteurs car ils déterminent la puissance de charge
+    const producers = itemsList.filter(
+      (item) => item.type_electrique === "producteur" || item.type_electrique === "chargeur",
+    );
     const consumers = itemsList.filter((item) => item.type_electrique === "consommateur");
     const storage = itemsList.filter((item) => item.type_electrique === "stockage");
     const converters = itemsList.filter((item) => item.type_electrique === "convertisseur");
@@ -365,7 +368,10 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
   };
 
   const calculateTotalProduction = (itemsList: ElectricalItem[]) => {
-    const producers = itemsList.filter((item) => item.type_electrique === "producteur");
+    // Les chargeurs (230V, booster) sont inclus car ils déterminent la puissance de charge
+    const producers = itemsList.filter(
+      (item) => item.type_electrique === "producteur" || item.type_electrique === "chargeur",
+    );
     return producers.reduce((total, item) => {
       const power = item.puissance_watts || 0;
       const productionTime = item.temps_production_heures || 0;
@@ -797,7 +803,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                   <div className="space-y-6">
                     {renderItemsTable(
                       categorizeItems(items).producers,
-                      "Producteurs d'énergie",
+                      "Sources d'énergie (producteurs + chargeurs)",
                       <TrendingUp className="h-5 w-5 text-green-600" />,
                       "production",
                     )}
@@ -857,8 +863,10 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
                   {renderAutonomyCard(draftItems as ElectricalItem[]) && <Separator />}
                   <div className="space-y-6">
                     {renderItemsTable(
-                      (draftItems as ElectricalItem[]).filter((i) => i.type_electrique === "producteur"),
-                      "Producteurs d'énergie",
+                      (draftItems as ElectricalItem[]).filter(
+                        (i) => i.type_electrique === "producteur" || i.type_electrique === "chargeur",
+                      ),
+                      "Sources d'énergie (producteurs + chargeurs)",
                       <TrendingUp className="h-5 w-5 text-green-600" />,
                       "production",
                       true,
