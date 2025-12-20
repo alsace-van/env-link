@@ -1,7 +1,7 @@
 // ============================================
 // EnergyBalance.tsx
 // Bilan énergétique du projet
-// VERSION: 2.5 - Ajout type combi (chargeur + convertisseur combiné)
+// VERSION: 2.6 - Support puissance_charge_watts pour chargeurs et combis
 // ============================================
 
 import { useEffect, useState, useRef } from "react";
@@ -26,6 +26,7 @@ interface ElectricalItem {
   type_electrique: string;
   quantite: number;
   puissance_watts?: number | null;
+  puissance_charge_watts?: number | null;
   intensite_amperes?: number | null;
   capacite_ah?: number | null;
   temps_utilisation_heures?: number | null;
@@ -132,7 +133,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
     if (accessoryIds.length > 0) {
       const { data: catalogItems } = await supabase
         .from("accessories_catalog")
-        .select("id, type_electrique, puissance_watts, capacite_ah, marque")
+        .select("id, type_electrique, puissance_watts, puissance_charge_watts, capacite_ah, marque")
         .in("id", accessoryIds);
 
       if (catalogItems) {
@@ -150,6 +151,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
           ...expense,
           type_electrique: expense.type_electrique || catalog?.type_electrique,
           puissance_watts: expense.puissance_watts ?? catalog?.puissance_watts,
+          puissance_charge_watts: expense.puissance_charge_watts ?? catalog?.puissance_charge_watts,
           capacite_ah: expense.capacite_ah ?? catalog?.capacite_ah,
           marque: expense.marque || catalog?.marque,
         };
@@ -212,7 +214,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
     if (accessoryIds.length > 0) {
       const { data: catalogItems } = await (supabase as any)
         .from("accessories_catalog")
-        .select("id, type_electrique, puissance_watts, capacite_ah, marque")
+        .select("id, type_electrique, puissance_watts, puissance_charge_watts, capacite_ah, marque")
         .in("id", accessoryIds);
 
       if (catalogItems) {
@@ -230,6 +232,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
           ...expense,
           type_electrique: expense.type_electrique || catalog?.type_electrique,
           puissance_watts: expense.puissance_watts ?? catalog?.puissance_watts,
+          puissance_charge_watts: expense.puissance_charge_watts ?? catalog?.puissance_charge_watts,
           capacite_ah: expense.capacite_ah ?? catalog?.capacite_ah,
           marque: expense.marque || catalog?.marque,
         };
@@ -382,7 +385,9 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
         item.type_electrique === "combi",
     );
     return producers.reduce((total, item) => {
-      const power = item.puissance_watts || 0;
+      // Pour les chargeurs et combis, utiliser puissance_charge_watts si disponible
+      const isCharger = item.type_electrique === "chargeur" || item.type_electrique === "combi";
+      const power = isCharger ? item.puissance_charge_watts || item.puissance_watts || 0 : item.puissance_watts || 0;
       const productionTime = item.temps_production_heures || 0;
       const quantity = item.quantite || 1;
       return total + power * productionTime * quantity;
