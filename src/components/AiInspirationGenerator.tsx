@@ -1,8 +1,9 @@
 /**
  * AiInspirationGenerator.tsx
- * Version: 1.2
- * Date: 2025-12-20
- * Description: Générateur d'inspirations via Gemini 2.5 Flash Image utilisant le système de clé API utilisateur
+ * Version: 1.3
+ * Date: 2025-12-21
+ * Description: Générateur d'inspirations via Gemini 2.5 Flash Image Preview utilisant le système de clé API utilisateur
+ * Note: Quotas gratuits très limités depuis décembre 2025 (~20 req/jour)
  */
 
 import { useState, useRef } from "react";
@@ -193,8 +194,9 @@ export const AiInspirationGenerator = ({ projectId, onImageSaved }: AiInspiratio
           const base64Image = await imageToBase64(sourceImage.file);
           const mimeType = sourceImage.file.type || "image/jpeg";
 
+          // Utiliser le modèle preview (le stable n'est pas encore disponible pour tous)
           const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${apiKey}`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -221,11 +223,24 @@ export const AiInspirationGenerator = ({ projectId, onImageSaved }: AiInspiratio
             console.error("Gemini API error:", error);
 
             if (response.status === 429) {
-              toast.error("Quota API dépassé. Réessayez plus tard.");
+              toast.error(
+                "Quota API dépassé. Les quotas gratuits sont très limités (~20 req/jour). Réessayez demain après minuit (heure Pacifique).",
+                { duration: 8000 },
+              );
+              break; // Arrêter si quota dépassé
             } else if (response.status === 400) {
-              toast.error("Erreur de requête. Vérifiez votre clé API.");
+              const errorMsg = error.error?.message || "";
+              if (errorMsg.includes("API key")) {
+                toast.error("Clé API invalide. Vérifiez votre configuration dans Mon Compte.");
+              } else if (errorMsg.includes("not found") || errorMsg.includes("model")) {
+                toast.error("Modèle non disponible. Google a peut-être changé l'API.");
+              } else {
+                toast.error(`Erreur: ${errorMsg || "Requête invalide"}`);
+              }
+            } else if (response.status === 403) {
+              toast.error("Accès refusé. Vérifiez que votre clé API a les permissions nécessaires.");
             } else {
-              toast.error(`Erreur API: ${error.error?.message || "Inconnue"}`);
+              toast.error(`Erreur API (${response.status}): ${error.error?.message || "Inconnue"}`);
             }
             continue;
           }
@@ -250,7 +265,7 @@ export const AiInspirationGenerator = ({ projectId, onImageSaved }: AiInspiratio
           }
         } catch (err) {
           console.error("Error generating image:", err);
-          toast.error("Erreur lors de la génération");
+          toast.error("Erreur réseau lors de la génération");
         }
       }
 
@@ -364,6 +379,20 @@ export const AiInspirationGenerator = ({ projectId, onImageSaved }: AiInspiratio
                 >
                   Google AI Studio
                 </a>
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Avertissement quotas limités */}
+        {isConfigured && (
+          <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 rounded-lg">
+            <AlertCircle className="h-5 w-5 text-blue-500 flex-shrink-0" />
+            <div className="text-sm">
+              <p className="font-medium text-blue-700 dark:text-blue-400">Quotas gratuits limités</p>
+              <p className="text-blue-600 dark:text-blue-500">
+                Google limite la génération d'images à ~20 requêtes/jour (tier gratuit). Les quotas se réinitialisent à
+                minuit (heure Pacifique, soit 9h en France).
               </p>
             </div>
           </div>
