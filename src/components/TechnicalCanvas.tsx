@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.27 - Edge simplifié avec getSmoothStepPath natif (sans artefacts)
+// VERSION: 2.28 - Edge avec virage près du bloc petit + correction artefacts
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -518,7 +518,7 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
 const blockNodeTypes = { electricalBlock: ElectricalBlockNode };
 
 // ============================================
-// EDGE PERSONNALISÉ - Utilise smoothstep natif (plus robuste)
+// EDGE PERSONNALISÉ - Virage près du bloc le plus petit (corrigé)
 // ============================================
 
 const CustomSmoothEdge = ({
@@ -535,16 +535,125 @@ const CustomSmoothEdge = ({
   labelBgStyle,
   data,
 }: EdgeProps) => {
-  // Utiliser getSmoothStepPath qui gère tous les cas correctement
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-    borderRadius: 8,
-  });
+  // Récupérer si on doit faire le virage près de la target (bloc plus petit)
+  const turnNearTarget = (data as any)?.turnNearTarget ?? false;
+
+  // Distance du virage
+  const turnDistance = 25;
+  const cornerRadius = 6;
+
+  // Calculer les distances
+  const deltaX = Math.abs(targetX - sourceX);
+  const deltaY = Math.abs(targetY - sourceY);
+
+  // Seuil pour considérer les points comme alignés
+  const alignmentThreshold = 5;
+
+  let edgePath: string;
+  let labelX: number = (sourceX + targetX) / 2;
+  let labelY: number = (sourceY + targetY) / 2;
+
+  // Si presque aligné horizontalement → ligne droite
+  if (deltaY < alignmentThreshold) {
+    edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
+  }
+  // Si presque aligné verticalement → ligne droite
+  else if (deltaX < alignmentThreshold) {
+    edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
+  }
+  // Connexion horizontale (source à droite, target à gauche) avec décalage vertical
+  else if (sourcePosition === Position.Right && (targetPosition === Position.Left || !targetPosition)) {
+    // Position du virage (près du bloc le plus petit)
+    const midX = turnNearTarget ? Math.max(sourceX + turnDistance, targetX - turnDistance) : sourceX + turnDistance;
+
+    // S'assurer que midX est entre source et target
+    const safeMidX = Math.min(Math.max(midX, sourceX + cornerRadius * 2), targetX - cornerRadius * 2);
+
+    const goingDown = targetY > sourceY;
+    const r = Math.min(cornerRadius, deltaY / 4, Math.abs(safeMidX - sourceX) / 2);
+
+    edgePath = `M ${sourceX} ${sourceY} 
+                L ${safeMidX - r} ${sourceY}
+                Q ${safeMidX} ${sourceY} ${safeMidX} ${sourceY + (goingDown ? r : -r)}
+                L ${safeMidX} ${targetY + (goingDown ? -r : r)}
+                Q ${safeMidX} ${targetY} ${safeMidX + r} ${targetY}
+                L ${targetX} ${targetY}`;
+    labelX = safeMidX;
+  }
+  // Connexion verticale (source en bas, target en haut) avec décalage horizontal
+  else if (sourcePosition === Position.Bottom && (targetPosition === Position.Top || !targetPosition)) {
+    const midY = turnNearTarget ? Math.max(sourceY + turnDistance, targetY - turnDistance) : sourceY + turnDistance;
+
+    const safeMidY = Math.min(Math.max(midY, sourceY + cornerRadius * 2), targetY - cornerRadius * 2);
+
+    const goingRight = targetX > sourceX;
+    const r = Math.min(cornerRadius, deltaX / 4, Math.abs(safeMidY - sourceY) / 2);
+
+    edgePath = `M ${sourceX} ${sourceY} 
+                L ${sourceX} ${safeMidY - r}
+                Q ${sourceX} ${safeMidY} ${sourceX + (goingRight ? r : -r)} ${safeMidY}
+                L ${targetX + (goingRight ? -r : r)} ${safeMidY}
+                Q ${targetX} ${safeMidY} ${targetX} ${safeMidY + r}
+                L ${targetX} ${targetY}`;
+    labelY = safeMidY;
+  }
+  // Connexion Bottom → Left (source en bas, target à gauche)
+  else if (sourcePosition === Position.Bottom && targetPosition === Position.Left) {
+    const midY = turnNearTarget ? targetY : sourceY + turnDistance;
+
+    const safeMidY = Math.min(Math.max(midY, sourceY + cornerRadius), targetY);
+    const r = Math.min(cornerRadius, Math.abs(targetX - sourceX) / 4, Math.abs(safeMidY - sourceY) / 2);
+
+    if (turnNearTarget && Math.abs(safeMidY - targetY) < cornerRadius * 2) {
+      // Virage simple près de la target
+      edgePath = `M ${sourceX} ${sourceY} 
+                  L ${sourceX} ${targetY - r}
+                  Q ${sourceX} ${targetY} ${sourceX + r} ${targetY}
+                  L ${targetX} ${targetY}`;
+    } else {
+      edgePath = `M ${sourceX} ${sourceY} 
+                  L ${sourceX} ${safeMidY - r}
+                  Q ${sourceX} ${safeMidY} ${sourceX + r} ${safeMidY}
+                  L ${targetX - r} ${safeMidY}
+                  Q ${targetX} ${safeMidY} ${targetX} ${safeMidY + r}
+                  L ${targetX} ${targetY}`;
+    }
+    labelY = safeMidY;
+  }
+  // Connexion Right → Top
+  else if (sourcePosition === Position.Right && targetPosition === Position.Top) {
+    const midX = turnNearTarget ? targetX : sourceX + turnDistance;
+
+    const safeMidX = Math.min(Math.max(midX, sourceX + cornerRadius), targetX);
+    const r = Math.min(cornerRadius, Math.abs(targetY - sourceY) / 4, Math.abs(safeMidX - sourceX) / 2);
+
+    if (turnNearTarget && Math.abs(safeMidX - targetX) < cornerRadius * 2) {
+      edgePath = `M ${sourceX} ${sourceY} 
+                  L ${targetX - r} ${sourceY}
+                  Q ${targetX} ${sourceY} ${targetX} ${sourceY + r}
+                  L ${targetX} ${targetY}`;
+    } else {
+      edgePath = `M ${sourceX} ${sourceY} 
+                  L ${safeMidX - r} ${sourceY}
+                  Q ${safeMidX} ${sourceY} ${safeMidX} ${sourceY + r}
+                  L ${safeMidX} ${targetY - r}
+                  Q ${safeMidX} ${targetY} ${safeMidX + r} ${targetY}
+                  L ${targetX} ${targetY}`;
+    }
+    labelX = safeMidX;
+  }
+  // Autres cas → utiliser getSmoothStepPath natif
+  else {
+    [edgePath, labelX, labelY] = getSmoothStepPath({
+      sourceX,
+      sourceY,
+      sourcePosition,
+      targetX,
+      targetY,
+      targetPosition,
+      borderRadius: cornerRadius,
+    });
+  }
 
   return (
     <>
