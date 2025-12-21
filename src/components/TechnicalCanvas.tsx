@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.2 - Canvas adaptatif (100vh-180px) avec marge bas
+// VERSION: 3.3 - Légende déplacée à droite
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2948,7 +2948,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             layers={layers}
             isVisible={showLegend}
             onToggleVisibility={() => setShowLegend(!showLegend)}
-            position="bottom-left"
+            position="bottom-right"
           />
         )}
 
