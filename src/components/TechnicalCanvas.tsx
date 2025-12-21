@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.13 - Sélection multiple Shift+clic + déplacement groupé
+// VERSION: 2.14 - Aide dans un bouton ? avec Popover
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1556,15 +1556,28 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               maskColor="rgba(0,0,0,0.1)"
             />
             <Panel position="top-right">
-              <div className="bg-white/90 rounded-lg shadow p-2 text-xs text-gray-600 border space-y-1">
-                <div>
-                  💡 Glissez depuis les points <span className="text-green-600 font-semibold">verts</span> vers les{" "}
-                  <span className="text-blue-600 font-semibold">bleus</span>
-                </div>
-                <div>
-                  🖱️ <span className="font-semibold">Shift+clic</span> = sélection multiple
-                </div>
-              </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="w-7 h-7 bg-white/90 hover:bg-white rounded-full shadow border flex items-center justify-center text-gray-500 hover:text-gray-700 transition-colors">
+                    <span className="text-sm font-semibold">?</span>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-3 text-xs text-gray-600 space-y-1.5" align="end">
+                  <div>
+                    💡 Glissez depuis les points <span className="text-green-600 font-semibold">verts</span> vers les{" "}
+                    <span className="text-blue-600 font-semibold">bleus</span>
+                  </div>
+                  <div>
+                    🖱️ <span className="font-semibold">Shift+clic</span> = sélection multiple
+                  </div>
+                  <div>
+                    ✋ <span className="font-semibold">Molette/clic droit</span> = naviguer
+                  </div>
+                  <div>
+                    🔍 <span className="font-semibold">Double-clic câble</span> = supprimer
+                  </div>
+                </PopoverContent>
+              </Popover>
             </Panel>
             {selectedEdgeId && selectedEdge && (
               <Panel position="bottom-center">
