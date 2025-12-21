@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.18 - Alignement sur le centre des blocs (hauteur dynamique)
+// VERSION: 2.19 - Utilise les dimensions mesurées par ReactFlow pour l'alignement
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -593,28 +593,43 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // Obtenir les nodes sélectionnés
   const selectedNodes = nodes.filter((n) => n.selected);
 
-  // Calculer la hauteur estimée d'un bloc basée sur son contenu
-  const estimateBlockHeight = (nodeId: string): number => {
-    const item = items.find((i) => i.id === nodeId);
-    if (!item) return 120; // hauteur par défaut
+  // Obtenir la hauteur réelle d'un node (mesurée par ReactFlow)
+  const getNodeHeight = (node: Node): number => {
+    // ReactFlow v11+ stocke les dimensions mesurées dans node.measured
+    // Les versions plus anciennes utilisent node.height directement
+    const measuredHeight = (node as any).measured?.height || (node as any).height;
+    if (measuredHeight) {
+      console.log("[getNodeHeight]", node.id, "measured:", measuredHeight);
+      return measuredHeight;
+    }
 
-    let height = 60; // header (icône + nom + badge)
+    // Fallback: estimer la hauteur basée sur le contenu
+    const item = items.find((i) => i.id === node.id);
+    if (!item) return 120;
+
+    let height = 60; // header
     height += 16; // padding top
-
-    // Lignes de données (chaque ligne ~24px)
     if (item.puissance_watts) height += 24;
     if (item.capacite_ah) height += 24;
     if (item.tension_volts) height += 24;
     if (item.intensite_amperes) height += 24;
-    if (item.quantite > 1 && item.puissance_watts) height += 32; // ligne total
+    if (item.quantite > 1 && item.puissance_watts) height += 32;
+    height += 40; // badge + padding
 
-    height += 40; // badge type + padding bottom
-
+    console.log("[getNodeHeight]", node.id, "estimated:", height);
     return height;
   };
 
+  // Obtenir la largeur réelle d'un node
+  const getNodeWidth = (node: Node): number => {
+    const measuredWidth = (node as any).measured?.width || (node as any).width;
+    if (measuredWidth) {
+      return measuredWidth;
+    }
+    return 240; // largeur par défaut
+  };
+
   // Espacement entre les blocs
-  const BLOCK_WIDTH = 240;
   const BLOCK_SPACING_H = 50;
   const BLOCK_SPACING_V = 30;
 
@@ -624,8 +639,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
     // Trouver le bloc le plus à gauche comme référence
     const referenceNode = [...selectedNodes].sort((a, b) => a.position.x - b.position.x)[0];
-    const refHeight = estimateBlockHeight(referenceNode.id);
+    const refHeight = getNodeHeight(referenceNode);
     const targetCenterY = referenceNode.position.y + refHeight / 2;
+
+    console.log("[Align] Reference node:", referenceNode.id, "height:", refHeight, "centerY:", targetCenterY);
 
     setNodes((nds) =>
       nds.map((n) => {
@@ -637,8 +654,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           if (layer?.locked) return n;
 
           // Calculer la nouvelle position Y pour aligner le centre
-          const nodeHeight = estimateBlockHeight(n.id);
+          const nodeHeight = getNodeHeight(n);
           const newY = targetCenterY - nodeHeight / 2;
+
+          console.log("[Align] Node:", n.id, "height:", nodeHeight, "newY:", newY);
 
           return { ...n, position: { ...n.position, y: newY } };
         }
@@ -654,8 +673,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
     // Trouver le bloc le plus en haut comme référence
     const referenceNode = [...selectedNodes].sort((a, b) => a.position.y - b.position.y)[0];
-    // Pour X, on utilise le centre du bloc (largeur fixe ~240px)
-    const targetCenterX = referenceNode.position.x + BLOCK_WIDTH / 2;
+    const refWidth = getNodeWidth(referenceNode);
+    const targetCenterX = referenceNode.position.x + refWidth / 2;
 
     setNodes((nds) =>
       nds.map((n) => {
@@ -667,7 +686,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           if (layer?.locked) return n;
 
           // Calculer la nouvelle position X pour aligner le centre
-          const newX = targetCenterX - BLOCK_WIDTH / 2;
+          const nodeWidth = getNodeWidth(n);
+          const newX = targetCenterX - nodeWidth / 2;
 
           return { ...n, position: { ...n.position, x: newX } };
         }
@@ -684,8 +704,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     // Trier par position X
     const sorted = [...selectedNodes].sort((a, b) => a.position.x - b.position.x);
     const startX = sorted[0].position.x;
-    // Espacement fixe entre les blocs
-    const spacing = BLOCK_WIDTH + BLOCK_SPACING_H;
+
+    // Calculer l'espacement basé sur la largeur max des blocs
+    const maxWidth = Math.max(...sorted.map((n) => getNodeWidth(n)));
+    const spacing = maxWidth + BLOCK_SPACING_H;
 
     setNodes((nds) =>
       nds.map((n) => {
@@ -713,7 +735,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     const startY = sorted[0].position.y;
 
     // Calculer l'espacement basé sur la hauteur max des blocs
-    const maxHeight = Math.max(...sorted.map((n) => estimateBlockHeight(n.id)));
+    const maxHeight = Math.max(...sorted.map((n) => getNodeHeight(n)));
     const spacing = maxHeight + BLOCK_SPACING_V;
 
     setNodes((nds) =>
