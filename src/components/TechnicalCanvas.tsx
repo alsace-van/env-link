@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.15 - Boutons alignement/distribution blocs sélectionnés
+// VERSION: 2.16 - Alignement sur le premier bloc (pas la moyenne)
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -589,12 +589,17 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // Obtenir les nodes sélectionnés
   const selectedNodes = nodes.filter((n) => n.selected);
 
-  // Fonction pour aligner les nodes sélectionnés horizontalement (même Y)
+  // Hauteur approximative d'un bloc (pour calculer le centre)
+  const BLOCK_HEIGHT = 150;
+  const BLOCK_WIDTH = 240;
+
+  // Fonction pour aligner les nodes sélectionnés horizontalement (même Y - ligne droite)
   const alignNodesHorizontally = useCallback(() => {
     if (selectedNodes.length < 2) return;
 
-    // Calculer la moyenne des Y
-    const avgY = selectedNodes.reduce((sum, n) => sum + n.position.y, 0) / selectedNodes.length;
+    // Trouver le bloc le plus à gauche comme référence
+    const referenceNode = [...selectedNodes].sort((a, b) => a.position.x - b.position.x)[0];
+    const targetY = referenceNode.position.y;
 
     setNodes((nds) =>
       nds.map((n) => {
@@ -605,7 +610,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           const layer = layers.find((l) => l.id === itemLayerId);
           if (layer?.locked) return n;
 
-          return { ...n, position: { ...n.position, y: avgY } };
+          return { ...n, position: { ...n.position, y: targetY } };
         }
         return n;
       }),
@@ -613,12 +618,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     toast.success(`${selectedNodes.length} blocs alignés horizontalement`);
   }, [selectedNodes, setNodes, items, layers]);
 
-  // Fonction pour aligner les nodes sélectionnés verticalement (même X)
+  // Fonction pour aligner les nodes sélectionnés verticalement (même X - colonne droite)
   const alignNodesVertically = useCallback(() => {
     if (selectedNodes.length < 2) return;
 
-    // Calculer la moyenne des X
-    const avgX = selectedNodes.reduce((sum, n) => sum + n.position.x, 0) / selectedNodes.length;
+    // Trouver le bloc le plus en haut comme référence
+    const referenceNode = [...selectedNodes].sort((a, b) => a.position.y - b.position.y)[0];
+    const targetX = referenceNode.position.x;
 
     setNodes((nds) =>
       nds.map((n) => {
@@ -629,7 +635,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           const layer = layers.find((l) => l.id === itemLayerId);
           if (layer?.locked) return n;
 
-          return { ...n, position: { ...n.position, x: avgX } };
+          return { ...n, position: { ...n.position, x: targetX } };
         }
         return n;
       }),
@@ -643,9 +649,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
     // Trier par position X
     const sorted = [...selectedNodes].sort((a, b) => a.position.x - b.position.x);
-    const minX = sorted[0].position.x;
-    const maxX = sorted[sorted.length - 1].position.x;
-    const spacing = (maxX - minX) / (sorted.length - 1);
+    const startX = sorted[0].position.x;
+    // Espacement fixe entre les blocs
+    const spacing = BLOCK_WIDTH + 50; // largeur bloc + marge
 
     setNodes((nds) =>
       nds.map((n) => {
@@ -656,7 +662,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           if (layer?.locked) return n;
 
           const sortIndex = sorted.findIndex((s) => s.id === n.id);
-          return { ...n, position: { ...n.position, x: minX + sortIndex * spacing } };
+          return { ...n, position: { ...n.position, x: startX + sortIndex * spacing } };
         }
         return n;
       }),
@@ -670,9 +676,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
     // Trier par position Y
     const sorted = [...selectedNodes].sort((a, b) => a.position.y - b.position.y);
-    const minY = sorted[0].position.y;
-    const maxY = sorted[sorted.length - 1].position.y;
-    const spacing = (maxY - minY) / (sorted.length - 1);
+    const startY = sorted[0].position.y;
+    // Espacement fixe entre les blocs
+    const spacing = BLOCK_HEIGHT + 30; // hauteur bloc + marge
 
     setNodes((nds) =>
       nds.map((n) => {
@@ -683,7 +689,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           if (layer?.locked) return n;
 
           const sortIndex = sorted.findIndex((s) => s.id === n.id);
-          return { ...n, position: { ...n.position, y: minY + sortIndex * spacing } };
+          return { ...n, position: { ...n.position, y: startY + sortIndex * spacing } };
         }
         return n;
       }),
