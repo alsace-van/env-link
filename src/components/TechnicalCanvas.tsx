@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.14 - Aide dans un bouton ? avec Popover
+// VERSION: 2.15 - Boutons alignement/distribution blocs sélectionnés
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -64,6 +64,10 @@ import {
   EyeOff,
   Lock,
   Unlock,
+  AlignHorizontalSpaceAround,
+  AlignVerticalSpaceAround,
+  AlignCenterHorizontal,
+  AlignCenterVertical,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AccessorySelector } from "./AccessorySelector";
@@ -581,6 +585,111 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [flowEdges, setFlowEdges, onEdgesChange] = useEdgesState([]);
+
+  // Obtenir les nodes sélectionnés
+  const selectedNodes = nodes.filter((n) => n.selected);
+
+  // Fonction pour aligner les nodes sélectionnés horizontalement (même Y)
+  const alignNodesHorizontally = useCallback(() => {
+    if (selectedNodes.length < 2) return;
+
+    // Calculer la moyenne des Y
+    const avgY = selectedNodes.reduce((sum, n) => sum + n.position.y, 0) / selectedNodes.length;
+
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.selected) {
+          // Vérifier si le bloc est sur un calque verrouillé
+          const item = items.find((i) => i.id === n.id);
+          const itemLayerId = item?.layerId || "layer-default";
+          const layer = layers.find((l) => l.id === itemLayerId);
+          if (layer?.locked) return n;
+
+          return { ...n, position: { ...n.position, y: avgY } };
+        }
+        return n;
+      }),
+    );
+    toast.success(`${selectedNodes.length} blocs alignés horizontalement`);
+  }, [selectedNodes, setNodes, items, layers]);
+
+  // Fonction pour aligner les nodes sélectionnés verticalement (même X)
+  const alignNodesVertically = useCallback(() => {
+    if (selectedNodes.length < 2) return;
+
+    // Calculer la moyenne des X
+    const avgX = selectedNodes.reduce((sum, n) => sum + n.position.x, 0) / selectedNodes.length;
+
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.selected) {
+          // Vérifier si le bloc est sur un calque verrouillé
+          const item = items.find((i) => i.id === n.id);
+          const itemLayerId = item?.layerId || "layer-default";
+          const layer = layers.find((l) => l.id === itemLayerId);
+          if (layer?.locked) return n;
+
+          return { ...n, position: { ...n.position, x: avgX } };
+        }
+        return n;
+      }),
+    );
+    toast.success(`${selectedNodes.length} blocs alignés verticalement`);
+  }, [selectedNodes, setNodes, items, layers]);
+
+  // Fonction pour distribuer les nodes horizontalement (espacement égal)
+  const distributeNodesHorizontally = useCallback(() => {
+    if (selectedNodes.length < 3) return;
+
+    // Trier par position X
+    const sorted = [...selectedNodes].sort((a, b) => a.position.x - b.position.x);
+    const minX = sorted[0].position.x;
+    const maxX = sorted[sorted.length - 1].position.x;
+    const spacing = (maxX - minX) / (sorted.length - 1);
+
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.selected) {
+          const item = items.find((i) => i.id === n.id);
+          const itemLayerId = item?.layerId || "layer-default";
+          const layer = layers.find((l) => l.id === itemLayerId);
+          if (layer?.locked) return n;
+
+          const sortIndex = sorted.findIndex((s) => s.id === n.id);
+          return { ...n, position: { ...n.position, x: minX + sortIndex * spacing } };
+        }
+        return n;
+      }),
+    );
+    toast.success(`${selectedNodes.length} blocs distribués horizontalement`);
+  }, [selectedNodes, setNodes, items, layers]);
+
+  // Fonction pour distribuer les nodes verticalement (espacement égal)
+  const distributeNodesVertically = useCallback(() => {
+    if (selectedNodes.length < 3) return;
+
+    // Trier par position Y
+    const sorted = [...selectedNodes].sort((a, b) => a.position.y - b.position.y);
+    const minY = sorted[0].position.y;
+    const maxY = sorted[sorted.length - 1].position.y;
+    const spacing = (maxY - minY) / (sorted.length - 1);
+
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.selected) {
+          const item = items.find((i) => i.id === n.id);
+          const itemLayerId = item?.layerId || "layer-default";
+          const layer = layers.find((l) => l.id === itemLayerId);
+          if (layer?.locked) return n;
+
+          const sortIndex = sorted.findIndex((s) => s.id === n.id);
+          return { ...n, position: { ...n.position, y: minY + sortIndex * spacing } };
+        }
+        return n;
+      }),
+    );
+    toast.success(`${selectedNodes.length} blocs distribués verticalement`);
+  }, [selectedNodes, setNodes, items, layers]);
 
   // Fonction pour mettre à jour les handles d'un bloc
   const updateNodeHandles = useCallback((nodeId: string, handles: BlockHandles) => {
@@ -1579,6 +1688,50 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 </PopoverContent>
               </Popover>
             </Panel>
+
+            {/* Panel d'alignement - visible quand plusieurs nodes sont sélectionnés */}
+            {selectedNodes.length >= 2 && (
+              <Panel position="top-center">
+                <div className="bg-white rounded-lg shadow-lg border px-3 py-2 flex items-center gap-2">
+                  <span className="text-xs text-gray-500 font-medium">{selectedNodes.length} sélectionnés</span>
+                  <div className="w-px h-5 bg-gray-200" />
+                  <button
+                    onClick={alignNodesHorizontally}
+                    className="p-1.5 rounded hover:bg-gray-100 transition-colors"
+                    title="Aligner horizontalement (même ligne)"
+                  >
+                    <AlignCenterVertical className="h-4 w-4 text-gray-600" />
+                  </button>
+                  <button
+                    onClick={alignNodesVertically}
+                    className="p-1.5 rounded hover:bg-gray-100 transition-colors"
+                    title="Aligner verticalement (même colonne)"
+                  >
+                    <AlignCenterHorizontal className="h-4 w-4 text-gray-600" />
+                  </button>
+                  {selectedNodes.length >= 3 && (
+                    <>
+                      <div className="w-px h-5 bg-gray-200" />
+                      <button
+                        onClick={distributeNodesHorizontally}
+                        className="p-1.5 rounded hover:bg-gray-100 transition-colors"
+                        title="Distribuer horizontalement (espacement égal)"
+                      >
+                        <AlignHorizontalSpaceAround className="h-4 w-4 text-gray-600" />
+                      </button>
+                      <button
+                        onClick={distributeNodesVertically}
+                        className="p-1.5 rounded hover:bg-gray-100 transition-colors"
+                        title="Distribuer verticalement (espacement égal)"
+                      >
+                        <AlignVerticalSpaceAround className="h-4 w-4 text-gray-600" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </Panel>
+            )}
+
             {selectedEdgeId && selectedEdge && (
               <Panel position="bottom-center">
                 <div className="bg-white rounded-lg shadow-lg p-3 border flex flex-wrap items-center gap-3">
