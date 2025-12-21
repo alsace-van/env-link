@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.17 - Correction centrage des handles (transform)
+// VERSION: 2.18 - Alignement sur le centre des blocs (hauteur dynamique)
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -593,17 +593,39 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // Obtenir les nodes sélectionnés
   const selectedNodes = nodes.filter((n) => n.selected);
 
-  // Hauteur approximative d'un bloc (pour calculer le centre)
-  const BLOCK_HEIGHT = 150;
-  const BLOCK_WIDTH = 240;
+  // Calculer la hauteur estimée d'un bloc basée sur son contenu
+  const estimateBlockHeight = (nodeId: string): number => {
+    const item = items.find((i) => i.id === nodeId);
+    if (!item) return 120; // hauteur par défaut
 
-  // Fonction pour aligner les nodes sélectionnés horizontalement (même Y - ligne droite)
+    let height = 60; // header (icône + nom + badge)
+    height += 16; // padding top
+
+    // Lignes de données (chaque ligne ~24px)
+    if (item.puissance_watts) height += 24;
+    if (item.capacite_ah) height += 24;
+    if (item.tension_volts) height += 24;
+    if (item.intensite_amperes) height += 24;
+    if (item.quantite > 1 && item.puissance_watts) height += 32; // ligne total
+
+    height += 40; // badge type + padding bottom
+
+    return height;
+  };
+
+  // Espacement entre les blocs
+  const BLOCK_WIDTH = 240;
+  const BLOCK_SPACING_H = 50;
+  const BLOCK_SPACING_V = 30;
+
+  // Fonction pour aligner les nodes sélectionnés horizontalement (centres alignés sur même Y)
   const alignNodesHorizontally = useCallback(() => {
     if (selectedNodes.length < 2) return;
 
     // Trouver le bloc le plus à gauche comme référence
     const referenceNode = [...selectedNodes].sort((a, b) => a.position.x - b.position.x)[0];
-    const targetY = referenceNode.position.y;
+    const refHeight = estimateBlockHeight(referenceNode.id);
+    const targetCenterY = referenceNode.position.y + refHeight / 2;
 
     setNodes((nds) =>
       nds.map((n) => {
@@ -614,7 +636,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           const layer = layers.find((l) => l.id === itemLayerId);
           if (layer?.locked) return n;
 
-          return { ...n, position: { ...n.position, y: targetY } };
+          // Calculer la nouvelle position Y pour aligner le centre
+          const nodeHeight = estimateBlockHeight(n.id);
+          const newY = targetCenterY - nodeHeight / 2;
+
+          return { ...n, position: { ...n.position, y: newY } };
         }
         return n;
       }),
@@ -622,13 +648,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     toast.success(`${selectedNodes.length} blocs alignés horizontalement`);
   }, [selectedNodes, setNodes, items, layers]);
 
-  // Fonction pour aligner les nodes sélectionnés verticalement (même X - colonne droite)
+  // Fonction pour aligner les nodes sélectionnés verticalement (centres alignés sur même X)
   const alignNodesVertically = useCallback(() => {
     if (selectedNodes.length < 2) return;
 
     // Trouver le bloc le plus en haut comme référence
     const referenceNode = [...selectedNodes].sort((a, b) => a.position.y - b.position.y)[0];
-    const targetX = referenceNode.position.x;
+    // Pour X, on utilise le centre du bloc (largeur fixe ~240px)
+    const targetCenterX = referenceNode.position.x + BLOCK_WIDTH / 2;
 
     setNodes((nds) =>
       nds.map((n) => {
@@ -639,7 +666,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           const layer = layers.find((l) => l.id === itemLayerId);
           if (layer?.locked) return n;
 
-          return { ...n, position: { ...n.position, x: targetX } };
+          // Calculer la nouvelle position X pour aligner le centre
+          const newX = targetCenterX - BLOCK_WIDTH / 2;
+
+          return { ...n, position: { ...n.position, x: newX } };
         }
         return n;
       }),
@@ -655,7 +685,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     const sorted = [...selectedNodes].sort((a, b) => a.position.x - b.position.x);
     const startX = sorted[0].position.x;
     // Espacement fixe entre les blocs
-    const spacing = BLOCK_WIDTH + 50; // largeur bloc + marge
+    const spacing = BLOCK_WIDTH + BLOCK_SPACING_H;
 
     setNodes((nds) =>
       nds.map((n) => {
@@ -681,8 +711,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     // Trier par position Y
     const sorted = [...selectedNodes].sort((a, b) => a.position.y - b.position.y);
     const startY = sorted[0].position.y;
-    // Espacement fixe entre les blocs
-    const spacing = BLOCK_HEIGHT + 30; // hauteur bloc + marge
+
+    // Calculer l'espacement basé sur la hauteur max des blocs
+    const maxHeight = Math.max(...sorted.map((n) => estimateBlockHeight(n.id)));
+    const spacing = maxHeight + BLOCK_SPACING_V;
 
     setNodes((nds) =>
       nds.map((n) => {
