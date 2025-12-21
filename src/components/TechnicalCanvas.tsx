@@ -513,35 +513,40 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const [activeLayerId, setActiveLayerId] = useState<string>("layer-default");
 
   // Gérer le changement de calques (avec déplacement des éléments si suppression)
-  const handleLayersChange = useCallback((newLayers: SchemaLayer[]) => {
-    // Trouver les calques supprimés
-    const removedLayerIds = layers
-      .filter(l => !newLayers.find(nl => nl.id === l.id))
-      .map(l => l.id);
-    
-    if (removedLayerIds.length > 0) {
-      // Trouver le premier calque restant pour y déplacer les éléments
-      const targetLayerId = newLayers[0]?.id || "layer-default";
-      
-      // Déplacer les items des calques supprimés
-      setItems(prev => prev.map(item => {
-        if (item.layerId && removedLayerIds.includes(item.layerId)) {
-          return { ...item, layerId: targetLayerId };
-        }
-        return item;
-      }));
-      
-      // Déplacer les edges des calques supprimés
-      setEdges(prev => prev.map(edge => {
-        if (edge.layerId && removedLayerIds.includes(edge.layerId)) {
-          return { ...edge, layerId: targetLayerId };
-        }
-        return edge;
-      }));
-    }
-    
-    setLayers(newLayers);
-  }, [layers]);
+  const handleLayersChange = useCallback(
+    (newLayers: SchemaLayer[]) => {
+      // Trouver les calques supprimés
+      const removedLayerIds = layers.filter((l) => !newLayers.find((nl) => nl.id === l.id)).map((l) => l.id);
+
+      if (removedLayerIds.length > 0) {
+        // Trouver le premier calque restant pour y déplacer les éléments
+        const targetLayerId = newLayers[0]?.id || "layer-default";
+
+        // Déplacer les items des calques supprimés
+        setItems((prev) =>
+          prev.map((item) => {
+            if (item.layerId && removedLayerIds.includes(item.layerId)) {
+              return { ...item, layerId: targetLayerId };
+            }
+            return item;
+          }),
+        );
+
+        // Déplacer les edges des calques supprimés
+        setEdges((prev) =>
+          prev.map((edge) => {
+            if (edge.layerId && removedLayerIds.includes(edge.layerId)) {
+              return { ...edge, layerId: targetLayerId };
+            }
+            return edge;
+          }),
+        );
+      }
+
+      setLayers(newLayers);
+    },
+    [layers],
+  );
 
   // États pour le sélecteur catalogue
   const [catalogOpen, setCatalogOpen] = useState(false);
@@ -885,7 +890,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   useEffect(() => {
     // IDs des calques visibles
     const visibleLayerIds = new Set(layers.filter((l) => l.visible).map((l) => l.id));
-    
+
     // Filtrer les edges selon les calques visibles
     const visibleEdges = edges.filter((edge) => {
       // Si pas de layerId, l'edge est toujours visible
@@ -963,20 +968,23 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     );
   }, [edges, selectedEdgeId, layers]);
 
-  const handleConnect = useCallback((connection: Connection) => {
-    if (!connection.source || !connection.target) return;
-    const newEdge: SchemaEdge = {
-      id: `edge-${Date.now()}`,
-      source_node_id: connection.source,
-      target_node_id: connection.target,
-      source_handle: connection.sourceHandle || null,
-      target_handle: connection.targetHandle || null,
-      color: "#ef4444",
-      strokeWidth: 2,
-      layerId: activeLayerId, // Assigner au calque actif
-    };
-    setEdges((prev) => [...prev, newEdge]);
-  }, [activeLayerId]);
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target) return;
+      const newEdge: SchemaEdge = {
+        id: `edge-${Date.now()}`,
+        source_node_id: connection.source,
+        target_node_id: connection.target,
+        source_handle: connection.sourceHandle || null,
+        target_handle: connection.targetHandle || null,
+        color: "#ef4444",
+        strokeWidth: 2,
+        layerId: activeLayerId, // Assigner au calque actif
+      };
+      setEdges((prev) => [...prev, newEdge]);
+    },
+    [activeLayerId],
+  );
 
   const updateEdgeColor = useCallback(
     (color: string) => {
@@ -1279,17 +1287,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           .sort((a, b) => a.order - b.order)
           .map((layer) => {
             const isActive = layer.id === activeLayerId;
-            const itemCount = items.filter(i => (i.layerId || "layer-default") === layer.id).length +
-                              edges.filter(e => (e.layerId || "layer-default") === layer.id).length;
+            const itemCount =
+              items.filter((i) => (i.layerId || "layer-default") === layer.id).length +
+              edges.filter((e) => (e.layerId || "layer-default") === layer.id).length;
             return (
               <div
                 key={layer.id}
                 className={`
                   flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-md text-sm font-medium transition-all flex-shrink-0
-                  ${isActive 
-                    ? "bg-white shadow-sm" 
-                    : "hover:bg-white/50"
-                  }
+                  ${isActive ? "bg-white shadow-sm" : "hover:bg-white/50"}
                   ${!layer.visible ? "opacity-50" : ""}
                 `}
                 style={{
@@ -1304,20 +1310,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   }}
                 >
                   <span className="max-w-32 truncate">{layer.name}</span>
-                  {itemCount > 0 && (
-                    <span className="text-xs text-slate-400">({itemCount})</span>
-                  )}
-                  {layer.locked && (
-                    <Lock className="h-3 w-3 text-amber-500" />
-                  )}
+                  {itemCount > 0 && <span className="text-xs text-slate-400">({itemCount})</span>}
+                  {layer.locked && <Lock className="h-3 w-3 text-amber-500" />}
                 </button>
                 {/* Bouton œil pour afficher/masquer */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleLayersChange(layers.map(l => 
-                      l.id === layer.id ? { ...l, visible: !l.visible } : l
-                    ));
+                    handleLayersChange(layers.map((l) => (l.id === layer.id ? { ...l, visible: !l.visible } : l)));
                   }}
                   className="p-1 rounded hover:bg-slate-200 transition-colors"
                   title={layer.visible ? "Masquer ce calque" : "Afficher ce calque"}
@@ -2579,5 +2579,5 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         </div>
       )}
     </div>
-};
   );
+};
