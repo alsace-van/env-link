@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.8 - Édition inline du nom des calques (double-clic)
+// VERSION: 2.12 - Verrouillage = protection bloc seulement (connexions OK)
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -63,6 +63,7 @@ import {
   Eye,
   EyeOff,
   Lock,
+  Unlock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AccessorySelector } from "./AccessorySelector";
@@ -319,6 +320,7 @@ const CABLE_COLORS = [
 const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
   const item = data.item as ElectricalItem;
   const handles = (data.handles as BlockHandles) || DEFAULT_HANDLES;
+  const isLocked = data.isLocked as boolean | undefined;
   const onUpdateHandles = data.onUpdateHandles as ((nodeId: string, handles: BlockHandles) => void) | undefined;
   const onDeleteItem = data.onDeleteItem as ((nodeId: string) => void) | undefined;
 
@@ -357,7 +359,7 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
 
   // Contrôle discret pour ajuster les handles (petit badge avec compteur)
   const HandleControl = ({ side }: { side: "top" | "bottom" | "left" | "right" }) => {
-    if (!selected || !onUpdateHandles) return null;
+    if (!selected || !onUpdateHandles || isLocked) return null;
 
     const currentCount = handles[side];
     const isHorizontal = side === "top" || side === "bottom";
@@ -414,8 +416,8 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
       <HandleControl side="left" />
       <HandleControl side="right" />
 
-      {/* Bouton supprimer (visible quand sélectionné) */}
-      {selected && onDeleteItem && (
+      {/* Bouton supprimer (visible quand sélectionné et non verrouillé) */}
+      {selected && onDeleteItem && !isLocked && (
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -426,6 +428,22 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
         >
           ×
         </button>
+      )}
+
+      {/* Indicateur de verrouillage */}
+      {isLocked && (
+        <div
+          className="absolute -top-2 -left-2 w-5 h-5 bg-amber-500 text-white rounded-full flex items-center justify-center shadow-md z-20"
+          title="Calque verrouillé"
+        >
+          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path
+              fillRule="evenodd"
+              d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
+              clipRule="evenodd"
+            />
+          </svg>
+        </div>
       )}
 
       <div className={`flex items-center gap-2 px-3 py-2 border-b ${typeConfig.borderColor} bg-white/60 rounded-t-lg`}>
@@ -653,6 +671,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // Ajouter un article du catalogue au schéma
   const addFromCatalog = (catalogItem: any) => {
+    // Vérifier si le calque actif est verrouillé
+    const activeLayer = layers.find((l) => l.id === activeLayerId);
+    if (activeLayer?.locked) {
+      toast.error(`Le calque "${activeLayer.name}" est verrouillé`);
+      return;
+    }
+
     const decodedName = decodeHtmlEntities(catalogItem.nom);
     const newItem: ElectricalItem = {
       id: `catalog-${catalogItem.id}-${Date.now()}`,
@@ -758,6 +783,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // Ajouter un article du scénario au schéma (1 à la fois)
   const addFromScenario = (expense: any, quantity: number = 1) => {
+    // Vérifier si le calque actif est verrouillé
+    const activeLayer = layers.find((l) => l.id === activeLayerId);
+    if (activeLayer?.locked) {
+      toast.error(`Le calque "${activeLayer.name}" est verrouillé`);
+      return;
+    }
+
     console.log("[Schema] addFromScenario called:", { expense: expense.nom_accessoire, quantity });
     const decodedName = decodeHtmlEntities(expense.nom_accessoire);
     const usedQty = getUsedQuantity(expense.id);
@@ -790,18 +822,32 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   };
 
   // Supprimer un item du schéma (mais pas de la base)
-  const deleteItemFromSchema = useCallback((itemId: string) => {
-    setItems((prev) => prev.filter((i) => i.id !== itemId));
-    // Supprimer aussi les edges liés à cet item
-    setEdges((prev) => prev.filter((e) => e.source_node_id !== itemId && e.target_node_id !== itemId));
-    // Supprimer les handles sauvegardés
-    setNodeHandles((prev) => {
-      const newHandles = { ...prev };
-      delete newHandles[itemId];
-      return newHandles;
-    });
-    toast.success("Accessoire retiré du schéma");
-  }, []);
+  const deleteItemFromSchema = useCallback(
+    (itemId: string) => {
+      // Vérifier si l'item est sur un calque verrouillé
+      const item = items.find((i) => i.id === itemId);
+      if (item) {
+        const itemLayerId = item.layerId || "layer-default";
+        const layer = layers.find((l) => l.id === itemLayerId);
+        if (layer?.locked) {
+          toast.error(`Le calque "${layer.name}" est verrouillé`);
+          return;
+        }
+      }
+
+      setItems((prev) => prev.filter((i) => i.id !== itemId));
+      // Supprimer aussi les edges liés à cet item
+      setEdges((prev) => prev.filter((e) => e.source_node_id !== itemId && e.target_node_id !== itemId));
+      // Supprimer les handles sauvegardés
+      setNodeHandles((prev) => {
+        const newHandles = { ...prev };
+        delete newHandles[itemId];
+        return newHandles;
+      });
+      toast.success("Accessoire retiré du schéma");
+    },
+    [items, layers],
+  );
 
   // Filtrer le scénario (exclure les items entièrement utilisés)
   const filteredScenario = scenarioItems.filter((item) => {
@@ -842,6 +888,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
     // IDs des calques visibles
     const visibleLayerIds = new Set(layers.filter((l) => l.visible).map((l) => l.id));
+    // IDs des calques verrouillés
+    const lockedLayerIds = new Set(layers.filter((l) => l.locked).map((l) => l.id));
 
     setNodes((currentNodes) => {
       return items.map((item, index) => {
@@ -859,16 +907,20 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           };
 
         // Vérifier si le calque de l'item est visible
-        const isVisible = !item.layerId || visibleLayerIds.has(item.layerId);
+        const itemLayerId = item.layerId || "layer-default";
+        const isVisible = visibleLayerIds.has(itemLayerId);
+        const isLocked = lockedLayerIds.has(itemLayerId);
 
         return {
           id: item.id,
           type: "electricalBlock",
           position,
           hidden: !isVisible, // Masquer si le calque n'est pas visible
+          draggable: !isLocked, // Empêcher le déplacement si le calque est verrouillé
           data: {
             item,
             handles,
+            isLocked, // Passer l'info de verrouillage au composant
             onUpdateHandles: updateNodeHandles,
             onDeleteItem: deleteItemFromSchema,
           },
@@ -972,6 +1024,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const handleConnect = useCallback(
     (connection: Connection) => {
       if (!connection.source || !connection.target) return;
+
+      // Vérifier si le calque actif est verrouillé (pour le câble lui-même)
+      const activeLayer = layers.find((l) => l.id === activeLayerId);
+      if (activeLayer?.locked) {
+        toast.error(`Le calque "${activeLayer.name}" est verrouillé`);
+        return;
+      }
+
       const newEdge: SchemaEdge = {
         id: `edge-${Date.now()}`,
         source_node_id: connection.source,
@@ -984,7 +1044,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       };
       setEdges((prev) => [...prev, newEdge]);
     },
-    [activeLayerId],
+    [activeLayerId, layers],
   );
 
   const updateEdgeColor = useCallback(
@@ -1346,9 +1406,23 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   >
                     <span className="max-w-32 truncate">{layer.name}</span>
                     {itemCount > 0 && <span className="text-xs text-slate-400">({itemCount})</span>}
-                    {layer.locked && <Lock className="h-3 w-3 text-amber-500" />}
                   </button>
                 )}
+                {/* Bouton verrouillage */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleLayersChange(layers.map((l) => (l.id === layer.id ? { ...l, locked: !l.locked } : l)));
+                  }}
+                  className={`p-1 rounded hover:bg-slate-200 transition-colors ${layer.locked ? "bg-amber-100" : ""}`}
+                  title={layer.locked ? "Déverrouiller ce calque" : "Verrouiller ce calque"}
+                >
+                  {layer.locked ? (
+                    <Lock className="h-3.5 w-3.5 text-amber-600" />
+                  ) : (
+                    <Unlock className="h-3.5 w-3.5 text-slate-400" />
+                  )}
+                </button>
                 {/* Bouton œil pour afficher/masquer */}
                 <button
                   onClick={(e) => {
