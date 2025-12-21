@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.8 - Circuits avec ID + définition manuelle source/destination
+// VERSION: 3.9 - Debug circuit + amélioration détection passthrough
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1563,14 +1563,31 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     "bornier",
     "repartiteur",
     "accessoire",
+    "porte_fusible",
+    "disjoncteur",
+    "relais",
+    "shunt",
   ];
 
-  // Vérifier si un équipement est un passthrough
+  // Vérifier si un équipement est un passthrough (peut être traversé)
   const isPassthroughType = useCallback(
     (nodeId: string): boolean => {
       const item = items.find((i) => i.id === nodeId);
       if (!item) return false;
-      return PASSTHROUGH_TYPES.some((t) => item.type_electrique?.toLowerCase().includes(t));
+
+      const typeElec = item.type_electrique?.toLowerCase() || "";
+      const nom = item.nom_accessoire?.toLowerCase() || "";
+
+      // Vérifier dans le type_electrique
+      const isPassthroughByType = PASSTHROUGH_TYPES.some((t) => typeElec.includes(t));
+
+      // Vérifier aussi dans le nom (pour les accessoires génériques)
+      const isPassthroughByName = PASSTHROUGH_TYPES.some((t) => nom.includes(t));
+
+      // Si c'est un "accessoire" générique sans puissance, c'est probablement un passthrough
+      const isGenericAccessory = typeElec === "accessoire" && !item.puissance_watts;
+
+      return isPassthroughByType || isPassthroughByName || isGenericAccessory;
     },
     [items],
   );
@@ -1581,10 +1598,16 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     (sourceId: string, destId: string): string[] => {
       const foundEdgeIds = new Set<string>();
 
+      console.log("=== RECHERCHE CIRCUIT ===");
+      console.log("Source:", sourceId, items.find((i) => i.id === sourceId)?.nom_accessoire);
+      console.log("Destination:", destId, items.find((i) => i.id === destId)?.nom_accessoire);
+      console.log("Nombre de câbles:", edges.length);
+
       // BFS pour trouver tous les chemins
       const findPaths = (currentNodeId: string, targetId: string, visitedEdges: Set<string>, path: string[]): void => {
         if (currentNodeId === targetId) {
           // Chemin trouvé, ajouter tous les edges
+          console.log("✅ Chemin trouvé:", path);
           path.forEach((id) => foundEdgeIds.add(id));
           return;
         }
@@ -1594,11 +1617,24 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           (e) => (e.source_node_id === currentNodeId || e.target_node_id === currentNodeId) && !visitedEdges.has(e.id),
         );
 
+        console.log(`Noeud ${currentNodeId.substring(0, 8)}... a ${connectedEdges.length} câbles connectés`);
+
         for (const edge of connectedEdges) {
           const nextNodeId = edge.source_node_id === currentNodeId ? edge.target_node_id : edge.source_node_id;
 
+          const nextItem = items.find((i) => i.id === nextNodeId);
+          const isTarget = nextNodeId === targetId;
+          const isPassthrough = isPassthroughType(nextNodeId);
+
+          console.log(
+            `  -> Câble ${edge.id.substring(0, 8)}... vers ${nextItem?.nom_accessoire?.substring(0, 20) || nextNodeId.substring(0, 8)}`,
+          );
+          console.log(
+            `     isTarget: ${isTarget}, isPassthrough: ${isPassthrough}, type: ${nextItem?.type_electrique}`,
+          );
+
           // On peut traverser si c'est la destination OU un passthrough
-          if (nextNodeId === targetId || isPassthroughType(nextNodeId)) {
+          if (isTarget || isPassthrough) {
             const newVisited = new Set(visitedEdges);
             newVisited.add(edge.id);
             findPaths(nextNodeId, targetId, newVisited, [...path, edge.id]);
@@ -1608,11 +1644,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
       // Chercher dans les deux sens
       findPaths(sourceId, destId, new Set(), []);
-      findPaths(destId, sourceId, new Set(), []);
+
+      console.log("=== RÉSULTAT ===");
+      console.log("Câbles trouvés:", foundEdgeIds.size, Array.from(foundEdgeIds));
 
       return Array.from(foundEdgeIds);
     },
-    [edges, isPassthroughType],
+    [edges, items, isPassthroughType],
   );
 
   // Définir un nouveau circuit
@@ -3006,14 +3044,22 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               setSelectedEdgeId(null);
             }}
             onNodeClick={(_, node) => {
+              console.log("=== NODE CLICK ===");
+              console.log("Node ID:", node.id);
+              console.log("isDefiningCircuit:", isDefiningCircuit);
+              console.log("circuitSource:", circuitSource);
+
               // Mode définition de circuit
               if (isDefiningCircuit) {
                 if (!circuitSource) {
                   // Premier clic = source
+                  console.log("Définition SOURCE:", node.id);
                   setCircuitSource(node.id);
                   toast.info("Maintenant cliquez sur le bloc DESTINATION");
                 } else if (node.id !== circuitSource) {
                   // Deuxième clic = destination
+                  console.log("Définition DESTINATION:", node.id);
+                  console.log("Appel defineCircuit avec:", circuitSource, node.id);
                   defineCircuit(circuitSource, node.id);
                 }
               }
