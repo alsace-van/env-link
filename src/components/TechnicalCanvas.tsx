@@ -12,12 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   ReactFlow,
   Background,
@@ -376,11 +371,11 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
     return Array.from({ length: count }, (_, i) => {
       // Répartir les handles uniformément (éviter les bords)
       const percent = count === 1 ? 50 : 15 + i * (70 / Math.max(count - 1, 1));
-      
+
       // Style avec centrage correct (translate pour compenser le décalage)
-      const style = isHorizontal 
-        ? { left: `${percent}%`, transform: 'translateX(-50%)' } 
-        : { top: `${percent}%`, transform: 'translateY(-50%)' };
+      const style = isHorizontal
+        ? { left: `${percent}%`, transform: "translateX(-50%)" }
+        : { top: `${percent}%`, transform: "translateY(-50%)" };
 
       return (
         <Handle
@@ -475,7 +470,11 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
           title="Calque verrouillé"
         >
           <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+            <path
+              fillRule="evenodd"
+              d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
+              clipRule="evenodd"
+            />
           </svg>
         </div>
       )}
@@ -559,22 +558,22 @@ const CustomSmoothEdge = ({
 }: EdgeProps) => {
   // Récupérer si on doit faire le virage près de la target (bloc plus petit)
   const turnNearTarget = (data as any)?.turnNearTarget ?? false;
-  
+
   // Distance du virage
   const turnDistance = 25;
   const cornerRadius = 6;
-  
+
   // Calculer les distances
   const deltaX = Math.abs(targetX - sourceX);
   const deltaY = Math.abs(targetY - sourceY);
-  
+
   // Seuil pour considérer les points comme alignés
   const alignmentThreshold = 5;
-  
+
   let edgePath: string;
   let labelX: number = (sourceX + targetX) / 2;
   let labelY: number = (sourceY + targetY) / 2;
-  
+
   // Si presque aligné horizontalement → ligne droite
   if (deltaY < alignmentThreshold) {
     edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
@@ -586,16 +585,14 @@ const CustomSmoothEdge = ({
   // Connexion horizontale (source à droite, target à gauche) avec décalage vertical
   else if (sourcePosition === Position.Right && (targetPosition === Position.Left || !targetPosition)) {
     // Position du virage (près du bloc le plus petit)
-    const midX = turnNearTarget 
-      ? Math.max(sourceX + turnDistance, targetX - turnDistance)
-      : sourceX + turnDistance;
-    
+    const midX = turnNearTarget ? Math.max(sourceX + turnDistance, targetX - turnDistance) : sourceX + turnDistance;
+
     // S'assurer que midX est entre source et target
     const safeMidX = Math.min(Math.max(midX, sourceX + cornerRadius * 2), targetX - cornerRadius * 2);
-    
+
     const goingDown = targetY > sourceY;
     const r = Math.min(cornerRadius, deltaY / 4, Math.abs(safeMidX - sourceX) / 2);
-    
+
     edgePath = `M ${sourceX} ${sourceY} 
                 L ${safeMidX - r} ${sourceY}
                 Q ${safeMidX} ${sourceY} ${safeMidX} ${sourceY + (goingDown ? r : -r)}
@@ -606,15 +603,13 @@ const CustomSmoothEdge = ({
   }
   // Connexion verticale (source en bas, target en haut) avec décalage horizontal
   else if (sourcePosition === Position.Bottom && (targetPosition === Position.Top || !targetPosition)) {
-    const midY = turnNearTarget 
-      ? Math.max(sourceY + turnDistance, targetY - turnDistance)
-      : sourceY + turnDistance;
-    
+    const midY = turnNearTarget ? Math.max(sourceY + turnDistance, targetY - turnDistance) : sourceY + turnDistance;
+
     const safeMidY = Math.min(Math.max(midY, sourceY + cornerRadius * 2), targetY - cornerRadius * 2);
-    
+
     const goingRight = targetX > sourceX;
     const r = Math.min(cornerRadius, deltaX / 4, Math.abs(safeMidY - sourceY) / 2);
-    
+
     edgePath = `M ${sourceX} ${sourceY} 
                 L ${sourceX} ${safeMidY - r}
                 Q ${sourceX} ${safeMidY} ${sourceX + (goingRight ? r : -r)} ${safeMidY}
@@ -625,13 +620,11 @@ const CustomSmoothEdge = ({
   }
   // Connexion Bottom → Left (source en bas, target à gauche)
   else if (sourcePosition === Position.Bottom && targetPosition === Position.Left) {
-    const midY = turnNearTarget 
-      ? targetY
-      : sourceY + turnDistance;
-    
+    const midY = turnNearTarget ? targetY : sourceY + turnDistance;
+
     const safeMidY = Math.min(Math.max(midY, sourceY + cornerRadius), targetY);
     const r = Math.min(cornerRadius, Math.abs(targetX - sourceX) / 4, Math.abs(safeMidY - sourceY) / 2);
-    
+
     if (turnNearTarget && Math.abs(safeMidY - targetY) < cornerRadius * 2) {
       // Virage simple près de la target
       edgePath = `M ${sourceX} ${sourceY} 
@@ -650,13 +643,11 @@ const CustomSmoothEdge = ({
   }
   // Connexion Right → Top
   else if (sourcePosition === Position.Right && targetPosition === Position.Top) {
-    const midX = turnNearTarget 
-      ? targetX
-      : sourceX + turnDistance;
-    
+    const midX = turnNearTarget ? targetX : sourceX + turnDistance;
+
     const safeMidX = Math.min(Math.max(midX, sourceX + cornerRadius), targetX);
     const r = Math.min(cornerRadius, Math.abs(targetY - sourceY) / 4, Math.abs(safeMidX - sourceX) / 2);
-    
+
     if (turnNearTarget && Math.abs(safeMidX - targetX) < cornerRadius * 2) {
       edgePath = `M ${sourceX} ${sourceY} 
                   L ${targetX - r} ${sourceY}
@@ -684,7 +675,7 @@ const CustomSmoothEdge = ({
       borderRadius: cornerRadius,
     });
   }
-  
+
   return (
     <>
       <BaseEdge id={id} path={edgePath} style={style} />
@@ -692,11 +683,11 @@ const CustomSmoothEdge = ({
         <EdgeLabelRenderer>
           <div
             style={{
-              position: 'absolute',
+              position: "absolute",
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-              pointerEvents: 'all',
+              pointerEvents: "all",
               ...labelBgStyle,
-              padding: '2px 4px',
+              padding: "2px 4px",
               borderRadius: 4,
               fontSize: 11,
               fontWeight: 600,
@@ -741,35 +732,40 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
 
   // Gérer le changement de calques (avec déplacement des éléments si suppression)
-  const handleLayersChange = useCallback((newLayers: SchemaLayer[]) => {
-    // Trouver les calques supprimés
-    const removedLayerIds = layers
-      .filter(l => !newLayers.find(nl => nl.id === l.id))
-      .map(l => l.id);
-    
-    if (removedLayerIds.length > 0) {
-      // Trouver le premier calque restant pour y déplacer les éléments
-      const targetLayerId = newLayers[0]?.id || "layer-default";
-      
-      // Déplacer les items des calques supprimés
-      setItems(prev => prev.map(item => {
-        if (item.layerId && removedLayerIds.includes(item.layerId)) {
-          return { ...item, layerId: targetLayerId };
-        }
-        return item;
-      }));
-      
-      // Déplacer les edges des calques supprimés
-      setEdges(prev => prev.map(edge => {
-        if (edge.layerId && removedLayerIds.includes(edge.layerId)) {
-          return { ...edge, layerId: targetLayerId };
-        }
-        return edge;
-      }));
-    }
-    
-    setLayers(newLayers);
-  }, [layers]);
+  const handleLayersChange = useCallback(
+    (newLayers: SchemaLayer[]) => {
+      // Trouver les calques supprimés
+      const removedLayerIds = layers.filter((l) => !newLayers.find((nl) => nl.id === l.id)).map((l) => l.id);
+
+      if (removedLayerIds.length > 0) {
+        // Trouver le premier calque restant pour y déplacer les éléments
+        const targetLayerId = newLayers[0]?.id || "layer-default";
+
+        // Déplacer les items des calques supprimés
+        setItems((prev) =>
+          prev.map((item) => {
+            if (item.layerId && removedLayerIds.includes(item.layerId)) {
+              return { ...item, layerId: targetLayerId };
+            }
+            return item;
+          }),
+        );
+
+        // Déplacer les edges des calques supprimés
+        setEdges((prev) =>
+          prev.map((edge) => {
+            if (edge.layerId && removedLayerIds.includes(edge.layerId)) {
+              return { ...edge, layerId: targetLayerId };
+            }
+            return edge;
+          }),
+        );
+      }
+
+      setLayers(newLayers);
+    },
+    [layers],
+  );
 
   // États pour le sélecteur catalogue
   const [catalogOpen, setCatalogOpen] = useState(false);
@@ -790,38 +786,38 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
   // === NOUVEAUX ÉTATS ===
-  
+
   // Export
   const [showExportDialog, setShowExportDialog] = useState(false);
-  
+
   // Templates
   const [showTemplatesDialog, setShowTemplatesDialog] = useState(false);
   const [templatesMode, setTemplatesMode] = useState<"save" | "load">("load");
-  
+
   // Annotations
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [isAnnotationMode, setIsAnnotationMode] = useState(false);
-  
+
   // Grille magnétique
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [gridSize, setGridSize] = useState(20);
-  
+
   // Légende
   const [showLegend, setShowLegend] = useState(true);
-  
+
   // Validation
   const [showValidation, setShowValidation] = useState(false);
-  
+
   // Copier/Coller
   const [clipboard, setClipboard] = useState<{
     nodes: any[];
     edges: SchemaEdge[];
   } | null>(null);
-  
+
   // Zoom actuel (pour les annotations)
   const [currentZoom, setCurrentZoom] = useState(1);
-  
+
   // Hook calcul câble
   const { calculateCable, quickCalculate } = useCableCalculator({ defaultVoltage: 12 });
 
@@ -829,41 +825,44 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const selectedNodes = nodes.filter((n) => n.selected);
 
   // Obtenir la hauteur réelle d'un node (mesurée par ReactFlow ou via DOM)
-  const getNodeHeight = useCallback((node: Node): number => {
-    // Méthode 1: ReactFlow v11+ mesure les dimensions dans node.measured
-    const measured = (node as any).measured;
-    if (measured?.height) {
-      return measured.height;
-    }
-    
-    // Méthode 2: Certaines versions stockent dans node.height directement
-    if ((node as any).height) {
-      return (node as any).height;
-    }
-    
-    // Méthode 3: Essayer de lire depuis le DOM
-    const domNode = document.querySelector(`[data-id="${node.id}"]`);
-    if (domNode) {
-      const rect = domNode.getBoundingClientRect();
-      if (rect.height > 0) {
-        return rect.height;
+  const getNodeHeight = useCallback(
+    (node: Node): number => {
+      // Méthode 1: ReactFlow v11+ mesure les dimensions dans node.measured
+      const measured = (node as any).measured;
+      if (measured?.height) {
+        return measured.height;
       }
-    }
-    
-    // Fallback: estimer la hauteur basée sur le contenu
-    const item = items.find((i) => i.id === node.id);
-    if (!item) return 130; // hauteur par défaut plus réaliste
-    
-    let height = 52; // header minimal
-    if (item.puissance_watts) height += 24;
-    if (item.capacite_ah) height += 24;
-    if (item.tension_volts) height += 24;
-    if (item.intensite_amperes) height += 24;
-    if (item.quantite > 1 && item.puissance_watts) height += 28;
-    height += 44; // badge + padding
-    
-    return height;
-  }, [items]);
+
+      // Méthode 2: Certaines versions stockent dans node.height directement
+      if ((node as any).height) {
+        return (node as any).height;
+      }
+
+      // Méthode 3: Essayer de lire depuis le DOM
+      const domNode = document.querySelector(`[data-id="${node.id}"]`);
+      if (domNode) {
+        const rect = domNode.getBoundingClientRect();
+        if (rect.height > 0) {
+          return rect.height;
+        }
+      }
+
+      // Fallback: estimer la hauteur basée sur le contenu
+      const item = items.find((i) => i.id === node.id);
+      if (!item) return 130; // hauteur par défaut plus réaliste
+
+      let height = 52; // header minimal
+      if (item.puissance_watts) height += 24;
+      if (item.capacite_ah) height += 24;
+      if (item.tension_volts) height += 24;
+      if (item.intensite_amperes) height += 24;
+      if (item.quantite > 1 && item.puissance_watts) height += 28;
+      height += 44; // badge + padding
+
+      return height;
+    },
+    [items],
+  );
 
   // Obtenir la largeur réelle d'un node
   const getNodeWidth = useCallback((node: Node): number => {
@@ -891,22 +890,22 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // Fonction pour calculer la bounding box approximative d'un câble
   const getCableBoundingBox = (edge: SchemaEdge): { minY: number; maxY: number; minX: number; maxX: number } | null => {
-    const sourceNode = nodes.find(n => n.id === edge.source_node_id);
-    const targetNode = nodes.find(n => n.id === edge.target_node_id);
-    
+    const sourceNode = nodes.find((n) => n.id === edge.source_node_id);
+    const targetNode = nodes.find((n) => n.id === edge.target_node_id);
+
     if (!sourceNode || !targetNode) return null;
-    
+
     const sourceHeight = getNodeHeight(sourceNode);
     const sourceWidth = getNodeWidth(sourceNode);
     const targetHeight = getNodeHeight(targetNode);
     const targetWidth = getNodeWidth(targetNode);
-    
+
     // Calculer les positions des handles
     let sourceY = sourceNode.position.y + sourceHeight / 2;
     let sourceX = sourceNode.position.x + sourceWidth;
     let targetY = targetNode.position.y + targetHeight / 2;
     let targetX = targetNode.position.x;
-    
+
     // Ajuster selon le handle source
     if (edge.source_handle) {
       const match = edge.source_handle.match(/^(top|bottom|left|right)-(\d+)$/);
@@ -916,7 +915,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         const handles = nodeHandles[sourceNode.id] || DEFAULT_HANDLES;
         const count = handles[side as keyof BlockHandles] || 1;
         const percent = count === 1 ? 50 : 15 + (handleIndex - 1) * (70 / Math.max(count - 1, 1));
-        
+
         if (side === "right") {
           sourceY = sourceNode.position.y + (percent / 100) * sourceHeight;
           sourceX = sourceNode.position.x + sourceWidth;
@@ -932,7 +931,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         }
       }
     }
-    
+
     // Ajuster selon le handle target
     if (edge.target_handle) {
       const match = edge.target_handle.match(/^(top|bottom|left|right)-(\d+)$/);
@@ -942,7 +941,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         const handles = nodeHandles[targetNode.id] || DEFAULT_HANDLES;
         const count = handles[side as keyof BlockHandles] || 1;
         const percent = count === 1 ? 50 : 15 + (handleIndex - 1) * (70 / Math.max(count - 1, 1));
-        
+
         if (side === "left") {
           targetY = targetNode.position.y + (percent / 100) * targetHeight;
           targetX = targetNode.position.x;
@@ -958,7 +957,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         }
       }
     }
-    
+
     return {
       minY: Math.min(sourceY, targetY) - CABLE_CLEARANCE,
       maxY: Math.max(sourceY, targetY) + CABLE_CLEARANCE,
@@ -970,87 +969,87 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // Fonction pour aligner les nodes sélectionnés horizontalement
   const alignNodesHorizontally = useCallback(() => {
     if (selectedNodes.length < 2) return;
-    
+
     // Trier par position X (gauche à droite)
     const sortedNodes = [...selectedNodes].sort((a, b) => a.position.x - b.position.x);
-    const selectedIds = new Set(selectedNodes.map(n => n.id));
-    
+    const selectedIds = new Set(selectedNodes.map((n) => n.id));
+
     // Trouver les connexions entre les blocs sélectionnés
     const connectionsBetweenSelected = edges.filter(
-      e => selectedIds.has(e.source_node_id) && selectedIds.has(e.target_node_id)
+      (e) => selectedIds.has(e.source_node_id) && selectedIds.has(e.target_node_id),
     );
-    
+
     // Trouver les câbles "obstacles" (câbles qui ne sont pas entre blocs sélectionnés mais qui passent dans la zone)
-    const obstacleCables = edges.filter(e => {
+    const obstacleCables = edges.filter((e) => {
       // Exclure les câbles entre blocs sélectionnés
       if (selectedIds.has(e.source_node_id) && selectedIds.has(e.target_node_id)) return false;
       // Garder les câbles qui ont au moins un endpoint dans un bloc non-sélectionné
       return !selectedIds.has(e.source_node_id) || !selectedIds.has(e.target_node_id);
     });
-    
+
     // Construire un graphe des connexions pour aligner en chaîne
     const newPositions: Record<string, number> = {};
-    
+
     // Le premier bloc (le plus à gauche) garde sa position Y
     const firstNode = sortedNodes[0];
     newPositions[firstNode.id] = firstNode.position.y;
-    
+
     // Fonction pour calculer la position Y absolue d'un handle
     const getHandleAbsoluteY = (nodeId: string, handleId: string | null, nodeY: number): number => {
-      const node = nodes.find(n => n.id === nodeId);
+      const node = nodes.find((n) => n.id === nodeId);
       if (!node) return nodeY;
-      
+
       const nodeHeight = getNodeHeight(node);
-      
+
       if (!handleId) {
         return nodeY + nodeHeight / 2;
       }
-      
+
       const match = handleId.match(/^(top|bottom|left|right)-(\d+)$/);
       if (!match) {
         return nodeY + nodeHeight / 2;
       }
-      
+
       const side = match[1];
       const handleIndex = parseInt(match[2], 10);
-      
+
       if (side === "top" || side === "bottom") {
         return nodeY + nodeHeight / 2;
       }
-      
+
       const handles = nodeHandles[nodeId] || DEFAULT_HANDLES;
       const count = handles[side as keyof BlockHandles] || 1;
       const percent = count === 1 ? 50 : 15 + (handleIndex - 1) * (70 / Math.max(count - 1, 1));
-      
+
       return nodeY + (percent / 100) * nodeHeight;
     };
-    
+
     // Parcourir les blocs de gauche à droite et aligner en chaîne
     for (let i = 1; i < sortedNodes.length; i++) {
       const currentNode = sortedNodes[i];
-      
+
       // Chercher une connexion entrante depuis un bloc déjà positionné
       const incomingConnection = connectionsBetweenSelected.find(
-        e => e.target_node_id === currentNode.id && newPositions[e.source_node_id] !== undefined
+        (e) => e.target_node_id === currentNode.id && newPositions[e.source_node_id] !== undefined,
       );
-      
+
       let targetY: number;
-      
+
       if (incomingConnection) {
         // Aligner sur le handle de la connexion
-        const sourceNode = nodes.find(n => n.id === incomingConnection.source_node_id);
+        const sourceNode = nodes.find((n) => n.id === incomingConnection.source_node_id);
         if (sourceNode) {
           const sourceY = newPositions[incomingConnection.source_node_id];
           const sourceHandleY = getHandleAbsoluteY(
-            incomingConnection.source_node_id, 
+            incomingConnection.source_node_id,
             incomingConnection.source_handle,
-            sourceY
+            sourceY,
           );
-          
+
           // Calculer où doit être le nœud courant pour que son handle target soit aligné
           const currentHeight = getNodeHeight(currentNode);
           const targetHandleId = incomingConnection.target_handle;
-          
+
           let targetHandlePercent = 50;
           if (targetHandleId) {
             const match = targetHandleId.match(/^(top|bottom|left|right)-(\d+)$/);
@@ -1062,7 +1061,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               targetHandlePercent = count === 1 ? 50 : 15 + (handleIndex - 1) * (70 / Math.max(count - 1, 1));
             }
           }
-          
+
           const targetHandleOffset = (targetHandlePercent / 100) * currentHeight;
           targetY = sourceHandleY - targetHandleOffset;
         } else {
@@ -1081,7 +1080,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         const currentHeight = getNodeHeight(currentNode);
         targetY = prevY + (prevHeight - currentHeight) / 2;
       }
-      
+
       // Vérifier si cette position entre en collision avec des câbles obstacles
       const currentHeight = getNodeHeight(currentNode);
       const currentWidth = getNodeWidth(currentNode);
@@ -1089,23 +1088,23 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       const blockMaxY = targetY + currentHeight;
       const blockMinX = currentNode.position.x;
       const blockMaxX = currentNode.position.x + currentWidth;
-      
+
       for (const cable of obstacleCables) {
         const cableBbox = getCableBoundingBox(cable);
         if (!cableBbox) continue;
-        
+
         // Vérifier si le câble passe dans la zone horizontale du bloc
         const horizontalOverlap = blockMinX < cableBbox.maxX && blockMaxX > cableBbox.minX;
-        
+
         if (horizontalOverlap) {
           // Vérifier si le bloc va croiser le câble
           const verticalOverlap = blockMinY < cableBbox.maxY && blockMaxY > cableBbox.minY;
-          
+
           if (verticalOverlap) {
             // Collision détectée ! Déplacer le bloc au-dessus ou en-dessous du câble
             const distanceToGoAbove = cableBbox.minY - blockMaxY;
             const distanceToGoBelow = cableBbox.maxY - blockMinY;
-            
+
             if (Math.abs(distanceToGoAbove) < Math.abs(distanceToGoBelow)) {
               // Aller au-dessus
               targetY = cableBbox.minY - currentHeight - CABLE_CLEARANCE;
@@ -1116,10 +1115,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           }
         }
       }
-      
+
       newPositions[currentNode.id] = targetY;
     }
-    
+
     // Appliquer les nouvelles positions
     setNodes((nds) =>
       nds.map((n) => {
@@ -1128,94 +1127,94 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           const itemLayerId = item?.layerId || "layer-default";
           const layer = layers.find((l) => l.id === itemLayerId);
           if (layer?.locked) return n;
-          
+
           return { ...n, position: { ...n.position, y: newPositions[n.id] } };
         }
         return n;
-      })
+      }),
     );
-    
+
     toast.success(`${selectedNodes.length} blocs alignés horizontalement`);
   }, [selectedNodes, setNodes, items, layers, edges, nodeHandles, nodes, getNodeHeight]);
 
   // Fonction pour aligner les nodes sélectionnés verticalement (sur les handles connectés)
   const alignNodesVertically = useCallback(() => {
     if (selectedNodes.length < 2) return;
-    
+
     // Trier par position Y (haut en bas)
     const sortedNodes = [...selectedNodes].sort((a, b) => a.position.y - b.position.y);
-    const selectedIds = new Set(selectedNodes.map(n => n.id));
-    
+    const selectedIds = new Set(selectedNodes.map((n) => n.id));
+
     // Trouver les connexions entre les blocs sélectionnés
     const connectionsBetweenSelected = edges.filter(
-      e => selectedIds.has(e.source_node_id) && selectedIds.has(e.target_node_id)
+      (e) => selectedIds.has(e.source_node_id) && selectedIds.has(e.target_node_id),
     );
-    
+
     // Construire les nouvelles positions X
     const newPositions: Record<string, number> = {};
-    
+
     // Le premier bloc (le plus en haut) garde sa position X
     const firstNode = sortedNodes[0];
     newPositions[firstNode.id] = firstNode.position.x;
-    
+
     // Fonction pour calculer la position X absolue d'un handle
     const getHandleAbsoluteX = (nodeId: string, handleId: string | null, nodeX: number): number => {
-      const node = nodes.find(n => n.id === nodeId);
+      const node = nodes.find((n) => n.id === nodeId);
       if (!node) return nodeX;
-      
+
       const nodeWidth = getNodeWidth(node);
-      
+
       if (!handleId) {
         return nodeX + nodeWidth / 2;
       }
-      
+
       const match = handleId.match(/^(top|bottom|left|right)-(\d+)$/);
       if (!match) {
         return nodeX + nodeWidth / 2;
       }
-      
+
       const side = match[1];
       const handleIndex = parseInt(match[2], 10);
-      
+
       // Pour les handles verticaux (left/right), on utilise le centre horizontal
       if (side === "left" || side === "right") {
         return nodeX + nodeWidth / 2;
       }
-      
+
       // Pour les handles horizontaux (top/bottom), calculer la position X
       const handles = nodeHandles[nodeId] || DEFAULT_HANDLES;
       const count = handles[side as keyof BlockHandles] || 1;
       const percent = count === 1 ? 50 : 15 + (handleIndex - 1) * (70 / Math.max(count - 1, 1));
-      
+
       return nodeX + (percent / 100) * nodeWidth;
     };
-    
+
     // Parcourir les blocs de haut en bas et aligner en chaîne
     for (let i = 1; i < sortedNodes.length; i++) {
       const currentNode = sortedNodes[i];
-      
+
       // Chercher une connexion entrante depuis un bloc déjà positionné
       const incomingConnection = connectionsBetweenSelected.find(
-        e => e.target_node_id === currentNode.id && newPositions[e.source_node_id] !== undefined
+        (e) => e.target_node_id === currentNode.id && newPositions[e.source_node_id] !== undefined,
       );
-      
+
       let targetX: number;
-      
+
       if (incomingConnection) {
         // Aligner sur le handle de la connexion
-        const sourceNode = nodes.find(n => n.id === incomingConnection.source_node_id);
+        const sourceNode = nodes.find((n) => n.id === incomingConnection.source_node_id);
         if (sourceNode) {
           const sourceX = newPositions[incomingConnection.source_node_id];
           const sourceHandleX = getHandleAbsoluteX(
-            incomingConnection.source_node_id, 
+            incomingConnection.source_node_id,
             incomingConnection.source_handle,
-            sourceX
+            sourceX,
           );
-          
+
           // Calculer où doit être le nœud courant pour que son handle target soit aligné
           const currentWidth = getNodeWidth(currentNode);
           const targetHandleId = incomingConnection.target_handle;
-          
+
           let targetHandlePercent = 50;
           if (targetHandleId) {
             const match = targetHandleId.match(/^(top|bottom|left|right)-(\d+)$/);
@@ -1227,7 +1226,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               targetHandlePercent = count === 1 ? 50 : 15 + (handleIndex - 1) * (70 / Math.max(count - 1, 1));
             }
           }
-          
+
           const targetHandleOffset = (targetHandlePercent / 100) * currentWidth;
           targetX = sourceHandleX - targetHandleOffset;
         } else {
@@ -1246,10 +1245,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         const currentWidth = getNodeWidth(currentNode);
         targetX = prevX + (prevWidth - currentWidth) / 2;
       }
-      
+
       newPositions[currentNode.id] = targetX;
     }
-    
+
     // Appliquer les nouvelles positions
     setNodes((nds) =>
       nds.map((n) => {
@@ -1258,54 +1257,54 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           const itemLayerId = item?.layerId || "layer-default";
           const layer = layers.find((l) => l.id === itemLayerId);
           if (layer?.locked) return n;
-          
+
           return { ...n, position: { ...n.position, x: newPositions[n.id] } };
         }
         return n;
-      })
+      }),
     );
-    
+
     toast.success(`${selectedNodes.length} blocs alignés verticalement`);
   }, [selectedNodes, setNodes, items, layers, edges, nodeHandles, nodes, getNodeWidth]);
 
   // Fonction pour distribuer les nodes horizontalement (espacement égal)
   const distributeNodesHorizontally = useCallback(() => {
     if (selectedNodes.length < 3) return;
-    
+
     // Trier par position X
     const sorted = [...selectedNodes].sort((a, b) => a.position.x - b.position.x);
-    
+
     // Le premier et le dernier bloc restent en place
     const firstNode = sorted[0];
     const lastNode = sorted[sorted.length - 1];
     const firstWidth = getNodeWidth(firstNode);
-    
+
     // Position de départ (bord droit du premier bloc) et position de fin (bord gauche du dernier)
     const startX = firstNode.position.x + firstWidth;
     const endX = lastNode.position.x;
-    
+
     // Calculer la largeur totale des blocs intermédiaires
     let totalMiddleWidth = 0;
     for (let i = 1; i < sorted.length - 1; i++) {
       totalMiddleWidth += getNodeWidth(sorted[i]);
     }
-    
+
     // Espace total disponible pour les gaps (entre les blocs)
     // Il y a (n-1) gaps pour n blocs
     const totalSpace = endX - startX;
     const numGaps = sorted.length - 1;
     const totalGapSpace = totalSpace - totalMiddleWidth;
     const gapSize = totalGapSpace / numGaps;
-    
+
     // Pré-calculer toutes les nouvelles positions X
     const newPositionsX: Record<string, number> = {};
     let currentX = startX + gapSize;
-    
+
     for (let i = 1; i < sorted.length - 1; i++) {
       newPositionsX[sorted[i].id] = currentX;
       currentX += getNodeWidth(sorted[i]) + gapSize;
     }
-    
+
     setNodes((nds) =>
       nds.map((n) => {
         if (n.selected && newPositionsX[n.id] !== undefined) {
@@ -1313,11 +1312,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           const itemLayerId = item?.layerId || "layer-default";
           const layer = layers.find((l) => l.id === itemLayerId);
           if (layer?.locked) return n;
-          
+
           return { ...n, position: { ...n.position, x: newPositionsX[n.id] } };
         }
         return n;
-      })
+      }),
     );
     toast.success(`${selectedNodes.length} blocs distribués horizontalement`);
   }, [selectedNodes, setNodes, items, layers, getNodeWidth]);
@@ -1325,40 +1324,40 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // Fonction pour distribuer les nodes verticalement (espacement égal)
   const distributeNodesVertically = useCallback(() => {
     if (selectedNodes.length < 3) return;
-    
+
     // Trier par position Y
     const sorted = [...selectedNodes].sort((a, b) => a.position.y - b.position.y);
-    
+
     // Le premier et le dernier bloc restent en place
     const firstNode = sorted[0];
     const lastNode = sorted[sorted.length - 1];
     const firstHeight = getNodeHeight(firstNode);
-    
+
     // Position de départ (bord bas du premier bloc) et position de fin (bord haut du dernier)
     const startY = firstNode.position.y + firstHeight;
     const endY = lastNode.position.y;
-    
+
     // Calculer la hauteur totale des blocs intermédiaires
     let totalMiddleHeight = 0;
     for (let i = 1; i < sorted.length - 1; i++) {
       totalMiddleHeight += getNodeHeight(sorted[i]);
     }
-    
+
     // Espace total disponible pour les gaps
     const totalSpace = endY - startY;
     const numGaps = sorted.length - 1;
     const totalGapSpace = totalSpace - totalMiddleHeight;
     const gapSize = totalGapSpace / numGaps;
-    
+
     // Pré-calculer toutes les nouvelles positions Y
     const newPositionsY: Record<string, number> = {};
     let currentY = startY + gapSize;
-    
+
     for (let i = 1; i < sorted.length - 1; i++) {
       newPositionsY[sorted[i].id] = currentY;
       currentY += getNodeHeight(sorted[i]) + gapSize;
     }
-    
+
     setNodes((nds) =>
       nds.map((n) => {
         if (n.selected && newPositionsY[n.id] !== undefined) {
@@ -1366,11 +1365,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           const itemLayerId = item?.layerId || "layer-default";
           const layer = layers.find((l) => l.id === itemLayerId);
           if (layer?.locked) return n;
-          
+
           return { ...n, position: { ...n.position, y: newPositionsY[n.id] } };
         }
         return n;
-      })
+      }),
     );
     toast.success(`${selectedNodes.length} blocs distribués verticalement`);
   }, [selectedNodes, setNodes, items, layers, getNodeHeight]);
@@ -1389,29 +1388,27 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       return;
     }
 
-    const selectedIds = new Set(selectedNodes.map(n => n.id));
-    
+    const selectedIds = new Set(selectedNodes.map((n) => n.id));
+
     // Copier les items correspondants
-    const copiedItems = items.filter(item => selectedIds.has(item.id));
-    
+    const copiedItems = items.filter((item) => selectedIds.has(item.id));
+
     // Copier les positions et handles
-    const copiedNodes = selectedNodes.map(n => ({
+    const copiedNodes = selectedNodes.map((n) => ({
       id: n.id,
       position: { ...n.position },
-      item: copiedItems.find(item => item.id === n.id),
+      item: copiedItems.find((item) => item.id === n.id),
       handles: nodeHandles[n.id] || DEFAULT_HANDLES,
     }));
-    
+
     // Copier les câbles entre les blocs sélectionnés
-    const copiedEdges = edges.filter(
-      e => selectedIds.has(e.source_node_id) && selectedIds.has(e.target_node_id)
-    );
-    
+    const copiedEdges = edges.filter((e) => selectedIds.has(e.source_node_id) && selectedIds.has(e.target_node_id));
+
     setClipboard({
       nodes: copiedNodes,
       edges: copiedEdges,
     });
-    
+
     toast.success(`${selectedNodes.length} bloc(s) copié(s)`);
   }, [selectedNodes, items, edges, nodeHandles]);
 
@@ -1423,7 +1420,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     }
 
     // Vérifier si le calque actif est verrouillé
-    const activeLayer = layers.find(l => l.id === activeLayerId);
+    const activeLayer = layers.find((l) => l.id === activeLayerId);
     if (activeLayer?.locked) {
       toast.error(`Le calque "${activeLayer.name}" est verrouillé`);
       return;
@@ -1431,19 +1428,19 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
     // Décalage pour ne pas superposer
     const offset = { x: 50, y: 50 };
-    
+
     // Mapping ancien ID → nouvel ID
     const idMapping: Record<string, string> = {};
-    
+
     // Créer les nouveaux items
     const newItems: ElectricalItem[] = [];
     const newPositions: Record<string, { x: number; y: number }> = {};
     const newHandles: Record<string, BlockHandles> = {};
-    
+
     clipboard.nodes.forEach((copiedNode, index) => {
-      const newId = `${copiedNode.item?.id || 'block'}-paste-${Date.now()}-${index}`;
+      const newId = `${copiedNode.item?.id || "block"}-paste-${Date.now()}-${index}`;
       idMapping[copiedNode.id] = newId;
-      
+
       if (copiedNode.item) {
         newItems.push({
           ...copiedNode.item,
@@ -1451,15 +1448,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           layerId: activeLayerId,
         });
       }
-      
+
       newPositions[newId] = {
         x: copiedNode.position.x + offset.x,
         y: copiedNode.position.y + offset.y,
       };
-      
+
       newHandles[newId] = copiedNode.handles;
     });
-    
+
     // Créer les nouveaux câbles
     const newEdges: SchemaEdge[] = clipboard.edges.map((edge, index) => ({
       ...edge,
@@ -1468,22 +1465,24 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       target_node_id: idMapping[edge.target_node_id],
       layerId: activeLayerId,
     }));
-    
+
     // Ajouter les items et edges
-    setItems(prev => [...prev, ...newItems]);
-    setEdges(prev => [...prev, ...newEdges]);
-    setNodeHandles(prev => ({ ...prev, ...newHandles }));
-    
+    setItems((prev) => [...prev, ...newItems]);
+    setEdges((prev) => [...prev, ...newEdges]);
+    setNodeHandles((prev) => ({ ...prev, ...newHandles }));
+
     // Mettre à jour les positions des nouveaux nodes dans le prochain cycle
     setTimeout(() => {
-      setNodes(prev => prev.map(n => {
-        if (newPositions[n.id]) {
-          return { ...n, position: newPositions[n.id] };
-        }
-        return n;
-      }));
+      setNodes((prev) =>
+        prev.map((n) => {
+          if (newPositions[n.id]) {
+            return { ...n, position: newPositions[n.id] };
+          }
+          return n;
+        }),
+      );
     }, 100);
-    
+
     toast.success(`${newItems.length} bloc(s) collé(s)`);
   }, [clipboard, layers, activeLayerId, setItems, setEdges, setNodes, setNodeHandles]);
 
@@ -1494,7 +1493,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
-      
+
       if ((e.ctrlKey || e.metaKey) && e.key === "c") {
         e.preventDefault();
         copySelectedNodes();
@@ -1509,125 +1508,145 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   }, [copySelectedNodes, pasteNodes]);
 
   // Ajouter une annotation
-  const addAnnotation = useCallback((position: { x: number; y: number }) => {
-    const newAnnotation = createAnnotation(position, activeLayerId);
-    setAnnotations(prev => [...prev, newAnnotation]);
-    setSelectedAnnotationId(newAnnotation.id);
-    setIsAnnotationMode(false);
-  }, [activeLayerId]);
+  const addAnnotation = useCallback(
+    (position: { x: number; y: number }) => {
+      const newAnnotation = createAnnotation(position, activeLayerId);
+      setAnnotations((prev) => [...prev, newAnnotation]);
+      setSelectedAnnotationId(newAnnotation.id);
+      setIsAnnotationMode(false);
+    },
+    [activeLayerId],
+  );
 
   // Mettre à jour une annotation
   const updateAnnotation = useCallback((id: string, updates: Partial<Annotation>) => {
-    setAnnotations(prev => prev.map(a => 
-      a.id === id ? { ...a, ...updates } : a
-    ));
+    setAnnotations((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
   }, []);
 
   // Supprimer une annotation
-  const deleteAnnotation = useCallback((id: string) => {
-    setAnnotations(prev => prev.filter(a => a.id !== id));
-    if (selectedAnnotationId === id) {
-      setSelectedAnnotationId(null);
-    }
-  }, [selectedAnnotationId]);
+  const deleteAnnotation = useCallback(
+    (id: string) => {
+      setAnnotations((prev) => prev.filter((a) => a.id !== id));
+      if (selectedAnnotationId === id) {
+        setSelectedAnnotationId(null);
+      }
+    },
+    [selectedAnnotationId],
+  );
 
   // Calculer et mettre à jour la section d'un câble
-  const updateCableSection = useCallback((edgeId: string, length_m: number) => {
-    setEdges(prev => prev.map(edge => {
-      if (edge.id !== edgeId) return edge;
-      
-      // Trouver la puissance de l'équipement connecté (target)
-      const targetItem = items.find(i => i.id === edge.target_node_id);
-      const power = targetItem?.puissance_watts || 0;
-      
-      if (power > 0 && length_m > 0) {
-        const section_mm2 = quickCalculate(power, length_m);
-        return {
-          ...edge,
-          length_m,
-          section_mm2,
-          section: `${section_mm2} mm²`,
-        };
-      }
-      
-      return { ...edge, length_m };
-    }));
-  }, [items, quickCalculate]);
+  const updateCableSection = useCallback(
+    (edgeId: string, length_m: number) => {
+      setEdges((prev) =>
+        prev.map((edge) => {
+          if (edge.id !== edgeId) return edge;
+
+          // Trouver la puissance de l'équipement connecté (target)
+          const targetItem = items.find((i) => i.id === edge.target_node_id);
+          const power = targetItem?.puissance_watts || 0;
+
+          if (power > 0 && length_m > 0) {
+            const section_mm2 = quickCalculate(power, length_m);
+            return {
+              ...edge,
+              length_m,
+              section_mm2,
+              section: `${section_mm2} mm²`,
+            };
+          }
+
+          return { ...edge, length_m };
+        }),
+      );
+    },
+    [items, quickCalculate],
+  );
 
   // Insérer un template
-  const handleInsertTemplate = useCallback((
-    blocks: Array<{ item: any; position: { x: number; y: number }; handles: BlockHandles; layerId: string }>,
-    cables: Array<Omit<SchemaEdge, "id">>,
-    newLayers: SchemaLayer[]
-  ) => {
-    // Ajouter les nouveaux calques (en évitant les doublons)
-    if (newLayers.length > 0) {
-      setLayers(prev => {
-        const existingIds = new Set(prev.map(l => l.id));
-        const layersToAdd = newLayers.filter(l => !existingIds.has(l.id));
-        return [...prev, ...layersToAdd];
-      });
-    }
-    
-    // Ajouter les items
-    const newItems = blocks.map(b => ({
-      ...b.item,
-      layerId: b.layerId,
-    }));
-    setItems(prev => [...prev, ...newItems]);
-    
-    // Ajouter les handles
-    const newHandles: Record<string, BlockHandles> = {};
-    blocks.forEach(b => {
-      newHandles[b.item.id] = b.handles;
-    });
-    setNodeHandles(prev => ({ ...prev, ...newHandles }));
-    
-    // Ajouter les câbles
-    const newEdges = cables.map((cable, index) => ({
-      ...cable,
-      id: `edge-template-${Date.now()}-${index}`,
-    }));
-    setEdges(prev => [...prev, ...newEdges]);
-    
-    // Mettre à jour les positions
-    setTimeout(() => {
-      setNodes(prev => prev.map(n => {
-        const block = blocks.find(b => b.item.id === n.id);
-        if (block) {
-          return { ...n, position: block.position };
-        }
-        return n;
+  const handleInsertTemplate = useCallback(
+    (
+      blocks: Array<{ item: any; position: { x: number; y: number }; handles: BlockHandles; layerId: string }>,
+      cables: Array<Omit<SchemaEdge, "id">>,
+      newLayers: SchemaLayer[],
+    ) => {
+      // Ajouter les nouveaux calques (en évitant les doublons)
+      if (newLayers.length > 0) {
+        setLayers((prev) => {
+          const existingIds = new Set(prev.map((l) => l.id));
+          const layersToAdd = newLayers.filter((l) => !existingIds.has(l.id));
+          return [...prev, ...layersToAdd];
+        });
+      }
+
+      // Ajouter les items
+      const newItems = blocks.map((b) => ({
+        ...b.item,
+        layerId: b.layerId,
       }));
-    }, 100);
-  }, [setLayers, setItems, setNodeHandles, setEdges, setNodes]);
+      setItems((prev) => [...prev, ...newItems]);
+
+      // Ajouter les handles
+      const newHandles: Record<string, BlockHandles> = {};
+      blocks.forEach((b) => {
+        newHandles[b.item.id] = b.handles;
+      });
+      setNodeHandles((prev) => ({ ...prev, ...newHandles }));
+
+      // Ajouter les câbles
+      const newEdges = cables.map((cable, index) => ({
+        ...cable,
+        id: `edge-template-${Date.now()}-${index}`,
+      }));
+      setEdges((prev) => [...prev, ...newEdges]);
+
+      // Mettre à jour les positions
+      setTimeout(() => {
+        setNodes((prev) =>
+          prev.map((n) => {
+            const block = blocks.find((b) => b.item.id === n.id);
+            if (block) {
+              return { ...n, position: block.position };
+            }
+            return n;
+          }),
+        );
+      }, 100);
+    },
+    [setLayers, setItems, setNodeHandles, setEdges, setNodes],
+  );
 
   // Snap to grid
-  const snapPosition = useCallback((position: { x: number; y: number }) => {
-    if (!snapToGrid) return position;
-    return {
-      x: Math.round(position.x / gridSize) * gridSize,
-      y: Math.round(position.y / gridSize) * gridSize,
-    };
-  }, [snapToGrid, gridSize]);
+  const snapPosition = useCallback(
+    (position: { x: number; y: number }) => {
+      if (!snapToGrid) return position;
+      return {
+        x: Math.round(position.x / gridSize) * gridSize,
+        y: Math.round(position.y / gridSize) * gridSize,
+      };
+    },
+    [snapToGrid, gridSize],
+  );
 
   // Gérer les changements de nodes avec snap to grid
-  const handleNodesChange = useCallback((changes: any[]) => {
-    if (snapToGrid) {
-      const snappedChanges = changes.map(change => {
-        if (change.type === 'position' && change.position) {
-          return {
-            ...change,
-            position: snapPosition(change.position),
-          };
-        }
-        return change;
-      });
-      onNodesChange(snappedChanges);
-    } else {
-      onNodesChange(changes);
-    }
-  }, [snapToGrid, snapPosition, onNodesChange]);
+  const handleNodesChange = useCallback(
+    (changes: any[]) => {
+      if (snapToGrid) {
+        const snappedChanges = changes.map((change) => {
+          if (change.type === "position" && change.position) {
+            return {
+              ...change,
+              position: snapPosition(change.position),
+            };
+          }
+          return change;
+        });
+        onNodesChange(snappedChanges);
+      } else {
+        onNodesChange(changes);
+      }
+    },
+    [snapToGrid, snapPosition, onNodesChange],
+  );
 
   // Charger le scénario principal
   useEffect(() => {
@@ -1714,12 +1733,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // Ajouter un article du catalogue au schéma
   const addFromCatalog = (catalogItem: any) => {
     // Vérifier si le calque actif est verrouillé
-    const activeLayer = layers.find(l => l.id === activeLayerId);
+    const activeLayer = layers.find((l) => l.id === activeLayerId);
     if (activeLayer?.locked) {
       toast.error(`Le calque "${activeLayer.name}" est verrouillé`);
       return;
     }
-    
+
     const decodedName = decodeHtmlEntities(catalogItem.nom);
     const newItem: ElectricalItem = {
       id: `catalog-${catalogItem.id}-${Date.now()}`,
@@ -1826,12 +1845,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // Ajouter un article du scénario au schéma (1 à la fois)
   const addFromScenario = (expense: any, quantity: number = 1) => {
     // Vérifier si le calque actif est verrouillé
-    const activeLayer = layers.find(l => l.id === activeLayerId);
+    const activeLayer = layers.find((l) => l.id === activeLayerId);
     if (activeLayer?.locked) {
       toast.error(`Le calque "${activeLayer.name}" est verrouillé`);
       return;
     }
-    
+
     console.log("[Schema] addFromScenario called:", { expense: expense.nom_accessoire, quantity });
     const decodedName = decodeHtmlEntities(expense.nom_accessoire);
     const usedQty = getUsedQuantity(expense.id);
@@ -1864,29 +1883,32 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   };
 
   // Supprimer un item du schéma (mais pas de la base)
-  const deleteItemFromSchema = useCallback((itemId: string) => {
-    // Vérifier si l'item est sur un calque verrouillé
-    const item = items.find(i => i.id === itemId);
-    if (item) {
-      const itemLayerId = item.layerId || "layer-default";
-      const layer = layers.find(l => l.id === itemLayerId);
-      if (layer?.locked) {
-        toast.error(`Le calque "${layer.name}" est verrouillé`);
-        return;
+  const deleteItemFromSchema = useCallback(
+    (itemId: string) => {
+      // Vérifier si l'item est sur un calque verrouillé
+      const item = items.find((i) => i.id === itemId);
+      if (item) {
+        const itemLayerId = item.layerId || "layer-default";
+        const layer = layers.find((l) => l.id === itemLayerId);
+        if (layer?.locked) {
+          toast.error(`Le calque "${layer.name}" est verrouillé`);
+          return;
+        }
       }
-    }
-    
-    setItems((prev) => prev.filter((i) => i.id !== itemId));
-    // Supprimer aussi les edges liés à cet item
-    setEdges((prev) => prev.filter((e) => e.source_node_id !== itemId && e.target_node_id !== itemId));
-    // Supprimer les handles sauvegardés
-    setNodeHandles((prev) => {
-      const newHandles = { ...prev };
-      delete newHandles[itemId];
-      return newHandles;
-    });
-    toast.success("Accessoire retiré du schéma");
-  }, [items, layers]);
+
+      setItems((prev) => prev.filter((i) => i.id !== itemId));
+      // Supprimer aussi les edges liés à cet item
+      setEdges((prev) => prev.filter((e) => e.source_node_id !== itemId && e.target_node_id !== itemId));
+      // Supprimer les handles sauvegardés
+      setNodeHandles((prev) => {
+        const newHandles = { ...prev };
+        delete newHandles[itemId];
+        return newHandles;
+      });
+      toast.success("Accessoire retiré du schéma");
+    },
+    [items, layers],
+  );
 
   // Filtrer le scénario (exclure les items entièrement utilisés)
   const filteredScenario = scenarioItems.filter((item) => {
@@ -1982,7 +2004,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   useEffect(() => {
     // IDs des calques visibles
     const visibleLayerIds = new Set(layers.filter((l) => l.visible).map((l) => l.id));
-    
+
     // Filtrer les edges selon les calques visibles
     const visibleEdges = edges.filter((edge) => {
       // Si pas de layerId, l'edge est toujours visible
@@ -2037,8 +2059,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         }
 
         // Calculer les hauteurs des blocs source et target pour le virage intelligent
-        const sourceNode = nodes.find(n => n.id === edge.source_node_id);
-        const targetNode = nodes.find(n => n.id === edge.target_node_id);
+        const sourceNode = nodes.find((n) => n.id === edge.source_node_id);
+        const targetNode = nodes.find((n) => n.id === edge.target_node_id);
         const sourceHeight = sourceNode ? getNodeHeight(sourceNode) : 100;
         const targetHeight = targetNode ? getNodeHeight(targetNode) : 100;
 
@@ -2049,9 +2071,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           sourceHandle: edge.source_handle || undefined,
           targetHandle: edge.target_handle || undefined,
           type: "customSmooth",
-          data: { 
-            offset, 
-            sourceHeight, 
+          data: {
+            offset,
+            sourceHeight,
             targetHeight,
             // Indiquer de quel côté faire le virage (près du plus petit bloc)
             turnNearTarget: targetHeight < sourceHeight,
@@ -2071,28 +2093,31 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     );
   }, [edges, selectedEdgeId, layers, nodes, getNodeHeight]);
 
-  const handleConnect = useCallback((connection: Connection) => {
-    if (!connection.source || !connection.target) return;
-    
-    // Vérifier si le calque actif est verrouillé (pour le câble lui-même)
-    const activeLayer = layers.find(l => l.id === activeLayerId);
-    if (activeLayer?.locked) {
-      toast.error(`Le calque "${activeLayer.name}" est verrouillé`);
-      return;
-    }
-    
-    const newEdge: SchemaEdge = {
-      id: `edge-${Date.now()}`,
-      source_node_id: connection.source,
-      target_node_id: connection.target,
-      source_handle: connection.sourceHandle || null,
-      target_handle: connection.targetHandle || null,
-      color: "#ef4444",
-      strokeWidth: 2,
-      layerId: activeLayerId, // Assigner au calque actif
-    };
-    setEdges((prev) => [...prev, newEdge]);
-  }, [activeLayerId, layers]);
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target) return;
+
+      // Vérifier si le calque actif est verrouillé (pour le câble lui-même)
+      const activeLayer = layers.find((l) => l.id === activeLayerId);
+      if (activeLayer?.locked) {
+        toast.error(`Le calque "${activeLayer.name}" est verrouillé`);
+        return;
+      }
+
+      const newEdge: SchemaEdge = {
+        id: `edge-${Date.now()}`,
+        source_node_id: connection.source,
+        target_node_id: connection.target,
+        source_handle: connection.sourceHandle || null,
+        target_handle: connection.targetHandle || null,
+        color: "#ef4444",
+        strokeWidth: 2,
+        layerId: activeLayerId, // Assigner au calque actif
+      };
+      setEdges((prev) => [...prev, newEdge]);
+    },
+    [activeLayerId, layers],
+  );
 
   const updateEdgeColor = useCallback(
     (color: string) => {
@@ -2396,17 +2421,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           .map((layer) => {
             const isActive = layer.id === activeLayerId;
             const isEditing = editingLayerId === layer.id;
-            const itemCount = items.filter(i => (i.layerId || "layer-default") === layer.id).length +
-                              edges.filter(e => (e.layerId || "layer-default") === layer.id).length;
+            const itemCount =
+              items.filter((i) => (i.layerId || "layer-default") === layer.id).length +
+              edges.filter((e) => (e.layerId || "layer-default") === layer.id).length;
             return (
               <div
                 key={layer.id}
                 className={`
                   flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-md text-sm font-medium transition-all flex-shrink-0
-                  ${isActive 
-                    ? "bg-white shadow-sm" 
-                    : "hover:bg-white/50"
-                  }
+                  ${isActive ? "bg-white shadow-sm" : "hover:bg-white/50"}
                   ${!layer.visible ? "opacity-50" : ""}
                 `}
                 style={{
@@ -2422,9 +2445,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                     onBlur={(e) => {
                       const newName = e.target.value.trim();
                       if (newName && newName !== layer.name) {
-                        handleLayersChange(layers.map(l => 
-                          l.id === layer.id ? { ...l, name: newName } : l
-                        ));
+                        handleLayersChange(layers.map((l) => (l.id === layer.id ? { ...l, name: newName } : l)));
                       }
                       setEditingLayerId(null);
                     }}
@@ -2432,9 +2453,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                       if (e.key === "Enter") {
                         const newName = (e.target as HTMLInputElement).value.trim();
                         if (newName && newName !== layer.name) {
-                          handleLayersChange(layers.map(l => 
-                            l.id === layer.id ? { ...l, name: newName } : l
-                          ));
+                          handleLayersChange(layers.map((l) => (l.id === layer.id ? { ...l, name: newName } : l)));
                         }
                         setEditingLayerId(null);
                       }
@@ -2458,18 +2477,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                     title="Double-clic pour renommer"
                   >
                     <span className="max-w-32 truncate">{layer.name}</span>
-                    {itemCount > 0 && (
-                      <span className="text-xs text-slate-400">({itemCount})</span>
-                    )}
+                    {itemCount > 0 && <span className="text-xs text-slate-400">({itemCount})</span>}
                   </button>
                 )}
                 {/* Bouton verrouillage */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleLayersChange(layers.map(l => 
-                      l.id === layer.id ? { ...l, locked: !l.locked } : l
-                    ));
+                    handleLayersChange(layers.map((l) => (l.id === layer.id ? { ...l, locked: !l.locked } : l)));
                   }}
                   className={`p-1 rounded hover:bg-slate-200 transition-colors ${layer.locked ? "bg-amber-100" : ""}`}
                   title={layer.locked ? "Déverrouiller ce calque" : "Verrouiller ce calque"}
@@ -2484,9 +2499,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleLayersChange(layers.map(l => 
-                      l.id === layer.id ? { ...l, visible: !l.visible } : l
-                    ));
+                    handleLayersChange(layers.map((l) => (l.id === layer.id ? { ...l, visible: !l.visible } : l)));
                   }}
                   className="p-1 rounded hover:bg-slate-200 transition-colors"
                   title={layer.visible ? "Masquer ce calque" : "Afficher ce calque"}
@@ -2500,17 +2513,19 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               </div>
             );
           })}
-        
+
         {/* Bouton + pour ajouter un calque */}
         <button
           onClick={() => {
             const newLayer: SchemaLayer = {
               id: `layer-${Date.now()}`,
               name: `Calque ${layers.length + 1}`,
-              color: ["#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899"][layers.length % 8],
+              color: ["#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899"][
+                layers.length % 8
+              ],
               visible: true,
               locked: false,
-              order: Math.max(...layers.map(l => l.order), -1) + 1,
+              order: Math.max(...layers.map((l) => l.order), -1) + 1,
             };
             handleLayersChange([...layers, newLayer]);
             setActiveLayerId(newLayer.id);
@@ -2542,16 +2557,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               </TooltipTrigger>
               <TooltipContent>Copier (Ctrl+C)</TooltipContent>
             </Tooltip>
-            
+
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={pasteNodes}
-                  disabled={!clipboard}
-                  className="h-8 px-2"
-                >
+                <Button variant="ghost" size="sm" onClick={pasteNodes} disabled={!clipboard} className="h-8 px-2">
                   <Clipboard className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
@@ -2661,12 +2670,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             {/* Export */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowExportDialog(true)}
-                  className="h-8 gap-1"
-                >
+                <Button variant="outline" size="sm" onClick={() => setShowExportDialog(true)} className="h-8 gap-1">
                   <FileDown className="h-4 w-4" />
                   <span className="text-xs hidden sm:inline">Exporter</span>
                 </Button>
@@ -2724,7 +2728,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             onPaneClick={(event) => {
               setSelectedEdgeId(null);
               setSelectedAnnotationId(null);
-              
+
               // Mode annotation : ajouter une note au clic
               if (isAnnotationMode) {
                 const bounds = reactFlowWrapper.current?.getBoundingClientRect();
@@ -2788,11 +2792,19 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   </button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-3 text-xs text-gray-600 space-y-1.5" align="end">
-                  <div>💡 Glissez depuis les points <span className="text-green-600 font-semibold">verts</span> vers les{" "}
-                  <span className="text-blue-600 font-semibold">bleus</span></div>
-                  <div>🖱️ <span className="font-semibold">Shift+clic</span> = sélection multiple</div>
-                  <div>✋ <span className="font-semibold">Molette/clic droit</span> = naviguer</div>
-                  <div>🔍 <span className="font-semibold">Double-clic câble</span> = supprimer</div>
+                  <div>
+                    💡 Glissez depuis les points <span className="text-green-600 font-semibold">verts</span> vers les{" "}
+                    <span className="text-blue-600 font-semibold">bleus</span>
+                  </div>
+                  <div>
+                    🖱️ <span className="font-semibold">Shift+clic</span> = sélection multiple
+                  </div>
+                  <div>
+                    ✋ <span className="font-semibold">Molette/clic droit</span> = naviguer
+                  </div>
+                  <div>
+                    🔍 <span className="font-semibold">Double-clic câble</span> = supprimer
+                  </div>
                 </PopoverContent>
               </Popover>
             </Panel>
@@ -2925,7 +2937,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             )}
           </ReactFlow>
         )}
-        
+
         {/* Légende améliorée */}
         {items.length > 0 && (
           <SchemaLegend
@@ -2937,7 +2949,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             position="bottom-left"
           />
         )}
-        
+
         {/* Layer annotations */}
         {annotations.length > 0 && (
           <SchemaAnnotationsLayer
