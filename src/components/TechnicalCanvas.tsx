@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.7 - Panel câble avec infos circuit (puissance, longueur totale, section)
+// VERSION: 3.8 - Circuits avec ID + définition manuelle source/destination
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -160,6 +160,17 @@ interface SchemaEdge {
   section_mm2?: number; // Section calculée en mm²
   bridge?: boolean; // Pont pour passer au-dessus des autres câbles
   layerId?: string; // ID du calque auquel appartient le câble
+  circuitId?: string; // ID du circuit auquel appartient le câble
+}
+
+// Interface pour les circuits définis
+interface ElectricalCircuit {
+  id: string;
+  name: string;
+  sourceNodeId: string;
+  destNodeId: string;
+  edgeIds: string[];
+  power: number;
 }
 
 // Sections de câble courantes
@@ -817,6 +828,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // Zoom actuel (pour les annotations)
   const [currentZoom, setCurrentZoom] = useState(1);
+
+  // Mode définition de circuit
+  const [isDefiningCircuit, setIsDefiningCircuit] = useState(false);
+  const [circuitSource, setCircuitSource] = useState<string | null>(null);
+  const [circuitDest, setCircuitDest] = useState<string | null>(null);
+
+  // Circuits définis (stocke les associations câbles → circuit)
+  const [circuits, setCircuits] = useState<Record<string, ElectricalCircuit>>({});
 
   // Hook calcul câble
   const { calculateCable, quickCalculate } = useCableCalculator({ defaultVoltage: 12 });
@@ -1546,86 +1565,159 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     "accessoire",
   ];
 
-  // Trouver la puissance en traversant les équipements de passage
-  const findCircuitPower = useCallback(
-    (startNodeId: string, visitedNodes: Set<string> = new Set()): number => {
-      if (visitedNodes.has(startNodeId)) return 0;
-      visitedNodes.add(startNodeId);
-
-      const item = items.find((i) => i.id === startNodeId);
-      if (!item) return 0;
-
-      // Si c'est un équipement avec puissance (producteur ou consommateur)
-      const isPassthrough = PASSTHROUGH_TYPES.some((t) => item.type_electrique?.toLowerCase().includes(t));
-
-      if (!isPassthrough && item.puissance_watts && item.puissance_watts > 0) {
-        return item.puissance_watts;
-      }
-
-      // Sinon, chercher dans les équipements connectés
-      // Chercher en amont (source)
-      const incomingEdges = edges.filter((e) => e.target_node_id === startNodeId);
-      for (const edge of incomingEdges) {
-        const power = findCircuitPower(edge.source_node_id, visitedNodes);
-        if (power > 0) return power;
-      }
-
-      // Chercher en aval (target)
-      const outgoingEdges = edges.filter((e) => e.source_node_id === startNodeId);
-      for (const edge of outgoingEdges) {
-        const power = findCircuitPower(edge.target_node_id, visitedNodes);
-        if (power > 0) return power;
-      }
-
-      return 0;
+  // Vérifier si un équipement est un passthrough
+  const isPassthroughType = useCallback(
+    (nodeId: string): boolean => {
+      const item = items.find((i) => i.id === nodeId);
+      if (!item) return false;
+      return PASSTHROUGH_TYPES.some((t) => item.type_electrique?.toLowerCase().includes(t));
     },
-    [items, edges],
+    [items],
   );
 
-  // Trouver tous les câbles d'un même circuit (connectés via des passthrough)
-  const findCircuitEdges = useCallback(
-    (startEdgeId: string): string[] => {
-      const circuitEdgeIds: string[] = [startEdgeId];
-      const visited = new Set<string>([startEdgeId]);
-      const startEdge = edges.find((e) => e.id === startEdgeId);
-      if (!startEdge) return circuitEdgeIds;
+  // Trouver tous les câbles entre deux blocs (source et destination)
+  // en traversant les accessoires neutres
+  const findEdgesBetweenNodes = useCallback(
+    (sourceId: string, destId: string): string[] => {
+      const foundEdgeIds = new Set<string>();
 
-      const exploreFromNode = (nodeId: string) => {
-        const item = items.find((i) => i.id === nodeId);
-        if (!item) return;
+      // BFS pour trouver tous les chemins
+      const findPaths = (currentNodeId: string, targetId: string, visitedEdges: Set<string>, path: string[]): void => {
+        if (currentNodeId === targetId) {
+          // Chemin trouvé, ajouter tous les edges
+          path.forEach((id) => foundEdgeIds.add(id));
+          return;
+        }
 
-        // Si ce n'est pas un passthrough, on arrête l'exploration
-        const isPassthrough = PASSTHROUGH_TYPES.some((t) => item.type_electrique?.toLowerCase().includes(t));
-        if (!isPassthrough) return;
-
-        // Explorer les câbles connectés à ce nœud passthrough
+        // Trouver tous les edges connectés à ce node
         const connectedEdges = edges.filter(
-          (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && !visited.has(e.id),
+          (e) => (e.source_node_id === currentNodeId || e.target_node_id === currentNodeId) && !visitedEdges.has(e.id),
         );
 
         for (const edge of connectedEdges) {
-          visited.add(edge.id);
-          circuitEdgeIds.push(edge.id);
+          const nextNodeId = edge.source_node_id === currentNodeId ? edge.target_node_id : edge.source_node_id;
 
-          // Continuer l'exploration de l'autre côté
-          const nextNodeId = edge.source_node_id === nodeId ? edge.target_node_id : edge.source_node_id;
-          exploreFromNode(nextNodeId);
+          // On peut traverser si c'est la destination OU un passthrough
+          if (nextNodeId === targetId || isPassthroughType(nextNodeId)) {
+            const newVisited = new Set(visitedEdges);
+            newVisited.add(edge.id);
+            findPaths(nextNodeId, targetId, newVisited, [...path, edge.id]);
+          }
         }
       };
 
-      // Explorer depuis les deux extrémités du câble de départ
-      exploreFromNode(startEdge.source_node_id);
-      exploreFromNode(startEdge.target_node_id);
+      // Chercher dans les deux sens
+      findPaths(sourceId, destId, new Set(), []);
+      findPaths(destId, sourceId, new Set(), []);
 
-      return circuitEdgeIds;
+      return Array.from(foundEdgeIds);
     },
-    [edges, items],
+    [edges, isPassthroughType],
   );
 
-  // Calculer et mettre à jour la section d'un câble (et de tout son circuit)
-  const updateCableSection = useCallback(
+  // Définir un nouveau circuit
+  const defineCircuit = useCallback(
+    (sourceNodeId: string, destNodeId: string) => {
+      const sourceItem = items.find((i) => i.id === sourceNodeId);
+      const destItem = items.find((i) => i.id === destNodeId);
+
+      if (!sourceItem || !destItem) {
+        toast.error("Blocs non trouvés");
+        return;
+      }
+
+      // Trouver tous les câbles entre source et destination
+      const edgeIds = findEdgesBetweenNodes(sourceNodeId, destNodeId);
+
+      if (edgeIds.length === 0) {
+        toast.error("Aucun câble trouvé entre ces deux blocs");
+        return;
+      }
+
+      // Générer un ID unique et un nom
+      const circuitId = `circuit-${Date.now()}`;
+      const sourceName = sourceItem.nom_accessoire?.split(" ").slice(0, 2).join(" ") || "Source";
+      const destName = destItem.nom_accessoire?.split(" ").slice(0, 2).join(" ") || "Dest";
+      const circuitName = `${sourceName} → ${destName}`;
+
+      // Trouver la puissance (depuis source ou destination)
+      const power = sourceItem.puissance_watts || destItem.puissance_watts || 0;
+
+      // Sauvegarder le circuit
+      setCircuits((prev) => ({
+        ...prev,
+        [circuitId]: {
+          id: circuitId,
+          name: circuitName,
+          sourceNodeId,
+          destNodeId,
+          edgeIds,
+          power,
+        },
+      }));
+
+      // Assigner le circuit à tous les câbles trouvés
+      setEdges((prev) =>
+        prev.map((edge) => {
+          if (edgeIds.includes(edge.id)) {
+            return { ...edge, circuitId };
+          }
+          return edge;
+        }),
+      );
+
+      toast.success(`Circuit "${circuitName}" créé avec ${edgeIds.length} câble(s)`);
+
+      // Réinitialiser le mode
+      setIsDefiningCircuit(false);
+      setCircuitSource(null);
+      setCircuitDest(null);
+    },
+    [items, findEdgesBetweenNodes],
+  );
+
+  // Calculer la section pour un circuit entier
+  const calculateCircuitSection = useCallback(
+    (circuitId: string) => {
+      const circuit = circuits[circuitId];
+      if (!circuit) return;
+
+      // Calculer la longueur totale du circuit
+      let totalLength = 0;
+      circuit.edgeIds.forEach((edgeId) => {
+        const edge = edges.find((e) => e.id === edgeId);
+        if (edge?.length_m) {
+          totalLength += edge.length_m;
+        }
+      });
+
+      if (totalLength === 0 || !circuit.power) return;
+
+      // Calculer la section
+      const section_mm2 = quickCalculate(circuit.power, totalLength);
+
+      // Appliquer à tous les câbles du circuit
+      setEdges((prev) =>
+        prev.map((edge) => {
+          if (circuit.edgeIds.includes(edge.id)) {
+            return {
+              ...edge,
+              section_mm2,
+              section: `${section_mm2} mm²`,
+            };
+          }
+          return edge;
+        }),
+      );
+
+      toast.success(`Section calculée: ${section_mm2} mm² (${totalLength}m, ${circuit.power}W)`);
+    },
+    [circuits, edges, quickCalculate],
+  );
+
+  // Mettre à jour la longueur d'un câble et recalculer son circuit
+  const updateCableLength = useCallback(
     (edgeId: string, length_m: number) => {
-      // D'abord, mettre à jour la longueur du câble cliqué
       setEdges((prev) => {
         const updatedEdges = prev.map((edge) => {
           if (edge.id === edgeId) {
@@ -1634,50 +1726,67 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           return edge;
         });
 
-        // Trouver tous les câbles du même circuit
-        const circuitEdgeIds = findCircuitEdges(edgeId);
+        // Trouver si ce câble appartient à un circuit
+        const edge = updatedEdges.find((e) => e.id === edgeId);
+        const circuitId = edge?.circuitId;
 
-        // Calculer la longueur totale du circuit
-        let totalLength = 0;
-        for (const id of circuitEdgeIds) {
-          const edge = updatedEdges.find((e) => e.id === id);
-          if (edge?.length_m) {
-            totalLength += edge.length_m;
-          }
-        }
+        if (circuitId && circuits[circuitId]) {
+          const circuit = circuits[circuitId];
 
-        // Trouver la puissance du circuit
-        const currentEdge = updatedEdges.find((e) => e.id === edgeId);
-        let power = 0;
-        if (currentEdge) {
-          power = findCircuitPower(currentEdge.source_node_id);
-          if (power === 0) {
-            power = findCircuitPower(currentEdge.target_node_id);
-          }
-        }
-
-        // Si on a une puissance et une longueur totale, calculer la section
-        if (power > 0 && totalLength > 0) {
-          const section_mm2 = quickCalculate(power, totalLength);
-
-          // Appliquer la section à tous les câbles du circuit
-          return updatedEdges.map((edge) => {
-            if (circuitEdgeIds.includes(edge.id)) {
-              return {
-                ...edge,
-                section_mm2,
-                section: `${section_mm2} mm²`,
-              };
+          // Calculer la longueur totale du circuit
+          let totalLength = 0;
+          circuit.edgeIds.forEach((cableId) => {
+            const cable = updatedEdges.find((e) => e.id === cableId);
+            if (cable?.length_m) {
+              totalLength += cable.length_m;
             }
-            return edge;
           });
+
+          // Si on a toutes les longueurs et une puissance, calculer la section
+          if (totalLength > 0 && circuit.power) {
+            const section_mm2 = quickCalculate(circuit.power, totalLength);
+
+            // Appliquer à tous les câbles du circuit
+            return updatedEdges.map((e) => {
+              if (circuit.edgeIds.includes(e.id)) {
+                return {
+                  ...e,
+                  section_mm2,
+                  section: `${section_mm2} mm²`,
+                };
+              }
+              return e;
+            });
+          }
         }
 
         return updatedEdges;
       });
     },
-    [findCircuitEdges, findCircuitPower, quickCalculate],
+    [circuits, quickCalculate],
   );
+
+  // Supprimer un circuit
+  const deleteCircuit = useCallback((circuitId: string) => {
+    // Retirer le circuitId des câbles
+    setEdges((prev) =>
+      prev.map((edge) => {
+        if (edge.circuitId === circuitId) {
+          const { circuitId: _, section_mm2: __, section: ___, ...rest } = edge;
+          return rest as SchemaEdge;
+        }
+        return edge;
+      }),
+    );
+
+    // Supprimer le circuit
+    setCircuits((prev) => {
+      const { [circuitId]: removed, ...rest } = prev;
+      return rest;
+    });
+
+    toast.success("Circuit supprimé");
+  }, []);
 
   // Insérer un template
   const handleInsertTemplate = useCallback(
@@ -2281,30 +2390,43 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const selectedCircuitInfo = useMemo(() => {
     if (!selectedEdgeId || !selectedEdge) return null;
 
-    // Trouver tous les câbles du circuit
-    const circuitEdgeIds = findCircuitEdges(selectedEdgeId);
+    // Vérifier si ce câble appartient à un circuit défini
+    const circuitId = selectedEdge.circuitId;
 
-    // Calculer la longueur totale
-    let totalLength = 0;
-    for (const id of circuitEdgeIds) {
-      const edge = edges.find((e) => e.id === id);
-      if (edge?.length_m) {
-        totalLength += edge.length_m;
-      }
+    if (circuitId && circuits[circuitId]) {
+      const circuit = circuits[circuitId];
+
+      // Calculer la longueur totale
+      let totalLength = 0;
+      circuit.edgeIds.forEach((id) => {
+        const edge = edges.find((e) => e.id === id);
+        if (edge?.length_m) {
+          totalLength += edge.length_m;
+        }
+      });
+
+      return {
+        circuitId,
+        circuitName: circuit.name,
+        power: circuit.power || 0,
+        totalLength,
+        cableCount: circuit.edgeIds.length,
+        sourceNodeId: circuit.sourceNodeId,
+        destNodeId: circuit.destNodeId,
+      };
     }
 
-    // Trouver la puissance
-    let power = findCircuitPower(selectedEdge.source_node_id);
-    if (power === 0) {
-      power = findCircuitPower(selectedEdge.target_node_id);
-    }
-
+    // Pas de circuit défini
     return {
-      power,
-      totalLength,
-      cableCount: circuitEdgeIds.length,
+      circuitId: null,
+      circuitName: null,
+      power: 0,
+      totalLength: selectedEdge.length_m || 0,
+      cableCount: 1,
+      sourceNodeId: selectedEdge.source_node_id,
+      destNodeId: selectedEdge.target_node_id,
     };
-  }, [selectedEdgeId, selectedEdge, edges, findCircuitEdges, findCircuitPower]);
+  }, [selectedEdgeId, selectedEdge, edges, circuits]);
 
   const deleteSelectedEdge = useCallback(() => {
     if (!selectedEdgeId) return;
@@ -2883,9 +3005,29 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               setEdges((prev) => prev.filter((e) => e.id !== edge.id));
               setSelectedEdgeId(null);
             }}
+            onNodeClick={(_, node) => {
+              // Mode définition de circuit
+              if (isDefiningCircuit) {
+                if (!circuitSource) {
+                  // Premier clic = source
+                  setCircuitSource(node.id);
+                  toast.info("Maintenant cliquez sur le bloc DESTINATION");
+                } else if (node.id !== circuitSource) {
+                  // Deuxième clic = destination
+                  defineCircuit(circuitSource, node.id);
+                }
+              }
+            }}
             onPaneClick={(event) => {
               setSelectedEdgeId(null);
               setSelectedAnnotationId(null);
+
+              // Annuler le mode définition de circuit si on clique dans le vide
+              if (isDefiningCircuit) {
+                setIsDefiningCircuit(false);
+                setCircuitSource(null);
+                setCircuitDest(null);
+              }
 
               // Mode annotation : ajouter une note au clic
               if (isAnnotationMode) {
@@ -3013,28 +3155,91 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
             {selectedEdgeId && selectedEdge && (
               <Panel position="bottom-center">
-                <div className="bg-white rounded-lg shadow-lg p-3 border space-y-2">
-                  {/* Ligne 1 : Infos du circuit */}
-                  {selectedCircuitInfo && (selectedCircuitInfo.power > 0 || selectedCircuitInfo.totalLength > 0) && (
-                    <div className="flex items-center gap-3 px-2 py-1.5 bg-blue-50 rounded border border-blue-200 text-xs">
-                      <div className="flex items-center gap-1">
-                        <Zap className="h-3 w-3 text-blue-600" />
-                        <span className="text-blue-700">Circuit:</span>
-                      </div>
-                      {selectedCircuitInfo.power > 0 && (
-                        <span className="font-medium text-blue-800">{selectedCircuitInfo.power} W</span>
-                      )}
-                      {selectedCircuitInfo.totalLength > 0 && (
-                        <span className="text-blue-600">
-                          {selectedCircuitInfo.totalLength.toFixed(1)}m total ({selectedCircuitInfo.cableCount} câble
-                          {selectedCircuitInfo.cableCount > 1 ? "s" : ""})
+                <div className="bg-white rounded-lg shadow-lg p-3 border space-y-2 max-w-2xl">
+                  {/* Ligne 1 : Circuit */}
+                  <div className="flex items-center gap-3 px-2 py-1.5 bg-slate-50 rounded border border-slate-200 text-xs">
+                    <div className="flex items-center gap-1">
+                      <Cable className="h-3 w-3 text-slate-600" />
+                      <span className="text-slate-700 font-medium">Circuit:</span>
+                    </div>
+
+                    {selectedCircuitInfo?.circuitId ? (
+                      <>
+                        <span className="font-medium text-slate-800 bg-white px-2 py-0.5 rounded border">
+                          {selectedCircuitInfo.circuitName}
                         </span>
+                        {selectedCircuitInfo.power > 0 && (
+                          <Badge variant="secondary" className="text-xs">
+                            {selectedCircuitInfo.power} W
+                          </Badge>
+                        )}
+                        {selectedCircuitInfo.totalLength > 0 && (
+                          <span className="text-slate-600">
+                            {selectedCircuitInfo.totalLength.toFixed(1)}m ({selectedCircuitInfo.cableCount} câbles)
+                          </span>
+                        )}
+                        {selectedEdge.section_mm2 && (
+                          <span className="font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded">
+                            → {selectedEdge.section_mm2} mm²
+                          </span>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 px-1 text-red-500 hover:text-red-600"
+                          onClick={() => deleteCircuit(selectedCircuitInfo.circuitId!)}
+                          title="Supprimer ce circuit"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-slate-500 italic">Non défini</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-xs gap-1"
+                          onClick={() => {
+                            setIsDefiningCircuit(true);
+                            setCircuitSource(null);
+                            setCircuitDest(null);
+                            toast.info("Cliquez sur le bloc SOURCE du circuit");
+                          }}
+                        >
+                          <Zap className="h-3 w-3" />
+                          Définir circuit
+                        </Button>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Mode définition de circuit */}
+                  {isDefiningCircuit && (
+                    <div className="flex items-center gap-2 px-2 py-2 bg-amber-50 rounded border border-amber-300 text-xs">
+                      <span className="text-amber-700 font-medium">
+                        {!circuitSource
+                          ? "👆 Cliquez sur le bloc SOURCE (ex: Panneau solaire)"
+                          : "👆 Cliquez sur le bloc DESTINATION (ex: MPPT)"}
+                      </span>
+                      {circuitSource && (
+                        <Badge variant="outline" className="text-xs bg-white">
+                          Source: {items.find((i) => i.id === circuitSource)?.nom_accessoire?.substring(0, 20)}...
+                        </Badge>
                       )}
-                      {selectedEdge.section_mm2 && (
-                        <span className="font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded">
-                          → {selectedEdge.section_mm2} mm²
-                        </span>
-                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 px-1 ml-auto"
+                        onClick={() => {
+                          setIsDefiningCircuit(false);
+                          setCircuitSource(null);
+                          setCircuitDest(null);
+                        }}
+                      >
+                        <X className="h-3 w-3" />
+                        Annuler
+                      </Button>
                     </div>
                   )}
 
@@ -3087,7 +3292,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                         value={selectedEdge.length_m || ""}
                         onChange={(e) => {
                           const length = parseFloat(e.target.value) || 0;
-                          updateCableSection(selectedEdgeId, length);
+                          updateCableLength(selectedEdgeId, length);
                         }}
                         placeholder="0"
                         className="w-14 h-7 px-2 text-xs border rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -3095,8 +3300,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                       <span className="text-xs text-gray-400">m</span>
                     </div>
 
-                    {/* Section manuelle (si pas de calcul auto) */}
-                    {!selectedEdge.section_mm2 && (
+                    {/* Section manuelle (si pas de circuit défini) */}
+                    {!selectedCircuitInfo?.circuitId && (
                       <>
                         <div className="w-px h-6 bg-gray-200" />
                         <div className="flex items-center gap-2">
