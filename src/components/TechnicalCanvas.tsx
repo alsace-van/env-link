@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.4 - Système de calques libres
+// VERSION: 2.5 - Onglets de calques dans la barre d'outils
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -60,6 +60,8 @@ import {
   PenTool,
   Plus,
   Search,
+  EyeOff,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AccessorySelector } from "./AccessorySelector";
@@ -1091,24 +1093,43 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             <span className="text-sm font-medium">{totalConsommation} W</span>
             <span className="text-xs text-red-600">conso.</span>
           </div>
-          {/* Indicateur calque actif */}
-          {activeLayerId && (
-            <div
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border"
-              style={{
-                borderColor: layers.find((l) => l.id === activeLayerId)?.color || "#3b82f6",
-                backgroundColor: `${layers.find((l) => l.id === activeLayerId)?.color || "#3b82f6"}15`,
-              }}
-            >
-              <div
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: layers.find((l) => l.id === activeLayerId)?.color || "#3b82f6" }}
-              />
-              <span className="text-sm font-medium">
-                {layers.find((l) => l.id === activeLayerId)?.name || "Calque"}
-              </span>
-            </div>
-          )}
+
+          {/* Séparateur */}
+          <Separator orientation="vertical" className="h-6" />
+
+          {/* Onglets des calques */}
+          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
+            {layers
+              .sort((a, b) => a.order - b.order)
+              .map((layer) => {
+                const isActive = layer.id === activeLayerId;
+                const itemCount =
+                  items.filter((i) => (i.layerId || "layer-default") === layer.id).length +
+                  edges.filter((e) => (e.layerId || "layer-default") === layer.id).length;
+                return (
+                  <button
+                    key={layer.id}
+                    onClick={() => setActiveLayerId(layer.id)}
+                    className={`
+                      flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all
+                      ${isActive ? "bg-white shadow-sm" : "hover:bg-white/50"}
+                      ${!layer.visible ? "opacity-40" : ""}
+                    `}
+                    style={{
+                      color: isActive ? layer.color : undefined,
+                      borderBottom: isActive ? `2px solid ${layer.color}` : undefined,
+                    }}
+                    title={layer.visible ? (layer.locked ? "Verrouillé" : "") : "Masqué"}
+                  >
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: layer.color }} />
+                    <span className="max-w-24 truncate">{layer.name}</span>
+                    {itemCount > 0 && <span className="text-xs text-slate-400 ml-0.5">({itemCount})</span>}
+                    {!layer.visible && <EyeOff className="h-3 w-3 text-slate-400" />}
+                    {layer.locked && layer.visible && <Lock className="h-3 w-3 text-amber-500" />}
+                  </button>
+                );
+              })}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {/* 🔥 Bouton ajouter depuis le scénario */}
