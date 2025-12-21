@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.25 - Virage du câble près du bloc le plus petit
+// VERSION: 2.26 - Distribution avec espacement vraiment égal
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1104,22 +1104,47 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
     // Trier par position X
     const sorted = [...selectedNodes].sort((a, b) => a.position.x - b.position.x);
-    const startX = sorted[0].position.x;
 
-    // Calculer l'espacement basé sur la largeur max des blocs
-    const maxWidth = Math.max(...sorted.map((n) => getNodeWidth(n)));
-    const spacing = maxWidth + BLOCK_SPACING_H;
+    // Le premier et le dernier bloc restent en place
+    const firstNode = sorted[0];
+    const lastNode = sorted[sorted.length - 1];
+    const firstWidth = getNodeWidth(firstNode);
+
+    // Position de départ (bord droit du premier bloc) et position de fin (bord gauche du dernier)
+    const startX = firstNode.position.x + firstWidth;
+    const endX = lastNode.position.x;
+
+    // Calculer la largeur totale des blocs intermédiaires
+    let totalMiddleWidth = 0;
+    for (let i = 1; i < sorted.length - 1; i++) {
+      totalMiddleWidth += getNodeWidth(sorted[i]);
+    }
+
+    // Espace total disponible pour les gaps (entre les blocs)
+    // Il y a (n-1) gaps pour n blocs
+    const totalSpace = endX - startX;
+    const numGaps = sorted.length - 1;
+    const totalGapSpace = totalSpace - totalMiddleWidth;
+    const gapSize = totalGapSpace / numGaps;
+
+    // Pré-calculer toutes les nouvelles positions X
+    const newPositionsX: Record<string, number> = {};
+    let currentX = startX + gapSize;
+
+    for (let i = 1; i < sorted.length - 1; i++) {
+      newPositionsX[sorted[i].id] = currentX;
+      currentX += getNodeWidth(sorted[i]) + gapSize;
+    }
 
     setNodes((nds) =>
       nds.map((n) => {
-        if (n.selected) {
+        if (n.selected && newPositionsX[n.id] !== undefined) {
           const item = items.find((i) => i.id === n.id);
           const itemLayerId = item?.layerId || "layer-default";
           const layer = layers.find((l) => l.id === itemLayerId);
           if (layer?.locked) return n;
 
-          const sortIndex = sorted.findIndex((s) => s.id === n.id);
-          return { ...n, position: { ...n.position, x: startX + sortIndex * spacing } };
+          return { ...n, position: { ...n.position, x: newPositionsX[n.id] } };
         }
         return n;
       }),
@@ -1133,22 +1158,46 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
     // Trier par position Y
     const sorted = [...selectedNodes].sort((a, b) => a.position.y - b.position.y);
-    const startY = sorted[0].position.y;
 
-    // Calculer l'espacement basé sur la hauteur max des blocs
-    const maxHeight = Math.max(...sorted.map((n) => getNodeHeight(n)));
-    const spacing = maxHeight + BLOCK_SPACING_V;
+    // Le premier et le dernier bloc restent en place
+    const firstNode = sorted[0];
+    const lastNode = sorted[sorted.length - 1];
+    const firstHeight = getNodeHeight(firstNode);
+
+    // Position de départ (bord bas du premier bloc) et position de fin (bord haut du dernier)
+    const startY = firstNode.position.y + firstHeight;
+    const endY = lastNode.position.y;
+
+    // Calculer la hauteur totale des blocs intermédiaires
+    let totalMiddleHeight = 0;
+    for (let i = 1; i < sorted.length - 1; i++) {
+      totalMiddleHeight += getNodeHeight(sorted[i]);
+    }
+
+    // Espace total disponible pour les gaps
+    const totalSpace = endY - startY;
+    const numGaps = sorted.length - 1;
+    const totalGapSpace = totalSpace - totalMiddleHeight;
+    const gapSize = totalGapSpace / numGaps;
+
+    // Pré-calculer toutes les nouvelles positions Y
+    const newPositionsY: Record<string, number> = {};
+    let currentY = startY + gapSize;
+
+    for (let i = 1; i < sorted.length - 1; i++) {
+      newPositionsY[sorted[i].id] = currentY;
+      currentY += getNodeHeight(sorted[i]) + gapSize;
+    }
 
     setNodes((nds) =>
       nds.map((n) => {
-        if (n.selected) {
+        if (n.selected && newPositionsY[n.id] !== undefined) {
           const item = items.find((i) => i.id === n.id);
           const itemLayerId = item?.layerId || "layer-default";
           const layer = layers.find((l) => l.id === itemLayerId);
           if (layer?.locked) return n;
 
-          const sortIndex = sorted.findIndex((s) => s.id === n.id);
-          return { ...n, position: { ...n.position, y: startY + sortIndex * spacing } };
+          return { ...n, position: { ...n.position, y: newPositionsY[n.id] } };
         }
         return n;
       }),
