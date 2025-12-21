@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.5 - Saisie longueur câble + calcul section auto + label amélioré
+// VERSION: 3.7 - Panel câble avec infos circuit (puissance, longueur totale, section)
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1534,32 +1534,149 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     [selectedAnnotationId],
   );
 
-  // Calculer et mettre à jour la section d'un câble
+  // Types d'équipements à ignorer (pas de puissance propre, juste traversée)
+  const PASSTHROUGH_TYPES = [
+    "fusible",
+    "protection",
+    "coupe_circuit",
+    "interrupteur",
+    "distribution",
+    "bornier",
+    "repartiteur",
+    "accessoire",
+  ];
+
+  // Trouver la puissance en traversant les équipements de passage
+  const findCircuitPower = useCallback(
+    (startNodeId: string, visitedNodes: Set<string> = new Set()): number => {
+      if (visitedNodes.has(startNodeId)) return 0;
+      visitedNodes.add(startNodeId);
+
+      const item = items.find((i) => i.id === startNodeId);
+      if (!item) return 0;
+
+      // Si c'est un équipement avec puissance (producteur ou consommateur)
+      const isPassthrough = PASSTHROUGH_TYPES.some((t) => item.type_electrique?.toLowerCase().includes(t));
+
+      if (!isPassthrough && item.puissance_watts && item.puissance_watts > 0) {
+        return item.puissance_watts;
+      }
+
+      // Sinon, chercher dans les équipements connectés
+      // Chercher en amont (source)
+      const incomingEdges = edges.filter((e) => e.target_node_id === startNodeId);
+      for (const edge of incomingEdges) {
+        const power = findCircuitPower(edge.source_node_id, visitedNodes);
+        if (power > 0) return power;
+      }
+
+      // Chercher en aval (target)
+      const outgoingEdges = edges.filter((e) => e.source_node_id === startNodeId);
+      for (const edge of outgoingEdges) {
+        const power = findCircuitPower(edge.target_node_id, visitedNodes);
+        if (power > 0) return power;
+      }
+
+      return 0;
+    },
+    [items, edges],
+  );
+
+  // Trouver tous les câbles d'un même circuit (connectés via des passthrough)
+  const findCircuitEdges = useCallback(
+    (startEdgeId: string): string[] => {
+      const circuitEdgeIds: string[] = [startEdgeId];
+      const visited = new Set<string>([startEdgeId]);
+      const startEdge = edges.find((e) => e.id === startEdgeId);
+      if (!startEdge) return circuitEdgeIds;
+
+      const exploreFromNode = (nodeId: string) => {
+        const item = items.find((i) => i.id === nodeId);
+        if (!item) return;
+
+        // Si ce n'est pas un passthrough, on arrête l'exploration
+        const isPassthrough = PASSTHROUGH_TYPES.some((t) => item.type_electrique?.toLowerCase().includes(t));
+        if (!isPassthrough) return;
+
+        // Explorer les câbles connectés à ce nœud passthrough
+        const connectedEdges = edges.filter(
+          (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && !visited.has(e.id),
+        );
+
+        for (const edge of connectedEdges) {
+          visited.add(edge.id);
+          circuitEdgeIds.push(edge.id);
+
+          // Continuer l'exploration de l'autre côté
+          const nextNodeId = edge.source_node_id === nodeId ? edge.target_node_id : edge.source_node_id;
+          exploreFromNode(nextNodeId);
+        }
+      };
+
+      // Explorer depuis les deux extrémités du câble de départ
+      exploreFromNode(startEdge.source_node_id);
+      exploreFromNode(startEdge.target_node_id);
+
+      return circuitEdgeIds;
+    },
+    [edges, items],
+  );
+
+  // Calculer et mettre à jour la section d'un câble (et de tout son circuit)
   const updateCableSection = useCallback(
     (edgeId: string, length_m: number) => {
-      setEdges((prev) =>
-        prev.map((edge) => {
-          if (edge.id !== edgeId) return edge;
-
-          // Trouver la puissance de l'équipement connecté (target)
-          const targetItem = items.find((i) => i.id === edge.target_node_id);
-          const power = targetItem?.puissance_watts || 0;
-
-          if (power > 0 && length_m > 0) {
-            const section_mm2 = quickCalculate(power, length_m);
-            return {
-              ...edge,
-              length_m,
-              section_mm2,
-              section: `${section_mm2} mm²`,
-            };
+      // D'abord, mettre à jour la longueur du câble cliqué
+      setEdges((prev) => {
+        const updatedEdges = prev.map((edge) => {
+          if (edge.id === edgeId) {
+            return { ...edge, length_m };
           }
+          return edge;
+        });
 
-          return { ...edge, length_m };
-        }),
-      );
+        // Trouver tous les câbles du même circuit
+        const circuitEdgeIds = findCircuitEdges(edgeId);
+
+        // Calculer la longueur totale du circuit
+        let totalLength = 0;
+        for (const id of circuitEdgeIds) {
+          const edge = updatedEdges.find((e) => e.id === id);
+          if (edge?.length_m) {
+            totalLength += edge.length_m;
+          }
+        }
+
+        // Trouver la puissance du circuit
+        const currentEdge = updatedEdges.find((e) => e.id === edgeId);
+        let power = 0;
+        if (currentEdge) {
+          power = findCircuitPower(currentEdge.source_node_id);
+          if (power === 0) {
+            power = findCircuitPower(currentEdge.target_node_id);
+          }
+        }
+
+        // Si on a une puissance et une longueur totale, calculer la section
+        if (power > 0 && totalLength > 0) {
+          const section_mm2 = quickCalculate(power, totalLength);
+
+          // Appliquer la section à tous les câbles du circuit
+          return updatedEdges.map((edge) => {
+            if (circuitEdgeIds.includes(edge.id)) {
+              return {
+                ...edge,
+                section_mm2,
+                section: `${section_mm2} mm²`,
+              };
+            }
+            return edge;
+          });
+        }
+
+        return updatedEdges;
+      });
     },
-    [items, quickCalculate],
+    [findCircuitEdges, findCircuitPower, quickCalculate],
   );
 
   // Insérer un template
@@ -2159,6 +2276,35 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   }, [selectedEdgeId]);
 
   const selectedEdge = edges.find((e) => e.id === selectedEdgeId);
+
+  // Calculer les infos du circuit sélectionné
+  const selectedCircuitInfo = useMemo(() => {
+    if (!selectedEdgeId || !selectedEdge) return null;
+
+    // Trouver tous les câbles du circuit
+    const circuitEdgeIds = findCircuitEdges(selectedEdgeId);
+
+    // Calculer la longueur totale
+    let totalLength = 0;
+    for (const id of circuitEdgeIds) {
+      const edge = edges.find((e) => e.id === id);
+      if (edge?.length_m) {
+        totalLength += edge.length_m;
+      }
+    }
+
+    // Trouver la puissance
+    let power = findCircuitPower(selectedEdge.source_node_id);
+    if (power === 0) {
+      power = findCircuitPower(selectedEdge.target_node_id);
+    }
+
+    return {
+      power,
+      totalLength,
+      cableCount: circuitEdgeIds.length,
+    };
+  }, [selectedEdgeId, selectedEdge, edges, findCircuitEdges, findCircuitPower]);
 
   const deleteSelectedEdge = useCallback(() => {
     if (!selectedEdgeId) return;
@@ -2867,118 +3013,134 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
             {selectedEdgeId && selectedEdge && (
               <Panel position="bottom-center">
-                <div className="bg-white rounded-lg shadow-lg p-3 border flex flex-wrap items-center gap-3">
-                  {/* Couleur */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-gray-600">Couleur:</span>
-                    <div className="flex gap-1">
-                      {CABLE_COLORS.map((cable) => (
-                        <button
-                          key={cable.value}
-                          className={`w-5 h-5 rounded-full border-2 transition-all ${selectedEdge.color === cable.value ? "border-blue-500 scale-110" : "border-gray-300"}`}
-                          style={{ backgroundColor: cable.value }}
-                          onClick={() => updateEdgeColor(cable.value)}
-                          title={cable.label}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="w-px h-6 bg-gray-200" />
-
-                  {/* Épaisseur */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-gray-600">Épaisseur:</span>
-                    <div className="flex gap-1">
-                      {STROKE_WIDTHS.map((sw) => (
-                        <button
-                          key={sw.value}
-                          className={`px-2 py-1 text-xs rounded border transition-all ${(selectedEdge.strokeWidth || 2) === sw.value ? "bg-blue-500 text-white border-blue-500" : "bg-white border-gray-300 hover:border-gray-400"}`}
-                          onClick={() => updateEdgeStrokeWidth(sw.value)}
-                          title={sw.label}
-                        >
-                          {sw.value}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="w-px h-6 bg-gray-200" />
-
-                  {/* Longueur du câble */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-gray-600">Longueur:</span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={selectedEdge.length_m || ""}
-                      onChange={(e) => {
-                        const length = parseFloat(e.target.value) || 0;
-                        updateCableSection(selectedEdgeId, length);
-                      }}
-                      placeholder="m"
-                      className="w-16 h-7 px-2 text-xs border rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                    <span className="text-xs text-gray-400">m</span>
-                  </div>
-
-                  {/* Section calculée automatiquement */}
-                  {selectedEdge.section_mm2 && (
-                    <>
-                      <div className="w-px h-6 bg-gray-200" />
-                      <div className="flex items-center gap-2 px-2 py-1 bg-green-50 rounded border border-green-200">
-                        <span className="text-xs font-medium text-green-700">Section:</span>
-                        <span className="text-xs font-bold text-green-800">{selectedEdge.section_mm2} mm²</span>
+                <div className="bg-white rounded-lg shadow-lg p-3 border space-y-2">
+                  {/* Ligne 1 : Infos du circuit */}
+                  {selectedCircuitInfo && (selectedCircuitInfo.power > 0 || selectedCircuitInfo.totalLength > 0) && (
+                    <div className="flex items-center gap-3 px-2 py-1.5 bg-blue-50 rounded border border-blue-200 text-xs">
+                      <div className="flex items-center gap-1">
+                        <Zap className="h-3 w-3 text-blue-600" />
+                        <span className="text-blue-700">Circuit:</span>
                       </div>
-                    </>
+                      {selectedCircuitInfo.power > 0 && (
+                        <span className="font-medium text-blue-800">{selectedCircuitInfo.power} W</span>
+                      )}
+                      {selectedCircuitInfo.totalLength > 0 && (
+                        <span className="text-blue-600">
+                          {selectedCircuitInfo.totalLength.toFixed(1)}m total ({selectedCircuitInfo.cableCount} câble
+                          {selectedCircuitInfo.cableCount > 1 ? "s" : ""})
+                        </span>
+                      )}
+                      {selectedEdge.section_mm2 && (
+                        <span className="font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded">
+                          → {selectedEdge.section_mm2} mm²
+                        </span>
+                      )}
+                    </div>
                   )}
 
-                  {/* Section manuelle (si pas de calcul auto) */}
-                  {!selectedEdge.section_mm2 && (
-                    <>
-                      <div className="w-px h-6 bg-gray-200" />
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-gray-600">Section:</span>
-                        <select
-                          value={selectedEdge.section || ""}
-                          onChange={(e) => updateEdgeSection(e.target.value)}
-                          className="h-7 px-2 text-xs border rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        >
-                          <option value="">Auto</option>
-                          {CABLE_SECTIONS.map((section) => (
-                            <option key={section} value={section}>
-                              {section}
-                            </option>
-                          ))}
-                        </select>
+                  {/* Ligne 2 : Contrôles */}
+                  <div className="flex flex-wrap items-center gap-3">
+                    {/* Couleur */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-gray-600">Couleur:</span>
+                      <div className="flex gap-1">
+                        {CABLE_COLORS.map((cable) => (
+                          <button
+                            key={cable.value}
+                            className={`w-5 h-5 rounded-full border-2 transition-all ${selectedEdge.color === cable.value ? "border-blue-500 scale-110" : "border-gray-300"}`}
+                            style={{ backgroundColor: cable.value }}
+                            onClick={() => updateEdgeColor(cable.value)}
+                            title={cable.label}
+                          />
+                        ))}
                       </div>
-                    </>
-                  )}
+                    </div>
 
-                  <div className="w-px h-6 bg-gray-200" />
+                    <div className="w-px h-6 bg-gray-200" />
 
-                  {/* Pont (passer au-dessus) */}
-                  <button
-                    onClick={toggleEdgeBridge}
-                    className={`px-2 py-1 text-xs rounded border transition-all flex items-center gap-1 ${selectedEdge.bridge ? "bg-amber-500 text-white border-amber-500" : "bg-white border-gray-300 hover:border-gray-400"}`}
-                    title="Faire passer le câble au-dessus des autres"
-                  >
-                    <span className="text-sm">⌒</span>
-                    Pont
-                  </button>
+                    {/* Épaisseur */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-gray-600">Épaisseur:</span>
+                      <div className="flex gap-1">
+                        {STROKE_WIDTHS.map((sw) => (
+                          <button
+                            key={sw.value}
+                            className={`px-2 py-1 text-xs rounded border transition-all ${(selectedEdge.strokeWidth || 2) === sw.value ? "bg-blue-500 text-white border-blue-500" : "bg-white border-gray-300 hover:border-gray-400"}`}
+                            onClick={() => updateEdgeStrokeWidth(sw.value)}
+                            title={sw.label}
+                          >
+                            {sw.value}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-                  <div className="w-px h-6 bg-gray-200" />
+                    <div className="w-px h-6 bg-gray-200" />
 
-                  {/* Supprimer */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-red-500 hover:text-red-600 hover:bg-red-50"
-                    onClick={deleteSelectedEdge}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                    {/* Longueur du câble */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-gray-600">Ce câble:</span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={selectedEdge.length_m || ""}
+                        onChange={(e) => {
+                          const length = parseFloat(e.target.value) || 0;
+                          updateCableSection(selectedEdgeId, length);
+                        }}
+                        placeholder="0"
+                        className="w-14 h-7 px-2 text-xs border rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                      <span className="text-xs text-gray-400">m</span>
+                    </div>
+
+                    {/* Section manuelle (si pas de calcul auto) */}
+                    {!selectedEdge.section_mm2 && (
+                      <>
+                        <div className="w-px h-6 bg-gray-200" />
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-gray-600">Section:</span>
+                          <select
+                            value={selectedEdge.section || ""}
+                            onChange={(e) => updateEdgeSection(e.target.value)}
+                            className="h-7 px-2 text-xs border rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          >
+                            <option value="">Manuel</option>
+                            {CABLE_SECTIONS.map((section) => (
+                              <option key={section} value={section}>
+                                {section}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </>
+                    )}
+
+                    <div className="w-px h-6 bg-gray-200" />
+
+                    {/* Pont (passer au-dessus) */}
+                    <button
+                      onClick={toggleEdgeBridge}
+                      className={`px-2 py-1 text-xs rounded border transition-all flex items-center gap-1 ${selectedEdge.bridge ? "bg-amber-500 text-white border-amber-500" : "bg-white border-gray-300 hover:border-gray-400"}`}
+                      title="Faire passer le câble au-dessus des autres"
+                    >
+                      <span className="text-sm">⌒</span>
+                      Pont
+                    </button>
+
+                    <div className="w-px h-6 bg-gray-200" />
+
+                    {/* Supprimer */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-red-500 hover:text-red-600 hover:bg-red-50"
+                      onClick={deleteSelectedEdge}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               </Panel>
             )}
