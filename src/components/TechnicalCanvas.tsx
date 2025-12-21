@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.4 - MiniMap remontée pour laisser place à Légende
+// VERSION: 3.5 - Saisie longueur câble + calcul section auto + label amélioré
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2064,6 +2064,16 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         const sourceHeight = sourceNode ? getNodeHeight(sourceNode) : 100;
         const targetHeight = targetNode ? getNodeHeight(targetNode) : 100;
 
+        // Construire le label du câble (longueur + section)
+        let cableLabel: string | undefined = undefined;
+        if (edge.length_m || edge.section_mm2 || edge.section) {
+          const parts: string[] = [];
+          if (edge.length_m) parts.push(`${edge.length_m}m`);
+          if (edge.section_mm2) parts.push(`${edge.section_mm2}mm²`);
+          else if (edge.section) parts.push(edge.section);
+          cableLabel = parts.join(" • ");
+        }
+
         return {
           id: edge.id,
           source: edge.source_node_id,
@@ -2078,7 +2088,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             // Indiquer de quel côté faire le virage (près du plus petit bloc)
             turnNearTarget: targetHeight < sourceHeight,
           },
-          label: edge.section || undefined,
+          label: cableLabel,
           labelStyle: { fill: edgeColor, fontWeight: 600, fontSize: 11 },
           labelBgStyle: { fill: "white", fillOpacity: 0.9 },
           labelBgPadding: [4, 2] as [number, number],
@@ -2895,22 +2905,56 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
                   <div className="w-px h-6 bg-gray-200" />
 
-                  {/* Section de câble */}
+                  {/* Longueur du câble */}
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-gray-600">Section:</span>
-                    <select
-                      value={selectedEdge.section || ""}
-                      onChange={(e) => updateEdgeSection(e.target.value)}
-                      className="h-7 px-2 text-xs border rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                      <option value="">Aucune</option>
-                      {CABLE_SECTIONS.map((section) => (
-                        <option key={section} value={section}>
-                          {section}
-                        </option>
-                      ))}
-                    </select>
+                    <span className="text-xs font-medium text-gray-600">Longueur:</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={selectedEdge.length_m || ""}
+                      onChange={(e) => {
+                        const length = parseFloat(e.target.value) || 0;
+                        updateCableSection(selectedEdgeId, length);
+                      }}
+                      placeholder="m"
+                      className="w-16 h-7 px-2 text-xs border rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <span className="text-xs text-gray-400">m</span>
                   </div>
+
+                  {/* Section calculée automatiquement */}
+                  {selectedEdge.section_mm2 && (
+                    <>
+                      <div className="w-px h-6 bg-gray-200" />
+                      <div className="flex items-center gap-2 px-2 py-1 bg-green-50 rounded border border-green-200">
+                        <span className="text-xs font-medium text-green-700">Section:</span>
+                        <span className="text-xs font-bold text-green-800">{selectedEdge.section_mm2} mm²</span>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Section manuelle (si pas de calcul auto) */}
+                  {!selectedEdge.section_mm2 && (
+                    <>
+                      <div className="w-px h-6 bg-gray-200" />
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-gray-600">Section:</span>
+                        <select
+                          value={selectedEdge.section || ""}
+                          onChange={(e) => updateEdgeSection(e.target.value)}
+                          className="h-7 px-2 text-xs border rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                          <option value="">Auto</option>
+                          {CABLE_SECTIONS.map((section) => (
+                            <option key={section} value={section}>
+                              {section}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  )}
 
                   <div className="w-px h-6 bg-gray-200" />
 
