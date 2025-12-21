@@ -187,25 +187,25 @@ export function SchemaTemplates({
       if (!user) return;
 
       // Templates de l'utilisateur
-      const { data: myTemplates, error: myError } = await supabase
-        .from("schema_templates")
+      const { data: myTemplates, error: myError } = await (supabase
+        .from("schema_templates" as any)
         .select("*")
         .eq("user_id", user.id)
-        .order("updated_at", { ascending: false });
+        .order("updated_at", { ascending: false }));
 
       if (myError) throw myError;
 
       // Templates publics (d'autres utilisateurs)
-      const { data: publicTemplates, error: publicError } = await supabase
-        .from("schema_templates")
+      const { data: publicTemplates, error: publicError } = await (supabase
+        .from("schema_templates" as any)
         .select("*")
         .eq("is_public", true)
         .neq("user_id", user.id)
-        .order("updated_at", { ascending: false });
+        .order("updated_at", { ascending: false }));
 
       if (publicError) throw publicError;
 
-      setTemplates([...(myTemplates || []), ...(publicTemplates || [])]);
+      setTemplates([...((myTemplates as unknown as SchemaTemplate[]) || []), ...((publicTemplates as unknown as SchemaTemplate[]) || [])]);
     } catch (error) {
       console.error("Erreur chargement templates:", error);
       toast.error("Erreur lors du chargement des templates");
@@ -309,8 +309,8 @@ export function SchemaTemplates({
         }));
 
       // Sauvegarder en base
-      const { error } = await supabase
-        .from("schema_templates")
+      const { error } = await (supabase
+        .from("schema_templates" as any)
         .insert({
           user_id: user.id,
           name: saveName.trim(),
@@ -319,7 +319,7 @@ export function SchemaTemplates({
           blocks: templateBlocks,
           cables: templateCables,
           layers: templateLayers,
-        });
+        } as any));
 
       if (error) throw error;
 
@@ -428,10 +428,10 @@ export function SchemaTemplates({
     if (!confirm("Supprimer ce template ?")) return;
 
     try {
-      const { error } = await supabase
-        .from("schema_templates")
+      const { error } = await (supabase
+        .from("schema_templates" as any)
         .delete()
-        .eq("id", templateId);
+        .eq("id", templateId));
 
       if (error) throw error;
 

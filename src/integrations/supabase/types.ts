@@ -3405,6 +3405,45 @@ export type Database = {
         }
         Relationships: []
       }
+      schema_templates: {
+        Row: {
+          blocks: Json
+          cables: Json
+          created_at: string | null
+          description: string | null
+          id: string
+          is_public: boolean | null
+          layers: Json
+          name: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          blocks?: Json
+          cables?: Json
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_public?: boolean | null
+          layers?: Json
+          name: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          blocks?: Json
+          cables?: Json
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_public?: boolean | null
+          layers?: Json
+          name?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       shipping_fee_tiers: {
         Row: {
           created_at: string | null
