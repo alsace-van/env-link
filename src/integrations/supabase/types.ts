@@ -53,6 +53,7 @@ export type Database = {
           promo_end_date: string | null
           promo_price: number | null
           promo_start_date: string | null
+          puissance_charge_watts: number | null
           puissance_watts: number | null
           pv_r14: string | null
           pv_r16: string | null
@@ -112,6 +113,7 @@ export type Database = {
           promo_end_date?: string | null
           promo_price?: number | null
           promo_start_date?: string | null
+          puissance_charge_watts?: number | null
           puissance_watts?: number | null
           pv_r14?: string | null
           pv_r16?: string | null
@@ -171,6 +173,7 @@ export type Database = {
           promo_end_date?: string | null
           promo_price?: number | null
           promo_start_date?: string | null
+          puissance_charge_watts?: number | null
           puissance_watts?: number | null
           pv_r14?: string | null
           pv_r16?: string | null
@@ -2327,6 +2330,7 @@ export type Database = {
           prix_vente_ttc: number | null
           product_name: string | null
           project_id: string | null
+          puissance_charge_watts: number | null
           puissance_watts: number | null
           quantite: number | null
           quantity: number | null
@@ -2384,6 +2388,7 @@ export type Database = {
           prix_vente_ttc?: number | null
           product_name?: string | null
           project_id?: string | null
+          puissance_charge_watts?: number | null
           puissance_watts?: number | null
           quantite?: number | null
           quantity?: number | null
@@ -2441,6 +2446,7 @@ export type Database = {
           prix_vente_ttc?: number | null
           product_name?: string | null
           project_id?: string | null
+          puissance_charge_watts?: number | null
           puissance_watts?: number | null
           quantite?: number | null
           quantity?: number | null
@@ -2822,36 +2828,45 @@ export type Database = {
           couleur: string | null
           created_at: string | null
           est_principal: boolean | null
+          evoliz_quote_id: string | null
+          evoliz_quote_number: string | null
           icone: string | null
           id: string
           is_locked: boolean | null
           nom: string
           ordre: number | null
           project_id: string
+          statut: string | null
           updated_at: string | null
         }
         Insert: {
           couleur?: string | null
           created_at?: string | null
           est_principal?: boolean | null
+          evoliz_quote_id?: string | null
+          evoliz_quote_number?: string | null
           icone?: string | null
           id?: string
           is_locked?: boolean | null
           nom: string
           ordre?: number | null
           project_id: string
+          statut?: string | null
           updated_at?: string | null
         }
         Update: {
           couleur?: string | null
           created_at?: string | null
           est_principal?: boolean | null
+          evoliz_quote_id?: string | null
+          evoliz_quote_number?: string | null
           icone?: string | null
           id?: string
           is_locked?: boolean | null
           nom?: string
           ordre?: number | null
           project_id?: string
+          statut?: string | null
           updated_at?: string | null
         }
         Relationships: [
