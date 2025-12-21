@@ -1,8 +1,8 @@
 /**
  * AiInspirationGenerator.tsx
- * Version: 1.1
+ * Version: 1.2
  * Date: 2025-12-20
- * Description: Générateur d'inspirations via Gemini 2.5 Flash Image (Nano Banana) avec slider avant/après
+ * Description: Générateur d'inspirations via Gemini 2.5 Flash Image utilisant le système de clé API utilisateur
  */
 
 import { useState, useRef } from "react";
@@ -12,42 +12,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
-import {
-  Sparkles,
-  Upload,
-  X,
-  Settings,
-  Eye,
-  Download,
-  Save,
-  Loader2,
-  ChevronDown,
-  ImageIcon,
-  Key,
-  AlertCircle,
-} from "lucide-react";
+import { Sparkles, Upload, X, Eye, Download, Save, Loader2, ChevronDown, AlertCircle } from "lucide-react";
 import { ImageCompareSlider } from "./ImageCompareSlider";
 import { supabase } from "@/integrations/supabase/client";
+import { useAIConfig } from "@/hooks/useAIConfig";
 
 interface AiInspirationGeneratorProps {
   projectId: string;
@@ -95,9 +67,8 @@ const AMBIANCE_OPTIONS = [
 ];
 
 export const AiInspirationGenerator = ({ projectId, onImageSaved }: AiInspirationGeneratorProps) => {
-  // API Key
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem("gemini_api_key") || "");
-  const [showApiKeySettings, setShowApiKeySettings] = useState(false);
+  // Utiliser le système de clé API centralisé
+  const { apiKey, isConfigured, providerInfo } = useAIConfig();
 
   // Images sources
   const [sourceImages, setSourceImages] = useState<Array<{ file: File; preview: string }>>([]);
@@ -119,13 +90,6 @@ export const AiInspirationGenerator = ({ projectId, onImageSaved }: AiInspiratio
     before: string;
     after: string;
   }>({ isOpen: false, before: "", after: "" });
-
-  // Sauvegarder la clé API
-  const handleSaveApiKey = () => {
-    localStorage.setItem("gemini_api_key", apiKey);
-    setShowApiKeySettings(false);
-    toast.success("Clé API sauvegardée");
-  };
 
   // Gestion des fichiers
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -158,9 +122,7 @@ export const AiInspirationGenerator = ({ projectId, onImageSaved }: AiInspiratio
 
   // Toggle aménagement
   const toggleAmenagement = (id: string) => {
-    setSelectedAmenagements((prev) =>
-      prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]
-    );
+    setSelectedAmenagements((prev) => (prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]));
   };
 
   // Convertir image en base64
@@ -178,7 +140,8 @@ export const AiInspirationGenerator = ({ projectId, onImageSaved }: AiInspiratio
 
   // Construire le prompt
   const buildPrompt = () => {
-    let prompt = "Transforme cette photo d'intérieur de fourgon/van en une visualisation réaliste d'un aménagement camper van professionnel. ";
+    let prompt =
+      "Transforme cette photo d'intérieur de fourgon/van en une visualisation réaliste d'un aménagement camper van professionnel. ";
 
     if (selectedAmenagements.length > 0) {
       const amenagementLabels = selectedAmenagements
@@ -201,16 +164,16 @@ export const AiInspirationGenerator = ({ projectId, onImageSaved }: AiInspiratio
       prompt += customPrompt + " ";
     }
 
-    prompt += "Garde les mêmes dimensions et perspective que l'image originale. Rendu photoréaliste avec éclairage naturel.";
+    prompt +=
+      "Garde les mêmes dimensions et perspective que l'image originale. Rendu photoréaliste avec éclairage naturel.";
 
     return prompt;
   };
 
   // Générer les images
   const handleGenerate = async () => {
-    if (!apiKey) {
-      toast.error("Veuillez configurer votre clé API Gemini");
-      setShowApiKeySettings(true);
+    if (!isConfigured || !apiKey) {
+      toast.error("Veuillez configurer votre clé API Gemini dans Mon Compte");
       return;
     }
 
@@ -250,13 +213,13 @@ export const AiInspirationGenerator = ({ projectId, onImageSaved }: AiInspiratio
                   },
                 ],
               }),
-            }
+            },
           );
 
           if (!response.ok) {
             const error = await response.json();
             console.error("Gemini API error:", error);
-            
+
             if (response.status === 429) {
               toast.error("Quota API dépassé. Réessayez plus tard.");
             } else if (response.status === 400) {
@@ -329,9 +292,7 @@ export const AiInspirationGenerator = ({ projectId, onImageSaved }: AiInspiratio
       }
 
       // Obtenir l'URL publique
-      const { data: publicUrl } = supabase.storage
-        .from("project-photos")
-        .getPublicUrl(fileName);
+      const { data: publicUrl } = supabase.storage.from("project-photos").getPublicUrl(fileName);
 
       // Enregistrer en base de données
       const { error: dbError } = await supabase.from("project_photos").insert({
@@ -372,34 +333,31 @@ export const AiInspirationGenerator = ({ projectId, onImageSaved }: AiInspiratio
               <Sparkles className="h-5 w-5 text-purple-500" />
               Générateur d'inspirations IA
             </CardTitle>
-            <CardDescription>
-              Uploadez vos photos de fourgon et laissez l'IA imaginer des aménagements
-            </CardDescription>
+            <CardDescription>Uploadez vos photos de fourgon et laissez l'IA imaginer des aménagements</CardDescription>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowApiKeySettings(true)}
-            className={!apiKey ? "border-orange-300 text-orange-600" : ""}
-          >
-            <Key className="h-4 w-4 mr-2" />
-            {apiKey ? "Clé API configurée" : "Configurer l'API"}
-          </Button>
+          {!isConfigured && (
+            <Badge variant="outline" className="border-orange-300 text-orange-600 gap-1">
+              <AlertCircle className="h-3 w-3" />
+              Clé API requise
+            </Badge>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Alerte si pas de clé API */}
-        {!apiKey && (
+        {!isConfigured && (
           <div className="flex items-center gap-3 p-3 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 rounded-lg">
             <AlertCircle className="h-5 w-5 text-orange-500 flex-shrink-0" />
             <div className="text-sm">
-              <p className="font-medium text-orange-700 dark:text-orange-400">
-                Clé API Gemini requise
-              </p>
+              <p className="font-medium text-orange-700 dark:text-orange-400">Clé API Gemini requise</p>
               <p className="text-orange-600 dark:text-orange-500">
-                Obtenez votre clé gratuite sur{" "}
+                Configurez votre clé dans{" "}
+                <a href="/account" className="underline font-medium">
+                  Mon Compte → Configuration IA
+                </a>{" "}
+                ou obtenez-en une sur{" "}
                 <a
-                  href="https://aistudio.google.com/app/apikey"
+                  href={providerInfo?.helpUrl || "https://aistudio.google.com/apikey"}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="underline"
@@ -419,12 +377,8 @@ export const AiInspirationGenerator = ({ projectId, onImageSaved }: AiInspiratio
             onClick={() => fileInputRef.current?.click()}
           >
             <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">
-              Cliquez ou glissez vos photos ici
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              PNG, JPG jusqu'à 10MB
-            </p>
+            <p className="text-sm text-muted-foreground">Cliquez ou glissez vos photos ici</p>
+            <p className="text-xs text-muted-foreground mt-1">PNG, JPG jusqu'à 10MB</p>
           </div>
           <input
             ref={fileInputRef}
@@ -518,9 +472,7 @@ export const AiInspirationGenerator = ({ projectId, onImageSaved }: AiInspiratio
 
             {/* Prompt personnalisé */}
             <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">
-                Instructions supplémentaires (optionnel)
-              </Label>
+              <Label className="text-xs text-muted-foreground">Instructions supplémentaires (optionnel)</Label>
               <Textarea
                 value={customPrompt}
                 onChange={(e) => setCustomPrompt(e.target.value)}
@@ -534,7 +486,7 @@ export const AiInspirationGenerator = ({ projectId, onImageSaved }: AiInspiratio
         {/* Bouton générer */}
         <Button
           onClick={handleGenerate}
-          disabled={isGenerating || sourceImages.length === 0 || !apiKey}
+          disabled={isGenerating || sourceImages.length === 0 || !isConfigured}
           className="w-full"
           size="lg"
         >
@@ -559,11 +511,7 @@ export const AiInspirationGenerator = ({ projectId, onImageSaved }: AiInspiratio
               {generatedImages.map((image) => (
                 <Card key={image.id} className="overflow-hidden">
                   <div className="relative aspect-video">
-                    <img
-                      src={image.url}
-                      alt="Inspiration générée"
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={image.url} alt="Inspiration générée" className="w-full h-full object-cover" />
                   </div>
                   <div className="p-3 flex gap-2">
                     <Button
@@ -581,18 +529,10 @@ export const AiInspirationGenerator = ({ projectId, onImageSaved }: AiInspiratio
                       <Eye className="h-4 w-4 mr-1" />
                       Comparer
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDownload(image)}
-                    >
+                    <Button variant="outline" size="sm" onClick={() => handleDownload(image)}>
                       <Download className="h-4 w-4" />
                     </Button>
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={() => handleSaveToGallery(image)}
-                    >
+                    <Button variant="default" size="sm" onClick={() => handleSaveToGallery(image)}>
                       <Save className="h-4 w-4 mr-1" />
                       Sauver
                     </Button>
@@ -604,62 +544,11 @@ export const AiInspirationGenerator = ({ projectId, onImageSaved }: AiInspiratio
         )}
       </CardContent>
 
-      {/* Modal configuration API Key */}
-      <Dialog open={showApiKeySettings} onOpenChange={setShowApiKeySettings}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Key className="h-5 w-5" />
-              Configuration de l'API Gemini
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Pour utiliser le générateur d'inspirations, vous avez besoin d'une clé API Gemini gratuite.
-            </p>
-            <ol className="text-sm space-y-2 list-decimal list-inside text-muted-foreground">
-              <li>
-                Rendez-vous sur{" "}
-                <a
-                  href="https://aistudio.google.com/app/apikey"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary underline"
-                >
-                  Google AI Studio
-                </a>
-              </li>
-              <li>Connectez-vous avec votre compte Google</li>
-              <li>Cliquez sur "Create API Key"</li>
-              <li>Copiez la clé et collez-la ci-dessous</li>
-            </ol>
-            <div className="space-y-2">
-              <Label htmlFor="apiKey">Clé API Gemini</Label>
-              <Input
-                id="apiKey"
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="AIza..."
-              />
-              <p className="text-xs text-muted-foreground">
-                Votre clé est stockée localement sur votre appareil uniquement.
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowApiKeySettings(false)} className="flex-1">
-                Annuler
-              </Button>
-              <Button onClick={handleSaveApiKey} className="flex-1" disabled={!apiKey}>
-                Sauvegarder
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Modal de comparaison avant/après */}
-      <Dialog open={compareModal.isOpen} onOpenChange={(open) => setCompareModal((prev) => ({ ...prev, isOpen: open }))}>
+      <Dialog
+        open={compareModal.isOpen}
+        onOpenChange={(open) => setCompareModal((prev) => ({ ...prev, isOpen: open }))}
+      >
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>Comparaison avant / après</DialogTitle>
