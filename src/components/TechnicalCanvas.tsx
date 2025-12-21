@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.24 - Lecture hauteur depuis DOM, edge custom amélioré
+// VERSION: 2.25 - Virage du câble près du bloc le plus petit
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -29,12 +29,9 @@ import {
   Panel,
   ConnectionMode,
   EdgeProps,
-  getBezierPath,
   getSmoothStepPath,
   BaseEdge,
   EdgeLabelRenderer,
-  useStore,
-  useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
@@ -521,7 +518,7 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
 const blockNodeTypes = { electricalBlock: ElectricalBlockNode };
 
 // ============================================
-// EDGE PERSONNALISÉ - Virage près de la source
+// EDGE PERSONNALISÉ - Virage près du bloc le plus petit
 // ============================================
 
 const CustomSmoothEdge = ({
@@ -538,9 +535,12 @@ const CustomSmoothEdge = ({
   labelBgStyle,
   data,
 }: EdgeProps) => {
-  // Distance du virage par rapport à la source (en pixels)
+  // Distance du virage par rapport au bloc (en pixels)
   const turnDistance = 30;
   const cornerRadius = 8;
+
+  // Récupérer si on doit faire le virage près de la target (bloc plus petit)
+  const turnNearTarget = (data as any)?.turnNearTarget ?? false;
 
   let edgePath: string;
   let labelX: number;
@@ -561,7 +561,9 @@ const CustomSmoothEdge = ({
   }
   // Connexion Right → Left avec décalage vertical
   else if (sourcePosition === Position.Right && targetPosition === Position.Left) {
-    const midX = sourceX + turnDistance;
+    // Virage près du bloc le plus petit
+    const midX = turnNearTarget ? targetX - turnDistance : sourceX + turnDistance;
+
     edgePath = `M ${sourceX} ${sourceY} 
                 L ${midX - cornerRadius} ${sourceY}
                 Q ${midX} ${sourceY} ${midX} ${sourceY + (targetY > sourceY ? cornerRadius : -cornerRadius)}
@@ -573,7 +575,9 @@ const CustomSmoothEdge = ({
   }
   // Connexion Bottom → Top avec décalage horizontal
   else if (sourcePosition === Position.Bottom && targetPosition === Position.Top) {
-    const midY = sourceY + turnDistance;
+    // Virage près du bloc le plus petit
+    const midY = turnNearTarget ? targetY - turnDistance : sourceY + turnDistance;
+
     edgePath = `M ${sourceX} ${sourceY} 
                 L ${sourceX} ${midY - cornerRadius}
                 Q ${sourceX} ${midY} ${sourceX + (targetX > sourceX ? cornerRadius : -cornerRadius)} ${midY}
@@ -583,29 +587,53 @@ const CustomSmoothEdge = ({
     labelX = (sourceX + targetX) / 2;
     labelY = midY;
   }
-  // Connexion Bottom → Left (diagonal - virage près de la source)
+  // Connexion Bottom → Left (diagonal - virage près du bloc le plus petit)
   else if (sourcePosition === Position.Bottom && targetPosition === Position.Left) {
-    const midY = sourceY + turnDistance;
-    edgePath = `M ${sourceX} ${sourceY} 
-                L ${sourceX} ${midY - cornerRadius}
-                Q ${sourceX} ${midY} ${sourceX + (targetX > sourceX ? cornerRadius : -cornerRadius)} ${midY}
-                L ${targetX - cornerRadius} ${midY}
-                Q ${targetX} ${midY} ${targetX} ${midY + cornerRadius}
-                L ${targetX} ${targetY}`;
-    labelX = (sourceX + targetX) / 2;
-    labelY = midY;
+    if (turnNearTarget) {
+      // Virage près de la target (bloc plus petit) - d'abord vertical puis horizontal
+      const midY = targetY;
+      edgePath = `M ${sourceX} ${sourceY} 
+                  L ${sourceX} ${midY - cornerRadius}
+                  Q ${sourceX} ${midY} ${sourceX + cornerRadius} ${midY}
+                  L ${targetX} ${targetY}`;
+      labelX = sourceX + (targetX - sourceX) / 2;
+      labelY = midY;
+    } else {
+      // Virage près de la source (bloc plus grand) - d'abord vertical court puis horizontal
+      const midY = sourceY + turnDistance;
+      edgePath = `M ${sourceX} ${sourceY} 
+                  L ${sourceX} ${midY - cornerRadius}
+                  Q ${sourceX} ${midY} ${sourceX + (targetX > sourceX ? cornerRadius : -cornerRadius)} ${midY}
+                  L ${targetX - cornerRadius} ${midY}
+                  Q ${targetX} ${midY} ${targetX} ${midY + cornerRadius}
+                  L ${targetX} ${targetY}`;
+      labelX = (sourceX + targetX) / 2;
+      labelY = midY;
+    }
   }
-  // Connexion Right → Top (diagonal - virage près de la source)
+  // Connexion Right → Top (diagonal - virage près du bloc le plus petit)
   else if (sourcePosition === Position.Right && targetPosition === Position.Top) {
-    const midX = sourceX + turnDistance;
-    edgePath = `M ${sourceX} ${sourceY} 
-                L ${midX - cornerRadius} ${sourceY}
-                Q ${midX} ${sourceY} ${midX} ${sourceY + (targetY > sourceY ? cornerRadius : -cornerRadius)}
-                L ${midX} ${targetY - cornerRadius}
-                Q ${midX} ${targetY} ${midX + cornerRadius} ${targetY}
-                L ${targetX} ${targetY}`;
-    labelX = midX;
-    labelY = (sourceY + targetY) / 2;
+    if (turnNearTarget) {
+      // Virage près de la target
+      const midX = targetX;
+      edgePath = `M ${sourceX} ${sourceY} 
+                  L ${midX - cornerRadius} ${sourceY}
+                  Q ${midX} ${sourceY} ${midX} ${sourceY - cornerRadius}
+                  L ${targetX} ${targetY}`;
+      labelX = midX;
+      labelY = sourceY + (targetY - sourceY) / 2;
+    } else {
+      // Virage près de la source
+      const midX = sourceX + turnDistance;
+      edgePath = `M ${sourceX} ${sourceY} 
+                  L ${midX - cornerRadius} ${sourceY}
+                  Q ${midX} ${sourceY} ${midX} ${sourceY + (targetY > sourceY ? cornerRadius : -cornerRadius)}
+                  L ${midX} ${targetY - cornerRadius}
+                  Q ${midX} ${targetY} ${midX + cornerRadius} ${targetY}
+                  L ${targetX} ${targetY}`;
+      labelX = midX;
+      labelY = (sourceY + targetY) / 2;
+    }
   }
   // Autres cas - utiliser smoothstep par défaut
   else {
@@ -1543,6 +1571,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           offset += 50;
         }
 
+        // Calculer les hauteurs des blocs source et target pour le virage intelligent
+        const sourceNode = nodes.find((n) => n.id === edge.source_node_id);
+        const targetNode = nodes.find((n) => n.id === edge.target_node_id);
+        const sourceHeight = sourceNode ? getNodeHeight(sourceNode) : 100;
+        const targetHeight = targetNode ? getNodeHeight(targetNode) : 100;
+
         return {
           id: edge.id,
           source: edge.source_node_id,
@@ -1550,7 +1584,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           sourceHandle: edge.source_handle || undefined,
           targetHandle: edge.target_handle || undefined,
           type: "customSmooth",
-          data: { offset },
+          data: {
+            offset,
+            sourceHeight,
+            targetHeight,
+            // Indiquer de quel côté faire le virage (près du plus petit bloc)
+            turnNearTarget: targetHeight < sourceHeight,
+          },
           label: edge.section || undefined,
           labelStyle: { fill: edgeColor, fontWeight: 600, fontSize: 11 },
           labelBgStyle: { fill: "white", fillOpacity: 0.9 },
@@ -1564,7 +1604,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         };
       }) as any,
     );
-  }, [edges, selectedEdgeId, layers]);
+  }, [edges, selectedEdgeId, layers, nodes, getNodeHeight]);
 
   const handleConnect = useCallback(
     (connection: Connection) => {
