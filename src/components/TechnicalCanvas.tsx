@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.26 - Distribution avec espacement vraiment égal
+// VERSION: 2.27 - Edge simplifié avec getSmoothStepPath natif (sans artefacts)
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -518,7 +518,7 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
 const blockNodeTypes = { electricalBlock: ElectricalBlockNode };
 
 // ============================================
-// EDGE PERSONNALISÉ - Virage près du bloc le plus petit
+// EDGE PERSONNALISÉ - Utilise smoothstep natif (plus robuste)
 // ============================================
 
 const CustomSmoothEdge = ({
@@ -535,118 +535,16 @@ const CustomSmoothEdge = ({
   labelBgStyle,
   data,
 }: EdgeProps) => {
-  // Distance du virage par rapport au bloc (en pixels)
-  const turnDistance = 30;
-  const cornerRadius = 8;
-
-  // Récupérer si on doit faire le virage près de la target (bloc plus petit)
-  const turnNearTarget = (data as any)?.turnNearTarget ?? false;
-
-  let edgePath: string;
-  let labelX: number;
-  let labelY: number;
-
-  // Déterminer si les points sont alignés (pas besoin de virage)
-  const isAlignedHorizontally = Math.abs(sourceY - targetY) < 2;
-  const isAlignedVertically = Math.abs(sourceX - targetX) < 2;
-
-  // Si parfaitement aligné, ligne droite
-  if (
-    (sourcePosition === Position.Right && targetPosition === Position.Left && isAlignedHorizontally) ||
-    (sourcePosition === Position.Bottom && targetPosition === Position.Top && isAlignedVertically)
-  ) {
-    edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
-    labelX = (sourceX + targetX) / 2;
-    labelY = (sourceY + targetY) / 2;
-  }
-  // Connexion Right → Left avec décalage vertical
-  else if (sourcePosition === Position.Right && targetPosition === Position.Left) {
-    // Virage près du bloc le plus petit
-    const midX = turnNearTarget ? targetX - turnDistance : sourceX + turnDistance;
-
-    edgePath = `M ${sourceX} ${sourceY} 
-                L ${midX - cornerRadius} ${sourceY}
-                Q ${midX} ${sourceY} ${midX} ${sourceY + (targetY > sourceY ? cornerRadius : -cornerRadius)}
-                L ${midX} ${targetY - (targetY > sourceY ? cornerRadius : -cornerRadius)}
-                Q ${midX} ${targetY} ${midX + cornerRadius} ${targetY}
-                L ${targetX} ${targetY}`;
-    labelX = midX;
-    labelY = (sourceY + targetY) / 2;
-  }
-  // Connexion Bottom → Top avec décalage horizontal
-  else if (sourcePosition === Position.Bottom && targetPosition === Position.Top) {
-    // Virage près du bloc le plus petit
-    const midY = turnNearTarget ? targetY - turnDistance : sourceY + turnDistance;
-
-    edgePath = `M ${sourceX} ${sourceY} 
-                L ${sourceX} ${midY - cornerRadius}
-                Q ${sourceX} ${midY} ${sourceX + (targetX > sourceX ? cornerRadius : -cornerRadius)} ${midY}
-                L ${targetX - (targetX > sourceX ? cornerRadius : -cornerRadius)} ${midY}
-                Q ${targetX} ${midY} ${targetX} ${midY + cornerRadius}
-                L ${targetX} ${targetY}`;
-    labelX = (sourceX + targetX) / 2;
-    labelY = midY;
-  }
-  // Connexion Bottom → Left (diagonal - virage près du bloc le plus petit)
-  else if (sourcePosition === Position.Bottom && targetPosition === Position.Left) {
-    if (turnNearTarget) {
-      // Virage près de la target (bloc plus petit) - d'abord vertical puis horizontal
-      const midY = targetY;
-      edgePath = `M ${sourceX} ${sourceY} 
-                  L ${sourceX} ${midY - cornerRadius}
-                  Q ${sourceX} ${midY} ${sourceX + cornerRadius} ${midY}
-                  L ${targetX} ${targetY}`;
-      labelX = sourceX + (targetX - sourceX) / 2;
-      labelY = midY;
-    } else {
-      // Virage près de la source (bloc plus grand) - d'abord vertical court puis horizontal
-      const midY = sourceY + turnDistance;
-      edgePath = `M ${sourceX} ${sourceY} 
-                  L ${sourceX} ${midY - cornerRadius}
-                  Q ${sourceX} ${midY} ${sourceX + (targetX > sourceX ? cornerRadius : -cornerRadius)} ${midY}
-                  L ${targetX - cornerRadius} ${midY}
-                  Q ${targetX} ${midY} ${targetX} ${midY + cornerRadius}
-                  L ${targetX} ${targetY}`;
-      labelX = (sourceX + targetX) / 2;
-      labelY = midY;
-    }
-  }
-  // Connexion Right → Top (diagonal - virage près du bloc le plus petit)
-  else if (sourcePosition === Position.Right && targetPosition === Position.Top) {
-    if (turnNearTarget) {
-      // Virage près de la target
-      const midX = targetX;
-      edgePath = `M ${sourceX} ${sourceY} 
-                  L ${midX - cornerRadius} ${sourceY}
-                  Q ${midX} ${sourceY} ${midX} ${sourceY - cornerRadius}
-                  L ${targetX} ${targetY}`;
-      labelX = midX;
-      labelY = sourceY + (targetY - sourceY) / 2;
-    } else {
-      // Virage près de la source
-      const midX = sourceX + turnDistance;
-      edgePath = `M ${sourceX} ${sourceY} 
-                  L ${midX - cornerRadius} ${sourceY}
-                  Q ${midX} ${sourceY} ${midX} ${sourceY + (targetY > sourceY ? cornerRadius : -cornerRadius)}
-                  L ${midX} ${targetY - cornerRadius}
-                  Q ${midX} ${targetY} ${midX + cornerRadius} ${targetY}
-                  L ${targetX} ${targetY}`;
-      labelX = midX;
-      labelY = (sourceY + targetY) / 2;
-    }
-  }
-  // Autres cas - utiliser smoothstep par défaut
-  else {
-    [edgePath, labelX, labelY] = getSmoothStepPath({
-      sourceX,
-      sourceY,
-      sourcePosition,
-      targetX,
-      targetY,
-      targetPosition,
-      borderRadius: cornerRadius,
-    });
-  }
+  // Utiliser getSmoothStepPath qui gère tous les cas correctement
+  const [edgePath, labelX, labelY] = getSmoothStepPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+    borderRadius: 8,
+  });
 
   return (
     <>
