@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.6 - Onglets calques sur ligne séparée avec bouton œil
+// VERSION: 2.8 - Édition inline du nom des calques (double-clic)
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -511,6 +511,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // États pour les calques
   const [layers, setLayers] = useState<SchemaLayer[]>([createDefaultLayer()]);
   const [activeLayerId, setActiveLayerId] = useState<string>("layer-default");
+  const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
 
   // Gérer le changement de calques (avec déplacement des éléments si suppression)
   const handleLayersChange = useCallback(
@@ -1287,6 +1288,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           .sort((a, b) => a.order - b.order)
           .map((layer) => {
             const isActive = layer.id === activeLayerId;
+            const isEditing = editingLayerId === layer.id;
             const itemCount =
               items.filter((i) => (i.layerId || "layer-default") === layer.id).length +
               edges.filter((e) => (e.layerId || "layer-default") === layer.id).length;
@@ -1302,17 +1304,51 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   borderLeft: `3px solid ${layer.color}`,
                 }}
               >
-                <button
-                  onClick={() => setActiveLayerId(layer.id)}
-                  className="flex items-center gap-1.5"
-                  style={{
-                    color: isActive ? layer.color : undefined,
-                  }}
-                >
-                  <span className="max-w-32 truncate">{layer.name}</span>
-                  {itemCount > 0 && <span className="text-xs text-slate-400">({itemCount})</span>}
-                  {layer.locked && <Lock className="h-3 w-3 text-amber-500" />}
-                </button>
+                {isEditing ? (
+                  <input
+                    type="text"
+                    defaultValue={layer.name}
+                    autoFocus
+                    className="w-28 px-1 py-0.5 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    onBlur={(e) => {
+                      const newName = e.target.value.trim();
+                      if (newName && newName !== layer.name) {
+                        handleLayersChange(layers.map((l) => (l.id === layer.id ? { ...l, name: newName } : l)));
+                      }
+                      setEditingLayerId(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        const newName = (e.target as HTMLInputElement).value.trim();
+                        if (newName && newName !== layer.name) {
+                          handleLayersChange(layers.map((l) => (l.id === layer.id ? { ...l, name: newName } : l)));
+                        }
+                        setEditingLayerId(null);
+                      }
+                      if (e.key === "Escape") {
+                        setEditingLayerId(null);
+                      }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : (
+                  <button
+                    onClick={() => setActiveLayerId(layer.id)}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      setEditingLayerId(layer.id);
+                    }}
+                    className="flex items-center gap-1.5"
+                    style={{
+                      color: isActive ? layer.color : undefined,
+                    }}
+                    title="Double-clic pour renommer"
+                  >
+                    <span className="max-w-32 truncate">{layer.name}</span>
+                    {itemCount > 0 && <span className="text-xs text-slate-400">({itemCount})</span>}
+                    {layer.locked && <Lock className="h-3 w-3 text-amber-500" />}
+                  </button>
+                )}
                 {/* Bouton œil pour afficher/masquer */}
                 <button
                   onClick={(e) => {
@@ -1331,6 +1367,29 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               </div>
             );
           })}
+
+        {/* Bouton + pour ajouter un calque */}
+        <button
+          onClick={() => {
+            const newLayer: SchemaLayer = {
+              id: `layer-${Date.now()}`,
+              name: `Calque ${layers.length + 1}`,
+              color: ["#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899"][
+                layers.length % 8
+              ],
+              visible: true,
+              locked: false,
+              order: Math.max(...layers.map((l) => l.order), -1) + 1,
+            };
+            handleLayersChange([...layers, newLayer]);
+            setActiveLayerId(newLayer.id);
+            setEditingLayerId(newLayer.id); // Passer en mode édition directement
+          }}
+          className="flex items-center justify-center w-8 h-8 rounded-md hover:bg-white/70 transition-colors flex-shrink-0"
+          title="Ajouter un calque"
+        >
+          <Plus className="h-4 w-4 text-slate-500" />
+        </button>
       </div>
 
       {/* Canvas ReactFlow */}
