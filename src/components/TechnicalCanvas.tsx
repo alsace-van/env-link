@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.0 - Export, Validation, Templates, Annotations, Grille, Copier/Coller
+// VERSION: 3.2 - Canvas adaptatif (100vh-180px) avec marge bas
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2208,7 +2208,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   }
 
   return (
-    <div className={`flex flex-col gap-3 ${isFullscreen ? "fixed inset-0 z-50 bg-white p-4" : "h-[600px]"}`}>
+    <div
+      className={`flex flex-col gap-3 mb-16 ${isFullscreen ? "fixed inset-0 z-50 bg-white p-4" : "min-h-[900px] h-[calc(100vh-180px)]"}`}
+    >
       {/* Barre d'outils - Ligne 1 : Indicateurs + Boutons */}
       <div className="flex items-center justify-between gap-4 flex-wrap shrink-0">
         <div className="flex items-center gap-3 flex-wrap">
