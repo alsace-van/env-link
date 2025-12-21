@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.23 - Edge custom avec virage près de la source
+// VERSION: 2.24 - Lecture hauteur depuis DOM, edge custom amélioré
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -33,6 +33,8 @@ import {
   getSmoothStepPath,
   BaseEdge,
   EdgeLabelRenderer,
+  useStore,
+  useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
@@ -536,50 +538,77 @@ const CustomSmoothEdge = ({
   labelBgStyle,
   data,
 }: EdgeProps) => {
-  // Calculer le chemin avec un offset pour que le virage soit plus près de la source
-  // Pour les connexions verticales (bottom → top ou similaire), on veut que le virage
-  // se fasse à ~30px de la source au lieu du milieu
-
-  const isVertical = sourcePosition === Position.Bottom || sourcePosition === Position.Top;
-  const isHorizontal = sourcePosition === Position.Left || sourcePosition === Position.Right;
+  // Distance du virage par rapport à la source (en pixels)
+  const turnDistance = 30;
+  const cornerRadius = 8;
 
   let edgePath: string;
   let labelX: number;
   let labelY: number;
 
-  // Distance du virage par rapport à la source (en pixels)
-  const turnDistance = 40;
+  // Déterminer si les points sont alignés (pas besoin de virage)
+  const isAlignedHorizontally = Math.abs(sourceY - targetY) < 2;
+  const isAlignedVertically = Math.abs(sourceX - targetX) < 2;
 
-  if (isVertical && Math.abs(sourceX - targetX) > 50) {
-    // Connexion verticale avec un décalage horizontal significatif
-    // Faire le virage près de la source
-    const midY = sourcePosition === Position.Bottom ? sourceY + turnDistance : sourceY - turnDistance;
-
-    edgePath = `M ${sourceX} ${sourceY} 
-                L ${sourceX} ${midY} 
-                Q ${sourceX} ${midY + (targetY > sourceY ? 10 : -10)} ${sourceX + (targetX > sourceX ? 10 : -10)} ${midY + (targetY > sourceY ? 10 : -10)}
-                L ${targetX - (targetX > sourceX ? 10 : -10)} ${midY + (targetY > sourceY ? 10 : -10)}
-                Q ${targetX} ${midY + (targetY > sourceY ? 10 : -10)} ${targetX} ${midY + (targetY > sourceY ? 20 : -20)}
-                L ${targetX} ${targetY}`;
-
+  // Si parfaitement aligné, ligne droite
+  if (
+    (sourcePosition === Position.Right && targetPosition === Position.Left && isAlignedHorizontally) ||
+    (sourcePosition === Position.Bottom && targetPosition === Position.Top && isAlignedVertically)
+  ) {
+    edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
     labelX = (sourceX + targetX) / 2;
-    labelY = midY;
-  } else if (isHorizontal && Math.abs(sourceY - targetY) > 50) {
-    // Connexion horizontale avec un décalage vertical significatif
-    // Faire le virage près de la source
-    const midX = sourcePosition === Position.Right ? sourceX + turnDistance : sourceX - turnDistance;
-
+    labelY = (sourceY + targetY) / 2;
+  }
+  // Connexion Right → Left avec décalage vertical
+  else if (sourcePosition === Position.Right && targetPosition === Position.Left) {
+    const midX = sourceX + turnDistance;
     edgePath = `M ${sourceX} ${sourceY} 
-                L ${midX} ${sourceY} 
-                Q ${midX + (targetX > sourceX ? 10 : -10)} ${sourceY} ${midX + (targetX > sourceX ? 10 : -10)} ${sourceY + (targetY > sourceY ? 10 : -10)}
-                L ${midX + (targetX > sourceX ? 10 : -10)} ${targetY - (targetY > sourceY ? 10 : -10)}
-                Q ${midX + (targetX > sourceX ? 10 : -10)} ${targetY} ${midX + (targetX > sourceX ? 20 : -20)} ${targetY}
+                L ${midX - cornerRadius} ${sourceY}
+                Q ${midX} ${sourceY} ${midX} ${sourceY + (targetY > sourceY ? cornerRadius : -cornerRadius)}
+                L ${midX} ${targetY - (targetY > sourceY ? cornerRadius : -cornerRadius)}
+                Q ${midX} ${targetY} ${midX + cornerRadius} ${targetY}
                 L ${targetX} ${targetY}`;
-
     labelX = midX;
     labelY = (sourceY + targetY) / 2;
-  } else {
-    // Utiliser le chemin smoothstep standard pour les autres cas
+  }
+  // Connexion Bottom → Top avec décalage horizontal
+  else if (sourcePosition === Position.Bottom && targetPosition === Position.Top) {
+    const midY = sourceY + turnDistance;
+    edgePath = `M ${sourceX} ${sourceY} 
+                L ${sourceX} ${midY - cornerRadius}
+                Q ${sourceX} ${midY} ${sourceX + (targetX > sourceX ? cornerRadius : -cornerRadius)} ${midY}
+                L ${targetX - (targetX > sourceX ? cornerRadius : -cornerRadius)} ${midY}
+                Q ${targetX} ${midY} ${targetX} ${midY + cornerRadius}
+                L ${targetX} ${targetY}`;
+    labelX = (sourceX + targetX) / 2;
+    labelY = midY;
+  }
+  // Connexion Bottom → Left (diagonal - virage près de la source)
+  else if (sourcePosition === Position.Bottom && targetPosition === Position.Left) {
+    const midY = sourceY + turnDistance;
+    edgePath = `M ${sourceX} ${sourceY} 
+                L ${sourceX} ${midY - cornerRadius}
+                Q ${sourceX} ${midY} ${sourceX + (targetX > sourceX ? cornerRadius : -cornerRadius)} ${midY}
+                L ${targetX - cornerRadius} ${midY}
+                Q ${targetX} ${midY} ${targetX} ${midY + cornerRadius}
+                L ${targetX} ${targetY}`;
+    labelX = (sourceX + targetX) / 2;
+    labelY = midY;
+  }
+  // Connexion Right → Top (diagonal - virage près de la source)
+  else if (sourcePosition === Position.Right && targetPosition === Position.Top) {
+    const midX = sourceX + turnDistance;
+    edgePath = `M ${sourceX} ${sourceY} 
+                L ${midX - cornerRadius} ${sourceY}
+                Q ${midX} ${sourceY} ${midX} ${sourceY + (targetY > sourceY ? cornerRadius : -cornerRadius)}
+                L ${midX} ${targetY - cornerRadius}
+                Q ${midX} ${targetY} ${midX + cornerRadius} ${targetY}
+                L ${targetX} ${targetY}`;
+    labelX = midX;
+    labelY = (sourceY + targetY) / 2;
+  }
+  // Autres cas - utiliser smoothstep par défaut
+  else {
     [edgePath, labelX, labelY] = getSmoothStepPath({
       sourceX,
       sourceY,
@@ -587,7 +616,7 @@ const CustomSmoothEdge = ({
       targetX,
       targetY,
       targetPosition,
-      borderRadius: 8,
+      borderRadius: cornerRadius,
     });
   }
 
@@ -700,37 +729,64 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // Obtenir les nodes sélectionnés
   const selectedNodes = nodes.filter((n) => n.selected);
 
-  // Obtenir la hauteur réelle d'un node (mesurée par ReactFlow)
-  const getNodeHeight = (node: Node): number => {
-    const measuredHeight = (node as any).measured?.height || (node as any).height;
-    if (measuredHeight) {
-      return measuredHeight;
-    }
+  // Obtenir la hauteur réelle d'un node (mesurée par ReactFlow ou via DOM)
+  const getNodeHeight = useCallback(
+    (node: Node): number => {
+      // Méthode 1: ReactFlow v11+ mesure les dimensions dans node.measured
+      const measured = (node as any).measured;
+      if (measured?.height) {
+        return measured.height;
+      }
 
-    // Fallback: estimer la hauteur basée sur le contenu
-    const item = items.find((i) => i.id === node.id);
-    if (!item) return 120;
+      // Méthode 2: Certaines versions stockent dans node.height directement
+      if ((node as any).height) {
+        return (node as any).height;
+      }
 
-    let height = 60; // header
-    height += 16; // padding top
-    if (item.puissance_watts) height += 24;
-    if (item.capacite_ah) height += 24;
-    if (item.tension_volts) height += 24;
-    if (item.intensite_amperes) height += 24;
-    if (item.quantite > 1 && item.puissance_watts) height += 32;
-    height += 40; // badge + padding
+      // Méthode 3: Essayer de lire depuis le DOM
+      const domNode = document.querySelector(`[data-id="${node.id}"]`);
+      if (domNode) {
+        const rect = domNode.getBoundingClientRect();
+        if (rect.height > 0) {
+          return rect.height;
+        }
+      }
 
-    return height;
-  };
+      // Fallback: estimer la hauteur basée sur le contenu
+      const item = items.find((i) => i.id === node.id);
+      if (!item) return 130; // hauteur par défaut plus réaliste
+
+      let height = 52; // header minimal
+      if (item.puissance_watts) height += 24;
+      if (item.capacite_ah) height += 24;
+      if (item.tension_volts) height += 24;
+      if (item.intensite_amperes) height += 24;
+      if (item.quantite > 1 && item.puissance_watts) height += 28;
+      height += 44; // badge + padding
+
+      return height;
+    },
+    [items],
+  );
 
   // Obtenir la largeur réelle d'un node
-  const getNodeWidth = (node: Node): number => {
-    const measuredWidth = (node as any).measured?.width || (node as any).width;
-    if (measuredWidth) {
-      return measuredWidth;
+  const getNodeWidth = useCallback((node: Node): number => {
+    const measured = (node as any).measured;
+    if (measured?.width) {
+      return measured.width;
     }
-    return 240; // largeur par défaut
-  };
+    if ((node as any).width) {
+      return (node as any).width;
+    }
+    const domNode = document.querySelector(`[data-id="${node.id}"]`);
+    if (domNode) {
+      const rect = domNode.getBoundingClientRect();
+      if (rect.width > 0) {
+        return rect.width;
+      }
+    }
+    return 240;
+  }, []);
 
   // Espacement entre les blocs
   const BLOCK_SPACING_H = 50;
@@ -984,7 +1040,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     );
 
     toast.success(`${selectedNodes.length} blocs alignés horizontalement`);
-  }, [selectedNodes, setNodes, items, layers, edges, nodeHandles, nodes]);
+  }, [selectedNodes, setNodes, items, layers, edges, nodeHandles, nodes, getNodeHeight]);
 
   // Fonction pour aligner les nodes sélectionnés verticalement
   const alignNodesVertically = useCallback(() => {
@@ -1012,7 +1068,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       }),
     );
     toast.success(`${selectedNodes.length} blocs alignés verticalement`);
-  }, [selectedNodes, setNodes, items, layers]);
+  }, [selectedNodes, setNodes, items, layers, getNodeWidth]);
 
   // Fonction pour distribuer les nodes horizontalement (espacement égal)
   const distributeNodesHorizontally = useCallback(() => {
@@ -1041,7 +1097,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       }),
     );
     toast.success(`${selectedNodes.length} blocs distribués horizontalement`);
-  }, [selectedNodes, setNodes, items, layers]);
+  }, [selectedNodes, setNodes, items, layers, getNodeWidth]);
 
   // Fonction pour distribuer les nodes verticalement (espacement égal)
   const distributeNodesVertically = useCallback(() => {
@@ -1070,7 +1126,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       }),
     );
     toast.success(`${selectedNodes.length} blocs distribués verticalement`);
-  }, [selectedNodes, setNodes, items, layers]);
+  }, [selectedNodes, setNodes, items, layers, getNodeHeight]);
 
   // Fonction pour mettre à jour les handles d'un bloc
   const updateNodeHandles = useCallback((nodeId: string, handles: BlockHandles) => {
