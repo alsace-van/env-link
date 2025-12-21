@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.3 - Légende déplacée à droite
+// VERSION: 3.4 - MiniMap remontée pour laisser place à Légende
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2785,6 +2785,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 }
               }}
               maskColor="rgba(0,0,0,0.1)"
+              style={{ bottom: 60 }}
             />
             <Panel position="top-right">
               <Popover>
