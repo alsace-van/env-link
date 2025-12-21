@@ -27,17 +27,14 @@ export const ImageCompareSlider = ({
   const [isDragging, setIsDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleMove = useCallback(
-    (clientX: number) => {
-      if (!containerRef.current) return;
+  const handleMove = useCallback((clientX: number) => {
+    if (!containerRef.current) return;
 
-      const rect = containerRef.current.getBoundingClientRect();
-      const x = clientX - rect.left;
-      const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100));
-      setSliderPosition(percentage);
-    },
-    []
-  );
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100));
+    setSliderPosition(percentage);
+  }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -50,7 +47,7 @@ export const ImageCompareSlider = ({
       if (!isDragging) return;
       handleMove(e.clientX);
     },
-    [isDragging, handleMove]
+    [isDragging, handleMove],
   );
 
   const handleMouseUp = () => {
@@ -67,7 +64,7 @@ export const ImageCompareSlider = ({
       if (!isDragging) return;
       handleMove(e.touches[0].clientX);
     },
-    [isDragging, handleMove]
+    [isDragging, handleMove],
   );
 
   const handleTouchEnd = () => {
@@ -77,10 +74,7 @@ export const ImageCompareSlider = ({
   return (
     <div
       ref={containerRef}
-      className={cn(
-        "relative w-full aspect-video overflow-hidden rounded-lg cursor-ew-resize select-none",
-        className
-      )}
+      className={cn("relative w-full aspect-video overflow-hidden rounded-lg cursor-ew-resize select-none", className)}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -98,10 +92,7 @@ export const ImageCompareSlider = ({
       />
 
       {/* Image Avant (calque avec clip) */}
-      <div
-        className="absolute inset-0 overflow-hidden"
-        style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}
-      >
+      <div className="absolute inset-0 overflow-hidden" style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}>
         <img
           src={beforeImage}
           alt={beforeLabel}
