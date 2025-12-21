@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.28 - Edge avec virage près du bloc petit + correction artefacts
+// VERSION: 2.29 - Alignement vertical sur les handles connectés
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1077,33 +1077,135 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     toast.success(`${selectedNodes.length} blocs alignés horizontalement`);
   }, [selectedNodes, setNodes, items, layers, edges, nodeHandles, nodes, getNodeHeight]);
 
-  // Fonction pour aligner les nodes sélectionnés verticalement
+  // Fonction pour aligner les nodes sélectionnés verticalement (sur les handles connectés)
   const alignNodesVertically = useCallback(() => {
     if (selectedNodes.length < 2) return;
 
-    // Trouver le bloc le plus en haut comme référence
-    const referenceNode = [...selectedNodes].sort((a, b) => a.position.y - b.position.y)[0];
-    const refWidth = getNodeWidth(referenceNode);
-    const targetCenterX = referenceNode.position.x + refWidth / 2;
+    // Trier par position Y (haut en bas)
+    const sortedNodes = [...selectedNodes].sort((a, b) => a.position.y - b.position.y);
+    const selectedIds = new Set(selectedNodes.map((n) => n.id));
 
+    // Trouver les connexions entre les blocs sélectionnés
+    const connectionsBetweenSelected = edges.filter(
+      (e) => selectedIds.has(e.source_node_id) && selectedIds.has(e.target_node_id),
+    );
+
+    // Construire les nouvelles positions X
+    const newPositions: Record<string, number> = {};
+
+    // Le premier bloc (le plus en haut) garde sa position X
+    const firstNode = sortedNodes[0];
+    newPositions[firstNode.id] = firstNode.position.x;
+
+    // Fonction pour calculer la position X absolue d'un handle
+    const getHandleAbsoluteX = (nodeId: string, handleId: string | null, nodeX: number): number => {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (!node) return nodeX;
+
+      const nodeWidth = getNodeWidth(node);
+
+      if (!handleId) {
+        return nodeX + nodeWidth / 2;
+      }
+
+      const match = handleId.match(/^(top|bottom|left|right)-(\d+)$/);
+      if (!match) {
+        return nodeX + nodeWidth / 2;
+      }
+
+      const side = match[1];
+      const handleIndex = parseInt(match[2], 10);
+
+      // Pour les handles verticaux (left/right), on utilise le centre horizontal
+      if (side === "left" || side === "right") {
+        return nodeX + nodeWidth / 2;
+      }
+
+      // Pour les handles horizontaux (top/bottom), calculer la position X
+      const handles = nodeHandles[nodeId] || DEFAULT_HANDLES;
+      const count = handles[side as keyof BlockHandles] || 1;
+      const percent = count === 1 ? 50 : 15 + (handleIndex - 1) * (70 / Math.max(count - 1, 1));
+
+      return nodeX + (percent / 100) * nodeWidth;
+    };
+
+    // Parcourir les blocs de haut en bas et aligner en chaîne
+    for (let i = 1; i < sortedNodes.length; i++) {
+      const currentNode = sortedNodes[i];
+
+      // Chercher une connexion entrante depuis un bloc déjà positionné
+      const incomingConnection = connectionsBetweenSelected.find(
+        (e) => e.target_node_id === currentNode.id && newPositions[e.source_node_id] !== undefined,
+      );
+
+      let targetX: number;
+
+      if (incomingConnection) {
+        // Aligner sur le handle de la connexion
+        const sourceNode = nodes.find((n) => n.id === incomingConnection.source_node_id);
+        if (sourceNode) {
+          const sourceX = newPositions[incomingConnection.source_node_id];
+          const sourceHandleX = getHandleAbsoluteX(
+            incomingConnection.source_node_id,
+            incomingConnection.source_handle,
+            sourceX,
+          );
+
+          // Calculer où doit être le nœud courant pour que son handle target soit aligné
+          const currentWidth = getNodeWidth(currentNode);
+          const targetHandleId = incomingConnection.target_handle;
+
+          let targetHandlePercent = 50;
+          if (targetHandleId) {
+            const match = targetHandleId.match(/^(top|bottom|left|right)-(\d+)$/);
+            if (match && (match[1] === "top" || match[1] === "bottom")) {
+              const side = match[1];
+              const handleIndex = parseInt(match[2], 10);
+              const handles = nodeHandles[currentNode.id] || DEFAULT_HANDLES;
+              const count = handles[side as keyof BlockHandles] || 1;
+              targetHandlePercent = count === 1 ? 50 : 15 + (handleIndex - 1) * (70 / Math.max(count - 1, 1));
+            }
+          }
+
+          const targetHandleOffset = (targetHandlePercent / 100) * currentWidth;
+          targetX = sourceHandleX - targetHandleOffset;
+        } else {
+          // Fallback: utiliser le centre
+          const prevNode = sortedNodes[i - 1];
+          const prevX = newPositions[prevNode.id] ?? prevNode.position.x;
+          const prevWidth = getNodeWidth(prevNode);
+          const currentWidth = getNodeWidth(currentNode);
+          targetX = prevX + (prevWidth - currentWidth) / 2;
+        }
+      } else {
+        // Pas de connexion directe, aligner sur le centre du bloc précédent
+        const prevNode = sortedNodes[i - 1];
+        const prevX = newPositions[prevNode.id] ?? prevNode.position.x;
+        const prevWidth = getNodeWidth(prevNode);
+        const currentWidth = getNodeWidth(currentNode);
+        targetX = prevX + (prevWidth - currentWidth) / 2;
+      }
+
+      newPositions[currentNode.id] = targetX;
+    }
+
+    // Appliquer les nouvelles positions
     setNodes((nds) =>
       nds.map((n) => {
-        if (n.selected) {
+        if (n.selected && newPositions[n.id] !== undefined) {
           const item = items.find((i) => i.id === n.id);
           const itemLayerId = item?.layerId || "layer-default";
           const layer = layers.find((l) => l.id === itemLayerId);
           if (layer?.locked) return n;
 
-          const nodeWidth = getNodeWidth(n);
-          const newX = targetCenterX - nodeWidth / 2;
-
-          return { ...n, position: { ...n.position, x: newX } };
+          return { ...n, position: { ...n.position, x: newPositions[n.id] } };
         }
         return n;
       }),
     );
+
     toast.success(`${selectedNodes.length} blocs alignés verticalement`);
-  }, [selectedNodes, setNodes, items, layers, getNodeWidth]);
+  }, [selectedNodes, setNodes, items, layers, edges, nodeHandles, nodes, getNodeWidth]);
 
   // Fonction pour distribuer les nodes horizontalement (espacement égal)
   const distributeNodesHorizontally = useCallback(() => {
