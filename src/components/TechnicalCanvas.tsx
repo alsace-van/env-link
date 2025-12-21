@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.20 - Alignement intelligent sur les handles connectés
+// VERSION: 2.22 - Évitement des câbles obstacles lors de l'alignement
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -625,43 +625,88 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     return 240; // largeur par défaut
   };
 
-  // Calculer la position Y d'un handle sur un node
-  const getHandleY = (node: Node, handleId: string | null): number => {
-    const nodeHeight = getNodeHeight(node);
-
-    if (!handleId) {
-      // Si pas de handle spécifié, utiliser le centre
-      return node.position.y + nodeHeight / 2;
-    }
-
-    // Extraire le côté et l'index du handle (ex: "right-2" -> side="right", index=2)
-    const match = handleId.match(/^(top|bottom|left|right)-(\d+)$/);
-    if (!match) {
-      return node.position.y + nodeHeight / 2;
-    }
-
-    const side = match[1];
-    const handleIndex = parseInt(match[2], 10);
-
-    // Pour les handles horizontaux (top/bottom), on utilise le centre vertical
-    if (side === "top" || side === "bottom") {
-      return node.position.y + nodeHeight / 2;
-    }
-
-    // Pour les handles verticaux (left/right), calculer la position Y
-    // Récupérer le nombre de handles sur ce côté
-    const handles = nodeHandles[node.id] || DEFAULT_HANDLES;
-    const count = handles[side as keyof BlockHandles] || 1;
-
-    // Calculer le pourcentage (même formule que generateHandles)
-    const percent = count === 1 ? 50 : 15 + (handleIndex - 1) * (70 / Math.max(count - 1, 1));
-
-    return node.position.y + (percent / 100) * nodeHeight;
-  };
-
   // Espacement entre les blocs
   const BLOCK_SPACING_H = 50;
   const BLOCK_SPACING_V = 30;
+  const CABLE_CLEARANCE = 40; // Espace minimum entre un bloc et un câble
+
+  // Fonction pour calculer la bounding box approximative d'un câble
+  const getCableBoundingBox = (edge: SchemaEdge): { minY: number; maxY: number; minX: number; maxX: number } | null => {
+    const sourceNode = nodes.find((n) => n.id === edge.source_node_id);
+    const targetNode = nodes.find((n) => n.id === edge.target_node_id);
+
+    if (!sourceNode || !targetNode) return null;
+
+    const sourceHeight = getNodeHeight(sourceNode);
+    const sourceWidth = getNodeWidth(sourceNode);
+    const targetHeight = getNodeHeight(targetNode);
+    const targetWidth = getNodeWidth(targetNode);
+
+    // Calculer les positions des handles
+    let sourceY = sourceNode.position.y + sourceHeight / 2;
+    let sourceX = sourceNode.position.x + sourceWidth;
+    let targetY = targetNode.position.y + targetHeight / 2;
+    let targetX = targetNode.position.x;
+
+    // Ajuster selon le handle source
+    if (edge.source_handle) {
+      const match = edge.source_handle.match(/^(top|bottom|left|right)-(\d+)$/);
+      if (match) {
+        const side = match[1];
+        const handleIndex = parseInt(match[2], 10);
+        const handles = nodeHandles[sourceNode.id] || DEFAULT_HANDLES;
+        const count = handles[side as keyof BlockHandles] || 1;
+        const percent = count === 1 ? 50 : 15 + (handleIndex - 1) * (70 / Math.max(count - 1, 1));
+
+        if (side === "right") {
+          sourceY = sourceNode.position.y + (percent / 100) * sourceHeight;
+          sourceX = sourceNode.position.x + sourceWidth;
+        } else if (side === "left") {
+          sourceY = sourceNode.position.y + (percent / 100) * sourceHeight;
+          sourceX = sourceNode.position.x;
+        } else if (side === "bottom") {
+          sourceX = sourceNode.position.x + (percent / 100) * sourceWidth;
+          sourceY = sourceNode.position.y + sourceHeight;
+        } else if (side === "top") {
+          sourceX = sourceNode.position.x + (percent / 100) * sourceWidth;
+          sourceY = sourceNode.position.y;
+        }
+      }
+    }
+
+    // Ajuster selon le handle target
+    if (edge.target_handle) {
+      const match = edge.target_handle.match(/^(top|bottom|left|right)-(\d+)$/);
+      if (match) {
+        const side = match[1];
+        const handleIndex = parseInt(match[2], 10);
+        const handles = nodeHandles[targetNode.id] || DEFAULT_HANDLES;
+        const count = handles[side as keyof BlockHandles] || 1;
+        const percent = count === 1 ? 50 : 15 + (handleIndex - 1) * (70 / Math.max(count - 1, 1));
+
+        if (side === "left") {
+          targetY = targetNode.position.y + (percent / 100) * targetHeight;
+          targetX = targetNode.position.x;
+        } else if (side === "right") {
+          targetY = targetNode.position.y + (percent / 100) * targetHeight;
+          targetX = targetNode.position.x + targetWidth;
+        } else if (side === "top") {
+          targetX = targetNode.position.x + (percent / 100) * targetWidth;
+          targetY = targetNode.position.y;
+        } else if (side === "bottom") {
+          targetX = targetNode.position.x + (percent / 100) * targetWidth;
+          targetY = targetNode.position.y + targetHeight;
+        }
+      }
+    }
+
+    return {
+      minY: Math.min(sourceY, targetY) - CABLE_CLEARANCE,
+      maxY: Math.max(sourceY, targetY) + CABLE_CLEARANCE,
+      minX: Math.min(sourceX, targetX),
+      maxX: Math.max(sourceX, targetX),
+    };
+  };
 
   // Fonction pour aligner les nodes sélectionnés horizontalement
   const alignNodesHorizontally = useCallback(() => {
@@ -669,89 +714,170 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
     // Trier par position X (gauche à droite)
     const sortedNodes = [...selectedNodes].sort((a, b) => a.position.x - b.position.x);
+    const selectedIds = new Set(selectedNodes.map((n) => n.id));
 
     // Trouver les connexions entre les blocs sélectionnés
-    const selectedIds = new Set(selectedNodes.map((n) => n.id));
     const connectionsBetweenSelected = edges.filter(
       (e) => selectedIds.has(e.source_node_id) && selectedIds.has(e.target_node_id),
     );
 
-    // Si des connexions existent, aligner sur les handles connectés
-    if (connectionsBetweenSelected.length > 0) {
-      // Utiliser le premier bloc (le plus à gauche) comme référence
-      const referenceNode = sortedNodes[0];
+    // Trouver les câbles "obstacles" (câbles qui ne sont pas entre blocs sélectionnés mais qui passent dans la zone)
+    const obstacleCables = edges.filter((e) => {
+      // Exclure les câbles entre blocs sélectionnés
+      if (selectedIds.has(e.source_node_id) && selectedIds.has(e.target_node_id)) return false;
+      // Garder les câbles qui ont au moins un endpoint dans un bloc non-sélectionné
+      return !selectedIds.has(e.source_node_id) || !selectedIds.has(e.target_node_id);
+    });
 
-      // Trouver une connexion sortant du bloc de référence
-      const connectionFromRef = connectionsBetweenSelected.find((e) => e.source_node_id === referenceNode.id);
+    // Construire un graphe des connexions pour aligner en chaîne
+    const newPositions: Record<string, number> = {};
 
-      let referenceY: number;
-      if (connectionFromRef) {
-        // Utiliser le handle source comme référence
-        referenceY = getHandleY(referenceNode, connectionFromRef.source_handle);
-      } else {
-        // Sinon utiliser le centre
-        referenceY = referenceNode.position.y + getNodeHeight(referenceNode) / 2;
+    // Le premier bloc (le plus à gauche) garde sa position Y
+    const firstNode = sortedNodes[0];
+    newPositions[firstNode.id] = firstNode.position.y;
+
+    // Fonction pour calculer la position Y absolue d'un handle
+    const getHandleAbsoluteY = (nodeId: string, handleId: string | null, nodeY: number): number => {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (!node) return nodeY;
+
+      const nodeHeight = getNodeHeight(node);
+
+      if (!handleId) {
+        return nodeY + nodeHeight / 2;
       }
 
-      setNodes((nds) =>
-        nds.map((n) => {
-          if (n.selected) {
-            const item = items.find((i) => i.id === n.id);
-            const itemLayerId = item?.layerId || "layer-default";
-            const layer = layers.find((l) => l.id === itemLayerId);
-            if (layer?.locked) return n;
+      const match = handleId.match(/^(top|bottom|left|right)-(\d+)$/);
+      if (!match) {
+        return nodeY + nodeHeight / 2;
+      }
 
-            // Trouver la connexion vers ce bloc
-            const connectionToThis = connectionsBetweenSelected.find((e) => e.target_node_id === n.id);
-            const connectionFromThis = connectionsBetweenSelected.find((e) => e.source_node_id === n.id);
+      const side = match[1];
+      const handleIndex = parseInt(match[2], 10);
 
-            let handleY: number;
-            if (connectionToThis) {
-              // Utiliser le handle target
-              handleY = getHandleY(n, connectionToThis.target_handle);
-            } else if (connectionFromThis && n.id !== referenceNode.id) {
-              // Utiliser le handle source
-              handleY = getHandleY(n, connectionFromThis.source_handle);
-            } else {
-              // Utiliser le centre
-              handleY = n.position.y + getNodeHeight(n) / 2;
+      if (side === "top" || side === "bottom") {
+        return nodeY + nodeHeight / 2;
+      }
+
+      const handles = nodeHandles[nodeId] || DEFAULT_HANDLES;
+      const count = handles[side as keyof BlockHandles] || 1;
+      const percent = count === 1 ? 50 : 15 + (handleIndex - 1) * (70 / Math.max(count - 1, 1));
+
+      return nodeY + (percent / 100) * nodeHeight;
+    };
+
+    // Parcourir les blocs de gauche à droite et aligner en chaîne
+    for (let i = 1; i < sortedNodes.length; i++) {
+      const currentNode = sortedNodes[i];
+
+      // Chercher une connexion entrante depuis un bloc déjà positionné
+      const incomingConnection = connectionsBetweenSelected.find(
+        (e) => e.target_node_id === currentNode.id && newPositions[e.source_node_id] !== undefined,
+      );
+
+      let targetY: number;
+
+      if (incomingConnection) {
+        // Aligner sur le handle de la connexion
+        const sourceNode = nodes.find((n) => n.id === incomingConnection.source_node_id);
+        if (sourceNode) {
+          const sourceY = newPositions[incomingConnection.source_node_id];
+          const sourceHandleY = getHandleAbsoluteY(
+            incomingConnection.source_node_id,
+            incomingConnection.source_handle,
+            sourceY,
+          );
+
+          // Calculer où doit être le nœud courant pour que son handle target soit aligné
+          const currentHeight = getNodeHeight(currentNode);
+          const targetHandleId = incomingConnection.target_handle;
+
+          let targetHandlePercent = 50;
+          if (targetHandleId) {
+            const match = targetHandleId.match(/^(top|bottom|left|right)-(\d+)$/);
+            if (match && (match[1] === "left" || match[1] === "right")) {
+              const side = match[1];
+              const handleIndex = parseInt(match[2], 10);
+              const handles = nodeHandles[currentNode.id] || DEFAULT_HANDLES;
+              const count = handles[side as keyof BlockHandles] || 1;
+              targetHandlePercent = count === 1 ? 50 : 15 + (handleIndex - 1) * (70 / Math.max(count - 1, 1));
             }
-
-            // Calculer le décalage pour aligner le handle sur referenceY
-            const currentHandleOffset = handleY - n.position.y;
-            const newY = referenceY - currentHandleOffset;
-
-            return { ...n, position: { ...n.position, y: newY } };
           }
-          return n;
-        }),
-      );
-    } else {
-      // Pas de connexions : aligner sur le centre du premier bloc
-      const referenceNode = sortedNodes[0];
-      const refHeight = getNodeHeight(referenceNode);
-      const targetCenterY = referenceNode.position.y + refHeight / 2;
 
-      setNodes((nds) =>
-        nds.map((n) => {
-          if (n.selected) {
-            const item = items.find((i) => i.id === n.id);
-            const itemLayerId = item?.layerId || "layer-default";
-            const layer = layers.find((l) => l.id === itemLayerId);
-            if (layer?.locked) return n;
+          const targetHandleOffset = (targetHandlePercent / 100) * currentHeight;
+          targetY = sourceHandleY - targetHandleOffset;
+        } else {
+          // Fallback: utiliser le centre
+          const prevNode = sortedNodes[i - 1];
+          const prevY = newPositions[prevNode.id] ?? prevNode.position.y;
+          const prevHeight = getNodeHeight(prevNode);
+          const currentHeight = getNodeHeight(currentNode);
+          targetY = prevY + (prevHeight - currentHeight) / 2;
+        }
+      } else {
+        // Pas de connexion directe, aligner sur le centre du bloc précédent
+        const prevNode = sortedNodes[i - 1];
+        const prevY = newPositions[prevNode.id] ?? prevNode.position.y;
+        const prevHeight = getNodeHeight(prevNode);
+        const currentHeight = getNodeHeight(currentNode);
+        targetY = prevY + (prevHeight - currentHeight) / 2;
+      }
 
-            const nodeHeight = getNodeHeight(n);
-            const newY = targetCenterY - nodeHeight / 2;
+      // Vérifier si cette position entre en collision avec des câbles obstacles
+      const currentHeight = getNodeHeight(currentNode);
+      const currentWidth = getNodeWidth(currentNode);
+      const blockMinY = targetY;
+      const blockMaxY = targetY + currentHeight;
+      const blockMinX = currentNode.position.x;
+      const blockMaxX = currentNode.position.x + currentWidth;
 
-            return { ...n, position: { ...n.position, y: newY } };
+      for (const cable of obstacleCables) {
+        const cableBbox = getCableBoundingBox(cable);
+        if (!cableBbox) continue;
+
+        // Vérifier si le câble passe dans la zone horizontale du bloc
+        const horizontalOverlap = blockMinX < cableBbox.maxX && blockMaxX > cableBbox.minX;
+
+        if (horizontalOverlap) {
+          // Vérifier si le bloc va croiser le câble
+          const verticalOverlap = blockMinY < cableBbox.maxY && blockMaxY > cableBbox.minY;
+
+          if (verticalOverlap) {
+            // Collision détectée ! Déplacer le bloc au-dessus ou en-dessous du câble
+            const distanceToGoAbove = cableBbox.minY - blockMaxY;
+            const distanceToGoBelow = cableBbox.maxY - blockMinY;
+
+            if (Math.abs(distanceToGoAbove) < Math.abs(distanceToGoBelow)) {
+              // Aller au-dessus
+              targetY = cableBbox.minY - currentHeight - CABLE_CLEARANCE;
+            } else {
+              // Aller en-dessous
+              targetY = cableBbox.maxY + CABLE_CLEARANCE;
+            }
           }
-          return n;
-        }),
-      );
+        }
+      }
+
+      newPositions[currentNode.id] = targetY;
     }
 
+    // Appliquer les nouvelles positions
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.selected && newPositions[n.id] !== undefined) {
+          const item = items.find((i) => i.id === n.id);
+          const itemLayerId = item?.layerId || "layer-default";
+          const layer = layers.find((l) => l.id === itemLayerId);
+          if (layer?.locked) return n;
+
+          return { ...n, position: { ...n.position, y: newPositions[n.id] } };
+        }
+        return n;
+      }),
+    );
+
     toast.success(`${selectedNodes.length} blocs alignés horizontalement`);
-  }, [selectedNodes, setNodes, items, layers, edges, nodeHandles]);
+  }, [selectedNodes, setNodes, items, layers, edges, nodeHandles, nodes]);
 
   // Fonction pour aligner les nodes sélectionnés verticalement
   const alignNodesVertically = useCallback(() => {
