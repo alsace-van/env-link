@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.16 - Alignement sur le premier bloc (pas la moyenne)
+// VERSION: 2.17 - Correction centrage des handles (transform)
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -346,7 +346,11 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
     return Array.from({ length: count }, (_, i) => {
       // Répartir les handles uniformément (éviter les bords)
       const percent = count === 1 ? 50 : 15 + i * (70 / Math.max(count - 1, 1));
-      const style = isHorizontal ? { left: `${percent}%` } : { top: `${percent}%` };
+
+      // Style avec centrage correct (translate pour compenser le décalage)
+      const style = isHorizontal
+        ? { left: `${percent}%`, transform: "translateX(-50%)" }
+        : { top: `${percent}%`, transform: "translateY(-50%)" };
 
       return (
         <Handle
