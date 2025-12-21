@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.22 - Évitement des câbles obstacles lors de l'alignement
+// VERSION: 2.23 - Edge custom avec virage près de la source
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -28,6 +28,11 @@ import {
   MarkerType,
   Panel,
   ConnectionMode,
+  EdgeProps,
+  getBezierPath,
+  getSmoothStepPath,
+  BaseEdge,
+  EdgeLabelRenderer,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
@@ -512,6 +517,108 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
 };
 
 const blockNodeTypes = { electricalBlock: ElectricalBlockNode };
+
+// ============================================
+// EDGE PERSONNALISÉ - Virage près de la source
+// ============================================
+
+const CustomSmoothEdge = ({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  style,
+  label,
+  labelStyle,
+  labelBgStyle,
+  data,
+}: EdgeProps) => {
+  // Calculer le chemin avec un offset pour que le virage soit plus près de la source
+  // Pour les connexions verticales (bottom → top ou similaire), on veut que le virage
+  // se fasse à ~30px de la source au lieu du milieu
+
+  const isVertical = sourcePosition === Position.Bottom || sourcePosition === Position.Top;
+  const isHorizontal = sourcePosition === Position.Left || sourcePosition === Position.Right;
+
+  let edgePath: string;
+  let labelX: number;
+  let labelY: number;
+
+  // Distance du virage par rapport à la source (en pixels)
+  const turnDistance = 40;
+
+  if (isVertical && Math.abs(sourceX - targetX) > 50) {
+    // Connexion verticale avec un décalage horizontal significatif
+    // Faire le virage près de la source
+    const midY = sourcePosition === Position.Bottom ? sourceY + turnDistance : sourceY - turnDistance;
+
+    edgePath = `M ${sourceX} ${sourceY} 
+                L ${sourceX} ${midY} 
+                Q ${sourceX} ${midY + (targetY > sourceY ? 10 : -10)} ${sourceX + (targetX > sourceX ? 10 : -10)} ${midY + (targetY > sourceY ? 10 : -10)}
+                L ${targetX - (targetX > sourceX ? 10 : -10)} ${midY + (targetY > sourceY ? 10 : -10)}
+                Q ${targetX} ${midY + (targetY > sourceY ? 10 : -10)} ${targetX} ${midY + (targetY > sourceY ? 20 : -20)}
+                L ${targetX} ${targetY}`;
+
+    labelX = (sourceX + targetX) / 2;
+    labelY = midY;
+  } else if (isHorizontal && Math.abs(sourceY - targetY) > 50) {
+    // Connexion horizontale avec un décalage vertical significatif
+    // Faire le virage près de la source
+    const midX = sourcePosition === Position.Right ? sourceX + turnDistance : sourceX - turnDistance;
+
+    edgePath = `M ${sourceX} ${sourceY} 
+                L ${midX} ${sourceY} 
+                Q ${midX + (targetX > sourceX ? 10 : -10)} ${sourceY} ${midX + (targetX > sourceX ? 10 : -10)} ${sourceY + (targetY > sourceY ? 10 : -10)}
+                L ${midX + (targetX > sourceX ? 10 : -10)} ${targetY - (targetY > sourceY ? 10 : -10)}
+                Q ${midX + (targetX > sourceX ? 10 : -10)} ${targetY} ${midX + (targetX > sourceX ? 20 : -20)} ${targetY}
+                L ${targetX} ${targetY}`;
+
+    labelX = midX;
+    labelY = (sourceY + targetY) / 2;
+  } else {
+    // Utiliser le chemin smoothstep standard pour les autres cas
+    [edgePath, labelX, labelY] = getSmoothStepPath({
+      sourceX,
+      sourceY,
+      sourcePosition,
+      targetX,
+      targetY,
+      targetPosition,
+      borderRadius: 8,
+    });
+  }
+
+  return (
+    <>
+      <BaseEdge id={id} path={edgePath} style={style} />
+      {label && (
+        <EdgeLabelRenderer>
+          <div
+            style={{
+              position: "absolute",
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              pointerEvents: "all",
+              ...labelBgStyle,
+              padding: "2px 4px",
+              borderRadius: 4,
+              fontSize: 11,
+              fontWeight: 600,
+              ...(labelStyle as React.CSSProperties),
+            }}
+            className="nodrag nopan"
+          >
+            {label as string}
+          </div>
+        </EdgeLabelRenderer>
+      )}
+    </>
+  );
+};
+
+const edgeTypes = { customSmooth: CustomSmoothEdge };
 
 // ============================================
 // COMPOSANT MODE BLOCS
@@ -1386,14 +1493,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           target: edge.target_node_id,
           sourceHandle: edge.source_handle || undefined,
           targetHandle: edge.target_handle || undefined,
-          type: "smoothstep",
-          pathOptions: { offset: offset, borderRadius: 10 },
+          type: "customSmooth",
+          data: { offset },
           label: edge.section || undefined,
           labelStyle: { fill: edgeColor, fontWeight: 600, fontSize: 11 },
           labelBgStyle: { fill: "white", fillOpacity: 0.9 },
           labelBgPadding: [4, 2] as [number, number],
           labelBgBorderRadius: 4,
-          // Pas de flèche
           style: {
             strokeWidth: isSelected ? edgeWidth + 2 : edgeWidth,
             stroke: edgeColor,
@@ -1895,6 +2001,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             }}
             onPaneClick={() => setSelectedEdgeId(null)}
             nodeTypes={blockNodeTypes}
+            edgeTypes={edgeTypes}
             connectionMode={ConnectionMode.Loose}
             deleteKeyCode={null}
             selectionKeyCode="Shift"
@@ -1907,8 +2014,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             minZoom={0.2}
             maxZoom={2}
             defaultEdgeOptions={{
-              type: "smoothstep",
-              markerEnd: { type: MarkerType.ArrowClosed },
+              type: "customSmooth",
               style: { strokeWidth: 2 },
             }}
             proOptions={{ hideAttribution: true }}
