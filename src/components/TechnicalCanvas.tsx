@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.12 - Verrouillage = protection bloc seulement (connexions OK)
+// VERSION: 2.13 - Sélection multiple Shift+clic + déplacement groupé
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1514,7 +1514,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             nodeTypes={blockNodeTypes}
             connectionMode={ConnectionMode.Loose}
             deleteKeyCode={null}
-            selectionKeyCode={null}
+            selectionKeyCode="Shift"
+            multiSelectionKeyCode="Shift"
+            selectionOnDrag
+            selectNodesOnDrag={false}
+            panOnDrag={[1, 2]}
             fitView
             fitViewOptions={{ padding: 0.2 }}
             minZoom={0.2}
@@ -1552,9 +1556,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               maskColor="rgba(0,0,0,0.1)"
             />
             <Panel position="top-right">
-              <div className="bg-white/90 rounded-lg shadow p-2 text-xs text-gray-600 border">
-                💡 Glissez depuis les points <span className="text-green-600 font-semibold">verts</span> vers les{" "}
-                <span className="text-blue-600 font-semibold">bleus</span>
+              <div className="bg-white/90 rounded-lg shadow p-2 text-xs text-gray-600 border space-y-1">
+                <div>
+                  💡 Glissez depuis les points <span className="text-green-600 font-semibold">verts</span> vers les{" "}
+                  <span className="text-blue-600 font-semibold">bleus</span>
+                </div>
+                <div>
+                  🖱️ <span className="font-semibold">Shift+clic</span> = sélection multiple
+                </div>
               </div>
             </Panel>
             {selectedEdgeId && selectedEdge && (
