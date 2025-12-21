@@ -10,11 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -265,10 +261,7 @@ const LayerItem = ({
             {canDelete && (
               <>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={onDelete}
-                  className="text-red-600 focus:text-red-600"
-                >
+                <DropdownMenuItem onClick={onDelete} className="text-red-600 focus:text-red-600">
                   <Trash2 className="h-4 w-4 mr-2" />
                   Supprimer
                 </DropdownMenuItem>
@@ -299,38 +292,22 @@ export const SchemaLayersPanel = ({
 
   // Toggle visibilité d'un calque
   const toggleVisibility = (layerId: string) => {
-    onLayersChange(
-      layers.map((l) =>
-        l.id === layerId ? { ...l, visible: !l.visible } : l
-      )
-    );
+    onLayersChange(layers.map((l) => (l.id === layerId ? { ...l, visible: !l.visible } : l)));
   };
 
   // Toggle verrouillage d'un calque
   const toggleLock = (layerId: string) => {
-    onLayersChange(
-      layers.map((l) =>
-        l.id === layerId ? { ...l, locked: !l.locked } : l
-      )
-    );
+    onLayersChange(layers.map((l) => (l.id === layerId ? { ...l, locked: !l.locked } : l)));
   };
 
   // Changer la couleur d'un calque
   const changeColor = (layerId: string, color: string) => {
-    onLayersChange(
-      layers.map((l) =>
-        l.id === layerId ? { ...l, color } : l
-      )
-    );
+    onLayersChange(layers.map((l) => (l.id === layerId ? { ...l, color } : l)));
   };
 
   // Renommer un calque
   const renameLayer = (layerId: string, name: string) => {
-    onLayersChange(
-      layers.map((l) =>
-        l.id === layerId ? { ...l, name } : l
-      )
-    );
+    onLayersChange(layers.map((l) => (l.id === layerId ? { ...l, name } : l)));
   };
 
   // Ajouter un nouveau calque
@@ -358,19 +335,23 @@ export const SchemaLayersPanel = ({
     const count = itemCountByLayer[layerId] || 0;
     if (count > 0) {
       const defaultLayer = layers.find((l) => l.id !== layerId);
-      if (!confirm(`Ce calque contient ${count} élément(s). Les éléments seront déplacés vers "${defaultLayer?.name || "un autre calque"}". Continuer ?`)) {
+      if (
+        !confirm(
+          `Ce calque contient ${count} élément(s). Les éléments seront déplacés vers "${defaultLayer?.name || "un autre calque"}". Continuer ?`,
+        )
+      ) {
         return;
       }
     }
 
     const newLayers = layers.filter((l) => l.id !== layerId);
     onLayersChange(newLayers);
-    
+
     // Si on supprime le calque actif, sélectionner le premier restant
     if (activeLayerId === layerId && newLayers.length > 0) {
       onActiveLayerChange(newLayers[0].id);
     }
-    
+
     toast.success(`Calque "${layer.name}" supprimé`);
   };
 
@@ -384,9 +365,7 @@ export const SchemaLayersPanel = ({
       return l;
     });
     // Réordonner proprement
-    const reordered = newLayers
-      .sort((a, b) => a.order - b.order)
-      .map((l, i) => ({ ...l, order: i }));
+    const reordered = newLayers.sort((a, b) => a.order - b.order).map((l, i) => ({ ...l, order: i }));
     onLayersChange(reordered);
   };
 
@@ -400,9 +379,7 @@ export const SchemaLayersPanel = ({
       return l;
     });
     // Réordonner proprement
-    const reordered = newLayers
-      .sort((a, b) => a.order - b.order)
-      .map((l, i) => ({ ...l, order: i }));
+    const reordered = newLayers.sort((a, b) => a.order - b.order).map((l, i) => ({ ...l, order: i }));
     onLayersChange(reordered);
   };
 
