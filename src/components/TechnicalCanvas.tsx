@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.19 - Utilise les dimensions mesurées par ReactFlow pour l'alignement
+// VERSION: 2.20 - Alignement intelligent sur les handles connectés
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -595,11 +595,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // Obtenir la hauteur réelle d'un node (mesurée par ReactFlow)
   const getNodeHeight = (node: Node): number => {
-    // ReactFlow v11+ stocke les dimensions mesurées dans node.measured
-    // Les versions plus anciennes utilisent node.height directement
     const measuredHeight = (node as any).measured?.height || (node as any).height;
     if (measuredHeight) {
-      console.log("[getNodeHeight]", node.id, "measured:", measuredHeight);
       return measuredHeight;
     }
 
@@ -616,7 +613,6 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     if (item.quantite > 1 && item.puissance_watts) height += 32;
     height += 40; // badge + padding
 
-    console.log("[getNodeHeight]", node.id, "estimated:", height);
     return height;
   };
 
@@ -629,45 +625,135 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     return 240; // largeur par défaut
   };
 
+  // Calculer la position Y d'un handle sur un node
+  const getHandleY = (node: Node, handleId: string | null): number => {
+    const nodeHeight = getNodeHeight(node);
+
+    if (!handleId) {
+      // Si pas de handle spécifié, utiliser le centre
+      return node.position.y + nodeHeight / 2;
+    }
+
+    // Extraire le côté et l'index du handle (ex: "right-2" -> side="right", index=2)
+    const match = handleId.match(/^(top|bottom|left|right)-(\d+)$/);
+    if (!match) {
+      return node.position.y + nodeHeight / 2;
+    }
+
+    const side = match[1];
+    const handleIndex = parseInt(match[2], 10);
+
+    // Pour les handles horizontaux (top/bottom), on utilise le centre vertical
+    if (side === "top" || side === "bottom") {
+      return node.position.y + nodeHeight / 2;
+    }
+
+    // Pour les handles verticaux (left/right), calculer la position Y
+    // Récupérer le nombre de handles sur ce côté
+    const handles = nodeHandles[node.id] || DEFAULT_HANDLES;
+    const count = handles[side as keyof BlockHandles] || 1;
+
+    // Calculer le pourcentage (même formule que generateHandles)
+    const percent = count === 1 ? 50 : 15 + (handleIndex - 1) * (70 / Math.max(count - 1, 1));
+
+    return node.position.y + (percent / 100) * nodeHeight;
+  };
+
   // Espacement entre les blocs
   const BLOCK_SPACING_H = 50;
   const BLOCK_SPACING_V = 30;
 
-  // Fonction pour aligner les nodes sélectionnés horizontalement (centres alignés sur même Y)
+  // Fonction pour aligner les nodes sélectionnés horizontalement
   const alignNodesHorizontally = useCallback(() => {
     if (selectedNodes.length < 2) return;
 
-    // Trouver le bloc le plus à gauche comme référence
-    const referenceNode = [...selectedNodes].sort((a, b) => a.position.x - b.position.x)[0];
-    const refHeight = getNodeHeight(referenceNode);
-    const targetCenterY = referenceNode.position.y + refHeight / 2;
+    // Trier par position X (gauche à droite)
+    const sortedNodes = [...selectedNodes].sort((a, b) => a.position.x - b.position.x);
 
-    console.log("[Align] Reference node:", referenceNode.id, "height:", refHeight, "centerY:", targetCenterY);
-
-    setNodes((nds) =>
-      nds.map((n) => {
-        if (n.selected) {
-          // Vérifier si le bloc est sur un calque verrouillé
-          const item = items.find((i) => i.id === n.id);
-          const itemLayerId = item?.layerId || "layer-default";
-          const layer = layers.find((l) => l.id === itemLayerId);
-          if (layer?.locked) return n;
-
-          // Calculer la nouvelle position Y pour aligner le centre
-          const nodeHeight = getNodeHeight(n);
-          const newY = targetCenterY - nodeHeight / 2;
-
-          console.log("[Align] Node:", n.id, "height:", nodeHeight, "newY:", newY);
-
-          return { ...n, position: { ...n.position, y: newY } };
-        }
-        return n;
-      }),
+    // Trouver les connexions entre les blocs sélectionnés
+    const selectedIds = new Set(selectedNodes.map((n) => n.id));
+    const connectionsBetweenSelected = edges.filter(
+      (e) => selectedIds.has(e.source_node_id) && selectedIds.has(e.target_node_id),
     );
-    toast.success(`${selectedNodes.length} blocs alignés horizontalement`);
-  }, [selectedNodes, setNodes, items, layers]);
 
-  // Fonction pour aligner les nodes sélectionnés verticalement (centres alignés sur même X)
+    // Si des connexions existent, aligner sur les handles connectés
+    if (connectionsBetweenSelected.length > 0) {
+      // Utiliser le premier bloc (le plus à gauche) comme référence
+      const referenceNode = sortedNodes[0];
+
+      // Trouver une connexion sortant du bloc de référence
+      const connectionFromRef = connectionsBetweenSelected.find((e) => e.source_node_id === referenceNode.id);
+
+      let referenceY: number;
+      if (connectionFromRef) {
+        // Utiliser le handle source comme référence
+        referenceY = getHandleY(referenceNode, connectionFromRef.source_handle);
+      } else {
+        // Sinon utiliser le centre
+        referenceY = referenceNode.position.y + getNodeHeight(referenceNode) / 2;
+      }
+
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.selected) {
+            const item = items.find((i) => i.id === n.id);
+            const itemLayerId = item?.layerId || "layer-default";
+            const layer = layers.find((l) => l.id === itemLayerId);
+            if (layer?.locked) return n;
+
+            // Trouver la connexion vers ce bloc
+            const connectionToThis = connectionsBetweenSelected.find((e) => e.target_node_id === n.id);
+            const connectionFromThis = connectionsBetweenSelected.find((e) => e.source_node_id === n.id);
+
+            let handleY: number;
+            if (connectionToThis) {
+              // Utiliser le handle target
+              handleY = getHandleY(n, connectionToThis.target_handle);
+            } else if (connectionFromThis && n.id !== referenceNode.id) {
+              // Utiliser le handle source
+              handleY = getHandleY(n, connectionFromThis.source_handle);
+            } else {
+              // Utiliser le centre
+              handleY = n.position.y + getNodeHeight(n) / 2;
+            }
+
+            // Calculer le décalage pour aligner le handle sur referenceY
+            const currentHandleOffset = handleY - n.position.y;
+            const newY = referenceY - currentHandleOffset;
+
+            return { ...n, position: { ...n.position, y: newY } };
+          }
+          return n;
+        }),
+      );
+    } else {
+      // Pas de connexions : aligner sur le centre du premier bloc
+      const referenceNode = sortedNodes[0];
+      const refHeight = getNodeHeight(referenceNode);
+      const targetCenterY = referenceNode.position.y + refHeight / 2;
+
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.selected) {
+            const item = items.find((i) => i.id === n.id);
+            const itemLayerId = item?.layerId || "layer-default";
+            const layer = layers.find((l) => l.id === itemLayerId);
+            if (layer?.locked) return n;
+
+            const nodeHeight = getNodeHeight(n);
+            const newY = targetCenterY - nodeHeight / 2;
+
+            return { ...n, position: { ...n.position, y: newY } };
+          }
+          return n;
+        }),
+      );
+    }
+
+    toast.success(`${selectedNodes.length} blocs alignés horizontalement`);
+  }, [selectedNodes, setNodes, items, layers, edges, nodeHandles]);
+
+  // Fonction pour aligner les nodes sélectionnés verticalement
   const alignNodesVertically = useCallback(() => {
     if (selectedNodes.length < 2) return;
 
@@ -679,13 +765,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     setNodes((nds) =>
       nds.map((n) => {
         if (n.selected) {
-          // Vérifier si le bloc est sur un calque verrouillé
           const item = items.find((i) => i.id === n.id);
           const itemLayerId = item?.layerId || "layer-default";
           const layer = layers.find((l) => l.id === itemLayerId);
           if (layer?.locked) return n;
 
-          // Calculer la nouvelle position X pour aligner le centre
           const nodeWidth = getNodeWidth(n);
           const newX = targetCenterX - nodeWidth / 2;
 
