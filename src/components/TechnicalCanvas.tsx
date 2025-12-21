@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.5 - Onglets de calques dans la barre d'outils
+// VERSION: 2.6 - Onglets calques sur ligne séparée avec bouton œil
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -60,6 +60,7 @@ import {
   PenTool,
   Plus,
   Search,
+  Eye,
   EyeOff,
   Lock,
 } from "lucide-react";
@@ -512,40 +513,35 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const [activeLayerId, setActiveLayerId] = useState<string>("layer-default");
 
   // Gérer le changement de calques (avec déplacement des éléments si suppression)
-  const handleLayersChange = useCallback(
-    (newLayers: SchemaLayer[]) => {
-      // Trouver les calques supprimés
-      const removedLayerIds = layers.filter((l) => !newLayers.find((nl) => nl.id === l.id)).map((l) => l.id);
-
-      if (removedLayerIds.length > 0) {
-        // Trouver le premier calque restant pour y déplacer les éléments
-        const targetLayerId = newLayers[0]?.id || "layer-default";
-
-        // Déplacer les items des calques supprimés
-        setItems((prev) =>
-          prev.map((item) => {
-            if (item.layerId && removedLayerIds.includes(item.layerId)) {
-              return { ...item, layerId: targetLayerId };
-            }
-            return item;
-          }),
-        );
-
-        // Déplacer les edges des calques supprimés
-        setEdges((prev) =>
-          prev.map((edge) => {
-            if (edge.layerId && removedLayerIds.includes(edge.layerId)) {
-              return { ...edge, layerId: targetLayerId };
-            }
-            return edge;
-          }),
-        );
-      }
-
-      setLayers(newLayers);
-    },
-    [layers],
-  );
+  const handleLayersChange = useCallback((newLayers: SchemaLayer[]) => {
+    // Trouver les calques supprimés
+    const removedLayerIds = layers
+      .filter(l => !newLayers.find(nl => nl.id === l.id))
+      .map(l => l.id);
+    
+    if (removedLayerIds.length > 0) {
+      // Trouver le premier calque restant pour y déplacer les éléments
+      const targetLayerId = newLayers[0]?.id || "layer-default";
+      
+      // Déplacer les items des calques supprimés
+      setItems(prev => prev.map(item => {
+        if (item.layerId && removedLayerIds.includes(item.layerId)) {
+          return { ...item, layerId: targetLayerId };
+        }
+        return item;
+      }));
+      
+      // Déplacer les edges des calques supprimés
+      setEdges(prev => prev.map(edge => {
+        if (edge.layerId && removedLayerIds.includes(edge.layerId)) {
+          return { ...edge, layerId: targetLayerId };
+        }
+        return edge;
+      }));
+    }
+    
+    setLayers(newLayers);
+  }, [layers]);
 
   // États pour le sélecteur catalogue
   const [catalogOpen, setCatalogOpen] = useState(false);
@@ -889,7 +885,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   useEffect(() => {
     // IDs des calques visibles
     const visibleLayerIds = new Set(layers.filter((l) => l.visible).map((l) => l.id));
-
+    
     // Filtrer les edges selon les calques visibles
     const visibleEdges = edges.filter((edge) => {
       // Si pas de layerId, l'edge est toujours visible
@@ -967,23 +963,20 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     );
   }, [edges, selectedEdgeId, layers]);
 
-  const handleConnect = useCallback(
-    (connection: Connection) => {
-      if (!connection.source || !connection.target) return;
-      const newEdge: SchemaEdge = {
-        id: `edge-${Date.now()}`,
-        source_node_id: connection.source,
-        target_node_id: connection.target,
-        source_handle: connection.sourceHandle || null,
-        target_handle: connection.targetHandle || null,
-        color: "#ef4444",
-        strokeWidth: 2,
-        layerId: activeLayerId, // Assigner au calque actif
-      };
-      setEdges((prev) => [...prev, newEdge]);
-    },
-    [activeLayerId],
-  );
+  const handleConnect = useCallback((connection: Connection) => {
+    if (!connection.source || !connection.target) return;
+    const newEdge: SchemaEdge = {
+      id: `edge-${Date.now()}`,
+      source_node_id: connection.source,
+      target_node_id: connection.target,
+      source_handle: connection.sourceHandle || null,
+      target_handle: connection.targetHandle || null,
+      color: "#ef4444",
+      strokeWidth: 2,
+      layerId: activeLayerId, // Assigner au calque actif
+    };
+    setEdges((prev) => [...prev, newEdge]);
+  }, [activeLayerId]);
 
   const updateEdgeColor = useCallback(
     (color: string) => {
@@ -1074,8 +1067,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   }
 
   return (
-    <div className={`flex flex-col gap-4 ${isFullscreen ? "fixed inset-0 z-50 bg-white p-4" : "h-[600px]"}`}>
-      {/* Barre d'outils */}
+    <div className={`flex flex-col gap-3 ${isFullscreen ? "fixed inset-0 z-50 bg-white p-4" : "h-[600px]"}`}>
+      {/* Barre d'outils - Ligne 1 : Indicateurs + Boutons */}
       <div className="flex items-center justify-between gap-4 flex-wrap shrink-0">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2 px-3 py-1.5 bg-yellow-50 rounded-lg border border-yellow-200">
@@ -1092,43 +1085,6 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             <Zap className="h-4 w-4 text-red-600" />
             <span className="text-sm font-medium">{totalConsommation} W</span>
             <span className="text-xs text-red-600">conso.</span>
-          </div>
-
-          {/* Séparateur */}
-          <Separator orientation="vertical" className="h-6" />
-
-          {/* Onglets des calques */}
-          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
-            {layers
-              .sort((a, b) => a.order - b.order)
-              .map((layer) => {
-                const isActive = layer.id === activeLayerId;
-                const itemCount =
-                  items.filter((i) => (i.layerId || "layer-default") === layer.id).length +
-                  edges.filter((e) => (e.layerId || "layer-default") === layer.id).length;
-                return (
-                  <button
-                    key={layer.id}
-                    onClick={() => setActiveLayerId(layer.id)}
-                    className={`
-                      flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all
-                      ${isActive ? "bg-white shadow-sm" : "hover:bg-white/50"}
-                      ${!layer.visible ? "opacity-40" : ""}
-                    `}
-                    style={{
-                      color: isActive ? layer.color : undefined,
-                      borderBottom: isActive ? `2px solid ${layer.color}` : undefined,
-                    }}
-                    title={layer.visible ? (layer.locked ? "Verrouillé" : "") : "Masqué"}
-                  >
-                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: layer.color }} />
-                    <span className="max-w-24 truncate">{layer.name}</span>
-                    {itemCount > 0 && <span className="text-xs text-slate-400 ml-0.5">({itemCount})</span>}
-                    {!layer.visible && <EyeOff className="h-3 w-3 text-slate-400" />}
-                    {layer.locked && layer.visible && <Lock className="h-3 w-3 text-amber-500" />}
-                  </button>
-                );
-              })}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -1315,6 +1271,66 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </Button>
         </div>
+      </div>
+
+      {/* Ligne 2 : Onglets des calques */}
+      <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-lg shrink-0 overflow-x-auto">
+        {layers
+          .sort((a, b) => a.order - b.order)
+          .map((layer) => {
+            const isActive = layer.id === activeLayerId;
+            const itemCount = items.filter(i => (i.layerId || "layer-default") === layer.id).length +
+                              edges.filter(e => (e.layerId || "layer-default") === layer.id).length;
+            return (
+              <div
+                key={layer.id}
+                className={`
+                  flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-md text-sm font-medium transition-all flex-shrink-0
+                  ${isActive 
+                    ? "bg-white shadow-sm" 
+                    : "hover:bg-white/50"
+                  }
+                  ${!layer.visible ? "opacity-50" : ""}
+                `}
+                style={{
+                  borderLeft: `3px solid ${layer.color}`,
+                }}
+              >
+                <button
+                  onClick={() => setActiveLayerId(layer.id)}
+                  className="flex items-center gap-1.5"
+                  style={{
+                    color: isActive ? layer.color : undefined,
+                  }}
+                >
+                  <span className="max-w-32 truncate">{layer.name}</span>
+                  {itemCount > 0 && (
+                    <span className="text-xs text-slate-400">({itemCount})</span>
+                  )}
+                  {layer.locked && (
+                    <Lock className="h-3 w-3 text-amber-500" />
+                  )}
+                </button>
+                {/* Bouton œil pour afficher/masquer */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleLayersChange(layers.map(l => 
+                      l.id === layer.id ? { ...l, visible: !l.visible } : l
+                    ));
+                  }}
+                  className="p-1 rounded hover:bg-slate-200 transition-colors"
+                  title={layer.visible ? "Masquer ce calque" : "Afficher ce calque"}
+                >
+                  {layer.visible ? (
+                    <Eye className="h-3.5 w-3.5 text-slate-500" />
+                  ) : (
+                    <EyeOff className="h-3.5 w-3.5 text-slate-400" />
+                  )}
+                </button>
+              </div>
+            );
+          })}
       </div>
 
       {/* Canvas ReactFlow */}
@@ -2563,5 +2579,5 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
         </div>
       )}
     </div>
-  );
 };
+  );
