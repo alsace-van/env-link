@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 2.3 - Popover articles élargi + texte complet + quantités visibles
+// VERSION: 2.4 - Système de calques libres
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -63,6 +63,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AccessorySelector } from "./AccessorySelector";
+import { SchemaLayersPanel, SchemaLayer, createDefaultLayer } from "./SchemaLayersPanel";
 import paper from "paper";
 import { supabase } from "@/integrations/supabase/client";
 import { getErrorMessage } from "@/lib/utils";
@@ -101,6 +102,7 @@ interface ElectricalItem {
   tension_volts?: number | null;
   marque?: string | null;
   prix_unitaire?: number | null;
+  layerId?: string; // ID du calque auquel appartient l'élément
 }
 
 // Configuration des handles par bloc
@@ -124,6 +126,7 @@ interface SchemaEdge {
   strokeWidth?: number;
   section?: string; // Section de câble ex: "2.5mm²", "6mm²"
   bridge?: boolean; // Pont pour passer au-dessus des autres câbles
+  layerId?: string; // ID du calque auquel appartient le câble
 }
 
 // Sections de câble courantes
@@ -502,6 +505,46 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // État pour les handles personnalisés par bloc
   const [nodeHandles, setNodeHandles] = useState<Record<string, BlockHandles>>({});
 
+  // États pour les calques
+  const [layers, setLayers] = useState<SchemaLayer[]>([createDefaultLayer()]);
+  const [activeLayerId, setActiveLayerId] = useState<string>("layer-default");
+
+  // Gérer le changement de calques (avec déplacement des éléments si suppression)
+  const handleLayersChange = useCallback(
+    (newLayers: SchemaLayer[]) => {
+      // Trouver les calques supprimés
+      const removedLayerIds = layers.filter((l) => !newLayers.find((nl) => nl.id === l.id)).map((l) => l.id);
+
+      if (removedLayerIds.length > 0) {
+        // Trouver le premier calque restant pour y déplacer les éléments
+        const targetLayerId = newLayers[0]?.id || "layer-default";
+
+        // Déplacer les items des calques supprimés
+        setItems((prev) =>
+          prev.map((item) => {
+            if (item.layerId && removedLayerIds.includes(item.layerId)) {
+              return { ...item, layerId: targetLayerId };
+            }
+            return item;
+          }),
+        );
+
+        // Déplacer les edges des calques supprimés
+        setEdges((prev) =>
+          prev.map((edge) => {
+            if (edge.layerId && removedLayerIds.includes(edge.layerId)) {
+              return { ...edge, layerId: targetLayerId };
+            }
+            return edge;
+          }),
+        );
+      }
+
+      setLayers(newLayers);
+    },
+    [layers],
+  );
+
   // États pour le sélecteur catalogue
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [catalogItems, setCatalogItems] = useState<any[]>([]);
@@ -563,6 +606,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       setEdges(parsed.edges || []);
       setNodeHandles(parsed.nodeHandles || {});
 
+      // Charger les calques sauvegardés
+      if (parsed.layers && parsed.layers.length > 0) {
+        setLayers(parsed.layers);
+        // Activer le premier calque visible ou le premier calque
+        const firstVisible = parsed.layers.find((l: SchemaLayer) => l.visible);
+        setActiveLayerId(firstVisible?.id || parsed.layers[0].id);
+      }
+
       // Charger les items sauvegardés
       if (parsed.items && parsed.items.length > 0) {
         console.log("[Schema] loadSchemaData - loading items from localStorage:", parsed.items.length);
@@ -577,6 +628,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       setItems([]);
       setEdges([]);
       setNodeHandles({});
+      setLayers([createDefaultLayer()]);
+      setActiveLayerId("layer-default");
     }
   };
 
@@ -606,6 +659,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       capacite_ah: catalogItem.capacite_ah,
       marque: catalogItem.marque,
       prix_unitaire: catalogItem.prix_vente_ttc,
+      layerId: activeLayerId, // Assigner au calque actif
     };
     setItems((prev) => [...prev, newItem]);
     setCatalogOpen(false);
@@ -725,6 +779,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       capacite_ah: expense.capacite_ah,
       marque: expense.marque,
       prix_unitaire: expense.prix_unitaire,
+      layerId: activeLayerId, // Assigner au calque actif
     };
     setItems((prev) => [...prev, newItem]);
     toast.success(`${quantity}x ${decodedName} ajouté au schéma`);
@@ -776,10 +831,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     }
   }, [scenarioOpen, scenarioItems, filteredScenario, scenarioSearch, items]);
 
-  // Synchroniser les nodes avec les items
+  // Synchroniser les nodes avec les items (filtrage par calques visibles)
   useEffect(() => {
     const stored = localStorage.getItem(`electrical_schema_${projectId}`);
     const savedNodes = stored ? JSON.parse(stored).nodes || [] : [];
+
+    // IDs des calques visibles
+    const visibleLayerIds = new Set(layers.filter((l) => l.visible).map((l) => l.id));
 
     setNodes((currentNodes) => {
       return items.map((item, index) => {
@@ -796,10 +854,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             y: 100 + Math.floor(index / 4) * 250,
           };
 
+        // Vérifier si le calque de l'item est visible
+        const isVisible = !item.layerId || visibleLayerIds.has(item.layerId);
+
         return {
           id: item.id,
           type: "electricalBlock",
           position,
+          hidden: !isVisible, // Masquer si le calque n'est pas visible
           data: {
             item,
             handles,
@@ -809,7 +871,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         };
       }) as any;
     });
-  }, [items, nodeHandles, updateNodeHandles, deleteItemFromSchema]);
+  }, [items, nodeHandles, updateNodeHandles, deleteItemFromSchema, layers]);
 
   // Fonction pour extraire le côté du handle (right, left, top, bottom)
   const getSideFromHandle = (handle: string | null | undefined): string => {
@@ -823,9 +885,19 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // Synchroniser les edges avec offset pour éviter la superposition
   useEffect(() => {
+    // IDs des calques visibles
+    const visibleLayerIds = new Set(layers.filter((l) => l.visible).map((l) => l.id));
+
+    // Filtrer les edges selon les calques visibles
+    const visibleEdges = edges.filter((edge) => {
+      // Si pas de layerId, l'edge est toujours visible
+      if (!edge.layerId) return true;
+      return visibleLayerIds.has(edge.layerId);
+    });
+
     // Grouper les edges par CÔTÉ source (pas par handle exact)
     const edgesBySourceSide: Record<string, SchemaEdge[]> = {};
-    edges.forEach((edge) => {
+    visibleEdges.forEach((edge) => {
       const side = getSideFromHandle(edge.source_handle);
       const key = `${edge.source_node_id}-${side}`;
       if (!edgesBySourceSide[key]) edgesBySourceSide[key] = [];
@@ -834,7 +906,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
     // Grouper aussi par CÔTÉ target
     const edgesByTargetSide: Record<string, SchemaEdge[]> = {};
-    edges.forEach((edge) => {
+    visibleEdges.forEach((edge) => {
       const side = getSideFromHandle(edge.target_handle);
       const key = `${edge.target_node_id}-${side}`;
       if (!edgesByTargetSide[key]) edgesByTargetSide[key] = [];
@@ -842,7 +914,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     });
 
     setFlowEdges(
-      edges.map((edge, index) => {
+      visibleEdges.map((edge, index) => {
         const isSelected = edge.id === selectedEdgeId;
         const edgeColor = edge.color || "#64748b";
         const edgeWidth = edge.strokeWidth || 2;
@@ -891,21 +963,25 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         };
       }) as any,
     );
-  }, [edges, selectedEdgeId]);
+  }, [edges, selectedEdgeId, layers]);
 
-  const handleConnect = useCallback((connection: Connection) => {
-    if (!connection.source || !connection.target) return;
-    const newEdge: SchemaEdge = {
-      id: `edge-${Date.now()}`,
-      source_node_id: connection.source,
-      target_node_id: connection.target,
-      source_handle: connection.sourceHandle || null,
-      target_handle: connection.targetHandle || null,
-      color: "#ef4444",
-      strokeWidth: 2,
-    };
-    setEdges((prev) => [...prev, newEdge]);
-  }, []);
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target) return;
+      const newEdge: SchemaEdge = {
+        id: `edge-${Date.now()}`,
+        source_node_id: connection.source,
+        target_node_id: connection.target,
+        source_handle: connection.sourceHandle || null,
+        target_handle: connection.targetHandle || null,
+        color: "#ef4444",
+        strokeWidth: 2,
+        layerId: activeLayerId, // Assigner au calque actif
+      };
+      setEdges((prev) => [...prev, newEdge]);
+    },
+    [activeLayerId],
+  );
 
   const updateEdgeColor = useCallback(
     (color: string) => {
@@ -957,6 +1033,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         edges,
         nodeHandles,
         items, // Sauvegarder aussi les items ajoutés au schéma
+        layers, // Sauvegarder les calques
       };
       localStorage.setItem(`electrical_schema_${projectId}`, JSON.stringify(schemaToSave));
       toast.success("Schéma sauvegardé");
@@ -1014,6 +1091,24 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             <span className="text-sm font-medium">{totalConsommation} W</span>
             <span className="text-xs text-red-600">conso.</span>
           </div>
+          {/* Indicateur calque actif */}
+          {activeLayerId && (
+            <div
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border"
+              style={{
+                borderColor: layers.find((l) => l.id === activeLayerId)?.color || "#3b82f6",
+                backgroundColor: `${layers.find((l) => l.id === activeLayerId)?.color || "#3b82f6"}15`,
+              }}
+            >
+              <div
+                className="w-3 h-3 rounded-full"
+                style={{ backgroundColor: layers.find((l) => l.id === activeLayerId)?.color || "#3b82f6" }}
+              />
+              <span className="text-sm font-medium">
+                {layers.find((l) => l.id === activeLayerId)?.name || "Calque"}
+              </span>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {/* 🔥 Bouton ajouter depuis le scénario */}
@@ -1166,6 +1261,27 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             <Trash2 className="h-4 w-4 mr-1" />
             Réinitialiser
           </Button>
+
+          {/* Bouton Calques */}
+          <SchemaLayersPanel
+            layers={layers}
+            activeLayerId={activeLayerId}
+            onLayersChange={handleLayersChange}
+            onActiveLayerChange={setActiveLayerId}
+            itemCountByLayer={(() => {
+              const counts: Record<string, number> = {};
+              items.forEach((item) => {
+                const lid = item.layerId || "layer-default";
+                counts[lid] = (counts[lid] || 0) + 1;
+              });
+              edges.forEach((edge) => {
+                const lid = edge.layerId || "layer-default";
+                counts[lid] = (counts[lid] || 0) + 1;
+              });
+              return counts;
+            })()}
+          />
+
           <Button size="sm" onClick={saveSchema} disabled={saving}>
             {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}Sauvegarder
           </Button>
