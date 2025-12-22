@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.35 - Ajout types protection/distributeur + détection par catégorie
+// VERSION: 3.36 - Bouton "Rafraîchir types" depuis catalogue
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -84,6 +84,7 @@ import {
   Shield,
   Ruler,
   Calculator,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AccessorySelector } from "./AccessorySelector";
@@ -148,6 +149,7 @@ interface ElectricalItem {
   prix_unitaire?: number | null;
   image_url?: string | null; // URL de l'image du produit
   layerId?: string; // ID du calque auquel appartient l'élément
+  accessory_id?: string | null; // ID de l'accessoire du catalogue (pour rafraîchir les données)
 }
 
 // Configuration des handles par bloc
@@ -3660,10 +3662,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       quantite: 1,
       puissance_watts: catalogItem.puissance_watts,
       capacite_ah: catalogItem.capacite_ah,
+      tension_volts: catalogItem.tension_volts,
+      tension_entree_volts: catalogItem.tension_entree_volts,
+      tension_sortie_volts: catalogItem.tension_sortie_volts,
       marque: catalogItem.marque,
       prix_unitaire: catalogItem.prix_vente_ttc,
       image_url: catalogItem.image_url, // Miniature du produit
       layerId: activeLayerId, // Assigner au calque actif
+      accessory_id: catalogItem.id, // ID du catalogue pour rafraîchir
     };
     setItems((prev) => [...prev, newItem]);
     setCatalogOpen(false);
@@ -3755,6 +3761,107 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     setScenarioLoading(false);
   };
 
+  // Rafraîchir les items du canvas depuis le catalogue (mise à jour des types électriques)
+  const refreshItemsFromCatalog = async () => {
+    if (items.length === 0) {
+      toast.info("Aucun bloc sur le schéma");
+      return;
+    }
+
+    try {
+      // Récupérer tous les accessoires du catalogue
+      const { data: catalogItems, error } = await supabase
+        .from("accessories_catalog")
+        .select(
+          "id, nom, type_electrique, puissance_watts, capacite_ah, tension_volts, tension_entree_volts, tension_sortie_volts",
+        );
+
+      if (error) {
+        console.error("[Refresh] Erreur catalogue:", error);
+        toast.error("Erreur lors du chargement du catalogue");
+        return;
+      }
+
+      if (!catalogItems || catalogItems.length === 0) {
+        toast.info("Catalogue vide");
+        return;
+      }
+
+      console.log("[Refresh] Catalogue chargé:", catalogItems.length, "articles");
+
+      // Créer un index par ID pour recherche rapide
+      const catalogById: Record<string, any> = {};
+      catalogItems.forEach((c) => {
+        catalogById[c.id] = c;
+      });
+
+      // Sauvegarder l'état pour Undo
+      saveToHistory();
+
+      // Mettre à jour les items
+      let updatedCount = 0;
+      const updatedItems = items.map((item) => {
+        let catalogMatch: any = null;
+
+        // 1. Chercher par accessory_id si disponible
+        if (item.accessory_id && catalogById[item.accessory_id]) {
+          catalogMatch = catalogById[item.accessory_id];
+        }
+
+        // 2. Sinon chercher par nom exact
+        if (!catalogMatch) {
+          catalogMatch = catalogItems.find((c) => c.nom?.toLowerCase() === item.nom_accessoire?.toLowerCase());
+        }
+
+        // 3. Sinon chercher par nom contenu
+        if (!catalogMatch) {
+          catalogMatch = catalogItems.find(
+            (c) =>
+              c.nom &&
+              item.nom_accessoire &&
+              (item.nom_accessoire.toLowerCase().includes(c.nom.toLowerCase()) ||
+                c.nom.toLowerCase().includes(item.nom_accessoire.toLowerCase())),
+          );
+        }
+
+        if (catalogMatch && catalogMatch.type_electrique) {
+          const hasChanges =
+            item.type_electrique !== catalogMatch.type_electrique ||
+            item.puissance_watts !== catalogMatch.puissance_watts ||
+            item.tension_volts !== catalogMatch.tension_volts;
+
+          if (hasChanges) {
+            updatedCount++;
+            console.log(`[Refresh] ${item.nom_accessoire}: ${item.type_electrique} → ${catalogMatch.type_electrique}`);
+          }
+
+          return {
+            ...item,
+            type_electrique: catalogMatch.type_electrique,
+            puissance_watts: catalogMatch.puissance_watts ?? item.puissance_watts,
+            tension_volts: catalogMatch.tension_volts ?? item.tension_volts,
+            tension_entree_volts: catalogMatch.tension_entree_volts ?? item.tension_entree_volts,
+            tension_sortie_volts: catalogMatch.tension_sortie_volts ?? item.tension_sortie_volts,
+            accessory_id: catalogMatch.id,
+          };
+        }
+
+        return item;
+      });
+
+      setItems(updatedItems);
+
+      if (updatedCount > 0) {
+        toast.success(`${updatedCount} bloc(s) mis à jour depuis le catalogue`);
+      } else {
+        toast.info("Aucune mise à jour nécessaire");
+      }
+    } catch (err) {
+      console.error("[Refresh] Erreur:", err);
+      toast.error("Erreur lors du rafraîchissement");
+    }
+  };
+
   // Compter combien d'items d'un expense sont déjà dans le schéma
   const getUsedQuantity = (expenseId: string) => {
     return items
@@ -3799,6 +3906,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       prix_unitaire: expense.prix_unitaire,
       image_url: expense.image_url, // Miniature du produit
       layerId: activeLayerId, // Assigner au calque actif
+      accessory_id: expense.accessory_id, // ID du catalogue pour rafraîchir
     };
     setItems((prev) => [...prev, newItem]);
     toast.success(`${quantity}x ${decodedName} ajouté au schéma`);
@@ -4883,6 +4991,17 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             {/* Panel Calcul automatique des sections */}
             <Panel position="top-left">
               <div className="flex flex-col gap-2">
+                {/* Bouton Rafraîchir depuis catalogue */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs gap-1.5 bg-white/95 hover:bg-blue-50 border-blue-300 text-blue-700"
+                  onClick={refreshItemsFromCatalog}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Rafraîchir types
+                </Button>
+
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
