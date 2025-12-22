@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.12 - Miniatures produits dans les blocs
+// VERSION: 3.13 - Label câble au milieu + miniatures produits
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -594,16 +594,23 @@ const CustomSmoothEdge = ({
   const alignmentThreshold = 5;
 
   let edgePath: string;
+  // Position du label - sera calculée pour être au milieu du câble
   let labelX: number = (sourceX + targetX) / 2;
   let labelY: number = (sourceY + targetY) / 2;
 
   // Si presque aligné horizontalement → ligne droite
   if (deltaY < alignmentThreshold) {
     edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
+    // Label au milieu de la ligne horizontale
+    labelX = (sourceX + targetX) / 2;
+    labelY = sourceY;
   }
   // Si presque aligné verticalement → ligne droite
   else if (deltaX < alignmentThreshold) {
     edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
+    // Label au milieu de la ligne verticale
+    labelX = sourceX;
+    labelY = (sourceY + targetY) / 2;
   }
   // Connexion horizontale (source à droite, target à gauche) avec décalage vertical
   else if (sourcePosition === Position.Right && (targetPosition === Position.Left || !targetPosition)) {
@@ -622,7 +629,10 @@ const CustomSmoothEdge = ({
                 L ${safeMidX} ${targetY + (goingDown ? -r : r)}
                 Q ${safeMidX} ${targetY} ${safeMidX + r} ${targetY}
                 L ${targetX} ${targetY}`;
+
+    // Label au milieu du segment vertical
     labelX = safeMidX;
+    labelY = (sourceY + targetY) / 2;
   }
   // Connexion verticale (source en bas, target en haut) avec décalage horizontal
   else if (sourcePosition === Position.Bottom && (targetPosition === Position.Top || !targetPosition)) {
@@ -639,6 +649,9 @@ const CustomSmoothEdge = ({
                 L ${targetX + (goingRight ? -r : r)} ${safeMidY}
                 Q ${targetX} ${safeMidY} ${targetX} ${safeMidY + r}
                 L ${targetX} ${targetY}`;
+
+    // Label au milieu du segment horizontal
+    labelX = (sourceX + targetX) / 2;
     labelY = safeMidY;
   }
   // Connexion Bottom → Left (source en bas, target à gauche)
@@ -654,6 +667,9 @@ const CustomSmoothEdge = ({
                   L ${sourceX} ${targetY - r}
                   Q ${sourceX} ${targetY} ${sourceX + r} ${targetY}
                   L ${targetX} ${targetY}`;
+      // Label au milieu du segment horizontal
+      labelX = (sourceX + targetX) / 2;
+      labelY = targetY;
     } else {
       edgePath = `M ${sourceX} ${sourceY} 
                   L ${sourceX} ${safeMidY - r}
@@ -661,8 +677,10 @@ const CustomSmoothEdge = ({
                   L ${targetX - r} ${safeMidY}
                   Q ${targetX} ${safeMidY} ${targetX} ${safeMidY + r}
                   L ${targetX} ${targetY}`;
+      // Label au milieu du segment horizontal
+      labelX = (sourceX + targetX) / 2;
+      labelY = safeMidY;
     }
-    labelY = safeMidY;
   }
   // Connexion Right → Top
   else if (sourcePosition === Position.Right && targetPosition === Position.Top) {
@@ -676,6 +694,9 @@ const CustomSmoothEdge = ({
                   L ${targetX - r} ${sourceY}
                   Q ${targetX} ${sourceY} ${targetX} ${sourceY + r}
                   L ${targetX} ${targetY}`;
+      // Label au milieu du segment vertical
+      labelX = targetX;
+      labelY = (sourceY + targetY) / 2;
     } else {
       edgePath = `M ${sourceX} ${sourceY} 
                   L ${safeMidX - r} ${sourceY}
@@ -683,8 +704,10 @@ const CustomSmoothEdge = ({
                   L ${safeMidX} ${targetY - r}
                   Q ${safeMidX} ${targetY} ${safeMidX + r} ${targetY}
                   L ${targetX} ${targetY}`;
+      // Label au milieu du segment vertical
+      labelX = safeMidX;
+      labelY = (sourceY + targetY) / 2;
     }
-    labelX = safeMidX;
   }
   // Autres cas → utiliser getSmoothStepPath natif
   else {
