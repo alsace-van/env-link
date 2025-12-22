@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.36 - Bouton "Rafraîchir types" depuis catalogue
+// VERSION: 3.37 - Fix colonnes manquantes accessories_catalog
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -3663,8 +3663,6 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       puissance_watts: catalogItem.puissance_watts,
       capacite_ah: catalogItem.capacite_ah,
       tension_volts: catalogItem.tension_volts,
-      tension_entree_volts: catalogItem.tension_entree_volts,
-      tension_sortie_volts: catalogItem.tension_sortie_volts,
       marque: catalogItem.marque,
       prix_unitaire: catalogItem.prix_vente_ttc,
       image_url: catalogItem.image_url, // Miniature du produit
@@ -3772,9 +3770,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       // Récupérer tous les accessoires du catalogue
       const { data: catalogItems, error } = await supabase
         .from("accessories_catalog")
-        .select(
-          "id, nom, type_electrique, puissance_watts, capacite_ah, tension_volts, tension_entree_volts, tension_sortie_volts",
-        );
+        .select("id, nom, type_electrique, puissance_watts, capacite_ah, tension_volts");
 
       if (error) {
         console.error("[Refresh] Erreur catalogue:", error);
@@ -3840,8 +3836,6 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             type_electrique: catalogMatch.type_electrique,
             puissance_watts: catalogMatch.puissance_watts ?? item.puissance_watts,
             tension_volts: catalogMatch.tension_volts ?? item.tension_volts,
-            tension_entree_volts: catalogMatch.tension_entree_volts ?? item.tension_entree_volts,
-            tension_sortie_volts: catalogMatch.tension_sortie_volts ?? item.tension_sortie_volts,
             accessory_id: catalogMatch.id,
           };
         }
