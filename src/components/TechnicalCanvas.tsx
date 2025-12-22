@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.31 - Fix: utilisation des longueurs définies sur les câbles
+// VERSION: 3.32 - Fix erreurs TypeScript + utilisation longueurs définies
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2681,36 +2681,19 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     [isTransparentNode],
   );
 
-  // Obtenir la longueur d'un câble (définie ou estimation)
-  const getEdgeLength = useCallback(
-    (edge: SchemaEdge): { length: number; isDefined: boolean } => {
-      // Si longueur définie, la retourner
-      if (edge.length_m && edge.length_m > 0) {
-        console.log(`[getEdgeLength] Edge ${edge.id}: longueur DÉFINIE = ${edge.length_m}m`);
-        return { length: edge.length_m, isDefined: true };
-      }
+  // Obtenir la longueur d'un câble (définie uniquement)
+  const getEdgeLength = useCallback((edge: SchemaEdge): { length: number; isDefined: boolean } => {
+    // Si longueur définie, la retourner
+    if (edge.length_m && edge.length_m > 0) {
+      console.log(`[getEdgeLength] Edge ${edge.id.substring(0, 8)}: longueur DÉFINIE = ${edge.length_m}m`);
+      return { length: edge.length_m, isDefined: true };
+    }
 
-      console.log(`[getEdgeLength] Edge ${edge.id}: longueur NON définie, estimation...`);
+    console.log(`[getEdgeLength] Edge ${edge.id.substring(0, 8)}: longueur NON définie`);
 
-      // Sinon estimer depuis les positions
-      const sourceItem = items.find((i) => i.id === edge.source_node_id);
-      const targetItem = items.find((i) => i.id === edge.target_node_id);
-
-      if (sourceItem?.schema_position && targetItem?.schema_position) {
-        const dx = (targetItem.schema_position.x || 0) - (sourceItem.schema_position.x || 0);
-        const dy = (targetItem.schema_position.y || 0) - (sourceItem.schema_position.y || 0);
-        const distPx = Math.sqrt(dx * dx + dy * dy);
-        const estimated = Math.max(0.5, Math.round((distPx / 50) * 10) / 10);
-        console.log(`[getEdgeLength] Edge ${edge.id}: estimé = ${estimated}m`);
-        return { length: estimated, isDefined: false };
-      }
-
-      // Défaut si pas de positions
-      console.log(`[getEdgeLength] Edge ${edge.id}: défaut = 1m`);
-      return { length: 1, isDefined: false };
-    },
-    [items],
-  );
+    // Pas de longueur définie - retourner 0 avec isDefined=false
+    return { length: 0, isDefined: false };
+  }, []);
 
   // Trouver le prochain point clé en traversant les nœuds transparents
   // Retourne { keyPointId, totalLength, traversedEdgeIds }
@@ -2884,19 +2867,19 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       if (sourceIsDistribution) {
         // Sommer toutes les puissances en amont, SAUF celles qui viennent de la destination
         const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
-        return result;
+        return { power: result.total, details: result.details };
       }
 
       // CAS 3: La source est transparente → propager ce qui vient d'amont
       if (sourceIsTransparent) {
         const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
-        return result;
+        return { power: result.total, details: result.details };
       }
 
       // CAS 4: La source est un convertisseur/régulateur → propager la puissance d'amont
       // La puissance se conserve, seule la tension change
       const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
-      return result;
+      return { power: result.total, details: result.details };
     },
     [items, isDistributionPoint, isTransparentNode, sumUpstreamPowersWithDetails],
   );
@@ -2908,7 +2891,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     voltage: number;
     intensity: number;
     length: number;
-    totalSegmentLength: number; // Longueur totale jusqu'au prochain point clé
+    totalLength: number; // Longueur totale jusqu'au prochain point clé
     section: number;
     details: PowerDetail[];
     sourceNom: string;
@@ -2960,7 +2943,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       const realTarget = segmentInfo.realTargetId ? items.find((i) => i.id === segmentInfo.realTargetId) : targetItem;
 
       console.log(
-        `   Segment: ${segmentInfo.allEdgeIds.length} câble(s), longueur totale: ${segmentInfo.totalSegmentLength}m`,
+        `   Segment: ${segmentInfo.allEdgeIds.length} câble(s), longueur totale: ${segmentInfo.totalLength}m`,
       );
       if (segmentInfo.realTargetId && segmentInfo.realTargetId !== edge.target_node_id) {
         console.log(`   Vraie destination: ${realTarget?.nom_accessoire}`);
@@ -2980,15 +2963,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
       // 5. Calculer la section recommandée avec la longueur TOTALE du segment
       let section = 0;
-      if (power > 0 && segmentInfo.totalSegmentLength > 0) {
-        section = quickCalculate(power, segmentInfo.totalSegmentLength, voltage);
+      if (power > 0 && segmentInfo.totalLength > 0) {
+        section = quickCalculate(power, segmentInfo.totalLength, voltage);
       }
 
       console.log(`   Puissance: ${power}W`);
       console.log(`   Tension: ${voltage}V`);
       console.log(`   Intensité: ${intensity.toFixed(2)}A`);
       console.log(
-        `   Longueur segment: ${segmentInfo.totalSegmentLength}m ${segmentInfo.hasDefinedLength ? "(définie)" : "(estimée)"}`,
+        `   Longueur segment: ${segmentInfo.totalLength}m ${segmentInfo.hasDefinedLength ? "(définie)" : "(estimée)"}`,
       );
       console.log(`   Section calculée: ${section}mm²`);
       if (details.length > 0) {
@@ -3007,7 +2990,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           voltage,
           intensity,
           length: segEdge ? getEdgeLength(segEdge).length : 0,
-          totalSegmentLength: segmentInfo.totalSegmentLength,
+          totalLength: segmentInfo.totalLength,
           section,
           details,
           sourceNom: segSource?.nom_accessoire || sourceItem.nom_accessoire,
@@ -3046,7 +3029,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     saveToHistory();
 
     // Compter les longueurs estimées
-    const estimatedLengths = calculations.filter((c) => !c.hasDefinedLength && c.totalSegmentLength > 0);
+    const estimatedLengths = calculations.filter((c) => !c.hasDefinedLength && c.totalLength > 0);
 
     // Mettre à jour les edges avec les nouvelles sections ET les longueurs estimées
     setEdges((prevEdges) => {
@@ -4918,9 +4901,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                       <span>@ {calc.voltage}V</span>
                                       <span>= {calc.intensity.toFixed(1)}A</span>
                                       <span className={calc.hasDefinedLength ? "text-blue-600" : "text-amber-500"}>
-                                        📏 {calc.totalSegmentLength > 0 ? calc.totalSegmentLength.toFixed(1) : "?"}m
-                                        {!calc.hasDefinedLength && calc.totalSegmentLength > 0 && " (estimé)"}
-                                        {calc.totalSegmentLength === 0 && " (non défini)"}
+                                        📏 {calc.totalLength > 0 ? calc.totalLength.toFixed(1) : "?"}m
+                                        {!calc.hasDefinedLength && calc.totalLength > 0 && " (estimé)"}
+                                        {calc.totalLength === 0 && " (non défini)"}
                                       </span>
                                       {calc.isPartOfSegment && (
                                         <span className="text-amber-600">
