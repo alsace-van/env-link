@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.19 - Undo/Redo avec boutons et Ctrl+Z/Y
+// VERSION: 3.20 - Fix canvasMode undefined
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1145,9 +1145,6 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         return;
       }
 
-      // Ignorer si on n'est pas en mode Blocs
-      if (canvasMode !== "blocks") return;
-
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
         handleUndoBlocs();
@@ -1162,7 +1159,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canvasMode, handleUndoBlocs, handleRedoBlocs]);
+  }, [handleUndoBlocs, handleRedoBlocs]);
 
   // Peut-on undo/redo ?
   const canUndoBlocs = historyIndex > 0;
