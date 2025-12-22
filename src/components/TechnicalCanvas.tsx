@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.22 - Amélioration routage câbles (sortie perpendiculaire)
+// VERSION: 3.24 - Somme puissances distribution + tension entrée/sortie + modale édition
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -13,6 +13,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
   ReactFlow,
   Background,
@@ -138,7 +140,9 @@ interface ElectricalItem {
   puissance_watts?: number | null;
   intensite_amperes?: number | null;
   capacite_ah?: number | null;
-  tension_volts?: number | null;
+  tension_volts?: number | null; // Tension unique (ancien champ, pour rétrocompatibilité)
+  tension_entree_volts?: number | null; // Tension d'entrée (ex: 24V côté panneau du MPPT)
+  tension_sortie_volts?: number | null; // Tension de sortie (ex: 12V côté batterie du MPPT)
   marque?: string | null;
   prix_unitaire?: number | null;
   image_url?: string | null; // URL de l'image du produit
@@ -154,6 +158,43 @@ interface BlockHandles {
 }
 
 const DEFAULT_HANDLES: BlockHandles = { top: 2, bottom: 2, left: 2, right: 2 };
+
+// Types considérés comme points de distribution (somme des puissances connectées)
+const DISTRIBUTION_POINT_TYPES = [
+  "busbar",
+  "bus_bar",
+  "bus-bar",
+  "boitier_fusible",
+  "boitier-fusible",
+  "boîtier_fusible",
+  "fuse_box",
+  "fusebox",
+  "repartiteur",
+  "répartiteur",
+  "repartiteur_dc",
+  "bornier",
+  "terminal_block",
+  "distribution",
+  "panneau_distribution",
+];
+
+// Types qui convertissent la tension (ont une tension entrée différente de sortie)
+const VOLTAGE_CONVERTER_TYPES = [
+  "mppt",
+  "regulateur_mppt",
+  "regulateur",
+  "convertisseur",
+  "dc_dc",
+  "dcdc",
+  "dc-dc",
+  "onduleur",
+  "inverter",
+  "chargeur",
+  "charger",
+  "combi",
+  "combiné",
+  "multiplus",
+];
 
 interface SchemaEdge {
   id: string;
@@ -372,6 +413,7 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
   const isLocked = data.isLocked as boolean | undefined;
   const onUpdateHandles = data.onUpdateHandles as ((nodeId: string, handles: BlockHandles) => void) | undefined;
   const onDeleteItem = data.onDeleteItem as ((nodeId: string) => void) | undefined;
+  const onEditItem = data.onEditItem as ((item: ElectricalItem) => void) | undefined;
 
   if (!item) return null;
 
@@ -469,18 +511,43 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
       <HandleControl side="left" />
       <HandleControl side="right" />
 
-      {/* Bouton supprimer (visible quand sélectionné et non verrouillé) */}
-      {selected && onDeleteItem && !isLocked && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDeleteItem(item.id);
-          }}
-          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md z-20 transition-colors"
-          title="Supprimer du schéma"
-        >
-          ×
-        </button>
+      {/* Boutons d'action (visibles quand sélectionné et non verrouillé) */}
+      {selected && !isLocked && (
+        <div className="absolute -top-2 -right-2 flex gap-1 z-20">
+          {/* Bouton éditer */}
+          {onEditItem && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditItem(item);
+              }}
+              className="w-5 h-5 bg-blue-500 hover:bg-blue-600 text-white rounded-full flex items-center justify-center shadow-md transition-colors"
+              title="Modifier les propriétés"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                />
+              </svg>
+            </button>
+          )}
+          {/* Bouton supprimer */}
+          {onDeleteItem && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteItem(item.id);
+              }}
+              className="w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md transition-colors"
+              title="Supprimer du schéma"
+            >
+              ×
+            </button>
+          )}
+        </div>
       )}
 
       {/* Indicateur de verrouillage */}
@@ -535,11 +602,29 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
             <span className="font-medium text-gray-900">{item.capacite_ah} Ah</span>
           </div>
         )}
-        {item.tension_volts && (
+        {/* Affichage tension entrée/sortie pour les convertisseurs */}
+        {item.tension_entree_volts || item.tension_sortie_volts ? (
           <div className="flex items-center justify-between text-xs">
             <span className="text-gray-600">Tension</span>
-            <span className="font-medium text-gray-900">{item.tension_volts} V</span>
+            <span className="font-medium text-gray-900">
+              {item.tension_entree_volts &&
+              item.tension_sortie_volts &&
+              item.tension_entree_volts !== item.tension_sortie_volts ? (
+                <>
+                  {item.tension_entree_volts}V → {item.tension_sortie_volts}V
+                </>
+              ) : (
+                <>{item.tension_entree_volts || item.tension_sortie_volts} V</>
+              )}
+            </span>
           </div>
+        ) : (
+          item.tension_volts && (
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-600">Tension</span>
+              <span className="font-medium text-gray-900">{item.tension_volts} V</span>
+            </div>
+          )
         )}
         {item.intensite_amperes && (
           <div className="flex items-center justify-between text-xs">
@@ -2111,6 +2196,174 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     [edges, items],
   );
 
+  // Types qui transmettent le courant sans avoir de puissance propre (convertisseurs, régulateurs)
+  const PASSTHROUGH_POWER_TYPES = [
+    "regulateur",
+    "regulateur_mppt",
+    "mppt",
+    "regulation",
+    "convertisseur",
+    "onduleur",
+    "chargeur",
+    "fusible",
+    "disjoncteur",
+    "protection",
+    "coupe_circuit",
+    "distribution",
+    "bornier",
+    "repartiteur",
+    "accessoire",
+  ];
+
+  // Helper: Vérifier si un item est un point de distribution
+  const isDistributionPoint = useCallback((item: ElectricalItem): boolean => {
+    const typeElec = item.type_electrique?.toLowerCase() || "";
+    const nom = item.nom_accessoire?.toLowerCase() || "";
+
+    return DISTRIBUTION_POINT_TYPES.some((t) => typeElec.includes(t) || nom.includes(t));
+  }, []);
+
+  // Helper: Obtenir la tension de sortie d'un item (pour calcul I = P/U)
+  const getOutputVoltage = useCallback((item: ElectricalItem): number => {
+    // Priorité: tension_sortie > tension_volts > 12V par défaut
+    return item.tension_sortie_volts || item.tension_volts || 12;
+  }, []);
+
+  // Helper: Obtenir la tension d'entrée d'un item
+  const getInputVoltage = useCallback((item: ElectricalItem): number => {
+    return item.tension_entree_volts || item.tension_volts || 12;
+  }, []);
+
+  // Fonction pour SOMMER toutes les puissances en amont (pour points de distribution côté production)
+  const sumUpstreamPowers = useCallback(
+    (startNodeId: string, visited: Set<string> = new Set()): number => {
+      if (visited.has(startNodeId)) return 0;
+      visited.add(startNodeId);
+
+      const item = items.find((i) => i.id === startNodeId);
+      if (!item) return 0;
+
+      // Si cet item a une puissance, la retourner (c'est une source)
+      if (item.puissance_watts && item.puissance_watts > 0) {
+        const totalPower = item.puissance_watts * (item.quantite || 1);
+        console.log(
+          `[sumUpstreamPowers] Source "${item.nom_accessoire}": ${totalPower}W (${item.puissance_watts}W x ${item.quantite || 1})`,
+        );
+        return totalPower;
+      }
+
+      // Sinon, sommer TOUTES les connexions entrantes (upstream)
+      const incomingEdges = edges.filter((e) => e.target_node_id === startNodeId);
+      let totalPower = 0;
+
+      for (const edge of incomingEdges) {
+        totalPower += sumUpstreamPowers(edge.source_node_id, visited);
+      }
+
+      if (totalPower > 0) {
+        console.log(`[sumUpstreamPowers] Via "${item.nom_accessoire}": ${totalPower}W (somme)`);
+      }
+
+      return totalPower;
+    },
+    [edges, items],
+  );
+
+  // Fonction pour SOMMER toutes les puissances en aval (pour points de distribution côté consommation)
+  const sumDownstreamPowers = useCallback(
+    (startNodeId: string, visited: Set<string> = new Set()): number => {
+      if (visited.has(startNodeId)) return 0;
+      visited.add(startNodeId);
+
+      const item = items.find((i) => i.id === startNodeId);
+      if (!item) return 0;
+
+      // Si cet item a une puissance ET est un consommateur, la retourner
+      if (item.puissance_watts && item.puissance_watts > 0) {
+        const totalPower = item.puissance_watts * (item.quantite || 1);
+        console.log(
+          `[sumDownstreamPowers] Consommateur "${item.nom_accessoire}": ${totalPower}W (${item.puissance_watts}W x ${item.quantite || 1})`,
+        );
+        return totalPower;
+      }
+
+      // Sinon, sommer TOUTES les connexions sortantes (downstream)
+      const outgoingEdges = edges.filter((e) => e.source_node_id === startNodeId);
+      let totalPower = 0;
+
+      for (const edge of outgoingEdges) {
+        totalPower += sumDownstreamPowers(edge.target_node_id, visited);
+      }
+
+      if (totalPower > 0) {
+        console.log(`[sumDownstreamPowers] Via "${item.nom_accessoire}": ${totalPower}W (somme)`);
+      }
+
+      return totalPower;
+    },
+    [edges, items],
+  );
+
+  // Fonction pour remonter le graphe et trouver UNE puissance du producteur en amont (ancien comportement)
+  const findUpstreamPower = useCallback(
+    (startNodeId: string, visited: Set<string> = new Set()): number => {
+      if (visited.has(startNodeId)) return 0;
+      visited.add(startNodeId);
+
+      const item = items.find((i) => i.id === startNodeId);
+      if (!item) return 0;
+
+      // Si cet item a une puissance, la retourner
+      if (item.puissance_watts && item.puissance_watts > 0) {
+        console.log(`[findUpstreamPower] Puissance trouvée sur "${item.nom_accessoire}": ${item.puissance_watts}W`);
+        return item.puissance_watts * (item.quantite || 1);
+      }
+
+      // Sinon, chercher dans les connexions entrantes (upstream)
+      const incomingEdges = edges.filter((e) => e.target_node_id === startNodeId);
+
+      for (const edge of incomingEdges) {
+        const upstreamPower = findUpstreamPower(edge.source_node_id, visited);
+        if (upstreamPower > 0) {
+          return upstreamPower;
+        }
+      }
+
+      return 0;
+    },
+    [edges, items],
+  );
+
+  // Fonction pour descendre le graphe et trouver UNE puissance du consommateur en aval
+  const findDownstreamPower = useCallback(
+    (startNodeId: string, visited: Set<string> = new Set()): number => {
+      if (visited.has(startNodeId)) return 0;
+      visited.add(startNodeId);
+
+      const item = items.find((i) => i.id === startNodeId);
+      if (!item) return 0;
+
+      // Si cet item a une puissance, la retourner
+      if (item.puissance_watts && item.puissance_watts > 0) {
+        console.log(`[findDownstreamPower] Puissance trouvée sur "${item.nom_accessoire}": ${item.puissance_watts}W`);
+        return item.puissance_watts * (item.quantite || 1);
+      }
+
+      // Sinon, chercher dans les connexions sortantes (downstream)
+      const outgoingEdges = edges.filter((e) => e.source_node_id === startNodeId);
+
+      for (const edge of outgoingEdges) {
+        const downstreamPower = findDownstreamPower(edge.target_node_id, visited);
+        if (downstreamPower > 0) {
+          return downstreamPower;
+        }
+      }
+
+      return 0;
+    },
+    [edges, items],
+  );
+
   // Définir un nouveau circuit
   const defineCircuit = useCallback(
     (sourceNodeId: string, destNodeId: string) => {
@@ -2136,8 +2389,64 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       const destName = destItem.nom_accessoire?.split(" ").slice(0, 2).join(" ") || "Dest";
       const circuitName = `${sourceName} → ${destName}`;
 
-      // Trouver la puissance (depuis source ou destination)
-      const power = sourceItem.puissance_watts || destItem.puissance_watts || 0;
+      // Déterminer si on a des points de distribution
+      const sourceIsDistribution = isDistributionPoint(sourceItem);
+      const destIsDistribution = isDistributionPoint(destItem);
+
+      console.log("=== ANALYSE CIRCUIT ===");
+      console.log(`Source: "${sourceItem.nom_accessoire}" (distribution: ${sourceIsDistribution})`);
+      console.log(`Destination: "${destItem.nom_accessoire}" (distribution: ${destIsDistribution})`);
+
+      // Trouver la puissance - logique améliorée avec somme pour distribution
+      let power = 0;
+      let voltage = 12; // Tension par défaut
+
+      // CAS 1: Source est un point de distribution (ex: Busbar → Batterie)
+      // → Sommer toutes les puissances EN AMONT du busbar
+      if (sourceIsDistribution) {
+        console.log(`[Circuit] Source "${sourceItem.nom_accessoire}" est un point de distribution`);
+        console.log(`[Circuit] Somme des puissances en amont...`);
+        power = sumUpstreamPowers(sourceNodeId, new Set([destNodeId])); // Exclure la destination
+        voltage = getOutputVoltage(sourceItem);
+        console.log(`[Circuit] Puissance totale amont: ${power}W, Tension: ${voltage}V`);
+      }
+      // CAS 2: Destination est un point de distribution (ex: Batterie → Boîtier fusible)
+      // → Sommer toutes les puissances EN AVAL du boîtier
+      else if (destIsDistribution) {
+        console.log(`[Circuit] Destination "${destItem.nom_accessoire}" est un point de distribution`);
+        console.log(`[Circuit] Somme des puissances en aval...`);
+        power = sumDownstreamPowers(destNodeId, new Set([sourceNodeId])); // Exclure la source
+        voltage = getInputVoltage(destItem);
+        console.log(`[Circuit] Puissance totale aval: ${power}W, Tension: ${voltage}V`);
+      }
+      // CAS 3: Pas de point de distribution - logique standard
+      else {
+        // Essayer sur la source directe
+        if (sourceItem.puissance_watts && sourceItem.puissance_watts > 0) {
+          power = sourceItem.puissance_watts * (sourceItem.quantite || 1);
+          voltage = getOutputVoltage(sourceItem);
+          console.log(`[Circuit] Puissance depuis source directe: ${power}W @ ${voltage}V`);
+        }
+        // Sinon essayer sur la destination directe
+        else if (destItem.puissance_watts && destItem.puissance_watts > 0) {
+          power = destItem.puissance_watts * (destItem.quantite || 1);
+          voltage = getInputVoltage(destItem);
+          console.log(`[Circuit] Puissance depuis destination directe: ${power}W @ ${voltage}V`);
+        }
+        // Sinon remonter le graphe depuis la source pour trouver le producteur
+        else {
+          console.log(`[Circuit] Pas de puissance directe, recherche en amont de "${sourceItem.nom_accessoire}"...`);
+          power = findUpstreamPower(sourceNodeId, new Set());
+          voltage = getOutputVoltage(sourceItem);
+
+          // Si toujours rien, descendre depuis la destination
+          if (power === 0) {
+            console.log(`[Circuit] Pas de puissance en amont, recherche en aval de "${destItem.nom_accessoire}"...`);
+            power = findDownstreamPower(destNodeId, new Set());
+            voltage = getInputVoltage(destItem);
+          }
+        }
+      }
 
       // Calculer la longueur totale du circuit
       let totalLength = 0;
@@ -2148,17 +2457,27 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         }
       });
 
-      // Calculer la section recommandée
+      // Calculer l'intensité et la section recommandée
       let calculatedSection: number | null = null;
+      let intensity = 0;
+
+      if (power > 0 && voltage > 0) {
+        intensity = power / voltage;
+        console.log(`[Circuit] Intensité calculée: I = ${power}W / ${voltage}V = ${intensity.toFixed(2)}A`);
+      }
+
       if (power > 0 && totalLength > 0) {
-        calculatedSection = quickCalculate(power, totalLength);
+        // Le quickCalculate utilise 12V par défaut, on ajuste si nécessaire
+        calculatedSection = quickCalculate(power, totalLength, voltage);
       }
 
       console.log("=== CRÉATION CIRCUIT ===");
       console.log("Nom:", circuitName);
       console.log("Câbles:", edgeIds.length);
       console.log("Longueur totale:", totalLength, "m");
-      console.log("Puissance:", power, "W");
+      console.log("Puissance:", power, "W", power === 0 ? "(non trouvée)" : "");
+      console.log("Tension:", voltage, "V");
+      console.log("Intensité:", intensity.toFixed(2), "A");
       console.log("Section calculée:", calculatedSection, "mm²");
 
       // Sauvegarder le circuit
@@ -2171,6 +2490,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           destNodeId,
           edgeIds,
           power,
+          voltage,
+          intensity,
           totalLength,
           calculatedSection,
         },
@@ -2192,14 +2513,27 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       );
 
       const sectionMsg = calculatedSection ? ` • Section: ${calculatedSection}mm²` : "";
-      toast.success(`Circuit "${circuitName}" créé avec ${edgeIds.length} câble(s)${sectionMsg}`);
+      const powerMsg = power > 0 ? ` • ${power}W` : " • Puissance non trouvée";
+      toast.success(`Circuit créé avec ${edgeIds.length} câbles${powerMsg}${sectionMsg}`);
 
       // Réinitialiser le mode
-      setIsDefiningCircuit(false);
+      setCircuitMode(false);
       setCircuitSource(null);
       setCircuitDest(null);
     },
-    [items, edges, findEdgesBetweenNodes, quickCalculate],
+    [
+      items,
+      edges,
+      findEdgesBetweenNodes,
+      quickCalculate,
+      findUpstreamPower,
+      findDownstreamPower,
+      sumUpstreamPowers,
+      sumDownstreamPowers,
+      isDistributionPoint,
+      getOutputVoltage,
+      getInputVoltage,
+    ],
   );
 
   // Calculer la section pour un circuit entier
@@ -2713,6 +3047,65 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     [items, layers],
   );
 
+  // Modifier un item dans le schéma
+  const updateItemInSchema = useCallback((itemId: string, updates: Partial<ElectricalItem>) => {
+    setItems((prev) => prev.map((item) => (item.id === itemId ? { ...item, ...updates } : item)));
+    toast.success("Accessoire modifié");
+  }, []);
+
+  // État pour la modale d'édition
+  const [editingItem, setEditingItem] = useState<ElectricalItem | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    puissance_watts: "",
+    tension_entree_volts: "",
+    tension_sortie_volts: "",
+    capacite_ah: "",
+    intensite_amperes: "",
+  });
+
+  // Ouvrir la modale d'édition
+  const openEditModal = useCallback((item: ElectricalItem) => {
+    setEditingItem(item);
+    setEditFormData({
+      puissance_watts: item.puissance_watts?.toString() || "",
+      tension_entree_volts: item.tension_entree_volts?.toString() || item.tension_volts?.toString() || "",
+      tension_sortie_volts: item.tension_sortie_volts?.toString() || item.tension_volts?.toString() || "",
+      capacite_ah: item.capacite_ah?.toString() || "",
+      intensite_amperes: item.intensite_amperes?.toString() || "",
+    });
+  }, []);
+
+  // Sauvegarder les modifications
+  const saveEditedItem = useCallback(() => {
+    if (!editingItem) return;
+
+    const updates: Partial<ElectricalItem> = {};
+
+    if (editFormData.puissance_watts) {
+      updates.puissance_watts = parseFloat(editFormData.puissance_watts);
+    }
+    if (editFormData.tension_entree_volts) {
+      updates.tension_entree_volts = parseFloat(editFormData.tension_entree_volts);
+    }
+    if (editFormData.tension_sortie_volts) {
+      updates.tension_sortie_volts = parseFloat(editFormData.tension_sortie_volts);
+    }
+    if (editFormData.capacite_ah) {
+      updates.capacite_ah = parseFloat(editFormData.capacite_ah);
+    }
+    if (editFormData.intensite_amperes) {
+      updates.intensite_amperes = parseFloat(editFormData.intensite_amperes);
+    }
+
+    // Si tensions entrée et sortie sont identiques, utiliser tension_volts
+    if (updates.tension_entree_volts === updates.tension_sortie_volts) {
+      updates.tension_volts = updates.tension_entree_volts;
+    }
+
+    updateItemInSchema(editingItem.id, updates);
+    setEditingItem(null);
+  }, [editingItem, editFormData, updateItemInSchema]);
+
   // Filtrer le scénario (exclure les items entièrement utilisés)
   const filteredScenario = scenarioItems.filter((item) => {
     const usedQty = getUsedQuantity(item.id);
@@ -2787,11 +3180,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             isLocked, // Passer l'info de verrouillage au composant
             onUpdateHandles: updateNodeHandles,
             onDeleteItem: deleteItemFromSchema,
+            onEditItem: openEditModal,
           },
         };
       }) as any;
     });
-  }, [items, nodeHandles, updateNodeHandles, deleteItemFromSchema, layers]);
+  }, [items, nodeHandles, updateNodeHandles, deleteItemFromSchema, openEditModal, layers]);
 
   // Fonction pour extraire le côté du handle (right, left, top, bottom)
   const getSideFromHandle = (handle: string | null | undefined): string => {
@@ -3913,8 +4307,33 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             if (edge?.length_m) totalLength += edge.length_m;
                           });
 
-                          // Puissance du circuit
-                          const power = sourceItem?.puissance_watts || destItem?.puissance_watts || 0;
+                          // Puissance du circuit - logique améliorée
+                          let power = 0;
+                          let powerSource = "";
+
+                          // 1. D'abord essayer sur la source directe
+                          if (sourceItem?.puissance_watts && sourceItem.puissance_watts > 0) {
+                            power = sourceItem.puissance_watts;
+                            powerSource = "source";
+                          }
+                          // 2. Sinon essayer sur la destination directe
+                          else if (destItem?.puissance_watts && destItem.puissance_watts > 0) {
+                            power = destItem.puissance_watts;
+                            powerSource = "destination";
+                          }
+                          // 3. Sinon remonter le graphe depuis la source
+                          else {
+                            power = findUpstreamPower(circuitSource, new Set());
+                            if (power > 0) {
+                              powerSource = "amont";
+                            } else {
+                              // 4. Sinon descendre depuis la destination
+                              power = findDownstreamPower(circuitDest, new Set());
+                              if (power > 0) {
+                                powerSource = "aval";
+                              }
+                            }
+                          }
 
                           // Section recommandée
                           const section = power > 0 && totalLength > 0 ? quickCalculate(power, totalLength) : null;
@@ -3933,15 +4352,31 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                 </div>
                                 <div className="bg-white rounded p-2 text-center">
                                   <div className="text-gray-500">Puissance</div>
-                                  <div className="font-bold text-lg text-gray-800">{power}W</div>
+                                  <div className="font-bold text-lg text-gray-800">{power > 0 ? `${power}W` : "?"}</div>
+                                  {powerSource && powerSource !== "source" && powerSource !== "destination" && (
+                                    <div className="text-[10px] text-blue-600">({powerSource})</div>
+                                  )}
                                 </div>
                               </div>
+
+                              {/* Avertissement si puissance trouvée en amont/aval */}
+                              {powerSource === "amont" && (
+                                <div className="bg-blue-50 rounded p-2 text-xs text-blue-700">
+                                  💡 Puissance du producteur en amont utilisée
+                                </div>
+                              )}
 
                               {/* Section recommandée */}
                               {section && (
                                 <div className="bg-green-100 rounded p-2 flex items-center justify-between">
                                   <span className="text-sm text-green-800">Section recommandée:</span>
                                   <Badge className="bg-green-600 text-white font-bold">{section} mm²</Badge>
+                                </div>
+                              )}
+
+                              {!section && power === 0 && (
+                                <div className="bg-amber-50 rounded p-2 text-center text-amber-700 text-sm">
+                                  ⚠️ Puissance non trouvée - section non calculable
                                 </div>
                               )}
 
@@ -4124,6 +4559,121 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         onClose={() => setShowTemplatesDialog(false)}
         mode={templatesMode}
       />
+
+      {/* Dialog Édition Item */}
+      <Dialog open={!!editingItem} onOpenChange={(open) => !open && setEditingItem(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-5 w-5" />
+              Modifier {editingItem?.nom_accessoire?.slice(0, 30)}...
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            {/* Puissance */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-power" className="text-right">
+                Puissance
+              </Label>
+              <div className="col-span-3 flex items-center gap-2">
+                <Input
+                  id="edit-power"
+                  type="number"
+                  value={editFormData.puissance_watts}
+                  onChange={(e) => setEditFormData((prev) => ({ ...prev, puissance_watts: e.target.value }))}
+                  placeholder="Ex: 190"
+                  className="flex-1"
+                />
+                <span className="text-sm text-gray-500 w-8">W</span>
+              </div>
+            </div>
+
+            {/* Tension entrée */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-voltage-in" className="text-right">
+                Tension entrée
+              </Label>
+              <div className="col-span-3 flex items-center gap-2">
+                <Input
+                  id="edit-voltage-in"
+                  type="number"
+                  value={editFormData.tension_entree_volts}
+                  onChange={(e) => setEditFormData((prev) => ({ ...prev, tension_entree_volts: e.target.value }))}
+                  placeholder="Ex: 24"
+                  className="flex-1"
+                />
+                <span className="text-sm text-gray-500 w-8">V</span>
+              </div>
+            </div>
+
+            {/* Tension sortie */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-voltage-out" className="text-right">
+                Tension sortie
+              </Label>
+              <div className="col-span-3 flex items-center gap-2">
+                <Input
+                  id="edit-voltage-out"
+                  type="number"
+                  value={editFormData.tension_sortie_volts}
+                  onChange={(e) => setEditFormData((prev) => ({ ...prev, tension_sortie_volts: e.target.value }))}
+                  placeholder="Ex: 12"
+                  className="flex-1"
+                />
+                <span className="text-sm text-gray-500 w-8">V</span>
+              </div>
+            </div>
+
+            {/* Capacité (pour batteries) */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-capacity" className="text-right">
+                Capacité
+              </Label>
+              <div className="col-span-3 flex items-center gap-2">
+                <Input
+                  id="edit-capacity"
+                  type="number"
+                  value={editFormData.capacite_ah}
+                  onChange={(e) => setEditFormData((prev) => ({ ...prev, capacite_ah: e.target.value }))}
+                  placeholder="Ex: 100"
+                  className="flex-1"
+                />
+                <span className="text-sm text-gray-500 w-8">Ah</span>
+              </div>
+            </div>
+
+            {/* Intensité max */}
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-current" className="text-right">
+                Intensité max
+              </Label>
+              <div className="col-span-3 flex items-center gap-2">
+                <Input
+                  id="edit-current"
+                  type="number"
+                  value={editFormData.intensite_amperes}
+                  onChange={(e) => setEditFormData((prev) => ({ ...prev, intensite_amperes: e.target.value }))}
+                  placeholder="Ex: 30"
+                  className="flex-1"
+                />
+                <span className="text-sm text-gray-500 w-8">A</span>
+              </div>
+            </div>
+
+            {/* Info aide */}
+            <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+              <strong>💡 Astuce :</strong> Pour les convertisseurs (MPPT, DC/DC), indiquez la tension d'entrée et de
+              sortie séparément. Le calcul de section de câble utilisera la bonne tension selon le segment du circuit.
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingItem(null)}>
+              Annuler
+            </Button>
+            <Button onClick={saveEditedItem}>Sauvegarder</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
