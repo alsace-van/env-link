@@ -1,33 +1,14 @@
 // ============================================
 // SchemaValidation.tsx
 // Composant pour valider le circuit électrique
-// VERSION: 1.0
+// VERSION: 1.1 - Fix positionnement popup en plein écran
 // ============================================
 
 import React, { useMemo } from "react";
-import {
-  AlertTriangle,
-  CheckCircle,
-  XCircle,
-  Info,
-  Zap,
-  Shield,
-  Cable,
-  Battery,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle, XCircle, Info, Zap, Shield, Cable, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface ElectricalItem {
   id: string;
@@ -80,13 +61,10 @@ const DISTRIBUTION_TYPES = ["distribution", "bornier", "repartiteur"];
 // Types considérés comme régulation
 const REGULATION_TYPES = ["regulation", "regulateur", "mppt", "regulateur_mppt"];
 
-export function useSchemaValidation(
-  items: ElectricalItem[],
-  edges: SchemaEdge[]
-): ValidationIssue[] {
+export function useSchemaValidation(items: ElectricalItem[], edges: SchemaEdge[]): ValidationIssue[] {
   return useMemo(() => {
     const issues: ValidationIssue[] = [];
-    
+
     if (items.length === 0) {
       return [];
     }
@@ -124,12 +102,8 @@ export function useSchemaValidation(
     });
 
     // Vérification 2: Producteurs sans protection
-    const producers = items.filter((i) =>
-      PRODUCER_TYPES.some((t) => i.type_electrique?.toLowerCase().includes(t))
-    );
-    const protections = items.filter((i) =>
-      PROTECTION_TYPES.some((t) => i.type_electrique?.toLowerCase().includes(t))
-    );
+    const producers = items.filter((i) => PRODUCER_TYPES.some((t) => i.type_electrique?.toLowerCase().includes(t)));
+    const protections = items.filter((i) => PROTECTION_TYPES.some((t) => i.type_electrique?.toLowerCase().includes(t)));
 
     producers.forEach((producer) => {
       const conn = nodeConnections[producer.id];
@@ -139,12 +113,7 @@ export function useSchemaValidation(
       const directOutputs = conn.outgoing;
       const hasDirectProtection = directOutputs.some((outId) => {
         const outItem = items.find((i) => i.id === outId);
-        return (
-          outItem &&
-          PROTECTION_TYPES.some((t) =>
-            outItem.type_electrique?.toLowerCase().includes(t)
-          )
-        );
+        return outItem && PROTECTION_TYPES.some((t) => outItem.type_electrique?.toLowerCase().includes(t));
       });
 
       if (!hasDirectProtection && directOutputs.length > 0) {
@@ -165,7 +134,7 @@ export function useSchemaValidation(
         i.type_electrique === "eclairage" ||
         i.type_electrique === "refrigeration" ||
         i.type_electrique === "pompe" ||
-        i.type_electrique === "ventilation"
+        i.type_electrique === "ventilation",
     );
 
     consumers.forEach((consumer) => {
@@ -179,12 +148,7 @@ export function useSchemaValidation(
         visited.add(nodeId);
 
         const item = items.find((i) => i.id === nodeId);
-        if (
-          item &&
-          PROTECTION_TYPES.some((t) =>
-            item.type_electrique?.toLowerCase().includes(t)
-          )
-        ) {
+        if (item && PROTECTION_TYPES.some((t) => item.type_electrique?.toLowerCase().includes(t))) {
           return true;
         }
 
@@ -194,9 +158,7 @@ export function useSchemaValidation(
         return nodeConn.incoming.some((inId) => hasProtection(inId));
       };
 
-      const hasUpstreamProtection = conn.incoming.some((inId) =>
-        hasProtection(inId)
-      );
+      const hasUpstreamProtection = conn.incoming.some((inId) => hasProtection(inId));
 
       if (!hasUpstreamProtection && conn.incoming.length > 0) {
         issues.push({
@@ -223,18 +185,9 @@ export function useSchemaValidation(
     });
 
     // Vérification 5: Puissance totale vs capacité batterie
-    const totalPower = consumers.reduce(
-      (sum, c) => sum + (c.puissance_watts || 0),
-      0
-    );
-    const batteries = items.filter(
-      (i) =>
-        i.type_electrique === "batterie" || i.type_electrique === "stockage"
-    );
-    const totalCapacity = batteries.reduce(
-      (sum, b) => sum + (b.capacite_ah || 0),
-      0
-    );
+    const totalPower = consumers.reduce((sum, c) => sum + (c.puissance_watts || 0), 0);
+    const batteries = items.filter((i) => i.type_electrique === "batterie" || i.type_electrique === "stockage");
+    const totalCapacity = batteries.reduce((sum, b) => sum + (b.capacite_ah || 0), 0);
 
     if (totalCapacity > 0 && totalPower > 0) {
       // Autonomie approximative en heures (à 12V)
@@ -250,9 +203,7 @@ export function useSchemaValidation(
     }
 
     // Vérification 6: Régulateur sans panneau solaire en amont
-    const regulators = items.filter((i) =>
-      REGULATION_TYPES.some((t) => i.type_electrique?.toLowerCase().includes(t))
-    );
+    const regulators = items.filter((i) => REGULATION_TYPES.some((t) => i.type_electrique?.toLowerCase().includes(t)));
 
     regulators.forEach((regulator) => {
       const conn = nodeConnections[regulator.id];
@@ -260,26 +211,18 @@ export function useSchemaValidation(
 
       const hasSolarInput = conn.incoming.some((inId) => {
         const inItem = items.find((i) => i.id === inId);
-        return (
-          inItem &&
-          (inItem.type_electrique === "producteur" ||
-            inItem.type_electrique === "panneau_solaire")
-        );
+        return inItem && (inItem.type_electrique === "producteur" || inItem.type_electrique === "panneau_solaire");
       });
 
       // Vérifier aussi via les protections
       const hasSolarViaProtection = conn.incoming.some((inId) => {
         const inItem = items.find((i) => i.id === inId);
-        if (!inItem || !PROTECTION_TYPES.some((t) => 
-          inItem.type_electrique?.toLowerCase().includes(t)
-        )) return false;
-        
+        if (!inItem || !PROTECTION_TYPES.some((t) => inItem.type_electrique?.toLowerCase().includes(t))) return false;
+
         const protConn = nodeConnections[inId];
         return protConn?.incoming.some((pInId) => {
           const pInItem = items.find((i) => i.id === pInId);
-          return pInItem && 
-            (pInItem.type_electrique === "producteur" || 
-             pInItem.type_electrique === "panneau_solaire");
+          return pInItem && (pInItem.type_electrique === "producteur" || pInItem.type_electrique === "panneau_solaire");
         });
       });
 
@@ -356,8 +299,8 @@ export function SchemaValidation({
   }
 
   return (
-    <Collapsible open={isExpanded} onOpenChange={onToggleExpand}>
-      <CollapsibleTrigger asChild>
+    <Popover open={isExpanded} onOpenChange={onToggleExpand}>
+      <PopoverTrigger asChild>
         <Button
           variant="outline"
           size="sm"
@@ -365,8 +308,8 @@ export function SchemaValidation({
             errorCount > 0
               ? "border-red-300 bg-red-50 hover:bg-red-100"
               : warningCount > 0
-              ? "border-amber-300 bg-amber-50 hover:bg-amber-100"
-              : "border-green-300 bg-green-50 hover:bg-green-100"
+                ? "border-amber-300 bg-amber-50 hover:bg-amber-100"
+                : "border-green-300 bg-green-50 hover:bg-green-100"
           }`}
         >
           {errorCount > 0 ? (
@@ -377,66 +320,55 @@ export function SchemaValidation({
             <CheckCircle className="w-4 h-4 text-green-500" />
           )}
           <span className="text-xs">
-            {errorCount > 0 && (
-              <span className="text-red-600 font-medium">{errorCount} erreur(s)</span>
-            )}
+            {errorCount > 0 && <span className="text-red-600 font-medium">{errorCount} erreur(s)</span>}
             {errorCount > 0 && warningCount > 0 && " · "}
-            {warningCount > 0 && (
-              <span className="text-amber-600 font-medium">{warningCount} alerte(s)</span>
-            )}
-            {errorCount === 0 && warningCount === 0 && (
-              <span className="text-green-600 font-medium">Circuit OK</span>
-            )}
+            {warningCount > 0 && <span className="text-amber-600 font-medium">{warningCount} alerte(s)</span>}
+            {errorCount === 0 && warningCount === 0 && <span className="text-green-600 font-medium">Circuit OK</span>}
           </span>
+          <ChevronDown className={`w-3 h-3 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
         </Button>
-      </CollapsibleTrigger>
+      </PopoverTrigger>
 
-      <CollapsibleContent className="absolute top-full left-0 mt-1 z-50">
-        <div className="bg-white rounded-lg shadow-lg border p-3 min-w-[300px] max-w-[400px] max-h-[400px] overflow-auto">
-          <div className="text-sm font-medium mb-2 flex items-center gap-2">
-            <Shield className="w-4 h-4" />
-            Validation du circuit
+      <PopoverContent className="w-[350px] max-h-[400px] overflow-auto p-3" align="start" side="bottom" sideOffset={5}>
+        <div className="text-sm font-medium mb-2 flex items-center gap-2">
+          <Shield className="w-4 h-4" />
+          Validation du circuit
+        </div>
+
+        {issues.length === 0 ? (
+          <div className="flex items-center gap-2 text-green-600 text-sm py-2">
+            <CheckCircle className="w-4 h-4" />
+            Aucun problème détecté
           </div>
-
-          {issues.length === 0 ? (
-            <div className="flex items-center gap-2 text-green-600 text-sm py-2">
-              <CheckCircle className="w-4 h-4" />
-              Aucun problème détecté
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {issues.map((issue, index) => (
-                <div
-                  key={index}
-                  className={`p-2 rounded-md cursor-pointer transition-colors ${
-                    issue.type === "error"
-                      ? "bg-red-50 hover:bg-red-100"
-                      : issue.type === "warning"
+        ) : (
+          <div className="space-y-2">
+            {issues.map((issue, index) => (
+              <div
+                key={index}
+                className={`p-2 rounded-md cursor-pointer transition-colors ${
+                  issue.type === "error"
+                    ? "bg-red-50 hover:bg-red-100"
+                    : issue.type === "warning"
                       ? "bg-amber-50 hover:bg-amber-100"
                       : "bg-blue-50 hover:bg-blue-100"
-                  }`}
-                  onClick={() => handleIssueClick(issue)}
-                >
-                  <div className="flex items-start gap-2">
-                    {getIcon(issue.type)}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm">{issue.message}</div>
-                      {issue.suggestion && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          💡 {issue.suggestion}
-                        </div>
-                      )}
-                    </div>
-                    <Badge variant="outline" className="text-[10px] shrink-0">
-                      {getCategoryIcon(issue.category)}
-                    </Badge>
+                }`}
+                onClick={() => handleIssueClick(issue)}
+              >
+                <div className="flex items-start gap-2">
+                  {getIcon(issue.type)}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm">{issue.message}</div>
+                    {issue.suggestion && <div className="text-xs text-gray-500 mt-1">💡 {issue.suggestion}</div>}
                   </div>
+                  <Badge variant="outline" className="text-[10px] shrink-0">
+                    {getCategoryIcon(issue.category)}
+                  </Badge>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+              </div>
+            ))}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
