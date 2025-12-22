@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.14 - Label câble au milieu réel de la longueur totale
+// VERSION: 3.15 - Nouvelle UI définition circuit avec calcul section
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -3200,6 +3200,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               console.log("Node ID:", node.id);
               console.log("isDefiningCircuit:", isDefiningCircuit);
               console.log("circuitSource:", circuitSource);
+              console.log("circuitDest:", circuitDest);
 
               // Mode définition de circuit
               if (isDefiningCircuit) {
@@ -3207,12 +3208,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   // Premier clic = source
                   console.log("Définition SOURCE:", node.id);
                   setCircuitSource(node.id);
-                  toast.info("Maintenant cliquez sur le bloc DESTINATION");
+                  setCircuitDest(null);
                 } else if (node.id !== circuitSource) {
-                  // Deuxième clic = destination
+                  // Deuxième clic = destination (on stocke, on ne crée pas encore)
                   console.log("Définition DESTINATION:", node.id);
-                  console.log("Appel defineCircuit avec:", circuitSource, node.id);
-                  defineCircuit(circuitSource, node.id);
+                  setCircuitDest(node.id);
                 }
               }
             }}
@@ -3403,7 +3403,6 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             setIsDefiningCircuit(true);
                             setCircuitSource(null);
                             setCircuitDest(null);
-                            toast.info("Cliquez sur le bloc SOURCE du circuit");
                           }}
                         >
                           <Zap className="h-3 w-3" />
@@ -3413,32 +3412,144 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                     )}
                   </div>
 
-                  {/* Mode définition de circuit */}
+                  {/* Mode définition de circuit - Nouvelle UI complète */}
                   {isDefiningCircuit && (
-                    <div className="flex items-center gap-2 px-2 py-2 bg-amber-50 rounded border border-amber-300 text-xs">
-                      <span className="text-amber-700 font-medium">
-                        {!circuitSource
-                          ? "👆 Cliquez sur le bloc SOURCE (ex: Panneau solaire)"
-                          : "👆 Cliquez sur le bloc DESTINATION (ex: MPPT)"}
-                      </span>
-                      {circuitSource && (
-                        <Badge variant="outline" className="text-xs bg-white">
-                          Source: {items.find((i) => i.id === circuitSource)?.nom_accessoire?.substring(0, 20)}...
-                        </Badge>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-5 px-1 ml-auto"
-                        onClick={() => {
-                          setIsDefiningCircuit(false);
-                          setCircuitSource(null);
-                          setCircuitDest(null);
-                        }}
-                      >
-                        <X className="h-3 w-3" />
-                        Annuler
-                      </Button>
+                    <div className="space-y-2 p-3 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg border border-amber-300">
+                      {/* Titre */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold text-amber-800 flex items-center gap-2">
+                          <Zap className="h-4 w-4" />
+                          Définition du circuit
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-gray-500 hover:text-red-500"
+                          onClick={() => {
+                            setIsDefiningCircuit(false);
+                            setCircuitSource(null);
+                            setCircuitDest(null);
+                          }}
+                        >
+                          <X className="h-3 w-3 mr-1" />
+                          Annuler
+                        </Button>
+                      </div>
+
+                      {/* Source et Destination côte à côte */}
+                      <div className="grid grid-cols-2 gap-3">
+                        {/* Source */}
+                        <div
+                          className={`p-2 rounded border ${circuitSource ? "bg-green-50 border-green-300" : "bg-white border-dashed border-gray-300"}`}
+                        >
+                          <div className="text-xs font-medium text-gray-500 mb-1">Source</div>
+                          {circuitSource ? (
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                              <span className="text-sm font-medium text-gray-800 truncate">
+                                {items.find((i) => i.id === circuitSource)?.nom_accessoire || "Inconnu"}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-amber-600 flex items-center gap-1">
+                              <span className="animate-pulse">👆</span>
+                              Cliquez sur un bloc
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Destination */}
+                        <div
+                          className={`p-2 rounded border ${circuitDest ? "bg-blue-50 border-blue-300" : circuitSource ? "bg-white border-dashed border-amber-300" : "bg-gray-50 border-gray-200"}`}
+                        >
+                          <div className="text-xs font-medium text-gray-500 mb-1">Destination</div>
+                          {circuitDest ? (
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                              <span className="text-sm font-medium text-gray-800 truncate">
+                                {items.find((i) => i.id === circuitDest)?.nom_accessoire || "Inconnu"}
+                              </span>
+                            </div>
+                          ) : circuitSource ? (
+                            <div className="text-sm text-amber-600 flex items-center gap-1">
+                              <span className="animate-pulse">👆</span>
+                              Cliquez sur un bloc
+                            </div>
+                          ) : (
+                            <div className="text-sm text-gray-400">En attente...</div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Calcul de section (affiché quand source et dest sont définis) */}
+                      {circuitSource &&
+                        circuitDest &&
+                        (() => {
+                          // Calculer les infos du circuit
+                          const sourceItem = items.find((i) => i.id === circuitSource);
+                          const destItem = items.find((i) => i.id === circuitDest);
+                          const edgeIds = findEdgesBetweenNodes(circuitSource, circuitDest);
+
+                          // Calculer la longueur totale
+                          let totalLength = 0;
+                          edgeIds.forEach((edgeId) => {
+                            const edge = edges.find((e) => e.id === edgeId);
+                            if (edge?.length_m) totalLength += edge.length_m;
+                          });
+
+                          // Puissance du circuit
+                          const power = sourceItem?.puissance_watts || destItem?.puissance_watts || 0;
+
+                          // Section recommandée
+                          const section = power > 0 && totalLength > 0 ? quickCalculate(power, totalLength) : null;
+
+                          return (
+                            <div className="space-y-2 pt-2 border-t border-amber-200">
+                              {/* Infos du circuit */}
+                              <div className="grid grid-cols-3 gap-2 text-xs">
+                                <div className="bg-white rounded p-2 text-center">
+                                  <div className="text-gray-500">Câbles</div>
+                                  <div className="font-bold text-lg text-gray-800">{edgeIds.length}</div>
+                                </div>
+                                <div className="bg-white rounded p-2 text-center">
+                                  <div className="text-gray-500">Longueur</div>
+                                  <div className="font-bold text-lg text-gray-800">{totalLength.toFixed(1)}m</div>
+                                </div>
+                                <div className="bg-white rounded p-2 text-center">
+                                  <div className="text-gray-500">Puissance</div>
+                                  <div className="font-bold text-lg text-gray-800">{power}W</div>
+                                </div>
+                              </div>
+
+                              {/* Section recommandée */}
+                              {section && (
+                                <div className="bg-green-100 rounded p-2 flex items-center justify-between">
+                                  <span className="text-sm text-green-800">Section recommandée:</span>
+                                  <Badge className="bg-green-600 text-white font-bold">{section} mm²</Badge>
+                                </div>
+                              )}
+
+                              {edgeIds.length === 0 && (
+                                <div className="bg-red-100 rounded p-2 text-center text-red-700 text-sm">
+                                  ⚠️ Aucun câble trouvé entre ces blocs
+                                </div>
+                              )}
+
+                              {/* Bouton créer circuit */}
+                              {edgeIds.length > 0 && (
+                                <Button
+                                  className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+                                  onClick={() => {
+                                    defineCircuit(circuitSource, circuitDest);
+                                  }}
+                                >
+                                  <Zap className="h-4 w-4 mr-2" />
+                                  Créer le circuit ({edgeIds.length} câble{edgeIds.length > 1 ? "s" : ""})
+                                </Button>
+                              )}
+                            </div>
+                          );
+                        })()}
                     </div>
                   )}
 
