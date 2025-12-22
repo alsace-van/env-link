@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.28 - Calcul automatique sections par flux + tension par segment
+// VERSION: 3.29 - Calcul segments avec traversée fusibles/protections
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -165,11 +165,6 @@ const DISTRIBUTION_POINT_TYPES = [
   "busbar",
   "bus_bar",
   "bus-bar",
-  "boitier_fusible",
-  "boitier-fusible",
-  "boîtier_fusible",
-  "fuse_box",
-  "fusebox",
   "repartiteur",
   "répartiteur",
   "repartiteur_dc",
@@ -177,6 +172,28 @@ const DISTRIBUTION_POINT_TYPES = [
   "terminal_block",
   "distribution",
   "panneau_distribution",
+];
+
+// Types "transparents" - on traverse sans s'arrêter pour le calcul de longueur
+// Ces éléments ne coupent pas le circuit, ils sont juste des protections en série
+const TRANSPARENT_TYPES = [
+  "fusible",
+  "fuse",
+  "porte_fusible",
+  "porte-fusible",
+  "fuse_holder",
+  "coupe_circuit",
+  "coupe-circuit",
+  "disjoncteur",
+  "breaker",
+  "interrupteur",
+  "switch",
+  "sectionneur",
+  "boitier_fusible",
+  "boitier-fusible",
+  "boîtier_fusible",
+  "fuse_box",
+  "fusebox",
 ];
 
 // Types qui convertissent la tension (ont une tension entrée différente de sortie)
@@ -2643,6 +2660,109 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // CALCUL AUTOMATIQUE DES SECTIONS PAR FLUX
   // ============================================
 
+  // Vérifier si un item est un point "transparent" (on traverse sans s'arrêter)
+  const isTransparentNode = useCallback((item: ElectricalItem): boolean => {
+    const typeElec = item.type_electrique?.toLowerCase() || "";
+    const nom = item.nom_accessoire?.toLowerCase() || "";
+
+    return TRANSPARENT_TYPES.some((t) => typeElec.includes(t) || nom.includes(t));
+  }, []);
+
+  // Vérifier si un item est un "point clé" (où on s'arrête et on cumule)
+  const isKeyPoint = useCallback(
+    (item: ElectricalItem): boolean => {
+      // Un point clé est :
+      // 1. Un point de distribution (busbar, bornier...)
+      // 2. Un équipement avec puissance (panneau, batterie, consommateur...)
+      // 3. Un convertisseur de tension (MPPT, onduleur...)
+      // 4. Tout ce qui n'est PAS transparent
+      return !isTransparentNode(item);
+    },
+    [isTransparentNode],
+  );
+
+  // Trouver le prochain point clé en traversant les nœuds transparents
+  // Retourne { keyPointId, totalLength, traversedEdgeIds }
+  const findNextKeyPoint = useCallback(
+    (
+      startNodeId: string,
+      direction: "downstream" | "upstream",
+      visited: Set<string> = new Set(),
+    ): { keyPointId: string | null; totalLength: number; traversedEdgeIds: string[] } => {
+      if (visited.has(startNodeId)) {
+        return { keyPointId: null, totalLength: 0, traversedEdgeIds: [] };
+      }
+      visited.add(startNodeId);
+
+      const startItem = items.find((i) => i.id === startNodeId);
+      if (!startItem) {
+        return { keyPointId: null, totalLength: 0, traversedEdgeIds: [] };
+      }
+
+      // Si c'est un point clé, on s'arrête
+      if (isKeyPoint(startItem)) {
+        return { keyPointId: startNodeId, totalLength: 0, traversedEdgeIds: [] };
+      }
+
+      // Sinon c'est transparent, on continue
+      const nextEdges =
+        direction === "downstream"
+          ? edges.filter((e) => e.source_node_id === startNodeId)
+          : edges.filter((e) => e.target_node_id === startNodeId);
+
+      if (nextEdges.length === 0) {
+        return { keyPointId: null, totalLength: 0, traversedEdgeIds: [] };
+      }
+
+      // Prendre le premier chemin (simplification - on suppose un seul chemin à travers les protections)
+      const nextEdge = nextEdges[0];
+      const nextNodeId = direction === "downstream" ? nextEdge.target_node_id : nextEdge.source_node_id;
+      const edgeLength = nextEdge.length_m || 0;
+
+      const result = findNextKeyPoint(nextNodeId, direction, visited);
+
+      return {
+        keyPointId: result.keyPointId,
+        totalLength: edgeLength + result.totalLength,
+        traversedEdgeIds: [nextEdge.id, ...result.traversedEdgeIds],
+      };
+    },
+    [edges, items, isKeyPoint],
+  );
+
+  // Calculer la longueur totale d'un segment (en traversant les nœuds transparents)
+  const calculateSegmentLength = useCallback(
+    (
+      edge: SchemaEdge,
+    ): {
+      totalLength: number;
+      realTargetId: string | null;
+      allEdgeIds: string[];
+    } => {
+      const targetItem = items.find((i) => i.id === edge.target_node_id);
+      const edgeLength = edge.length_m || 0;
+
+      if (!targetItem) {
+        return { totalLength: edgeLength, realTargetId: null, allEdgeIds: [edge.id] };
+      }
+
+      // Si la destination est un point clé, on s'arrête
+      if (isKeyPoint(targetItem)) {
+        return { totalLength: edgeLength, realTargetId: edge.target_node_id, allEdgeIds: [edge.id] };
+      }
+
+      // Sinon, continuer à traverser
+      const { keyPointId, totalLength, traversedEdgeIds } = findNextKeyPoint(edge.target_node_id, "downstream");
+
+      return {
+        totalLength: edgeLength + totalLength,
+        realTargetId: keyPointId,
+        allEdgeIds: [edge.id, ...traversedEdgeIds],
+      };
+    },
+    [items, isKeyPoint, findNextKeyPoint],
+  );
+
   // Déterminer la tension pour un segment de câble (source → target)
   const getSegmentVoltage = useCallback(
     (sourceItem: ElectricalItem, targetItem: ElectricalItem): number => {
@@ -2696,6 +2816,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       }
 
       const sourceIsDistribution = isDistributionPoint(sourceItem);
+      const sourceIsTransparent = isTransparentNode(sourceItem);
 
       // CAS 1: La source a une puissance propre (producteur, consommateur)
       if (sourceItem.puissance_watts && sourceItem.puissance_watts > 0) {
@@ -2721,12 +2842,18 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         return result;
       }
 
-      // CAS 3: La source est un convertisseur/régulateur → propager la puissance d'amont
+      // CAS 3: La source est transparente → propager ce qui vient d'amont
+      if (sourceIsTransparent) {
+        const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
+        return result;
+      }
+
+      // CAS 4: La source est un convertisseur/régulateur → propager la puissance d'amont
       // La puissance se conserve, seule la tension change
       const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
       return result;
     },
-    [items, isDistributionPoint, sumUpstreamPowersWithDetails],
+    [items, isDistributionPoint, isTransparentNode, sumUpstreamPowersWithDetails],
   );
 
   // Interface pour les résultats de calcul
@@ -2736,10 +2863,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     voltage: number;
     intensity: number;
     length: number;
+    totalSegmentLength: number; // Longueur totale jusqu'au prochain point clé
     section: number;
     details: PowerDetail[];
     sourceNom: string;
     targetNom: string;
+    realTargetNom: string; // Nom du vrai point clé de destination
+    isPartOfSegment: boolean; // True si ce câble fait partie d'un segment plus long
+    allEdgeIdsInSegment: string[]; // Tous les câbles du segment
   }
 
   // Calculer automatiquement toutes les sections de câbles
@@ -2747,58 +2878,92 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     console.log("\n========== CALCUL AUTOMATIQUE DES SECTIONS ==========");
 
     const calculations: EdgeCalculation[] = [];
+    const processedEdges = new Set<string>(); // Éviter de traiter deux fois les mêmes segments
 
     for (const edge of edges) {
+      // Si déjà traité dans un segment, passer
+      if (processedEdges.has(edge.id)) continue;
+
       const sourceItem = items.find((i) => i.id === edge.source_node_id);
       const targetItem = items.find((i) => i.id === edge.target_node_id);
 
       if (!sourceItem || !targetItem) continue;
 
+      // Ignorer les câbles qui partent d'un point transparent (ils seront traités via le segment)
+      if (isTransparentNode(sourceItem)) {
+        console.log(
+          `\n--- Câble ignoré (source transparente): ${sourceItem.nom_accessoire} → ${targetItem.nom_accessoire} ---`,
+        );
+        continue;
+      }
+
       console.log(`\n--- Câble: ${sourceItem.nom_accessoire} → ${targetItem.nom_accessoire} ---`);
 
-      // 1. Calculer la puissance qui traverse ce câble
+      // 1. Calculer la longueur du segment (en traversant les nœuds transparents)
+      const segmentInfo = calculateSegmentLength(edge);
+      const realTarget = segmentInfo.realTargetId ? items.find((i) => i.id === segmentInfo.realTargetId) : targetItem;
+
+      console.log(
+        `   Segment: ${segmentInfo.allEdgeIds.length} câble(s), longueur totale: ${segmentInfo.totalSegmentLength}m`,
+      );
+      if (segmentInfo.realTargetId && segmentInfo.realTargetId !== edge.target_node_id) {
+        console.log(`   Vraie destination: ${realTarget?.nom_accessoire}`);
+      }
+
+      // Marquer tous les câbles du segment comme traités
+      segmentInfo.allEdgeIds.forEach((id) => processedEdges.add(id));
+
+      // 2. Calculer la puissance qui traverse ce câble
       const { power, details } = calculateEdgePower(edge);
 
-      // 2. Déterminer la tension du segment
-      const voltage = getSegmentVoltage(sourceItem, targetItem);
+      // 3. Déterminer la tension du segment (utiliser la vraie destination)
+      const voltage = getSegmentVoltage(sourceItem, realTarget || targetItem);
 
-      // 3. Calculer l'intensité
+      // 4. Calculer l'intensité
       const intensity = power > 0 && voltage > 0 ? power / voltage : 0;
 
-      // 4. Longueur du câble
-      const length = edge.length_m || 1; // 1m par défaut si non défini
-
-      // 5. Calculer la section recommandée
+      // 5. Calculer la section recommandée avec la longueur TOTALE du segment
       let section = 0;
-      if (power > 0 && length > 0) {
-        section = quickCalculate(power, length, voltage);
+      if (power > 0 && segmentInfo.totalSegmentLength > 0) {
+        section = quickCalculate(power, segmentInfo.totalSegmentLength, voltage);
       }
 
       console.log(`   Puissance: ${power}W`);
       console.log(`   Tension: ${voltage}V`);
       console.log(`   Intensité: ${intensity.toFixed(2)}A`);
-      console.log(`   Longueur: ${length}m`);
+      console.log(`   Longueur segment: ${segmentInfo.totalSegmentLength}m`);
       console.log(`   Section calculée: ${section}mm²`);
       if (details.length > 0) {
         console.log(`   Sources: ${details.map((d) => `${d.nom}(${d.total}W)`).join(" + ")}`);
       }
 
-      calculations.push({
-        edgeId: edge.id,
-        power,
-        voltage,
-        intensity,
-        length,
-        section,
-        details,
-        sourceNom: sourceItem.nom_accessoire,
-        targetNom: targetItem.nom_accessoire,
-      });
+      // Ajouter un calcul pour CHAQUE câble du segment (tous avec la même section)
+      for (const segmentEdgeId of segmentInfo.allEdgeIds) {
+        const segEdge = edges.find((e) => e.id === segmentEdgeId);
+        const segSource = segEdge ? items.find((i) => i.id === segEdge.source_node_id) : null;
+        const segTarget = segEdge ? items.find((i) => i.id === segEdge.target_node_id) : null;
+
+        calculations.push({
+          edgeId: segmentEdgeId,
+          power,
+          voltage,
+          intensity,
+          length: segEdge?.length_m || 0,
+          totalSegmentLength: segmentInfo.totalSegmentLength,
+          section,
+          details,
+          sourceNom: segSource?.nom_accessoire || sourceItem.nom_accessoire,
+          targetNom: segTarget?.nom_accessoire || targetItem.nom_accessoire,
+          realTargetNom: realTarget?.nom_accessoire || targetItem.nom_accessoire,
+          isPartOfSegment: segmentInfo.allEdgeIds.length > 1,
+          allEdgeIdsInSegment: segmentInfo.allEdgeIds,
+        });
+      }
     }
 
     console.log("\n========== FIN CALCUL ==========\n");
     return calculations;
-  }, [edges, items, calculateEdgePower, getSegmentVoltage, quickCalculate]);
+  }, [edges, items, isTransparentNode, calculateSegmentLength, calculateEdgePower, getSegmentVoltage, quickCalculate]);
 
   // Appliquer les sections calculées à tous les câbles
   const applyCalculatedSections = useCallback(() => {
@@ -4609,13 +4774,28 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                         const withPower = calculations.filter((c) => c.power > 0);
                         const withoutPower = calculations.filter((c) => c.power === 0);
 
+                        // Grouper par segment (première occurrence de chaque segment)
+                        const uniqueSegments = withPower.filter((calc, index) => {
+                          const firstIndex = withPower.findIndex(
+                            (c) =>
+                              c.allEdgeIdsInSegment &&
+                              calc.allEdgeIdsInSegment &&
+                              c.allEdgeIdsInSegment[0] === calc.allEdgeIdsInSegment[0],
+                          );
+                          return firstIndex === index;
+                        });
+
                         return (
                           <>
                             {/* Stats */}
-                            <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="grid grid-cols-3 gap-2 text-xs">
                               <div className="bg-emerald-50 rounded p-2 text-center">
-                                <div className="text-emerald-600">Câbles calculables</div>
-                                <div className="font-bold text-lg text-emerald-800">{withPower.length}</div>
+                                <div className="text-emerald-600">Segments</div>
+                                <div className="font-bold text-lg text-emerald-800">{uniqueSegments.length}</div>
+                              </div>
+                              <div className="bg-blue-50 rounded p-2 text-center">
+                                <div className="text-blue-600">Câbles</div>
+                                <div className="font-bold text-lg text-blue-800">{withPower.length}</div>
                               </div>
                               <div className="bg-gray-50 rounded p-2 text-center">
                                 <div className="text-gray-500">Sans puissance</div>
@@ -4623,26 +4803,50 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                               </div>
                             </div>
 
-                            {/* Liste des calculs */}
-                            {withPower.length > 0 && (
-                              <div className="max-h-48 overflow-y-auto space-y-1 border rounded p-2 bg-gray-50">
-                                {withPower.map((calc) => (
-                                  <div key={calc.edgeId} className="text-xs bg-white rounded p-1.5 border">
+                            {/* Liste des segments */}
+                            {uniqueSegments.length > 0 && (
+                              <div className="max-h-64 overflow-y-auto space-y-1.5 border rounded p-2 bg-gray-50">
+                                {uniqueSegments.map((calc) => (
+                                  <div
+                                    key={calc.edgeId}
+                                    className={`text-xs bg-white rounded p-2 border ${calc.isPartOfSegment ? "border-l-4 border-l-amber-400" : ""}`}
+                                  >
                                     <div className="flex justify-between items-center">
                                       <span
                                         className="text-gray-700 truncate flex-1"
-                                        title={`${calc.sourceNom} → ${calc.targetNom}`}
+                                        title={`${calc.sourceNom} → ${calc.realTargetNom}`}
                                       >
-                                        {calc.sourceNom.substring(0, 15)}... → {calc.targetNom.substring(0, 15)}...
+                                        {calc.sourceNom.length > 20
+                                          ? calc.sourceNom.substring(0, 20) + "..."
+                                          : calc.sourceNom}
+                                        <span className="text-gray-400 mx-1">→</span>
+                                        {calc.realTargetNom.length > 20
+                                          ? calc.realTargetNom.substring(0, 20) + "..."
+                                          : calc.realTargetNom}
                                       </span>
-                                      <span className="font-bold text-emerald-700 ml-2">{calc.section}mm²</span>
+                                      <span className="font-bold text-emerald-700 ml-2 bg-emerald-50 px-1.5 py-0.5 rounded">
+                                        {calc.section}mm²
+                                      </span>
                                     </div>
-                                    <div className="text-[10px] text-gray-500 mt-0.5">
-                                      {calc.power}W @ {calc.voltage}V = {calc.intensity.toFixed(1)}A • {calc.length}m
+                                    <div className="text-[10px] text-gray-500 mt-1 flex flex-wrap gap-x-2">
+                                      <span>⚡ {calc.power}W</span>
+                                      <span>@ {calc.voltage}V</span>
+                                      <span>= {calc.intensity.toFixed(1)}A</span>
+                                      <span className="text-blue-600">📏 {calc.totalSegmentLength}m</span>
+                                      {calc.isPartOfSegment && (
+                                        <span className="text-amber-600">
+                                          ({calc.allEdgeIdsInSegment.length} câbles)
+                                        </span>
+                                      )}
                                     </div>
                                     {calc.details.length > 1 && (
-                                      <div className="text-[10px] text-blue-600 mt-0.5">
-                                        Sources: {calc.details.map((d) => d.nom.substring(0, 10)).join(" + ")}
+                                      <div className="text-[10px] text-purple-600 mt-0.5 bg-purple-50 rounded px-1 py-0.5">
+                                        📋{" "}
+                                        {calc.details
+                                          .map(
+                                            (d) => `${d.nom.substring(0, 12)}${d.quantite > 1 ? `×${d.quantite}` : ""}`,
+                                          )
+                                          .join(" + ")}
                                       </div>
                                     )}
                                   </div>
@@ -4650,9 +4854,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                               </div>
                             )}
 
-                            {withPower.length === 0 && (
+                            {uniqueSegments.length === 0 && (
                               <div className="text-xs text-amber-600 bg-amber-50 rounded p-2">
-                                ⚠️ Aucun câble ne peut être calculé. Vérifiez que les équipements ont une puissance
+                                ⚠️ Aucun segment ne peut être calculé. Vérifiez que les équipements ont une puissance
                                 définie.
                               </div>
                             )}
