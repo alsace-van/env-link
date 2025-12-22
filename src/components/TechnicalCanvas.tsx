@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.25 - Fix tension dans calcul section + extraction tension depuis nom
+// VERSION: 3.27 - Détail équipements dans calcul distribution + contournement blocs
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -676,10 +676,13 @@ const CustomSmoothEdge = ({
 }: EdgeProps) => {
   // Récupérer si on doit faire le virage près de la target (bloc plus petit)
   const turnNearTarget = (data as any)?.turnNearTarget ?? false;
+  // Récupérer les autres nodes pour le contournement
+  const allNodes = (data as any)?.allNodes || [];
 
   // Distance minimale avant le premier virage (sortie perpendiculaire)
   const minExitDistance = 40; // Distance avant le premier coude
   const cornerRadius = 8;
+  const nodeMargin = 30; // Marge autour des blocs pour le contournement
 
   // Calculer les distances
   const deltaX = Math.abs(targetX - sourceX);
@@ -687,6 +690,89 @@ const CustomSmoothEdge = ({
 
   // Seuil pour considérer les points comme alignés
   const alignmentThreshold = 5;
+
+  // Fonction pour obtenir la bounding box d'un node avec marge
+  const getNodeBounds = (node: any) => {
+    const width = node.width || 200;
+    const height = node.height || 150;
+    return {
+      left: node.position.x - nodeMargin,
+      right: node.position.x + width + nodeMargin,
+      top: node.position.y - nodeMargin,
+      bottom: node.position.y + height + nodeMargin,
+      centerY: node.position.y + height / 2,
+      centerX: node.position.x + width / 2,
+    };
+  };
+
+  // Fonction pour vérifier si un point est dans une bounding box
+  const isPointInBounds = (x: number, y: number, bounds: any) => {
+    return x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom;
+  };
+
+  // Fonction pour trouver les obstacles sur le chemin horizontal
+  const findObstaclesOnHorizontalPath = (y: number, fromX: number, toX: number) => {
+    const minX = Math.min(fromX, toX);
+    const maxX = Math.max(fromX, toX);
+
+    return allNodes
+      .filter((node: any) => {
+        if (node.hidden) return false;
+        const bounds = getNodeBounds(node);
+        // Le chemin horizontal à y traverse-t-il ce bloc ?
+        return y >= bounds.top && y <= bounds.bottom && bounds.right > minX && bounds.left < maxX;
+      })
+      .map((node: any) => getNodeBounds(node));
+  };
+
+  // Fonction pour trouver les obstacles sur le chemin vertical
+  const findObstaclesOnVerticalPath = (x: number, fromY: number, toY: number) => {
+    const minY = Math.min(fromY, toY);
+    const maxY = Math.max(fromY, toY);
+
+    return allNodes
+      .filter((node: any) => {
+        if (node.hidden) return false;
+        const bounds = getNodeBounds(node);
+        // Le chemin vertical à x traverse-t-il ce bloc ?
+        return x >= bounds.left && x <= bounds.right && bounds.bottom > minY && bounds.top < maxY;
+      })
+      .map((node: any) => getNodeBounds(node));
+  };
+
+  // Fonction pour calculer le meilleur Y de contournement
+  const findBypassY = (obstacles: any[], preferredY: number, sourceY: number, targetY: number) => {
+    if (obstacles.length === 0) return preferredY;
+
+    // Trouver le bloc le plus problématique
+    let topmost = Math.min(...obstacles.map((o: any) => o.top));
+    let bottommost = Math.max(...obstacles.map((o: any) => o.bottom));
+
+    // Décider si contourner par le haut ou le bas
+    const goAbove = Math.abs(topmost - preferredY) < Math.abs(bottommost - preferredY);
+
+    if (goAbove) {
+      return topmost - 10; // Passer au-dessus
+    } else {
+      return bottommost + 10; // Passer en-dessous
+    }
+  };
+
+  // Fonction pour calculer le meilleur X de contournement
+  const findBypassX = (obstacles: any[], preferredX: number, sourceX: number, targetX: number) => {
+    if (obstacles.length === 0) return preferredX;
+
+    let leftmost = Math.min(...obstacles.map((o: any) => o.left));
+    let rightmost = Math.max(...obstacles.map((o: any) => o.right));
+
+    const goLeft = Math.abs(leftmost - preferredX) < Math.abs(rightmost - preferredX);
+
+    if (goLeft) {
+      return leftmost - 10;
+    } else {
+      return rightmost + 10;
+    }
+  };
 
   let edgePath: string;
   // Position du label - sera calculée pour être au milieu du câble
@@ -732,17 +818,58 @@ const CustomSmoothEdge = ({
     }
   };
 
-  // Si presque aligné horizontalement → ligne droite
+  // Si presque aligné horizontalement → ligne droite (mais vérifier obstacles)
   if (deltaY < alignmentThreshold) {
-    edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
-    labelX = (sourceX + targetX) / 2;
-    labelY = sourceY;
+    // Vérifier s'il y a des obstacles sur le chemin horizontal direct
+    const obstacles = findObstaclesOnHorizontalPath(sourceY, sourceX, targetX);
+    if (obstacles.length === 0) {
+      edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
+      labelX = (sourceX + targetX) / 2;
+      labelY = sourceY;
+    } else {
+      // Contourner par le haut ou le bas
+      const bypassY = findBypassY(obstacles, sourceY, sourceY, targetY);
+      const r = cornerRadius;
+      const goingDown = bypassY > sourceY;
+      edgePath = `M ${sourceX} ${sourceY} 
+                  L ${sourceX + minExitDistance - r} ${sourceY}
+                  Q ${sourceX + minExitDistance} ${sourceY} ${sourceX + minExitDistance} ${sourceY + (goingDown ? r : -r)}
+                  L ${sourceX + minExitDistance} ${bypassY + (goingDown ? -r : r)}
+                  Q ${sourceX + minExitDistance} ${bypassY} ${sourceX + minExitDistance + r} ${bypassY}
+                  L ${targetX - minExitDistance - r} ${bypassY}
+                  Q ${targetX - minExitDistance} ${bypassY} ${targetX - minExitDistance} ${bypassY + (goingDown ? -r : r)}
+                  L ${targetX - minExitDistance} ${targetY + (goingDown ? -r : r)}
+                  Q ${targetX - minExitDistance} ${targetY} ${targetX - minExitDistance + r} ${targetY}
+                  L ${targetX} ${targetY}`;
+      labelX = (sourceX + targetX) / 2;
+      labelY = bypassY;
+    }
   }
-  // Si presque aligné verticalement → ligne droite
+  // Si presque aligné verticalement → ligne droite (mais vérifier obstacles)
   else if (deltaX < alignmentThreshold) {
-    edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
-    labelX = sourceX;
-    labelY = (sourceY + targetY) / 2;
+    const obstacles = findObstaclesOnVerticalPath(sourceX, sourceY, targetY);
+    if (obstacles.length === 0) {
+      edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
+      labelX = sourceX;
+      labelY = (sourceY + targetY) / 2;
+    } else {
+      // Contourner par la gauche ou la droite
+      const bypassX = findBypassX(obstacles, sourceX, sourceX, targetX);
+      const r = cornerRadius;
+      const goingRight = bypassX > sourceX;
+      edgePath = `M ${sourceX} ${sourceY} 
+                  L ${sourceX} ${sourceY + minExitDistance - r}
+                  Q ${sourceX} ${sourceY + minExitDistance} ${sourceX + (goingRight ? r : -r)} ${sourceY + minExitDistance}
+                  L ${bypassX + (goingRight ? -r : r)} ${sourceY + minExitDistance}
+                  Q ${bypassX} ${sourceY + minExitDistance} ${bypassX} ${sourceY + minExitDistance + r}
+                  L ${bypassX} ${targetY - minExitDistance - r}
+                  Q ${bypassX} ${targetY - minExitDistance} ${bypassX + (goingRight ? -r : r)} ${targetY - minExitDistance}
+                  L ${targetX + (goingRight ? -r : r)} ${targetY - minExitDistance}
+                  Q ${targetX} ${targetY - minExitDistance} ${targetX} ${targetY - minExitDistance + r}
+                  L ${targetX} ${targetY}`;
+      labelX = bypassX;
+      labelY = (sourceY + targetY) / 2;
+    }
   }
   // Connexion horizontale RIGHT → LEFT
   else if (sourcePosition === Position.Right && (targetPosition === Position.Left || !targetPosition)) {
@@ -752,7 +879,19 @@ const CustomSmoothEdge = ({
     const entryDist = Math.min(minExitDistance, availableSpace / 3);
 
     // Point de virage au milieu ou selon turnNearTarget
-    const midX = turnNearTarget ? targetX - entryDist : sourceX + exitDist;
+    let midX = turnNearTarget ? targetX - entryDist : sourceX + exitDist;
+
+    // Vérifier s'il y a des obstacles sur le segment vertical
+    const obstaclesOnVertical = findObstaclesOnVerticalPath(
+      midX,
+      Math.min(sourceY, targetY),
+      Math.max(sourceY, targetY),
+    );
+
+    if (obstaclesOnVertical.length > 0) {
+      // Trouver un X qui contourne les obstacles
+      midX = findBypassX(obstaclesOnVertical, midX, sourceX, targetX);
+    }
 
     const goingDown = targetY > sourceY;
     const r = Math.min(cornerRadius, deltaY / 4, exitDist / 2);
@@ -764,9 +903,9 @@ const CustomSmoothEdge = ({
                 Q ${midX} ${targetY} ${midX + r} ${targetY}
                 L ${targetX} ${targetY}`;
 
-    const seg1 = midX - sourceX;
+    const seg1 = Math.abs(midX - sourceX);
     const seg2 = Math.abs(targetY - sourceY);
-    const seg3 = targetX - midX;
+    const seg3 = Math.abs(targetX - midX);
     const mid = calcMidpoint3Segments(seg1, seg2, seg3, sourceX, sourceY, midX, sourceY, targetX, targetY, true);
     labelX = mid.x;
     labelY = mid.y;
@@ -777,7 +916,19 @@ const CustomSmoothEdge = ({
     const exitDist = Math.min(minExitDistance, availableSpace / 3);
     const entryDist = Math.min(minExitDistance, availableSpace / 3);
 
-    const midY = turnNearTarget ? targetY - entryDist : sourceY + exitDist;
+    let midY = turnNearTarget ? targetY - entryDist : sourceY + exitDist;
+
+    // Vérifier s'il y a des obstacles sur le segment horizontal
+    const obstaclesOnHorizontal = findObstaclesOnHorizontalPath(
+      midY,
+      Math.min(sourceX, targetX),
+      Math.max(sourceX, targetX),
+    );
+
+    if (obstaclesOnHorizontal.length > 0) {
+      // Trouver un Y qui contourne les obstacles
+      midY = findBypassY(obstaclesOnHorizontal, midY, sourceY, targetY);
+    }
 
     const goingRight = targetX > sourceX;
     const r = Math.min(cornerRadius, deltaX / 4, exitDist / 2);
@@ -789,9 +940,9 @@ const CustomSmoothEdge = ({
                 Q ${targetX} ${midY} ${targetX} ${midY + r}
                 L ${targetX} ${targetY}`;
 
-    const seg1 = midY - sourceY;
+    const seg1 = Math.abs(midY - sourceY);
     const seg2 = Math.abs(targetX - sourceX);
-    const seg3 = targetY - midY;
+    const seg3 = Math.abs(targetY - midY);
     const mid = calcMidpoint3Segments(seg1, seg2, seg3, sourceX, sourceY, sourceX, midY, targetX, targetY, false);
     labelX = mid.x;
     labelY = mid.y;
@@ -2299,6 +2450,57 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     [edges, items],
   );
 
+  // Interface pour le détail des puissances
+  interface PowerDetail {
+    id: string;
+    nom: string;
+    puissance: number;
+    quantite: number;
+    total: number;
+  }
+
+  // Version avec détails pour affichage
+  const sumUpstreamPowersWithDetails = useCallback(
+    (startNodeId: string, visited: Set<string> = new Set()): { total: number; details: PowerDetail[] } => {
+      if (visited.has(startNodeId)) return { total: 0, details: [] };
+      visited.add(startNodeId);
+
+      const item = items.find((i) => i.id === startNodeId);
+      if (!item) return { total: 0, details: [] };
+
+      // Si cet item a une puissance, c'est une source
+      if (item.puissance_watts && item.puissance_watts > 0) {
+        const totalPower = item.puissance_watts * (item.quantite || 1);
+        return {
+          total: totalPower,
+          details: [
+            {
+              id: item.id,
+              nom: item.nom_accessoire,
+              puissance: item.puissance_watts,
+              quantite: item.quantite || 1,
+              total: totalPower,
+            },
+          ],
+        };
+      }
+
+      // Sinon, sommer les connexions entrantes
+      const incomingEdges = edges.filter((e) => e.target_node_id === startNodeId);
+      let totalPower = 0;
+      let allDetails: PowerDetail[] = [];
+
+      for (const edge of incomingEdges) {
+        const result = sumUpstreamPowersWithDetails(edge.source_node_id, visited);
+        totalPower += result.total;
+        allDetails = [...allDetails, ...result.details];
+      }
+
+      return { total: totalPower, details: allDetails };
+    },
+    [edges, items],
+  );
+
   // Fonction pour SOMMER toutes les puissances en aval (pour points de distribution côté consommation)
   const sumDownstreamPowers = useCallback(
     (startNodeId: string, visited: Set<string> = new Set()): number => {
@@ -2330,6 +2532,48 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       }
 
       return totalPower;
+    },
+    [edges, items],
+  );
+
+  // Version avec détails pour affichage
+  const sumDownstreamPowersWithDetails = useCallback(
+    (startNodeId: string, visited: Set<string> = new Set()): { total: number; details: PowerDetail[] } => {
+      if (visited.has(startNodeId)) return { total: 0, details: [] };
+      visited.add(startNodeId);
+
+      const item = items.find((i) => i.id === startNodeId);
+      if (!item) return { total: 0, details: [] };
+
+      // Si cet item a une puissance, c'est un consommateur
+      if (item.puissance_watts && item.puissance_watts > 0) {
+        const totalPower = item.puissance_watts * (item.quantite || 1);
+        return {
+          total: totalPower,
+          details: [
+            {
+              id: item.id,
+              nom: item.nom_accessoire,
+              puissance: item.puissance_watts,
+              quantite: item.quantite || 1,
+              total: totalPower,
+            },
+          ],
+        };
+      }
+
+      // Sinon, sommer les connexions sortantes
+      const outgoingEdges = edges.filter((e) => e.source_node_id === startNodeId);
+      let totalPower = 0;
+      let allDetails: PowerDetail[] = [];
+
+      for (const edge of outgoingEdges) {
+        const result = sumDownstreamPowersWithDetails(edge.target_node_id, visited);
+        totalPower += result.total;
+        allDetails = [...allDetails, ...result.details];
+      }
+
+      return { total: totalPower, details: allDetails };
     },
     [edges, items],
   );
@@ -3319,6 +3563,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             targetHeight,
             // Indiquer de quel côté faire le virage (près du plus petit bloc)
             turnNearTarget: targetHeight < sourceHeight,
+            // Passer tous les nodes pour le contournement des obstacles
+            allNodes: nodes.filter((n) => n.id !== edge.source_node_id && n.id !== edge.target_node_id),
           },
           label: cableLabel,
           labelStyle: { fill: edgeColor, fontWeight: 600, fontSize: 11 },
@@ -4350,16 +4596,27 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                           let power = 0;
                           let voltage = 12; // Défaut
                           let powerSource = "";
+                          let powerDetails: {
+                            id: string;
+                            nom: string;
+                            puissance: number;
+                            quantite: number;
+                            total: number;
+                          }[] = [];
 
                           // CAS 1: Source est un point de distribution
                           if (sourceIsDistribution && sourceItem) {
-                            power = sumUpstreamPowers(circuitSource, new Set([circuitDest]));
+                            const result = sumUpstreamPowersWithDetails(circuitSource, new Set([circuitDest]));
+                            power = result.total;
+                            powerDetails = result.details;
                             voltage = getOutputVoltage(sourceItem);
                             powerSource = "somme amont";
                           }
                           // CAS 2: Destination est un point de distribution
                           else if (destIsDistribution && destItem) {
-                            power = sumDownstreamPowers(circuitDest, new Set([circuitSource]));
+                            const result = sumDownstreamPowersWithDetails(circuitDest, new Set([circuitSource]));
+                            power = result.total;
+                            powerDetails = result.details;
                             voltage = getInputVoltage(destItem);
                             powerSource = "somme aval";
                           }
@@ -4422,15 +4679,69 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                 </div>
                               </div>
 
+                              {/* Détail des équipements si point de distribution */}
+                              {powerDetails.length > 0 && (
+                                <div className="bg-amber-50 rounded p-2 text-xs border border-amber-200">
+                                  <div className="font-medium text-amber-800 mb-1 flex items-center gap-1">
+                                    📋 Équipements pris en compte ({powerDetails.length})
+                                  </div>
+                                  <div className="space-y-0.5 max-h-24 overflow-y-auto">
+                                    {powerDetails.map((detail, idx) => (
+                                      <div
+                                        key={detail.id}
+                                        className="flex justify-between items-center text-amber-700 bg-white/50 rounded px-1.5 py-0.5"
+                                      >
+                                        <span className="truncate flex-1" title={detail.nom}>
+                                          {detail.quantite > 1 && (
+                                            <span className="font-medium">{detail.quantite}× </span>
+                                          )}
+                                          {detail.nom.length > 30 ? detail.nom.substring(0, 30) + "..." : detail.nom}
+                                        </span>
+                                        <span className="font-medium ml-2 whitespace-nowrap">
+                                          {detail.total}W
+                                          {detail.quantite > 1 && (
+                                            <span className="text-amber-500 text-[10px] ml-1">
+                                              ({detail.puissance}W×{detail.quantite})
+                                            </span>
+                                          )}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div className="border-t border-amber-200 mt-1 pt-1 flex justify-between font-medium text-amber-800">
+                                    <span>Total</span>
+                                    <span>{power}W</span>
+                                  </div>
+                                </div>
+                              )}
+
                               {/* Détail calcul : Tension et Intensité */}
                               {power > 0 && (
                                 <div className="bg-blue-50 rounded p-2 text-xs text-blue-700 flex items-center justify-between">
                                   <span>
                                     💡 {power}W ÷ <strong>{voltage}V</strong> = <strong>{intensity.toFixed(2)}A</strong>
                                   </span>
-                                  {voltage === 12 && !sourceItem?.tension_volts && (
-                                    <span className="text-amber-600">(tension par défaut)</span>
-                                  )}
+                                  {(() => {
+                                    // Déterminer la source de la tension
+                                    const hasTensionVolts =
+                                      sourceItem?.tension_volts ||
+                                      sourceItem?.tension_sortie_volts ||
+                                      sourceItem?.tension_entree_volts;
+                                    const extractedFromName =
+                                      !hasTensionVolts && extractVoltageFromName(sourceItem?.nom_accessoire || "");
+
+                                    if (hasTensionVolts) {
+                                      return null; // Pas de message, tension définie
+                                    } else if (extractedFromName) {
+                                      return <span className="text-blue-600">(extrait du nom)</span>;
+                                    } else {
+                                      return (
+                                        <span className="text-amber-600 font-medium">
+                                          ⚠️ 12V par défaut - cliquer sur ✏️ pour modifier
+                                        </span>
+                                      );
+                                    }
+                                  })()}
                                 </div>
                               )}
 
