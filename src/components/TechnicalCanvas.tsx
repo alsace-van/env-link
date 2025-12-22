@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.32 - Fix erreurs TypeScript + utilisation longueurs définies
+// VERSION: 3.33 - Suppression logs debug + fix performances
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2685,12 +2685,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const getEdgeLength = useCallback((edge: SchemaEdge): { length: number; isDefined: boolean } => {
     // Si longueur définie, la retourner
     if (edge.length_m && edge.length_m > 0) {
-      console.log(`[getEdgeLength] Edge ${edge.id.substring(0, 8)}: longueur DÉFINIE = ${edge.length_m}m`);
       return { length: edge.length_m, isDefined: true };
     }
-
-    console.log(`[getEdgeLength] Edge ${edge.id.substring(0, 8)}: longueur NON définie`);
-
     // Pas de longueur définie - retourner 0 avec isDefined=false
     return { length: 0, isDefined: false };
   }, []);
@@ -2796,38 +2792,31 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     (sourceItem: ElectricalItem, targetItem: ElectricalItem): number => {
       // Priorité 1: tension de sortie de la source (ex: MPPT vers batterie = 12V)
       if (sourceItem.tension_sortie_volts) {
-        console.log(`[Tension] ${sourceItem.nom_accessoire} → tension_sortie: ${sourceItem.tension_sortie_volts}V`);
         return sourceItem.tension_sortie_volts;
       }
       // Priorité 2: tension unique de la source
       if (sourceItem.tension_volts) {
-        console.log(`[Tension] ${sourceItem.nom_accessoire} → tension_volts: ${sourceItem.tension_volts}V`);
         return sourceItem.tension_volts;
       }
       // Priorité 3: tension d'entrée de la destination (ex: vers onduleur = 12V DC)
       if (targetItem.tension_entree_volts) {
-        console.log(`[Tension] ${targetItem.nom_accessoire} ← tension_entree: ${targetItem.tension_entree_volts}V`);
         return targetItem.tension_entree_volts;
       }
       // Priorité 4: tension unique de la destination
       if (targetItem.tension_volts) {
-        console.log(`[Tension] ${targetItem.nom_accessoire} ← tension_volts: ${targetItem.tension_volts}V`);
         return targetItem.tension_volts;
       }
       // Priorité 5: extraire du nom de la source
       const fromSourceName = extractVoltageFromName(sourceItem.nom_accessoire);
       if (fromSourceName) {
-        console.log(`[Tension] Extrait du nom source: ${fromSourceName}V`);
         return fromSourceName;
       }
       // Priorité 6: extraire du nom de la destination
       const fromTargetName = extractVoltageFromName(targetItem.nom_accessoire);
       if (fromTargetName) {
-        console.log(`[Tension] Extrait du nom dest: ${fromTargetName}V`);
         return fromTargetName;
       }
       // Défaut: 12V
-      console.log(`[Tension] Défaut: 12V`);
       return 12;
     },
     [extractVoltageFromName],
@@ -2904,18 +2893,6 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // Calculer automatiquement toutes les sections de câbles
   const calculateAllEdgeSections = useCallback((): EdgeCalculation[] => {
-    console.log("\n========== CALCUL AUTOMATIQUE DES SECTIONS ==========");
-    console.log(`[DEBUG] Nombre d'edges: ${edges.length}`);
-
-    // DEBUG: Afficher toutes les longueurs des edges
-    edges.forEach((e, i) => {
-      const src = items.find((it) => it.id === e.source_node_id);
-      const tgt = items.find((it) => it.id === e.target_node_id);
-      console.log(
-        `[DEBUG] Edge ${i}: ${src?.nom_accessoire?.substring(0, 20) || "?"} → ${tgt?.nom_accessoire?.substring(0, 20) || "?"} | length_m = ${e.length_m} | type: ${typeof e.length_m}`,
-      );
-    });
-
     const calculations: EdgeCalculation[] = [];
     const processedEdges = new Set<string>(); // Éviter de traiter deux fois les mêmes segments
 
@@ -2930,24 +2907,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
       // Ignorer les câbles qui partent d'un point transparent (ils seront traités via le segment)
       if (isTransparentNode(sourceItem)) {
-        console.log(
-          `\n--- Câble ignoré (source transparente): ${sourceItem.nom_accessoire} → ${targetItem.nom_accessoire} ---`,
-        );
         continue;
       }
-
-      console.log(`\n--- Câble: ${sourceItem.nom_accessoire} → ${targetItem.nom_accessoire} ---`);
 
       // 1. Calculer la longueur du segment (en traversant les nœuds transparents)
       const segmentInfo = calculateSegmentLength(edge);
       const realTarget = segmentInfo.realTargetId ? items.find((i) => i.id === segmentInfo.realTargetId) : targetItem;
-
-      console.log(
-        `   Segment: ${segmentInfo.allEdgeIds.length} câble(s), longueur totale: ${segmentInfo.totalLength}m`,
-      );
-      if (segmentInfo.realTargetId && segmentInfo.realTargetId !== edge.target_node_id) {
-        console.log(`   Vraie destination: ${realTarget?.nom_accessoire}`);
-      }
 
       // Marquer tous les câbles du segment comme traités
       segmentInfo.allEdgeIds.forEach((id) => processedEdges.add(id));
@@ -2965,17 +2930,6 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       let section = 0;
       if (power > 0 && segmentInfo.totalLength > 0) {
         section = quickCalculate(power, segmentInfo.totalLength, voltage);
-      }
-
-      console.log(`   Puissance: ${power}W`);
-      console.log(`   Tension: ${voltage}V`);
-      console.log(`   Intensité: ${intensity.toFixed(2)}A`);
-      console.log(
-        `   Longueur segment: ${segmentInfo.totalLength}m ${segmentInfo.hasDefinedLength ? "(définie)" : "(estimée)"}`,
-      );
-      console.log(`   Section calculée: ${section}mm²`);
-      if (details.length > 0) {
-        console.log(`   Sources: ${details.map((d) => `${d.nom}(${d.total}W)`).join(" + ")}`);
       }
 
       // Ajouter un calcul pour CHAQUE câble du segment (tous avec la même section)
@@ -3003,7 +2957,6 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       }
     }
 
-    console.log("\n========== FIN CALCUL ==========\n");
     return calculations;
   }, [
     edges,
