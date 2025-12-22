@@ -1,8 +1,8 @@
 /**
  * AccessoryCatalogFormDialog.tsx
- * Version: 1.13
- * Date: 2025-12-20
- * Description: Formulaire avec type combi et champ puissance de charge pour chargeurs/combis
+ * Version: 1.14
+ * Date: 2025-12-22
+ * Description: Ajout types protection et distributeur
  */
 
 import { useState, useEffect } from "react";
@@ -1047,7 +1047,9 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                   <SelectItem value="chargeur">🟠 Chargeur (230V, booster)</SelectItem>
                   <SelectItem value="combi">🟤 Combi (chargeur + convertisseur)</SelectItem>
                   <SelectItem value="consommateur">🔴 Consommateur</SelectItem>
-                  <SelectItem value="neutre">⚪ Accessoire (fusible, bornier...)</SelectItem>
+                  <SelectItem value="protection">🛡️ Protection (fusible, disjoncteur...)</SelectItem>
+                  <SelectItem value="distributeur">📦 Distributeur (busbar, répartiteur...)</SelectItem>
+                  <SelectItem value="neutre">⚪ Accessoire (autre)</SelectItem>
                 </SelectContent>
               </Select>
             </div>

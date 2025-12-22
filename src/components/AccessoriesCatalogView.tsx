@@ -1,8 +1,8 @@
 /**
  * AccessoriesCatalogView.tsx
- * Version: 1.61
- * Date: 2025-12-20
- * Description: Vue catalogue avec badges type électrique sur une seule ligne (whitespace-nowrap)
+ * Version: 1.62
+ * Date: 2025-12-22
+ * Description: Ajout types électriques protection et distributeur
  */
 
 import { useState, useEffect } from "react";
@@ -214,6 +214,20 @@ const getElectricalTypeInfo = (
       return { icon: "⚡", bgColor: "bg-red-100", textColor: "text-red-700", label: "Conso" };
     case "neutre":
       return { icon: "○", bgColor: "bg-gray-100", textColor: "text-gray-500", label: "Neutre" };
+    // ========== NOUVEAUX TYPES ==========
+    case "protection":
+    case "coupe_circuit":
+    case "disjoncteur":
+    case "porte_fusible":
+    case "interrupteur":
+    case "sectionneur":
+      return { icon: "🛡️", bgColor: "bg-amber-100", textColor: "text-amber-700", label: "Protect" };
+    case "distributeur":
+    case "busbar":
+    case "repartiteur":
+    case "bornier":
+    case "boitier_fusible":
+      return { icon: "📦", bgColor: "bg-indigo-100", textColor: "text-indigo-700", label: "Distrib" };
     default:
       return null;
   }

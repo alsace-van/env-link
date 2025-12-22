@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: ExpenseFormDialog
 // Formulaire d'ajout/modification de dépense
-// VERSION: 2.5 - Ajout champs tension_volts et capacite_ah
+// VERSION: 2.6 - Ajout types protection et distributeur
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -838,7 +838,9 @@ const ExpenseFormDialog = ({
                   <SelectItem value="convertisseur">🟣 Convertisseur (DC/AC)</SelectItem>
                   <SelectItem value="chargeur">🟠 Chargeur (230V, booster)</SelectItem>
                   <SelectItem value="consommateur">🔴 Consommateur</SelectItem>
-                  <SelectItem value="neutre">⚪ Accessoire (fusible, bornier...)</SelectItem>
+                  <SelectItem value="protection">🛡️ Protection (fusible, disjoncteur...)</SelectItem>
+                  <SelectItem value="distributeur">📦 Distributeur (busbar, répartiteur...)</SelectItem>
+                  <SelectItem value="neutre">⚪ Accessoire (autre)</SelectItem>
                 </SelectContent>
               </Select>
             </div>

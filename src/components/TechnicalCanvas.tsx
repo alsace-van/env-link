@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.34 - Fix détection transparents (espaces) + vrais noms segment
+// VERSION: 3.35 - Ajout types protection/distributeur + détection par catégorie
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -278,7 +278,16 @@ const ELECTRICAL_TYPES: Record<
     color: string;
     bgColor: string;
     borderColor: string;
-    category: "production" | "stockage" | "regulation" | "conversion" | "consommateur" | "distribution" | "neutre";
+    category:
+      | "production"
+      | "stockage"
+      | "regulation"
+      | "conversion"
+      | "consommateur"
+      | "distribution"
+      | "protection"
+      | "distributeur"
+      | "neutre";
   }
 > = {
   // Types principaux
@@ -394,6 +403,96 @@ const ELECTRICAL_TYPES: Record<
     bgColor: "bg-slate-50",
     borderColor: "border-slate-300",
     category: "neutre",
+  },
+  // ========== PROTECTIONS (transparentes dans le calcul) ==========
+  protection: {
+    label: "Protection",
+    icon: Shield,
+    color: "text-amber-600",
+    bgColor: "bg-amber-50",
+    borderColor: "border-amber-400",
+    category: "protection",
+  },
+  coupe_circuit: {
+    label: "Coupe-circuit",
+    icon: Shield,
+    color: "text-amber-600",
+    bgColor: "bg-amber-50",
+    borderColor: "border-amber-400",
+    category: "protection",
+  },
+  disjoncteur: {
+    label: "Disjoncteur",
+    icon: Shield,
+    color: "text-amber-600",
+    bgColor: "bg-amber-50",
+    borderColor: "border-amber-400",
+    category: "protection",
+  },
+  porte_fusible: {
+    label: "Porte-fusible",
+    icon: Shield,
+    color: "text-amber-600",
+    bgColor: "bg-amber-50",
+    borderColor: "border-amber-400",
+    category: "protection",
+  },
+  interrupteur: {
+    label: "Interrupteur",
+    icon: Shield,
+    color: "text-amber-600",
+    bgColor: "bg-amber-50",
+    borderColor: "border-amber-400",
+    category: "protection",
+  },
+  sectionneur: {
+    label: "Sectionneur",
+    icon: Shield,
+    color: "text-amber-600",
+    bgColor: "bg-amber-50",
+    borderColor: "border-amber-400",
+    category: "protection",
+  },
+  // ========== DISTRIBUTEURS (points clés + couplage +/-) ==========
+  distributeur: {
+    label: "Distributeur",
+    icon: Boxes,
+    color: "text-indigo-600",
+    bgColor: "bg-indigo-50",
+    borderColor: "border-indigo-400",
+    category: "distributeur",
+  },
+  busbar: {
+    label: "Busbar",
+    icon: Boxes,
+    color: "text-indigo-600",
+    bgColor: "bg-indigo-50",
+    borderColor: "border-indigo-400",
+    category: "distributeur",
+  },
+  repartiteur: {
+    label: "Répartiteur",
+    icon: Boxes,
+    color: "text-indigo-600",
+    bgColor: "bg-indigo-50",
+    borderColor: "border-indigo-400",
+    category: "distributeur",
+  },
+  bornier: {
+    label: "Bornier",
+    icon: Boxes,
+    color: "text-indigo-600",
+    bgColor: "bg-indigo-50",
+    borderColor: "border-indigo-400",
+    category: "distributeur",
+  },
+  boitier_fusible: {
+    label: "Boîtier fusibles",
+    icon: Boxes,
+    color: "text-indigo-600",
+    bgColor: "bg-indigo-50",
+    borderColor: "border-indigo-400",
+    category: "distributeur",
   },
   // Alias (pour compatibilité avec les valeurs existantes en base)
   producteur: {
@@ -2393,6 +2492,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     const typeElec = item.type_electrique?.toLowerCase() || "";
     const nom = item.nom_accessoire?.toLowerCase() || "";
 
+    // 1. Vérifier par type_electrique direct (catégorie "distributeur" ou "distribution")
+    const typeConfig = ELECTRICAL_TYPES[typeElec];
+    if (typeConfig?.category === "distributeur" || typeConfig?.category === "distribution") {
+      return true;
+    }
+
+    // 2. Vérifier par nom ou type dans la liste (fallback)
     return DISTRIBUTION_POINT_TYPES.some((t) => typeElec.includes(t) || nom.includes(t));
   }, []);
 
@@ -2668,6 +2774,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     const typeElec = item.type_electrique?.toLowerCase() || "";
     const nom = item.nom_accessoire?.toLowerCase() || "";
 
+    // 1. Vérifier par type_electrique direct (catégorie "protection")
+    const typeConfig = ELECTRICAL_TYPES[typeElec];
+    if (typeConfig?.category === "protection") {
+      return true;
+    }
+
+    // 2. Vérifier par nom ou type dans la liste des types transparents (fallback)
     return TRANSPARENT_TYPES.some((t) => typeElec.includes(t) || nom.includes(t));
   }, []);
 
