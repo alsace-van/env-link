@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.21 - Fix chargement schéma (useCallback + dépendances)
+// VERSION: 3.22 - Amélioration routage câbles (sortie perpendiculaire)
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -591,9 +591,9 @@ const CustomSmoothEdge = ({
   // Récupérer si on doit faire le virage près de la target (bloc plus petit)
   const turnNearTarget = (data as any)?.turnNearTarget ?? false;
 
-  // Distance du virage
-  const turnDistance = 25;
-  const cornerRadius = 6;
+  // Distance minimale avant le premier virage (sortie perpendiculaire)
+  const minExitDistance = 40; // Distance avant le premier coude
+  const cornerRadius = 8;
 
   // Calculer les distances
   const deltaX = Math.abs(targetX - sourceX);
@@ -607,213 +607,280 @@ const CustomSmoothEdge = ({
   let labelX: number = (sourceX + targetX) / 2;
   let labelY: number = (sourceY + targetY) / 2;
 
+  // Helper pour calculer le milieu d'un chemin en 3 segments
+  const calcMidpoint3Segments = (
+    seg1: number,
+    seg2: number,
+    seg3: number,
+    startX: number,
+    startY: number,
+    midX: number,
+    midY: number,
+    endX: number,
+    endY: number,
+    isFirstHorizontal: boolean,
+  ) => {
+    const totalLength = seg1 + seg2 + seg3;
+    const halfLength = totalLength / 2;
+
+    if (halfLength <= seg1) {
+      if (isFirstHorizontal) {
+        return { x: startX + (startX < midX ? halfLength : -halfLength), y: startY };
+      } else {
+        return { x: startX, y: startY + (startY < midY ? halfLength : -halfLength) };
+      }
+    } else if (halfLength <= seg1 + seg2) {
+      const dist = halfLength - seg1;
+      if (isFirstHorizontal) {
+        return { x: midX, y: midY + (midY < endY ? dist : -dist) };
+      } else {
+        return { x: midX + (midX < endX ? dist : -dist), y: midY };
+      }
+    } else {
+      const dist = halfLength - seg1 - seg2;
+      if (isFirstHorizontal) {
+        return { x: midX + (midX < endX ? dist : -dist), y: endY };
+      } else {
+        return { x: endX, y: midY + (midY < endY ? dist : -dist) };
+      }
+    }
+  };
+
   // Si presque aligné horizontalement → ligne droite
   if (deltaY < alignmentThreshold) {
     edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
-    // Label au milieu de la ligne horizontale
     labelX = (sourceX + targetX) / 2;
     labelY = sourceY;
   }
   // Si presque aligné verticalement → ligne droite
   else if (deltaX < alignmentThreshold) {
     edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
-    // Label au milieu de la ligne verticale
     labelX = sourceX;
     labelY = (sourceY + targetY) / 2;
   }
-  // Connexion horizontale (source à droite, target à gauche) avec décalage vertical
+  // Connexion horizontale RIGHT → LEFT
   else if (sourcePosition === Position.Right && (targetPosition === Position.Left || !targetPosition)) {
-    // Position du virage (près du bloc le plus petit)
-    const midX = turnNearTarget ? Math.max(sourceX + turnDistance, targetX - turnDistance) : sourceX + turnDistance;
+    // Calculer la distance de sortie (au moins minExitDistance, ou mi-chemin si proche)
+    const availableSpace = targetX - sourceX;
+    const exitDist = Math.min(minExitDistance, availableSpace / 3);
+    const entryDist = Math.min(minExitDistance, availableSpace / 3);
 
-    // S'assurer que midX est entre source et target
-    const safeMidX = Math.min(Math.max(midX, sourceX + cornerRadius * 2), targetX - cornerRadius * 2);
+    // Point de virage au milieu ou selon turnNearTarget
+    const midX = turnNearTarget ? targetX - entryDist : sourceX + exitDist;
 
     const goingDown = targetY > sourceY;
-    const r = Math.min(cornerRadius, deltaY / 4, Math.abs(safeMidX - sourceX) / 2);
+    const r = Math.min(cornerRadius, deltaY / 4, exitDist / 2);
 
     edgePath = `M ${sourceX} ${sourceY} 
-                L ${safeMidX - r} ${sourceY}
-                Q ${safeMidX} ${sourceY} ${safeMidX} ${sourceY + (goingDown ? r : -r)}
-                L ${safeMidX} ${targetY + (goingDown ? -r : r)}
-                Q ${safeMidX} ${targetY} ${safeMidX + r} ${targetY}
+                L ${midX - r} ${sourceY}
+                Q ${midX} ${sourceY} ${midX} ${sourceY + (goingDown ? r : -r)}
+                L ${midX} ${targetY + (goingDown ? -r : r)}
+                Q ${midX} ${targetY} ${midX + r} ${targetY}
                 L ${targetX} ${targetY}`;
 
-    // Calculer la longueur de chaque segment pour trouver le milieu réel
-    const seg1 = safeMidX - sourceX; // horizontal source → virage
-    const seg2 = Math.abs(targetY - sourceY); // vertical
-    const seg3 = targetX - safeMidX; // horizontal virage → target
+    const seg1 = midX - sourceX;
+    const seg2 = Math.abs(targetY - sourceY);
+    const seg3 = targetX - midX;
+    const mid = calcMidpoint3Segments(seg1, seg2, seg3, sourceX, sourceY, midX, sourceY, targetX, targetY, true);
+    labelX = mid.x;
+    labelY = mid.y;
+  }
+  // Connexion verticale BOTTOM → TOP
+  else if (sourcePosition === Position.Bottom && (targetPosition === Position.Top || !targetPosition)) {
+    const availableSpace = targetY - sourceY;
+    const exitDist = Math.min(minExitDistance, availableSpace / 3);
+    const entryDist = Math.min(minExitDistance, availableSpace / 3);
+
+    const midY = turnNearTarget ? targetY - entryDist : sourceY + exitDist;
+
+    const goingRight = targetX > sourceX;
+    const r = Math.min(cornerRadius, deltaX / 4, exitDist / 2);
+
+    edgePath = `M ${sourceX} ${sourceY} 
+                L ${sourceX} ${midY - r}
+                Q ${sourceX} ${midY} ${sourceX + (goingRight ? r : -r)} ${midY}
+                L ${targetX + (goingRight ? -r : r)} ${midY}
+                Q ${targetX} ${midY} ${targetX} ${midY + r}
+                L ${targetX} ${targetY}`;
+
+    const seg1 = midY - sourceY;
+    const seg2 = Math.abs(targetX - sourceX);
+    const seg3 = targetY - midY;
+    const mid = calcMidpoint3Segments(seg1, seg2, seg3, sourceX, sourceY, sourceX, midY, targetX, targetY, false);
+    labelX = mid.x;
+    labelY = mid.y;
+  }
+  // Connexion BOTTOM → LEFT (coude en L)
+  else if (sourcePosition === Position.Bottom && targetPosition === Position.Left) {
+    // Sortir d'abord vers le bas, puis tourner vers la gauche
+    const exitDist = Math.min(minExitDistance, Math.abs(targetY - sourceY) / 2);
+    const midY = Math.max(sourceY + exitDist, targetY);
+
+    const r = Math.min(cornerRadius, Math.abs(targetX - sourceX) / 4, exitDist / 2);
+
+    if (midY >= targetY - r) {
+      // Simple L : descendre puis aller à gauche
+      edgePath = `M ${sourceX} ${sourceY} 
+                  L ${sourceX} ${targetY - r}
+                  Q ${sourceX} ${targetY} ${sourceX + (targetX > sourceX ? r : -r)} ${targetY}
+                  L ${targetX} ${targetY}`;
+
+      const seg1 = Math.abs(targetY - sourceY);
+      const seg2 = Math.abs(targetX - sourceX);
+      const halfLength = (seg1 + seg2) / 2;
+      if (halfLength <= seg1) {
+        labelX = sourceX;
+        labelY = sourceY + halfLength;
+      } else {
+        labelX = sourceX + (targetX > sourceX ? 1 : -1) * (halfLength - seg1);
+        labelY = targetY;
+      }
+    } else {
+      // S inversé : descendre, aller horizontalement, puis remonter/descendre
+      edgePath = `M ${sourceX} ${sourceY} 
+                  L ${sourceX} ${midY - r}
+                  Q ${sourceX} ${midY} ${sourceX + (targetX > sourceX ? r : -r)} ${midY}
+                  L ${targetX - r} ${midY}
+                  Q ${targetX} ${midY} ${targetX} ${midY + (targetY > midY ? r : -r)}
+                  L ${targetX} ${targetY}`;
+
+      const seg1 = midY - sourceY;
+      const seg2 = Math.abs(targetX - sourceX);
+      const seg3 = Math.abs(targetY - midY);
+      const mid = calcMidpoint3Segments(seg1, seg2, seg3, sourceX, sourceY, sourceX, midY, targetX, targetY, false);
+      labelX = mid.x;
+      labelY = mid.y;
+    }
+  }
+  // Connexion RIGHT → TOP
+  else if (sourcePosition === Position.Right && targetPosition === Position.Top) {
+    const exitDist = Math.min(minExitDistance, Math.abs(targetX - sourceX) / 2);
+    const midX = Math.max(sourceX + exitDist, targetX);
+
+    const r = Math.min(cornerRadius, Math.abs(targetY - sourceY) / 4, exitDist / 2);
+
+    if (midX >= targetX - r) {
+      // Simple L : aller à droite puis descendre/monter
+      edgePath = `M ${sourceX} ${sourceY} 
+                  L ${targetX - r} ${sourceY}
+                  Q ${targetX} ${sourceY} ${targetX} ${sourceY + (targetY > sourceY ? r : -r)}
+                  L ${targetX} ${targetY}`;
+
+      const seg1 = Math.abs(targetX - sourceX);
+      const seg2 = Math.abs(targetY - sourceY);
+      const halfLength = (seg1 + seg2) / 2;
+      if (halfLength <= seg1) {
+        labelX = sourceX + halfLength;
+        labelY = sourceY;
+      } else {
+        labelX = targetX;
+        labelY = sourceY + (targetY > sourceY ? 1 : -1) * (halfLength - seg1);
+      }
+    } else {
+      edgePath = `M ${sourceX} ${sourceY} 
+                  L ${midX - r} ${sourceY}
+                  Q ${midX} ${sourceY} ${midX} ${sourceY + (targetY > sourceY ? r : -r)}
+                  L ${midX} ${targetY - r}
+                  Q ${midX} ${targetY} ${midX + (targetX > midX ? r : -r)} ${targetY}
+                  L ${targetX} ${targetY}`;
+
+      const seg1 = midX - sourceX;
+      const seg2 = Math.abs(targetY - sourceY);
+      const seg3 = Math.abs(targetX - midX);
+      const mid = calcMidpoint3Segments(seg1, seg2, seg3, sourceX, sourceY, midX, sourceY, targetX, targetY, true);
+      labelX = mid.x;
+      labelY = mid.y;
+    }
+  }
+  // Connexion RIGHT → BOTTOM (source droite, target en bas)
+  else if (sourcePosition === Position.Right && targetPosition === Position.Bottom) {
+    const exitDist = Math.min(minExitDistance, deltaX / 2);
+    const r = Math.min(cornerRadius, deltaY / 4, exitDist / 2);
+
+    // Aller à droite, puis descendre vers la target
+    const midX = sourceX + exitDist;
+
+    edgePath = `M ${sourceX} ${sourceY} 
+                L ${midX - r} ${sourceY}
+                Q ${midX} ${sourceY} ${midX} ${sourceY + (targetY > sourceY ? r : -r)}
+                L ${midX} ${targetY + (targetY > sourceY ? -r : r)}
+                Q ${midX} ${targetY} ${midX + r} ${targetY}
+                L ${targetX} ${targetY}`;
+
+    const seg1 = midX - sourceX;
+    const seg2 = Math.abs(targetY - sourceY);
+    const seg3 = targetX - midX;
+    const mid = calcMidpoint3Segments(seg1, seg2, seg3, sourceX, sourceY, midX, sourceY, targetX, targetY, true);
+    labelX = mid.x;
+    labelY = mid.y;
+  }
+  // Connexion LEFT → RIGHT
+  else if (sourcePosition === Position.Left && targetPosition === Position.Right) {
+    // Source à gauche, target à droite - le câble doit contourner
+    const exitDist = minExitDistance;
+    const r = Math.min(cornerRadius, deltaY / 4);
+
+    // Sortir vers la gauche de la source
+    const leftX = Math.min(sourceX - exitDist, targetX + exitDist);
+    const goingDown = targetY > sourceY;
+
+    edgePath = `M ${sourceX} ${sourceY}
+                L ${leftX + r} ${sourceY}
+                Q ${leftX} ${sourceY} ${leftX} ${sourceY + (goingDown ? r : -r)}
+                L ${leftX} ${targetY + (goingDown ? -r : r)}
+                Q ${leftX} ${targetY} ${leftX + r} ${targetY}
+                L ${targetX} ${targetY}`;
+
+    const seg1 = sourceX - leftX;
+    const seg2 = Math.abs(targetY - sourceY);
+    const seg3 = targetX - leftX;
     const totalLength = seg1 + seg2 + seg3;
     const halfLength = totalLength / 2;
 
-    // Trouver sur quel segment se trouve le milieu
     if (halfLength <= seg1) {
-      // Milieu sur le premier segment horizontal
-      labelX = sourceX + halfLength;
+      labelX = sourceX - halfLength;
       labelY = sourceY;
     } else if (halfLength <= seg1 + seg2) {
-      // Milieu sur le segment vertical
-      const distInSeg2 = halfLength - seg1;
-      labelX = safeMidX;
-      labelY = goingDown ? sourceY + distInSeg2 : sourceY - distInSeg2;
+      labelX = leftX;
+      labelY = goingDown ? sourceY + (halfLength - seg1) : sourceY - (halfLength - seg1);
     } else {
-      // Milieu sur le dernier segment horizontal
-      const distInSeg3 = halfLength - seg1 - seg2;
-      labelX = safeMidX + distInSeg3;
+      labelX = leftX + (halfLength - seg1 - seg2);
       labelY = targetY;
     }
   }
-  // Connexion verticale (source en bas, target en haut) avec décalage horizontal
-  else if (sourcePosition === Position.Bottom && (targetPosition === Position.Top || !targetPosition)) {
-    const midY = turnNearTarget ? Math.max(sourceY + turnDistance, targetY - turnDistance) : sourceY + turnDistance;
+  // Connexion TOP → BOTTOM
+  else if (sourcePosition === Position.Top && targetPosition === Position.Bottom) {
+    const exitDist = minExitDistance;
+    const r = Math.min(cornerRadius, deltaX / 4);
 
-    const safeMidY = Math.min(Math.max(midY, sourceY + cornerRadius * 2), targetY - cornerRadius * 2);
-
+    const topY = Math.min(sourceY - exitDist, targetY + exitDist);
     const goingRight = targetX > sourceX;
-    const r = Math.min(cornerRadius, deltaX / 4, Math.abs(safeMidY - sourceY) / 2);
 
-    edgePath = `M ${sourceX} ${sourceY} 
-                L ${sourceX} ${safeMidY - r}
-                Q ${sourceX} ${safeMidY} ${sourceX + (goingRight ? r : -r)} ${safeMidY}
-                L ${targetX + (goingRight ? -r : r)} ${safeMidY}
-                Q ${targetX} ${safeMidY} ${targetX} ${safeMidY + r}
+    edgePath = `M ${sourceX} ${sourceY}
+                L ${sourceX} ${topY + r}
+                Q ${sourceX} ${topY} ${sourceX + (goingRight ? r : -r)} ${topY}
+                L ${targetX + (goingRight ? -r : r)} ${topY}
+                Q ${targetX} ${topY} ${targetX} ${topY + r}
                 L ${targetX} ${targetY}`;
 
-    // Calculer la longueur de chaque segment pour trouver le milieu réel
-    const seg1 = safeMidY - sourceY; // vertical source → virage
-    const seg2 = Math.abs(targetX - sourceX); // horizontal
-    const seg3 = targetY - safeMidY; // vertical virage → target
+    const seg1 = sourceY - topY;
+    const seg2 = Math.abs(targetX - sourceX);
+    const seg3 = targetY - topY;
     const totalLength = seg1 + seg2 + seg3;
     const halfLength = totalLength / 2;
 
-    // Trouver sur quel segment se trouve le milieu
     if (halfLength <= seg1) {
-      // Milieu sur le premier segment vertical
       labelX = sourceX;
-      labelY = sourceY + halfLength;
+      labelY = sourceY - halfLength;
     } else if (halfLength <= seg1 + seg2) {
-      // Milieu sur le segment horizontal
-      const distInSeg2 = halfLength - seg1;
-      labelX = goingRight ? sourceX + distInSeg2 : sourceX - distInSeg2;
-      labelY = safeMidY;
+      labelX = goingRight ? sourceX + (halfLength - seg1) : sourceX - (halfLength - seg1);
+      labelY = topY;
     } else {
-      // Milieu sur le dernier segment vertical
-      const distInSeg3 = halfLength - seg1 - seg2;
       labelX = targetX;
-      labelY = safeMidY + distInSeg3;
+      labelY = topY + (halfLength - seg1 - seg2);
     }
   }
-  // Connexion Bottom → Left (source en bas, target à gauche)
-  else if (sourcePosition === Position.Bottom && targetPosition === Position.Left) {
-    const midY = turnNearTarget ? targetY : sourceY + turnDistance;
-
-    const safeMidY = Math.min(Math.max(midY, sourceY + cornerRadius), targetY);
-    const r = Math.min(cornerRadius, Math.abs(targetX - sourceX) / 4, Math.abs(safeMidY - sourceY) / 2);
-
-    if (turnNearTarget && Math.abs(safeMidY - targetY) < cornerRadius * 2) {
-      // Virage simple près de la target (L simple)
-      edgePath = `M ${sourceX} ${sourceY} 
-                  L ${sourceX} ${targetY - r}
-                  Q ${sourceX} ${targetY} ${sourceX + r} ${targetY}
-                  L ${targetX} ${targetY}`;
-
-      // Calculer le milieu de la longueur totale
-      const seg1 = Math.abs(targetY - sourceY); // vertical
-      const seg2 = Math.abs(targetX - sourceX); // horizontal
-      const totalLength = seg1 + seg2;
-      const halfLength = totalLength / 2;
-
-      if (halfLength <= seg1) {
-        labelX = sourceX;
-        labelY = sourceY + halfLength;
-      } else {
-        labelX = sourceX + (halfLength - seg1);
-        labelY = targetY;
-      }
-    } else {
-      edgePath = `M ${sourceX} ${sourceY} 
-                  L ${sourceX} ${safeMidY - r}
-                  Q ${sourceX} ${safeMidY} ${sourceX + r} ${safeMidY}
-                  L ${targetX - r} ${safeMidY}
-                  Q ${targetX} ${safeMidY} ${targetX} ${safeMidY + r}
-                  L ${targetX} ${targetY}`;
-
-      // Calculer le milieu de la longueur totale
-      const seg1 = safeMidY - sourceY; // vertical source → virage
-      const seg2 = Math.abs(targetX - sourceX); // horizontal
-      const seg3 = targetY - safeMidY; // vertical virage → target
-      const totalLength = seg1 + seg2 + seg3;
-      const halfLength = totalLength / 2;
-
-      if (halfLength <= seg1) {
-        labelX = sourceX;
-        labelY = sourceY + halfLength;
-      } else if (halfLength <= seg1 + seg2) {
-        const distInSeg2 = halfLength - seg1;
-        labelX = sourceX + distInSeg2;
-        labelY = safeMidY;
-      } else {
-        labelX = targetX;
-        labelY = safeMidY + (halfLength - seg1 - seg2);
-      }
-    }
-  }
-  // Connexion Right → Top
-  else if (sourcePosition === Position.Right && targetPosition === Position.Top) {
-    const midX = turnNearTarget ? targetX : sourceX + turnDistance;
-
-    const safeMidX = Math.min(Math.max(midX, sourceX + cornerRadius), targetX);
-    const r = Math.min(cornerRadius, Math.abs(targetY - sourceY) / 4, Math.abs(safeMidX - sourceX) / 2);
-
-    if (turnNearTarget && Math.abs(safeMidX - targetX) < cornerRadius * 2) {
-      // Virage simple près de la target (L simple)
-      edgePath = `M ${sourceX} ${sourceY} 
-                  L ${targetX - r} ${sourceY}
-                  Q ${targetX} ${sourceY} ${targetX} ${sourceY + r}
-                  L ${targetX} ${targetY}`;
-
-      // Calculer le milieu de la longueur totale
-      const seg1 = Math.abs(targetX - sourceX); // horizontal
-      const seg2 = Math.abs(targetY - sourceY); // vertical
-      const totalLength = seg1 + seg2;
-      const halfLength = totalLength / 2;
-
-      if (halfLength <= seg1) {
-        labelX = sourceX + halfLength;
-        labelY = sourceY;
-      } else {
-        labelX = targetX;
-        labelY = sourceY + (halfLength - seg1);
-      }
-    } else {
-      edgePath = `M ${sourceX} ${sourceY} 
-                  L ${safeMidX - r} ${sourceY}
-                  Q ${safeMidX} ${sourceY} ${safeMidX} ${sourceY + r}
-                  L ${safeMidX} ${targetY - r}
-                  Q ${safeMidX} ${targetY} ${safeMidX + r} ${targetY}
-                  L ${targetX} ${targetY}`;
-
-      // Calculer le milieu de la longueur totale
-      const seg1 = safeMidX - sourceX; // horizontal source → virage
-      const seg2 = Math.abs(targetY - sourceY); // vertical
-      const seg3 = targetX - safeMidX; // horizontal virage → target
-      const totalLength = seg1 + seg2 + seg3;
-      const halfLength = totalLength / 2;
-
-      if (halfLength <= seg1) {
-        labelX = sourceX + halfLength;
-        labelY = sourceY;
-      } else if (halfLength <= seg1 + seg2) {
-        const distInSeg2 = halfLength - seg1;
-        labelX = safeMidX;
-        labelY = sourceY + distInSeg2;
-      } else {
-        labelX = safeMidX + (halfLength - seg1 - seg2);
-        labelY = targetY;
-      }
-    }
-  }
-  // Autres cas → utiliser getSmoothStepPath natif
+  // Autres cas → utiliser getSmoothStepPath natif avec offset
   else {
     [edgePath, labelX, labelY] = getSmoothStepPath({
       sourceX,
@@ -823,6 +890,7 @@ const CustomSmoothEdge = ({
       targetY,
       targetPosition,
       borderRadius: cornerRadius,
+      offset: minExitDistance, // Ajouter un offset pour sortir perpendiculairement
     });
   }
 
