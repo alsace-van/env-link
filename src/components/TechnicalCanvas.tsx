@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.33 - Suppression logs debug + fix performances
+// VERSION: 3.34 - Fix détection transparents (espaces) + vrais noms segment
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -181,9 +181,11 @@ const TRANSPARENT_TYPES = [
   "fuse",
   "porte_fusible",
   "porte-fusible",
+  "porte fusible",
   "fuse_holder",
   "coupe_circuit",
   "coupe-circuit",
+  "coupe circuit",
   "disjoncteur",
   "breaker",
   "interrupteur",
@@ -192,6 +194,7 @@ const TRANSPARENT_TYPES = [
   "boitier_fusible",
   "boitier-fusible",
   "boîtier_fusible",
+  "boitier fusible",
   "fuse_box",
   "fusebox",
 ];
@@ -2947,9 +2950,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           totalLength: segmentInfo.totalLength,
           section,
           details,
-          sourceNom: segSource?.nom_accessoire || sourceItem.nom_accessoire,
+          // Pour l'affichage du segment, utiliser la VRAIE source (premier câble) et VRAIE destination
+          sourceNom: sourceItem.nom_accessoire, // Vraie source du segment
           targetNom: segTarget?.nom_accessoire || targetItem.nom_accessoire,
-          realTargetNom: realTarget?.nom_accessoire || targetItem.nom_accessoire,
+          realTargetNom: realTarget?.nom_accessoire || targetItem.nom_accessoire, // Vraie destination du segment
           isPartOfSegment: segmentInfo.allEdgeIds.length > 1,
           allEdgeIdsInSegment: segmentInfo.allEdgeIds,
           hasDefinedLength: segmentInfo.hasDefinedLength,
