@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.17 - Sauvegarde section calculée + affichage amélioré
+// VERSION: 3.18 - Fix chargement schéma + try-catch
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1937,7 +1937,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       setCircuitSource(null);
       setCircuitDest(null);
     },
-    [items, findEdgesBetweenNodes],
+    [items, edges, findEdgesBetweenNodes, quickCalculate],
   );
 
   // Calculer la section pour un circuit entier
@@ -2154,7 +2154,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       if (!error && data) {
         setPrincipalScenarioId(data.id);
       } else {
-        // Fallback sans scénario
+        // Fallback sans scénario - charger quand même le schéma local
+        console.log("[Schema] Pas de scénario principal, chargement du schéma local");
+        loadSchemaData();
         setLoading(false);
       }
     };
@@ -2172,51 +2174,68 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // Charger les items sauvegardés dans le schéma (depuis localStorage)
   const loadSchemaData = async () => {
-    const stored = localStorage.getItem(`electrical_schema_${projectId}`);
-    console.log("[Schema] loadSchemaData - stored data exists:", !!stored);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      setEdges(parsed.edges || []);
-      setNodeHandles(parsed.nodeHandles || {});
+    try {
+      const stored = localStorage.getItem(`electrical_schema_${projectId}`);
+      console.log("[Schema] loadSchemaData - stored data exists:", !!stored);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        console.log("[Schema] loadSchemaData - parsed data:", {
+          edges: parsed.edges?.length || 0,
+          items: parsed.items?.length || 0,
+          layers: parsed.layers?.length || 0,
+        });
 
-      // Charger les calques sauvegardés
-      if (parsed.layers && parsed.layers.length > 0) {
-        setLayers(parsed.layers);
-        // Activer le premier calque visible ou le premier calque
-        const firstVisible = parsed.layers.find((l: SchemaLayer) => l.visible);
-        setActiveLayerId(firstVisible?.id || parsed.layers[0].id);
-      }
+        setEdges(parsed.edges || []);
+        setNodeHandles(parsed.nodeHandles || {});
 
-      // Charger les items sauvegardés
-      if (parsed.items && parsed.items.length > 0) {
-        console.log("[Schema] loadSchemaData - loading items from localStorage:", parsed.items.length);
-        setItems(parsed.items);
+        // Charger les calques sauvegardés
+        if (parsed.layers && parsed.layers.length > 0) {
+          setLayers(parsed.layers);
+          // Activer le premier calque visible ou le premier calque
+          const firstVisible = parsed.layers.find((l: SchemaLayer) => l.visible);
+          setActiveLayerId(firstVisible?.id || parsed.layers[0].id);
+        }
+
+        // Charger les items sauvegardés
+        if (parsed.items && parsed.items.length > 0) {
+          console.log("[Schema] loadSchemaData - loading items from localStorage:", parsed.items.length);
+          setItems(parsed.items);
+        } else {
+          console.log("[Schema] loadSchemaData - no items in localStorage, clearing items state");
+          setItems([]); // S'assurer que items est vide si pas de données
+        }
+
+        // Charger les annotations sauvegardées
+        if (parsed.annotations && parsed.annotations.length > 0) {
+          console.log("[Schema] loadSchemaData - loading annotations:", parsed.annotations.length);
+          setAnnotations(parsed.annotations);
+        }
+
+        // Charger les circuits sauvegardés
+        if (parsed.circuits) {
+          console.log("[Schema] loadSchemaData - loading circuits:", Object.keys(parsed.circuits).length);
+          setCircuits(parsed.circuits);
+        }
       } else {
-        console.log("[Schema] loadSchemaData - no items in localStorage, clearing items state");
-        setItems([]); // S'assurer que items est vide si pas de données
+        // Pas de données sauvegardées, s'assurer que items est vide
+        console.log("[Schema] loadSchemaData - no localStorage data, clearing all state");
+        setItems([]);
+        setEdges([]);
+        setNodeHandles({});
+        setLayers([createDefaultLayer()]);
+        setActiveLayerId("layer-default");
+        setAnnotations([]);
+        setCircuits({});
       }
-
-      // Charger les annotations sauvegardées
-      if (parsed.annotations && parsed.annotations.length > 0) {
-        console.log("[Schema] loadSchemaData - loading annotations:", parsed.annotations.length);
-        setAnnotations(parsed.annotations);
-      }
-
-      // Charger les circuits sauvegardés
-      if (parsed.circuits) {
-        console.log("[Schema] loadSchemaData - loading circuits:", Object.keys(parsed.circuits).length);
-        setCircuits(parsed.circuits);
-      }
-    } else {
-      // Pas de données sauvegardées, s'assurer que items est vide
-      console.log("[Schema] loadSchemaData - no localStorage data, clearing all state");
+    } catch (error) {
+      console.error("[Schema] loadSchemaData - ERROR:", error);
+      toast.error("Erreur lors du chargement du schéma");
+      // Réinitialiser à un état vide en cas d'erreur
       setItems([]);
       setEdges([]);
       setNodeHandles({});
       setLayers([createDefaultLayer()]);
       setActiveLayerId("layer-default");
-      setAnnotations([]);
-      setCircuits({});
     }
   };
 
