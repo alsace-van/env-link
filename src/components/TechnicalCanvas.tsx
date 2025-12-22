@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.13 - Label câble au milieu + miniatures produits
+// VERSION: 3.14 - Label câble au milieu réel de la longueur totale
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -630,9 +630,29 @@ const CustomSmoothEdge = ({
                 Q ${safeMidX} ${targetY} ${safeMidX + r} ${targetY}
                 L ${targetX} ${targetY}`;
 
-    // Label au milieu du segment vertical
-    labelX = safeMidX;
-    labelY = (sourceY + targetY) / 2;
+    // Calculer la longueur de chaque segment pour trouver le milieu réel
+    const seg1 = safeMidX - sourceX; // horizontal source → virage
+    const seg2 = Math.abs(targetY - sourceY); // vertical
+    const seg3 = targetX - safeMidX; // horizontal virage → target
+    const totalLength = seg1 + seg2 + seg3;
+    const halfLength = totalLength / 2;
+
+    // Trouver sur quel segment se trouve le milieu
+    if (halfLength <= seg1) {
+      // Milieu sur le premier segment horizontal
+      labelX = sourceX + halfLength;
+      labelY = sourceY;
+    } else if (halfLength <= seg1 + seg2) {
+      // Milieu sur le segment vertical
+      const distInSeg2 = halfLength - seg1;
+      labelX = safeMidX;
+      labelY = goingDown ? sourceY + distInSeg2 : sourceY - distInSeg2;
+    } else {
+      // Milieu sur le dernier segment horizontal
+      const distInSeg3 = halfLength - seg1 - seg2;
+      labelX = safeMidX + distInSeg3;
+      labelY = targetY;
+    }
   }
   // Connexion verticale (source en bas, target en haut) avec décalage horizontal
   else if (sourcePosition === Position.Bottom && (targetPosition === Position.Top || !targetPosition)) {
@@ -650,9 +670,29 @@ const CustomSmoothEdge = ({
                 Q ${targetX} ${safeMidY} ${targetX} ${safeMidY + r}
                 L ${targetX} ${targetY}`;
 
-    // Label au milieu du segment horizontal
-    labelX = (sourceX + targetX) / 2;
-    labelY = safeMidY;
+    // Calculer la longueur de chaque segment pour trouver le milieu réel
+    const seg1 = safeMidY - sourceY; // vertical source → virage
+    const seg2 = Math.abs(targetX - sourceX); // horizontal
+    const seg3 = targetY - safeMidY; // vertical virage → target
+    const totalLength = seg1 + seg2 + seg3;
+    const halfLength = totalLength / 2;
+
+    // Trouver sur quel segment se trouve le milieu
+    if (halfLength <= seg1) {
+      // Milieu sur le premier segment vertical
+      labelX = sourceX;
+      labelY = sourceY + halfLength;
+    } else if (halfLength <= seg1 + seg2) {
+      // Milieu sur le segment horizontal
+      const distInSeg2 = halfLength - seg1;
+      labelX = goingRight ? sourceX + distInSeg2 : sourceX - distInSeg2;
+      labelY = safeMidY;
+    } else {
+      // Milieu sur le dernier segment vertical
+      const distInSeg3 = halfLength - seg1 - seg2;
+      labelX = targetX;
+      labelY = safeMidY + distInSeg3;
+    }
   }
   // Connexion Bottom → Left (source en bas, target à gauche)
   else if (sourcePosition === Position.Bottom && targetPosition === Position.Left) {
@@ -662,14 +702,25 @@ const CustomSmoothEdge = ({
     const r = Math.min(cornerRadius, Math.abs(targetX - sourceX) / 4, Math.abs(safeMidY - sourceY) / 2);
 
     if (turnNearTarget && Math.abs(safeMidY - targetY) < cornerRadius * 2) {
-      // Virage simple près de la target
+      // Virage simple près de la target (L simple)
       edgePath = `M ${sourceX} ${sourceY} 
                   L ${sourceX} ${targetY - r}
                   Q ${sourceX} ${targetY} ${sourceX + r} ${targetY}
                   L ${targetX} ${targetY}`;
-      // Label au milieu du segment horizontal
-      labelX = (sourceX + targetX) / 2;
-      labelY = targetY;
+
+      // Calculer le milieu de la longueur totale
+      const seg1 = Math.abs(targetY - sourceY); // vertical
+      const seg2 = Math.abs(targetX - sourceX); // horizontal
+      const totalLength = seg1 + seg2;
+      const halfLength = totalLength / 2;
+
+      if (halfLength <= seg1) {
+        labelX = sourceX;
+        labelY = sourceY + halfLength;
+      } else {
+        labelX = sourceX + (halfLength - seg1);
+        labelY = targetY;
+      }
     } else {
       edgePath = `M ${sourceX} ${sourceY} 
                   L ${sourceX} ${safeMidY - r}
@@ -677,9 +728,25 @@ const CustomSmoothEdge = ({
                   L ${targetX - r} ${safeMidY}
                   Q ${targetX} ${safeMidY} ${targetX} ${safeMidY + r}
                   L ${targetX} ${targetY}`;
-      // Label au milieu du segment horizontal
-      labelX = (sourceX + targetX) / 2;
-      labelY = safeMidY;
+
+      // Calculer le milieu de la longueur totale
+      const seg1 = safeMidY - sourceY; // vertical source → virage
+      const seg2 = Math.abs(targetX - sourceX); // horizontal
+      const seg3 = targetY - safeMidY; // vertical virage → target
+      const totalLength = seg1 + seg2 + seg3;
+      const halfLength = totalLength / 2;
+
+      if (halfLength <= seg1) {
+        labelX = sourceX;
+        labelY = sourceY + halfLength;
+      } else if (halfLength <= seg1 + seg2) {
+        const distInSeg2 = halfLength - seg1;
+        labelX = sourceX + distInSeg2;
+        labelY = safeMidY;
+      } else {
+        labelX = targetX;
+        labelY = safeMidY + (halfLength - seg1 - seg2);
+      }
     }
   }
   // Connexion Right → Top
@@ -690,13 +757,25 @@ const CustomSmoothEdge = ({
     const r = Math.min(cornerRadius, Math.abs(targetY - sourceY) / 4, Math.abs(safeMidX - sourceX) / 2);
 
     if (turnNearTarget && Math.abs(safeMidX - targetX) < cornerRadius * 2) {
+      // Virage simple près de la target (L simple)
       edgePath = `M ${sourceX} ${sourceY} 
                   L ${targetX - r} ${sourceY}
                   Q ${targetX} ${sourceY} ${targetX} ${sourceY + r}
                   L ${targetX} ${targetY}`;
-      // Label au milieu du segment vertical
-      labelX = targetX;
-      labelY = (sourceY + targetY) / 2;
+
+      // Calculer le milieu de la longueur totale
+      const seg1 = Math.abs(targetX - sourceX); // horizontal
+      const seg2 = Math.abs(targetY - sourceY); // vertical
+      const totalLength = seg1 + seg2;
+      const halfLength = totalLength / 2;
+
+      if (halfLength <= seg1) {
+        labelX = sourceX + halfLength;
+        labelY = sourceY;
+      } else {
+        labelX = targetX;
+        labelY = sourceY + (halfLength - seg1);
+      }
     } else {
       edgePath = `M ${sourceX} ${sourceY} 
                   L ${safeMidX - r} ${sourceY}
@@ -704,9 +783,25 @@ const CustomSmoothEdge = ({
                   L ${safeMidX} ${targetY - r}
                   Q ${safeMidX} ${targetY} ${safeMidX + r} ${targetY}
                   L ${targetX} ${targetY}`;
-      // Label au milieu du segment vertical
-      labelX = safeMidX;
-      labelY = (sourceY + targetY) / 2;
+
+      // Calculer le milieu de la longueur totale
+      const seg1 = safeMidX - sourceX; // horizontal source → virage
+      const seg2 = Math.abs(targetY - sourceY); // vertical
+      const seg3 = targetX - safeMidX; // horizontal virage → target
+      const totalLength = seg1 + seg2 + seg3;
+      const halfLength = totalLength / 2;
+
+      if (halfLength <= seg1) {
+        labelX = sourceX + halfLength;
+        labelY = sourceY;
+      } else if (halfLength <= seg1 + seg2) {
+        const distInSeg2 = halfLength - seg1;
+        labelX = safeMidX;
+        labelY = sourceY + distInSeg2;
+      } else {
+        labelX = safeMidX + (halfLength - seg1 - seg2);
+        labelY = targetY;
+      }
     }
   }
   // Autres cas → utiliser getSmoothStepPath natif
