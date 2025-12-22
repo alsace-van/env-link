@@ -1,7 +1,7 @@
 // ============================================
 // useCableCalculator.ts
 // Hook pour calculer la section de câble recommandée
-// VERSION: 1.0
+// VERSION: 1.1 - quickCalculate accepte tension en paramètre
 // ============================================
 
 import { useMemo, useCallback } from "react";
@@ -43,14 +43,14 @@ export interface CableCalculation {
   power_watts: number;
   voltage: number;
   length_m: number;
-  
+
   // Résultats calculés
   current_amps: number;
   min_section_mm2: number;
   recommended_section_mm2: number;
   voltage_drop_percent: number;
   voltage_drop_volts: number;
-  
+
   // Validation
   is_valid: boolean;
   warnings: string[];
@@ -68,7 +68,7 @@ export function useCableCalculator(options: UseCableCalculatorOptions = {}) {
   /**
    * Calcule la section minimale théorique
    * Formule: S = (2 × L × I) / (σ × ΔU)
-   * 
+   *
    * Où:
    * - L = longueur aller (m)
    * - I = intensité (A)
@@ -82,49 +82,39 @@ export function useCableCalculator(options: UseCableCalculatorOptions = {}) {
       const section = (2 * length * current) / (COPPER_CONDUCTIVITY * maxDrop);
       return section;
     },
-    [maxVoltageDrop]
+    [maxVoltageDrop],
   );
 
   /**
    * Trouve la section standard supérieure la plus proche
    */
-  const findRecommendedSection = useCallback(
-    (minSection: number, current: number): number => {
-      // Trouver la plus petite section qui satisfait les deux critères:
-      // 1. >= section minimale calculée
-      // 2. Supporte l'intensité
-      for (const section of STANDARD_SECTIONS) {
-        const maxCurrent = MAX_CURRENT_BY_SECTION[section] || 0;
-        if (section >= minSection && maxCurrent >= current) {
-          return section;
-        }
+  const findRecommendedSection = useCallback((minSection: number, current: number): number => {
+    // Trouver la plus petite section qui satisfait les deux critères:
+    // 1. >= section minimale calculée
+    // 2. Supporte l'intensité
+    for (const section of STANDARD_SECTIONS) {
+      const maxCurrent = MAX_CURRENT_BY_SECTION[section] || 0;
+      if (section >= minSection && maxCurrent >= current) {
+        return section;
       }
-      // Si aucune section ne convient, retourner la plus grande
-      return STANDARD_SECTIONS[STANDARD_SECTIONS.length - 1];
-    },
-    []
-  );
+    }
+    // Si aucune section ne convient, retourner la plus grande
+    return STANDARD_SECTIONS[STANDARD_SECTIONS.length - 1];
+  }, []);
 
   /**
    * Calcule la chute de tension réelle avec une section donnée
    * Formule: ΔU = (2 × L × I) / (σ × S)
    */
-  const calculateVoltageDrop = useCallback(
-    (current: number, length: number, section: number): number => {
-      return (2 * length * current) / (COPPER_CONDUCTIVITY * section);
-    },
-    []
-  );
+  const calculateVoltageDrop = useCallback((current: number, length: number, section: number): number => {
+    return (2 * length * current) / (COPPER_CONDUCTIVITY * section);
+  }, []);
 
   /**
    * Calcul complet pour un câble
    */
   const calculateCable = useCallback(
-    (
-      power_watts: number,
-      length_m: number,
-      voltage: number = defaultVoltage
-    ): CableCalculation => {
+    (power_watts: number, length_m: number, voltage: number = defaultVoltage): CableCalculation => {
       const warnings: string[] = [];
       const errors: string[] = [];
 
@@ -135,17 +125,10 @@ export function useCableCalculator(options: UseCableCalculatorOptions = {}) {
       const min_section_mm2 = calculateMinSection(current_amps, length_m, voltage);
 
       // Section recommandée (arrondie au standard supérieur)
-      const recommended_section_mm2 = findRecommendedSection(
-        min_section_mm2,
-        current_amps
-      );
+      const recommended_section_mm2 = findRecommendedSection(min_section_mm2, current_amps);
 
       // Chute de tension avec la section recommandée
-      const voltage_drop_volts = calculateVoltageDrop(
-        current_amps,
-        length_m,
-        recommended_section_mm2
-      );
+      const voltage_drop_volts = calculateVoltageDrop(current_amps, length_m, recommended_section_mm2);
       const voltage_drop_percent = (voltage_drop_volts / voltage) * 100;
 
       // Validations
@@ -157,9 +140,7 @@ export function useCableCalculator(options: UseCableCalculatorOptions = {}) {
       }
 
       if (voltage_drop_percent > maxVoltageDrop) {
-        warnings.push(
-          `Chute de tension élevée (${voltage_drop_percent.toFixed(1)}% > ${maxVoltageDrop}%)`
-        );
+        warnings.push(`Chute de tension élevée (${voltage_drop_percent.toFixed(1)}% > ${maxVoltageDrop}%)`);
       }
 
       if (length_m > 20 && recommended_section_mm2 < 2.5) {
@@ -185,7 +166,7 @@ export function useCableCalculator(options: UseCableCalculatorOptions = {}) {
         errors,
       };
     },
-    [defaultVoltage, maxVoltageDrop, calculateMinSection, findRecommendedSection, calculateVoltageDrop]
+    [defaultVoltage, maxVoltageDrop, calculateMinSection, findRecommendedSection, calculateVoltageDrop],
   );
 
   /**
@@ -211,18 +192,18 @@ export function useCableCalculator(options: UseCableCalculatorOptions = {}) {
       if (dropPercent <= maxVoltageDrop) return "#f59e0b"; // Orange
       return "#ef4444"; // Rouge
     },
-    [maxVoltageDrop]
+    [maxVoltageDrop],
   );
 
   /**
    * Calcul rapide de section pour un équipement
    */
   const quickCalculate = useCallback(
-    (power_watts: number, length_m: number): number => {
-      const result = calculateCable(power_watts, length_m, defaultVoltage);
+    (power_watts: number, length_m: number, voltage?: number): number => {
+      const result = calculateCable(power_watts, length_m, voltage ?? defaultVoltage);
       return result.recommended_section_mm2;
     },
-    [calculateCable, defaultVoltage]
+    [calculateCable, defaultVoltage],
   );
 
   return {
@@ -243,11 +224,7 @@ export function useCableCalculator(options: UseCableCalculatorOptions = {}) {
 /**
  * Fonction utilitaire standalone pour calcul rapide
  */
-export function quickCableSection(
-  power_watts: number,
-  length_m: number,
-  voltage: number = 12
-): number {
+export function quickCableSection(power_watts: number, length_m: number, voltage: number = 12): number {
   const current = power_watts / voltage;
   const maxDrop = 0.03 * voltage; // 3%
   const minSection = (2 * length_m * current) / (COPPER_CONDUCTIVITY * maxDrop);
