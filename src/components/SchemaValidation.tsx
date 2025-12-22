@@ -1,7 +1,7 @@
 // ============================================
 // SchemaValidation.tsx
 // Composant pour valider le circuit électrique
-// VERSION: 1.1 - Fix positionnement popup en plein écran
+// VERSION: 1.2 - Détection protections améliorée (type + nom)
 // ============================================
 
 import React, { useMemo } from "react";
@@ -52,14 +52,33 @@ interface SchemaValidationProps {
 // Types considérés comme sources d'énergie
 const PRODUCER_TYPES = ["producteur", "panneau_solaire", "batterie", "alternateur", "chargeur", "combi"];
 
-// Types considérés comme protection
-const PROTECTION_TYPES = ["fusible", "disjoncteur", "protection", "coupe_circuit"];
+// Mots-clés pour détecter une protection (dans type OU nom)
+const PROTECTION_KEYWORDS = [
+  "fusible",
+  "disjoncteur",
+  "protection",
+  "coupe_circuit",
+  "coupe-circuit",
+  "porte_fusible",
+  "porte-fusible",
+  "porte fusible",
+  "fuse",
+  "breaker",
+];
 
 // Types considérés comme distribution
 const DISTRIBUTION_TYPES = ["distribution", "bornier", "repartiteur"];
 
 // Types considérés comme régulation
 const REGULATION_TYPES = ["regulation", "regulateur", "mppt", "regulateur_mppt"];
+
+// Fonction helper pour vérifier si un item est une protection
+const isProtectionItem = (item: ElectricalItem): boolean => {
+  const typeElec = item.type_electrique?.toLowerCase() || "";
+  const nom = item.nom_accessoire?.toLowerCase() || "";
+
+  return PROTECTION_KEYWORDS.some((keyword) => typeElec.includes(keyword) || nom.includes(keyword));
+};
 
 export function useSchemaValidation(items: ElectricalItem[], edges: SchemaEdge[]): ValidationIssue[] {
   return useMemo(() => {
@@ -103,7 +122,7 @@ export function useSchemaValidation(items: ElectricalItem[], edges: SchemaEdge[]
 
     // Vérification 2: Producteurs sans protection
     const producers = items.filter((i) => PRODUCER_TYPES.some((t) => i.type_electrique?.toLowerCase().includes(t)));
-    const protections = items.filter((i) => PROTECTION_TYPES.some((t) => i.type_electrique?.toLowerCase().includes(t)));
+    const protections = items.filter((i) => isProtectionItem(i));
 
     producers.forEach((producer) => {
       const conn = nodeConnections[producer.id];
@@ -113,7 +132,7 @@ export function useSchemaValidation(items: ElectricalItem[], edges: SchemaEdge[]
       const directOutputs = conn.outgoing;
       const hasDirectProtection = directOutputs.some((outId) => {
         const outItem = items.find((i) => i.id === outId);
-        return outItem && PROTECTION_TYPES.some((t) => outItem.type_electrique?.toLowerCase().includes(t));
+        return outItem && isProtectionItem(outItem);
       });
 
       if (!hasDirectProtection && directOutputs.length > 0) {
@@ -148,7 +167,7 @@ export function useSchemaValidation(items: ElectricalItem[], edges: SchemaEdge[]
         visited.add(nodeId);
 
         const item = items.find((i) => i.id === nodeId);
-        if (item && PROTECTION_TYPES.some((t) => item.type_electrique?.toLowerCase().includes(t))) {
+        if (item && isProtectionItem(item)) {
           return true;
         }
 
@@ -217,7 +236,7 @@ export function useSchemaValidation(items: ElectricalItem[], edges: SchemaEdge[]
       // Vérifier aussi via les protections
       const hasSolarViaProtection = conn.incoming.some((inId) => {
         const inItem = items.find((i) => i.id === inId);
-        if (!inItem || !PROTECTION_TYPES.some((t) => inItem.type_electrique?.toLowerCase().includes(t))) return false;
+        if (!inItem || !isProtectionItem(inItem)) return false;
 
         const protConn = nodeConnections[inId];
         return protConn?.incoming.some((pInId) => {
