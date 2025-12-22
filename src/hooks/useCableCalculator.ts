@@ -1,7 +1,7 @@
 // ============================================
 // useCableCalculator.ts
 // Hook pour calculer la section de câble recommandée
-// VERSION: 1.1 - quickCalculate accepte tension en paramètre
+// VERSION: 1.2 - Fix: longueur = total (pas de ×2)
 // ============================================
 
 import { useMemo, useCallback } from "react";
@@ -67,10 +67,10 @@ export function useCableCalculator(options: UseCableCalculatorOptions = {}) {
 
   /**
    * Calcule la section minimale théorique
-   * Formule: S = (2 × L × I) / (σ × ΔU)
+   * Formule: S = (L × I) / (σ × ΔU)
    *
    * Où:
-   * - L = longueur aller (m)
+   * - L = longueur totale du câble (m) - aller+retour déjà inclus
    * - I = intensité (A)
    * - σ = conductivité cuivre (56 m/Ω.mm²)
    * - ΔU = chute de tension max (V)
@@ -78,8 +78,8 @@ export function useCableCalculator(options: UseCableCalculatorOptions = {}) {
   const calculateMinSection = useCallback(
     (current: number, length: number, voltage: number): number => {
       const maxDrop = (maxVoltageDrop / 100) * voltage; // en Volts
-      // × 2 pour aller-retour
-      const section = (2 * length * current) / (COPPER_CONDUCTIVITY * maxDrop);
+      // L = longueur totale (pas de ×2, l'utilisateur entre la longueur totale)
+      const section = (length * current) / (COPPER_CONDUCTIVITY * maxDrop);
       return section;
     },
     [maxVoltageDrop],
@@ -104,10 +104,11 @@ export function useCableCalculator(options: UseCableCalculatorOptions = {}) {
 
   /**
    * Calcule la chute de tension réelle avec une section donnée
-   * Formule: ΔU = (2 × L × I) / (σ × S)
+   * Formule: ΔU = (L × I) / (σ × S)
+   * L = longueur totale du câble
    */
   const calculateVoltageDrop = useCallback((current: number, length: number, section: number): number => {
-    return (2 * length * current) / (COPPER_CONDUCTIVITY * section);
+    return (length * current) / (COPPER_CONDUCTIVITY * section);
   }, []);
 
   /**
@@ -223,11 +224,12 @@ export function useCableCalculator(options: UseCableCalculatorOptions = {}) {
 
 /**
  * Fonction utilitaire standalone pour calcul rapide
+ * Note: length_m = longueur totale du câble (aller+retour)
  */
 export function quickCableSection(power_watts: number, length_m: number, voltage: number = 12): number {
   const current = power_watts / voltage;
   const maxDrop = 0.03 * voltage; // 3%
-  const minSection = (2 * length_m * current) / (COPPER_CONDUCTIVITY * maxDrop);
+  const minSection = (length_m * current) / (COPPER_CONDUCTIVITY * maxDrop);
 
   for (const section of STANDARD_SECTIONS) {
     const maxCurrent = MAX_CURRENT_BY_SECTION[section] || 0;
