@@ -1,20 +1,14 @@
 // ============================================
 // SchemaAnnotations.tsx
 // Composant pour les annotations/notes sur le schéma
-// VERSION: 1.0
+// VERSION: 1.1 - Utilise le viewport ReactFlow
 // ============================================
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import {
-  StickyNote,
-  X,
-  Move,
-  Trash2,
-  Palette,
-  GripVertical,
-} from "lucide-react";
+import { StickyNote, X, Move, Trash2, Palette, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useViewport } from "@xyflow/react";
 
 export interface Annotation {
   id: string;
@@ -68,29 +62,35 @@ export function SchemaAnnotationNode({
   }, [annotation.text]);
 
   // Handle drag start
-  const handleDragStart = useCallback((e: React.MouseEvent) => {
-    if (isEditing) return;
-    e.stopPropagation();
-    setIsDragging(true);
-    dragStartRef.current = {
-      x: e.clientX,
-      y: e.clientY,
-      posX: annotation.position.x,
-      posY: annotation.position.y,
-    };
-  }, [isEditing, annotation.position]);
+  const handleDragStart = useCallback(
+    (e: React.MouseEvent) => {
+      if (isEditing) return;
+      e.stopPropagation();
+      setIsDragging(true);
+      dragStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        posX: annotation.position.x,
+        posY: annotation.position.y,
+      };
+    },
+    [isEditing, annotation.position],
+  );
 
   // Handle resize start
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsResizing(true);
-    resizeStartRef.current = {
-      x: e.clientX,
-      y: e.clientY,
-      width: annotation.width,
-      height: annotation.height,
-    };
-  }, [annotation.width, annotation.height]);
+  const handleResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setIsResizing(true);
+      resizeStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        width: annotation.width,
+        height: annotation.height,
+      };
+    },
+    [annotation.width, annotation.height],
+  );
 
   // Handle mouse move for drag/resize
   useEffect(() => {
@@ -144,9 +144,7 @@ export function SchemaAnnotationNode({
   return (
     <div
       ref={nodeRef}
-      className={`absolute select-none ${
-        isSelected ? "ring-2 ring-blue-500" : ""
-      }`}
+      className={`absolute select-none ${isSelected ? "ring-2 ring-blue-500" : ""}`}
       style={{
         left: annotation.position.x,
         top: annotation.position.y,
@@ -161,10 +159,7 @@ export function SchemaAnnotationNode({
       onDoubleClick={() => setIsEditing(true)}
     >
       {/* Note container */}
-      <div
-        className="rounded-lg shadow-md overflow-hidden"
-        style={{ backgroundColor: annotation.color }}
-      >
+      <div className="rounded-lg shadow-md overflow-hidden" style={{ backgroundColor: annotation.color }}>
         {/* Header with drag handle */}
         <div
           className="flex items-center justify-between px-2 py-1 cursor-move"
@@ -175,7 +170,7 @@ export function SchemaAnnotationNode({
             <GripVertical className="w-3 h-3" />
             <StickyNote className="w-3 h-3" />
           </div>
-          
+
           {isSelected && (
             <div className="flex items-center gap-0.5">
               <Button
@@ -211,9 +206,7 @@ export function SchemaAnnotationNode({
               <button
                 key={c.value}
                 className={`w-6 h-6 rounded border-2 ${
-                  annotation.color === c.value
-                    ? "border-blue-500"
-                    : "border-transparent"
+                  annotation.color === c.value ? "border-blue-500" : "border-transparent"
                 }`}
                 style={{ backgroundColor: c.value }}
                 onClick={(e) => {
@@ -246,28 +239,16 @@ export function SchemaAnnotationNode({
               placeholder="Ajouter une note..."
             />
           ) : (
-            <div
-              className="text-sm whitespace-pre-wrap min-h-[40px]"
-              style={{ color: "#374151" }}
-            >
-              {annotation.text || (
-                <span className="text-gray-400 italic">Double-clic pour éditer</span>
-              )}
+            <div className="text-sm whitespace-pre-wrap min-h-[40px]" style={{ color: "#374151" }}>
+              {annotation.text || <span className="text-gray-400 italic">Double-clic pour éditer</span>}
             </div>
           )}
         </div>
 
         {/* Resize handle */}
         {isSelected && (
-          <div
-            className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
-            onMouseDown={handleResizeStart}
-          >
-            <svg
-              viewBox="0 0 16 16"
-              className="w-full h-full text-gray-400"
-              fill="currentColor"
-            >
+          <div className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize" onMouseDown={handleResizeStart}>
+            <svg viewBox="0 0 16 16" className="w-full h-full text-gray-400" fill="currentColor">
               <path d="M14 14H12V12H14V14ZM14 10H12V8H14V10ZM10 14H8V12H10V14Z" />
             </svg>
           </div>
@@ -296,29 +277,40 @@ export function SchemaAnnotationsLayer({
   onDeleteAnnotation,
   onAddAnnotation,
 }: SchemaAnnotationsLayerProps) {
+  // Utiliser le viewport ReactFlow pour suivre les transformations
+  const viewport = useViewport();
+
   return (
-    <div className="absolute inset-0 pointer-events-none">
-      {annotations.map((annotation) => (
-        <div key={annotation.id} className="pointer-events-auto">
-          <SchemaAnnotationNode
-            annotation={annotation}
-            zoom={zoom}
-            isSelected={selectedAnnotationId === annotation.id}
-            onSelect={() => onSelectAnnotation(annotation.id)}
-            onUpdate={(updates) => onUpdateAnnotation(annotation.id, updates)}
-            onDelete={() => onDeleteAnnotation(annotation.id)}
-          />
-        </div>
-      ))}
+    <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 5 }}>
+      {/* Conteneur transformé selon le viewport */}
+      <div
+        style={{
+          transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
+          transformOrigin: "0 0",
+          position: "absolute",
+          top: 0,
+          left: 0,
+        }}
+      >
+        {annotations.map((annotation) => (
+          <div key={annotation.id} className="pointer-events-auto">
+            <SchemaAnnotationNode
+              annotation={annotation}
+              zoom={viewport.zoom}
+              isSelected={selectedAnnotationId === annotation.id}
+              onSelect={() => onSelectAnnotation(annotation.id)}
+              onUpdate={(updates) => onUpdateAnnotation(annotation.id, updates)}
+              onDelete={() => onDeleteAnnotation(annotation.id)}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
 // Helper function to create a new annotation
-export function createAnnotation(
-  position: { x: number; y: number },
-  layerId?: string
-): Annotation {
+export function createAnnotation(position: { x: number; y: number }, layerId?: string): Annotation {
   return {
     id: `annotation-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     text: "",
