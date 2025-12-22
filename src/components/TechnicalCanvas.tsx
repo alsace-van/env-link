@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.9 - Debug circuit + amélioration détection passthrough
+// VERSION: 3.10 - Fix annotations + labels câbles décalés + sauvegarde complète
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -695,13 +695,16 @@ const CustomSmoothEdge = ({
           <div
             style={{
               position: "absolute",
-              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              // Décaler le label au-dessus du trait (-15px vertical)
+              transform: `translate(-50%, -100%) translate(${labelX}px, ${labelY - 8}px)`,
               pointerEvents: "all",
               ...labelBgStyle,
-              padding: "2px 4px",
+              padding: "2px 6px",
               borderRadius: 4,
               fontSize: 11,
               fontWeight: 600,
+              backgroundColor: "rgba(255, 255, 255, 0.9)",
+              boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
               ...(labelStyle as React.CSSProperties),
             }}
             className="nodrag nopan"
@@ -828,6 +831,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // Zoom actuel (pour les annotations)
   const [currentZoom, setCurrentZoom] = useState(1);
+
+  // Hook ReactFlow pour convertir les coordonnées écran -> flow
+  const reactFlowInstance = useReactFlow();
 
   // Mode définition de circuit
   const [isDefiningCircuit, setIsDefiningCircuit] = useState(false);
@@ -1969,6 +1975,18 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         console.log("[Schema] loadSchemaData - no items in localStorage, clearing items state");
         setItems([]); // S'assurer que items est vide si pas de données
       }
+
+      // Charger les annotations sauvegardées
+      if (parsed.annotations && parsed.annotations.length > 0) {
+        console.log("[Schema] loadSchemaData - loading annotations:", parsed.annotations.length);
+        setAnnotations(parsed.annotations);
+      }
+
+      // Charger les circuits sauvegardés
+      if (parsed.circuits) {
+        console.log("[Schema] loadSchemaData - loading circuits:", Object.keys(parsed.circuits).length);
+        setCircuits(parsed.circuits);
+      }
     } else {
       // Pas de données sauvegardées, s'assurer que items est vide
       console.log("[Schema] loadSchemaData - no localStorage data, clearing all state");
@@ -1977,6 +1995,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       setNodeHandles({});
       setLayers([createDefaultLayer()]);
       setActiveLayerId("layer-default");
+      setAnnotations([]);
+      setCircuits({});
     }
   };
 
@@ -2486,6 +2506,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         nodeHandles,
         items, // Sauvegarder aussi les items ajoutés au schéma
         layers, // Sauvegarder les calques
+        annotations, // Sauvegarder les annotations
+        circuits, // Sauvegarder les circuits définis
       };
       localStorage.setItem(`electrical_schema_${projectId}`, JSON.stringify(schemaToSave));
       toast.success("Schéma sauvegardé");
@@ -3077,12 +3099,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
               // Mode annotation : ajouter une note au clic
               if (isAnnotationMode) {
-                const bounds = reactFlowWrapper.current?.getBoundingClientRect();
-                if (bounds) {
-                  const x = (event.clientX - bounds.left) / currentZoom;
-                  const y = (event.clientY - bounds.top) / currentZoom;
-                  addAnnotation({ x, y });
-                }
+                // Utiliser screenToFlowPosition pour tenir compte du pan/zoom
+                const flowPosition = reactFlowInstance.screenToFlowPosition({
+                  x: event.clientX,
+                  y: event.clientY,
+                });
+                addAnnotation(flowPosition);
               }
             }}
             onMove={(_, viewport) => setCurrentZoom(viewport.zoom)}
@@ -3395,6 +3417,16 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 </div>
               </Panel>
             )}
+            {/* Layer annotations - à l'intérieur de ReactFlow pour suivre le viewport */}
+            <SchemaAnnotationsLayer
+              annotations={annotations}
+              zoom={currentZoom}
+              selectedAnnotationId={selectedAnnotationId}
+              onSelectAnnotation={setSelectedAnnotationId}
+              onUpdateAnnotation={updateAnnotation}
+              onDeleteAnnotation={deleteAnnotation}
+              onAddAnnotation={addAnnotation}
+            />
           </ReactFlow>
         )}
 
@@ -3407,19 +3439,6 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             isVisible={showLegend}
             onToggleVisibility={() => setShowLegend(!showLegend)}
             position="bottom-right"
-          />
-        )}
-
-        {/* Layer annotations */}
-        {annotations.length > 0 && (
-          <SchemaAnnotationsLayer
-            annotations={annotations}
-            zoom={currentZoom}
-            selectedAnnotationId={selectedAnnotationId}
-            onSelectAnnotation={setSelectedAnnotationId}
-            onUpdateAnnotation={updateAnnotation}
-            onDeleteAnnotation={deleteAnnotation}
-            onAddAnnotation={addAnnotation}
           />
         )}
       </div>
