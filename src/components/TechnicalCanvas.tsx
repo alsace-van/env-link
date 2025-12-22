@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.10 - Fix annotations + labels câbles décalés + sauvegarde complète
+// VERSION: 3.11 - Fix annotations (pas de useReactFlow au niveau parent)
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -33,7 +33,6 @@ import {
   getSmoothStepPath,
   BaseEdge,
   EdgeLabelRenderer,
-  useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
@@ -829,11 +828,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     edges: SchemaEdge[];
   } | null>(null);
 
-  // Zoom actuel (pour les annotations)
-  const [currentZoom, setCurrentZoom] = useState(1);
-
-  // Hook ReactFlow pour convertir les coordonnées écran -> flow
-  const reactFlowInstance = useReactFlow();
+  // Viewport actuel (pour les annotations et calculs de position)
+  const [currentViewport, setCurrentViewport] = useState({ x: 0, y: 0, zoom: 1 });
 
   // Mode définition de circuit
   const [isDefiningCircuit, setIsDefiningCircuit] = useState(false);
@@ -3099,15 +3095,16 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
               // Mode annotation : ajouter une note au clic
               if (isAnnotationMode) {
-                // Utiliser screenToFlowPosition pour tenir compte du pan/zoom
-                const flowPosition = reactFlowInstance.screenToFlowPosition({
-                  x: event.clientX,
-                  y: event.clientY,
-                });
-                addAnnotation(flowPosition);
+                // Calculer la position dans le flow à partir des coordonnées écran
+                const bounds = reactFlowWrapper.current?.getBoundingClientRect();
+                if (bounds) {
+                  const flowX = (event.clientX - bounds.left - currentViewport.x) / currentViewport.zoom;
+                  const flowY = (event.clientY - bounds.top - currentViewport.y) / currentViewport.zoom;
+                  addAnnotation({ x: flowX, y: flowY });
+                }
               }
             }}
-            onMove={(_, viewport) => setCurrentZoom(viewport.zoom)}
+            onMove={(_, viewport) => setCurrentViewport(viewport)}
             nodeTypes={blockNodeTypes}
             edgeTypes={edgeTypes}
             connectionMode={ConnectionMode.Loose}
@@ -3420,7 +3417,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             {/* Layer annotations - à l'intérieur de ReactFlow pour suivre le viewport */}
             <SchemaAnnotationsLayer
               annotations={annotations}
-              zoom={currentZoom}
+              zoom={currentViewport.zoom}
+              viewport={currentViewport}
               selectedAnnotationId={selectedAnnotationId}
               onSelectAnnotation={setSelectedAnnotationId}
               onUpdateAnnotation={updateAnnotation}
