@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.11 - Fix annotations (pas de useReactFlow au niveau parent)
+// VERSION: 3.12 - Miniatures produits dans les blocs
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -132,6 +132,7 @@ interface ElectricalItem {
   tension_volts?: number | null;
   marque?: string | null;
   prix_unitaire?: number | null;
+  image_url?: string | null; // URL de l'image du produit
   layerId?: string; // ID du calque auquel appartient l'élément
 }
 
@@ -490,11 +491,23 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
       )}
 
       <div className={`flex items-center gap-2 px-3 py-2 border-b ${typeConfig.borderColor} bg-white/60 rounded-t-lg`}>
-        <IconComponent className={`h-5 w-5 ${typeConfig.color}`} />
+        <IconComponent className={`h-5 w-5 ${typeConfig.color} shrink-0`} />
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm truncate">{decodeHtmlEntities(item.nom_accessoire)}</div>
           {item.marque && <div className="text-xs text-gray-500 truncate">{item.marque}</div>}
         </div>
+        {/* Miniature de l'image si disponible */}
+        {item.image_url && (
+          <img
+            src={item.image_url}
+            alt=""
+            className="w-9 h-9 rounded-md object-cover border border-gray-200 shrink-0"
+            onError={(e) => {
+              // Masquer l'image si elle ne charge pas
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
+          />
+        )}
         <Badge variant="outline" className={`text-xs ${typeConfig.color} border-current shrink-0`}>
           x{item.quantite}
         </Badge>
@@ -2002,7 +2015,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     const { data } = await supabase
       .from("accessories_catalog")
       .select(
-        "id, nom, marque, prix_vente_ttc, puissance_watts, capacite_ah, type_electrique, category_id, categories(nom)",
+        "id, nom, marque, prix_vente_ttc, puissance_watts, capacite_ah, type_electrique, category_id, image_url, categories(nom)",
       )
       .not("type_electrique", "is", null)
       .order("nom");
@@ -2029,6 +2042,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       capacite_ah: catalogItem.capacite_ah,
       marque: catalogItem.marque,
       prix_unitaire: catalogItem.prix_vente_ttc,
+      image_url: catalogItem.image_url, // Miniature du produit
       layerId: activeLayerId, // Assigner au calque actif
     };
     setItems((prev) => [...prev, newItem]);
@@ -2076,7 +2090,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     if (accessoryIds.length > 0) {
       const { data: catalogItems } = await (supabase as any)
         .from("accessories_catalog")
-        .select("id, type_electrique, puissance_watts, capacite_ah, marque")
+        .select("id, type_electrique, puissance_watts, capacite_ah, marque, image_url")
         .in("id", accessoryIds);
 
       if (catalogItems) {
@@ -2101,6 +2115,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           type_electrique: expense.type_electrique || catalog?.type_electrique,
           puissance_watts: expense.puissance_watts ?? catalog?.puissance_watts,
           capacite_ah: expense.capacite_ah ?? catalog?.capacite_ah,
+          image_url: catalog?.image_url, // Miniature du produit depuis le catalogue
         };
       })
       .filter((item: any) => item.type_electrique); // Filtrer ceux qui ont un type électrique
@@ -2156,6 +2171,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       capacite_ah: expense.capacite_ah,
       marque: expense.marque,
       prix_unitaire: expense.prix_unitaire,
+      image_url: expense.image_url, // Miniature du produit
       layerId: activeLayerId, // Assigner au calque actif
     };
     setItems((prev) => [...prev, newItem]);
