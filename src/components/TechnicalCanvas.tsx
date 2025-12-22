@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.24 - Somme puissances distribution + tension entrée/sortie + modale édition
+// VERSION: 3.25 - Fix tension dans calcul section + extraction tension depuis nom
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -596,7 +596,8 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
             <span className="font-medium text-gray-900">{item.puissance_watts} W</span>
           </div>
         )}
-        {item.capacite_ah && (
+        {/* Capacité uniquement pour les batteries/stockage */}
+        {item.capacite_ah && ["stockage", "batterie"].includes(item.type_electrique?.toLowerCase() || "") && (
           <div className="flex items-center justify-between text-xs">
             <span className="text-gray-600">Capacité</span>
             <span className="font-medium text-gray-900">{item.capacite_ah} Ah</span>
@@ -2223,16 +2224,45 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     return DISTRIBUTION_POINT_TYPES.some((t) => typeElec.includes(t) || nom.includes(t));
   }, []);
 
-  // Helper: Obtenir la tension de sortie d'un item (pour calcul I = P/U)
-  const getOutputVoltage = useCallback((item: ElectricalItem): number => {
-    // Priorité: tension_sortie > tension_volts > 12V par défaut
-    return item.tension_sortie_volts || item.tension_volts || 12;
+  // Helper: Extraire la tension depuis le nom de l'accessoire (fallback)
+  const extractVoltageFromName = useCallback((name: string): number | null => {
+    if (!name) return null;
+    // Patterns: "12V", "12 V", "24V", "24 V", "48V", "48 V"
+    const match = name.match(/(\d+)\s*V(?:\s|$|[^a-zA-Z])/i);
+    if (match) {
+      const voltage = parseInt(match[1]);
+      // Valeurs de tension courantes : 12, 24, 36, 48, 230
+      if ([12, 24, 36, 48, 230].includes(voltage)) {
+        return voltage;
+      }
+    }
+    return null;
   }, []);
 
+  // Helper: Obtenir la tension de sortie d'un item (pour calcul I = P/U)
+  const getOutputVoltage = useCallback(
+    (item: ElectricalItem): number => {
+      // Priorité: tension_sortie > tension_volts > extraction depuis nom > 12V par défaut
+      if (item.tension_sortie_volts) return item.tension_sortie_volts;
+      if (item.tension_volts) return item.tension_volts;
+      const fromName = extractVoltageFromName(item.nom_accessoire);
+      if (fromName) return fromName;
+      return 12;
+    },
+    [extractVoltageFromName],
+  );
+
   // Helper: Obtenir la tension d'entrée d'un item
-  const getInputVoltage = useCallback((item: ElectricalItem): number => {
-    return item.tension_entree_volts || item.tension_volts || 12;
-  }, []);
+  const getInputVoltage = useCallback(
+    (item: ElectricalItem): number => {
+      if (item.tension_entree_volts) return item.tension_entree_volts;
+      if (item.tension_volts) return item.tension_volts;
+      const fromName = extractVoltageFromName(item.nom_accessoire);
+      if (fromName) return fromName;
+      return 12;
+    },
+    [extractVoltageFromName],
+  );
 
   // Fonction pour SOMMER toutes les puissances en amont (pour points de distribution côté production)
   const sumUpstreamPowers = useCallback(
@@ -2909,7 +2939,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     const { data: expenses, error } = await (supabase as any)
       .from("project_expenses")
       .select(
-        "id, nom_accessoire, marque, prix_unitaire, puissance_watts, capacite_ah, type_electrique, quantite, accessory_id",
+        "id, nom_accessoire, marque, prix_unitaire, puissance_watts, capacite_ah, tension_volts, type_electrique, quantite, accessory_id",
       )
       .eq("scenario_id", principalScenarioId)
       .order("nom_accessoire");
@@ -2930,7 +2960,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     if (accessoryIds.length > 0) {
       const { data: catalogItems } = await (supabase as any)
         .from("accessories_catalog")
-        .select("id, type_electrique, puissance_watts, capacite_ah, marque, image_url")
+        .select("id, type_electrique, puissance_watts, capacite_ah, tension_volts, marque, image_url")
         .in("id", accessoryIds);
 
       if (catalogItems) {
@@ -2955,6 +2985,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           type_electrique: expense.type_electrique || catalog?.type_electrique,
           puissance_watts: expense.puissance_watts ?? catalog?.puissance_watts,
           capacite_ah: expense.capacite_ah ?? catalog?.capacite_ah,
+          tension_volts: expense.tension_volts ?? catalog?.tension_volts,
           image_url: catalog?.image_url, // Miniature du produit depuis le catalogue
         };
       })
@@ -2963,7 +2994,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     console.log("[Schema] loadScenarioItems enriched:", {
       total: expenses.length,
       withType: enrichedData.length,
-      items: enrichedData.map((i: any) => ({ nom: i.nom_accessoire, type: i.type_electrique })),
+      items: enrichedData.map((i: any) => ({
+        nom: i.nom_accessoire,
+        type: i.type_electrique,
+        tension: i.tension_volts,
+      })),
     });
 
     setScenarioItems(enrichedData);
@@ -3009,6 +3044,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       quantite: quantity,
       puissance_watts: expense.puissance_watts,
       capacite_ah: expense.capacite_ah,
+      tension_volts: expense.tension_volts,
       marque: expense.marque,
       prix_unitaire: expense.prix_unitaire,
       image_url: expense.image_url, // Miniature du produit
@@ -4306,36 +4342,64 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             if (edge?.length_m) totalLength += edge.length_m;
                           });
 
-                          // Puissance du circuit - logique améliorée
+                          // Détecter si points de distribution
+                          const sourceIsDistribution = sourceItem ? isDistributionPoint(sourceItem) : false;
+                          const destIsDistribution = destItem ? isDistributionPoint(destItem) : false;
+
+                          // Puissance et tension du circuit - logique améliorée
                           let power = 0;
+                          let voltage = 12; // Défaut
                           let powerSource = "";
 
-                          // 1. D'abord essayer sur la source directe
-                          if (sourceItem?.puissance_watts && sourceItem.puissance_watts > 0) {
-                            power = sourceItem.puissance_watts;
-                            powerSource = "source";
+                          // CAS 1: Source est un point de distribution
+                          if (sourceIsDistribution && sourceItem) {
+                            power = sumUpstreamPowers(circuitSource, new Set([circuitDest]));
+                            voltage = getOutputVoltage(sourceItem);
+                            powerSource = "somme amont";
                           }
-                          // 2. Sinon essayer sur la destination directe
-                          else if (destItem?.puissance_watts && destItem.puissance_watts > 0) {
-                            power = destItem.puissance_watts;
-                            powerSource = "destination";
+                          // CAS 2: Destination est un point de distribution
+                          else if (destIsDistribution && destItem) {
+                            power = sumDownstreamPowers(circuitDest, new Set([circuitSource]));
+                            voltage = getInputVoltage(destItem);
+                            powerSource = "somme aval";
                           }
-                          // 3. Sinon remonter le graphe depuis la source
+                          // CAS 3: Pas de distribution - logique standard
                           else {
-                            power = findUpstreamPower(circuitSource, new Set());
-                            if (power > 0) {
-                              powerSource = "amont";
-                            } else {
-                              // 4. Sinon descendre depuis la destination
-                              power = findDownstreamPower(circuitDest, new Set());
+                            // 1. D'abord essayer sur la source directe
+                            if (sourceItem?.puissance_watts && sourceItem.puissance_watts > 0) {
+                              power = sourceItem.puissance_watts * (sourceItem.quantite || 1);
+                              voltage = getOutputVoltage(sourceItem);
+                              powerSource = "source";
+                            }
+                            // 2. Sinon essayer sur la destination directe
+                            else if (destItem?.puissance_watts && destItem.puissance_watts > 0) {
+                              power = destItem.puissance_watts * (destItem.quantite || 1);
+                              voltage = getInputVoltage(destItem);
+                              powerSource = "destination";
+                            }
+                            // 3. Sinon remonter le graphe depuis la source
+                            else {
+                              power = findUpstreamPower(circuitSource, new Set());
+                              voltage = sourceItem ? getOutputVoltage(sourceItem) : 12;
                               if (power > 0) {
-                                powerSource = "aval";
+                                powerSource = "amont";
+                              } else {
+                                // 4. Sinon descendre depuis la destination
+                                power = findDownstreamPower(circuitDest, new Set());
+                                voltage = destItem ? getInputVoltage(destItem) : 12;
+                                if (power > 0) {
+                                  powerSource = "aval";
+                                }
                               }
                             }
                           }
 
-                          // Section recommandée
-                          const section = power > 0 && totalLength > 0 ? quickCalculate(power, totalLength) : null;
+                          // Calculer l'intensité
+                          const intensity = power > 0 && voltage > 0 ? power / voltage : 0;
+
+                          // Section recommandée - AVEC LA BONNE TENSION !
+                          const section =
+                            power > 0 && totalLength > 0 ? quickCalculate(power, totalLength, voltage) : null;
 
                           return (
                             <div className="space-y-2 pt-2 border-t border-amber-200">
@@ -4352,16 +4416,21 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                 <div className="bg-white rounded p-2 text-center">
                                   <div className="text-gray-500">Puissance</div>
                                   <div className="font-bold text-lg text-gray-800">{power > 0 ? `${power}W` : "?"}</div>
-                                  {powerSource && powerSource !== "source" && powerSource !== "destination" && (
+                                  {powerSource && !["source", "destination"].includes(powerSource) && (
                                     <div className="text-[10px] text-blue-600">({powerSource})</div>
                                   )}
                                 </div>
                               </div>
 
-                              {/* Avertissement si puissance trouvée en amont/aval */}
-                              {powerSource === "amont" && (
-                                <div className="bg-blue-50 rounded p-2 text-xs text-blue-700">
-                                  💡 Puissance du producteur en amont utilisée
+                              {/* Détail calcul : Tension et Intensité */}
+                              {power > 0 && (
+                                <div className="bg-blue-50 rounded p-2 text-xs text-blue-700 flex items-center justify-between">
+                                  <span>
+                                    💡 {power}W ÷ <strong>{voltage}V</strong> = <strong>{intensity.toFixed(2)}A</strong>
+                                  </span>
+                                  {voltage === 12 && !sourceItem?.tension_volts && (
+                                    <span className="text-amber-600">(tension par défaut)</span>
+                                  )}
                                 </div>
                               )}
 
