@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.15 - Nouvelle UI définition circuit avec calcul section
+// VERSION: 3.17 - Sauvegarde section calculée + affichage amélioré
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1726,64 +1726,127 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   );
 
   // Trouver tous les câbles entre deux blocs (source et destination)
-  // en traversant les accessoires neutres
+  // en traversant TOUS les noeuds intermédiaires
   const findEdgesBetweenNodes = useCallback(
     (sourceId: string, destId: string): string[] => {
       const foundEdgeIds = new Set<string>();
+      const allPaths: string[][] = [];
+
+      const sourceItem = items.find((i) => i.id === sourceId);
+      const destItem = items.find((i) => i.id === destId);
 
       console.log("=== RECHERCHE CIRCUIT ===");
-      console.log("Source:", sourceId, items.find((i) => i.id === sourceId)?.nom_accessoire);
-      console.log("Destination:", destId, items.find((i) => i.id === destId)?.nom_accessoire);
-      console.log("Nombre de câbles:", edges.length);
+      console.log("Source:", sourceId.substring(0, 15), "→", sourceItem?.nom_accessoire);
+      console.log("Destination:", destId.substring(0, 15), "→", destItem?.nom_accessoire);
+      console.log("Nombre total de câbles:", edges.length);
+      console.log("Nombre total de blocs:", items.length);
 
-      // BFS pour trouver tous les chemins
-      const findPaths = (currentNodeId: string, targetId: string, visitedEdges: Set<string>, path: string[]): void => {
-        if (currentNodeId === targetId) {
-          // Chemin trouvé, ajouter tous les edges
-          console.log("✅ Chemin trouvé:", path);
+      // Construire un graphe des connexions
+      const graph: Map<string, { edgeId: string; targetNode: string }[]> = new Map();
+
+      edges.forEach((edge) => {
+        // Ajouter connexion source -> target
+        if (!graph.has(edge.source_node_id)) graph.set(edge.source_node_id, []);
+        graph.get(edge.source_node_id)!.push({ edgeId: edge.id, targetNode: edge.target_node_id });
+
+        // Ajouter connexion target -> source (bidirectionnel)
+        if (!graph.has(edge.target_node_id)) graph.set(edge.target_node_id, []);
+        graph.get(edge.target_node_id)!.push({ edgeId: edge.id, targetNode: edge.source_node_id });
+      });
+
+      console.log("Graphe construit avec", graph.size, "noeuds connectés");
+
+      // Debug: afficher les connexions de la source
+      const sourceConnections = graph.get(sourceId) || [];
+      console.log(`\nConnexions depuis la SOURCE (${sourceItem?.nom_accessoire?.substring(0, 20)}):`);
+      sourceConnections.forEach((conn) => {
+        const targetItem = items.find((i) => i.id === conn.targetNode);
+        const edge = edges.find((e) => e.id === conn.edgeId);
+        console.log(
+          `  → ${targetItem?.nom_accessoire?.substring(0, 25) || conn.targetNode.substring(0, 15)} (câble: ${edge?.length_m || "?"}m, couleur: ${edge?.color})`,
+        );
+      });
+
+      // Debug: afficher les connexions vers la destination
+      const destConnections = graph.get(destId) || [];
+      console.log(`\nConnexions vers la DESTINATION (${destItem?.nom_accessoire?.substring(0, 20)}):`);
+      destConnections.forEach((conn) => {
+        const targetItem = items.find((i) => i.id === conn.targetNode);
+        const edge = edges.find((e) => e.id === conn.edgeId);
+        console.log(
+          `  ← ${targetItem?.nom_accessoire?.substring(0, 25) || conn.targetNode.substring(0, 15)} (câble: ${edge?.length_m || "?"}m, couleur: ${edge?.color})`,
+        );
+      });
+
+      // BFS pour trouver TOUS les chemins
+      const findAllPaths = (
+        currentNodeId: string,
+        targetId: string,
+        visitedNodes: Set<string>,
+        path: string[],
+        maxDepth: number = 10,
+      ): void => {
+        // Protection contre les chemins trop longs
+        if (path.length > maxDepth) return;
+
+        if (currentNodeId === targetId && path.length > 0) {
+          // Chemin trouvé !
+          const pathDetails = path
+            .map((edgeId) => {
+              const edge = edges.find((e) => e.id === edgeId);
+              return `${edge?.length_m || "?"}m`;
+            })
+            .join(" → ");
+          console.log(`✅ Chemin trouvé: ${path.length} câbles (${pathDetails})`);
+          allPaths.push([...path]);
           path.forEach((id) => foundEdgeIds.add(id));
           return;
         }
 
-        // Trouver tous les edges connectés à ce node
-        const connectedEdges = edges.filter(
-          (e) => (e.source_node_id === currentNodeId || e.target_node_id === currentNodeId) && !visitedEdges.has(e.id),
-        );
+        const connections = graph.get(currentNodeId) || [];
 
-        console.log(`Noeud ${currentNodeId.substring(0, 8)}... a ${connectedEdges.length} câbles connectés`);
+        for (const conn of connections) {
+          // Ne pas revisiter un noeud déjà dans le chemin
+          if (visitedNodes.has(conn.targetNode)) continue;
 
-        for (const edge of connectedEdges) {
-          const nextNodeId = edge.source_node_id === currentNodeId ? edge.target_node_id : edge.source_node_id;
+          // Ne pas réutiliser un câble déjà dans le chemin
+          if (path.includes(conn.edgeId)) continue;
 
-          const nextItem = items.find((i) => i.id === nextNodeId);
-          const isTarget = nextNodeId === targetId;
-          const isPassthrough = isPassthroughType(nextNodeId);
+          const nextItem = items.find((i) => i.id === conn.targetNode);
+          const isTarget = conn.targetNode === targetId;
+          const isIntermediate = nextItem && nextItem.id !== sourceId;
 
-          console.log(
-            `  -> Câble ${edge.id.substring(0, 8)}... vers ${nextItem?.nom_accessoire?.substring(0, 20) || nextNodeId.substring(0, 8)}`,
-          );
-          console.log(
-            `     isTarget: ${isTarget}, isPassthrough: ${isPassthrough}, type: ${nextItem?.type_electrique}`,
-          );
-
-          // On peut traverser si c'est la destination OU un passthrough
-          if (isTarget || isPassthrough) {
-            const newVisited = new Set(visitedEdges);
-            newVisited.add(edge.id);
-            findPaths(nextNodeId, targetId, newVisited, [...path, edge.id]);
+          // On peut traverser si c'est la destination OU n'importe quel noeud intermédiaire
+          if (isTarget || isIntermediate) {
+            const newVisited = new Set(visitedNodes);
+            newVisited.add(conn.targetNode);
+            findAllPaths(conn.targetNode, targetId, newVisited, [...path, conn.edgeId], maxDepth);
           }
         }
       };
 
-      // Chercher dans les deux sens
-      findPaths(sourceId, destId, new Set(), []);
+      // Démarrer la recherche
+      console.log("\n--- Début de la recherche de chemins ---");
+      const initialVisited = new Set<string>();
+      initialVisited.add(sourceId);
+      findAllPaths(sourceId, destId, initialVisited, []);
 
-      console.log("=== RÉSULTAT ===");
-      console.log("Câbles trouvés:", foundEdgeIds.size, Array.from(foundEdgeIds));
+      console.log("\n=== RÉSULTAT FINAL ===");
+      console.log("Chemins trouvés:", allPaths.length);
+      if (allPaths.length > 0) {
+        allPaths.forEach((p, i) => {
+          const totalLength = p.reduce((sum, edgeId) => {
+            const edge = edges.find((e) => e.id === edgeId);
+            return sum + (edge?.length_m || 0);
+          }, 0);
+          console.log(`  Chemin ${i + 1}: ${p.length} câbles, ${totalLength}m total`);
+        });
+      }
+      console.log("Câbles uniques inclus:", foundEdgeIds.size);
 
       return Array.from(foundEdgeIds);
     },
-    [edges, items, isPassthroughType],
+    [edges, items],
   );
 
   // Définir un nouveau circuit
@@ -1814,6 +1877,28 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       // Trouver la puissance (depuis source ou destination)
       const power = sourceItem.puissance_watts || destItem.puissance_watts || 0;
 
+      // Calculer la longueur totale du circuit
+      let totalLength = 0;
+      edgeIds.forEach((edgeId) => {
+        const edge = edges.find((e) => e.id === edgeId);
+        if (edge?.length_m) {
+          totalLength += edge.length_m;
+        }
+      });
+
+      // Calculer la section recommandée
+      let calculatedSection: number | null = null;
+      if (power > 0 && totalLength > 0) {
+        calculatedSection = quickCalculate(power, totalLength);
+      }
+
+      console.log("=== CRÉATION CIRCUIT ===");
+      console.log("Nom:", circuitName);
+      console.log("Câbles:", edgeIds.length);
+      console.log("Longueur totale:", totalLength, "m");
+      console.log("Puissance:", power, "W");
+      console.log("Section calculée:", calculatedSection, "mm²");
+
       // Sauvegarder le circuit
       setCircuits((prev) => ({
         ...prev,
@@ -1824,20 +1909,28 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           destNodeId,
           edgeIds,
           power,
+          totalLength,
+          calculatedSection,
         },
       }));
 
-      // Assigner le circuit à tous les câbles trouvés
+      // Assigner le circuit ET la section calculée à tous les câbles trouvés
       setEdges((prev) =>
         prev.map((edge) => {
           if (edgeIds.includes(edge.id)) {
-            return { ...edge, circuitId };
+            return {
+              ...edge,
+              circuitId,
+              // Appliquer la section calculée si pas déjà définie manuellement
+              section_mm2: edge.section_mm2 || calculatedSection || undefined,
+            };
           }
           return edge;
         }),
       );
 
-      toast.success(`Circuit "${circuitName}" créé avec ${edgeIds.length} câble(s)`);
+      const sectionMsg = calculatedSection ? ` • Section: ${calculatedSection}mm²` : "";
+      toast.success(`Circuit "${circuitName}" créé avec ${edgeIds.length} câble(s)${sectionMsg}`);
 
       // Réinitialiser le mode
       setIsDefiningCircuit(false);
@@ -2593,6 +2686,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         }
       });
 
+      // Calculer la section si pas déjà définie
+      const calculatedSection =
+        circuit.power > 0 && totalLength > 0 ? quickCalculate(circuit.power, totalLength) : null;
+
       return {
         circuitId,
         circuitName: circuit.name,
@@ -2601,6 +2698,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         cableCount: circuit.edgeIds.length,
         sourceNodeId: circuit.sourceNodeId,
         destNodeId: circuit.destNodeId,
+        calculatedSection,
       };
     }
 
@@ -2613,8 +2711,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       cableCount: 1,
       sourceNodeId: selectedEdge.source_node_id,
       destNodeId: selectedEdge.target_node_id,
+      calculatedSection: null,
     };
-  }, [selectedEdgeId, selectedEdge, edges, circuits]);
+  }, [selectedEdgeId, selectedEdge, edges, circuits, quickCalculate]);
 
   const deleteSelectedEdge = useCallback(() => {
     if (!selectedEdgeId) return;
@@ -3377,9 +3476,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             {selectedCircuitInfo.totalLength.toFixed(1)}m ({selectedCircuitInfo.cableCount} câbles)
                           </span>
                         )}
-                        {selectedEdge.section_mm2 && (
+                        {/* Afficher la section (sauvegardée ou calculée) */}
+                        {(selectedEdge.section_mm2 || selectedCircuitInfo.calculatedSection) && (
                           <span className="font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded">
-                            → {selectedEdge.section_mm2} mm²
+                            → {selectedEdge.section_mm2 || selectedCircuitInfo.calculatedSection} mm²
                           </span>
                         )}
                         <Button
