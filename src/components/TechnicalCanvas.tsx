@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.37 - Fix colonnes manquantes accessories_catalog
+// VERSION: 3.38 - Couplage distributeurs (+/-) + calcul circuit complet (aller + retour)
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -150,6 +150,8 @@ interface ElectricalItem {
   image_url?: string | null; // URL de l'image du produit
   layerId?: string; // ID du calque auquel appartient l'élément
   accessory_id?: string | null; // ID de l'accessoire du catalogue (pour rafraîchir les données)
+  distributeur_pair_id?: string | null; // ID du distributeur couplé (ex: Busbar+ ↔ Busbar-)
+  distributeur_polarite?: "+" | "-" | null; // Polarité du distributeur (+, -)
 }
 
 // Configuration des handles par bloc
@@ -763,10 +765,24 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
         )}
       </div>
 
-      <div className="px-3 pb-2">
+      <div className="px-3 pb-2 flex items-center gap-1">
         <Badge className={`text-xs ${typeConfig.bgColor} ${typeConfig.color} border ${typeConfig.borderColor}`}>
           {typeConfig.label}
         </Badge>
+        {/* Indicateur de polarité et couplage pour les distributeurs */}
+        {typeConfig.category === "distributeur" && item.distributeur_polarite && (
+          <span
+            className={`text-xs font-bold px-1.5 py-0.5 rounded ${
+              item.distributeur_polarite === "+"
+                ? "bg-red-100 text-red-700 border border-red-300"
+                : "bg-blue-100 text-blue-700 border border-blue-300"
+            }`}
+            title={item.distributeur_pair_id ? "Couplé" : "Non couplé"}
+          >
+            {item.distributeur_polarite}
+            {item.distributeur_pair_id && <span className="ml-0.5">🔗</span>}
+          </span>
+        )}
       </div>
 
       {/* Handles de sortie (verts) - bottom et right */}
@@ -2998,7 +3014,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     voltage: number;
     intensity: number;
     length: number;
-    totalLength: number; // Longueur totale jusqu'au prochain point clé
+    totalLength: number; // Longueur totale jusqu'au prochain point clé (aller seulement)
+    returnLength: number; // Longueur du retour (si distributeur couplé)
+    circuitLength: number; // Longueur totale circuit = aller + retour
     section: number;
     details: PowerDetail[];
     sourceNom: string;
@@ -3007,7 +3025,99 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     isPartOfSegment: boolean; // True si ce câble fait partie d'un segment plus long
     allEdgeIdsInSegment: string[]; // Tous les câbles du segment
     hasDefinedLength: boolean; // True si longueur définie, false si estimée
+    hasReturnPath: boolean; // True si un chemin retour via distributeur couplé existe
+    pairedDistributeurNom?: string; // Nom du distributeur couplé
   }
+
+  // Calculer la longueur de retour via le distributeur couplé
+  const calculateReturnPath = useCallback(
+    (sourceItemId: string, targetItem: ElectricalItem): { returnLength: number; pairedDistributeurNom?: string } => {
+      // Vérifier si la destination est un distributeur avec un couplage
+      if (!targetItem.distributeur_pair_id) {
+        return { returnLength: 0 };
+      }
+
+      const pairedDistributeur = items.find((i) => i.id === targetItem.distributeur_pair_id);
+      if (!pairedDistributeur) {
+        return { returnLength: 0 };
+      }
+
+      // Trouver le chemin du distributeur couplé vers la source originale
+      // On cherche les edges qui partent du distributeur couplé
+      const returnEdges = edges.filter((e) => e.source_node_id === pairedDistributeur.id);
+
+      let totalReturnLength = 0;
+      let visited = new Set<string>();
+
+      // Fonction récursive pour trouver le chemin retour vers la source
+      const findPathToSource = (currentId: string, targetSourceId: string, depth: number = 0): number => {
+        if (depth > 20) return 0; // Protection contre les boucles infinies
+        if (visited.has(currentId)) return 0;
+        visited.add(currentId);
+
+        // Trouver les edges sortants
+        const outgoingEdges = edges.filter((e) => e.source_node_id === currentId);
+
+        for (const edge of outgoingEdges) {
+          const edgeLength = edge.length_m || 0;
+          const nextItem = items.find((i) => i.id === edge.target_node_id);
+
+          if (!nextItem) continue;
+
+          // Si on atteint la source ou un item lié à la source, on a trouvé
+          if (edge.target_node_id === targetSourceId) {
+            return edgeLength;
+          }
+
+          // Si c'est un point transparent, on traverse
+          if (isTransparentNode(nextItem)) {
+            const remainingLength = findPathToSource(edge.target_node_id, targetSourceId, depth + 1);
+            if (remainingLength > 0 || edge.target_node_id === targetSourceId) {
+              return edgeLength + remainingLength;
+            }
+          }
+
+          // Si c'est un producteur (source potentielle), on considère le chemin trouvé
+          const typeConfig = ELECTRICAL_TYPES[nextItem.type_electrique];
+          if (typeConfig?.category === "production" || typeConfig?.category === "stockage") {
+            return edgeLength;
+          }
+        }
+
+        return 0;
+      };
+
+      // Calculer le chemin retour en remontant depuis le distributeur couplé
+      // En réalité, le retour va du distributeur- vers les bornes négatives des sources
+      // Pour simplifier, on cherche les câbles connectés au distributeur couplé
+      for (const returnEdge of returnEdges) {
+        totalReturnLength += returnEdge.length_m || 0;
+
+        const nextItem = items.find((i) => i.id === returnEdge.target_node_id);
+        if (nextItem && isTransparentNode(nextItem)) {
+          // Traverser les protections
+          const { totalLength } = findNextKeyPoint(returnEdge.target_node_id, "downstream");
+          totalReturnLength += totalLength;
+        }
+      }
+
+      // Alternative : calculer simplement la somme des câbles connectés au distributeur couplé
+      // qui vont vers des sources ou des protections
+      if (totalReturnLength === 0) {
+        // Chercher tous les câbles dont la destination est le distributeur couplé (entrées)
+        const incomingEdges = edges.filter((e) => e.target_node_id === pairedDistributeur.id);
+        for (const edge of incomingEdges) {
+          totalReturnLength += edge.length_m || 0;
+        }
+      }
+
+      return {
+        returnLength: totalReturnLength,
+        pairedDistributeurNom: pairedDistributeur.nom_accessoire,
+      };
+    },
+    [items, edges, isTransparentNode, findNextKeyPoint],
+  );
 
   // Calculer automatiquement toutes les sections de câbles
   const calculateAllEdgeSections = useCallback((): EdgeCalculation[] => {
@@ -3044,10 +3154,25 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       // 4. Calculer l'intensité
       const intensity = power > 0 && voltage > 0 ? power / voltage : 0;
 
-      // 5. Calculer la section recommandée avec la longueur TOTALE du segment
+      // 5. Calculer le chemin de retour si la destination est un distributeur couplé
+      let returnLength = 0;
+      let pairedDistributeurNom: string | undefined;
+      let hasReturnPath = false;
+
+      if (realTarget) {
+        const returnInfo = calculateReturnPath(sourceItem.id, realTarget);
+        returnLength = returnInfo.returnLength;
+        pairedDistributeurNom = returnInfo.pairedDistributeurNom;
+        hasReturnPath = returnLength > 0;
+      }
+
+      // 6. Longueur totale du circuit = aller + retour
+      const circuitLength = segmentInfo.totalLength + returnLength;
+
+      // 7. Calculer la section recommandée avec la longueur TOTALE du CIRCUIT
       let section = 0;
-      if (power > 0 && segmentInfo.totalLength > 0) {
-        section = quickCalculate(power, segmentInfo.totalLength, voltage);
+      if (power > 0 && circuitLength > 0) {
+        section = quickCalculate(power, circuitLength, voltage);
       }
 
       // Ajouter un calcul pour CHAQUE câble du segment (tous avec la même section)
@@ -3063,6 +3188,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           intensity,
           length: segEdge ? getEdgeLength(segEdge).length : 0,
           totalLength: segmentInfo.totalLength,
+          returnLength,
+          circuitLength,
           section,
           details,
           // Pour l'affichage du segment, utiliser la VRAIE source (premier câble) et VRAIE destination
@@ -3072,6 +3199,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           isPartOfSegment: segmentInfo.allEdgeIds.length > 1,
           allEdgeIdsInSegment: segmentInfo.allEdgeIds,
           hasDefinedLength: segmentInfo.hasDefinedLength,
+          hasReturnPath,
+          pairedDistributeurNom,
         });
       }
     }
@@ -3086,6 +3215,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     getSegmentVoltage,
     quickCalculate,
     getEdgeLength,
+    calculateReturnPath,
   ]);
 
   // Appliquer les sections calculées à tous les câbles
@@ -3948,6 +4078,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     tension_sortie_volts: "",
     capacite_ah: "",
     intensite_amperes: "",
+    distributeur_pair_id: "",
+    distributeur_polarite: "" as "+" | "-" | "",
   });
 
   // Ouvrir la modale d'édition
@@ -3959,8 +4091,27 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       tension_sortie_volts: item.tension_sortie_volts?.toString() || item.tension_volts?.toString() || "",
       capacite_ah: item.capacite_ah?.toString() || "",
       intensite_amperes: item.intensite_amperes?.toString() || "",
+      distributeur_pair_id: item.distributeur_pair_id || "",
+      distributeur_polarite: item.distributeur_polarite || "",
     });
   }, []);
+
+  // Obtenir les distributeurs disponibles pour le couplage
+  const getAvailableDistributeurs = useCallback(
+    (currentItemId: string) => {
+      return items.filter((item) => {
+        // Exclure l'item actuel
+        if (item.id === currentItemId) return false;
+        // Seulement les distributeurs
+        const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
+        if (typeConfig?.category !== "distributeur") return false;
+        // Exclure ceux déjà couplés à un autre item
+        if (item.distributeur_pair_id && item.distributeur_pair_id !== currentItemId) return false;
+        return true;
+      });
+    },
+    [items],
+  );
 
   // Sauvegarder les modifications
   const saveEditedItem = useCallback(() => {
@@ -3984,13 +4135,38 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       updates.intensite_amperes = parseFloat(editFormData.intensite_amperes);
     }
 
+    // Couplage distributeur
+    const oldPairId = editingItem.distributeur_pair_id;
+    const newPairId = editFormData.distributeur_pair_id || null;
+    updates.distributeur_pair_id = newPairId;
+    updates.distributeur_polarite = editFormData.distributeur_polarite || null;
+
     // Si tensions entrée et sortie sont identiques, utiliser tension_volts
     if (updates.tension_entree_volts === updates.tension_sortie_volts) {
       updates.tension_volts = updates.tension_entree_volts;
     }
 
     updateItemInSchema(editingItem.id, updates);
+
+    // Mettre à jour le distributeur couplé (liaison bidirectionnelle)
+    if (newPairId && newPairId !== oldPairId) {
+      // Nouveau couplage : mettre à jour l'autre distributeur
+      const pairPolarite = editFormData.distributeur_polarite === "+" ? "-" : "+";
+      updateItemInSchema(newPairId, {
+        distributeur_pair_id: editingItem.id,
+        distributeur_polarite: pairPolarite,
+      });
+    }
+    if (oldPairId && oldPairId !== newPairId) {
+      // Ancien couplage rompu : retirer le lien de l'autre côté
+      updateItemInSchema(oldPairId, {
+        distributeur_pair_id: null,
+        distributeur_polarite: null,
+      });
+    }
+
     setEditingItem(null);
+    toast.success("Modifications enregistrées");
   }, [editingItem, editFormData, updateItemInSchema]);
 
   // Filtrer le scénario (exclure les items entièrement utilisés)
@@ -5060,7 +5236,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                 {uniqueSegments.map((calc) => (
                                   <div
                                     key={calc.edgeId}
-                                    className={`text-xs bg-white rounded p-2 border ${calc.isPartOfSegment ? "border-l-4 border-l-amber-400" : ""}`}
+                                    className={`text-xs bg-white rounded p-2 border ${calc.isPartOfSegment ? "border-l-4 border-l-amber-400" : ""} ${calc.hasReturnPath ? "border-l-4 border-l-indigo-400" : ""}`}
                                   >
                                     <div className="flex justify-between items-center">
                                       <span
@@ -5083,17 +5259,33 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                       <span>⚡ {calc.power}W</span>
                                       <span>@ {calc.voltage}V</span>
                                       <span>= {calc.intensity.toFixed(1)}A</span>
-                                      <span className={calc.hasDefinedLength ? "text-blue-600" : "text-amber-500"}>
-                                        📏 {calc.totalLength > 0 ? calc.totalLength.toFixed(1) : "?"}m
-                                        {!calc.hasDefinedLength && calc.totalLength > 0 && " (estimé)"}
-                                        {calc.totalLength === 0 && " (non défini)"}
-                                      </span>
+                                      {calc.hasReturnPath ? (
+                                        <span
+                                          className="text-indigo-600"
+                                          title={`Aller: ${calc.totalLength}m + Retour: ${calc.returnLength}m via ${calc.pairedDistributeurNom}`}
+                                        >
+                                          📏 {calc.circuitLength.toFixed(1)}m (circuit)
+                                        </span>
+                                      ) : (
+                                        <span className={calc.hasDefinedLength ? "text-blue-600" : "text-amber-500"}>
+                                          📏 {calc.totalLength > 0 ? calc.totalLength.toFixed(1) : "?"}m
+                                          {!calc.hasDefinedLength && calc.totalLength > 0 && " (estimé)"}
+                                          {calc.totalLength === 0 && " (non défini)"}
+                                        </span>
+                                      )}
                                       {calc.isPartOfSegment && (
                                         <span className="text-amber-600">
                                           ({calc.allEdgeIdsInSegment.length} câbles)
                                         </span>
                                       )}
                                     </div>
+                                    {/* Détail circuit si couplage */}
+                                    {calc.hasReturnPath && (
+                                      <div className="text-[10px] text-indigo-600 mt-0.5 bg-indigo-50 rounded px-1 py-0.5">
+                                        🔄 Aller: {calc.totalLength.toFixed(1)}m → Retour via{" "}
+                                        {calc.pairedDistributeurNom?.slice(0, 15)}: {calc.returnLength.toFixed(1)}m
+                                      </div>
+                                    )}
                                     {calc.details.length > 1 && (
                                       <div className="text-[10px] text-purple-600 mt-0.5 bg-purple-50 rounded px-1 py-0.5">
                                         📋{" "}
@@ -5805,6 +5997,99 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 <span className="text-sm text-gray-500 w-8">A</span>
               </div>
             </div>
+
+            {/* Couplage Distributeur - uniquement pour les distributeurs */}
+            {editingItem && ELECTRICAL_TYPES[editingItem.type_electrique]?.category === "distributeur" && (
+              <>
+                <Separator className="my-2" />
+                <div className="text-sm font-semibold text-indigo-700 flex items-center gap-2">
+                  <Boxes className="h-4 w-4" />
+                  Couplage Circuit (+/-)
+                </div>
+
+                {/* Polarité */}
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="edit-polarite" className="text-right">
+                    Polarité
+                  </Label>
+                  <div className="col-span-3">
+                    <Select
+                      value={editFormData.distributeur_polarite || "none"}
+                      onValueChange={(value) =>
+                        setEditFormData((prev) => ({
+                          ...prev,
+                          distributeur_polarite: value === "none" ? "" : (value as "+" | "-"),
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sélectionner" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Non défini</SelectItem>
+                        <SelectItem value="+">
+                          <span className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full bg-red-500"></span>
+                            Positif (+)
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="-">
+                          <span className="flex items-center gap-2">
+                            <span className="w-3 h-3 rounded-full bg-blue-500"></span>
+                            Négatif (-)
+                          </span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Distributeur couplé */}
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="edit-pair" className="text-right">
+                    Couplé à
+                  </Label>
+                  <div className="col-span-3">
+                    <Select
+                      value={editFormData.distributeur_pair_id || "none"}
+                      onValueChange={(value) =>
+                        setEditFormData((prev) => ({
+                          ...prev,
+                          distributeur_pair_id: value === "none" ? "" : value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Aucun couplage" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Aucun couplage</SelectItem>
+                        {getAvailableDistributeurs(editingItem.id).map((dist) => (
+                          <SelectItem key={dist.id} value={dist.id}>
+                            <span className="flex items-center gap-2">
+                              {dist.distributeur_polarite === "+" && (
+                                <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                              )}
+                              {dist.distributeur_polarite === "-" && (
+                                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                              )}
+                              {dist.nom_accessoire.slice(0, 25)}
+                              {dist.nom_accessoire.length > 25 ? "..." : ""}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Info couplage */}
+                <div className="text-xs text-indigo-600 bg-indigo-50 p-2 rounded">
+                  <strong>📦 Couplage :</strong> Associez ce distributeur à son homologue (+/-) pour calculer la
+                  longueur totale du circuit (aller + retour).
+                </div>
+              </>
+            )}
 
             {/* Info aide */}
             <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
