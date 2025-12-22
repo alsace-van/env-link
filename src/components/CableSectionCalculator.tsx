@@ -1,3 +1,9 @@
+// ============================================
+// CableSectionCalculator.tsx
+// Calculateur de section de câble
+// VERSION: 1.1 - Mode "total" par défaut
+// ============================================
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,7 +29,7 @@ interface CableCatalogItem {
 
 export const CableSectionCalculator = () => {
   const [calculationMode, setCalculationMode] = useState<CalculationMode>("section");
-  const [lengthMode, setLengthMode] = useState<LengthMode>("aller");
+  const [lengthMode, setLengthMode] = useState<LengthMode>("total"); // Défaut: total (cohérent avec le canvas)
   const [current, setCurrent] = useState<number>(0);
   const [power, setPower] = useState<number>(0);
   const [length, setLength] = useState<number>(0);
@@ -130,7 +136,7 @@ export const CableSectionCalculator = () => {
   };
 
   // Tableau de résistivité pour câbles souples en cuivre (Ω/m/mm²)
-  const resistivity = 0.023; // pour cuivre à 20°C
+  const resistivity = 0.023; // Ω.mm²/m - cuivre à température de service (valeur conservatrice)
 
   // Sections standards de câbles (mm²)
   const standardSections = [0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120];
