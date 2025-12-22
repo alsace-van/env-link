@@ -2516,8 +2516,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       const powerMsg = power > 0 ? ` • ${power}W` : " • Puissance non trouvée";
       toast.success(`Circuit créé avec ${edgeIds.length} câbles${powerMsg}${sectionMsg}`);
 
-      // Réinitialiser le mode
-      setCircuitMode(false);
+      // Réinitialiser la sélection
       setCircuitSource(null);
       setCircuitDest(null);
     },
