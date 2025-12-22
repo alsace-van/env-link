@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.27 - Détail équipements dans calcul distribution + contournement blocs
+// VERSION: 3.28 - Calcul automatique sections par flux + tension par segment
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -83,6 +83,7 @@ import {
   FileDown,
   Shield,
   Ruler,
+  Calculator,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AccessorySelector } from "./AccessorySelector";
@@ -2638,6 +2639,208 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     [edges, items],
   );
 
+  // ============================================
+  // CALCUL AUTOMATIQUE DES SECTIONS PAR FLUX
+  // ============================================
+
+  // Déterminer la tension pour un segment de câble (source → target)
+  const getSegmentVoltage = useCallback(
+    (sourceItem: ElectricalItem, targetItem: ElectricalItem): number => {
+      // Priorité 1: tension de sortie de la source (ex: MPPT vers batterie = 12V)
+      if (sourceItem.tension_sortie_volts) {
+        console.log(`[Tension] ${sourceItem.nom_accessoire} → tension_sortie: ${sourceItem.tension_sortie_volts}V`);
+        return sourceItem.tension_sortie_volts;
+      }
+      // Priorité 2: tension unique de la source
+      if (sourceItem.tension_volts) {
+        console.log(`[Tension] ${sourceItem.nom_accessoire} → tension_volts: ${sourceItem.tension_volts}V`);
+        return sourceItem.tension_volts;
+      }
+      // Priorité 3: tension d'entrée de la destination (ex: vers onduleur = 12V DC)
+      if (targetItem.tension_entree_volts) {
+        console.log(`[Tension] ${targetItem.nom_accessoire} ← tension_entree: ${targetItem.tension_entree_volts}V`);
+        return targetItem.tension_entree_volts;
+      }
+      // Priorité 4: tension unique de la destination
+      if (targetItem.tension_volts) {
+        console.log(`[Tension] ${targetItem.nom_accessoire} ← tension_volts: ${targetItem.tension_volts}V`);
+        return targetItem.tension_volts;
+      }
+      // Priorité 5: extraire du nom de la source
+      const fromSourceName = extractVoltageFromName(sourceItem.nom_accessoire);
+      if (fromSourceName) {
+        console.log(`[Tension] Extrait du nom source: ${fromSourceName}V`);
+        return fromSourceName;
+      }
+      // Priorité 6: extraire du nom de la destination
+      const fromTargetName = extractVoltageFromName(targetItem.nom_accessoire);
+      if (fromTargetName) {
+        console.log(`[Tension] Extrait du nom dest: ${fromTargetName}V`);
+        return fromTargetName;
+      }
+      // Défaut: 12V
+      console.log(`[Tension] Défaut: 12V`);
+      return 12;
+    },
+    [extractVoltageFromName],
+  );
+
+  // Calculer la puissance qui traverse un câble spécifique
+  const calculateEdgePower = useCallback(
+    (edge: SchemaEdge): { power: number; details: PowerDetail[] } => {
+      const sourceItem = items.find((i) => i.id === edge.source_node_id);
+      const targetItem = items.find((i) => i.id === edge.target_node_id);
+
+      if (!sourceItem || !targetItem) {
+        return { power: 0, details: [] };
+      }
+
+      const sourceIsDistribution = isDistributionPoint(sourceItem);
+
+      // CAS 1: La source a une puissance propre (producteur, consommateur)
+      if (sourceItem.puissance_watts && sourceItem.puissance_watts > 0) {
+        const power = sourceItem.puissance_watts * (sourceItem.quantite || 1);
+        return {
+          power,
+          details: [
+            {
+              id: sourceItem.id,
+              nom: sourceItem.nom_accessoire,
+              puissance: sourceItem.puissance_watts,
+              quantite: sourceItem.quantite || 1,
+              total: power,
+            },
+          ],
+        };
+      }
+
+      // CAS 2: La source est un point de distribution → sommer tout ce qui arrive
+      if (sourceIsDistribution) {
+        // Sommer toutes les puissances en amont, SAUF celles qui viennent de la destination
+        const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
+        return result;
+      }
+
+      // CAS 3: La source est un convertisseur/régulateur → propager la puissance d'amont
+      // La puissance se conserve, seule la tension change
+      const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
+      return result;
+    },
+    [items, isDistributionPoint, sumUpstreamPowersWithDetails],
+  );
+
+  // Interface pour les résultats de calcul
+  interface EdgeCalculation {
+    edgeId: string;
+    power: number;
+    voltage: number;
+    intensity: number;
+    length: number;
+    section: number;
+    details: PowerDetail[];
+    sourceNom: string;
+    targetNom: string;
+  }
+
+  // Calculer automatiquement toutes les sections de câbles
+  const calculateAllEdgeSections = useCallback((): EdgeCalculation[] => {
+    console.log("\n========== CALCUL AUTOMATIQUE DES SECTIONS ==========");
+
+    const calculations: EdgeCalculation[] = [];
+
+    for (const edge of edges) {
+      const sourceItem = items.find((i) => i.id === edge.source_node_id);
+      const targetItem = items.find((i) => i.id === edge.target_node_id);
+
+      if (!sourceItem || !targetItem) continue;
+
+      console.log(`\n--- Câble: ${sourceItem.nom_accessoire} → ${targetItem.nom_accessoire} ---`);
+
+      // 1. Calculer la puissance qui traverse ce câble
+      const { power, details } = calculateEdgePower(edge);
+
+      // 2. Déterminer la tension du segment
+      const voltage = getSegmentVoltage(sourceItem, targetItem);
+
+      // 3. Calculer l'intensité
+      const intensity = power > 0 && voltage > 0 ? power / voltage : 0;
+
+      // 4. Longueur du câble
+      const length = edge.length_m || 1; // 1m par défaut si non défini
+
+      // 5. Calculer la section recommandée
+      let section = 0;
+      if (power > 0 && length > 0) {
+        section = quickCalculate(power, length, voltage);
+      }
+
+      console.log(`   Puissance: ${power}W`);
+      console.log(`   Tension: ${voltage}V`);
+      console.log(`   Intensité: ${intensity.toFixed(2)}A`);
+      console.log(`   Longueur: ${length}m`);
+      console.log(`   Section calculée: ${section}mm²`);
+      if (details.length > 0) {
+        console.log(`   Sources: ${details.map((d) => `${d.nom}(${d.total}W)`).join(" + ")}`);
+      }
+
+      calculations.push({
+        edgeId: edge.id,
+        power,
+        voltage,
+        intensity,
+        length,
+        section,
+        details,
+        sourceNom: sourceItem.nom_accessoire,
+        targetNom: targetItem.nom_accessoire,
+      });
+    }
+
+    console.log("\n========== FIN CALCUL ==========\n");
+    return calculations;
+  }, [edges, items, calculateEdgePower, getSegmentVoltage, quickCalculate]);
+
+  // Appliquer les sections calculées à tous les câbles
+  const applyCalculatedSections = useCallback(() => {
+    const calculations = calculateAllEdgeSections();
+
+    if (calculations.length === 0) {
+      toast.error("Aucun câble à calculer");
+      return;
+    }
+
+    // Sauvegarder l'état actuel pour Undo
+    saveToHistory();
+
+    // Mettre à jour les edges avec les nouvelles sections
+    setEdges((prevEdges) => {
+      return prevEdges.map((edge) => {
+        const calc = calculations.find((c) => c.edgeId === edge.id);
+        if (calc && calc.section > 0) {
+          return {
+            ...edge,
+            section_mm2: calc.section,
+            section: `${calc.section}mm²`,
+          };
+        }
+        return edge;
+      });
+    });
+
+    // Afficher un résumé
+    const updated = calculations.filter((c) => c.section > 0).length;
+    const skipped = calculations.filter((c) => c.section === 0).length;
+
+    if (updated > 0) {
+      toast.success(`${updated} câble(s) mis à jour`);
+      if (skipped > 0) {
+        toast.info(`${skipped} câble(s) sans puissance définie`);
+      }
+    } else {
+      toast.warning("Aucune section calculée (vérifiez les puissances des équipements)");
+    }
+  }, [calculateAllEdgeSections, saveToHistory]);
+
   // Définir un nouveau circuit
   const defineCircuit = useCallback(
     (sourceNodeId: string, destNodeId: string) => {
@@ -4374,6 +4577,111 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               maskColor="rgba(0,0,0,0.1)"
               style={{ bottom: 60 }}
             />
+            {/* Panel Calcul automatique des sections */}
+            <Panel position="top-left">
+              <div className="flex flex-col gap-2">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs gap-1.5 bg-white/95 hover:bg-emerald-50 border-emerald-300 text-emerald-700"
+                    >
+                      <Calculator className="h-3.5 w-3.5" />
+                      Auto-sections
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80 p-0" align="start">
+                    <div className="p-3 border-b bg-gradient-to-r from-emerald-50 to-green-50">
+                      <h4 className="font-semibold text-emerald-800 flex items-center gap-2">
+                        <Calculator className="h-4 w-4" />
+                        Calcul automatique des sections
+                      </h4>
+                      <p className="text-xs text-emerald-600 mt-1">
+                        Calcule la section de chaque câble selon le flux de puissance qui le traverse
+                      </p>
+                    </div>
+
+                    <div className="p-3 space-y-3">
+                      {/* Aperçu des calculs */}
+                      {(() => {
+                        const calculations = calculateAllEdgeSections();
+                        const withPower = calculations.filter((c) => c.power > 0);
+                        const withoutPower = calculations.filter((c) => c.power === 0);
+
+                        return (
+                          <>
+                            {/* Stats */}
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div className="bg-emerald-50 rounded p-2 text-center">
+                                <div className="text-emerald-600">Câbles calculables</div>
+                                <div className="font-bold text-lg text-emerald-800">{withPower.length}</div>
+                              </div>
+                              <div className="bg-gray-50 rounded p-2 text-center">
+                                <div className="text-gray-500">Sans puissance</div>
+                                <div className="font-bold text-lg text-gray-600">{withoutPower.length}</div>
+                              </div>
+                            </div>
+
+                            {/* Liste des calculs */}
+                            {withPower.length > 0 && (
+                              <div className="max-h-48 overflow-y-auto space-y-1 border rounded p-2 bg-gray-50">
+                                {withPower.map((calc) => (
+                                  <div key={calc.edgeId} className="text-xs bg-white rounded p-1.5 border">
+                                    <div className="flex justify-between items-center">
+                                      <span
+                                        className="text-gray-700 truncate flex-1"
+                                        title={`${calc.sourceNom} → ${calc.targetNom}`}
+                                      >
+                                        {calc.sourceNom.substring(0, 15)}... → {calc.targetNom.substring(0, 15)}...
+                                      </span>
+                                      <span className="font-bold text-emerald-700 ml-2">{calc.section}mm²</span>
+                                    </div>
+                                    <div className="text-[10px] text-gray-500 mt-0.5">
+                                      {calc.power}W @ {calc.voltage}V = {calc.intensity.toFixed(1)}A • {calc.length}m
+                                    </div>
+                                    {calc.details.length > 1 && (
+                                      <div className="text-[10px] text-blue-600 mt-0.5">
+                                        Sources: {calc.details.map((d) => d.nom.substring(0, 10)).join(" + ")}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {withPower.length === 0 && (
+                              <div className="text-xs text-amber-600 bg-amber-50 rounded p-2">
+                                ⚠️ Aucun câble ne peut être calculé. Vérifiez que les équipements ont une puissance
+                                définie.
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+
+                      {/* Bouton appliquer */}
+                      <Button
+                        className="w-full bg-emerald-600 hover:bg-emerald-700"
+                        onClick={() => {
+                          applyCalculatedSections();
+                        }}
+                      >
+                        <Zap className="h-4 w-4 mr-2" />
+                        Appliquer les sections calculées
+                      </Button>
+
+                      {/* Note */}
+                      <p className="text-[10px] text-gray-500 leading-tight">
+                        💡 Les tensions d'entrée/sortie des convertisseurs (MPPT, onduleur...) sont utilisées pour
+                        calculer l'intensité correcte sur chaque segment.
+                      </p>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </Panel>
+
             <Panel position="top-right">
               <Popover>
                 <PopoverTrigger asChild>
