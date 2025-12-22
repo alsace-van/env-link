@@ -1,7 +1,7 @@
 // ============================================
 // SchemaValidation.tsx
 // Composant pour valider le circuit électrique
-// VERSION: 1.2 - Détection protections améliorée (type + nom)
+// VERSION: 1.3 - Recherche protection dans les 3 premiers blocs
 // ============================================
 
 import React, { useMemo } from "react";
@@ -128,20 +128,38 @@ export function useSchemaValidation(items: ElectricalItem[], edges: SchemaEdge[]
       const conn = nodeConnections[producer.id];
       if (!conn) return;
 
-      // Vérifier si la sortie du producteur passe par une protection
-      const directOutputs = conn.outgoing;
-      const hasDirectProtection = directOutputs.some((outId) => {
-        const outItem = items.find((i) => i.id === outId);
-        return outItem && isProtectionItem(outItem);
-      });
+      // Chercher une protection dans les 3 premiers blocs après le producteur
+      // (permet d'avoir un coupe-circuit avant le fusible par exemple)
+      const visited = new Set<string>();
+      const maxDepth = 3; // Nombre max de blocs à parcourir
 
-      if (!hasDirectProtection && directOutputs.length > 0) {
+      const hasProtectionNearby = (nodeId: string, depth: number): boolean => {
+        if (depth > maxDepth) return false;
+        if (visited.has(nodeId)) return false;
+        visited.add(nodeId);
+
+        const item = items.find((i) => i.id === nodeId);
+        if (item && isProtectionItem(item)) {
+          return true;
+        }
+
+        // Continuer à chercher dans les sorties
+        const nodeConn = nodeConnections[nodeId];
+        if (!nodeConn) return false;
+
+        return nodeConn.outgoing.some((outId) => hasProtectionNearby(outId, depth + 1));
+      };
+
+      // Vérifier si une protection existe dans les blocs proches
+      const hasNearbyProtection = conn.outgoing.some((outId) => hasProtectionNearby(outId, 1));
+
+      if (!hasNearbyProtection && conn.outgoing.length > 0) {
         issues.push({
           type: "warning",
           category: "protection",
-          message: `"${producer.nom_accessoire}" n'a pas de protection en sortie directe`,
+          message: `"${producer.nom_accessoire}" n'a pas de protection proche en sortie`,
           nodeIds: [producer.id],
-          suggestion: "Ajoutez un fusible ou disjoncteur après la source",
+          suggestion: "Ajoutez un fusible ou disjoncteur après la source (dans les 3 premiers blocs)",
         });
       }
     });
