@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.18 - Fix chargement schéma + try-catch
+// VERSION: 3.19 - Undo/Redo avec boutons et Ctrl+Z/Y
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -97,6 +97,15 @@ import { SchemaTemplates } from "./SchemaTemplates";
 import { SchemaAnnotationsLayer, Annotation, createAnnotation } from "./SchemaAnnotations";
 import { useSchemaHistory, SchemaState } from "@/hooks/useSchemaHistory";
 import { useCableCalculator, quickCableSection, STANDARD_SECTIONS } from "@/hooks/useCableCalculator";
+
+// Utilitaire debounce
+function debounce<T extends (...args: any[]) => any>(func: T, wait: number): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout | null = null;
+  return (...args: Parameters<T>) => {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+}
 
 // 🔥 Fonction pour décoder les entités HTML
 const decodeHtmlEntities = (text: string | null | undefined): string => {
@@ -972,6 +981,194 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // Hook calcul câble
   const { calculateCable, quickCalculate } = useCableCalculator({ defaultVoltage: 12 });
+
+  // ============================================
+  // UNDO/REDO - Historique des modifications
+  // ============================================
+  const [historyStack, setHistoryStack] = useState<SchemaState[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [isUndoRedoAction, setIsUndoRedoAction] = useState(false);
+  const maxHistorySize = 50;
+
+  // Sauvegarder l'état actuel dans l'historique
+  const saveToHistory = useCallback(
+    (action: string = "edit") => {
+      if (isUndoRedoAction) return; // Ne pas sauvegarder pendant un undo/redo
+
+      const currentState: SchemaState = {
+        items: JSON.parse(JSON.stringify(items)),
+        edges: JSON.parse(JSON.stringify(edges)),
+        positions: nodes.reduce(
+          (acc, node) => {
+            acc[node.id] = { x: node.position.x, y: node.position.y };
+            return acc;
+          },
+          {} as Record<string, { x: number; y: number }>,
+        ),
+        nodeHandles: JSON.parse(JSON.stringify(nodeHandles)),
+        annotations: JSON.parse(JSON.stringify(annotations)),
+      };
+
+      setHistoryStack((prev) => {
+        // Si on n'est pas à la fin de l'historique, supprimer les états futurs
+        const newStack = prev.slice(0, historyIndex + 1);
+        newStack.push(currentState);
+
+        // Limiter la taille de l'historique
+        if (newStack.length > maxHistorySize) {
+          return newStack.slice(-maxHistorySize);
+        }
+        return newStack;
+      });
+
+      setHistoryIndex((prev) => Math.min(prev + 1, maxHistorySize - 1));
+    },
+    [items, edges, nodes, nodeHandles, annotations, historyIndex, isUndoRedoAction],
+  );
+
+  // Debounce pour éviter trop de sauvegardes
+  const saveToHistoryRef = useRef(saveToHistory);
+  saveToHistoryRef.current = saveToHistory;
+
+  const debouncedSaveToHistory = useCallback(
+    debounce((action: string) => saveToHistoryRef.current(action), 500),
+    [],
+  );
+
+  // Initialiser l'historique quand le chargement est terminé
+  useEffect(() => {
+    if (!loading && (items.length > 0 || edges.length > 0) && historyIndex === -1) {
+      // Premier état après chargement
+      const initialState: SchemaState = {
+        items: JSON.parse(JSON.stringify(items)),
+        edges: JSON.parse(JSON.stringify(edges)),
+        positions: nodes.reduce(
+          (acc, node) => {
+            acc[node.id] = { x: node.position.x, y: node.position.y };
+            return acc;
+          },
+          {} as Record<string, { x: number; y: number }>,
+        ),
+        nodeHandles: JSON.parse(JSON.stringify(nodeHandles)),
+        annotations: JSON.parse(JSON.stringify(annotations)),
+      };
+      setHistoryStack([initialState]);
+      setHistoryIndex(0);
+      console.log("[History] Historique initialisé avec l'état actuel");
+    }
+  }, [loading, items.length, edges.length]);
+
+  // Sauvegarder quand items ou edges changent (après initialisation)
+  useEffect(() => {
+    // Ne pas sauvegarder pendant le chargement ou si historique pas initialisé
+    if (loading || historyIndex === -1) return;
+    if (isUndoRedoAction) return;
+
+    if (items.length > 0 || edges.length > 0) {
+      debouncedSaveToHistory("edit");
+    }
+  }, [items, edges, loading, historyIndex, isUndoRedoAction]);
+
+  // Undo - Annuler
+  const handleUndoBlocs = useCallback(() => {
+    if (historyIndex <= 0) {
+      toast.info("Rien à annuler");
+      return;
+    }
+
+    setIsUndoRedoAction(true);
+    const prevState = historyStack[historyIndex - 1];
+
+    if (prevState) {
+      setItems(prevState.items);
+      setEdges(prevState.edges);
+      setNodeHandles(prevState.nodeHandles);
+      if (prevState.annotations) setAnnotations(prevState.annotations);
+
+      // Restaurer les positions des nodes
+      setNodes((prev) =>
+        prev.map((node) => {
+          const pos = prevState.positions[node.id];
+          if (pos) {
+            return { ...node, position: pos };
+          }
+          return node;
+        }),
+      );
+
+      setHistoryIndex((prev) => prev - 1);
+      toast.success("Action annulée");
+    }
+
+    setTimeout(() => setIsUndoRedoAction(false), 100);
+  }, [historyIndex, historyStack, setNodes]);
+
+  // Redo - Refaire
+  const handleRedoBlocs = useCallback(() => {
+    if (historyIndex >= historyStack.length - 1) {
+      toast.info("Rien à refaire");
+      return;
+    }
+
+    setIsUndoRedoAction(true);
+    const nextState = historyStack[historyIndex + 1];
+
+    if (nextState) {
+      setItems(nextState.items);
+      setEdges(nextState.edges);
+      setNodeHandles(nextState.nodeHandles);
+      if (nextState.annotations) setAnnotations(nextState.annotations);
+
+      // Restaurer les positions des nodes
+      setNodes((prev) =>
+        prev.map((node) => {
+          const pos = nextState.positions[node.id];
+          if (pos) {
+            return { ...node, position: pos };
+          }
+          return node;
+        }),
+      );
+
+      setHistoryIndex((prev) => prev + 1);
+      toast.success("Action refaite");
+    }
+
+    setTimeout(() => setIsUndoRedoAction(false), 100);
+  }, [historyIndex, historyStack, setNodes]);
+
+  // Raccourcis clavier Ctrl+Z / Ctrl+Y pour le mode Blocs
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignorer si on est dans un input/textarea
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // Ignorer si on n'est pas en mode Blocs
+      if (canvasMode !== "blocks") return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        handleUndoBlocs();
+      } else if (
+        ((e.ctrlKey || e.metaKey) && e.key === "y") ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "z")
+      ) {
+        e.preventDefault();
+        handleRedoBlocs();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [canvasMode, handleUndoBlocs, handleRedoBlocs]);
+
+  // Peut-on undo/redo ?
+  const canUndoBlocs = historyIndex > 0;
+  const canRedoBlocs = historyIndex < historyStack.length - 1;
+
+  // ============================================
 
   // Obtenir les nodes sélectionnés
   const selectedNodes = nodes.filter((n) => n.selected);
@@ -2962,6 +3159,26 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               </ScrollArea>
             </PopoverContent>
           </Popover>
+
+          {/* Boutons Undo/Redo */}
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="sm" onClick={handleUndoBlocs} disabled={!canUndoBlocs} className="px-2">
+                  <Undo className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Annuler (Ctrl+Z)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="sm" onClick={handleRedoBlocs} disabled={!canRedoBlocs} className="px-2">
+                  <Redo className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Refaire (Ctrl+Y)</TooltipContent>
+            </Tooltip>
+          </div>
 
           <Button variant="outline" size="sm" onClick={resetSchema}>
             <Trash2 className="h-4 w-4 mr-1" />
