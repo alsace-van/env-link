@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: ExpenseFormDialog
 // Formulaire d'ajout/modification de dépense
-// VERSION: 2.4 - Catégories chargées depuis table categories du catalogue
+// VERSION: 2.5 - Ajout champs tension_volts et capacite_ah
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -45,6 +45,8 @@ interface ExpenseFormDialogProps {
     hauteur_mm?: number;
     puissance_watts?: number;
     intensite_amperes?: number;
+    tension_volts?: number;
+    capacite_ah?: number;
   } | null;
 }
 
@@ -76,6 +78,8 @@ const ExpenseFormDialog = ({
     hauteur_mm: "",
     puissance_watts: "",
     intensite_amperes: "",
+    tension_volts: "12",
+    capacite_ah: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isNewCategory, setIsNewCategory] = useState(false);
@@ -130,6 +134,8 @@ const ExpenseFormDialog = ({
           hauteur_mm: expense.hauteur_mm?.toString() || "",
           puissance_watts: expense.puissance_watts?.toString() || "",
           intensite_amperes: expense.intensite_amperes?.toString() || "",
+          tension_volts: expense.tension_volts?.toString() || "12",
+          capacite_ah: expense.capacite_ah?.toString() || "",
         });
         setSelectedAccessoryId(expense.accessory_id || null);
 
@@ -157,6 +163,8 @@ const ExpenseFormDialog = ({
           hauteur_mm: "",
           puissance_watts: "",
           intensite_amperes: "",
+          tension_volts: "12",
+          capacite_ah: "",
         });
         setSelectedAccessoryId(null);
         setAvailableOptions([]);
@@ -335,6 +343,8 @@ const ExpenseFormDialog = ({
       type_electrique: accessory.type_electrique,
       puissance_watts: accessory.puissance_watts,
       intensite_amperes: accessory.intensite_amperes,
+      tension_volts: accessory.tension_volts,
+      capacite_ah: accessory.capacite_ah,
     });
 
     setFormData({
@@ -353,6 +363,8 @@ const ExpenseFormDialog = ({
       hauteur_mm: accessory.hauteur_mm?.toString() || "",
       puissance_watts: accessory.puissance_watts?.toString() || "",
       intensite_amperes: accessory.intensite_amperes?.toString() || "",
+      tension_volts: accessory.tension_volts?.toString() || "12",
+      capacite_ah: accessory.capacite_ah?.toString() || "",
     });
     setSelectedAccessoryId(accessory.id);
     setShowAccessoriesList(false);
@@ -402,11 +414,21 @@ const ExpenseFormDialog = ({
     setFormData(newFormData);
   };
 
-  const handleElectricalChange = (field: "puissance_watts" | "intensite_amperes", value: string) => {
+  const handleElectricalChange = (field: "puissance_watts" | "intensite_amperes" | "tension_volts", value: string) => {
     const newFormData = { ...formData, [field]: value };
-    const voltage = 12; // 12V system
+    const voltage = parseFloat(newFormData.tension_volts) || 12; // Utiliser la tension saisie ou 12V par défaut
 
-    if (field === "puissance_watts" && value) {
+    // Recalculer si on change la tension
+    if (field === "tension_volts" && value) {
+      const newVoltage = parseFloat(value) || 12;
+      // Recalculer l'intensité depuis la puissance
+      if (newFormData.puissance_watts) {
+        const power = parseFloat(newFormData.puissance_watts);
+        if (!isNaN(power) && power > 0) {
+          newFormData.intensite_amperes = (power / newVoltage).toFixed(2);
+        }
+      }
+    } else if (field === "puissance_watts" && value) {
       // Calculate intensity from power: I = P / U
       const power = parseFloat(value);
       if (!isNaN(power) && power > 0) {
@@ -473,6 +495,8 @@ const ExpenseFormDialog = ({
       hauteur_mm: formData.hauteur_mm ? parseInt(formData.hauteur_mm) : null,
       puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
       intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
+      tension_volts: formData.tension_volts ? parseFloat(formData.tension_volts) : null,
+      capacite_ah: formData.capacite_ah ? parseFloat(formData.capacite_ah) : null,
       user_id: user.id,
     });
 
@@ -511,6 +535,8 @@ const ExpenseFormDialog = ({
           poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
           intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
+          tension_volts: formData.tension_volts ? parseFloat(formData.tension_volts) : null,
+          capacite_ah: formData.capacite_ah ? parseFloat(formData.capacite_ah) : null,
         })
         .eq("id", expense.id);
 
@@ -532,6 +558,8 @@ const ExpenseFormDialog = ({
               poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
               puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
               intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
+              tension_volts: formData.tension_volts ? parseFloat(formData.tension_volts) : null,
+              capacite_ah: formData.capacite_ah ? parseFloat(formData.capacite_ah) : null,
             })
             .eq("id", expense.accessory_id);
 
@@ -627,6 +655,8 @@ const ExpenseFormDialog = ({
           poids_kg: formData.poids_kg ? parseFloat(formData.poids_kg) : null,
           puissance_watts: formData.puissance_watts ? parseFloat(formData.puissance_watts) : null,
           intensite_amperes: formData.intensite_amperes ? parseFloat(formData.intensite_amperes) : null,
+          tension_volts: formData.tension_volts ? parseFloat(formData.tension_volts) : null,
+          capacite_ah: formData.capacite_ah ? parseFloat(formData.capacite_ah) : null,
         })
         .select()
         .single();
@@ -672,6 +702,8 @@ const ExpenseFormDialog = ({
           hauteur_mm: "",
           puissance_watts: "",
           intensite_amperes: "",
+          tension_volts: "12",
+          capacite_ah: "",
         });
         setIsNewCategory(false);
         setShowAddToCatalog(false);
@@ -812,7 +844,19 @@ const ExpenseFormDialog = ({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="puissance">Puissance (W) - 12V</Label>
+              <Label htmlFor="tension">Tension (V)</Label>
+              <Input
+                id="tension"
+                type="number"
+                step="1"
+                value={formData.tension_volts}
+                onChange={(e) => handleElectricalChange("tension_volts", e.target.value)}
+                placeholder="Ex: 12, 24, 48"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="puissance">Puissance (W)</Label>
               <Input
                 id="puissance"
                 type="number"
@@ -824,7 +868,9 @@ const ExpenseFormDialog = ({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="intensite">Intensité (A) - 12V</Label>
+              <Label htmlFor="intensite">
+                Intensité (A) {formData.tension_volts ? `@ ${formData.tension_volts}V` : ""}
+              </Label>
               <Input
                 id="intensite"
                 type="number"
@@ -832,6 +878,18 @@ const ExpenseFormDialog = ({
                 value={formData.intensite_amperes}
                 onChange={(e) => handleElectricalChange("intensite_amperes", e.target.value)}
                 placeholder="Ex: 33.3"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="capacite">Capacité (Ah)</Label>
+              <Input
+                id="capacite"
+                type="number"
+                step="0.1"
+                value={formData.capacite_ah}
+                onChange={(e) => setFormData({ ...formData, capacite_ah: e.target.value })}
+                placeholder="Ex: 100 (batteries)"
               />
             </div>
 
