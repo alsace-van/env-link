@@ -1,13 +1,15 @@
 // ============================================
 // useCableCalculator.ts
 // Hook pour calculer la section de câble recommandée
-// VERSION: 1.2 - Fix: longueur = total (pas de ×2)
+// VERSION: 1.3 - Résistivité alignée avec CableSectionCalculator (0.023)
 // ============================================
 
 import { useMemo, useCallback } from "react";
 
 // Conductivité du cuivre en m/(Ω.mm²)
-const COPPER_CONDUCTIVITY = 56;
+// Valeur conservatrice tenant compte de l'échauffement (équivalent ρ = 0.023 Ω.mm²/m)
+// Cohérent avec CableSectionCalculator
+const COPPER_CONDUCTIVITY = 43.5;
 
 // Sections de câble standard disponibles (mm²)
 export const STANDARD_SECTIONS = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
