@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.39 - Fix import Select manquant
+// VERSION: 3.41 - Debug: désactivé calcul retour temporairement
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -152,7 +152,7 @@ interface ElectricalItem {
   layerId?: string; // ID du calque auquel appartient l'élément
   accessory_id?: string | null; // ID de l'accessoire du catalogue (pour rafraîchir les données)
   distributeur_pair_id?: string | null; // ID du distributeur couplé (ex: Busbar+ ↔ Busbar-)
-  distributeur_polarite?: "+" | "-" | null; // Polarité du distributeur (+, -)
+  distributeur_polarite?: string | null; // Polarité du distributeur (+, -)
 }
 
 // Configuration des handles par bloc
@@ -771,7 +771,7 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
           {typeConfig.label}
         </Badge>
         {/* Indicateur de polarité et couplage pour les distributeurs */}
-        {typeConfig.category === "distributeur" && item.distributeur_polarite && (
+        {typeConfig?.category === "distributeur" && item.distributeur_polarite && (
           <span
             className={`text-xs font-bold px-1.5 py-0.5 rounded ${
               item.distributeur_polarite === "+"
@@ -3031,93 +3031,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   }
 
   // Calculer la longueur de retour via le distributeur couplé
+  // TODO: Réactiver quand le bug sera corrigé
   const calculateReturnPath = useCallback(
     (sourceItemId: string, targetItem: ElectricalItem): { returnLength: number; pairedDistributeurNom?: string } => {
-      // Vérifier si la destination est un distributeur avec un couplage
-      if (!targetItem.distributeur_pair_id) {
-        return { returnLength: 0 };
-      }
-
-      const pairedDistributeur = items.find((i) => i.id === targetItem.distributeur_pair_id);
-      if (!pairedDistributeur) {
-        return { returnLength: 0 };
-      }
-
-      // Trouver le chemin du distributeur couplé vers la source originale
-      // On cherche les edges qui partent du distributeur couplé
-      const returnEdges = edges.filter((e) => e.source_node_id === pairedDistributeur.id);
-
-      let totalReturnLength = 0;
-      let visited = new Set<string>();
-
-      // Fonction récursive pour trouver le chemin retour vers la source
-      const findPathToSource = (currentId: string, targetSourceId: string, depth: number = 0): number => {
-        if (depth > 20) return 0; // Protection contre les boucles infinies
-        if (visited.has(currentId)) return 0;
-        visited.add(currentId);
-
-        // Trouver les edges sortants
-        const outgoingEdges = edges.filter((e) => e.source_node_id === currentId);
-
-        for (const edge of outgoingEdges) {
-          const edgeLength = edge.length_m || 0;
-          const nextItem = items.find((i) => i.id === edge.target_node_id);
-
-          if (!nextItem) continue;
-
-          // Si on atteint la source ou un item lié à la source, on a trouvé
-          if (edge.target_node_id === targetSourceId) {
-            return edgeLength;
-          }
-
-          // Si c'est un point transparent, on traverse
-          if (isTransparentNode(nextItem)) {
-            const remainingLength = findPathToSource(edge.target_node_id, targetSourceId, depth + 1);
-            if (remainingLength > 0 || edge.target_node_id === targetSourceId) {
-              return edgeLength + remainingLength;
-            }
-          }
-
-          // Si c'est un producteur (source potentielle), on considère le chemin trouvé
-          const typeConfig = ELECTRICAL_TYPES[nextItem.type_electrique];
-          if (typeConfig?.category === "production" || typeConfig?.category === "stockage") {
-            return edgeLength;
-          }
-        }
-
-        return 0;
-      };
-
-      // Calculer le chemin retour en remontant depuis le distributeur couplé
-      // En réalité, le retour va du distributeur- vers les bornes négatives des sources
-      // Pour simplifier, on cherche les câbles connectés au distributeur couplé
-      for (const returnEdge of returnEdges) {
-        totalReturnLength += returnEdge.length_m || 0;
-
-        const nextItem = items.find((i) => i.id === returnEdge.target_node_id);
-        if (nextItem && isTransparentNode(nextItem)) {
-          // Traverser les protections
-          const { totalLength } = findNextKeyPoint(returnEdge.target_node_id, "downstream");
-          totalReturnLength += totalLength;
-        }
-      }
-
-      // Alternative : calculer simplement la somme des câbles connectés au distributeur couplé
-      // qui vont vers des sources ou des protections
-      if (totalReturnLength === 0) {
-        // Chercher tous les câbles dont la destination est le distributeur couplé (entrées)
-        const incomingEdges = edges.filter((e) => e.target_node_id === pairedDistributeur.id);
-        for (const edge of incomingEdges) {
-          totalReturnLength += edge.length_m || 0;
-        }
-      }
-
-      return {
-        returnLength: totalReturnLength,
-        pairedDistributeurNom: pairedDistributeur.nom_accessoire,
-      };
+      // Temporairement désactivé pour debug
+      return { returnLength: 0 };
     },
-    [items, edges, isTransparentNode, findNextKeyPoint],
+    [],
   );
 
   // Calculer automatiquement toutes les sections de câbles
@@ -4080,7 +4000,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     capacite_ah: "",
     intensite_amperes: "",
     distributeur_pair_id: "",
-    distributeur_polarite: "" as "+" | "-" | "",
+    distributeur_polarite: "",
   });
 
   // Ouvrir la modale d'édition
