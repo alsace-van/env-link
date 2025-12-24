@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.45 - Calcul sections par circuit + hover highlight
+// VERSION: 3.46 - Fix source_handle/target_handle
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -3123,9 +3123,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       const targetHandleCircuits = nodeHandleCircuits[edge.target_node_id] || {};
 
       // Récupérer le numéro du handle source
-      const sourceCircuit = edge.sourceHandle ? sourceHandleCircuits[edge.sourceHandle] : undefined;
+      const sourceCircuit = edge.source_handle ? sourceHandleCircuits[edge.source_handle] : undefined;
       // Récupérer le numéro du handle cible
-      const targetCircuit = edge.targetHandle ? targetHandleCircuits[edge.targetHandle] : undefined;
+      const targetCircuit = edge.target_handle ? targetHandleCircuits[edge.target_handle] : undefined;
 
       // Si les deux ont le même numéro, c'est le circuit
       if (sourceCircuit !== undefined && sourceCircuit === targetCircuit) {
