@@ -1,17 +1,13 @@
 // ============================================
 // SchemaAnnotations.tsx
 // Composant pour les annotations/notes sur le schéma
-// VERSION: 1.3 - Propre sans imports circulaires
+// VERSION: 1.3 - Fix redimensionnement vertical post-it
 // ============================================
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { StickyNote, Trash2, Palette, GripVertical } from "lucide-react";
+import { StickyNote, X, Move, Trash2, Palette, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-
-// ============================================
-// INTERFACES
-// ============================================
 
 export interface Annotation {
   id: string;
@@ -33,21 +29,6 @@ interface SchemaAnnotationProps {
   onDelete: () => void;
 }
 
-interface SchemaAnnotationsLayerProps {
-  annotations: Annotation[];
-  zoom: number;
-  viewport?: { x: number; y: number; zoom: number };
-  selectedAnnotationId: string | null;
-  onSelectAnnotation: (id: string | null) => void;
-  onUpdateAnnotation: (id: string, updates: Partial<Annotation>) => void;
-  onDeleteAnnotation: (id: string) => void;
-  onAddAnnotation: (position: { x: number; y: number }) => void;
-}
-
-// ============================================
-// CONSTANTES
-// ============================================
-
 const ANNOTATION_COLORS = [
   { value: "#fef3c7", label: "Jaune" },
   { value: "#dbeafe", label: "Bleu" },
@@ -56,10 +37,6 @@ const ANNOTATION_COLORS = [
   { value: "#f3e8ff", label: "Violet" },
   { value: "#fff7ed", label: "Orange" },
 ];
-
-// ============================================
-// COMPOSANT NOTE INDIVIDUELLE
-// ============================================
 
 export function SchemaAnnotationNode({
   annotation,
@@ -78,10 +55,12 @@ export function SchemaAnnotationNode({
   const dragStartRef = useRef<{ x: number; y: number; posX: number; posY: number } | null>(null);
   const resizeStartRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
 
+  // Sync local text with annotation
   useEffect(() => {
     setLocalText(annotation.text);
   }, [annotation.text]);
 
+  // Handle drag start
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
       if (isEditing) return;
@@ -97,6 +76,7 @@ export function SchemaAnnotationNode({
     [isEditing, annotation.position],
   );
 
+  // Handle resize start
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -111,6 +91,7 @@ export function SchemaAnnotationNode({
     [annotation.width, annotation.height],
   );
 
+  // Handle mouse move for drag/resize
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (isDragging && dragStartRef.current) {
@@ -151,6 +132,7 @@ export function SchemaAnnotationNode({
     };
   }, [isDragging, isResizing, zoom, onUpdate]);
 
+  // Save text on blur
   const handleTextBlur = useCallback(() => {
     setIsEditing(false);
     if (localText !== annotation.text) {
@@ -166,7 +148,7 @@ export function SchemaAnnotationNode({
         left: annotation.position.x,
         top: annotation.position.y,
         width: annotation.width,
-        minHeight: annotation.height,
+        height: annotation.height,
         zIndex: isSelected ? 1000 : 100,
       }}
       onClick={(e) => {
@@ -175,7 +157,12 @@ export function SchemaAnnotationNode({
       }}
       onDoubleClick={() => setIsEditing(true)}
     >
-      <div className="rounded-lg shadow-md overflow-hidden" style={{ backgroundColor: annotation.color }}>
+      {/* Note container */}
+      <div
+        className="rounded-lg shadow-md overflow-hidden h-full flex flex-col"
+        style={{ backgroundColor: annotation.color }}
+      >
+        {/* Header with drag handle */}
         <div
           className="flex items-center justify-between px-2 py-1 cursor-move"
           style={{ backgroundColor: `${annotation.color}dd` }}
@@ -214,6 +201,7 @@ export function SchemaAnnotationNode({
           )}
         </div>
 
+        {/* Color picker dropdown */}
         {showColorPicker && (
           <div className="absolute top-8 right-0 bg-white rounded-lg shadow-lg border p-2 z-50 flex gap-1">
             {ANNOTATION_COLORS.map((c) => (
@@ -234,7 +222,8 @@ export function SchemaAnnotationNode({
           </div>
         )}
 
-        <div className="p-2">
+        {/* Content */}
+        <div className="p-2 flex-1 overflow-auto">
           {isEditing ? (
             <Textarea
               value={localText}
@@ -247,17 +236,18 @@ export function SchemaAnnotationNode({
                 }
               }}
               autoFocus
-              className="w-full min-h-[40px] text-sm bg-transparent border-none focus:ring-0 resize-none p-0"
+              className="w-full h-full min-h-[40px] text-sm bg-transparent border-none focus:ring-0 resize-none p-0"
               style={{ backgroundColor: "transparent" }}
               placeholder="Ajouter une note..."
             />
           ) : (
-            <div className="text-sm whitespace-pre-wrap min-h-[40px]" style={{ color: "#374151" }}>
+            <div className="text-sm whitespace-pre-wrap h-full" style={{ color: "#374151" }}>
               {annotation.text || <span className="text-gray-400 italic">Double-clic pour éditer</span>}
             </div>
           )}
         </div>
 
+        {/* Resize handle */}
         {isSelected && (
           <div className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize" onMouseDown={handleResizeStart}>
             <svg viewBox="0 0 16 16" className="w-full h-full text-gray-400" fill="currentColor">
@@ -270,9 +260,16 @@ export function SchemaAnnotationNode({
   );
 }
 
-// ============================================
-// COMPOSANT LAYER (conteneur de toutes les annotations)
-// ============================================
+interface SchemaAnnotationsLayerProps {
+  annotations: Annotation[];
+  zoom: number;
+  viewport?: { x: number; y: number; zoom: number };
+  selectedAnnotationId: string | null;
+  onSelectAnnotation: (id: string | null) => void;
+  onUpdateAnnotation: (id: string, updates: Partial<Annotation>) => void;
+  onDeleteAnnotation: (id: string) => void;
+  onAddAnnotation: (position: { x: number; y: number }) => void;
+}
 
 export function SchemaAnnotationsLayer({
   annotations,
@@ -282,9 +279,11 @@ export function SchemaAnnotationsLayer({
   onSelectAnnotation,
   onUpdateAnnotation,
   onDeleteAnnotation,
+  onAddAnnotation,
 }: SchemaAnnotationsLayerProps) {
   return (
     <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 5 }}>
+      {/* Conteneur transformé selon le viewport */}
       <div
         style={{
           transform: `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`,
@@ -311,16 +310,13 @@ export function SchemaAnnotationsLayer({
   );
 }
 
-// ============================================
-// FONCTION UTILITAIRE
-// ============================================
-
+// Helper function to create a new annotation
 export function createAnnotation(position: { x: number; y: number }, layerId?: string): Annotation {
   return {
     id: `annotation-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     text: "",
     position,
-    color: "#fef3c7",
+    color: "#fef3c7", // Yellow by default
     width: 200,
     height: 100,
     layerId,
