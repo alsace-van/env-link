@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.46 - Fix source_handle/target_handle
+// VERSION: 3.49 - Modale édition busbar avec liste connexions
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -44,6 +44,8 @@ import {
   Type,
   Minus,
   ArrowRight,
+  ArrowDown,
+  ArrowUp,
   Trash2,
   Undo,
   Redo,
@@ -2701,8 +2703,18 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       const item = items.find((i) => i.id === startNodeId);
       if (!item) return { total: 0, details: [] };
 
-      // Si cet item a une puissance, c'est une source
-      if (item.puissance_watts && item.puissance_watts > 0) {
+      // Déterminer la catégorie de l'item
+      const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
+      const category = typeConfig?.category || "consommateur";
+
+      // Les transmetteurs (régulation, conversion, distribution, protection) doivent propager
+      // la puissance d'amont, pas utiliser leur propre capacité
+      const isTransmitter = ["regulation", "conversion", "distribution", "protection", "distributeur"].includes(
+        category,
+      );
+
+      // Si cet item est un vrai producteur (production) avec puissance, c'est une source
+      if (item.puissance_watts && item.puissance_watts > 0 && !isTransmitter) {
         const totalPower = item.puissance_watts * (item.quantite || 1);
         return {
           total: totalPower,
@@ -2718,7 +2730,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         };
       }
 
-      // Sinon, sommer les connexions entrantes
+      // Sinon, sommer les connexions entrantes (propager la puissance d'amont)
       const incomingEdges = edges.filter((e) => e.target_node_id === startNodeId);
       let totalPower = 0;
       let allDetails: PowerDetail[] = [];
@@ -2743,8 +2755,17 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       const item = items.find((i) => i.id === startNodeId);
       if (!item) return 0;
 
-      // Si cet item a une puissance ET est un consommateur, la retourner
-      if (item.puissance_watts && item.puissance_watts > 0) {
+      // Déterminer la catégorie de l'item
+      const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
+      const category = typeConfig?.category || "consommateur";
+
+      // Les transmetteurs doivent propager, pas utiliser leur propre capacité
+      const isTransmitter = ["regulation", "conversion", "distribution", "protection", "distributeur"].includes(
+        category,
+      );
+
+      // Si cet item est un vrai consommateur avec puissance, la retourner
+      if (item.puissance_watts && item.puissance_watts > 0 && !isTransmitter) {
         const totalPower = item.puissance_watts * (item.quantite || 1);
         console.log(
           `[sumDownstreamPowers] Consommateur "${item.nom_accessoire}": ${totalPower}W (${item.puissance_watts}W x ${item.quantite || 1})`,
@@ -2778,8 +2799,17 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       const item = items.find((i) => i.id === startNodeId);
       if (!item) return { total: 0, details: [] };
 
-      // Si cet item a une puissance, c'est un consommateur
-      if (item.puissance_watts && item.puissance_watts > 0) {
+      // Déterminer la catégorie de l'item
+      const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
+      const category = typeConfig?.category || "consommateur";
+
+      // Les transmetteurs doivent propager, pas utiliser leur propre capacité
+      const isTransmitter = ["regulation", "conversion", "distribution", "protection", "distributeur"].includes(
+        category,
+      );
+
+      // Si cet item est un vrai consommateur avec puissance, le compter
+      if (item.puissance_watts && item.puissance_watts > 0 && !isTransmitter) {
         const totalPower = item.puissance_watts * (item.quantite || 1);
         return {
           total: totalPower,
@@ -2795,7 +2825,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         };
       }
 
-      // Sinon, sommer les connexions sortantes
+      // Sinon, sommer les connexions sortantes (propager vers l'aval)
       const outgoingEdges = edges.filter((e) => e.source_node_id === startNodeId);
       let totalPower = 0;
       let allDetails: PowerDetail[] = [];
@@ -2820,8 +2850,17 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       const item = items.find((i) => i.id === startNodeId);
       if (!item) return 0;
 
-      // Si cet item a une puissance, la retourner
-      if (item.puissance_watts && item.puissance_watts > 0) {
+      // Déterminer la catégorie de l'item
+      const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
+      const category = typeConfig?.category || "consommateur";
+
+      // Les transmetteurs doivent propager, pas utiliser leur propre capacité
+      const isTransmitter = ["regulation", "conversion", "distribution", "protection", "distributeur"].includes(
+        category,
+      );
+
+      // Si cet item est un vrai producteur avec puissance, la retourner
+      if (item.puissance_watts && item.puissance_watts > 0 && !isTransmitter) {
         console.log(`[findUpstreamPower] Puissance trouvée sur "${item.nom_accessoire}": ${item.puissance_watts}W`);
         return item.puissance_watts * (item.quantite || 1);
       }
@@ -2850,8 +2889,17 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       const item = items.find((i) => i.id === startNodeId);
       if (!item) return 0;
 
-      // Si cet item a une puissance, la retourner
-      if (item.puissance_watts && item.puissance_watts > 0) {
+      // Déterminer la catégorie de l'item
+      const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
+      const category = typeConfig?.category || "consommateur";
+
+      // Les transmetteurs doivent propager, pas utiliser leur propre capacité
+      const isTransmitter = ["regulation", "conversion", "distribution", "protection", "distributeur"].includes(
+        category,
+      );
+
+      // Si cet item est un vrai consommateur avec puissance, la retourner
+      if (item.puissance_watts && item.puissance_watts > 0 && !isTransmitter) {
         console.log(`[findDownstreamPower] Puissance trouvée sur "${item.nom_accessoire}": ${item.puissance_watts}W`);
         return item.puissance_watts * (item.quantite || 1);
       }
@@ -3153,18 +3201,32 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       }
     }
 
-    // 2. Calculer la longueur totale de chaque circuit
+    // 2. Calculer la longueur totale ET la puissance max de chaque circuit
     const circuitLengths = new Map<number, number>();
     const circuitEdgeIds = new Map<number, string[]>();
+    const circuitPowers = new Map<number, { power: number; details: PowerDetail[] }>();
+
     edgesByCircuit.forEach((circuitEdges, circuitNum) => {
       let totalLen = 0;
       const edgeIds: string[] = [];
+      let maxPower = 0;
+      let maxPowerDetails: PowerDetail[] = [];
+
       for (const edge of circuitEdges) {
         totalLen += edge.length_m || 1; // 1m par défaut si non défini
         edgeIds.push(edge.id);
+
+        // Calculer la puissance de chaque câble du circuit et garder la max
+        const { power, details } = calculateEdgePower(edge);
+        if (power > maxPower) {
+          maxPower = power;
+          maxPowerDetails = details;
+        }
       }
+
       circuitLengths.set(circuitNum, totalLen);
       circuitEdgeIds.set(circuitNum, edgeIds);
+      circuitPowers.set(circuitNum, { power: maxPower, details: maxPowerDetails });
     });
 
     for (const edge of edges) {
@@ -3188,17 +3250,32 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       // Marquer tous les câbles du segment comme traités
       segmentInfo.allEdgeIds.forEach((id) => processedEdges.add(id));
 
-      // 2. Calculer la puissance qui traverse ce câble
-      const { power, details } = calculateEdgePower(edge);
+      // 2. Obtenir le numéro de circuit
+      const circuitNumber = getEdgeCircuitNumber(edge);
 
-      // 3. Déterminer la tension du segment (utiliser la vraie destination)
+      // 3. Calculer la puissance - utiliser la puissance MAX du circuit si défini
+      let power: number;
+      let details: PowerDetail[];
+
+      if (circuitNumber !== undefined && circuitPowers.has(circuitNumber)) {
+        // Utiliser la puissance max calculée pour tout le circuit
+        const circuitPowerData = circuitPowers.get(circuitNumber)!;
+        power = circuitPowerData.power;
+        details = circuitPowerData.details;
+      } else {
+        // Sinon, calculer la puissance de ce câble uniquement
+        const edgePower = calculateEdgePower(edge);
+        power = edgePower.power;
+        details = edgePower.details;
+      }
+
+      // 4. Déterminer la tension du segment (utiliser la vraie destination)
       const voltage = getSegmentVoltage(sourceItem, realTarget || targetItem);
 
-      // 4. Calculer l'intensité
+      // 5. Calculer l'intensité
       const intensity = power > 0 && voltage > 0 ? power / voltage : 0;
 
-      // 5. Obtenir le numéro de circuit et la longueur totale du circuit
-      const circuitNumber = getEdgeCircuitNumber(edge);
+      // 6. Obtenir la longueur totale du circuit
       const circuitTotalLength =
         circuitNumber !== undefined
           ? circuitLengths.get(circuitNumber) || segmentInfo.totalLength
@@ -3208,7 +3285,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           ? circuitEdgeIds.get(circuitNumber) || segmentInfo.allEdgeIds
           : segmentInfo.allEdgeIds;
 
-      // 6. Calculer la section recommandée avec la longueur TOTALE du CIRCUIT
+      // 7. Calculer la section recommandée avec la longueur TOTALE du CIRCUIT
       let section = 0;
       if (power > 0 && circuitTotalLength > 0) {
         section = quickCalculate(power, circuitTotalLength, voltage);
@@ -5931,14 +6008,21 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
       {/* Dialog Édition Item */}
       <Dialog open={!!editingItem} onOpenChange={(open) => !open && setEditingItem(null)}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent
+          className={(() => {
+            if (!editingItem) return "sm:max-w-[425px]";
+            const typeConfig = ELECTRICAL_TYPES[editingItem.type_electrique];
+            const isDistribution = typeConfig?.category === "distribution" || typeConfig?.category === "distributeur";
+            return isDistribution ? "sm:max-w-[500px]" : "sm:max-w-[425px]";
+          })()}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Pencil className="h-5 w-5" />
               Modifier {editingItem?.nom_accessoire?.slice(0, 30)}...
             </DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto">
             {/* Puissance */}
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-power" className="text-right">
@@ -6028,6 +6112,129 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 <span className="text-sm text-gray-500 w-8">A</span>
               </div>
             </div>
+
+            {/* Section connexions pour les points de distribution */}
+            {editingItem &&
+              (() => {
+                const typeConfig = ELECTRICAL_TYPES[editingItem.type_electrique];
+                const isDistribution =
+                  typeConfig?.category === "distribution" || typeConfig?.category === "distributeur";
+
+                if (!isDistribution) return null;
+
+                // Trouver les connexions entrantes (sources)
+                const incomingEdges = edges.filter((e) => e.target_node_id === editingItem.id);
+                const incomingItems = incomingEdges
+                  .map((e) => {
+                    const item = items.find((i) => i.id === e.source_node_id);
+                    if (!item) return null;
+                    // Calculer la puissance qui arrive via ce câble
+                    const { power } = calculateEdgePower(e);
+                    return { item, power, edgeId: e.id };
+                  })
+                  .filter(Boolean) as { item: ElectricalItem; power: number; edgeId: string }[];
+
+                // Trouver les connexions sortantes (destinations)
+                const outgoingEdges = edges.filter((e) => e.source_node_id === editingItem.id);
+                const outgoingItems = outgoingEdges
+                  .map((e) => {
+                    const item = items.find((i) => i.id === e.target_node_id);
+                    if (!item) return null;
+                    const itemConfig = ELECTRICAL_TYPES[item.type_electrique];
+                    const power = item.puissance_watts ? item.puissance_watts * (item.quantite || 1) : 0;
+                    return { item, power, category: itemConfig?.category || "autre", edgeId: e.id };
+                  })
+                  .filter(Boolean) as { item: ElectricalItem; power: number; category: string; edgeId: string }[];
+
+                const totalIncoming = incomingItems.reduce((sum, i) => sum + i.power, 0);
+                const totalOutgoingConsumers = outgoingItems
+                  .filter((i) => i.category === "consommateur")
+                  .reduce((sum, i) => sum + i.power, 0);
+
+                return (
+                  <div className="border-t pt-4 mt-2">
+                    <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                      <Cable className="h-4 w-4" />
+                      Connexions du point de distribution
+                    </div>
+
+                    {/* Sources entrantes */}
+                    {incomingItems.length > 0 && (
+                      <div className="mb-3">
+                        <div className="text-xs font-medium text-green-700 mb-1 flex items-center gap-1">
+                          <ArrowDown className="h-3 w-3" />
+                          Sources entrantes ({totalIncoming}W total)
+                        </div>
+                        <div className="space-y-1">
+                          {incomingItems.map(({ item, power }) => {
+                            const config = ELECTRICAL_TYPES[item.type_electrique];
+                            return (
+                              <div
+                                key={item.id}
+                                className="text-xs flex items-center gap-2 bg-green-50 rounded px-2 py-1"
+                              >
+                                <span className={`${config?.color || "text-gray-600"}`}>
+                                  {config?.label || item.type_electrique}
+                                </span>
+                                <span className="text-gray-600 flex-1 truncate">{item.nom_accessoire}</span>
+                                <span className="font-medium text-green-700">{power}W</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Destinations sortantes */}
+                    {outgoingItems.length > 0 && (
+                      <div>
+                        <div className="text-xs font-medium text-blue-700 mb-1 flex items-center gap-1">
+                          <ArrowUp className="h-3 w-3" />
+                          Destinations sortantes
+                        </div>
+                        <div className="space-y-1">
+                          {outgoingItems.map(({ item, power, category }) => {
+                            const config = ELECTRICAL_TYPES[item.type_electrique];
+                            const isConsumer = category === "consommateur";
+                            const isStorage = category === "stockage";
+                            return (
+                              <div
+                                key={item.id}
+                                className={`text-xs flex items-center gap-2 rounded px-2 py-1 ${
+                                  isConsumer ? "bg-red-50" : isStorage ? "bg-amber-50" : "bg-blue-50"
+                                }`}
+                              >
+                                <span className={`${config?.color || "text-gray-600"}`}>
+                                  {config?.label || item.type_electrique}
+                                </span>
+                                <span className="text-gray-600 flex-1 truncate">{item.nom_accessoire}</span>
+                                {power > 0 && (
+                                  <span
+                                    className={`font-medium ${isConsumer ? "text-red-700" : isStorage ? "text-amber-700" : "text-blue-700"}`}
+                                  >
+                                    {power}W
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {totalOutgoingConsumers > 0 && (
+                          <div className="text-xs text-red-600 mt-1 text-right">
+                            Consommation totale: {totalOutgoingConsumers}W
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {incomingItems.length === 0 && outgoingItems.length === 0 && (
+                      <div className="text-xs text-gray-500 italic">
+                        Aucune connexion détectée. Reliez ce point de distribution à d'autres éléments.
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
             {/* TODO: Couplage Distributeur - désactivé temporairement pour debug */}
 
