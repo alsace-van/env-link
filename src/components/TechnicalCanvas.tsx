@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.50 - Modale busbar élargie + texte complet
+// VERSION: 3.51 - Busbar: puissance calculée automatiquement
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6023,23 +6023,69 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             </DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto">
-            {/* Puissance */}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-power" className="text-right">
-                Puissance
-              </Label>
-              <div className="col-span-3 flex items-center gap-2">
-                <Input
-                  id="edit-power"
-                  type="number"
-                  value={editFormData.puissance_watts}
-                  onChange={(e) => setEditFormData((prev) => ({ ...prev, puissance_watts: e.target.value }))}
-                  placeholder="Ex: 190"
-                  className="flex-1"
-                />
-                <span className="text-sm text-gray-500 w-8">W</span>
-              </div>
-            </div>
+            {/* Puissance - différent pour les points de distribution */}
+            {(() => {
+              const typeConfig = editingItem ? ELECTRICAL_TYPES[editingItem.type_electrique] : null;
+              const isDistribution = typeConfig?.category === "distribution" || typeConfig?.category === "distributeur";
+
+              if (isDistribution && editingItem) {
+                // Pour les busbars: calculer et afficher le total automatiquement
+                const incomingEdges = edges.filter((e) => e.target_node_id === editingItem.id);
+                const totalIncoming = incomingEdges.reduce((sum, e) => {
+                  const { power } = calculateEdgePower(e);
+                  return sum + power;
+                }, 0);
+
+                const outgoingEdges = edges.filter((e) => e.source_node_id === editingItem.id);
+                const totalOutgoing = outgoingEdges.reduce((sum, e) => {
+                  const targetItem = items.find((i) => i.id === e.target_node_id);
+                  if (targetItem?.puissance_watts) {
+                    return sum + targetItem.puissance_watts * (targetItem.quantite || 1);
+                  }
+                  return sum;
+                }, 0);
+
+                return (
+                  <div className="bg-gradient-to-r from-emerald-50 to-green-50 rounded-lg p-3 border border-emerald-200">
+                    <div className="text-sm font-medium text-emerald-800 mb-2">
+                      ⚡ Puissance calculée automatiquement
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-emerald-700">{totalIncoming}W</div>
+                        <div className="text-xs text-emerald-600">Entrées (production)</div>
+                      </div>
+                      {totalOutgoing > 0 && (
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-red-600">{totalOutgoing}W</div>
+                          <div className="text-xs text-red-500">Sorties (consommation)</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+
+              // Pour les autres types: champ éditable normal
+              return (
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="edit-power" className="text-right">
+                    Puissance
+                  </Label>
+                  <div className="col-span-3 flex items-center gap-2">
+                    <Input
+                      id="edit-power"
+                      type="number"
+                      value={editFormData.puissance_watts}
+                      onChange={(e) => setEditFormData((prev) => ({ ...prev, puissance_watts: e.target.value }))}
+                      placeholder="Ex: 190"
+                      className="flex-1"
+                    />
+                    <span className="text-sm text-gray-500 w-8">W</span>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Tension entrée */}
             <div className="grid grid-cols-4 items-center gap-4">
