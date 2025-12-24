@@ -1,10 +1,10 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.43 - Numéros de circuit sur les handles (double-clic)
+// VERSION: 3.44 - Fix import React manquant
 // ============================================
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
