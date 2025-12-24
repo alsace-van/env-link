@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.42 - Rollback couplage distributeurs (bug à résoudre)
+// VERSION: 3.43 - Numéros de circuit sur les handles (double-clic)
 // ============================================
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -103,7 +103,10 @@ import { useSchemaHistory, SchemaState } from "@/hooks/useSchemaHistory";
 import { useCableCalculator, quickCableSection, STANDARD_SECTIONS } from "@/hooks/useCableCalculator";
 
 // Utilitaire debounce
-function debounce<T extends (...args: any[]) => any>(func: T, wait: number): (...args: Parameters<T>) => void {
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
   let timeout: NodeJS.Timeout | null = null;
   return (...args: Parameters<T>) => {
     if (timeout) clearTimeout(timeout);
@@ -162,63 +165,37 @@ interface BlockHandles {
   right: number;
 }
 
+// Numéros de circuit par handle (ex: {"top-1": 1, "bottom-2": 2})
+interface HandleCircuits {
+  [handleId: string]: number | undefined;
+}
+
 const DEFAULT_HANDLES: BlockHandles = { top: 2, bottom: 2, left: 2, right: 2 };
 
 // Types considérés comme points de distribution (somme des puissances connectées)
 const DISTRIBUTION_POINT_TYPES = [
-  "busbar",
-  "bus_bar",
-  "bus-bar",
-  "repartiteur",
-  "répartiteur",
-  "repartiteur_dc",
-  "bornier",
-  "terminal_block",
-  "distribution",
-  "panneau_distribution",
+  "busbar", "bus_bar", "bus-bar",
+  "repartiteur", "répartiteur", "repartiteur_dc",
+  "bornier", "terminal_block",
+  "distribution", "panneau_distribution",
 ];
 
 // Types "transparents" - on traverse sans s'arrêter pour le calcul de longueur
 // Ces éléments ne coupent pas le circuit, ils sont juste des protections en série
 const TRANSPARENT_TYPES = [
-  "fusible",
-  "fuse",
-  "porte_fusible",
-  "porte-fusible",
-  "porte fusible",
-  "fuse_holder",
-  "coupe_circuit",
-  "coupe-circuit",
-  "coupe circuit",
-  "disjoncteur",
-  "breaker",
-  "interrupteur",
-  "switch",
-  "sectionneur",
-  "boitier_fusible",
-  "boitier-fusible",
-  "boîtier_fusible",
-  "boitier fusible",
-  "fuse_box",
-  "fusebox",
+  "fusible", "fuse", "porte_fusible", "porte-fusible", "porte fusible", "fuse_holder",
+  "coupe_circuit", "coupe-circuit", "coupe circuit", "disjoncteur", "breaker",
+  "interrupteur", "switch", "sectionneur",
+  "boitier_fusible", "boitier-fusible", "boîtier_fusible", "boitier fusible", "fuse_box", "fusebox",
 ];
 
 // Types qui convertissent la tension (ont une tension entrée différente de sortie)
 const VOLTAGE_CONVERTER_TYPES = [
-  "mppt",
-  "regulateur_mppt",
-  "regulateur",
-  "convertisseur",
-  "dc_dc",
-  "dcdc",
-  "dc-dc",
-  "onduleur",
-  "inverter",
-  "chargeur",
-  "charger",
-  "combi",
-  "combiné",
-  "multiplus",
+  "mppt", "regulateur_mppt", "regulateur",
+  "convertisseur", "dc_dc", "dcdc", "dc-dc",
+  "onduleur", "inverter",
+  "chargeur", "charger",
+  "combi", "combiné", "multiplus",
 ];
 
 interface SchemaEdge {
@@ -282,16 +259,7 @@ const ELECTRICAL_TYPES: Record<
     color: string;
     bgColor: string;
     borderColor: string;
-    category:
-      | "production"
-      | "stockage"
-      | "regulation"
-      | "conversion"
-      | "consommateur"
-      | "distribution"
-      | "protection"
-      | "distributeur"
-      | "neutre";
+    category: "production" | "stockage" | "regulation" | "conversion" | "consommateur" | "distribution" | "protection" | "distributeur" | "neutre";
   }
 > = {
   // Types principaux
@@ -534,15 +502,39 @@ const CABLE_COLORS = [
 const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
   const item = data.item as ElectricalItem;
   const handles = (data.handles as BlockHandles) || DEFAULT_HANDLES;
+  const handleCircuits = (data.handleCircuits as HandleCircuits) || {};
   const isLocked = data.isLocked as boolean | undefined;
   const onUpdateHandles = data.onUpdateHandles as ((nodeId: string, handles: BlockHandles) => void) | undefined;
+  const onUpdateHandleCircuit = data.onUpdateHandleCircuit as ((nodeId: string, handleId: string, circuitNum: number | undefined) => void) | undefined;
   const onDeleteItem = data.onDeleteItem as ((nodeId: string) => void) | undefined;
   const onEditItem = data.onEditItem as ((item: ElectricalItem) => void) | undefined;
+
+  // State pour l'édition du numéro de circuit
+  const [editingHandle, setEditingHandle] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
 
   if (!item) return null;
 
   const typeConfig = ELECTRICAL_TYPES[item.type_electrique] || ELECTRICAL_TYPES.consommateur;
   const IconComponent = typeConfig.icon;
+
+  // Gérer le double-clic sur un handle pour éditer le numéro
+  const handleDoubleClick = (handleId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isLocked) return;
+    setEditingHandle(handleId);
+    setEditValue(handleCircuits[handleId]?.toString() || "");
+  };
+
+  // Sauvegarder le numéro de circuit
+  const saveCircuitNumber = () => {
+    if (editingHandle && onUpdateHandleCircuit) {
+      const num = editValue ? parseInt(editValue, 10) : undefined;
+      onUpdateHandleCircuit(item.id, editingHandle, isNaN(num as number) ? undefined : num);
+    }
+    setEditingHandle(null);
+    setEditValue("");
+  };
 
   // Générer les handles pour un côté
   const generateHandles = (
@@ -555,6 +547,9 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
     const color = type === "source" ? "!bg-green-500" : "!bg-blue-500";
 
     return Array.from({ length: count }, (_, i) => {
+      const handleId = `${side}-${i + 1}`;
+      const circuitNum = handleCircuits[handleId];
+      
       // Répartir les handles uniformément (éviter les bords)
       const percent = count === 1 ? 50 : 15 + i * (70 / Math.max(count - 1, 1));
 
@@ -563,15 +558,65 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
         ? { left: `${percent}%`, transform: "translateX(-50%)" }
         : { top: `${percent}%`, transform: "translateY(-50%)" };
 
+      // Position du badge de numéro
+      const badgeStyle: React.CSSProperties = isHorizontal
+        ? { 
+            left: `${percent}%`, 
+            transform: "translateX(-50%)",
+            ...(side === "top" ? { top: "-18px" } : { bottom: "-18px" })
+          }
+        : { 
+            top: `${percent}%`, 
+            transform: "translateY(-50%)",
+            ...(side === "left" ? { left: "-18px" } : { right: "-18px" })
+          };
+
       return (
-        <Handle
-          key={`${side}-${i + 1}`}
-          type={type}
-          position={position}
-          id={`${side}-${i + 1}`}
-          className={`${color} !w-2 !h-2 !border-2 !border-white`}
-          style={style}
-        />
+        <React.Fragment key={handleId}>
+          <Handle
+            type={type}
+            position={position}
+            id={handleId}
+            className={`${color} !w-2 !h-2 !border-2 !border-white`}
+            style={style}
+            onDoubleClick={(e) => handleDoubleClick(handleId, e)}
+          />
+          {/* Badge du numéro de circuit */}
+          {editingHandle === handleId ? (
+            <div
+              className="absolute z-50"
+              style={badgeStyle}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <input
+                type="number"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={saveCircuitNumber}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveCircuitNumber();
+                  if (e.key === "Escape") {
+                    setEditingHandle(null);
+                    setEditValue("");
+                  }
+                }}
+                autoFocus
+                className="w-8 h-5 text-[10px] text-center border border-blue-400 rounded bg-white shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                min="1"
+                max="99"
+              />
+            </div>
+          ) : circuitNum !== undefined ? (
+            <div
+              className="absolute z-20 w-4 h-4 text-[9px] font-bold flex items-center justify-center bg-amber-100 border border-amber-400 text-amber-700 rounded-full cursor-pointer hover:bg-amber-200"
+              style={badgeStyle}
+              onDoubleClick={(e) => handleDoubleClick(handleId, e)}
+              title={`Circuit ${circuitNum} - Double-clic pour modifier`}
+            >
+              {circuitNum}
+            </div>
+          ) : null}
+        </React.Fragment>
       );
     });
   };
@@ -649,12 +694,7 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
               title="Modifier les propriétés"
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
               </svg>
             </button>
           )}
@@ -704,7 +744,7 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
             className="w-9 h-9 rounded-md object-cover border border-gray-200 shrink-0"
             onError={(e) => {
               // Masquer l'image si elle ne charge pas
-              (e.target as HTMLImageElement).style.display = "none";
+              (e.target as HTMLImageElement).style.display = 'none';
             }}
           />
         )}
@@ -721,35 +761,29 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
           </div>
         )}
         {/* Capacité uniquement pour les batteries/stockage */}
-        {item.capacite_ah && ["stockage", "batterie"].includes(item.type_electrique?.toLowerCase() || "") && (
+        {item.capacite_ah && ['stockage', 'batterie'].includes(item.type_electrique?.toLowerCase() || '') && (
           <div className="flex items-center justify-between text-xs">
             <span className="text-gray-600">Capacité</span>
             <span className="font-medium text-gray-900">{item.capacite_ah} Ah</span>
           </div>
         )}
         {/* Affichage tension entrée/sortie pour les convertisseurs */}
-        {item.tension_entree_volts || item.tension_sortie_volts ? (
+        {(item.tension_entree_volts || item.tension_sortie_volts) ? (
           <div className="flex items-center justify-between text-xs">
             <span className="text-gray-600">Tension</span>
             <span className="font-medium text-gray-900">
-              {item.tension_entree_volts &&
-              item.tension_sortie_volts &&
-              item.tension_entree_volts !== item.tension_sortie_volts ? (
-                <>
-                  {item.tension_entree_volts}V → {item.tension_sortie_volts}V
-                </>
+              {item.tension_entree_volts && item.tension_sortie_volts && item.tension_entree_volts !== item.tension_sortie_volts ? (
+                <>{item.tension_entree_volts}V → {item.tension_sortie_volts}V</>
               ) : (
                 <>{item.tension_entree_volts || item.tension_sortie_volts} V</>
               )}
             </span>
           </div>
-        ) : (
-          item.tension_volts && (
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-600">Tension</span>
-              <span className="font-medium text-gray-900">{item.tension_volts} V</span>
-            </div>
-          )
+        ) : item.tension_volts && (
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-600">Tension</span>
+            <span className="font-medium text-gray-900">{item.tension_volts} V</span>
+          </div>
         )}
         {item.intensite_amperes && (
           <div className="flex items-center justify-between text-xs">
@@ -838,43 +872,39 @@ const CustomSmoothEdge = ({
   const findObstaclesOnHorizontalPath = (y: number, fromX: number, toX: number) => {
     const minX = Math.min(fromX, toX);
     const maxX = Math.max(fromX, toX);
-
-    return allNodes
-      .filter((node: any) => {
-        if (node.hidden) return false;
-        const bounds = getNodeBounds(node);
-        // Le chemin horizontal à y traverse-t-il ce bloc ?
-        return y >= bounds.top && y <= bounds.bottom && bounds.right > minX && bounds.left < maxX;
-      })
-      .map((node: any) => getNodeBounds(node));
+    
+    return allNodes.filter((node: any) => {
+      if (node.hidden) return false;
+      const bounds = getNodeBounds(node);
+      // Le chemin horizontal à y traverse-t-il ce bloc ?
+      return y >= bounds.top && y <= bounds.bottom && bounds.right > minX && bounds.left < maxX;
+    }).map((node: any) => getNodeBounds(node));
   };
 
   // Fonction pour trouver les obstacles sur le chemin vertical
   const findObstaclesOnVerticalPath = (x: number, fromY: number, toY: number) => {
     const minY = Math.min(fromY, toY);
     const maxY = Math.max(fromY, toY);
-
-    return allNodes
-      .filter((node: any) => {
-        if (node.hidden) return false;
-        const bounds = getNodeBounds(node);
-        // Le chemin vertical à x traverse-t-il ce bloc ?
-        return x >= bounds.left && x <= bounds.right && bounds.bottom > minY && bounds.top < maxY;
-      })
-      .map((node: any) => getNodeBounds(node));
+    
+    return allNodes.filter((node: any) => {
+      if (node.hidden) return false;
+      const bounds = getNodeBounds(node);
+      // Le chemin vertical à x traverse-t-il ce bloc ?
+      return x >= bounds.left && x <= bounds.right && bounds.bottom > minY && bounds.top < maxY;
+    }).map((node: any) => getNodeBounds(node));
   };
 
   // Fonction pour calculer le meilleur Y de contournement
   const findBypassY = (obstacles: any[], preferredY: number, sourceY: number, targetY: number) => {
     if (obstacles.length === 0) return preferredY;
-
+    
     // Trouver le bloc le plus problématique
     let topmost = Math.min(...obstacles.map((o: any) => o.top));
     let bottommost = Math.max(...obstacles.map((o: any) => o.bottom));
-
+    
     // Décider si contourner par le haut ou le bas
     const goAbove = Math.abs(topmost - preferredY) < Math.abs(bottommost - preferredY);
-
+    
     if (goAbove) {
       return topmost - 10; // Passer au-dessus
     } else {
@@ -882,15 +912,15 @@ const CustomSmoothEdge = ({
     }
   };
 
-  // Fonction pour calculer le meilleur X de contournement
+  // Fonction pour calculer le meilleur X de contournement  
   const findBypassX = (obstacles: any[], preferredX: number, sourceX: number, targetX: number) => {
     if (obstacles.length === 0) return preferredX;
-
+    
     let leftmost = Math.min(...obstacles.map((o: any) => o.left));
     let rightmost = Math.max(...obstacles.map((o: any) => o.right));
-
+    
     const goLeft = Math.abs(leftmost - preferredX) < Math.abs(rightmost - preferredX);
-
+    
     if (goLeft) {
       return leftmost - 10;
     } else {
@@ -905,20 +935,15 @@ const CustomSmoothEdge = ({
 
   // Helper pour calculer le milieu d'un chemin en 3 segments
   const calcMidpoint3Segments = (
-    seg1: number,
-    seg2: number,
-    seg3: number,
-    startX: number,
-    startY: number,
-    midX: number,
-    midY: number,
-    endX: number,
-    endY: number,
-    isFirstHorizontal: boolean,
+    seg1: number, seg2: number, seg3: number,
+    startX: number, startY: number,
+    midX: number, midY: number,
+    endX: number, endY: number,
+    isFirstHorizontal: boolean
   ) => {
     const totalLength = seg1 + seg2 + seg3;
     const halfLength = totalLength / 2;
-
+    
     if (halfLength <= seg1) {
       if (isFirstHorizontal) {
         return { x: startX + (startX < midX ? halfLength : -halfLength), y: startY };
@@ -1001,22 +1026,20 @@ const CustomSmoothEdge = ({
     const availableSpace = targetX - sourceX;
     const exitDist = Math.min(minExitDistance, availableSpace / 3);
     const entryDist = Math.min(minExitDistance, availableSpace / 3);
-
+    
     // Point de virage au milieu ou selon turnNearTarget
-    let midX = turnNearTarget ? targetX - entryDist : sourceX + exitDist;
-
+    let midX = turnNearTarget 
+      ? targetX - entryDist 
+      : sourceX + exitDist;
+    
     // Vérifier s'il y a des obstacles sur le segment vertical
-    const obstaclesOnVertical = findObstaclesOnVerticalPath(
-      midX,
-      Math.min(sourceY, targetY),
-      Math.max(sourceY, targetY),
-    );
-
+    const obstaclesOnVertical = findObstaclesOnVerticalPath(midX, Math.min(sourceY, targetY), Math.max(sourceY, targetY));
+    
     if (obstaclesOnVertical.length > 0) {
       // Trouver un X qui contourne les obstacles
       midX = findBypassX(obstaclesOnVertical, midX, sourceX, targetX);
     }
-
+    
     const goingDown = targetY > sourceY;
     const r = Math.min(cornerRadius, deltaY / 4, exitDist / 2);
 
@@ -1026,7 +1049,7 @@ const CustomSmoothEdge = ({
                 L ${midX} ${targetY + (goingDown ? -r : r)}
                 Q ${midX} ${targetY} ${midX + r} ${targetY}
                 L ${targetX} ${targetY}`;
-
+    
     const seg1 = Math.abs(midX - sourceX);
     const seg2 = Math.abs(targetY - sourceY);
     const seg3 = Math.abs(targetX - midX);
@@ -1039,16 +1062,14 @@ const CustomSmoothEdge = ({
     const availableSpace = targetY - sourceY;
     const exitDist = Math.min(minExitDistance, availableSpace / 3);
     const entryDist = Math.min(minExitDistance, availableSpace / 3);
-
-    let midY = turnNearTarget ? targetY - entryDist : sourceY + exitDist;
+    
+    let midY = turnNearTarget 
+      ? targetY - entryDist 
+      : sourceY + exitDist;
 
     // Vérifier s'il y a des obstacles sur le segment horizontal
-    const obstaclesOnHorizontal = findObstaclesOnHorizontalPath(
-      midY,
-      Math.min(sourceX, targetX),
-      Math.max(sourceX, targetX),
-    );
-
+    const obstaclesOnHorizontal = findObstaclesOnHorizontalPath(midY, Math.min(sourceX, targetX), Math.max(sourceX, targetX));
+    
     if (obstaclesOnHorizontal.length > 0) {
       // Trouver un Y qui contourne les obstacles
       midY = findBypassY(obstaclesOnHorizontal, midY, sourceY, targetY);
@@ -1063,7 +1084,7 @@ const CustomSmoothEdge = ({
                 L ${targetX + (goingRight ? -r : r)} ${midY}
                 Q ${targetX} ${midY} ${targetX} ${midY + r}
                 L ${targetX} ${targetY}`;
-
+    
     const seg1 = Math.abs(midY - sourceY);
     const seg2 = Math.abs(targetX - sourceX);
     const seg3 = Math.abs(targetY - midY);
@@ -1076,7 +1097,7 @@ const CustomSmoothEdge = ({
     // Sortir d'abord vers le bas, puis tourner vers la gauche
     const exitDist = Math.min(minExitDistance, Math.abs(targetY - sourceY) / 2);
     const midY = Math.max(sourceY + exitDist, targetY);
-
+    
     const r = Math.min(cornerRadius, Math.abs(targetX - sourceX) / 4, exitDist / 2);
 
     if (midY >= targetY - r) {
@@ -1085,7 +1106,7 @@ const CustomSmoothEdge = ({
                   L ${sourceX} ${targetY - r}
                   Q ${sourceX} ${targetY} ${sourceX + (targetX > sourceX ? r : -r)} ${targetY}
                   L ${targetX} ${targetY}`;
-
+      
       const seg1 = Math.abs(targetY - sourceY);
       const seg2 = Math.abs(targetX - sourceX);
       const halfLength = (seg1 + seg2) / 2;
@@ -1104,7 +1125,7 @@ const CustomSmoothEdge = ({
                   L ${targetX - r} ${midY}
                   Q ${targetX} ${midY} ${targetX} ${midY + (targetY > midY ? r : -r)}
                   L ${targetX} ${targetY}`;
-
+      
       const seg1 = midY - sourceY;
       const seg2 = Math.abs(targetX - sourceX);
       const seg3 = Math.abs(targetY - midY);
@@ -1117,7 +1138,7 @@ const CustomSmoothEdge = ({
   else if (sourcePosition === Position.Right && targetPosition === Position.Top) {
     const exitDist = Math.min(minExitDistance, Math.abs(targetX - sourceX) / 2);
     const midX = Math.max(sourceX + exitDist, targetX);
-
+    
     const r = Math.min(cornerRadius, Math.abs(targetY - sourceY) / 4, exitDist / 2);
 
     if (midX >= targetX - r) {
@@ -1126,7 +1147,7 @@ const CustomSmoothEdge = ({
                   L ${targetX - r} ${sourceY}
                   Q ${targetX} ${sourceY} ${targetX} ${sourceY + (targetY > sourceY ? r : -r)}
                   L ${targetX} ${targetY}`;
-
+      
       const seg1 = Math.abs(targetX - sourceX);
       const seg2 = Math.abs(targetY - sourceY);
       const halfLength = (seg1 + seg2) / 2;
@@ -1144,7 +1165,7 @@ const CustomSmoothEdge = ({
                   L ${midX} ${targetY - r}
                   Q ${midX} ${targetY} ${midX + (targetX > midX ? r : -r)} ${targetY}
                   L ${targetX} ${targetY}`;
-
+      
       const seg1 = midX - sourceX;
       const seg2 = Math.abs(targetY - sourceY);
       const seg3 = Math.abs(targetX - midX);
@@ -1157,17 +1178,17 @@ const CustomSmoothEdge = ({
   else if (sourcePosition === Position.Right && targetPosition === Position.Bottom) {
     const exitDist = Math.min(minExitDistance, deltaX / 2);
     const r = Math.min(cornerRadius, deltaY / 4, exitDist / 2);
-
+    
     // Aller à droite, puis descendre vers la target
     const midX = sourceX + exitDist;
-
+    
     edgePath = `M ${sourceX} ${sourceY} 
                 L ${midX - r} ${sourceY}
                 Q ${midX} ${sourceY} ${midX} ${sourceY + (targetY > sourceY ? r : -r)}
                 L ${midX} ${targetY + (targetY > sourceY ? -r : r)}
                 Q ${midX} ${targetY} ${midX + r} ${targetY}
                 L ${targetX} ${targetY}`;
-
+    
     const seg1 = midX - sourceX;
     const seg2 = Math.abs(targetY - sourceY);
     const seg3 = targetX - midX;
@@ -1180,24 +1201,24 @@ const CustomSmoothEdge = ({
     // Source à gauche, target à droite - le câble doit contourner
     const exitDist = minExitDistance;
     const r = Math.min(cornerRadius, deltaY / 4);
-
+    
     // Sortir vers la gauche de la source
     const leftX = Math.min(sourceX - exitDist, targetX + exitDist);
     const goingDown = targetY > sourceY;
-
+    
     edgePath = `M ${sourceX} ${sourceY}
                 L ${leftX + r} ${sourceY}
                 Q ${leftX} ${sourceY} ${leftX} ${sourceY + (goingDown ? r : -r)}
                 L ${leftX} ${targetY + (goingDown ? -r : r)}
                 Q ${leftX} ${targetY} ${leftX + r} ${targetY}
                 L ${targetX} ${targetY}`;
-
+    
     const seg1 = sourceX - leftX;
     const seg2 = Math.abs(targetY - sourceY);
     const seg3 = targetX - leftX;
     const totalLength = seg1 + seg2 + seg3;
     const halfLength = totalLength / 2;
-
+    
     if (halfLength <= seg1) {
       labelX = sourceX - halfLength;
       labelY = sourceY;
@@ -1213,23 +1234,23 @@ const CustomSmoothEdge = ({
   else if (sourcePosition === Position.Top && targetPosition === Position.Bottom) {
     const exitDist = minExitDistance;
     const r = Math.min(cornerRadius, deltaX / 4);
-
+    
     const topY = Math.min(sourceY - exitDist, targetY + exitDist);
     const goingRight = targetX > sourceX;
-
+    
     edgePath = `M ${sourceX} ${sourceY}
                 L ${sourceX} ${topY + r}
                 Q ${sourceX} ${topY} ${sourceX + (goingRight ? r : -r)} ${topY}
                 L ${targetX + (goingRight ? -r : r)} ${topY}
                 Q ${targetX} ${topY} ${targetX} ${topY + r}
                 L ${targetX} ${targetY}`;
-
+    
     const seg1 = sourceY - topY;
     const seg2 = Math.abs(targetX - sourceX);
     const seg3 = targetY - topY;
     const totalLength = seg1 + seg2 + seg3;
     const halfLength = totalLength / 2;
-
+    
     if (halfLength <= seg1) {
       labelX = sourceX;
       labelY = sourceY - halfLength;
@@ -1307,6 +1328,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // État pour les handles personnalisés par bloc
   const [nodeHandles, setNodeHandles] = useState<Record<string, BlockHandles>>({});
+  
+  // État pour les numéros de circuit par handle (ex: {"node1": {"top-1": 1, "bottom-2": 2}})
+  const [nodeHandleCircuits, setNodeHandleCircuits] = useState<Record<string, HandleCircuits>>({});
 
   // États pour les calques
   const [layers, setLayers] = useState<SchemaLayer[]>([createDefaultLayer()]);
@@ -1420,48 +1444,42 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const maxHistorySize = 50;
 
   // Sauvegarder l'état actuel dans l'historique
-  const saveToHistory = useCallback(
-    (action: string = "edit") => {
-      if (isUndoRedoAction) return; // Ne pas sauvegarder pendant un undo/redo
+  const saveToHistory = useCallback((action: string = "edit") => {
+    if (isUndoRedoAction) return; // Ne pas sauvegarder pendant un undo/redo
+    
+    const currentState: SchemaState = {
+      items: JSON.parse(JSON.stringify(items)),
+      edges: JSON.parse(JSON.stringify(edges)),
+      positions: nodes.reduce((acc, node) => {
+        acc[node.id] = { x: node.position.x, y: node.position.y };
+        return acc;
+      }, {} as Record<string, { x: number; y: number }>),
+      nodeHandles: JSON.parse(JSON.stringify(nodeHandles)),
+      annotations: JSON.parse(JSON.stringify(annotations)),
+    };
 
-      const currentState: SchemaState = {
-        items: JSON.parse(JSON.stringify(items)),
-        edges: JSON.parse(JSON.stringify(edges)),
-        positions: nodes.reduce(
-          (acc, node) => {
-            acc[node.id] = { x: node.position.x, y: node.position.y };
-            return acc;
-          },
-          {} as Record<string, { x: number; y: number }>,
-        ),
-        nodeHandles: JSON.parse(JSON.stringify(nodeHandles)),
-        annotations: JSON.parse(JSON.stringify(annotations)),
-      };
-
-      setHistoryStack((prev) => {
-        // Si on n'est pas à la fin de l'historique, supprimer les états futurs
-        const newStack = prev.slice(0, historyIndex + 1);
-        newStack.push(currentState);
-
-        // Limiter la taille de l'historique
-        if (newStack.length > maxHistorySize) {
-          return newStack.slice(-maxHistorySize);
-        }
-        return newStack;
-      });
-
-      setHistoryIndex((prev) => Math.min(prev + 1, maxHistorySize - 1));
-    },
-    [items, edges, nodes, nodeHandles, annotations, historyIndex, isUndoRedoAction],
-  );
+    setHistoryStack(prev => {
+      // Si on n'est pas à la fin de l'historique, supprimer les états futurs
+      const newStack = prev.slice(0, historyIndex + 1);
+      newStack.push(currentState);
+      
+      // Limiter la taille de l'historique
+      if (newStack.length > maxHistorySize) {
+        return newStack.slice(-maxHistorySize);
+      }
+      return newStack;
+    });
+    
+    setHistoryIndex(prev => Math.min(prev + 1, maxHistorySize - 1));
+  }, [items, edges, nodes, nodeHandles, annotations, historyIndex, isUndoRedoAction]);
 
   // Debounce pour éviter trop de sauvegardes
   const saveToHistoryRef = useRef(saveToHistory);
   saveToHistoryRef.current = saveToHistory;
-
+  
   const debouncedSaveToHistory = useCallback(
     debounce((action: string) => saveToHistoryRef.current(action), 500),
-    [],
+    []
   );
 
   // Initialiser l'historique quand le chargement est terminé
@@ -1471,13 +1489,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       const initialState: SchemaState = {
         items: JSON.parse(JSON.stringify(items)),
         edges: JSON.parse(JSON.stringify(edges)),
-        positions: nodes.reduce(
-          (acc, node) => {
-            acc[node.id] = { x: node.position.x, y: node.position.y };
-            return acc;
-          },
-          {} as Record<string, { x: number; y: number }>,
-        ),
+        positions: nodes.reduce((acc, node) => {
+          acc[node.id] = { x: node.position.x, y: node.position.y };
+          return acc;
+        }, {} as Record<string, { x: number; y: number }>),
         nodeHandles: JSON.parse(JSON.stringify(nodeHandles)),
         annotations: JSON.parse(JSON.stringify(annotations)),
       };
@@ -1492,7 +1507,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     // Ne pas sauvegarder pendant le chargement ou si historique pas initialisé
     if (loading || historyIndex === -1) return;
     if (isUndoRedoAction) return;
-
+    
     if (items.length > 0 || edges.length > 0) {
       debouncedSaveToHistory("edit");
     }
@@ -1507,28 +1522,26 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
     setIsUndoRedoAction(true);
     const prevState = historyStack[historyIndex - 1];
-
+    
     if (prevState) {
       setItems(prevState.items);
       setEdges(prevState.edges);
       setNodeHandles(prevState.nodeHandles);
       if (prevState.annotations) setAnnotations(prevState.annotations);
-
+      
       // Restaurer les positions des nodes
-      setNodes((prev) =>
-        prev.map((node) => {
-          const pos = prevState.positions[node.id];
-          if (pos) {
-            return { ...node, position: pos };
-          }
-          return node;
-        }),
-      );
-
-      setHistoryIndex((prev) => prev - 1);
+      setNodes(prev => prev.map(node => {
+        const pos = prevState.positions[node.id];
+        if (pos) {
+          return { ...node, position: pos };
+        }
+        return node;
+      }));
+      
+      setHistoryIndex(prev => prev - 1);
       toast.success("Action annulée");
     }
-
+    
     setTimeout(() => setIsUndoRedoAction(false), 100);
   }, [historyIndex, historyStack, setNodes]);
 
@@ -1541,28 +1554,26 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
     setIsUndoRedoAction(true);
     const nextState = historyStack[historyIndex + 1];
-
+    
     if (nextState) {
       setItems(nextState.items);
       setEdges(nextState.edges);
       setNodeHandles(nextState.nodeHandles);
       if (nextState.annotations) setAnnotations(nextState.annotations);
-
+      
       // Restaurer les positions des nodes
-      setNodes((prev) =>
-        prev.map((node) => {
-          const pos = nextState.positions[node.id];
-          if (pos) {
-            return { ...node, position: pos };
-          }
-          return node;
-        }),
-      );
-
-      setHistoryIndex((prev) => prev + 1);
+      setNodes(prev => prev.map(node => {
+        const pos = nextState.positions[node.id];
+        if (pos) {
+          return { ...node, position: pos };
+        }
+        return node;
+      }));
+      
+      setHistoryIndex(prev => prev + 1);
       toast.success("Action refaite");
     }
-
+    
     setTimeout(() => setIsUndoRedoAction(false), 100);
   }, [historyIndex, historyStack, setNodes]);
 
@@ -1570,7 +1581,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignorer si on est dans un input/textarea
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
         return;
       }
 
@@ -2154,6 +2168,19 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     setNodeHandles((prev) => ({ ...prev, [nodeId]: handles }));
   }, []);
 
+  // Fonction pour mettre à jour le numéro de circuit d'un handle
+  const updateHandleCircuit = useCallback((nodeId: string, handleId: string, circuitNum: number | undefined) => {
+    setNodeHandleCircuits((prev) => {
+      const nodeCircuits = prev[nodeId] || {};
+      if (circuitNum === undefined) {
+        // Supprimer le numéro
+        const { [handleId]: _, ...rest } = nodeCircuits;
+        return { ...prev, [nodeId]: rest };
+      }
+      return { ...prev, [nodeId]: { ...nodeCircuits, [handleId]: circuitNum } };
+    });
+  }, []);
+
   // === NOUVELLES FONCTIONS ===
 
   // Copier les blocs sélectionnés
@@ -2366,28 +2393,26 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
       // Construire un graphe des connexions
       const graph: Map<string, { edgeId: string; targetNode: string }[]> = new Map();
-
+      
       edges.forEach((edge) => {
         // Ajouter connexion source -> target
         if (!graph.has(edge.source_node_id)) graph.set(edge.source_node_id, []);
         graph.get(edge.source_node_id)!.push({ edgeId: edge.id, targetNode: edge.target_node_id });
-
+        
         // Ajouter connexion target -> source (bidirectionnel)
         if (!graph.has(edge.target_node_id)) graph.set(edge.target_node_id, []);
         graph.get(edge.target_node_id)!.push({ edgeId: edge.id, targetNode: edge.source_node_id });
       });
 
       console.log("Graphe construit avec", graph.size, "noeuds connectés");
-
+      
       // Debug: afficher les connexions de la source
       const sourceConnections = graph.get(sourceId) || [];
       console.log(`\nConnexions depuis la SOURCE (${sourceItem?.nom_accessoire?.substring(0, 20)}):`);
       sourceConnections.forEach((conn) => {
         const targetItem = items.find((i) => i.id === conn.targetNode);
         const edge = edges.find((e) => e.id === conn.edgeId);
-        console.log(
-          `  → ${targetItem?.nom_accessoire?.substring(0, 25) || conn.targetNode.substring(0, 15)} (câble: ${edge?.length_m || "?"}m, couleur: ${edge?.color})`,
-        );
+        console.log(`  → ${targetItem?.nom_accessoire?.substring(0, 25) || conn.targetNode.substring(0, 15)} (câble: ${edge?.length_m || '?'}m, couleur: ${edge?.color})`);
       });
 
       // Debug: afficher les connexions vers la destination
@@ -2396,30 +2421,26 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       destConnections.forEach((conn) => {
         const targetItem = items.find((i) => i.id === conn.targetNode);
         const edge = edges.find((e) => e.id === conn.edgeId);
-        console.log(
-          `  ← ${targetItem?.nom_accessoire?.substring(0, 25) || conn.targetNode.substring(0, 15)} (câble: ${edge?.length_m || "?"}m, couleur: ${edge?.color})`,
-        );
+        console.log(`  ← ${targetItem?.nom_accessoire?.substring(0, 25) || conn.targetNode.substring(0, 15)} (câble: ${edge?.length_m || '?'}m, couleur: ${edge?.color})`);
       });
 
       // BFS pour trouver TOUS les chemins
       const findAllPaths = (
-        currentNodeId: string,
-        targetId: string,
-        visitedNodes: Set<string>,
+        currentNodeId: string, 
+        targetId: string, 
+        visitedNodes: Set<string>, 
         path: string[],
-        maxDepth: number = 10,
+        maxDepth: number = 10
       ): void => {
         // Protection contre les chemins trop longs
         if (path.length > maxDepth) return;
 
         if (currentNodeId === targetId && path.length > 0) {
           // Chemin trouvé !
-          const pathDetails = path
-            .map((edgeId) => {
-              const edge = edges.find((e) => e.id === edgeId);
-              return `${edge?.length_m || "?"}m`;
-            })
-            .join(" → ");
+          const pathDetails = path.map((edgeId) => {
+            const edge = edges.find((e) => e.id === edgeId);
+            return `${edge?.length_m || '?'}m`;
+          }).join(' → ');
           console.log(`✅ Chemin trouvé: ${path.length} câbles (${pathDetails})`);
           allPaths.push([...path]);
           path.forEach((id) => foundEdgeIds.add(id));
@@ -2427,11 +2448,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         }
 
         const connections = graph.get(currentNodeId) || [];
-
+        
         for (const conn of connections) {
           // Ne pas revisiter un noeud déjà dans le chemin
           if (visitedNodes.has(conn.targetNode)) continue;
-
+          
           // Ne pas réutiliser un câble déjà dans le chemin
           if (path.includes(conn.edgeId)) continue;
 
@@ -2466,7 +2487,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         });
       }
       console.log("Câbles uniques inclus:", foundEdgeIds.size);
-
+      
       return Array.from(foundEdgeIds);
     },
     [edges, items],
@@ -2474,20 +2495,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // Types qui transmettent le courant sans avoir de puissance propre (convertisseurs, régulateurs)
   const PASSTHROUGH_POWER_TYPES = [
-    "regulateur",
-    "regulateur_mppt",
-    "mppt",
-    "regulation",
-    "convertisseur",
-    "onduleur",
-    "chargeur",
-    "fusible",
-    "disjoncteur",
-    "protection",
-    "coupe_circuit",
-    "distribution",
-    "bornier",
-    "repartiteur",
+    "regulateur", "regulateur_mppt", "mppt", "regulation",
+    "convertisseur", "onduleur", "chargeur",
+    "fusible", "disjoncteur", "protection", "coupe_circuit",
+    "distribution", "bornier", "repartiteur",
     "accessoire",
   ];
 
@@ -2495,15 +2506,17 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const isDistributionPoint = useCallback((item: ElectricalItem): boolean => {
     const typeElec = item.type_electrique?.toLowerCase() || "";
     const nom = item.nom_accessoire?.toLowerCase() || "";
-
+    
     // 1. Vérifier par type_electrique direct (catégorie "distributeur" ou "distribution")
     const typeConfig = ELECTRICAL_TYPES[typeElec];
     if (typeConfig?.category === "distributeur" || typeConfig?.category === "distribution") {
       return true;
     }
-
+    
     // 2. Vérifier par nom ou type dans la liste (fallback)
-    return DISTRIBUTION_POINT_TYPES.some((t) => typeElec.includes(t) || nom.includes(t));
+    return DISTRIBUTION_POINT_TYPES.some(t => 
+      typeElec.includes(t) || nom.includes(t)
+    );
   }, []);
 
   // Helper: Extraire la tension depuis le nom de l'accessoire (fallback)
@@ -2522,29 +2535,23 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   }, []);
 
   // Helper: Obtenir la tension de sortie d'un item (pour calcul I = P/U)
-  const getOutputVoltage = useCallback(
-    (item: ElectricalItem): number => {
-      // Priorité: tension_sortie > tension_volts > extraction depuis nom > 12V par défaut
-      if (item.tension_sortie_volts) return item.tension_sortie_volts;
-      if (item.tension_volts) return item.tension_volts;
-      const fromName = extractVoltageFromName(item.nom_accessoire);
-      if (fromName) return fromName;
-      return 12;
-    },
-    [extractVoltageFromName],
-  );
+  const getOutputVoltage = useCallback((item: ElectricalItem): number => {
+    // Priorité: tension_sortie > tension_volts > extraction depuis nom > 12V par défaut
+    if (item.tension_sortie_volts) return item.tension_sortie_volts;
+    if (item.tension_volts) return item.tension_volts;
+    const fromName = extractVoltageFromName(item.nom_accessoire);
+    if (fromName) return fromName;
+    return 12;
+  }, [extractVoltageFromName]);
 
   // Helper: Obtenir la tension d'entrée d'un item
-  const getInputVoltage = useCallback(
-    (item: ElectricalItem): number => {
-      if (item.tension_entree_volts) return item.tension_entree_volts;
-      if (item.tension_volts) return item.tension_volts;
-      const fromName = extractVoltageFromName(item.nom_accessoire);
-      if (fromName) return fromName;
-      return 12;
-    },
-    [extractVoltageFromName],
-  );
+  const getInputVoltage = useCallback((item: ElectricalItem): number => {
+    if (item.tension_entree_volts) return item.tension_entree_volts;
+    if (item.tension_volts) return item.tension_volts;
+    const fromName = extractVoltageFromName(item.nom_accessoire);
+    if (fromName) return fromName;
+    return 12;
+  }, [extractVoltageFromName]);
 
   // Fonction pour SOMMER toutes les puissances en amont (pour points de distribution côté production)
   const sumUpstreamPowers = useCallback(
@@ -2558,16 +2565,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       // Si cet item a une puissance, la retourner (c'est une source)
       if (item.puissance_watts && item.puissance_watts > 0) {
         const totalPower = item.puissance_watts * (item.quantite || 1);
-        console.log(
-          `[sumUpstreamPowers] Source "${item.nom_accessoire}": ${totalPower}W (${item.puissance_watts}W x ${item.quantite || 1})`,
-        );
+        console.log(`[sumUpstreamPowers] Source "${item.nom_accessoire}": ${totalPower}W (${item.puissance_watts}W x ${item.quantite || 1})`);
         return totalPower;
       }
 
       // Sinon, sommer TOUTES les connexions entrantes (upstream)
       const incomingEdges = edges.filter((e) => e.target_node_id === startNodeId);
       let totalPower = 0;
-
+      
       for (const edge of incomingEdges) {
         totalPower += sumUpstreamPowers(edge.source_node_id, visited);
       }
@@ -2575,7 +2580,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       if (totalPower > 0) {
         console.log(`[sumUpstreamPowers] Via "${item.nom_accessoire}": ${totalPower}W (somme)`);
       }
-
+      
       return totalPower;
     },
     [edges, items],
@@ -2602,17 +2607,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       // Si cet item a une puissance, c'est une source
       if (item.puissance_watts && item.puissance_watts > 0) {
         const totalPower = item.puissance_watts * (item.quantite || 1);
-        return {
-          total: totalPower,
-          details: [
-            {
-              id: item.id,
-              nom: item.nom_accessoire,
-              puissance: item.puissance_watts,
-              quantite: item.quantite || 1,
-              total: totalPower,
-            },
-          ],
+        return { 
+          total: totalPower, 
+          details: [{
+            id: item.id,
+            nom: item.nom_accessoire,
+            puissance: item.puissance_watts,
+            quantite: item.quantite || 1,
+            total: totalPower
+          }]
         };
       }
 
@@ -2620,13 +2623,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       const incomingEdges = edges.filter((e) => e.target_node_id === startNodeId);
       let totalPower = 0;
       let allDetails: PowerDetail[] = [];
-
+      
       for (const edge of incomingEdges) {
         const result = sumUpstreamPowersWithDetails(edge.source_node_id, visited);
         totalPower += result.total;
         allDetails = [...allDetails, ...result.details];
       }
-
+      
       return { total: totalPower, details: allDetails };
     },
     [edges, items],
@@ -2644,16 +2647,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       // Si cet item a une puissance ET est un consommateur, la retourner
       if (item.puissance_watts && item.puissance_watts > 0) {
         const totalPower = item.puissance_watts * (item.quantite || 1);
-        console.log(
-          `[sumDownstreamPowers] Consommateur "${item.nom_accessoire}": ${totalPower}W (${item.puissance_watts}W x ${item.quantite || 1})`,
-        );
+        console.log(`[sumDownstreamPowers] Consommateur "${item.nom_accessoire}": ${totalPower}W (${item.puissance_watts}W x ${item.quantite || 1})`);
         return totalPower;
       }
 
       // Sinon, sommer TOUTES les connexions sortantes (downstream)
       const outgoingEdges = edges.filter((e) => e.source_node_id === startNodeId);
       let totalPower = 0;
-
+      
       for (const edge of outgoingEdges) {
         totalPower += sumDownstreamPowers(edge.target_node_id, visited);
       }
@@ -2661,7 +2662,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       if (totalPower > 0) {
         console.log(`[sumDownstreamPowers] Via "${item.nom_accessoire}": ${totalPower}W (somme)`);
       }
-
+      
       return totalPower;
     },
     [edges, items],
@@ -2679,17 +2680,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       // Si cet item a une puissance, c'est un consommateur
       if (item.puissance_watts && item.puissance_watts > 0) {
         const totalPower = item.puissance_watts * (item.quantite || 1);
-        return {
-          total: totalPower,
-          details: [
-            {
-              id: item.id,
-              nom: item.nom_accessoire,
-              puissance: item.puissance_watts,
-              quantite: item.quantite || 1,
-              total: totalPower,
-            },
-          ],
+        return { 
+          total: totalPower, 
+          details: [{
+            id: item.id,
+            nom: item.nom_accessoire,
+            puissance: item.puissance_watts,
+            quantite: item.quantite || 1,
+            total: totalPower
+          }]
         };
       }
 
@@ -2697,13 +2696,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       const outgoingEdges = edges.filter((e) => e.source_node_id === startNodeId);
       let totalPower = 0;
       let allDetails: PowerDetail[] = [];
-
+      
       for (const edge of outgoingEdges) {
         const result = sumDownstreamPowersWithDetails(edge.target_node_id, visited);
         totalPower += result.total;
         allDetails = [...allDetails, ...result.details];
       }
-
+      
       return { total: totalPower, details: allDetails };
     },
     [edges, items],
@@ -2726,7 +2725,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
       // Sinon, chercher dans les connexions entrantes (upstream)
       const incomingEdges = edges.filter((e) => e.target_node_id === startNodeId);
-
+      
       for (const edge of incomingEdges) {
         const upstreamPower = findUpstreamPower(edge.source_node_id, visited);
         if (upstreamPower > 0) {
@@ -2756,7 +2755,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
       // Sinon, chercher dans les connexions sortantes (downstream)
       const outgoingEdges = edges.filter((e) => e.source_node_id === startNodeId);
-
+      
       for (const edge of outgoingEdges) {
         const downstreamPower = findDownstreamPower(edge.target_node_id, visited);
         if (downstreamPower > 0) {
@@ -2777,29 +2776,28 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const isTransparentNode = useCallback((item: ElectricalItem): boolean => {
     const typeElec = item.type_electrique?.toLowerCase() || "";
     const nom = item.nom_accessoire?.toLowerCase() || "";
-
+    
     // 1. Vérifier par type_electrique direct (catégorie "protection")
     const typeConfig = ELECTRICAL_TYPES[typeElec];
     if (typeConfig?.category === "protection") {
       return true;
     }
-
+    
     // 2. Vérifier par nom ou type dans la liste des types transparents (fallback)
-    return TRANSPARENT_TYPES.some((t) => typeElec.includes(t) || nom.includes(t));
+    return TRANSPARENT_TYPES.some(t => 
+      typeElec.includes(t) || nom.includes(t)
+    );
   }, []);
 
   // Vérifier si un item est un "point clé" (où on s'arrête et on cumule)
-  const isKeyPoint = useCallback(
-    (item: ElectricalItem): boolean => {
-      // Un point clé est :
-      // 1. Un point de distribution (busbar, bornier...)
-      // 2. Un équipement avec puissance (panneau, batterie, consommateur...)
-      // 3. Un convertisseur de tension (MPPT, onduleur...)
-      // 4. Tout ce qui n'est PAS transparent
-      return !isTransparentNode(item);
-    },
-    [isTransparentNode],
-  );
+  const isKeyPoint = useCallback((item: ElectricalItem): boolean => {
+    // Un point clé est :
+    // 1. Un point de distribution (busbar, bornier...)
+    // 2. Un équipement avec puissance (panneau, batterie, consommateur...)
+    // 3. Un convertisseur de tension (MPPT, onduleur...)
+    // 4. Tout ce qui n'est PAS transparent
+    return !isTransparentNode(item);
+  }, [isTransparentNode]);
 
   // Obtenir la longueur d'un câble (définie uniquement)
   const getEdgeLength = useCallback((edge: SchemaEdge): { length: number; isDefined: boolean } => {
@@ -2813,185 +2811,168 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // Trouver le prochain point clé en traversant les nœuds transparents
   // Retourne { keyPointId, totalLength, traversedEdgeIds }
-  const findNextKeyPoint = useCallback(
-    (
-      startNodeId: string,
-      direction: "downstream" | "upstream",
-      visited: Set<string> = new Set(),
-    ): { keyPointId: string | null; totalLength: number; traversedEdgeIds: string[] } => {
-      if (visited.has(startNodeId)) {
-        return { keyPointId: null, totalLength: 0, traversedEdgeIds: [] };
-      }
-      visited.add(startNodeId);
+  const findNextKeyPoint = useCallback((
+    startNodeId: string, 
+    direction: 'downstream' | 'upstream',
+    visited: Set<string> = new Set()
+  ): { keyPointId: string | null; totalLength: number; traversedEdgeIds: string[] } => {
+    if (visited.has(startNodeId)) {
+      return { keyPointId: null, totalLength: 0, traversedEdgeIds: [] };
+    }
+    visited.add(startNodeId);
 
-      const startItem = items.find((i) => i.id === startNodeId);
-      if (!startItem) {
-        return { keyPointId: null, totalLength: 0, traversedEdgeIds: [] };
-      }
+    const startItem = items.find(i => i.id === startNodeId);
+    if (!startItem) {
+      return { keyPointId: null, totalLength: 0, traversedEdgeIds: [] };
+    }
 
-      // Si c'est un point clé, on s'arrête
-      if (isKeyPoint(startItem)) {
-        return { keyPointId: startNodeId, totalLength: 0, traversedEdgeIds: [] };
-      }
+    // Si c'est un point clé, on s'arrête
+    if (isKeyPoint(startItem)) {
+      return { keyPointId: startNodeId, totalLength: 0, traversedEdgeIds: [] };
+    }
 
-      // Sinon c'est transparent, on continue
-      const nextEdges =
-        direction === "downstream"
-          ? edges.filter((e) => e.source_node_id === startNodeId)
-          : edges.filter((e) => e.target_node_id === startNodeId);
+    // Sinon c'est transparent, on continue
+    const nextEdges = direction === 'downstream'
+      ? edges.filter(e => e.source_node_id === startNodeId)
+      : edges.filter(e => e.target_node_id === startNodeId);
 
-      if (nextEdges.length === 0) {
-        return { keyPointId: null, totalLength: 0, traversedEdgeIds: [] };
-      }
+    if (nextEdges.length === 0) {
+      return { keyPointId: null, totalLength: 0, traversedEdgeIds: [] };
+    }
 
-      // Prendre le premier chemin (simplification - on suppose un seul chemin à travers les protections)
-      const nextEdge = nextEdges[0];
-      const nextNodeId = direction === "downstream" ? nextEdge.target_node_id : nextEdge.source_node_id;
+    // Prendre le premier chemin (simplification - on suppose un seul chemin à travers les protections)
+    const nextEdge = nextEdges[0];
+    const nextNodeId = direction === 'downstream' ? nextEdge.target_node_id : nextEdge.source_node_id;
+    
+    // Longueur définie ou estimation
+    const { length: edgeLength } = getEdgeLength(nextEdge);
 
-      // Longueur définie ou estimation
-      const { length: edgeLength } = getEdgeLength(nextEdge);
-
-      const result = findNextKeyPoint(nextNodeId, direction, visited);
-
-      return {
-        keyPointId: result.keyPointId,
-        totalLength: edgeLength + result.totalLength,
-        traversedEdgeIds: [nextEdge.id, ...result.traversedEdgeIds],
-      };
-    },
-    [edges, items, isKeyPoint, getEdgeLength],
-  );
+    const result = findNextKeyPoint(nextNodeId, direction, visited);
+    
+    return {
+      keyPointId: result.keyPointId,
+      totalLength: edgeLength + result.totalLength,
+      traversedEdgeIds: [nextEdge.id, ...result.traversedEdgeIds],
+    };
+  }, [edges, items, isKeyPoint, getEdgeLength]);
 
   // Calculer la longueur totale d'un segment (en traversant les nœuds transparents)
   // Si pas de longueur définie, essayer d'estimer depuis la position des blocs
-  const calculateSegmentLength = useCallback(
-    (
-      edge: SchemaEdge,
-    ): {
-      totalLength: number;
-      realTargetId: string | null;
-      allEdgeIds: string[];
-      hasDefinedLength: boolean; // True si au moins une longueur est définie
-    } => {
-      const targetItem = items.find((i) => i.id === edge.target_node_id);
+  const calculateSegmentLength = useCallback((edge: SchemaEdge): {
+    totalLength: number;
+    realTargetId: string | null;
+    allEdgeIds: string[];
+    hasDefinedLength: boolean; // True si au moins une longueur est définie
+  } => {
+    const targetItem = items.find(i => i.id === edge.target_node_id);
+    
+    // Longueur définie ou estimation
+    const { length: edgeLength, isDefined } = getEdgeLength(edge);
+    let hasDefinedLength = isDefined;
+    
+    if (!targetItem) {
+      return { totalLength: edgeLength, realTargetId: null, allEdgeIds: [edge.id], hasDefinedLength };
+    }
 
-      // Longueur définie ou estimation
-      const { length: edgeLength, isDefined } = getEdgeLength(edge);
-      let hasDefinedLength = isDefined;
+    // Si la destination est un point clé, on s'arrête
+    if (isKeyPoint(targetItem)) {
+      return { totalLength: edgeLength, realTargetId: edge.target_node_id, allEdgeIds: [edge.id], hasDefinedLength };
+    }
 
-      if (!targetItem) {
-        return { totalLength: edgeLength, realTargetId: null, allEdgeIds: [edge.id], hasDefinedLength };
-      }
-
-      // Si la destination est un point clé, on s'arrête
-      if (isKeyPoint(targetItem)) {
-        return { totalLength: edgeLength, realTargetId: edge.target_node_id, allEdgeIds: [edge.id], hasDefinedLength };
-      }
-
-      // Sinon, continuer à traverser
-      const { keyPointId, totalLength, traversedEdgeIds } = findNextKeyPoint(edge.target_node_id, "downstream");
-
-      // Vérifier si les câbles traversés ont des longueurs définies
-      for (const eid of traversedEdgeIds) {
-        const e = edges.find((x) => x.id === eid);
-        if (e?.length_m && e.length_m > 0) hasDefinedLength = true;
-      }
-
-      return {
-        totalLength: edgeLength + totalLength,
-        realTargetId: keyPointId,
-        allEdgeIds: [edge.id, ...traversedEdgeIds],
-        hasDefinedLength,
-      };
-    },
-    [items, edges, isKeyPoint, findNextKeyPoint, getEdgeLength],
-  );
+    // Sinon, continuer à traverser
+    const { keyPointId, totalLength, traversedEdgeIds } = findNextKeyPoint(edge.target_node_id, 'downstream');
+    
+    // Vérifier si les câbles traversés ont des longueurs définies
+    for (const eid of traversedEdgeIds) {
+      const e = edges.find(x => x.id === eid);
+      if (e?.length_m && e.length_m > 0) hasDefinedLength = true;
+    }
+    
+    return {
+      totalLength: edgeLength + totalLength,
+      realTargetId: keyPointId,
+      allEdgeIds: [edge.id, ...traversedEdgeIds],
+      hasDefinedLength,
+    };
+  }, [items, edges, isKeyPoint, findNextKeyPoint, getEdgeLength]);
 
   // Déterminer la tension pour un segment de câble (source → target)
-  const getSegmentVoltage = useCallback(
-    (sourceItem: ElectricalItem, targetItem: ElectricalItem): number => {
-      // Priorité 1: tension de sortie de la source (ex: MPPT vers batterie = 12V)
-      if (sourceItem.tension_sortie_volts) {
-        return sourceItem.tension_sortie_volts;
-      }
-      // Priorité 2: tension unique de la source
-      if (sourceItem.tension_volts) {
-        return sourceItem.tension_volts;
-      }
-      // Priorité 3: tension d'entrée de la destination (ex: vers onduleur = 12V DC)
-      if (targetItem.tension_entree_volts) {
-        return targetItem.tension_entree_volts;
-      }
-      // Priorité 4: tension unique de la destination
-      if (targetItem.tension_volts) {
-        return targetItem.tension_volts;
-      }
-      // Priorité 5: extraire du nom de la source
-      const fromSourceName = extractVoltageFromName(sourceItem.nom_accessoire);
-      if (fromSourceName) {
-        return fromSourceName;
-      }
-      // Priorité 6: extraire du nom de la destination
-      const fromTargetName = extractVoltageFromName(targetItem.nom_accessoire);
-      if (fromTargetName) {
-        return fromTargetName;
-      }
-      // Défaut: 12V
-      return 12;
-    },
-    [extractVoltageFromName],
-  );
+  const getSegmentVoltage = useCallback((sourceItem: ElectricalItem, targetItem: ElectricalItem): number => {
+    // Priorité 1: tension de sortie de la source (ex: MPPT vers batterie = 12V)
+    if (sourceItem.tension_sortie_volts) {
+      return sourceItem.tension_sortie_volts;
+    }
+    // Priorité 2: tension unique de la source
+    if (sourceItem.tension_volts) {
+      return sourceItem.tension_volts;
+    }
+    // Priorité 3: tension d'entrée de la destination (ex: vers onduleur = 12V DC)
+    if (targetItem.tension_entree_volts) {
+      return targetItem.tension_entree_volts;
+    }
+    // Priorité 4: tension unique de la destination
+    if (targetItem.tension_volts) {
+      return targetItem.tension_volts;
+    }
+    // Priorité 5: extraire du nom de la source
+    const fromSourceName = extractVoltageFromName(sourceItem.nom_accessoire);
+    if (fromSourceName) {
+      return fromSourceName;
+    }
+    // Priorité 6: extraire du nom de la destination
+    const fromTargetName = extractVoltageFromName(targetItem.nom_accessoire);
+    if (fromTargetName) {
+      return fromTargetName;
+    }
+    // Défaut: 12V
+    return 12;
+  }, [extractVoltageFromName]);
 
   // Calculer la puissance qui traverse un câble spécifique
-  const calculateEdgePower = useCallback(
-    (edge: SchemaEdge): { power: number; details: PowerDetail[] } => {
-      const sourceItem = items.find((i) => i.id === edge.source_node_id);
-      const targetItem = items.find((i) => i.id === edge.target_node_id);
+  const calculateEdgePower = useCallback((edge: SchemaEdge): { power: number; details: PowerDetail[] } => {
+    const sourceItem = items.find(i => i.id === edge.source_node_id);
+    const targetItem = items.find(i => i.id === edge.target_node_id);
+    
+    if (!sourceItem || !targetItem) {
+      return { power: 0, details: [] };
+    }
 
-      if (!sourceItem || !targetItem) {
-        return { power: 0, details: [] };
-      }
-
-      const sourceIsDistribution = isDistributionPoint(sourceItem);
-      const sourceIsTransparent = isTransparentNode(sourceItem);
-
-      // CAS 1: La source a une puissance propre (producteur, consommateur)
-      if (sourceItem.puissance_watts && sourceItem.puissance_watts > 0) {
-        const power = sourceItem.puissance_watts * (sourceItem.quantite || 1);
-        return {
-          power,
-          details: [
-            {
-              id: sourceItem.id,
-              nom: sourceItem.nom_accessoire,
-              puissance: sourceItem.puissance_watts,
-              quantite: sourceItem.quantite || 1,
-              total: power,
-            },
-          ],
-        };
-      }
-
-      // CAS 2: La source est un point de distribution → sommer tout ce qui arrive
-      if (sourceIsDistribution) {
-        // Sommer toutes les puissances en amont, SAUF celles qui viennent de la destination
-        const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
-        return { power: result.total, details: result.details };
-      }
-
-      // CAS 3: La source est transparente → propager ce qui vient d'amont
-      if (sourceIsTransparent) {
-        const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
-        return { power: result.total, details: result.details };
-      }
-
-      // CAS 4: La source est un convertisseur/régulateur → propager la puissance d'amont
-      // La puissance se conserve, seule la tension change
+    const sourceIsDistribution = isDistributionPoint(sourceItem);
+    const sourceIsTransparent = isTransparentNode(sourceItem);
+    
+    // CAS 1: La source a une puissance propre (producteur, consommateur)
+    if (sourceItem.puissance_watts && sourceItem.puissance_watts > 0) {
+      const power = sourceItem.puissance_watts * (sourceItem.quantite || 1);
+      return { 
+        power, 
+        details: [{
+          id: sourceItem.id,
+          nom: sourceItem.nom_accessoire,
+          puissance: sourceItem.puissance_watts,
+          quantite: sourceItem.quantite || 1,
+          total: power
+        }]
+      };
+    }
+    
+    // CAS 2: La source est un point de distribution → sommer tout ce qui arrive
+    if (sourceIsDistribution) {
+      // Sommer toutes les puissances en amont, SAUF celles qui viennent de la destination
       const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
       return { power: result.total, details: result.details };
-    },
-    [items, isDistributionPoint, isTransparentNode, sumUpstreamPowersWithDetails],
-  );
+    }
+    
+    // CAS 3: La source est transparente → propager ce qui vient d'amont
+    if (sourceIsTransparent) {
+      const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
+      return { power: result.total, details: result.details };
+    }
+    
+    // CAS 4: La source est un convertisseur/régulateur → propager la puissance d'amont
+    // La puissance se conserve, seule la tension change
+    const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
+    return { power: result.total, details: result.details };
+  }, [items, isDistributionPoint, isTransparentNode, sumUpstreamPowersWithDetails]);
 
   // Interface pour les résultats de calcul
   interface EdgeCalculation {
@@ -3015,48 +2996,48 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const calculateAllEdgeSections = useCallback((): EdgeCalculation[] => {
     const calculations: EdgeCalculation[] = [];
     const processedEdges = new Set<string>(); // Éviter de traiter deux fois les mêmes segments
-
+    
     for (const edge of edges) {
       // Si déjà traité dans un segment, passer
       if (processedEdges.has(edge.id)) continue;
-
-      const sourceItem = items.find((i) => i.id === edge.source_node_id);
-      const targetItem = items.find((i) => i.id === edge.target_node_id);
-
+      
+      const sourceItem = items.find(i => i.id === edge.source_node_id);
+      const targetItem = items.find(i => i.id === edge.target_node_id);
+      
       if (!sourceItem || !targetItem) continue;
-
+      
       // Ignorer les câbles qui partent d'un point transparent (ils seront traités via le segment)
       if (isTransparentNode(sourceItem)) {
         continue;
       }
-
+      
       // 1. Calculer la longueur du segment (en traversant les nœuds transparents)
       const segmentInfo = calculateSegmentLength(edge);
-      const realTarget = segmentInfo.realTargetId ? items.find((i) => i.id === segmentInfo.realTargetId) : targetItem;
-
+      const realTarget = segmentInfo.realTargetId ? items.find(i => i.id === segmentInfo.realTargetId) : targetItem;
+      
       // Marquer tous les câbles du segment comme traités
-      segmentInfo.allEdgeIds.forEach((id) => processedEdges.add(id));
-
+      segmentInfo.allEdgeIds.forEach(id => processedEdges.add(id));
+      
       // 2. Calculer la puissance qui traverse ce câble
       const { power, details } = calculateEdgePower(edge);
-
+      
       // 3. Déterminer la tension du segment (utiliser la vraie destination)
       const voltage = getSegmentVoltage(sourceItem, realTarget || targetItem);
-
+      
       // 4. Calculer l'intensité
       const intensity = power > 0 && voltage > 0 ? power / voltage : 0;
-
+      
       // 5. Calculer la section recommandée avec la longueur TOTALE du segment
       let section = 0;
       if (power > 0 && segmentInfo.totalLength > 0) {
         section = quickCalculate(power, segmentInfo.totalLength, voltage);
       }
-
+      
       // Ajouter un calcul pour CHAQUE câble du segment (tous avec la même section)
       for (const segmentEdgeId of segmentInfo.allEdgeIds) {
-        const segEdge = edges.find((e) => e.id === segmentEdgeId);
-        const segTarget = segEdge ? items.find((i) => i.id === segEdge.target_node_id) : null;
-
+        const segEdge = edges.find(e => e.id === segmentEdgeId);
+        const segTarget = segEdge ? items.find(i => i.id === segEdge.target_node_id) : null;
+        
         calculations.push({
           edgeId: segmentEdgeId,
           power,
@@ -3076,52 +3057,43 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         });
       }
     }
-
+    
     return calculations;
-  }, [
-    edges,
-    items,
-    isTransparentNode,
-    calculateSegmentLength,
-    calculateEdgePower,
-    getSegmentVoltage,
-    quickCalculate,
-    getEdgeLength,
-  ]);
+  }, [edges, items, isTransparentNode, calculateSegmentLength, calculateEdgePower, getSegmentVoltage, quickCalculate, getEdgeLength]);
 
   // Appliquer les sections calculées à tous les câbles
   const applyCalculatedSections = useCallback(() => {
     const calculations = calculateAllEdgeSections();
-
+    
     if (calculations.length === 0) {
       toast.error("Aucun câble à calculer");
       return;
     }
-
+    
     // Sauvegarder l'état actuel pour Undo
     saveToHistory();
-
+    
     // Compter les longueurs estimées
-    const estimatedLengths = calculations.filter((c) => !c.hasDefinedLength && c.totalLength > 0);
-
+    const estimatedLengths = calculations.filter(c => !c.hasDefinedLength && c.totalLength > 0);
+    
     // Mettre à jour les edges avec les nouvelles sections ET les longueurs estimées
-    setEdges((prevEdges) => {
-      return prevEdges.map((edge) => {
-        const calc = calculations.find((c) => c.edgeId === edge.id);
+    setEdges(prevEdges => {
+      return prevEdges.map(edge => {
+        const calc = calculations.find(c => c.edgeId === edge.id);
         if (calc) {
           const updates: Partial<SchemaEdge> = {};
-
+          
           // Mettre à jour la section si calculée
           if (calc.section > 0) {
             updates.section_mm2 = calc.section;
             updates.section = `${calc.section}mm²`;
           }
-
+          
           // Sauvegarder la longueur estimée si pas de longueur définie
           if (!edge.length_m && calc.length > 0) {
             updates.length_m = calc.length;
           }
-
+          
           if (Object.keys(updates).length > 0) {
             return { ...edge, ...updates };
           }
@@ -3129,11 +3101,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         return edge;
       });
     });
-
+    
     // Afficher un résumé
-    const updated = calculations.filter((c) => c.section > 0).length;
-    const skipped = calculations.filter((c) => c.section === 0).length;
-
+    const updated = calculations.filter(c => c.section > 0).length;
+    const skipped = calculations.filter(c => c.section === 0).length;
+    
     if (updated > 0) {
       toast.success(`${updated} câble(s) mis à jour`);
       if (estimatedLengths.length > 0) {
@@ -3175,7 +3147,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       // Déterminer si on a des points de distribution
       const sourceIsDistribution = isDistributionPoint(sourceItem);
       const destIsDistribution = isDistributionPoint(destItem);
-
+      
       console.log("=== ANALYSE CIRCUIT ===");
       console.log(`Source: "${sourceItem.nom_accessoire}" (distribution: ${sourceIsDistribution})`);
       console.log(`Destination: "${destItem.nom_accessoire}" (distribution: ${destIsDistribution})`);
@@ -3183,7 +3155,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       // Trouver la puissance - logique améliorée avec somme pour distribution
       let power = 0;
       let voltage = 12; // Tension par défaut
-
+      
       // CAS 1: Source est un point de distribution (ex: Busbar → Batterie)
       // → Sommer toutes les puissances EN AMONT du busbar
       if (sourceIsDistribution) {
@@ -3221,7 +3193,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           console.log(`[Circuit] Pas de puissance directe, recherche en amont de "${sourceItem.nom_accessoire}"...`);
           power = findUpstreamPower(sourceNodeId, new Set());
           voltage = getOutputVoltage(sourceItem);
-
+          
           // Si toujours rien, descendre depuis la destination
           if (power === 0) {
             console.log(`[Circuit] Pas de puissance en amont, recherche en aval de "${destItem.nom_accessoire}"...`);
@@ -3243,12 +3215,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       // Calculer l'intensité et la section recommandée
       let calculatedSection: number | null = null;
       let intensity = 0;
-
+      
       if (power > 0 && voltage > 0) {
         intensity = power / voltage;
         console.log(`[Circuit] Intensité calculée: I = ${power}W / ${voltage}V = ${intensity.toFixed(2)}A`);
       }
-
+      
       if (power > 0 && totalLength > 0) {
         // Le quickCalculate utilise 12V par défaut, on ajuste si nécessaire
         calculatedSection = quickCalculate(power, totalLength, voltage);
@@ -3284,8 +3256,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       setEdges((prev) =>
         prev.map((edge) => {
           if (edgeIds.includes(edge.id)) {
-            return {
-              ...edge,
+            return { 
+              ...edge, 
               circuitId,
               // Appliquer la section calculée si pas déjà définie manuellement
               section_mm2: edge.section_mm2 || calculatedSection || undefined,
@@ -3303,19 +3275,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       setCircuitSource(null);
       setCircuitDest(null);
     },
-    [
-      items,
-      edges,
-      findEdgesBetweenNodes,
-      quickCalculate,
-      findUpstreamPower,
-      findDownstreamPower,
-      sumUpstreamPowers,
-      sumDownstreamPowers,
-      isDistributionPoint,
-      getOutputVoltage,
-      getInputVoltage,
-    ],
+    [items, edges, findEdgesBetweenNodes, quickCalculate, findUpstreamPower, findDownstreamPower, sumUpstreamPowers, sumDownstreamPowers, isDistributionPoint, getOutputVoltage, getInputVoltage],
   );
 
   // Calculer la section pour un circuit entier
@@ -3522,13 +3482,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       console.log("[Schema] loadSchemaData - no projectId, skipping");
       return;
     }
-
+    
     try {
       const storageKey = `electrical_schema_${projectId}`;
       const stored = localStorage.getItem(storageKey);
       console.log("[Schema] loadSchemaData - key:", storageKey);
       console.log("[Schema] loadSchemaData - stored data exists:", !!stored);
-
+      
       if (stored) {
         const parsed = JSON.parse(stored);
         console.log("[Schema] loadSchemaData - parsed data:", {
@@ -3538,15 +3498,20 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           annotations: parsed.annotations?.length || 0,
           circuits: Object.keys(parsed.circuits || {}).length,
         });
-
+        
         // Charger les edges
         if (parsed.edges) {
           setEdges(parsed.edges);
         }
-
+        
         // Charger les handles
         if (parsed.nodeHandles) {
           setNodeHandles(parsed.nodeHandles);
+        }
+        
+        // Charger les numéros de circuit par handle
+        if (parsed.nodeHandleCircuits) {
+          setNodeHandleCircuits(parsed.nodeHandleCircuits);
         }
 
         // Charger les calques sauvegardés
@@ -3564,17 +3529,17 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           console.log("[Schema] loadSchemaData - no items in localStorage");
           setItems([]);
         }
-
+        
         // Charger les annotations sauvegardées
         if (parsed.annotations && parsed.annotations.length > 0) {
           setAnnotations(parsed.annotations);
         }
-
+        
         // Charger les circuits sauvegardés
         if (parsed.circuits) {
           setCircuits(parsed.circuits);
         }
-
+        
         console.log("[Schema] loadSchemaData - DONE loading from localStorage");
       } else {
         console.log("[Schema] loadSchemaData - no localStorage data found");
@@ -3749,11 +3714,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     console.log("[Schema] loadScenarioItems enriched:", {
       total: expenses.length,
       withType: enrichedData.length,
-      items: enrichedData.map((i: any) => ({
-        nom: i.nom_accessoire,
-        type: i.type_electrique,
-        tension: i.tension_volts,
-      })),
+      items: enrichedData.map((i: any) => ({ nom: i.nom_accessoire, type: i.type_electrique, tension: i.tension_volts })),
     });
 
     setScenarioItems(enrichedData);
@@ -3788,45 +3749,43 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
       // Créer un index par ID pour recherche rapide
       const catalogById: Record<string, any> = {};
-      catalogItems.forEach((c) => {
-        catalogById[c.id] = c;
-      });
+      catalogItems.forEach(c => { catalogById[c.id] = c; });
 
       // Sauvegarder l'état pour Undo
       saveToHistory();
 
       // Mettre à jour les items
       let updatedCount = 0;
-      const updatedItems = items.map((item) => {
+      const updatedItems = items.map(item => {
         let catalogMatch: any = null;
-
+        
         // 1. Chercher par accessory_id si disponible
         if (item.accessory_id && catalogById[item.accessory_id]) {
           catalogMatch = catalogById[item.accessory_id];
         }
-
+        
         // 2. Sinon chercher par nom exact
         if (!catalogMatch) {
-          catalogMatch = catalogItems.find((c) => c.nom?.toLowerCase() === item.nom_accessoire?.toLowerCase());
+          catalogMatch = catalogItems.find(c => 
+            c.nom?.toLowerCase() === item.nom_accessoire?.toLowerCase()
+          );
         }
-
+        
         // 3. Sinon chercher par nom contenu
         if (!catalogMatch) {
-          catalogMatch = catalogItems.find(
-            (c) =>
-              c.nom &&
-              item.nom_accessoire &&
-              (item.nom_accessoire.toLowerCase().includes(c.nom.toLowerCase()) ||
-                c.nom.toLowerCase().includes(item.nom_accessoire.toLowerCase())),
+          catalogMatch = catalogItems.find(c => 
+            c.nom && item.nom_accessoire && 
+            (item.nom_accessoire.toLowerCase().includes(c.nom.toLowerCase()) ||
+             c.nom.toLowerCase().includes(item.nom_accessoire.toLowerCase()))
           );
         }
 
         if (catalogMatch && catalogMatch.type_electrique) {
-          const hasChanges =
+          const hasChanges = 
             item.type_electrique !== catalogMatch.type_electrique ||
             item.puissance_watts !== catalogMatch.puissance_watts ||
             item.tension_volts !== catalogMatch.tension_volts;
-
+          
           if (hasChanges) {
             updatedCount++;
             console.log(`[Refresh] ${item.nom_accessoire}: ${item.type_electrique} → ${catalogMatch.type_electrique}`);
@@ -3851,6 +3810,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       } else {
         toast.info("Aucune mise à jour nécessaire");
       }
+
     } catch (err) {
       console.error("[Refresh] Erreur:", err);
       toast.error("Erreur lors du rafraîchissement");
@@ -3936,10 +3896,17 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   );
 
   // Modifier un item dans le schéma
-  const updateItemInSchema = useCallback((itemId: string, updates: Partial<ElectricalItem>) => {
-    setItems((prev) => prev.map((item) => (item.id === itemId ? { ...item, ...updates } : item)));
-    toast.success("Accessoire modifié");
-  }, []);
+  const updateItemInSchema = useCallback(
+    (itemId: string, updates: Partial<ElectricalItem>) => {
+      setItems((prev) =>
+        prev.map((item) =>
+          item.id === itemId ? { ...item, ...updates } : item
+        )
+      );
+      toast.success("Accessoire modifié");
+    },
+    []
+  );
 
   // État pour la modale d'édition
   const [editingItem, setEditingItem] = useState<ElectricalItem | null>(null);
@@ -3966,9 +3933,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // Sauvegarder les modifications
   const saveEditedItem = useCallback(() => {
     if (!editingItem) return;
-
+    
     const updates: Partial<ElectricalItem> = {};
-
+    
     if (editFormData.puissance_watts) {
       updates.puissance_watts = parseFloat(editFormData.puissance_watts);
     }
@@ -3984,12 +3951,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     if (editFormData.intensite_amperes) {
       updates.intensite_amperes = parseFloat(editFormData.intensite_amperes);
     }
-
+    
     // Si tensions entrée et sortie sont identiques, utiliser tension_volts
     if (updates.tension_entree_volts === updates.tension_sortie_volts) {
       updates.tension_volts = updates.tension_entree_volts;
     }
-
+    
     updateItemInSchema(editingItem.id, updates);
     setEditingItem(null);
     toast.success("Modifications enregistrées");
@@ -4056,6 +4023,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         const itemLayerId = item.layerId || "layer-default";
         const isVisible = visibleLayerIds.has(itemLayerId);
         const isLocked = lockedLayerIds.has(itemLayerId);
+        const handleCircuits = nodeHandleCircuits[item.id] || {};
 
         return {
           id: item.id,
@@ -4066,15 +4034,17 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           data: {
             item,
             handles,
+            handleCircuits,
             isLocked, // Passer l'info de verrouillage au composant
             onUpdateHandles: updateNodeHandles,
+            onUpdateHandleCircuit: updateHandleCircuit,
             onDeleteItem: deleteItemFromSchema,
             onEditItem: openEditModal,
           },
         };
       }) as any;
     });
-  }, [items, nodeHandles, updateNodeHandles, deleteItemFromSchema, openEditModal, layers]);
+  }, [items, nodeHandles, nodeHandleCircuits, updateNodeHandles, updateHandleCircuit, deleteItemFromSchema, openEditModal, layers]);
 
   // Fonction pour extraire le côté du handle (right, left, top, bottom)
   const getSideFromHandle = (handle: string | null | undefined): string => {
@@ -4174,7 +4144,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             // Indiquer de quel côté faire le virage (près du plus petit bloc)
             turnNearTarget: targetHeight < sourceHeight,
             // Passer tous les nodes pour le contournement des obstacles
-            allNodes: nodes.filter((n) => n.id !== edge.source_node_id && n.id !== edge.target_node_id),
+            allNodes: nodes.filter(n => n.id !== edge.source_node_id && n.id !== edge.target_node_id),
           },
           label: cableLabel,
           labelStyle: { fill: edgeColor, fontWeight: 600, fontSize: 11 },
@@ -4268,8 +4238,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       });
 
       // Calculer la section si pas déjà définie
-      const calculatedSection =
-        circuit.power > 0 && totalLength > 0 ? quickCalculate(circuit.power, totalLength) : null;
+      const calculatedSection = circuit.power > 0 && totalLength > 0 
+        ? quickCalculate(circuit.power, totalLength) 
+        : null;
 
       return {
         circuitId,
@@ -4314,6 +4285,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         })),
         edges,
         nodeHandles,
+        nodeHandleCircuits, // Sauvegarder les numéros de circuit par handle
         items, // Sauvegarder aussi les items ajoutés au schéma
         layers, // Sauvegarder les calques
         annotations, // Sauvegarder les annotations
@@ -4333,7 +4305,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     setItems([]);
     setEdges([]);
     setNodeHandles({});
+    setNodeHandleCircuits({});
     toast.success("Schéma réinitialisé");
+  };
   };
 
   // Calculs résumé
@@ -4529,7 +4503,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           <div className="flex items-center gap-1">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={handleUndoBlocs} disabled={!canUndoBlocs} className="px-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleUndoBlocs} 
+                  disabled={!canUndoBlocs}
+                  className="px-2"
+                >
                   <Undo className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
@@ -4537,7 +4517,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={handleRedoBlocs} disabled={!canRedoBlocs} className="px-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleRedoBlocs} 
+                  disabled={!canRedoBlocs}
+                  className="px-2"
+                >
                   <Redo className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
@@ -4997,7 +4983,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   <RefreshCw className="h-3.5 w-3.5" />
                   Rafraîchir types
                 </Button>
-
+                
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -5019,25 +5005,23 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                         Calcule la section de chaque câble selon le flux de puissance qui le traverse
                       </p>
                     </div>
-
+                    
                     <div className="p-3 space-y-3">
                       {/* Aperçu des calculs */}
                       {(() => {
                         const calculations = calculateAllEdgeSections();
-                        const withPower = calculations.filter((c) => c.power > 0);
-                        const withoutPower = calculations.filter((c) => c.power === 0);
-
+                        const withPower = calculations.filter(c => c.power > 0);
+                        const withoutPower = calculations.filter(c => c.power === 0);
+                        
                         // Grouper par segment (première occurrence de chaque segment)
                         const uniqueSegments = withPower.filter((calc, index) => {
-                          const firstIndex = withPower.findIndex(
-                            (c) =>
-                              c.allEdgeIdsInSegment &&
-                              calc.allEdgeIdsInSegment &&
-                              c.allEdgeIdsInSegment[0] === calc.allEdgeIdsInSegment[0],
+                          const firstIndex = withPower.findIndex(c => 
+                            c.allEdgeIdsInSegment && calc.allEdgeIdsInSegment &&
+                            c.allEdgeIdsInSegment[0] === calc.allEdgeIdsInSegment[0]
                           );
                           return firstIndex === index;
                         });
-
+                        
                         return (
                           <>
                             {/* Stats */}
@@ -5055,72 +5039,52 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                 <div className="font-bold text-lg text-gray-600">{withoutPower.length}</div>
                               </div>
                             </div>
-
+                            
                             {/* Liste des segments */}
                             {uniqueSegments.length > 0 && (
                               <div className="max-h-64 overflow-y-auto space-y-1.5 border rounded p-2 bg-gray-50">
                                 {uniqueSegments.map((calc) => (
-                                  <div
-                                    key={calc.edgeId}
-                                    className={`text-xs bg-white rounded p-2 border ${calc.isPartOfSegment ? "border-l-4 border-l-amber-400" : ""}`}
-                                  >
+                                  <div key={calc.edgeId} className={`text-xs bg-white rounded p-2 border ${calc.isPartOfSegment ? 'border-l-4 border-l-amber-400' : ''}`}>
                                     <div className="flex justify-between items-center">
-                                      <span
-                                        className="text-gray-700 truncate flex-1"
-                                        title={`${calc.sourceNom} → ${calc.realTargetNom}`}
-                                      >
-                                        {calc.sourceNom.length > 20
-                                          ? calc.sourceNom.substring(0, 20) + "..."
-                                          : calc.sourceNom}
+                                      <span className="text-gray-700 truncate flex-1" title={`${calc.sourceNom} → ${calc.realTargetNom}`}>
+                                        {calc.sourceNom.length > 20 ? calc.sourceNom.substring(0, 20) + '...' : calc.sourceNom}
                                         <span className="text-gray-400 mx-1">→</span>
-                                        {calc.realTargetNom.length > 20
-                                          ? calc.realTargetNom.substring(0, 20) + "..."
-                                          : calc.realTargetNom}
+                                        {calc.realTargetNom.length > 20 ? calc.realTargetNom.substring(0, 20) + '...' : calc.realTargetNom}
                                       </span>
-                                      <span className="font-bold text-emerald-700 ml-2 bg-emerald-50 px-1.5 py-0.5 rounded">
-                                        {calc.section}mm²
-                                      </span>
+                                      <span className="font-bold text-emerald-700 ml-2 bg-emerald-50 px-1.5 py-0.5 rounded">{calc.section}mm²</span>
                                     </div>
                                     <div className="text-[10px] text-gray-500 mt-1 flex flex-wrap gap-x-2">
                                       <span>⚡ {calc.power}W</span>
                                       <span>@ {calc.voltage}V</span>
                                       <span>= {calc.intensity.toFixed(1)}A</span>
                                       <span className={calc.hasDefinedLength ? "text-blue-600" : "text-amber-500"}>
-                                        📏 {calc.totalLength > 0 ? calc.totalLength.toFixed(1) : "?"}m
+                                        📏 {calc.totalLength > 0 ? calc.totalLength.toFixed(1) : '?'}m
                                         {!calc.hasDefinedLength && calc.totalLength > 0 && " (estimé)"}
                                         {calc.totalLength === 0 && " (non défini)"}
                                       </span>
                                       {calc.isPartOfSegment && (
-                                        <span className="text-amber-600">
-                                          ({calc.allEdgeIdsInSegment.length} câbles)
-                                        </span>
+                                        <span className="text-amber-600">({calc.allEdgeIdsInSegment.length} câbles)</span>
                                       )}
                                     </div>
                                     {calc.details.length > 1 && (
                                       <div className="text-[10px] text-purple-600 mt-0.5 bg-purple-50 rounded px-1 py-0.5">
-                                        📋{" "}
-                                        {calc.details
-                                          .map(
-                                            (d) => `${d.nom.substring(0, 12)}${d.quantite > 1 ? `×${d.quantite}` : ""}`,
-                                          )
-                                          .join(" + ")}
+                                        📋 {calc.details.map(d => `${d.nom.substring(0, 12)}${d.quantite > 1 ? `×${d.quantite}` : ''}`).join(' + ')}
                                       </div>
                                     )}
                                   </div>
                                 ))}
                               </div>
                             )}
-
+                            
                             {uniqueSegments.length === 0 && (
                               <div className="text-xs text-amber-600 bg-amber-50 rounded p-2">
-                                ⚠️ Aucun segment ne peut être calculé. Vérifiez que les équipements ont une puissance
-                                définie.
+                                ⚠️ Aucun segment ne peut être calculé. Vérifiez que les équipements ont une puissance définie.
                               </div>
                             )}
                           </>
                         );
                       })()}
-
+                      
                       {/* Bouton appliquer */}
                       <Button
                         className="w-full bg-emerald-600 hover:bg-emerald-700"
@@ -5131,11 +5095,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                         <Zap className="h-4 w-4 mr-2" />
                         Appliquer les sections calculées
                       </Button>
-
+                      
                       {/* Note */}
                       <p className="text-[10px] text-gray-500 leading-tight">
-                        💡 Les tensions d'entrée/sortie des convertisseurs (MPPT, onduleur...) sont utilisées pour
-                        calculer l'intensité correcte sur chaque segment.
+                        💡 Les tensions d'entrée/sortie des convertisseurs (MPPT, onduleur...) sont utilisées pour calculer l'intensité correcte sur chaque segment.
                       </p>
                     </div>
                   </PopoverContent>
@@ -5299,15 +5262,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                       {/* Source et Destination côte à côte */}
                       <div className="grid grid-cols-2 gap-3">
                         {/* Source */}
-                        <div
-                          className={`p-2 rounded border ${circuitSource ? "bg-green-50 border-green-300" : "bg-white border-dashed border-gray-300"}`}
-                        >
+                        <div className={`p-2 rounded border ${circuitSource ? 'bg-green-50 border-green-300' : 'bg-white border-dashed border-gray-300'}`}>
                           <div className="text-xs font-medium text-gray-500 mb-1">Source</div>
                           {circuitSource ? (
                             <div className="flex items-center gap-2">
                               <div className="w-2 h-2 rounded-full bg-green-500"></div>
                               <span className="text-sm font-medium text-gray-800 truncate">
-                                {items.find((i) => i.id === circuitSource)?.nom_accessoire || "Inconnu"}
+                                {items.find((i) => i.id === circuitSource)?.nom_accessoire || 'Inconnu'}
                               </span>
                             </div>
                           ) : (
@@ -5319,15 +5280,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                         </div>
 
                         {/* Destination */}
-                        <div
-                          className={`p-2 rounded border ${circuitDest ? "bg-blue-50 border-blue-300" : circuitSource ? "bg-white border-dashed border-amber-300" : "bg-gray-50 border-gray-200"}`}
-                        >
+                        <div className={`p-2 rounded border ${circuitDest ? 'bg-blue-50 border-blue-300' : circuitSource ? 'bg-white border-dashed border-amber-300' : 'bg-gray-50 border-gray-200'}`}>
                           <div className="text-xs font-medium text-gray-500 mb-1">Destination</div>
                           {circuitDest ? (
                             <div className="flex items-center gap-2">
                               <div className="w-2 h-2 rounded-full bg-blue-500"></div>
                               <span className="text-sm font-medium text-gray-800 truncate">
-                                {items.find((i) => i.id === circuitDest)?.nom_accessoire || "Inconnu"}
+                                {items.find((i) => i.id === circuitDest)?.nom_accessoire || 'Inconnu'}
                               </span>
                             </div>
                           ) : circuitSource ? (
@@ -5336,219 +5295,199 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                               Cliquez sur un bloc
                             </div>
                           ) : (
-                            <div className="text-sm text-gray-400">En attente...</div>
+                            <div className="text-sm text-gray-400">
+                              En attente...
+                            </div>
                           )}
                         </div>
                       </div>
 
                       {/* Calcul de section (affiché quand source et dest sont définis) */}
-                      {circuitSource &&
-                        circuitDest &&
-                        (() => {
-                          // Calculer les infos du circuit
-                          const sourceItem = items.find((i) => i.id === circuitSource);
-                          const destItem = items.find((i) => i.id === circuitDest);
-                          const edgeIds = findEdgesBetweenNodes(circuitSource, circuitDest);
-
-                          // Calculer la longueur totale
-                          let totalLength = 0;
-                          edgeIds.forEach((edgeId) => {
-                            const edge = edges.find((e) => e.id === edgeId);
-                            if (edge?.length_m) totalLength += edge.length_m;
-                          });
-
-                          // Détecter si points de distribution
-                          const sourceIsDistribution = sourceItem ? isDistributionPoint(sourceItem) : false;
-                          const destIsDistribution = destItem ? isDistributionPoint(destItem) : false;
-
-                          // Puissance et tension du circuit - logique améliorée
-                          let power = 0;
-                          let voltage = 12; // Défaut
-                          let powerSource = "";
-                          let powerDetails: {
-                            id: string;
-                            nom: string;
-                            puissance: number;
-                            quantite: number;
-                            total: number;
-                          }[] = [];
-
-                          // CAS 1: Source est un point de distribution
-                          if (sourceIsDistribution && sourceItem) {
-                            const result = sumUpstreamPowersWithDetails(circuitSource, new Set([circuitDest]));
-                            power = result.total;
-                            powerDetails = result.details;
+                      {circuitSource && circuitDest && (() => {
+                        // Calculer les infos du circuit
+                        const sourceItem = items.find((i) => i.id === circuitSource);
+                        const destItem = items.find((i) => i.id === circuitDest);
+                        const edgeIds = findEdgesBetweenNodes(circuitSource, circuitDest);
+                        
+                        // Calculer la longueur totale
+                        let totalLength = 0;
+                        edgeIds.forEach((edgeId) => {
+                          const edge = edges.find((e) => e.id === edgeId);
+                          if (edge?.length_m) totalLength += edge.length_m;
+                        });
+                        
+                        // Détecter si points de distribution
+                        const sourceIsDistribution = sourceItem ? isDistributionPoint(sourceItem) : false;
+                        const destIsDistribution = destItem ? isDistributionPoint(destItem) : false;
+                        
+                        // Puissance et tension du circuit - logique améliorée
+                        let power = 0;
+                        let voltage = 12; // Défaut
+                        let powerSource = "";
+                        let powerDetails: { id: string; nom: string; puissance: number; quantite: number; total: number }[] = [];
+                        
+                        // CAS 1: Source est un point de distribution
+                        if (sourceIsDistribution && sourceItem) {
+                          const result = sumUpstreamPowersWithDetails(circuitSource, new Set([circuitDest]));
+                          power = result.total;
+                          powerDetails = result.details;
+                          voltage = getOutputVoltage(sourceItem);
+                          powerSource = "somme amont";
+                        }
+                        // CAS 2: Destination est un point de distribution
+                        else if (destIsDistribution && destItem) {
+                          const result = sumDownstreamPowersWithDetails(circuitDest, new Set([circuitSource]));
+                          power = result.total;
+                          powerDetails = result.details;
+                          voltage = getInputVoltage(destItem);
+                          powerSource = "somme aval";
+                        }
+                        // CAS 3: Pas de distribution - logique standard
+                        else {
+                          // 1. D'abord essayer sur la source directe
+                          if (sourceItem?.puissance_watts && sourceItem.puissance_watts > 0) {
+                            power = sourceItem.puissance_watts * (sourceItem.quantite || 1);
                             voltage = getOutputVoltage(sourceItem);
-                            powerSource = "somme amont";
+                            powerSource = "source";
                           }
-                          // CAS 2: Destination est un point de distribution
-                          else if (destIsDistribution && destItem) {
-                            const result = sumDownstreamPowersWithDetails(circuitDest, new Set([circuitSource]));
-                            power = result.total;
-                            powerDetails = result.details;
+                          // 2. Sinon essayer sur la destination directe
+                          else if (destItem?.puissance_watts && destItem.puissance_watts > 0) {
+                            power = destItem.puissance_watts * (destItem.quantite || 1);
                             voltage = getInputVoltage(destItem);
-                            powerSource = "somme aval";
+                            powerSource = "destination";
                           }
-                          // CAS 3: Pas de distribution - logique standard
+                          // 3. Sinon remonter le graphe depuis la source
                           else {
-                            // 1. D'abord essayer sur la source directe
-                            if (sourceItem?.puissance_watts && sourceItem.puissance_watts > 0) {
-                              power = sourceItem.puissance_watts * (sourceItem.quantite || 1);
-                              voltage = getOutputVoltage(sourceItem);
-                              powerSource = "source";
-                            }
-                            // 2. Sinon essayer sur la destination directe
-                            else if (destItem?.puissance_watts && destItem.puissance_watts > 0) {
-                              power = destItem.puissance_watts * (destItem.quantite || 1);
-                              voltage = getInputVoltage(destItem);
-                              powerSource = "destination";
-                            }
-                            // 3. Sinon remonter le graphe depuis la source
-                            else {
-                              power = findUpstreamPower(circuitSource, new Set());
-                              voltage = sourceItem ? getOutputVoltage(sourceItem) : 12;
+                            power = findUpstreamPower(circuitSource, new Set());
+                            voltage = sourceItem ? getOutputVoltage(sourceItem) : 12;
+                            if (power > 0) {
+                              powerSource = "amont";
+                            } else {
+                              // 4. Sinon descendre depuis la destination
+                              power = findDownstreamPower(circuitDest, new Set());
+                              voltage = destItem ? getInputVoltage(destItem) : 12;
                               if (power > 0) {
-                                powerSource = "amont";
-                              } else {
-                                // 4. Sinon descendre depuis la destination
-                                power = findDownstreamPower(circuitDest, new Set());
-                                voltage = destItem ? getInputVoltage(destItem) : 12;
-                                if (power > 0) {
-                                  powerSource = "aval";
-                                }
+                                powerSource = "aval";
                               }
                             }
                           }
-
-                          // Calculer l'intensité
-                          const intensity = power > 0 && voltage > 0 ? power / voltage : 0;
-
-                          // Section recommandée - AVEC LA BONNE TENSION !
-                          const section =
-                            power > 0 && totalLength > 0 ? quickCalculate(power, totalLength, voltage) : null;
-
-                          return (
-                            <div className="space-y-2 pt-2 border-t border-amber-200">
-                              {/* Infos du circuit */}
-                              <div className="grid grid-cols-3 gap-2 text-xs">
-                                <div className="bg-white rounded p-2 text-center">
-                                  <div className="text-gray-500">Câbles</div>
-                                  <div className="font-bold text-lg text-gray-800">{edgeIds.length}</div>
+                        }
+                        
+                        // Calculer l'intensité
+                        const intensity = power > 0 && voltage > 0 ? power / voltage : 0;
+                        
+                        // Section recommandée - AVEC LA BONNE TENSION !
+                        const section = power > 0 && totalLength > 0 ? quickCalculate(power, totalLength, voltage) : null;
+                        
+                        return (
+                          <div className="space-y-2 pt-2 border-t border-amber-200">
+                            {/* Infos du circuit */}
+                            <div className="grid grid-cols-3 gap-2 text-xs">
+                              <div className="bg-white rounded p-2 text-center">
+                                <div className="text-gray-500">Câbles</div>
+                                <div className="font-bold text-lg text-gray-800">{edgeIds.length}</div>
+                              </div>
+                              <div className="bg-white rounded p-2 text-center">
+                                <div className="text-gray-500">Longueur</div>
+                                <div className="font-bold text-lg text-gray-800">{totalLength.toFixed(1)}m</div>
+                              </div>
+                              <div className="bg-white rounded p-2 text-center">
+                                <div className="text-gray-500">Puissance</div>
+                                <div className="font-bold text-lg text-gray-800">
+                                  {power > 0 ? `${power}W` : "?"}
                                 </div>
-                                <div className="bg-white rounded p-2 text-center">
-                                  <div className="text-gray-500">Longueur</div>
-                                  <div className="font-bold text-lg text-gray-800">{totalLength.toFixed(1)}m</div>
+                                {powerSource && !["source", "destination"].includes(powerSource) && (
+                                  <div className="text-[10px] text-blue-600">({powerSource})</div>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Détail des équipements si point de distribution */}
+                            {powerDetails.length > 0 && (
+                              <div className="bg-amber-50 rounded p-2 text-xs border border-amber-200">
+                                <div className="font-medium text-amber-800 mb-1 flex items-center gap-1">
+                                  📋 Équipements pris en compte ({powerDetails.length})
                                 </div>
-                                <div className="bg-white rounded p-2 text-center">
-                                  <div className="text-gray-500">Puissance</div>
-                                  <div className="font-bold text-lg text-gray-800">{power > 0 ? `${power}W` : "?"}</div>
-                                  {powerSource && !["source", "destination"].includes(powerSource) && (
-                                    <div className="text-[10px] text-blue-600">({powerSource})</div>
-                                  )}
+                                <div className="space-y-0.5 max-h-24 overflow-y-auto">
+                                  {powerDetails.map((detail, idx) => (
+                                    <div key={detail.id} className="flex justify-between items-center text-amber-700 bg-white/50 rounded px-1.5 py-0.5">
+                                      <span className="truncate flex-1" title={detail.nom}>
+                                        {detail.quantite > 1 && <span className="font-medium">{detail.quantite}× </span>}
+                                        {detail.nom.length > 30 ? detail.nom.substring(0, 30) + '...' : detail.nom}
+                                      </span>
+                                      <span className="font-medium ml-2 whitespace-nowrap">
+                                        {detail.total}W
+                                        {detail.quantite > 1 && (
+                                          <span className="text-amber-500 text-[10px] ml-1">({detail.puissance}W×{detail.quantite})</span>
+                                        )}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="border-t border-amber-200 mt-1 pt-1 flex justify-between font-medium text-amber-800">
+                                  <span>Total</span>
+                                  <span>{power}W</span>
                                 </div>
                               </div>
-
-                              {/* Détail des équipements si point de distribution */}
-                              {powerDetails.length > 0 && (
-                                <div className="bg-amber-50 rounded p-2 text-xs border border-amber-200">
-                                  <div className="font-medium text-amber-800 mb-1 flex items-center gap-1">
-                                    📋 Équipements pris en compte ({powerDetails.length})
-                                  </div>
-                                  <div className="space-y-0.5 max-h-24 overflow-y-auto">
-                                    {powerDetails.map((detail, idx) => (
-                                      <div
-                                        key={detail.id}
-                                        className="flex justify-between items-center text-amber-700 bg-white/50 rounded px-1.5 py-0.5"
-                                      >
-                                        <span className="truncate flex-1" title={detail.nom}>
-                                          {detail.quantite > 1 && (
-                                            <span className="font-medium">{detail.quantite}× </span>
-                                          )}
-                                          {detail.nom.length > 30 ? detail.nom.substring(0, 30) + "..." : detail.nom}
-                                        </span>
-                                        <span className="font-medium ml-2 whitespace-nowrap">
-                                          {detail.total}W
-                                          {detail.quantite > 1 && (
-                                            <span className="text-amber-500 text-[10px] ml-1">
-                                              ({detail.puissance}W×{detail.quantite})
-                                            </span>
-                                          )}
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                  <div className="border-t border-amber-200 mt-1 pt-1 flex justify-between font-medium text-amber-800">
-                                    <span>Total</span>
-                                    <span>{power}W</span>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Détail calcul : Tension et Intensité */}
-                              {power > 0 && (
-                                <div className="bg-blue-50 rounded p-2 text-xs text-blue-700 flex items-center justify-between">
-                                  <span>
-                                    💡 {power}W ÷ <strong>{voltage}V</strong> = <strong>{intensity.toFixed(2)}A</strong>
-                                  </span>
-                                  {(() => {
-                                    // Déterminer la source de la tension
-                                    const hasTensionVolts =
-                                      sourceItem?.tension_volts ||
-                                      sourceItem?.tension_sortie_volts ||
-                                      sourceItem?.tension_entree_volts;
-                                    const extractedFromName =
-                                      !hasTensionVolts && extractVoltageFromName(sourceItem?.nom_accessoire || "");
-
-                                    if (hasTensionVolts) {
-                                      return null; // Pas de message, tension définie
-                                    } else if (extractedFromName) {
-                                      return <span className="text-blue-600">(extrait du nom)</span>;
-                                    } else {
-                                      return (
-                                        <span className="text-amber-600 font-medium">
-                                          ⚠️ 12V par défaut - cliquer sur ✏️ pour modifier
-                                        </span>
-                                      );
-                                    }
-                                  })()}
-                                </div>
-                              )}
-
-                              {/* Section recommandée */}
-                              {section && (
-                                <div className="bg-green-100 rounded p-2 flex items-center justify-between">
-                                  <span className="text-sm text-green-800">Section recommandée:</span>
-                                  <Badge className="bg-green-600 text-white font-bold">{section} mm²</Badge>
-                                </div>
-                              )}
-
-                              {!section && power === 0 && (
-                                <div className="bg-amber-50 rounded p-2 text-center text-amber-700 text-sm">
-                                  ⚠️ Puissance non trouvée - section non calculable
-                                </div>
-                              )}
-
-                              {edgeIds.length === 0 && (
-                                <div className="bg-red-100 rounded p-2 text-center text-red-700 text-sm">
-                                  ⚠️ Aucun câble trouvé entre ces blocs
-                                </div>
-                              )}
-
-                              {/* Bouton créer circuit */}
-                              {edgeIds.length > 0 && (
-                                <Button
-                                  className="w-full bg-amber-500 hover:bg-amber-600 text-white"
-                                  onClick={() => {
-                                    defineCircuit(circuitSource, circuitDest);
-                                  }}
-                                >
-                                  <Zap className="h-4 w-4 mr-2" />
-                                  Créer le circuit ({edgeIds.length} câble{edgeIds.length > 1 ? "s" : ""})
-                                </Button>
-                              )}
-                            </div>
-                          );
-                        })()}
+                            )}
+                            
+                            {/* Détail calcul : Tension et Intensité */}
+                            {power > 0 && (
+                              <div className="bg-blue-50 rounded p-2 text-xs text-blue-700 flex items-center justify-between">
+                                <span>
+                                  💡 {power}W ÷ <strong>{voltage}V</strong> = <strong>{intensity.toFixed(2)}A</strong>
+                                </span>
+                                {(() => {
+                                  // Déterminer la source de la tension
+                                  const hasTensionVolts = sourceItem?.tension_volts || sourceItem?.tension_sortie_volts || sourceItem?.tension_entree_volts;
+                                  const extractedFromName = !hasTensionVolts && extractVoltageFromName(sourceItem?.nom_accessoire || "");
+                                  
+                                  if (hasTensionVolts) {
+                                    return null; // Pas de message, tension définie
+                                  } else if (extractedFromName) {
+                                    return <span className="text-blue-600">(extrait du nom)</span>;
+                                  } else {
+                                    return <span className="text-amber-600 font-medium">⚠️ 12V par défaut - cliquer sur ✏️ pour modifier</span>;
+                                  }
+                                })()}
+                              </div>
+                            )}
+                            
+                            {/* Section recommandée */}
+                            {section && (
+                              <div className="bg-green-100 rounded p-2 flex items-center justify-between">
+                                <span className="text-sm text-green-800">Section recommandée:</span>
+                                <Badge className="bg-green-600 text-white font-bold">{section} mm²</Badge>
+                              </div>
+                            )}
+                            
+                            {!section && power === 0 && (
+                              <div className="bg-amber-50 rounded p-2 text-center text-amber-700 text-sm">
+                                ⚠️ Puissance non trouvée - section non calculable
+                              </div>
+                            )}
+                            
+                            {edgeIds.length === 0 && (
+                              <div className="bg-red-100 rounded p-2 text-center text-red-700 text-sm">
+                                ⚠️ Aucun câble trouvé entre ces blocs
+                              </div>
+                            )}
+                            
+                            {/* Bouton créer circuit */}
+                            {edgeIds.length > 0 && (
+                              <Button
+                                className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+                                onClick={() => {
+                                  defineCircuit(circuitSource, circuitDest);
+                                }}
+                              >
+                                <Zap className="h-4 w-4 mr-2" />
+                                Créer le circuit ({edgeIds.length} câble{edgeIds.length > 1 ? 's' : ''})
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
 
@@ -5728,14 +5667,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   id="edit-power"
                   type="number"
                   value={editFormData.puissance_watts}
-                  onChange={(e) => setEditFormData((prev) => ({ ...prev, puissance_watts: e.target.value }))}
+                  onChange={(e) => setEditFormData(prev => ({ ...prev, puissance_watts: e.target.value }))}
                   placeholder="Ex: 190"
                   className="flex-1"
                 />
                 <span className="text-sm text-gray-500 w-8">W</span>
               </div>
             </div>
-
+            
             {/* Tension entrée */}
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-voltage-in" className="text-right">
@@ -5746,14 +5685,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   id="edit-voltage-in"
                   type="number"
                   value={editFormData.tension_entree_volts}
-                  onChange={(e) => setEditFormData((prev) => ({ ...prev, tension_entree_volts: e.target.value }))}
+                  onChange={(e) => setEditFormData(prev => ({ ...prev, tension_entree_volts: e.target.value }))}
                   placeholder="Ex: 24"
                   className="flex-1"
                 />
                 <span className="text-sm text-gray-500 w-8">V</span>
               </div>
             </div>
-
+            
             {/* Tension sortie */}
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-voltage-out" className="text-right">
@@ -5764,14 +5703,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   id="edit-voltage-out"
                   type="number"
                   value={editFormData.tension_sortie_volts}
-                  onChange={(e) => setEditFormData((prev) => ({ ...prev, tension_sortie_volts: e.target.value }))}
+                  onChange={(e) => setEditFormData(prev => ({ ...prev, tension_sortie_volts: e.target.value }))}
                   placeholder="Ex: 12"
                   className="flex-1"
                 />
                 <span className="text-sm text-gray-500 w-8">V</span>
               </div>
             </div>
-
+            
             {/* Capacité (pour batteries) */}
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-capacity" className="text-right">
@@ -5782,14 +5721,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   id="edit-capacity"
                   type="number"
                   value={editFormData.capacite_ah}
-                  onChange={(e) => setEditFormData((prev) => ({ ...prev, capacite_ah: e.target.value }))}
+                  onChange={(e) => setEditFormData(prev => ({ ...prev, capacite_ah: e.target.value }))}
                   placeholder="Ex: 100"
                   className="flex-1"
                 />
                 <span className="text-sm text-gray-500 w-8">Ah</span>
               </div>
             </div>
-
+            
             {/* Intensité max */}
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-current" className="text-right">
@@ -5800,7 +5739,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   id="edit-current"
                   type="number"
                   value={editFormData.intensite_amperes}
-                  onChange={(e) => setEditFormData((prev) => ({ ...prev, intensite_amperes: e.target.value }))}
+                  onChange={(e) => setEditFormData(prev => ({ ...prev, intensite_amperes: e.target.value }))}
                   placeholder="Ex: 30"
                   className="flex-1"
                 />
@@ -5812,15 +5751,16 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
             {/* Info aide */}
             <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-              <strong>💡 Astuce :</strong> Pour les convertisseurs (MPPT, DC/DC), indiquez la tension d'entrée et de
-              sortie séparément. Le calcul de section de câble utilisera la bonne tension selon le segment du circuit.
+              <strong>💡 Astuce :</strong> Pour les convertisseurs (MPPT, DC/DC), indiquez la tension d'entrée et de sortie séparément. Le calcul de section de câble utilisera la bonne tension selon le segment du circuit.
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingItem(null)}>
               Annuler
             </Button>
-            <Button onClick={saveEditedItem}>Sauvegarder</Button>
+            <Button onClick={saveEditedItem}>
+              Sauvegarder
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
