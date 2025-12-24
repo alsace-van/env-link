@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.51 - Busbar: puissance calculée automatiquement
+// VERSION: 3.52 - Fix: chargeur/DC-DC = producteur (orange), pas consommateur
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6036,29 +6036,51 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   return sum + power;
                 }, 0);
 
+                // Calculer les sorties par catégorie
                 const outgoingEdges = edges.filter((e) => e.source_node_id === editingItem.id);
-                const totalOutgoing = outgoingEdges.reduce((sum, e) => {
+                let totalConsumers = 0;
+                let totalProduction = 0;
+
+                outgoingEdges.forEach((e) => {
                   const targetItem = items.find((i) => i.id === e.target_node_id);
-                  if (targetItem?.puissance_watts) {
-                    return sum + targetItem.puissance_watts * (targetItem.quantite || 1);
+                  if (targetItem) {
+                    const targetConfig = ELECTRICAL_TYPES[targetItem.type_electrique];
+                    const targetCategory = targetConfig?.category || "autre";
+                    const power = targetItem.puissance_watts
+                      ? targetItem.puissance_watts * (targetItem.quantite || 1)
+                      : 0;
+
+                    if (targetCategory === "consommateur") {
+                      totalConsumers += power;
+                    } else if (targetCategory === "production") {
+                      // Chargeurs 230V, DC/DC sont des producteurs
+                      totalProduction += power;
+                    }
                   }
-                  return sum;
-                }, 0);
+                });
 
                 return (
                   <div className="bg-gradient-to-r from-emerald-50 to-green-50 rounded-lg p-3 border border-emerald-200">
                     <div className="text-sm font-medium text-emerald-800 mb-2">
                       ⚡ Puissance calculée automatiquement
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div
+                      className={`grid gap-3 ${totalConsumers > 0 && totalProduction > 0 ? "grid-cols-3" : totalConsumers > 0 || totalProduction > 0 ? "grid-cols-2" : "grid-cols-1"}`}
+                    >
                       <div className="text-center">
                         <div className="text-2xl font-bold text-emerald-700">{totalIncoming}W</div>
-                        <div className="text-xs text-emerald-600">Entrées (production)</div>
+                        <div className="text-xs text-emerald-600">Entrées</div>
                       </div>
-                      {totalOutgoing > 0 && (
+                      {totalProduction > 0 && (
                         <div className="text-center">
-                          <div className="text-2xl font-bold text-red-600">{totalOutgoing}W</div>
-                          <div className="text-xs text-red-500">Sorties (consommation)</div>
+                          <div className="text-2xl font-bold text-orange-600">{totalProduction}W</div>
+                          <div className="text-xs text-orange-500">→ Production</div>
+                        </div>
+                      )}
+                      {totalConsumers > 0 && (
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-red-600">{totalConsumers}W</div>
+                          <div className="text-xs text-red-500">→ Consommation</div>
                         </div>
                       )}
                     </div>
@@ -6245,21 +6267,28 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             const config = ELECTRICAL_TYPES[item.type_electrique];
                             const isConsumer = category === "consommateur";
                             const isStorage = category === "stockage";
+                            const isProduction = category === "production";
+                            // Couleurs: rouge=consommateur, ambre=stockage, orange=production, bleu=autres
                             const bgColor = isConsumer
                               ? "bg-red-50 border-red-200"
                               : isStorage
                                 ? "bg-amber-50 border-amber-200"
-                                : "bg-blue-50 border-blue-200";
+                                : isProduction
+                                  ? "bg-orange-50 border-orange-200"
+                                  : "bg-blue-50 border-blue-200";
                             const powerColor = isConsumer
                               ? "text-red-700"
                               : isStorage
                                 ? "text-amber-700"
-                                : "text-blue-700";
+                                : isProduction
+                                  ? "text-orange-700"
+                                  : "text-blue-700";
                             return (
                               <div key={item.id} className={`text-xs rounded px-2 py-1.5 border ${bgColor}`}>
                                 <div className="flex items-center justify-between gap-2">
                                   <span className={`font-medium whitespace-nowrap ${config?.color || "text-gray-600"}`}>
                                     {config?.label || item.type_electrique}
+                                    {isProduction && <span className="ml-1 text-orange-500">(producteur)</span>}
                                   </span>
                                   {power > 0 && (
                                     <span className={`font-bold whitespace-nowrap ${powerColor}`}>{power}W</span>
