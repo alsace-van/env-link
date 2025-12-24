@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.49 - Modale édition busbar avec liste connexions
+// VERSION: 3.50 - Modale busbar élargie + texte complet
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6013,7 +6013,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             if (!editingItem) return "sm:max-w-[425px]";
             const typeConfig = ELECTRICAL_TYPES[editingItem.type_electrique];
             const isDistribution = typeConfig?.category === "distribution" || typeConfig?.category === "distributeur";
-            return isDistribution ? "sm:max-w-[500px]" : "sm:max-w-[425px]";
+            return isDistribution ? "sm:max-w-[600px]" : "sm:max-w-[425px]";
           })()}
         >
           <DialogHeader>
@@ -6171,13 +6171,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             return (
                               <div
                                 key={item.id}
-                                className="text-xs flex items-center gap-2 bg-green-50 rounded px-2 py-1"
+                                className="text-xs bg-green-50 rounded px-2 py-1.5 border border-green-200"
                               >
-                                <span className={`${config?.color || "text-gray-600"}`}>
-                                  {config?.label || item.type_electrique}
-                                </span>
-                                <span className="text-gray-600 flex-1 truncate">{item.nom_accessoire}</span>
-                                <span className="font-medium text-green-700">{power}W</span>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className={`font-medium whitespace-nowrap ${config?.color || "text-gray-600"}`}>
+                                    {config?.label || item.type_electrique}
+                                  </span>
+                                  <span className="font-bold text-green-700 whitespace-nowrap">{power}W</span>
+                                </div>
+                                <div className="text-gray-600 mt-0.5 break-words">{item.nom_accessoire}</div>
                               </div>
                             );
                           })}
@@ -6197,24 +6199,27 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             const config = ELECTRICAL_TYPES[item.type_electrique];
                             const isConsumer = category === "consommateur";
                             const isStorage = category === "stockage";
+                            const bgColor = isConsumer
+                              ? "bg-red-50 border-red-200"
+                              : isStorage
+                                ? "bg-amber-50 border-amber-200"
+                                : "bg-blue-50 border-blue-200";
+                            const powerColor = isConsumer
+                              ? "text-red-700"
+                              : isStorage
+                                ? "text-amber-700"
+                                : "text-blue-700";
                             return (
-                              <div
-                                key={item.id}
-                                className={`text-xs flex items-center gap-2 rounded px-2 py-1 ${
-                                  isConsumer ? "bg-red-50" : isStorage ? "bg-amber-50" : "bg-blue-50"
-                                }`}
-                              >
-                                <span className={`${config?.color || "text-gray-600"}`}>
-                                  {config?.label || item.type_electrique}
-                                </span>
-                                <span className="text-gray-600 flex-1 truncate">{item.nom_accessoire}</span>
-                                {power > 0 && (
-                                  <span
-                                    className={`font-medium ${isConsumer ? "text-red-700" : isStorage ? "text-amber-700" : "text-blue-700"}`}
-                                  >
-                                    {power}W
+                              <div key={item.id} className={`text-xs rounded px-2 py-1.5 border ${bgColor}`}>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className={`font-medium whitespace-nowrap ${config?.color || "text-gray-600"}`}>
+                                    {config?.label || item.type_electrique}
                                   </span>
-                                )}
+                                  {power > 0 && (
+                                    <span className={`font-bold whitespace-nowrap ${powerColor}`}>{power}W</span>
+                                  )}
+                                </div>
+                                <div className="text-gray-600 mt-0.5 break-words">{item.nom_accessoire}</div>
                               </div>
                             );
                           })}
