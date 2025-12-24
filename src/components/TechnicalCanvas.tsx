@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.52 - Fix: chargeur/DC-DC = producteur (orange), pas consommateur
+// VERSION: 3.53 - Busbar: tous producteurs en vert (groupés ensemble)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6030,16 +6030,18 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
               if (isDistribution && editingItem) {
                 // Pour les busbars: calculer et afficher le total automatiquement
+
+                // 1. Calculer les entrées (sources qui arrivent au busbar)
                 const incomingEdges = edges.filter((e) => e.target_node_id === editingItem.id);
                 const totalIncoming = incomingEdges.reduce((sum, e) => {
                   const { power } = calculateEdgePower(e);
                   return sum + power;
                 }, 0);
 
-                // Calculer les sorties par catégorie
+                // 2. Calculer les sorties par catégorie
                 const outgoingEdges = edges.filter((e) => e.source_node_id === editingItem.id);
                 let totalConsumers = 0;
-                let totalProduction = 0;
+                let totalProductionOut = 0; // Producteurs connectés en sortie (ex: DC/DC câblé à l'envers)
 
                 outgoingEdges.forEach((e) => {
                   const targetItem = items.find((i) => i.id === e.target_node_id);
@@ -6053,34 +6055,34 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                     if (targetCategory === "consommateur") {
                       totalConsumers += power;
                     } else if (targetCategory === "production") {
-                      // Chargeurs 230V, DC/DC sont des producteurs
-                      totalProduction += power;
+                      // Chargeurs 230V, DC/DC sont des producteurs - même câblés en sortie, ils produisent
+                      totalProductionOut += power;
                     }
                   }
                 });
+
+                // 3. Production totale = entrées + producteurs en sortie (ils sont équivalents)
+                const totalProduction = totalIncoming + totalProductionOut;
 
                 return (
                   <div className="bg-gradient-to-r from-emerald-50 to-green-50 rounded-lg p-3 border border-emerald-200">
                     <div className="text-sm font-medium text-emerald-800 mb-2">
                       ⚡ Puissance calculée automatiquement
                     </div>
-                    <div
-                      className={`grid gap-3 ${totalConsumers > 0 && totalProduction > 0 ? "grid-cols-3" : totalConsumers > 0 || totalProduction > 0 ? "grid-cols-2" : "grid-cols-1"}`}
-                    >
+                    <div className={`grid gap-3 ${totalConsumers > 0 ? "grid-cols-2" : "grid-cols-1"}`}>
                       <div className="text-center">
-                        <div className="text-2xl font-bold text-emerald-700">{totalIncoming}W</div>
-                        <div className="text-xs text-emerald-600">Entrées</div>
+                        <div className="text-2xl font-bold text-emerald-700">{totalProduction}W</div>
+                        <div className="text-xs text-emerald-600">Production totale</div>
+                        {totalProductionOut > 0 && totalIncoming > 0 && (
+                          <div className="text-[10px] text-gray-500 mt-0.5">
+                            ({totalIncoming}W entrées + {totalProductionOut}W producteurs)
+                          </div>
+                        )}
                       </div>
-                      {totalProduction > 0 && (
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-orange-600">{totalProduction}W</div>
-                          <div className="text-xs text-orange-500">→ Production</div>
-                        </div>
-                      )}
                       {totalConsumers > 0 && (
                         <div className="text-center">
                           <div className="text-2xl font-bold text-red-600">{totalConsumers}W</div>
-                          <div className="text-xs text-red-500">→ Consommation</div>
+                          <div className="text-xs text-red-500">Consommation</div>
                         </div>
                       )}
                     </div>
@@ -6215,9 +6217,17 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   .filter(Boolean) as { item: ElectricalItem; power: number; category: string; edgeId: string }[];
 
                 const totalIncoming = incomingItems.reduce((sum, i) => sum + i.power, 0);
-                const totalOutgoingConsumers = outgoingItems
+
+                // Séparer les producteurs des autres sorties
+                const productionOutItems = outgoingItems.filter((i) => i.category === "production");
+                const otherOutItems = outgoingItems.filter((i) => i.category !== "production");
+                const totalProductionOut = productionOutItems.reduce((sum, i) => sum + i.power, 0);
+                const totalOutgoingConsumers = otherOutItems
                   .filter((i) => i.category === "consommateur")
                   .reduce((sum, i) => sum + i.power, 0);
+
+                // Production totale = entrées + producteurs en sortie
+                const totalProduction = totalIncoming + totalProductionOut;
 
                 return (
                   <div className="border-t pt-4 mt-2">
@@ -6226,15 +6236,34 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                       Connexions du point de distribution
                     </div>
 
-                    {/* Sources entrantes */}
-                    {incomingItems.length > 0 && (
+                    {/* Sources de production (entrées + producteurs en sortie) */}
+                    {(incomingItems.length > 0 || productionOutItems.length > 0) && (
                       <div className="mb-3">
                         <div className="text-xs font-medium text-green-700 mb-1 flex items-center gap-1">
                           <ArrowDown className="h-3 w-3" />
-                          Sources entrantes ({totalIncoming}W total)
+                          Sources de production ({totalProduction}W total)
                         </div>
                         <div className="space-y-1">
+                          {/* Entrées */}
                           {incomingItems.map(({ item, power }) => {
+                            const config = ELECTRICAL_TYPES[item.type_electrique];
+                            return (
+                              <div
+                                key={item.id}
+                                className="text-xs bg-green-50 rounded px-2 py-1.5 border border-green-200"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className={`font-medium whitespace-nowrap ${config?.color || "text-gray-600"}`}>
+                                    {config?.label || item.type_electrique}
+                                  </span>
+                                  <span className="font-bold text-green-700 whitespace-nowrap">{power}W</span>
+                                </div>
+                                <div className="text-gray-600 mt-0.5 break-words">{item.nom_accessoire}</div>
+                              </div>
+                            );
+                          })}
+                          {/* Producteurs connectés en sortie (DC/DC, chargeur 230V) */}
+                          {productionOutItems.map(({ item, power }) => {
                             const config = ELECTRICAL_TYPES[item.type_electrique];
                             return (
                               <div
@@ -6255,40 +6284,34 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                       </div>
                     )}
 
-                    {/* Destinations sortantes */}
-                    {outgoingItems.length > 0 && (
+                    {/* Autres destinations (stockage, consommateurs, etc.) */}
+                    {otherOutItems.length > 0 && (
                       <div>
                         <div className="text-xs font-medium text-blue-700 mb-1 flex items-center gap-1">
                           <ArrowUp className="h-3 w-3" />
-                          Destinations sortantes
+                          Destinations
                         </div>
                         <div className="space-y-1">
-                          {outgoingItems.map(({ item, power, category }) => {
+                          {otherOutItems.map(({ item, power, category }) => {
                             const config = ELECTRICAL_TYPES[item.type_electrique];
                             const isConsumer = category === "consommateur";
                             const isStorage = category === "stockage";
-                            const isProduction = category === "production";
-                            // Couleurs: rouge=consommateur, ambre=stockage, orange=production, bleu=autres
+                            // Couleurs: rouge=consommateur, ambre=stockage, bleu=autres
                             const bgColor = isConsumer
                               ? "bg-red-50 border-red-200"
                               : isStorage
                                 ? "bg-amber-50 border-amber-200"
-                                : isProduction
-                                  ? "bg-orange-50 border-orange-200"
-                                  : "bg-blue-50 border-blue-200";
+                                : "bg-blue-50 border-blue-200";
                             const powerColor = isConsumer
                               ? "text-red-700"
                               : isStorage
                                 ? "text-amber-700"
-                                : isProduction
-                                  ? "text-orange-700"
-                                  : "text-blue-700";
+                                : "text-blue-700";
                             return (
                               <div key={item.id} className={`text-xs rounded px-2 py-1.5 border ${bgColor}`}>
                                 <div className="flex items-center justify-between gap-2">
                                   <span className={`font-medium whitespace-nowrap ${config?.color || "text-gray-600"}`}>
                                     {config?.label || item.type_electrique}
-                                    {isProduction && <span className="ml-1 text-orange-500">(producteur)</span>}
                                   </span>
                                   {power > 0 && (
                                     <span className={`font-bold whitespace-nowrap ${powerColor}`}>{power}W</span>
