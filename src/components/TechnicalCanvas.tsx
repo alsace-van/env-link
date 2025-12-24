@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.44 - Fix import React manquant
+// VERSION: 3.45 - Calcul sections par circuit + hover highlight
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -882,6 +882,8 @@ const CustomSmoothEdge = ({
   const turnNearTarget = (data as any)?.turnNearTarget ?? false;
   // Récupérer les autres nodes pour le contournement
   const allNodes = (data as any)?.allNodes || [];
+  // Récupérer si ce câble est survolé dans le popover
+  const isHovered = (data as any)?.isHovered ?? false;
 
   // Distance minimale avant le premier virage (sortie perpendiculaire)
   const minExitDistance = 40; // Distance avant le premier coude
@@ -1344,15 +1346,18 @@ const CustomSmoothEdge = ({
             style={{
               position: "absolute",
               // Décaler le label au-dessus du trait (-15px vertical)
-              transform: `translate(-50%, -100%) translate(${labelX}px, ${labelY - 8}px)`,
+              transform: `translate(-50%, -100%) translate(${labelX}px, ${labelY - 8}px) ${isHovered ? "scale(1.15)" : "scale(1)"}`,
               pointerEvents: "all",
               ...labelBgStyle,
-              padding: "2px 6px",
-              borderRadius: 4,
-              fontSize: 11,
-              fontWeight: 600,
-              backgroundColor: "rgba(255, 255, 255, 0.9)",
-              boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+              padding: isHovered ? "4px 10px" : "2px 6px",
+              borderRadius: isHovered ? 6 : 4,
+              fontSize: isHovered ? 13 : 11,
+              fontWeight: isHovered ? 700 : 600,
+              backgroundColor: isHovered ? "rgba(236, 253, 245, 0.98)" : "rgba(255, 255, 255, 0.9)",
+              boxShadow: isHovered ? "0 2px 8px rgba(16, 185, 129, 0.4)" : "0 1px 2px rgba(0,0,0,0.1)",
+              border: isHovered ? "2px solid #10b981" : "none",
+              transition: "all 0.2s ease",
+              zIndex: isHovered ? 1000 : 1,
               ...(labelStyle as React.CSSProperties),
             }}
             className="nodrag nopan"
@@ -1384,6 +1389,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const [principalScenarioId, setPrincipalScenarioId] = useState<string | null>(null);
   const [edges, setEdges] = useState<SchemaEdge[]>([]);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null); // Pour grossir le label au survol dans le popover
 
   // État pour les handles personnalisés par bloc
   const [nodeHandles, setNodeHandles] = useState<Record<string, BlockHandles>>({});
@@ -3096,7 +3102,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     voltage: number;
     intensity: number;
     length: number;
-    totalLength: number; // Longueur totale jusqu'au prochain point clé
+    totalLength: number; // Longueur totale jusqu'au prochain point clé (aller seulement)
+    circuitNumber?: number; // Numéro du circuit
+    circuitTotalLength: number; // Longueur totale du circuit (aller + retour)
     section: number;
     details: PowerDetail[];
     sourceNom: string;
@@ -3104,13 +3112,60 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     realTargetNom: string; // Nom du vrai point clé de destination
     isPartOfSegment: boolean; // True si ce câble fait partie d'un segment plus long
     allEdgeIdsInSegment: string[]; // Tous les câbles du segment
+    allEdgeIdsInCircuit: string[]; // Tous les câbles du même circuit
     hasDefinedLength: boolean; // True si longueur définie, false si estimée
   }
+
+  // Obtenir le numéro de circuit d'un câble via ses handles
+  const getEdgeCircuitNumber = useCallback(
+    (edge: SchemaEdge): number | undefined => {
+      const sourceHandleCircuits = nodeHandleCircuits[edge.source_node_id] || {};
+      const targetHandleCircuits = nodeHandleCircuits[edge.target_node_id] || {};
+
+      // Récupérer le numéro du handle source
+      const sourceCircuit = edge.sourceHandle ? sourceHandleCircuits[edge.sourceHandle] : undefined;
+      // Récupérer le numéro du handle cible
+      const targetCircuit = edge.targetHandle ? targetHandleCircuits[edge.targetHandle] : undefined;
+
+      // Si les deux ont le même numéro, c'est le circuit
+      if (sourceCircuit !== undefined && sourceCircuit === targetCircuit) {
+        return sourceCircuit;
+      }
+      // Sinon, prendre celui qui est défini (source en priorité)
+      return sourceCircuit ?? targetCircuit;
+    },
+    [nodeHandleCircuits],
+  );
 
   // Calculer automatiquement toutes les sections de câbles
   const calculateAllEdgeSections = useCallback((): EdgeCalculation[] => {
     const calculations: EdgeCalculation[] = [];
     const processedEdges = new Set<string>(); // Éviter de traiter deux fois les mêmes segments
+
+    // 1. D'abord, grouper les câbles par numéro de circuit
+    const edgesByCircuit = new Map<number, SchemaEdge[]>();
+    for (const edge of edges) {
+      const circuitNum = getEdgeCircuitNumber(edge);
+      if (circuitNum !== undefined) {
+        const existing = edgesByCircuit.get(circuitNum) || [];
+        existing.push(edge);
+        edgesByCircuit.set(circuitNum, existing);
+      }
+    }
+
+    // 2. Calculer la longueur totale de chaque circuit
+    const circuitLengths = new Map<number, number>();
+    const circuitEdgeIds = new Map<number, string[]>();
+    edgesByCircuit.forEach((circuitEdges, circuitNum) => {
+      let totalLen = 0;
+      const edgeIds: string[] = [];
+      for (const edge of circuitEdges) {
+        totalLen += edge.length_m || 1; // 1m par défaut si non défini
+        edgeIds.push(edge.id);
+      }
+      circuitLengths.set(circuitNum, totalLen);
+      circuitEdgeIds.set(circuitNum, edgeIds);
+    });
 
     for (const edge of edges) {
       // Si déjà traité dans un segment, passer
@@ -3142,10 +3197,21 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       // 4. Calculer l'intensité
       const intensity = power > 0 && voltage > 0 ? power / voltage : 0;
 
-      // 5. Calculer la section recommandée avec la longueur TOTALE du segment
+      // 5. Obtenir le numéro de circuit et la longueur totale du circuit
+      const circuitNumber = getEdgeCircuitNumber(edge);
+      const circuitTotalLength =
+        circuitNumber !== undefined
+          ? circuitLengths.get(circuitNumber) || segmentInfo.totalLength
+          : segmentInfo.totalLength;
+      const allEdgeIdsInCircuit =
+        circuitNumber !== undefined
+          ? circuitEdgeIds.get(circuitNumber) || segmentInfo.allEdgeIds
+          : segmentInfo.allEdgeIds;
+
+      // 6. Calculer la section recommandée avec la longueur TOTALE du CIRCUIT
       let section = 0;
-      if (power > 0 && segmentInfo.totalLength > 0) {
-        section = quickCalculate(power, segmentInfo.totalLength, voltage);
+      if (power > 0 && circuitTotalLength > 0) {
+        section = quickCalculate(power, circuitTotalLength, voltage);
       }
 
       // Ajouter un calcul pour CHAQUE câble du segment (tous avec la même section)
@@ -3160,6 +3226,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           intensity,
           length: segEdge ? getEdgeLength(segEdge).length : 0,
           totalLength: segmentInfo.totalLength,
+          circuitNumber,
+          circuitTotalLength,
           section,
           details,
           // Pour l'affichage du segment, utiliser la VRAIE source (premier câble) et VRAIE destination
@@ -3168,6 +3236,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           realTargetNom: realTarget?.nom_accessoire || targetItem.nom_accessoire, // Vraie destination du segment
           isPartOfSegment: segmentInfo.allEdgeIds.length > 1,
           allEdgeIdsInSegment: segmentInfo.allEdgeIds,
+          allEdgeIdsInCircuit,
           hasDefinedLength: segmentInfo.hasDefinedLength,
         });
       }
@@ -3183,6 +3252,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     getSegmentVoltage,
     quickCalculate,
     getEdgeLength,
+    getEdgeCircuitNumber,
   ]);
 
   // Appliquer les sections calculées à tous les câbles
@@ -4273,6 +4343,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           cableLabel = parts.join(" • ");
         }
 
+        const isHovered = hoveredEdgeId === edge.id;
+
         return {
           id: edge.id,
           source: edge.source_node_id,
@@ -4288,21 +4360,37 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             turnNearTarget: targetHeight < sourceHeight,
             // Passer tous les nodes pour le contournement des obstacles
             allNodes: nodes.filter((n) => n.id !== edge.source_node_id && n.id !== edge.target_node_id),
+            isHovered, // Pour grossir le label au survol dans le popover
           },
           label: cableLabel,
-          labelStyle: { fill: edgeColor, fontWeight: 600, fontSize: 11 },
-          labelBgStyle: { fill: "white", fillOpacity: 0.9 },
+          labelStyle: {
+            fill: edgeColor,
+            fontWeight: isHovered ? 700 : 600,
+            fontSize: isHovered ? 14 : 11,
+            transition: "all 0.2s ease",
+          },
+          labelBgStyle: {
+            fill: isHovered ? "#ecfdf5" : "white",
+            fillOpacity: 0.95,
+            stroke: isHovered ? "#10b981" : undefined,
+            strokeWidth: isHovered ? 2 : 0,
+          },
           labelBgPadding: [4, 2] as [number, number],
           labelBgBorderRadius: 4,
           style: {
-            strokeWidth: isSelected ? edgeWidth + 2 : edgeWidth,
-            stroke: edgeColor,
-            filter: isSelected ? "drop-shadow(0 0 4px rgba(59, 130, 246, 0.8))" : undefined,
+            strokeWidth: isHovered ? edgeWidth + 3 : isSelected ? edgeWidth + 2 : edgeWidth,
+            stroke: isHovered ? "#10b981" : edgeColor,
+            filter: isHovered
+              ? "drop-shadow(0 0 6px rgba(16, 185, 129, 0.8))"
+              : isSelected
+                ? "drop-shadow(0 0 4px rgba(59, 130, 246, 0.8))"
+                : undefined,
+            transition: "all 0.2s ease",
           },
         };
       }) as any,
     );
-  }, [edges, selectedEdgeId, layers, nodes, getNodeHeight]);
+  }, [edges, selectedEdgeId, hoveredEdgeId, layers, nodes, getNodeHeight]);
 
   const handleConnect = useCallback(
     (connection: Connection) => {
@@ -5142,8 +5230,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                         const withPower = calculations.filter((c) => c.power > 0);
                         const withoutPower = calculations.filter((c) => c.power === 0);
 
-                        // Grouper par segment (première occurrence de chaque segment)
+                        // Grouper par circuit (si défini) ou par segment
                         const uniqueSegments = withPower.filter((calc, index) => {
+                          // Si circuit défini, grouper par circuit
+                          if (calc.circuitNumber !== undefined) {
+                            const firstIndex = withPower.findIndex((c) => c.circuitNumber === calc.circuitNumber);
+                            return firstIndex === index;
+                          }
+                          // Sinon grouper par segment
                           const firstIndex = withPower.findIndex(
                             (c) =>
                               c.allEdgeIdsInSegment &&
@@ -5158,7 +5252,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             {/* Stats */}
                             <div className="grid grid-cols-3 gap-2 text-xs">
                               <div className="bg-emerald-50 rounded p-2 text-center">
-                                <div className="text-emerald-600">Segments</div>
+                                <div className="text-emerald-600">Circuits</div>
                                 <div className="font-bold text-lg text-emerald-800">{uniqueSegments.length}</div>
                               </div>
                               <div className="bg-blue-50 rounded p-2 text-center">
@@ -5171,25 +5265,38 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                               </div>
                             </div>
 
-                            {/* Liste des segments */}
+                            {/* Liste des circuits/segments */}
                             {uniqueSegments.length > 0 && (
                               <div className="max-h-64 overflow-y-auto space-y-1.5 border rounded p-2 bg-gray-50">
                                 {uniqueSegments.map((calc) => (
                                   <div
                                     key={calc.edgeId}
-                                    className={`text-xs bg-white rounded p-2 border ${calc.isPartOfSegment ? "border-l-4 border-l-amber-400" : ""}`}
+                                    className={`text-xs bg-white rounded p-2 border cursor-pointer transition-all ${
+                                      calc.circuitNumber !== undefined ? "border-l-4 border-l-amber-400" : ""
+                                    } ${
+                                      hoveredEdgeId && calc.allEdgeIdsInCircuit.includes(hoveredEdgeId)
+                                        ? "ring-2 ring-emerald-400 bg-emerald-50"
+                                        : ""
+                                    }`}
+                                    onMouseEnter={() => setHoveredEdgeId(calc.allEdgeIdsInCircuit[0] || calc.edgeId)}
+                                    onMouseLeave={() => setHoveredEdgeId(null)}
                                   >
                                     <div className="flex justify-between items-center">
                                       <span
                                         className="text-gray-700 truncate flex-1"
                                         title={`${calc.sourceNom} → ${calc.realTargetNom}`}
                                       >
-                                        {calc.sourceNom.length > 20
-                                          ? calc.sourceNom.substring(0, 20) + "..."
+                                        {calc.circuitNumber !== undefined && (
+                                          <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold bg-amber-100 border border-amber-400 text-amber-700 rounded-full mr-1.5">
+                                            {calc.circuitNumber}
+                                          </span>
+                                        )}
+                                        {calc.sourceNom.length > 18
+                                          ? calc.sourceNom.substring(0, 18) + "..."
                                           : calc.sourceNom}
                                         <span className="text-gray-400 mx-1">→</span>
-                                        {calc.realTargetNom.length > 20
-                                          ? calc.realTargetNom.substring(0, 20) + "..."
+                                        {calc.realTargetNom.length > 18
+                                          ? calc.realTargetNom.substring(0, 18) + "..."
                                           : calc.realTargetNom}
                                       </span>
                                       <span className="font-bold text-emerald-700 ml-2 bg-emerald-50 px-1.5 py-0.5 rounded">
@@ -5201,15 +5308,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                       <span>@ {calc.voltage}V</span>
                                       <span>= {calc.intensity.toFixed(1)}A</span>
                                       <span className={calc.hasDefinedLength ? "text-blue-600" : "text-amber-500"}>
-                                        📏 {calc.totalLength > 0 ? calc.totalLength.toFixed(1) : "?"}m
-                                        {!calc.hasDefinedLength && calc.totalLength > 0 && " (estimé)"}
-                                        {calc.totalLength === 0 && " (non défini)"}
+                                        📏 {calc.circuitTotalLength > 0 ? calc.circuitTotalLength.toFixed(1) : "?"}m
+                                        {calc.circuitNumber !== undefined &&
+                                          ` (circuit ${calc.allEdgeIdsInCircuit.length} câbles)`}
+                                        {!calc.hasDefinedLength &&
+                                          calc.circuitTotalLength > 0 &&
+                                          !calc.circuitNumber &&
+                                          " (estimé)"}
                                       </span>
-                                      {calc.isPartOfSegment && (
-                                        <span className="text-amber-600">
-                                          ({calc.allEdgeIdsInSegment.length} câbles)
-                                        </span>
-                                      )}
                                     </div>
                                     {calc.details.length > 1 && (
                                       <div className="text-[10px] text-purple-600 mt-0.5 bg-purple-50 rounded px-1 py-0.5">
@@ -5228,8 +5334,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
                             {uniqueSegments.length === 0 && (
                               <div className="text-xs text-amber-600 bg-amber-50 rounded p-2">
-                                ⚠️ Aucun segment ne peut être calculé. Vérifiez que les équipements ont une puissance
-                                définie.
+                                ⚠️ Aucun circuit ne peut être calculé. Vérifiez que les équipements ont une puissance
+                                définie et que les numéros de circuit sont assignés aux handles.
                               </div>
                             )}
                           </>
