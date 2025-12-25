@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.63 - Fix: traverse les fusibles pour trouver la vraie puissance + évite doubles comptages
+// VERSION: 3.64 - Survol circuit: tout le circuit grossit (pas seulement le premier câble)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1481,7 +1481,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const [principalScenarioId, setPrincipalScenarioId] = useState<string | null>(null);
   const [edges, setEdges] = useState<SchemaEdge[]>([]);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null); // Pour grossir le label au survol dans le popover
+  const [hoveredCircuitEdgeIds, setHoveredCircuitEdgeIds] = useState<string[]>([]); // Pour grossir tout le circuit au survol dans le popover
 
   // État pour les handles personnalisés par bloc
   const [nodeHandles, setNodeHandles] = useState<Record<string, BlockHandles>>({});
@@ -4656,7 +4656,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           cableLabel = parts.join(" • ");
         }
 
-        const isHovered = hoveredEdgeId === edge.id;
+        const isHovered = hoveredCircuitEdgeIds.includes(edge.id);
 
         return {
           id: edge.id,
@@ -4703,7 +4703,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         };
       }) as any,
     );
-  }, [edges, selectedEdgeId, hoveredEdgeId, layers, nodes, getNodeHeight]);
+  }, [edges, selectedEdgeId, hoveredCircuitEdgeIds, layers, nodes, getNodeHeight]);
 
   const handleConnect = useCallback(
     (connection: Connection) => {
@@ -5589,12 +5589,17 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                     className={`text-xs bg-white rounded p-2 border cursor-pointer transition-all ${
                                       calc.circuitNumber !== undefined ? "border-l-4 border-l-amber-400" : ""
                                     } ${
-                                      hoveredEdgeId && calc.allEdgeIdsInCircuit.includes(hoveredEdgeId)
+                                      hoveredCircuitEdgeIds.length > 0 &&
+                                      calc.allEdgeIdsInCircuit.some((id) => hoveredCircuitEdgeIds.includes(id))
                                         ? "ring-2 ring-emerald-400 bg-emerald-50"
                                         : ""
                                     }`}
-                                    onMouseEnter={() => setHoveredEdgeId(calc.allEdgeIdsInCircuit[0] || calc.edgeId)}
-                                    onMouseLeave={() => setHoveredEdgeId(null)}
+                                    onMouseEnter={() =>
+                                      setHoveredCircuitEdgeIds(
+                                        calc.allEdgeIdsInCircuit.length > 0 ? calc.allEdgeIdsInCircuit : [calc.edgeId],
+                                      )
+                                    }
+                                    onMouseLeave={() => setHoveredCircuitEdgeIds([])}
                                   >
                                     <div className="flex justify-between items-center">
                                       <span
