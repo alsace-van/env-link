@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.64 - Survol circuit: tout le circuit grossit (pas seulement le premier câble)
+// VERSION: 3.65 - Badge de section sur chaque câble du circuit survolé
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -976,6 +976,8 @@ const CustomSmoothEdge = ({
   const allNodes = (data as any)?.allNodes || [];
   // Récupérer si ce câble est survolé dans le popover
   const isHovered = (data as any)?.isHovered ?? false;
+  // Récupérer la section du câble
+  const section = (data as any)?.section ?? null;
 
   // Distance minimale avant le premier virage (sortie perpendiculaire)
   const minExitDistance = 40; // Distance avant le premier coude
@@ -1432,24 +1434,47 @@ const CustomSmoothEdge = ({
   return (
     <>
       <BaseEdge id={id} path={edgePath} style={style} />
-      {label && (
+      {/* Badge de section au survol */}
+      {isHovered && section && (
+        <EdgeLabelRenderer>
+          <div
+            style={{
+              position: "absolute",
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              pointerEvents: "none",
+              padding: "6px 12px",
+              borderRadius: 20,
+              fontSize: 14,
+              fontWeight: 800,
+              backgroundColor: "#10b981",
+              color: "white",
+              boxShadow: "0 4px 12px rgba(16, 185, 129, 0.5)",
+              border: "3px solid white",
+              zIndex: 1001,
+            }}
+            className="nodrag nopan"
+          >
+            {section}mm²
+          </div>
+        </EdgeLabelRenderer>
+      )}
+      {/* Label normal (masqué au survol pour éviter superposition) */}
+      {label && !isHovered && (
         <EdgeLabelRenderer>
           <div
             style={{
               position: "absolute",
               // Décaler le label au-dessus du trait (-15px vertical)
-              transform: `translate(-50%, -100%) translate(${labelX}px, ${labelY - 8}px) ${isHovered ? "scale(1.15)" : "scale(1)"}`,
+              transform: `translate(-50%, -100%) translate(${labelX}px, ${labelY - 8}px)`,
               pointerEvents: "all",
               ...labelBgStyle,
-              padding: isHovered ? "4px 10px" : "2px 6px",
-              borderRadius: isHovered ? 6 : 4,
-              fontSize: isHovered ? 13 : 11,
-              fontWeight: isHovered ? 700 : 600,
-              backgroundColor: isHovered ? "rgba(236, 253, 245, 0.98)" : "rgba(255, 255, 255, 0.9)",
-              boxShadow: isHovered ? "0 2px 8px rgba(16, 185, 129, 0.4)" : "0 1px 2px rgba(0,0,0,0.1)",
-              border: isHovered ? "2px solid #10b981" : "none",
-              transition: "all 0.2s ease",
-              zIndex: isHovered ? 1000 : 1,
+              padding: "2px 6px",
+              borderRadius: 4,
+              fontSize: 11,
+              fontWeight: 600,
+              backgroundColor: "rgba(255, 255, 255, 0.9)",
+              boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+              zIndex: 1,
               ...(labelStyle as React.CSSProperties),
             }}
             className="nodrag nopan"
@@ -4674,6 +4699,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             // Passer tous les nodes pour le contournement des obstacles
             allNodes: nodes.filter((n) => n.id !== edge.source_node_id && n.id !== edge.target_node_id),
             isHovered, // Pour grossir le label au survol dans le popover
+            section: edge.section_mm2 || edge.section?.replace("mm²", "") || null, // Section pour le badge
           },
           label: cableLabel,
           labelStyle: {
