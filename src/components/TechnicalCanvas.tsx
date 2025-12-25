@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.60 - Fix: busbar = point de connexion, calcul par catégorie d'équipement
+// VERSION: 3.61 - Ajout type de flux par handle (production/consommation/stockage)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -165,6 +165,14 @@ interface BlockHandles {
 // Numéros de circuit par handle (ex: {"top-1": 1, "bottom-2": 2})
 interface HandleCircuits {
   [handleId: string]: number | undefined;
+}
+
+// Type de flux sur un handle
+type HandleFluxType = "production" | "consommation" | "stockage" | "neutre";
+
+// Types de flux par handle (ex: {"top-1": "production", "bottom-2": "consommation"})
+interface HandleFluxTypes {
+  [handleId: string]: HandleFluxType | undefined;
 }
 
 const DEFAULT_HANDLES: BlockHandles = { top: 2, bottom: 2, left: 2, right: 2 };
@@ -540,17 +548,22 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
   const item = data.item as ElectricalItem;
   const handles = (data.handles as BlockHandles) || DEFAULT_HANDLES;
   const handleCircuits = (data.handleCircuits as HandleCircuits) || {};
+  const handleFluxTypes = (data.handleFluxTypes as HandleFluxTypes) || {};
   const isLocked = data.isLocked as boolean | undefined;
   const onUpdateHandles = data.onUpdateHandles as ((nodeId: string, handles: BlockHandles) => void) | undefined;
   const onUpdateHandleCircuit = data.onUpdateHandleCircuit as
     | ((nodeId: string, handleId: string, circuitNum: number | undefined) => void)
     | undefined;
+  const onUpdateHandleFluxType = data.onUpdateHandleFluxType as
+    | ((nodeId: string, handleId: string, fluxType: HandleFluxType | undefined) => void)
+    | undefined;
   const onDeleteItem = data.onDeleteItem as ((nodeId: string) => void) | undefined;
   const onEditItem = data.onEditItem as ((item: ElectricalItem) => void) | undefined;
 
-  // State pour l'édition du numéro de circuit
+  // State pour l'édition du numéro de circuit et du type de flux
   const [editingHandle, setEditingHandle] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [editFluxType, setEditFluxType] = useState<HandleFluxType>("neutre");
 
   if (!item) return null;
 
@@ -563,16 +576,23 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
     if (isLocked) return;
     setEditingHandle(handleId);
     setEditValue(handleCircuits[handleId]?.toString() || "");
+    setEditFluxType(handleFluxTypes[handleId] || "neutre");
   };
 
-  // Sauvegarder le numéro de circuit
+  // Sauvegarder le numéro de circuit et le type de flux
   const saveCircuitNumber = () => {
-    if (editingHandle && onUpdateHandleCircuit) {
-      const num = editValue ? parseInt(editValue, 10) : undefined;
-      onUpdateHandleCircuit(item.id, editingHandle, isNaN(num as number) ? undefined : num);
+    if (editingHandle) {
+      if (onUpdateHandleCircuit) {
+        const num = editValue ? parseInt(editValue, 10) : undefined;
+        onUpdateHandleCircuit(item.id, editingHandle, isNaN(num as number) ? undefined : num);
+      }
+      if (onUpdateHandleFluxType) {
+        onUpdateHandleFluxType(item.id, editingHandle, editFluxType === "neutre" ? undefined : editFluxType);
+      }
     }
     setEditingHandle(null);
     setEditValue("");
+    setEditFluxType("neutre");
   };
 
   // Générer les handles pour un côté
@@ -583,11 +603,17 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
     position: Position,
   ) => {
     const isHorizontal = side === "top" || side === "bottom";
-    const color = type === "source" ? "!bg-green-500" : "!bg-blue-500";
 
     return Array.from({ length: count }, (_, i) => {
       const handleId = `${side}-${i + 1}`;
       const circuitNum = handleCircuits[handleId];
+      const fluxType = handleFluxTypes[handleId];
+
+      // Couleur basée sur le type de flux (si défini)
+      let handleColor = type === "source" ? "!bg-green-500" : "!bg-blue-500";
+      if (fluxType === "production") handleColor = "!bg-emerald-500";
+      else if (fluxType === "consommation") handleColor = "!bg-red-500";
+      else if (fluxType === "stockage") handleColor = "!bg-amber-500";
 
       // Répartir les handles uniformément (éviter les bords)
       const percent = count === 1 ? 50 : 15 + i * (70 / Math.max(count - 1, 1));
@@ -597,7 +623,7 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
         ? { left: `${percent}%`, transform: "translateX(-50%)" }
         : { top: `${percent}%`, transform: "translateY(-50%)" };
 
-      // Position du badge de numéro
+      // Position du badge/popover
       const badgeStyle: React.CSSProperties = isHorizontal
         ? {
             left: `${percent}%`,
@@ -610,45 +636,111 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
             ...(side === "left" ? { left: "-18px" } : { right: "-18px" }),
           };
 
+      // Position du popover étendu (plus bas pour avoir la place)
+      const popoverStyle: React.CSSProperties = isHorizontal
+        ? {
+            left: `${percent}%`,
+            transform: "translateX(-50%)",
+            ...(side === "top" ? { top: "-85px" } : { bottom: "-85px" }),
+          }
+        : {
+            top: `${percent}%`,
+            transform: "translateY(-50%)",
+            ...(side === "left" ? { left: "-120px" } : { right: "-120px" }),
+          };
+
+      // Icône pour le type de flux
+      const getFluxIcon = (ft: HandleFluxType | undefined) => {
+        if (ft === "production") return "🔋";
+        if (ft === "consommation") return "💡";
+        if (ft === "stockage") return "🔌";
+        return "";
+      };
+
       return (
         <React.Fragment key={handleId}>
           <Handle
             type={type}
             position={position}
             id={handleId}
-            className={`${color} !w-2 !h-2 !border-2 !border-white`}
+            className={`${handleColor} !w-2 !h-2 !border-2 !border-white`}
             style={style}
             onDoubleClick={(e) => handleDoubleClick(handleId, e)}
           />
-          {/* Badge du numéro de circuit */}
+          {/* Popover d'édition étendu */}
           {editingHandle === handleId ? (
-            <div className="absolute z-50" style={badgeStyle} onClick={(e) => e.stopPropagation()}>
-              <input
-                type="number"
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                onBlur={saveCircuitNumber}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") saveCircuitNumber();
-                  if (e.key === "Escape") {
-                    setEditingHandle(null);
-                    setEditValue("");
-                  }
-                }}
-                autoFocus
-                className="w-8 h-5 text-[10px] text-center border border-blue-400 rounded bg-white shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                min="1"
-                max="99"
-              />
-            </div>
-          ) : circuitNum !== undefined ? (
             <div
-              className="absolute z-20 w-4 h-4 text-[9px] font-bold flex items-center justify-center bg-amber-100 border border-amber-400 text-amber-700 rounded-full cursor-pointer hover:bg-amber-200"
+              className="absolute z-50 bg-white rounded-lg shadow-lg border border-gray-200 p-2 min-w-[110px]"
+              style={popoverStyle}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Numéro de circuit */}
+              <div className="flex items-center gap-1 mb-2">
+                <span className="text-[10px] text-gray-500">N°:</span>
+                <input
+                  type="number"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveCircuitNumber();
+                    if (e.key === "Escape") {
+                      setEditingHandle(null);
+                      setEditValue("");
+                      setEditFluxType("neutre");
+                    }
+                  }}
+                  autoFocus
+                  className="w-10 h-5 text-[10px] text-center border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  min="1"
+                  max="99"
+                />
+              </div>
+              {/* Type de flux */}
+              <div className="space-y-0.5">
+                <div className="text-[9px] text-gray-500 mb-1">Type de flux:</div>
+                {(["production", "consommation", "stockage", "neutre"] as HandleFluxType[]).map((ft) => (
+                  <label key={ft} className="flex items-center gap-1 cursor-pointer hover:bg-gray-50 rounded px-1">
+                    <input
+                      type="radio"
+                      name={`flux-${handleId}`}
+                      checked={editFluxType === ft}
+                      onChange={() => setEditFluxType(ft)}
+                      className="w-2.5 h-2.5"
+                    />
+                    <span className="text-[9px]">
+                      {ft === "production" && "🔋 Prod."}
+                      {ft === "consommation" && "💡 Conso."}
+                      {ft === "stockage" && "🔌 Stock."}
+                      {ft === "neutre" && "⚪ Neutre"}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {/* Bouton OK */}
+              <button
+                onClick={saveCircuitNumber}
+                className="mt-2 w-full text-[10px] bg-blue-500 text-white rounded py-0.5 hover:bg-blue-600"
+              >
+                OK
+              </button>
+            </div>
+          ) : circuitNum !== undefined || fluxType ? (
+            <div
+              className={`absolute z-20 flex items-center gap-0.5 px-1 py-0.5 text-[9px] font-bold rounded-full cursor-pointer hover:opacity-80 ${
+                fluxType === "production"
+                  ? "bg-emerald-100 border border-emerald-400 text-emerald-700"
+                  : fluxType === "consommation"
+                    ? "bg-red-100 border border-red-400 text-red-700"
+                    : fluxType === "stockage"
+                      ? "bg-amber-100 border border-amber-400 text-amber-700"
+                      : "bg-gray-100 border border-gray-400 text-gray-700"
+              }`}
               style={badgeStyle}
               onDoubleClick={(e) => handleDoubleClick(handleId, e)}
-              title={`Circuit ${circuitNum} - Double-clic pour modifier`}
+              title={`${circuitNum ? `Circuit ${circuitNum}` : ""} ${fluxType ? `(${fluxType})` : ""} - Double-clic pour modifier`}
             >
-              {circuitNum}
+              {getFluxIcon(fluxType)}
+              {circuitNum !== undefined && <span>{circuitNum}</span>}
             </div>
           ) : null}
         </React.Fragment>
@@ -1396,6 +1488,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // État pour les numéros de circuit par handle (ex: {"node1": {"top-1": 1, "bottom-2": 2}})
   const [nodeHandleCircuits, setNodeHandleCircuits] = useState<Record<string, HandleCircuits>>({});
+
+  // État pour les types de flux par handle (ex: {"node1": {"top-1": "production", "bottom-2": "consommation"}})
+  const [nodeHandleFluxTypes, setNodeHandleFluxTypes] = useState<Record<string, HandleFluxTypes>>({});
 
   // États pour les calques
   const [layers, setLayers] = useState<SchemaLayer[]>([createDefaultLayer()]);
@@ -2253,6 +2348,19 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         return { ...prev, [nodeId]: rest };
       }
       return { ...prev, [nodeId]: { ...nodeCircuits, [handleId]: circuitNum } };
+    });
+  }, []);
+
+  // Mettre à jour le type de flux d'un handle
+  const updateHandleFluxType = useCallback((nodeId: string, handleId: string, fluxType: HandleFluxType | undefined) => {
+    setNodeHandleFluxTypes((prev) => {
+      const nodeFluxTypes = prev[nodeId] || {};
+      if (fluxType === undefined || fluxType === "neutre") {
+        // Supprimer le type (neutre = pas de type défini)
+        const { [handleId]: _, ...rest } = nodeFluxTypes;
+        return { ...prev, [nodeId]: rest };
+      }
+      return { ...prev, [nodeId]: { ...nodeFluxTypes, [handleId]: fluxType } };
     });
   }, []);
 
@@ -3795,6 +3903,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           setNodeHandleCircuits(parsed.nodeHandleCircuits);
         }
 
+        // Charger les types de flux par handle
+        if (parsed.nodeHandleFluxTypes) {
+          setNodeHandleFluxTypes(parsed.nodeHandleFluxTypes);
+        }
+
         // Charger les calques sauvegardés
         if (parsed.layers && parsed.layers.length > 0) {
           setLayers(parsed.layers);
@@ -4303,6 +4416,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         const isVisible = visibleLayerIds.has(itemLayerId);
         const isLocked = lockedLayerIds.has(itemLayerId);
         const handleCircuits = nodeHandleCircuits[item.id] || {};
+        const handleFluxTypes = nodeHandleFluxTypes[item.id] || {};
 
         return {
           id: item.id,
@@ -4314,9 +4428,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             item,
             handles,
             handleCircuits,
+            handleFluxTypes,
             isLocked, // Passer l'info de verrouillage au composant
             onUpdateHandles: updateNodeHandles,
             onUpdateHandleCircuit: updateHandleCircuit,
+            onUpdateHandleFluxType: updateHandleFluxType,
             onDeleteItem: deleteItemFromSchema,
             onEditItem: openEditModal,
           },
@@ -4327,8 +4443,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     items,
     nodeHandles,
     nodeHandleCircuits,
+    nodeHandleFluxTypes,
     updateNodeHandles,
     updateHandleCircuit,
+    updateHandleFluxType,
     deleteItemFromSchema,
     openEditModal,
     layers,
@@ -4591,6 +4709,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         edges,
         nodeHandles,
         nodeHandleCircuits, // Sauvegarder les numéros de circuit par handle
+        nodeHandleFluxTypes, // Sauvegarder les types de flux par handle
         items, // Sauvegarder aussi les items ajoutés au schéma
         layers, // Sauvegarder les calques
         annotations, // Sauvegarder les annotations
@@ -4611,6 +4730,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     setEdges([]);
     setNodeHandles({});
     setNodeHandleCircuits({});
+    setNodeHandleFluxTypes({});
     toast.success("Schéma réinitialisé");
   };
 
@@ -6027,71 +6147,82 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               const isDistribution = typeConfig?.category === "distribution" || typeConfig?.category === "distributeur";
 
               if (isDistribution && editingItem) {
-                // Pour les busbars: un busbar est juste un point de connexion physique
-                // Le sens du câble n'a pas d'importance - ce qui compte c'est la catégorie de l'équipement connecté
+                // Pour les busbars: utiliser les types de flux définis sur chaque handle
+                // C'est l'utilisateur qui définit si un handle est une entrée de production,
+                // une sortie de consommation, etc.
 
-                // Trouver TOUS les équipements connectés (peu importe le sens du câble)
+                const busbarFluxTypes = nodeHandleFluxTypes[editingItem.id] || {};
+
+                // Trouver TOUS les câbles connectés au busbar
                 const connectedEdges = edges.filter(
                   (e) => e.source_node_id === editingItem.id || e.target_node_id === editingItem.id,
                 );
 
-                // Récupérer les équipements uniques connectés
-                const connectedItemIds = new Set<string>();
-                connectedEdges.forEach((e) => {
-                  if (e.source_node_id === editingItem.id) {
-                    connectedItemIds.add(e.target_node_id);
-                  } else {
-                    connectedItemIds.add(e.source_node_id);
-                  }
-                });
-
                 let totalProduction = 0;
                 let totalConsumption = 0;
+                let totalStockage = 0;
 
-                connectedItemIds.forEach((itemId) => {
-                  const item = items.find((i) => i.id === itemId);
-                  if (!item) return;
+                // Pour chaque câble, regarder le type de flux du handle côté busbar
+                connectedEdges.forEach((e) => {
+                  // Quel handle du busbar est utilisé ?
+                  const busbarHandle = e.source_node_id === editingItem.id ? e.source_handle : e.target_handle;
 
-                  const itemConfig = ELECTRICAL_TYPES[item.type_electrique];
-                  const category = itemConfig?.category || "autre";
-                  const power = item.puissance_watts ? item.puissance_watts * (item.quantite || 1) : 0;
+                  // Quel équipement est de l'autre côté ?
+                  const otherNodeId = e.source_node_id === editingItem.id ? e.target_node_id : e.source_node_id;
 
-                  if (category === "production") {
-                    // Producteurs: MPPT, DC/DC, chargeur 230V, panneau solaire
+                  const otherItem = items.find((i) => i.id === otherNodeId);
+                  if (!otherItem) return;
+
+                  // Puissance de l'équipement connecté
+                  const power = otherItem.puissance_watts ? otherItem.puissance_watts * (otherItem.quantite || 1) : 0;
+
+                  // Utiliser le type de flux défini sur le handle du busbar
+                  const fluxType = busbarHandle ? busbarFluxTypes[busbarHandle] : undefined;
+
+                  if (fluxType === "production") {
                     totalProduction += power;
-                  } else if (category === "consommateur") {
-                    // Consommateurs: frigo, éclairage, etc.
+                  } else if (fluxType === "consommation") {
                     totalConsumption += power;
+                  } else if (fluxType === "stockage") {
+                    totalStockage += power;
                   }
-                  // Stockage et autres: ne comptent pas directement (la batterie reçoit/fournit selon le contexte)
+                  // "neutre" ou undefined = pas comptabilisé
                 });
+
+                const hasValues = totalProduction > 0 || totalConsumption > 0 || totalStockage > 0;
 
                 return (
                   <div className="bg-gradient-to-r from-emerald-50 to-green-50 rounded-lg p-3 border border-emerald-200">
                     <div className="text-sm font-medium text-emerald-800 mb-2">
                       ⚡ Puissance calculée automatiquement
                     </div>
-                    <div
-                      className={`grid gap-3 ${totalConsumption > 0 && totalProduction > 0 ? "grid-cols-2" : "grid-cols-1"}`}
-                    >
-                      {totalProduction > 0 && (
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-emerald-700">{totalProduction}W</div>
-                          <div className="text-xs text-emerald-600">Production</div>
-                        </div>
-                      )}
-                      {totalConsumption > 0 && (
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-red-600">{totalConsumption}W</div>
-                          <div className="text-xs text-red-500">Consommation</div>
-                        </div>
-                      )}
-                      {totalProduction === 0 && totalConsumption === 0 && (
-                        <div className="text-center text-gray-500 text-sm">
-                          Aucun producteur ou consommateur connecté
-                        </div>
-                      )}
-                    </div>
+                    {hasValues ? (
+                      <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
+                        {totalProduction > 0 && (
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-emerald-700">{totalProduction}W</div>
+                            <div className="text-xs text-emerald-600">🔋 Production</div>
+                          </div>
+                        )}
+                        {totalConsumption > 0 && (
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-red-600">{totalConsumption}W</div>
+                            <div className="text-xs text-red-500">💡 Consommation</div>
+                          </div>
+                        )}
+                        {totalStockage > 0 && (
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-amber-600">{totalStockage}W</div>
+                            <div className="text-xs text-amber-500">🔌 Stockage</div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center text-gray-500 text-sm">
+                        <p>Définissez le type de flux sur chaque handle</p>
+                        <p className="text-xs mt-1">(double-clic sur un point de connexion)</p>
+                      </div>
+                    )}
                   </div>
                 );
               }
@@ -6201,66 +6332,69 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 // Un busbar est un point de connexion physique - le sens du câble n'a pas d'importance
                 // On récupère TOUS les équipements connectés et on les groupe par catégorie
 
+                const busbarFluxTypes = nodeHandleFluxTypes[editingItem.id] || {};
+
                 const connectedEdges = edges.filter(
                   (e) => e.source_node_id === editingItem.id || e.target_node_id === editingItem.id,
                 );
 
-                // Récupérer les équipements connectés avec leur puissance
-                const connectedItems: { item: ElectricalItem; power: number; category: string }[] = [];
-                const seenIds = new Set<string>();
+                // Récupérer les équipements connectés avec leur handle et type de flux
+                const connectedItems: {
+                  item: ElectricalItem;
+                  power: number;
+                  handleId: string | undefined;
+                  fluxType: HandleFluxType | undefined;
+                }[] = [];
 
                 connectedEdges.forEach((e) => {
                   const connectedId = e.source_node_id === editingItem.id ? e.target_node_id : e.source_node_id;
-                  if (seenIds.has(connectedId)) return;
-                  seenIds.add(connectedId);
+                  const busbarHandle = e.source_node_id === editingItem.id ? e.source_handle : e.target_handle;
 
                   const item = items.find((i) => i.id === connectedId);
                   if (!item) return;
 
-                  const itemConfig = ELECTRICAL_TYPES[item.type_electrique];
-                  const category = itemConfig?.category || "autre";
                   const power = item.puissance_watts ? item.puissance_watts * (item.quantite || 1) : 0;
+                  const fluxType = busbarHandle ? busbarFluxTypes[busbarHandle] : undefined;
 
-                  connectedItems.push({ item, power, category });
+                  connectedItems.push({ item, power, handleId: busbarHandle || undefined, fluxType });
                 });
 
-                // Grouper par catégorie
-                const producers = connectedItems.filter((i) => i.category === "production");
-                const consumers = connectedItems.filter((i) => i.category === "consommateur");
-                const storage = connectedItems.filter((i) => i.category === "stockage");
-                const others = connectedItems.filter(
-                  (i) => !["production", "consommateur", "stockage"].includes(i.category),
-                );
+                // Grouper par type de flux défini sur le handle
+                const productionItems = connectedItems.filter((i) => i.fluxType === "production");
+                const consumptionItems = connectedItems.filter((i) => i.fluxType === "consommation");
+                const storageItems = connectedItems.filter((i) => i.fluxType === "stockage");
+                const neutralItems = connectedItems.filter((i) => !i.fluxType || i.fluxType === "neutre");
 
-                const totalProduction = producers.reduce((sum, i) => sum + i.power, 0);
-                const totalConsumption = consumers.reduce((sum, i) => sum + i.power, 0);
+                const totalProduction = productionItems.reduce((sum, i) => sum + i.power, 0);
+                const totalConsumption = consumptionItems.reduce((sum, i) => sum + i.power, 0);
 
                 return (
                   <div className="border-t pt-4 mt-2">
                     <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
                       <Cable className="h-4 w-4" />
-                      Équipements connectés
+                      Connexions par handle
                     </div>
 
-                    {/* Producteurs */}
-                    {producers.length > 0 && (
+                    {/* Production */}
+                    {productionItems.length > 0 && (
                       <div className="mb-3">
-                        <div className="text-xs font-medium text-green-700 mb-1">
-                          🔋 Producteurs ({totalProduction}W)
+                        <div className="text-xs font-medium text-emerald-700 mb-1">
+                          🔋 Production ({totalProduction}W)
                         </div>
                         <div className="space-y-1">
-                          {producers.map(({ item, power }) => {
+                          {productionItems.map(({ item, power, handleId }) => {
                             const config = ELECTRICAL_TYPES[item.type_electrique];
                             return (
                               <div
-                                key={item.id}
-                                className="text-xs bg-green-50 rounded px-2 py-1.5 border border-green-200"
+                                key={`${item.id}-${handleId}`}
+                                className="text-xs bg-emerald-50 rounded px-2 py-1.5 border border-emerald-200"
                               >
                                 <div className="flex items-center justify-between gap-2">
                                   <span className={`font-medium whitespace-nowrap ${config?.color || "text-gray-600"}`}>
                                     {config?.label || item.type_electrique}
+                                    {handleId && <span className="text-gray-400 ml-1">({handleId})</span>}
                                   </span>
-                                  <span className="font-bold text-green-700 whitespace-nowrap">{power}W</span>
+                                  <span className="font-bold text-emerald-700 whitespace-nowrap">{power}W</span>
                                 </div>
                                 <div className="text-gray-600 mt-0.5 break-words">{item.nom_accessoire}</div>
                               </div>
@@ -6270,23 +6404,24 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                       </div>
                     )}
 
-                    {/* Consommateurs */}
-                    {consumers.length > 0 && (
+                    {/* Consommation */}
+                    {consumptionItems.length > 0 && (
                       <div className="mb-3">
                         <div className="text-xs font-medium text-red-700 mb-1">
-                          💡 Consommateurs ({totalConsumption}W)
+                          💡 Consommation ({totalConsumption}W)
                         </div>
                         <div className="space-y-1">
-                          {consumers.map(({ item, power }) => {
+                          {consumptionItems.map(({ item, power, handleId }) => {
                             const config = ELECTRICAL_TYPES[item.type_electrique];
                             return (
                               <div
-                                key={item.id}
+                                key={`${item.id}-${handleId}`}
                                 className="text-xs bg-red-50 rounded px-2 py-1.5 border border-red-200"
                               >
                                 <div className="flex items-center justify-between gap-2">
                                   <span className={`font-medium whitespace-nowrap ${config?.color || "text-gray-600"}`}>
                                     {config?.label || item.type_electrique}
+                                    {handleId && <span className="text-gray-400 ml-1">({handleId})</span>}
                                   </span>
                                   <span className="font-bold text-red-700 whitespace-nowrap">{power}W</span>
                                 </div>
@@ -6299,20 +6434,21 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                     )}
 
                     {/* Stockage */}
-                    {storage.length > 0 && (
+                    {storageItems.length > 0 && (
                       <div className="mb-3">
                         <div className="text-xs font-medium text-amber-700 mb-1">🔌 Stockage</div>
                         <div className="space-y-1">
-                          {storage.map(({ item, power }) => {
+                          {storageItems.map(({ item, power, handleId }) => {
                             const config = ELECTRICAL_TYPES[item.type_electrique];
                             return (
                               <div
-                                key={item.id}
+                                key={`${item.id}-${handleId}`}
                                 className="text-xs bg-amber-50 rounded px-2 py-1.5 border border-amber-200"
                               >
                                 <div className="flex items-center justify-between gap-2">
                                   <span className={`font-medium whitespace-nowrap ${config?.color || "text-gray-600"}`}>
                                     {config?.label || item.type_electrique}
+                                    {handleId && <span className="text-gray-400 ml-1">({handleId})</span>}
                                   </span>
                                   {power > 0 && (
                                     <span className="font-bold text-amber-700 whitespace-nowrap">{power}W</span>
@@ -6326,22 +6462,28 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                       </div>
                     )}
 
-                    {/* Autres (protection, distribution, etc.) */}
-                    {others.length > 0 && (
+                    {/* Non définis */}
+                    {neutralItems.length > 0 && (
                       <div className="mb-3">
-                        <div className="text-xs font-medium text-blue-700 mb-1">🔗 Autres connexions</div>
+                        <div className="text-xs font-medium text-gray-600 mb-1">
+                          ⚪ Non défini (double-clic sur le handle pour définir)
+                        </div>
                         <div className="space-y-1">
-                          {others.map(({ item }) => {
+                          {neutralItems.map(({ item, power, handleId }) => {
                             const config = ELECTRICAL_TYPES[item.type_electrique];
                             return (
                               <div
-                                key={item.id}
-                                className="text-xs bg-blue-50 rounded px-2 py-1.5 border border-blue-200"
+                                key={`${item.id}-${handleId}`}
+                                className="text-xs bg-gray-50 rounded px-2 py-1.5 border border-gray-200"
                               >
                                 <div className="flex items-center justify-between gap-2">
                                   <span className={`font-medium whitespace-nowrap ${config?.color || "text-gray-600"}`}>
                                     {config?.label || item.type_electrique}
+                                    {handleId && <span className="text-gray-400 ml-1">({handleId})</span>}
                                   </span>
+                                  {power > 0 && (
+                                    <span className="font-bold text-gray-600 whitespace-nowrap">{power}W</span>
+                                  )}
                                 </div>
                                 <div className="text-gray-600 mt-0.5 break-words">{item.nom_accessoire}</div>
                               </div>
