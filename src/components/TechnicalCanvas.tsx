@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.70 - Fix: boutons, badges handles, calcul puissance busbar (exclut câble origine)
+// VERSION: 3.72 - Distributeur = même comportement que busbar (point d'arrêt des circuits)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -3299,6 +3299,72 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     [edges, items],
   );
 
+  // Fonction pour DESCENDRE vers les consommateurs et sommer leurs puissances
+  // Utilisée quand on calcule la puissance d'un câble qui va vers des consommateurs
+  const sumDownstreamPowersWithDetails = useCallback(
+    (startNodeId: string, excludeEdgeId: string): { total: number; details: PowerDetail[] } => {
+      const visited = new Set<string>();
+
+      const traverse = (nodeId: string, fromEdgeId: string | null): { total: number; details: PowerDetail[] } => {
+        if (visited.has(nodeId)) return { total: 0, details: [] };
+        visited.add(nodeId);
+
+        const item = items.find((i) => i.id === nodeId);
+        if (!item) return { total: 0, details: [] };
+
+        const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
+        const category = typeConfig?.category || "autre";
+
+        // Si c'est un busbar ou distributeur, on s'arrête
+        // Car chaque sortie est un circuit séparé
+        if (category === "distribution" || category === "distributeur") return { total: 0, details: [] };
+
+        // Si c'est un consommateur avec puissance, c'est notre destination
+        if (item.puissance_watts && item.puissance_watts > 0 && category === "consommateur") {
+          const totalPower = item.puissance_watts * (item.quantite || 1);
+          return {
+            total: totalPower,
+            details: [
+              {
+                id: item.id,
+                nom: item.nom_accessoire,
+                puissance: item.puissance_watts,
+                quantite: item.quantite || 1,
+                total: totalPower,
+              },
+            ],
+          };
+        }
+
+        // Si c'est un transmetteur simple (protection, régulation), continuer à chercher en aval
+        const isTransmitter = ["regulation", "conversion", "protection"].includes(category);
+        if (isTransmitter) {
+          let totalPower = 0;
+          let allDetails: PowerDetail[] = [];
+
+          // Toutes les connexions SAUF celle d'où on vient
+          const allEdges = edges.filter(
+            (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && e.id !== fromEdgeId,
+          );
+
+          for (const e of allEdges) {
+            const nextNodeId = e.source_node_id === nodeId ? e.target_node_id : e.source_node_id;
+            const result = traverse(nextNodeId, e.id);
+            totalPower += result.total;
+            allDetails = [...allDetails, ...result.details];
+          }
+
+          return { total: totalPower, details: allDetails };
+        }
+
+        return { total: 0, details: [] };
+      };
+
+      return traverse(startNodeId, excludeEdgeId);
+    },
+    [edges, items],
+  );
+
   // Calculer la puissance qui traverse un câble spécifique
   const calculateEdgePower = useCallback(
     (edge: SchemaEdge): { power: number; details: PowerDetail[] } => {
@@ -3311,6 +3377,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
       const sourceIsDistribution = isDistributionPoint(sourceItem);
       const sourceIsTransparent = isTransparentNode(sourceItem);
+
+      // Déterminer la catégorie de la destination
+      const targetTypeConfig = ELECTRICAL_TYPES[targetItem.type_electrique];
+      const targetCategory = targetTypeConfig?.category || "autre";
+      const targetIsConsumer = targetCategory === "consommateur";
+      const targetIsTransmitter = ["regulation", "conversion", "protection", "distributeur"].includes(targetCategory);
 
       // CAS 1: La source a une puissance propre (producteur, consommateur)
       if (sourceItem.puissance_watts && sourceItem.puissance_watts > 0) {
@@ -3330,13 +3402,20 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       }
 
       // CAS 2: La source est un point de distribution (busbar)
-      // → Utiliser les types de flux définis sur les handles pour calculer la puissance
+      // → Utiliser les types de flux définis sur les handles
       if (sourceIsDistribution) {
         const busbarFluxTypes = nodeHandleFluxTypes[edge.source_node_id] || {};
         const sourceHandleFlux = edge.source_handle ? busbarFluxTypes[edge.source_handle] : undefined;
 
-        // Si le handle source a un type de flux défini, calculer la puissance totale
-        // des producteurs connectés au busbar (via handles marqués "production")
+        // Si le handle source est marqué "consommation", calculer les consommateurs en AVAL
+        if (sourceHandleFlux === "consommation") {
+          const result = sumDownstreamPowersWithDetails(edge.target_node_id, edge.id);
+          if (result.total > 0) {
+            return result;
+          }
+        }
+
+        // Si le handle source est marqué "production" ou "stockage", calculer les producteurs en AMONT
         if (sourceHandleFlux === "production" || sourceHandleFlux === "stockage") {
           // Trouver tous les câbles connectés au busbar
           const busbarEdges = edges.filter(
@@ -3375,13 +3454,43 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           }
         }
 
-        // Fallback: utiliser l'ancienne méthode
+        // Fallback: utiliser l'ancienne méthode (production)
         const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
         return { power: result.total, details: result.details };
       }
 
-      // CAS 3: La source est transparente → propager ce qui vient d'amont
+      // CAS 3: La source est transparente (distributeur, protection, etc.)
+      // → Déterminer le sens du flux selon la destination
       if (sourceIsTransparent) {
+        // Si la destination est un consommateur ou un transmetteur vers consommateurs
+        if (targetIsConsumer) {
+          // Retourner la puissance du consommateur directement
+          if (targetItem.puissance_watts && targetItem.puissance_watts > 0) {
+            const power = targetItem.puissance_watts * (targetItem.quantite || 1);
+            return {
+              power,
+              details: [
+                {
+                  id: targetItem.id,
+                  nom: targetItem.nom_accessoire,
+                  puissance: targetItem.puissance_watts,
+                  quantite: targetItem.quantite || 1,
+                  total: power,
+                },
+              ],
+            };
+          }
+        }
+
+        // Si la destination est un transmetteur, chercher les consommateurs en aval
+        if (targetIsTransmitter) {
+          const downstream = sumDownstreamPowersWithDetails(edge.target_node_id, edge.id);
+          if (downstream.total > 0) {
+            return downstream;
+          }
+        }
+
+        // Sinon, remonter vers les producteurs
         const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
         return { power: result.total, details: result.details };
       }
@@ -3391,7 +3500,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
       return { power: result.total, details: result.details };
     },
-    [items, isDistributionPoint, isTransparentNode, sumUpstreamPowersWithDetails, edges, nodeHandleFluxTypes],
+    [
+      items,
+      isDistributionPoint,
+      isTransparentNode,
+      sumUpstreamPowersWithDetails,
+      sumDownstreamPowersWithDetails,
+      edges,
+      nodeHandleFluxTypes,
+    ],
   );
 
   // Interface pour les résultats de calcul
@@ -6345,6 +6462,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
                 // Fonction locale pour trouver la puissance en traversant les fusibles/protections
                 // excludeEdgeId: on exclut le câble par lequel on est arrivé pour ne pas remonter vers le busbar
+                // Note: on s'arrête sur les distributeurs (porte-fusible) car ils ont le même comportement que les busbars
                 const findPowerThroughChain = (startNodeId: string, excludeEdgeId: string): number => {
                   const visited = new Set<string>();
 
@@ -6358,11 +6476,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                     const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
                     const category = typeConfig?.category || "autre";
 
-                    // Si c'est un busbar, on s'arrête
+                    // Si c'est un busbar ou distributeur (porte-fusible), on s'arrête
+                    // Car chaque sortie est un circuit séparé
                     if (category === "distribution" || category === "distributeur") return 0;
 
-                    // Si cet item a une puissance propre (producteur ou consommateur), la retourner
+                    // Les transmetteurs sont les protections simples (fusible midi, coupe-circuit)
                     const isTransmitter = ["regulation", "conversion", "protection"].includes(category);
+
+                    // Si cet item a une puissance propre (producteur ou consommateur), la retourner
                     if (item.puissance_watts && item.puissance_watts > 0 && !isTransmitter) {
                       return item.puissance_watts * (item.quantite || 1);
                     }
@@ -6570,6 +6691,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
                 // Fonction locale pour trouver la puissance en traversant les fusibles/protections
                 // excludeEdgeId: on exclut le câble par lequel on est arrivé
+                // Note: on s'arrête sur les distributeurs (porte-fusible) car ils ont le même comportement que les busbars
                 const findPowerThroughChain = (startNodeId: string, excludeEdgeId: string): number => {
                   const visited = new Set<string>();
 
@@ -6583,11 +6705,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                     const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
                     const category = typeConfig?.category || "autre";
 
-                    // Si c'est un busbar, on s'arrête
+                    // Si c'est un busbar ou distributeur, on s'arrête
                     if (category === "distribution" || category === "distributeur") return 0;
 
-                    // Si cet item a une puissance propre, la retourner
+                    // Les transmetteurs sont les protections simples
                     const isTransmitter = ["regulation", "conversion", "protection"].includes(category);
+
+                    // Si cet item a une puissance propre, la retourner
                     if (item.puissance_watts && item.puissance_watts > 0 && !isTransmitter) {
                       return item.puissance_watts * (item.quantite || 1);
                     }
