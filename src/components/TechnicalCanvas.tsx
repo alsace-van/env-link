@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.66 - Fix: badge de section utilise la section CALCULÉE (pas stockée)
+// VERSION: 3.68 - Badge section permanent + discret + bouton "Afficher toutes les sections"
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1434,23 +1434,24 @@ const CustomSmoothEdge = ({
   return (
     <>
       <BaseEdge id={id} path={edgePath} style={style} />
-      {/* Badge de section au survol */}
-      {isHovered && section && (
+      {/* Badge de section - affiché en permanence si section définie */}
+      {section && (
         <EdgeLabelRenderer>
           <div
             style={{
               position: "absolute",
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
               pointerEvents: "none",
-              padding: "6px 12px",
-              borderRadius: 20,
-              fontSize: 14,
-              fontWeight: 800,
-              backgroundColor: "#10b981",
-              color: "white",
-              boxShadow: "0 4px 12px rgba(16, 185, 129, 0.5)",
-              border: "3px solid white",
-              zIndex: 1001,
+              padding: "2px 5px",
+              borderRadius: 4,
+              fontSize: 10,
+              fontWeight: 600,
+              backgroundColor: isHovered ? "rgba(236, 253, 245, 0.95)" : "rgba(255, 255, 255, 0.9)",
+              color: "#1f2937",
+              boxShadow: isHovered ? "0 2px 8px rgba(16, 185, 129, 0.4)" : "0 1px 3px rgba(0,0,0,0.1)",
+              border: isHovered ? "1.5px solid #10b981" : "1px solid #d1d5db",
+              zIndex: isHovered ? 1001 : 10,
+              transition: "all 0.2s ease",
             }}
             className="nodrag nopan"
           >
@@ -1458,13 +1459,12 @@ const CustomSmoothEdge = ({
           </div>
         </EdgeLabelRenderer>
       )}
-      {/* Label normal (masqué au survol pour éviter superposition) */}
-      {label && !isHovered && (
+      {/* Label normal (longueur) - affiché seulement si pas de section */}
+      {label && !section && (
         <EdgeLabelRenderer>
           <div
             style={{
               position: "absolute",
-              // Décaler le label au-dessus du trait (-15px vertical)
               transform: `translate(-50%, -100%) translate(${labelX}px, ${labelY - 8}px)`,
               pointerEvents: "all",
               ...labelBgStyle,
@@ -5593,6 +5593,17 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                           return firstIndex === index;
                         });
 
+                        // Fonction pour afficher toutes les sections sur le schéma
+                        const showAllSections = () => {
+                          const sectionsMap: Record<string, number> = {};
+                          uniqueSegments.forEach((calc) => {
+                            calc.allEdgeIdsInCircuit.forEach((id) => {
+                              sectionsMap[id] = calc.section;
+                            });
+                          });
+                          setHoveredCircuitSections((prev) => ({ ...prev, ...sectionsMap }));
+                        };
+
                         return (
                           <>
                             {/* Stats */}
@@ -5610,6 +5621,19 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                 <div className="font-bold text-lg text-gray-600">{withoutPower.length}</div>
                               </div>
                             </div>
+
+                            {/* Bouton pour afficher toutes les sections */}
+                            {uniqueSegments.length > 0 && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full text-xs h-7 bg-gray-50 hover:bg-gray-100"
+                                onClick={showAllSections}
+                              >
+                                <Eye className="h-3 w-3 mr-1" />
+                                Afficher les sections sur le schéma
+                              </Button>
+                            )}
 
                             {/* Liste des circuits/segments */}
                             {uniqueSegments.length > 0 && (
@@ -5629,16 +5653,18 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                       const edgeIds =
                                         calc.allEdgeIdsInCircuit.length > 0 ? calc.allEdgeIdsInCircuit : [calc.edgeId];
                                       setHoveredCircuitEdgeIds(edgeIds);
-                                      // Créer un map des sections pour tous les edges du circuit
-                                      const sectionsMap: Record<string, number> = {};
-                                      edgeIds.forEach((id) => {
-                                        sectionsMap[id] = calc.section;
+                                      // Ajouter les sections pour tous les edges du circuit (cumulatif)
+                                      setHoveredCircuitSections((prev) => {
+                                        const newSections = { ...prev };
+                                        edgeIds.forEach((id) => {
+                                          newSections[id] = calc.section;
+                                        });
+                                        return newSections;
                                       });
-                                      setHoveredCircuitSections(sectionsMap);
                                     }}
                                     onMouseLeave={() => {
+                                      // Ne pas effacer les sections - seulement le highlight
                                       setHoveredCircuitEdgeIds([]);
-                                      setHoveredCircuitSections({});
                                     }}
                                   >
                                     <div className="flex justify-between items-center">
