@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.72 - Distributeur = même comportement que busbar (point d'arrêt des circuits)
+// VERSION: 3.73 - Fix: erreurs TypeScript (fonction renommée sumDownstreamPowersFromEdge)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -3301,7 +3301,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // Fonction pour DESCENDRE vers les consommateurs et sommer leurs puissances
   // Utilisée quand on calcule la puissance d'un câble qui va vers des consommateurs
-  const sumDownstreamPowersWithDetails = useCallback(
+  // Cette version utilise l'edge ID pour éviter de revenir en arrière
+  const sumDownstreamPowersFromEdge = useCallback(
     (startNodeId: string, excludeEdgeId: string): { total: number; details: PowerDetail[] } => {
       const visited = new Set<string>();
 
@@ -3409,9 +3410,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
         // Si le handle source est marqué "consommation", calculer les consommateurs en AVAL
         if (sourceHandleFlux === "consommation") {
-          const result = sumDownstreamPowersWithDetails(edge.target_node_id, edge.id);
+          const result = sumDownstreamPowersFromEdge(edge.target_node_id, edge.id);
           if (result.total > 0) {
-            return result;
+            return { power: result.total, details: result.details };
           }
         }
 
@@ -3484,9 +3485,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
         // Si la destination est un transmetteur, chercher les consommateurs en aval
         if (targetIsTransmitter) {
-          const downstream = sumDownstreamPowersWithDetails(edge.target_node_id, edge.id);
+          const downstream = sumDownstreamPowersFromEdge(edge.target_node_id, edge.id);
           if (downstream.total > 0) {
-            return downstream;
+            return { power: downstream.total, details: downstream.details };
           }
         }
 
@@ -3505,7 +3506,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       isDistributionPoint,
       isTransparentNode,
       sumUpstreamPowersWithDetails,
-      sumDownstreamPowersWithDetails,
+      sumDownstreamPowersFromEdge,
       edges,
       nodeHandleFluxTypes,
     ],
