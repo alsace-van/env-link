@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.55 - Fix: nettoyage automatique des edges avec handles invalides
+// VERSION: 3.56 - Rollback: suppression du nettoyage automatique des edges
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -3782,54 +3782,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           circuits: Object.keys(parsed.circuits || {}).length,
         });
 
-        // Charger les handles D'ABORD
-        const loadedHandles = parsed.nodeHandles || {};
+        // Charger les handles D'ABORD (avant les edges)
         if (parsed.nodeHandles) {
           setNodeHandles(parsed.nodeHandles);
         }
 
-        // Fonction pour vérifier si un handle existe sur un node
-        const isValidHandle = (nodeId: string, handleId: string | undefined): boolean => {
-          if (!handleId) return true; // Pas de handle spécifié = OK
-          const nodeHandleConfig = loadedHandles[nodeId];
-          if (!nodeHandleConfig) return true; // Pas de config = handles par défaut (top-0, bottom-0, left-0, right-0)
-
-          // Extraire la position et l'index du handle
-          const match = handleId.match(/^(top|bottom|left|right)-(\d+)$/);
-          if (!match) return true;
-
-          const [, position, indexStr] = match;
-          const index = parseInt(indexStr, 10);
-
-          // Vérifier que l'index est valide pour cette position
-          const handleCount = nodeHandleConfig[position as keyof typeof nodeHandleConfig] || 1;
-          return index < handleCount;
-        };
-
-        // Nettoyer les edges avec des handles invalides
-        let loadedEdges = parsed.edges || [];
-        const loadedItems = parsed.items || [];
-
-        const validEdges = loadedEdges.filter((edge: SchemaEdge) => {
-          const sourceValid = isValidHandle(edge.source_node_id, edge.source_handle);
-          const targetValid = isValidHandle(edge.target_node_id, edge.target_handle);
-
-          if (!sourceValid || !targetValid) {
-            console.warn(
-              `[Schema] Removing invalid edge ${edge.id}: source_handle=${edge.source_handle} target_handle=${edge.target_handle}`,
-            );
-            return false;
-          }
-          return true;
-        });
-
-        if (validEdges.length !== loadedEdges.length) {
-          console.log(`[Schema] Cleaned ${loadedEdges.length - validEdges.length} invalid edges`);
-          toast.info(`${loadedEdges.length - validEdges.length} câble(s) invalide(s) supprimé(s)`);
+        // Charger les edges
+        if (parsed.edges) {
+          setEdges(parsed.edges);
         }
-
-        // Charger les edges nettoyés
-        setEdges(validEdges);
 
         // Charger les numéros de circuit par handle
         if (parsed.nodeHandleCircuits) {
@@ -3844,9 +3805,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         }
 
         // Charger les items sauvegardés
-        if (loadedItems.length > 0) {
-          console.log("[Schema] loadSchemaData - setting items:", loadedItems.length);
-          setItems(loadedItems);
+        if (parsed.items && parsed.items.length > 0) {
+          console.log("[Schema] loadSchemaData - setting items:", parsed.items.length);
+          setItems(parsed.items);
         } else {
           console.log("[Schema] loadSchemaData - no items in localStorage");
           setItems([]);
