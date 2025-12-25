@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.57 - Fix: redirection des handles invalides (sans supprimer les câbles)
+// VERSION: 3.58 - Rollback complet: version stable avec tous les câbles
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -3782,61 +3782,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           circuits: Object.keys(parsed.circuits || {}).length,
         });
 
-        // Charger les handles D'ABORD (avant les edges)
-        const loadedHandles = parsed.nodeHandles || {};
+        // Charger les edges
+        if (parsed.edges) {
+          setEdges(parsed.edges);
+        }
+
+        // Charger les handles
         if (parsed.nodeHandles) {
           setNodeHandles(parsed.nodeHandles);
         }
-
-        // Fonction pour corriger un handle invalide vers un handle valide
-        const fixInvalidHandle = (nodeId: string, handleId: string | undefined): string | undefined => {
-          if (!handleId) return handleId;
-
-          // Extraire la position et l'index du handle
-          const match = handleId.match(/^(top|bottom|left|right)-(\d+)$/);
-          if (!match) return handleId;
-
-          const [, position, indexStr] = match;
-          const index = parseInt(indexStr, 10);
-
-          // Vérifier la config du node
-          const nodeHandleConfig = loadedHandles[nodeId];
-          const handleCount = nodeHandleConfig?.[position as keyof typeof nodeHandleConfig] || 1;
-
-          // Si l'index est valide, garder tel quel
-          if (index < handleCount) return handleId;
-
-          // Sinon rediriger vers le dernier handle valide de cette position
-          const newIndex = Math.max(0, handleCount - 1);
-          console.log(`[Schema] Fixing handle: ${handleId} → ${position}-${newIndex} on node ${nodeId}`);
-          return `${position}-${newIndex}`;
-        };
-
-        // Corriger les edges avec des handles invalides (sans les supprimer)
-        let loadedEdges = parsed.edges || [];
-        let fixedCount = 0;
-
-        const correctedEdges = loadedEdges.map((edge: SchemaEdge) => {
-          const fixedSourceHandle = fixInvalidHandle(edge.source_node_id, edge.source_handle);
-          const fixedTargetHandle = fixInvalidHandle(edge.target_node_id, edge.target_handle);
-
-          if (fixedSourceHandle !== edge.source_handle || fixedTargetHandle !== edge.target_handle) {
-            fixedCount++;
-            return {
-              ...edge,
-              source_handle: fixedSourceHandle,
-              target_handle: fixedTargetHandle,
-            };
-          }
-          return edge;
-        });
-
-        if (fixedCount > 0) {
-          console.log(`[Schema] Fixed ${fixedCount} edge(s) with invalid handles`);
-        }
-
-        // Charger les edges corrigés
-        setEdges(correctedEdges);
 
         // Charger les numéros de circuit par handle
         if (parsed.nodeHandleCircuits) {
