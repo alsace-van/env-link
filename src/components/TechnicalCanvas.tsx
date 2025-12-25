@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.53 - Busbar: tous producteurs en vert (groupés ensemble)
+// VERSION: 3.54 - Debug: try-catch sur calcul puissance modale
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6033,15 +6033,20 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
                 // 1. Calculer les entrées (sources qui arrivent au busbar)
                 const incomingEdges = edges.filter((e) => e.target_node_id === editingItem.id);
-                const totalIncoming = incomingEdges.reduce((sum, e) => {
-                  const { power } = calculateEdgePower(e);
-                  return sum + power;
-                }, 0);
+                let totalIncoming = 0;
+                try {
+                  totalIncoming = incomingEdges.reduce((sum, e) => {
+                    const result = calculateEdgePower(e);
+                    return sum + (result?.power || 0);
+                  }, 0);
+                } catch (err) {
+                  console.error("[Modale] Erreur calcul puissance entrante:", err);
+                }
 
                 // 2. Calculer les sorties par catégorie
                 const outgoingEdges = edges.filter((e) => e.source_node_id === editingItem.id);
                 let totalConsumers = 0;
-                let totalProductionOut = 0; // Producteurs connectés en sortie (ex: DC/DC câblé à l'envers)
+                let totalProductionOut = 0;
 
                 outgoingEdges.forEach((e) => {
                   const targetItem = items.find((i) => i.id === e.target_node_id);
@@ -6055,13 +6060,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                     if (targetCategory === "consommateur") {
                       totalConsumers += power;
                     } else if (targetCategory === "production") {
-                      // Chargeurs 230V, DC/DC sont des producteurs - même câblés en sortie, ils produisent
                       totalProductionOut += power;
                     }
                   }
                 });
 
-                // 3. Production totale = entrées + producteurs en sortie (ils sont équivalents)
+                // 3. Production totale = entrées + producteurs en sortie
                 const totalProduction = totalIncoming + totalProductionOut;
 
                 return (
