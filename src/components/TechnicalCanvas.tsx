@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.68 - Badge section permanent + discret + bouton "Afficher toutes les sections"
+// VERSION: 3.69 - Boutons édition/suppression centrés en haut (ne cachent plus les handles)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -809,7 +809,7 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
 
       {/* Boutons d'action (visibles quand sélectionné et non verrouillé) */}
       {selected && !isLocked && (
-        <div className="absolute -top-2 -right-2 flex gap-1 z-20">
+        <div className="absolute -top-4 right-1/2 translate-x-1/2 flex gap-1 z-30">
           {/* Bouton éditer */}
           {onEditItem && (
             <button
@@ -817,7 +817,7 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
                 e.stopPropagation();
                 onEditItem(item);
               }}
-              className="w-5 h-5 bg-blue-500 hover:bg-blue-600 text-white rounded-full flex items-center justify-center shadow-md transition-colors"
+              className="w-6 h-6 bg-blue-500 hover:bg-blue-600 text-white rounded-full flex items-center justify-center shadow-md transition-colors"
               title="Modifier les propriétés"
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -837,7 +837,7 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
                 e.stopPropagation();
                 onDeleteItem(item.id);
               }}
-              className="w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md transition-colors"
+              className="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-sm font-bold shadow-md transition-colors"
               title="Supprimer du schéma"
             >
               ×
