@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.58 - Rollback complet: version stable avec tous les câbles
+// VERSION: 3.60 - Fix: busbar = point de connexion, calcul par catégorie d'équipement
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -44,8 +44,6 @@ import {
   Type,
   Minus,
   ArrowRight,
-  ArrowDown,
-  ArrowUp,
   Trash2,
   Undo,
   Redo,
@@ -6029,64 +6027,68 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               const isDistribution = typeConfig?.category === "distribution" || typeConfig?.category === "distributeur";
 
               if (isDistribution && editingItem) {
-                // Pour les busbars: calculer et afficher le total automatiquement
+                // Pour les busbars: un busbar est juste un point de connexion physique
+                // Le sens du câble n'a pas d'importance - ce qui compte c'est la catégorie de l'équipement connecté
 
-                // 1. Calculer les entrées (sources qui arrivent au busbar)
-                const incomingEdges = edges.filter((e) => e.target_node_id === editingItem.id);
-                let totalIncoming = 0;
-                try {
-                  totalIncoming = incomingEdges.reduce((sum, e) => {
-                    const result = calculateEdgePower(e);
-                    return sum + (result?.power || 0);
-                  }, 0);
-                } catch (err) {
-                  console.error("[Modale] Erreur calcul puissance entrante:", err);
-                }
+                // Trouver TOUS les équipements connectés (peu importe le sens du câble)
+                const connectedEdges = edges.filter(
+                  (e) => e.source_node_id === editingItem.id || e.target_node_id === editingItem.id,
+                );
 
-                // 2. Calculer les sorties par catégorie
-                const outgoingEdges = edges.filter((e) => e.source_node_id === editingItem.id);
-                let totalConsumers = 0;
-                let totalProductionOut = 0;
-
-                outgoingEdges.forEach((e) => {
-                  const targetItem = items.find((i) => i.id === e.target_node_id);
-                  if (targetItem) {
-                    const targetConfig = ELECTRICAL_TYPES[targetItem.type_electrique];
-                    const targetCategory = targetConfig?.category || "autre";
-                    const power = targetItem.puissance_watts
-                      ? targetItem.puissance_watts * (targetItem.quantite || 1)
-                      : 0;
-
-                    if (targetCategory === "consommateur") {
-                      totalConsumers += power;
-                    } else if (targetCategory === "production") {
-                      totalProductionOut += power;
-                    }
+                // Récupérer les équipements uniques connectés
+                const connectedItemIds = new Set<string>();
+                connectedEdges.forEach((e) => {
+                  if (e.source_node_id === editingItem.id) {
+                    connectedItemIds.add(e.target_node_id);
+                  } else {
+                    connectedItemIds.add(e.source_node_id);
                   }
                 });
 
-                // 3. Production totale = entrées + producteurs en sortie
-                const totalProduction = totalIncoming + totalProductionOut;
+                let totalProduction = 0;
+                let totalConsumption = 0;
+
+                connectedItemIds.forEach((itemId) => {
+                  const item = items.find((i) => i.id === itemId);
+                  if (!item) return;
+
+                  const itemConfig = ELECTRICAL_TYPES[item.type_electrique];
+                  const category = itemConfig?.category || "autre";
+                  const power = item.puissance_watts ? item.puissance_watts * (item.quantite || 1) : 0;
+
+                  if (category === "production") {
+                    // Producteurs: MPPT, DC/DC, chargeur 230V, panneau solaire
+                    totalProduction += power;
+                  } else if (category === "consommateur") {
+                    // Consommateurs: frigo, éclairage, etc.
+                    totalConsumption += power;
+                  }
+                  // Stockage et autres: ne comptent pas directement (la batterie reçoit/fournit selon le contexte)
+                });
 
                 return (
                   <div className="bg-gradient-to-r from-emerald-50 to-green-50 rounded-lg p-3 border border-emerald-200">
                     <div className="text-sm font-medium text-emerald-800 mb-2">
                       ⚡ Puissance calculée automatiquement
                     </div>
-                    <div className={`grid gap-3 ${totalConsumers > 0 ? "grid-cols-2" : "grid-cols-1"}`}>
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-emerald-700">{totalProduction}W</div>
-                        <div className="text-xs text-emerald-600">Production totale</div>
-                        {totalProductionOut > 0 && totalIncoming > 0 && (
-                          <div className="text-[10px] text-gray-500 mt-0.5">
-                            ({totalIncoming}W entrées + {totalProductionOut}W producteurs)
-                          </div>
-                        )}
-                      </div>
-                      {totalConsumers > 0 && (
+                    <div
+                      className={`grid gap-3 ${totalConsumption > 0 && totalProduction > 0 ? "grid-cols-2" : "grid-cols-1"}`}
+                    >
+                      {totalProduction > 0 && (
                         <div className="text-center">
-                          <div className="text-2xl font-bold text-red-600">{totalConsumers}W</div>
+                          <div className="text-2xl font-bold text-emerald-700">{totalProduction}W</div>
+                          <div className="text-xs text-emerald-600">Production</div>
+                        </div>
+                      )}
+                      {totalConsumption > 0 && (
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-red-600">{totalConsumption}W</div>
                           <div className="text-xs text-red-500">Consommation</div>
+                        </div>
+                      )}
+                      {totalProduction === 0 && totalConsumption === 0 && (
+                        <div className="text-center text-gray-500 text-sm">
+                          Aucun producteur ou consommateur connecté
                         </div>
                       )}
                     </div>
@@ -6196,78 +6198,58 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
                 if (!isDistribution) return null;
 
-                // Trouver les connexions entrantes (sources)
-                const incomingEdges = edges.filter((e) => e.target_node_id === editingItem.id);
-                const incomingItems = incomingEdges
-                  .map((e) => {
-                    const item = items.find((i) => i.id === e.source_node_id);
-                    if (!item) return null;
-                    // Calculer la puissance qui arrive via ce câble
-                    const { power } = calculateEdgePower(e);
-                    return { item, power, edgeId: e.id };
-                  })
-                  .filter(Boolean) as { item: ElectricalItem; power: number; edgeId: string }[];
+                // Un busbar est un point de connexion physique - le sens du câble n'a pas d'importance
+                // On récupère TOUS les équipements connectés et on les groupe par catégorie
 
-                // Trouver les connexions sortantes (destinations)
-                const outgoingEdges = edges.filter((e) => e.source_node_id === editingItem.id);
-                const outgoingItems = outgoingEdges
-                  .map((e) => {
-                    const item = items.find((i) => i.id === e.target_node_id);
-                    if (!item) return null;
-                    const itemConfig = ELECTRICAL_TYPES[item.type_electrique];
-                    const power = item.puissance_watts ? item.puissance_watts * (item.quantite || 1) : 0;
-                    return { item, power, category: itemConfig?.category || "autre", edgeId: e.id };
-                  })
-                  .filter(Boolean) as { item: ElectricalItem; power: number; category: string; edgeId: string }[];
+                const connectedEdges = edges.filter(
+                  (e) => e.source_node_id === editingItem.id || e.target_node_id === editingItem.id,
+                );
 
-                const totalIncoming = incomingItems.reduce((sum, i) => sum + i.power, 0);
+                // Récupérer les équipements connectés avec leur puissance
+                const connectedItems: { item: ElectricalItem; power: number; category: string }[] = [];
+                const seenIds = new Set<string>();
 
-                // Séparer les producteurs des autres sorties
-                const productionOutItems = outgoingItems.filter((i) => i.category === "production");
-                const otherOutItems = outgoingItems.filter((i) => i.category !== "production");
-                const totalProductionOut = productionOutItems.reduce((sum, i) => sum + i.power, 0);
-                const totalOutgoingConsumers = otherOutItems
-                  .filter((i) => i.category === "consommateur")
-                  .reduce((sum, i) => sum + i.power, 0);
+                connectedEdges.forEach((e) => {
+                  const connectedId = e.source_node_id === editingItem.id ? e.target_node_id : e.source_node_id;
+                  if (seenIds.has(connectedId)) return;
+                  seenIds.add(connectedId);
 
-                // Production totale = entrées + producteurs en sortie
-                const totalProduction = totalIncoming + totalProductionOut;
+                  const item = items.find((i) => i.id === connectedId);
+                  if (!item) return;
+
+                  const itemConfig = ELECTRICAL_TYPES[item.type_electrique];
+                  const category = itemConfig?.category || "autre";
+                  const power = item.puissance_watts ? item.puissance_watts * (item.quantite || 1) : 0;
+
+                  connectedItems.push({ item, power, category });
+                });
+
+                // Grouper par catégorie
+                const producers = connectedItems.filter((i) => i.category === "production");
+                const consumers = connectedItems.filter((i) => i.category === "consommateur");
+                const storage = connectedItems.filter((i) => i.category === "stockage");
+                const others = connectedItems.filter(
+                  (i) => !["production", "consommateur", "stockage"].includes(i.category),
+                );
+
+                const totalProduction = producers.reduce((sum, i) => sum + i.power, 0);
+                const totalConsumption = consumers.reduce((sum, i) => sum + i.power, 0);
 
                 return (
                   <div className="border-t pt-4 mt-2">
                     <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
                       <Cable className="h-4 w-4" />
-                      Connexions du point de distribution
+                      Équipements connectés
                     </div>
 
-                    {/* Sources de production (entrées + producteurs en sortie) */}
-                    {(incomingItems.length > 0 || productionOutItems.length > 0) && (
+                    {/* Producteurs */}
+                    {producers.length > 0 && (
                       <div className="mb-3">
-                        <div className="text-xs font-medium text-green-700 mb-1 flex items-center gap-1">
-                          <ArrowDown className="h-3 w-3" />
-                          Sources de production ({totalProduction}W total)
+                        <div className="text-xs font-medium text-green-700 mb-1">
+                          🔋 Producteurs ({totalProduction}W)
                         </div>
                         <div className="space-y-1">
-                          {/* Entrées */}
-                          {incomingItems.map(({ item, power }) => {
-                            const config = ELECTRICAL_TYPES[item.type_electrique];
-                            return (
-                              <div
-                                key={item.id}
-                                className="text-xs bg-green-50 rounded px-2 py-1.5 border border-green-200"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className={`font-medium whitespace-nowrap ${config?.color || "text-gray-600"}`}>
-                                    {config?.label || item.type_electrique}
-                                  </span>
-                                  <span className="font-bold text-green-700 whitespace-nowrap">{power}W</span>
-                                </div>
-                                <div className="text-gray-600 mt-0.5 break-words">{item.nom_accessoire}</div>
-                              </div>
-                            );
-                          })}
-                          {/* Producteurs connectés en sortie (DC/DC, chargeur 230V) */}
-                          {productionOutItems.map(({ item, power }) => {
+                          {producers.map(({ item, power }) => {
                             const config = ELECTRICAL_TYPES[item.type_electrique];
                             return (
                               <div
@@ -6288,37 +6270,52 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                       </div>
                     )}
 
-                    {/* Autres destinations (stockage, consommateurs, etc.) */}
-                    {otherOutItems.length > 0 && (
-                      <div>
-                        <div className="text-xs font-medium text-blue-700 mb-1 flex items-center gap-1">
-                          <ArrowUp className="h-3 w-3" />
-                          Destinations
+                    {/* Consommateurs */}
+                    {consumers.length > 0 && (
+                      <div className="mb-3">
+                        <div className="text-xs font-medium text-red-700 mb-1">
+                          💡 Consommateurs ({totalConsumption}W)
                         </div>
                         <div className="space-y-1">
-                          {otherOutItems.map(({ item, power, category }) => {
+                          {consumers.map(({ item, power }) => {
                             const config = ELECTRICAL_TYPES[item.type_electrique];
-                            const isConsumer = category === "consommateur";
-                            const isStorage = category === "stockage";
-                            // Couleurs: rouge=consommateur, ambre=stockage, bleu=autres
-                            const bgColor = isConsumer
-                              ? "bg-red-50 border-red-200"
-                              : isStorage
-                                ? "bg-amber-50 border-amber-200"
-                                : "bg-blue-50 border-blue-200";
-                            const powerColor = isConsumer
-                              ? "text-red-700"
-                              : isStorage
-                                ? "text-amber-700"
-                                : "text-blue-700";
                             return (
-                              <div key={item.id} className={`text-xs rounded px-2 py-1.5 border ${bgColor}`}>
+                              <div
+                                key={item.id}
+                                className="text-xs bg-red-50 rounded px-2 py-1.5 border border-red-200"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className={`font-medium whitespace-nowrap ${config?.color || "text-gray-600"}`}>
+                                    {config?.label || item.type_electrique}
+                                  </span>
+                                  <span className="font-bold text-red-700 whitespace-nowrap">{power}W</span>
+                                </div>
+                                <div className="text-gray-600 mt-0.5 break-words">{item.nom_accessoire}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Stockage */}
+                    {storage.length > 0 && (
+                      <div className="mb-3">
+                        <div className="text-xs font-medium text-amber-700 mb-1">🔌 Stockage</div>
+                        <div className="space-y-1">
+                          {storage.map(({ item, power }) => {
+                            const config = ELECTRICAL_TYPES[item.type_electrique];
+                            return (
+                              <div
+                                key={item.id}
+                                className="text-xs bg-amber-50 rounded px-2 py-1.5 border border-amber-200"
+                              >
                                 <div className="flex items-center justify-between gap-2">
                                   <span className={`font-medium whitespace-nowrap ${config?.color || "text-gray-600"}`}>
                                     {config?.label || item.type_electrique}
                                   </span>
                                   {power > 0 && (
-                                    <span className={`font-bold whitespace-nowrap ${powerColor}`}>{power}W</span>
+                                    <span className="font-bold text-amber-700 whitespace-nowrap">{power}W</span>
                                   )}
                                 </div>
                                 <div className="text-gray-600 mt-0.5 break-words">{item.nom_accessoire}</div>
@@ -6326,15 +6323,35 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             );
                           })}
                         </div>
-                        {totalOutgoingConsumers > 0 && (
-                          <div className="text-xs text-red-600 mt-1 text-right">
-                            Consommation totale: {totalOutgoingConsumers}W
-                          </div>
-                        )}
                       </div>
                     )}
 
-                    {incomingItems.length === 0 && outgoingItems.length === 0 && (
+                    {/* Autres (protection, distribution, etc.) */}
+                    {others.length > 0 && (
+                      <div className="mb-3">
+                        <div className="text-xs font-medium text-blue-700 mb-1">🔗 Autres connexions</div>
+                        <div className="space-y-1">
+                          {others.map(({ item }) => {
+                            const config = ELECTRICAL_TYPES[item.type_electrique];
+                            return (
+                              <div
+                                key={item.id}
+                                className="text-xs bg-blue-50 rounded px-2 py-1.5 border border-blue-200"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className={`font-medium whitespace-nowrap ${config?.color || "text-gray-600"}`}>
+                                    {config?.label || item.type_electrique}
+                                  </span>
+                                </div>
+                                <div className="text-gray-600 mt-0.5 break-words">{item.nom_accessoire}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {connectedItems.length === 0 && (
                       <div className="text-xs text-gray-500 italic">
                         Aucune connexion détectée. Reliez ce point de distribution à d'autres éléments.
                       </div>
