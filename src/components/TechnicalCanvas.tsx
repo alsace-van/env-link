@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.65 - Badge de section sur chaque câble du circuit survolé
+// VERSION: 3.66 - Fix: badge de section utilise la section CALCULÉE (pas stockée)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1507,6 +1507,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const [edges, setEdges] = useState<SchemaEdge[]>([]);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [hoveredCircuitEdgeIds, setHoveredCircuitEdgeIds] = useState<string[]>([]); // Pour grossir tout le circuit au survol dans le popover
+  const [hoveredCircuitSections, setHoveredCircuitSections] = useState<Record<string, number>>({}); // Sections calculées pour les edges survolés
 
   // État pour les handles personnalisés par bloc
   const [nodeHandles, setNodeHandles] = useState<Record<string, BlockHandles>>({});
@@ -4682,6 +4683,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         }
 
         const isHovered = hoveredCircuitEdgeIds.includes(edge.id);
+        // Utiliser la section calculée si disponible (lors du survol), sinon la section stockée
+        const calculatedSection = hoveredCircuitSections[edge.id];
+        const displaySection =
+          calculatedSection || edge.section_mm2 || (edge.section ? parseFloat(edge.section.replace("mm²", "")) : null);
 
         return {
           id: edge.id,
@@ -4699,7 +4704,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             // Passer tous les nodes pour le contournement des obstacles
             allNodes: nodes.filter((n) => n.id !== edge.source_node_id && n.id !== edge.target_node_id),
             isHovered, // Pour grossir le label au survol dans le popover
-            section: edge.section_mm2 || edge.section?.replace("mm²", "") || null, // Section pour le badge
+            section: displaySection, // Section pour le badge (calculée ou stockée)
           },
           label: cableLabel,
           labelStyle: {
@@ -4729,7 +4734,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         };
       }) as any,
     );
-  }, [edges, selectedEdgeId, hoveredCircuitEdgeIds, layers, nodes, getNodeHeight]);
+  }, [edges, selectedEdgeId, hoveredCircuitEdgeIds, hoveredCircuitSections, layers, nodes, getNodeHeight]);
 
   const handleConnect = useCallback(
     (connection: Connection) => {
@@ -5620,12 +5625,21 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                         ? "ring-2 ring-emerald-400 bg-emerald-50"
                                         : ""
                                     }`}
-                                    onMouseEnter={() =>
-                                      setHoveredCircuitEdgeIds(
-                                        calc.allEdgeIdsInCircuit.length > 0 ? calc.allEdgeIdsInCircuit : [calc.edgeId],
-                                      )
-                                    }
-                                    onMouseLeave={() => setHoveredCircuitEdgeIds([])}
+                                    onMouseEnter={() => {
+                                      const edgeIds =
+                                        calc.allEdgeIdsInCircuit.length > 0 ? calc.allEdgeIdsInCircuit : [calc.edgeId];
+                                      setHoveredCircuitEdgeIds(edgeIds);
+                                      // Créer un map des sections pour tous les edges du circuit
+                                      const sectionsMap: Record<string, number> = {};
+                                      edgeIds.forEach((id) => {
+                                        sectionsMap[id] = calc.section;
+                                      });
+                                      setHoveredCircuitSections(sectionsMap);
+                                    }}
+                                    onMouseLeave={() => {
+                                      setHoveredCircuitEdgeIds([]);
+                                      setHoveredCircuitSections({});
+                                    }}
                                   >
                                     <div className="flex justify-between items-center">
                                       <span
