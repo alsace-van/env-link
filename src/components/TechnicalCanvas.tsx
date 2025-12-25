@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.77 - Fix: modale busbar ne traverse plus les autres distributeurs (évite doublons)
+// VERSION: 3.78 - Fix: longueur visible + section pas en double + badge ne cache pas handle
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1433,7 +1433,7 @@ const CustomSmoothEdge = ({
   return (
     <>
       <BaseEdge id={id} path={edgePath} style={style} />
-      {/* Badge de section - affiché en permanence si section définie */}
+      {/* Badge de section - positionné au milieu du câble */}
       {section && (
         <EdgeLabelRenderer>
           <div
@@ -1458,13 +1458,13 @@ const CustomSmoothEdge = ({
           </div>
         </EdgeLabelRenderer>
       )}
-      {/* Label normal (longueur) - affiché seulement si pas de section */}
-      {label && !section && (
+      {/* Label de longueur - positionné au-dessus du badge de section */}
+      {label && (
         <EdgeLabelRenderer>
           <div
             style={{
               position: "absolute",
-              transform: `translate(-50%, -100%) translate(${labelX}px, ${labelY - 8}px)`,
+              transform: `translate(-50%, -100%) translate(${labelX}px, ${labelY - (section ? 16 : 8)}px)`,
               pointerEvents: "all",
               ...labelBgStyle,
               padding: "2px 6px",
@@ -4830,14 +4830,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         const sourceHeight = sourceNode ? getNodeHeight(sourceNode) : 100;
         const targetHeight = targetNode ? getNodeHeight(targetNode) : 100;
 
-        // Construire le label du câble (longueur + section)
+        // Construire le label du câble (longueur seulement - la section est affichée séparément)
         let cableLabel: string | undefined = undefined;
-        if (edge.length_m || edge.section_mm2 || edge.section) {
-          const parts: string[] = [];
-          if (edge.length_m) parts.push(`${edge.length_m}m`);
-          if (edge.section_mm2) parts.push(`${edge.section_mm2}mm²`);
-          else if (edge.section) parts.push(edge.section);
-          cableLabel = parts.join(" • ");
+        if (edge.length_m) {
+          cableLabel = `${edge.length_m}m`;
         }
 
         const isHovered = hoveredCircuitEdgeIds.includes(edge.id);
