@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.75 - Distributeurs agrègent leurs équipements (frigo+LED → porte-fusible → busbar)
+// VERSION: 3.76 - Fix: boucle infinie (globalVisited partagé + clear() par handle)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6496,6 +6496,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               const isDistribution = typeConfig?.category === "distribution" || typeConfig?.category === "distributeur";
 
               if (isDistribution && editingItem) {
+                // Set global pour éviter les boucles infinies
+                const globalVisited = new Set<string>();
+
                 // Fonction récursive pour collecter les équipements d'un distributeur
                 const collectDistributorDataForTotal = (
                   distributorId: string,
@@ -6504,6 +6507,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   totalPower: number;
                   equipments: { id: string; nom: string; power: number; category: string }[];
                 } => {
+                  // Éviter les boucles
+                  if (globalVisited.has(distributorId)) return { totalPower: 0, equipments: [] };
+                  globalVisited.add(distributorId);
+
                   const equipments: { id: string; nom: string; power: number; category: string }[] = [];
                   let totalPower = 0;
 
@@ -6516,6 +6523,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   for (const edge of distEdges) {
                     const connectedId =
                       edge.source_node_id === distributorId ? edge.target_node_id : edge.source_node_id;
+
+                    // Éviter les boucles
+                    if (globalVisited.has(connectedId)) continue;
 
                     const item = items.find((i) => i.id === connectedId);
                     if (!item) continue;
@@ -6550,11 +6560,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 } => {
                   const equipments: { id: string; nom: string; power: number; category: string }[] = [];
                   let totalPower = 0;
-                  const visited = new Set<string>();
 
                   const traverse = (nodeId: string, fromEdgeId: string | null): void => {
-                    if (visited.has(nodeId)) return;
-                    visited.add(nodeId);
+                    // Utiliser le globalVisited partagé
+                    if (globalVisited.has(nodeId)) return;
+                    globalVisited.add(nodeId);
 
                     const item = items.find((i) => i.id === nodeId);
                     if (!item) return;
@@ -6607,6 +6617,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 const processedHandles = new Set<string>();
 
                 connectedEdges.forEach((e) => {
+                  // Réinitialiser le set pour chaque handle
+                  globalVisited.clear();
+
                   const busbarHandle = e.source_node_id === editingItem.id ? e.source_handle : e.target_handle;
 
                   if (busbarHandle && processedHandles.has(busbarHandle)) return;
@@ -6783,6 +6796,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
                 if (!isDistribution) return null;
 
+                // Set global pour éviter les boucles infinies
+                const globalVisited2 = new Set<string>();
+
                 // Fonction récursive pour collecter les équipements d'un distributeur
                 // Si on rencontre un autre distributeur, on récupère ses données agrégées
                 const collectDistributorData = (
@@ -6792,6 +6808,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   totalPower: number;
                   equipments: { id: string; nom: string; power: number; type: string; category: string }[];
                 } => {
+                  // Éviter les boucles
+                  if (globalVisited2.has(distributorId)) return { totalPower: 0, equipments: [] };
+                  globalVisited2.add(distributorId);
+
                   const equipments: { id: string; nom: string; power: number; type: string; category: string }[] = [];
                   let totalPower = 0;
 
@@ -6805,6 +6825,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   for (const edge of distEdges) {
                     const connectedId =
                       edge.source_node_id === distributorId ? edge.target_node_id : edge.source_node_id;
+
+                    // Éviter les boucles
+                    if (globalVisited2.has(connectedId)) continue;
 
                     const item = items.find((i) => i.id === connectedId);
                     if (!item) continue;
@@ -6853,11 +6876,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 } => {
                   const equipments: { id: string; nom: string; power: number; type: string; category: string }[] = [];
                   let totalPower = 0;
-                  const visited = new Set<string>();
 
                   const traverse = (nodeId: string, fromEdgeId: string | null): void => {
-                    if (visited.has(nodeId)) return;
-                    visited.add(nodeId);
+                    // Utiliser globalVisited2 partagé
+                    if (globalVisited2.has(nodeId)) return;
+                    globalVisited2.add(nodeId);
 
                     const item = items.find((i) => i.id === nodeId);
                     if (!item) return;
@@ -6923,6 +6946,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 }[] = [];
 
                 connectedEdges.forEach((e) => {
+                  // Réinitialiser le set pour chaque handle (chaque branche indépendante)
+                  globalVisited2.clear();
+
                   const connectedId = e.source_node_id === editingItem.id ? e.target_node_id : e.source_node_id;
                   const busbarHandle = e.source_node_id === editingItem.id ? e.source_handle : e.target_handle;
 
