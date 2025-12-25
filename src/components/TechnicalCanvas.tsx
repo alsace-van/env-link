@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.61 - Ajout type de flux par handle (production/consommation/stockage)
+// VERSION: 3.62 - Fix: calcul puissance busbar utilise les types de flux des handles
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -3198,6 +3198,70 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     [extractVoltageFromName],
   );
 
+  // Fonction pour remonter la chaîne depuis un équipement connecté au busbar
+  // et trouver la puissance source (traverse les protections et régulateurs)
+  const sumUpstreamPowersFromBusbar = useCallback(
+    (startNodeId: string, visited: Set<string> = new Set()): { total: number; details: PowerDetail[] } => {
+      if (visited.has(startNodeId)) return { total: 0, details: [] };
+      visited.add(startNodeId);
+
+      const item = items.find((i) => i.id === startNodeId);
+      if (!item) return { total: 0, details: [] };
+
+      // Déterminer la catégorie de l'item
+      const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
+      const category = typeConfig?.category || "consommateur";
+
+      // Les transmetteurs (régulation, conversion, distribution, protection) doivent propager
+      const isTransmitter = ["regulation", "conversion", "distribution", "protection", "distributeur"].includes(
+        category,
+      );
+
+      // Si cet item est un vrai producteur avec puissance, c'est une source
+      if (item.puissance_watts && item.puissance_watts > 0 && !isTransmitter) {
+        const totalPower = item.puissance_watts * (item.quantite || 1);
+        return {
+          total: totalPower,
+          details: [
+            {
+              id: item.id,
+              nom: item.nom_accessoire,
+              puissance: item.puissance_watts,
+              quantite: item.quantite || 1,
+              total: totalPower,
+            },
+          ],
+        };
+      }
+
+      // Sinon, chercher les connexions dans les DEUX sens (car le sens du câble ne détermine pas le flux)
+      // D'abord les connexions entrantes
+      const incomingEdges = edges.filter((e) => e.target_node_id === startNodeId);
+      // Puis les connexions sortantes (le courant peut "remonter" via un câble tracé dans l'autre sens)
+      const outgoingEdges = edges.filter((e) => e.source_node_id === startNodeId);
+
+      let totalPower = 0;
+      let allDetails: PowerDetail[] = [];
+
+      // Chercher en amont via les connexions entrantes
+      for (const edge of incomingEdges) {
+        const result = sumUpstreamPowersFromBusbar(edge.source_node_id, visited);
+        totalPower += result.total;
+        allDetails = [...allDetails, ...result.details];
+      }
+
+      // Chercher aussi via les connexions sortantes (cas où le câble est tracé dans l'autre sens)
+      for (const edge of outgoingEdges) {
+        const result = sumUpstreamPowersFromBusbar(edge.target_node_id, visited);
+        totalPower += result.total;
+        allDetails = [...allDetails, ...result.details];
+      }
+
+      return { total: totalPower, details: allDetails };
+    },
+    [edges, items],
+  );
+
   // Calculer la puissance qui traverse un câble spécifique
   const calculateEdgePower = useCallback(
     (edge: SchemaEdge): { power: number; details: PowerDetail[] } => {
@@ -3228,9 +3292,53 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         };
       }
 
-      // CAS 2: La source est un point de distribution → sommer tout ce qui arrive
+      // CAS 2: La source est un point de distribution (busbar)
+      // → Utiliser les types de flux définis sur les handles pour calculer la puissance
       if (sourceIsDistribution) {
-        // Sommer toutes les puissances en amont, SAUF celles qui viennent de la destination
+        const busbarFluxTypes = nodeHandleFluxTypes[edge.source_node_id] || {};
+        const sourceHandleFlux = edge.source_handle ? busbarFluxTypes[edge.source_handle] : undefined;
+
+        // Si le handle source a un type de flux défini, calculer la puissance totale
+        // des producteurs connectés au busbar (via handles marqués "production")
+        if (sourceHandleFlux === "production" || sourceHandleFlux === "stockage") {
+          // Trouver tous les câbles connectés au busbar
+          const busbarEdges = edges.filter(
+            (e) => e.source_node_id === edge.source_node_id || e.target_node_id === edge.source_node_id,
+          );
+
+          let totalPower = 0;
+          const allDetails: PowerDetail[] = [];
+          const processedItems = new Set<string>();
+
+          // Pour chaque câble connecté au busbar
+          for (const be of busbarEdges) {
+            // Quel handle du busbar est utilisé ?
+            const busbarHandle = be.source_node_id === edge.source_node_id ? be.source_handle : be.target_handle;
+
+            // Quel est le type de flux de ce handle ?
+            const handleFlux = busbarHandle ? busbarFluxTypes[busbarHandle] : undefined;
+
+            // Si ce handle est marqué "production", récupérer la puissance de l'équipement connecté
+            if (handleFlux === "production") {
+              const connectedNodeId = be.source_node_id === edge.source_node_id ? be.target_node_id : be.source_node_id;
+
+              // Éviter de compter plusieurs fois le même équipement
+              if (processedItems.has(connectedNodeId)) continue;
+              processedItems.add(connectedNodeId);
+
+              // Remonter la chaîne pour trouver la vraie source de puissance
+              const result = sumUpstreamPowersFromBusbar(connectedNodeId, new Set([edge.source_node_id]));
+              totalPower += result.total;
+              allDetails.push(...result.details);
+            }
+          }
+
+          if (totalPower > 0) {
+            return { power: totalPower, details: allDetails };
+          }
+        }
+
+        // Fallback: utiliser l'ancienne méthode
         const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
         return { power: result.total, details: result.details };
       }
@@ -3246,7 +3354,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
       return { power: result.total, details: result.details };
     },
-    [items, isDistributionPoint, isTransparentNode, sumUpstreamPowersWithDetails],
+    [items, isDistributionPoint, isTransparentNode, sumUpstreamPowersWithDetails, edges, nodeHandleFluxTypes],
   );
 
   // Interface pour les résultats de calcul
