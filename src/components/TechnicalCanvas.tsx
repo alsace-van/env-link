@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.69 - Boutons édition/suppression centrés en haut (ne cachent plus les handles)
+// VERSION: 3.70 - Fix: boutons, badges handles, calcul puissance busbar (exclut câble origine)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -649,12 +649,19 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
             ...(side === "left" ? { left: "-120px" } : { right: "-120px" }),
           };
 
-      // Icône pour le type de flux
-      const getFluxIcon = (ft: HandleFluxType | undefined) => {
-        if (ft === "production") return "🔋";
-        if (ft === "consommation") return "💡";
-        if (ft === "stockage") return "🔌";
+      // Icône pour le type de flux (petit indicateur coloré sans texte)
+      const getFluxIndicator = (ft: HandleFluxType | undefined) => {
+        if (ft === "production") return "●";
+        if (ft === "consommation") return "●";
+        if (ft === "stockage") return "●";
         return "";
+      };
+
+      const getFluxColor = (ft: HandleFluxType | undefined) => {
+        if (ft === "production") return "#10b981";
+        if (ft === "consommation") return "#ef4444";
+        if (ft === "stockage") return "#f59e0b";
+        return "#9ca3af";
       };
 
       return (
@@ -663,7 +670,7 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
             type={type}
             position={position}
             id={handleId}
-            className={`${handleColor} !w-2 !h-2 !border-2 !border-white`}
+            className={`${handleColor} !w-3 !h-3 !border-2 !border-white cursor-pointer`}
             style={style}
             onDoubleClick={(e) => handleDoubleClick(handleId, e)}
           />
@@ -725,22 +732,30 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
               </button>
             </div>
           ) : circuitNum !== undefined || fluxType ? (
+            // Petit indicateur à côté du handle (pas dessus)
             <div
-              className={`absolute z-20 flex items-center gap-0.5 px-1 py-0.5 text-[9px] font-bold rounded-full cursor-pointer hover:opacity-80 ${
-                fluxType === "production"
-                  ? "bg-emerald-100 border border-emerald-400 text-emerald-700"
-                  : fluxType === "consommation"
-                    ? "bg-red-100 border border-red-400 text-red-700"
-                    : fluxType === "stockage"
-                      ? "bg-amber-100 border border-amber-400 text-amber-700"
-                      : "bg-gray-100 border border-gray-400 text-gray-700"
-              }`}
-              style={badgeStyle}
+              className="absolute z-10 text-[8px] font-bold cursor-pointer"
+              style={{
+                ...badgeStyle,
+                // Décaler le badge pour ne pas cacher le handle
+                ...(isHorizontal
+                  ? { transform: "translateX(-50%) translateY(" + (side === "top" ? "-100%" : "100%") + ")" }
+                  : { transform: "translateY(-50%) translateX(" + (side === "left" ? "-100%" : "100%") + ")" }),
+              }}
               onDoubleClick={(e) => handleDoubleClick(handleId, e)}
               title={`${circuitNum ? `Circuit ${circuitNum}` : ""} ${fluxType ? `(${fluxType})` : ""} - Double-clic pour modifier`}
             >
-              {getFluxIcon(fluxType)}
-              {circuitNum !== undefined && <span>{circuitNum}</span>}
+              {circuitNum !== undefined && (
+                <span
+                  className="inline-block w-4 h-4 rounded-full text-center leading-4 text-white"
+                  style={{ backgroundColor: getFluxColor(fluxType) }}
+                >
+                  {circuitNum}
+                </span>
+              )}
+              {circuitNum === undefined && fluxType && (
+                <span style={{ color: getFluxColor(fluxType) }}>{getFluxIndicator(fluxType)}</span>
+              )}
             </div>
           ) : null}
         </React.Fragment>
@@ -807,43 +822,18 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
       <HandleControl side="left" />
       <HandleControl side="right" />
 
-      {/* Boutons d'action (visibles quand sélectionné et non verrouillé) */}
-      {selected && !isLocked && (
-        <div className="absolute -top-4 right-1/2 translate-x-1/2 flex gap-1 z-30">
-          {/* Bouton éditer */}
-          {onEditItem && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onEditItem(item);
-              }}
-              className="w-6 h-6 bg-blue-500 hover:bg-blue-600 text-white rounded-full flex items-center justify-center shadow-md transition-colors"
-              title="Modifier les propriétés"
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                />
-              </svg>
-            </button>
-          )}
-          {/* Bouton supprimer */}
-          {onDeleteItem && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDeleteItem(item.id);
-              }}
-              className="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-sm font-bold shadow-md transition-colors"
-              title="Supprimer du schéma"
-            >
-              ×
-            </button>
-          )}
-        </div>
+      {/* Bouton supprimer (coin haut droit comme avant) */}
+      {selected && !isLocked && onDeleteItem && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteItem(item.id);
+          }}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md transition-colors z-30"
+          title="Supprimer du schéma"
+        >
+          ×
+        </button>
       )}
 
       {/* Indicateur de verrouillage */}
@@ -938,7 +928,16 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
       </div>
 
       <div className="px-3 pb-2 flex items-center gap-1">
-        <Badge className={`text-xs ${typeConfig.bgColor} ${typeConfig.color} border ${typeConfig.borderColor}`}>
+        <Badge
+          className={`text-xs ${typeConfig.bgColor} ${typeConfig.color} border ${typeConfig.borderColor} ${onEditItem ? "cursor-pointer hover:opacity-80 transition-opacity" : ""}`}
+          onClick={(e) => {
+            if (onEditItem) {
+              e.stopPropagation();
+              onEditItem(item);
+            }
+          }}
+          title={onEditItem ? "Cliquer pour modifier les propriétés" : undefined}
+        >
           {typeConfig.label}
         </Badge>
       </div>
@@ -6345,10 +6344,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 const busbarFluxTypes = nodeHandleFluxTypes[editingItem.id] || {};
 
                 // Fonction locale pour trouver la puissance en traversant les fusibles/protections
-                const findPowerThroughChain = (startNodeId: string, busbarId: string): number => {
-                  const visited = new Set<string>([busbarId]);
+                // excludeEdgeId: on exclut le câble par lequel on est arrivé pour ne pas remonter vers le busbar
+                const findPowerThroughChain = (startNodeId: string, excludeEdgeId: string): number => {
+                  const visited = new Set<string>();
 
-                  const traverse = (nodeId: string): number => {
+                  const traverse = (nodeId: string, fromEdgeId: string | null): number => {
                     if (visited.has(nodeId)) return 0;
                     visited.add(nodeId);
 
@@ -6358,7 +6358,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                     const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
                     const category = typeConfig?.category || "autre";
 
-                    // Si c'est un autre busbar, on s'arrête
+                    // Si c'est un busbar, on s'arrête
                     if (category === "distribution" || category === "distributeur") return 0;
 
                     // Si cet item a une puissance propre (producteur ou consommateur), la retourner
@@ -6367,27 +6367,27 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                       return item.puissance_watts * (item.quantite || 1);
                     }
 
-                    // Sinon, traverser les connexions pour trouver la source
-                    let power = 0;
+                    // Si c'est un transmetteur, traverser les AUTRES connexions (pas celle d'où on vient)
+                    if (isTransmitter) {
+                      let power = 0;
 
-                    // Connexions entrantes
-                    const incomingEdges = edges.filter((e) => e.target_node_id === nodeId);
-                    for (const e of incomingEdges) {
-                      power += traverse(e.source_node_id);
-                    }
+                      // Toutes les connexions de ce node SAUF celle par laquelle on est arrivé
+                      const allEdges = edges.filter(
+                        (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && e.id !== fromEdgeId,
+                      );
 
-                    // Si rien trouvé et c'est un transmetteur, chercher aussi en sortie
-                    if (power === 0 && isTransmitter) {
-                      const outgoingEdges = edges.filter((e) => e.source_node_id === nodeId);
-                      for (const e of outgoingEdges) {
-                        power += traverse(e.target_node_id);
+                      for (const e of allEdges) {
+                        const nextNodeId = e.source_node_id === nodeId ? e.target_node_id : e.source_node_id;
+                        power += traverse(nextNodeId, e.id);
                       }
+
+                      return power;
                     }
 
-                    return power;
+                    return 0;
                   };
 
-                  return traverse(startNodeId);
+                  return traverse(startNodeId, excludeEdgeId);
                 };
 
                 // Trouver TOUS les câbles connectés au busbar
@@ -6412,8 +6412,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   // Quel équipement est de l'autre côté ?
                   const otherNodeId = e.source_node_id === editingItem.id ? e.target_node_id : e.source_node_id;
 
-                  // Trouver la puissance en traversant la chaîne (fusibles, etc.)
-                  const power = findPowerThroughChain(otherNodeId, editingItem.id);
+                  // Trouver la puissance en traversant la chaîne, en excluant ce câble
+                  const power = findPowerThroughChain(otherNodeId, e.id);
 
                   // Utiliser le type de flux défini sur le handle du busbar
                   const fluxType = busbarHandle ? busbarFluxTypes[busbarHandle] : undefined;
@@ -6569,10 +6569,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 if (!isDistribution) return null;
 
                 // Fonction locale pour trouver la puissance en traversant les fusibles/protections
-                const findPowerThroughChain = (startNodeId: string, busbarId: string): number => {
-                  const visited = new Set<string>([busbarId]);
+                // excludeEdgeId: on exclut le câble par lequel on est arrivé
+                const findPowerThroughChain = (startNodeId: string, excludeEdgeId: string): number => {
+                  const visited = new Set<string>();
 
-                  const traverse = (nodeId: string): number => {
+                  const traverse = (nodeId: string, fromEdgeId: string | null): number => {
                     if (visited.has(nodeId)) return 0;
                     visited.add(nodeId);
 
@@ -6582,7 +6583,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                     const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
                     const category = typeConfig?.category || "autre";
 
-                    // Si c'est un autre busbar, on s'arrête
+                    // Si c'est un busbar, on s'arrête
                     if (category === "distribution" || category === "distributeur") return 0;
 
                     // Si cet item a une puissance propre, la retourner
@@ -6591,27 +6592,23 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                       return item.puissance_watts * (item.quantite || 1);
                     }
 
-                    // Sinon, traverser les connexions pour trouver la source
-                    let power = 0;
-
-                    // Connexions entrantes
-                    const incomingEdges = edges.filter((e) => e.target_node_id === nodeId);
-                    for (const e of incomingEdges) {
-                      power += traverse(e.source_node_id);
-                    }
-
-                    // Si rien trouvé et c'est un transmetteur, chercher aussi en sortie
-                    if (power === 0 && isTransmitter) {
-                      const outgoingEdges = edges.filter((e) => e.source_node_id === nodeId);
-                      for (const e of outgoingEdges) {
-                        power += traverse(e.target_node_id);
+                    // Si c'est un transmetteur, traverser les AUTRES connexions
+                    if (isTransmitter) {
+                      let power = 0;
+                      const allEdges = edges.filter(
+                        (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && e.id !== fromEdgeId,
+                      );
+                      for (const e of allEdges) {
+                        const nextNodeId = e.source_node_id === nodeId ? e.target_node_id : e.source_node_id;
+                        power += traverse(nextNodeId, e.id);
                       }
+                      return power;
                     }
 
-                    return power;
+                    return 0;
                   };
 
-                  return traverse(startNodeId);
+                  return traverse(startNodeId, excludeEdgeId);
                 };
 
                 const busbarFluxTypes = nodeHandleFluxTypes[editingItem.id] || {};
@@ -6635,8 +6632,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   const item = items.find((i) => i.id === connectedId);
                   if (!item) return;
 
-                  // Trouver la puissance en traversant la chaîne (fusibles, etc.)
-                  const power = findPowerThroughChain(connectedId, editingItem.id);
+                  // Trouver la puissance en traversant la chaîne, en excluant ce câble
+                  const power = findPowerThroughChain(connectedId, e.id);
                   const fluxType = busbarHandle ? busbarFluxTypes[busbarHandle] : undefined;
 
                   connectedItems.push({ item, power, handleId: busbarHandle || undefined, fluxType });
