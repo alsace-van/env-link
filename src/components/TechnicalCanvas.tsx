@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.73 - Fix: erreurs TypeScript (fonction renommée sumDownstreamPowersFromEdge)
+// VERSION: 3.74 - Fix: calcul puissance circuit (premier câble distribution, pas MAX)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -3402,8 +3402,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         };
       }
 
-      // CAS 2: La source est un point de distribution (busbar)
-      // → Utiliser les types de flux définis sur les handles
+      // CAS 2: La source est un point de distribution (busbar ou distributeur)
+      // → Utiliser les types de flux définis sur les handles, ou déduire du contexte
       if (sourceIsDistribution) {
         const busbarFluxTypes = nodeHandleFluxTypes[edge.source_node_id] || {};
         const sourceHandleFlux = edge.source_handle ? busbarFluxTypes[edge.source_handle] : undefined;
@@ -3455,7 +3455,33 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           }
         }
 
-        // Fallback: utiliser l'ancienne méthode (production)
+        // Fallback intelligent : regarder la DESTINATION pour déduire le sens
+        // Si la destination est un consommateur → descendre
+        if (targetIsConsumer && targetItem.puissance_watts && targetItem.puissance_watts > 0) {
+          const power = targetItem.puissance_watts * (targetItem.quantite || 1);
+          return {
+            power,
+            details: [
+              {
+                id: targetItem.id,
+                nom: targetItem.nom_accessoire,
+                puissance: targetItem.puissance_watts,
+                quantite: targetItem.quantite || 1,
+                total: power,
+              },
+            ],
+          };
+        }
+
+        // Si la destination est un transmetteur, chercher les consommateurs en aval
+        if (targetIsTransmitter) {
+          const downstream = sumDownstreamPowersFromEdge(edge.target_node_id, edge.id);
+          if (downstream.total > 0) {
+            return { power: downstream.total, details: downstream.details };
+          }
+        }
+
+        // Dernier recours : remonter vers les producteurs
         const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
         return { power: result.total, details: result.details };
       }
@@ -3578,24 +3604,39 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     edgesByCircuit.forEach((circuitEdges, circuitNum) => {
       let totalLen = 0;
       const edgeIds: string[] = [];
-      let maxPower = 0;
-      let maxPowerDetails: PowerDetail[] = [];
+
+      // Pour la puissance du circuit, on prend le PREMIER câble qui part d'un point de distribution
+      // C'est ce câble qui définit la puissance du circuit (vers consommateurs ou vers producteurs)
+      let circuitPower = 0;
+      let circuitPowerDetails: PowerDetail[] = [];
+      let foundFirstDistributionEdge = false;
 
       for (const edge of circuitEdges) {
         totalLen += edge.length_m || 1; // 1m par défaut si non défini
         edgeIds.push(edge.id);
 
-        // Calculer la puissance de chaque câble du circuit et garder la max
-        const { power, details } = calculateEdgePower(edge);
-        if (power > maxPower) {
-          maxPower = power;
-          maxPowerDetails = details;
+        // Trouver le premier câble qui part d'un point de distribution
+        if (!foundFirstDistributionEdge) {
+          const sourceItem = items.find((i) => i.id === edge.source_node_id);
+          if (sourceItem && isDistributionPoint(sourceItem)) {
+            const { power, details } = calculateEdgePower(edge);
+            circuitPower = power;
+            circuitPowerDetails = details;
+            foundFirstDistributionEdge = true;
+          }
         }
+      }
+
+      // Si aucun câble ne part d'un point de distribution, prendre la puissance du premier câble
+      if (!foundFirstDistributionEdge && circuitEdges.length > 0) {
+        const { power, details } = calculateEdgePower(circuitEdges[0]);
+        circuitPower = power;
+        circuitPowerDetails = details;
       }
 
       circuitLengths.set(circuitNum, totalLen);
       circuitEdgeIds.set(circuitNum, edgeIds);
-      circuitPowers.set(circuitNum, { power: maxPower, details: maxPowerDetails });
+      circuitPowers.set(circuitNum, { power: circuitPower, details: circuitPowerDetails });
     });
 
     for (const edge of edges) {
