@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.84 - Fix: fallback par CÔTÉ pour les flux types (top-2 hérite de top-1) + auto-détection équipements
+// VERSION: 3.85 - Fix: Distributeurs collectent les infos des sous-distributeurs (porte-fusible) sans cascader
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6617,6 +6617,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 };
 
                 // Fonction locale pour trouver la puissance en traversant les fusibles/protections
+                // VERSION 3.85: Collecte les infos des distributeurs intermédiaires (porte-fusible) sans cascader
                 const findPowerThroughChainForTotal = (startNodeId: string, excludeEdgeId: string): number => {
                   const visited = new Set<string>();
 
@@ -6630,8 +6631,27 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                     const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
                     const category = typeConfig?.category || "autre";
 
-                    // Si c'est un busbar ou distributeur, on s'arrête
-                    if (category === "distribution" || category === "distributeur") return 0;
+                    // Si c'est un busbar ou distributeur, collecter ses connexions directes
+                    // mais ne PAS cascader vers d'autres distributeurs
+                    if (category === "distribution" || category === "distributeur") {
+                      let power = 0;
+                      const distEdges = edges.filter(
+                        (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && e.id !== fromEdgeId,
+                      );
+                      for (const e of distEdges) {
+                        const nextNodeId = e.source_node_id === nodeId ? e.target_node_id : e.source_node_id;
+                        const nextItem = items.find((i) => i.id === nextNodeId);
+                        if (!nextItem) continue;
+
+                        const nextCategory = ELECTRICAL_TYPES[nextItem.type_electrique]?.category || "autre";
+                        // Si c'est un AUTRE distributeur → skip (pas de cascade)
+                        if (nextCategory === "distribution" || nextCategory === "distributeur") continue;
+
+                        // Sinon on traverse normalement
+                        power += traverse(nextNodeId, e.id);
+                      }
+                      return power;
+                    }
 
                     const isTransmitter = ["regulation", "conversion", "protection"].includes(category);
 
@@ -6833,7 +6853,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 if (!isDistribution) return null;
 
                 // Fonction locale pour trouver la puissance en traversant les fusibles/protections
-                // S'arrête sur les distributeurs (porte-fusible) car ils ont le même comportement que les busbars
+                // VERSION 3.85: Collecte les infos des distributeurs intermédiaires (porte-fusible) sans cascader
                 const findPowerThroughChain = (startNodeId: string, excludeEdgeId: string): number => {
                   const visited = new Set<string>();
 
@@ -6847,8 +6867,27 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                     const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
                     const category = typeConfig?.category || "autre";
 
-                    // Si c'est un busbar ou distributeur, on s'arrête
-                    if (category === "distribution" || category === "distributeur") return 0;
+                    // Si c'est un busbar ou distributeur, collecter ses connexions directes
+                    // mais ne PAS cascader vers d'autres distributeurs
+                    if (category === "distribution" || category === "distributeur") {
+                      let power = 0;
+                      const distEdges = edges.filter(
+                        (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && e.id !== fromEdgeId,
+                      );
+                      for (const e of distEdges) {
+                        const nextNodeId = e.source_node_id === nodeId ? e.target_node_id : e.source_node_id;
+                        const nextItem = items.find((i) => i.id === nextNodeId);
+                        if (!nextItem) continue;
+
+                        const nextCategory = ELECTRICAL_TYPES[nextItem.type_electrique]?.category || "autre";
+                        // Si c'est un AUTRE distributeur → skip (pas de cascade)
+                        if (nextCategory === "distribution" || nextCategory === "distributeur") continue;
+
+                        // Sinon on traverse normalement
+                        power += traverse(nextNodeId, e.id);
+                      }
+                      return power;
+                    }
 
                     // Les transmetteurs sont les protections simples
                     const isTransmitter = ["regulation", "conversion", "protection"].includes(category);
