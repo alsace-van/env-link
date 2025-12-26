@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.80 - Fix: calcul puissance s'arrête aux busbars + dédupe équipements modale
+// VERSION: 3.81 - Fix: calcul puissance busbar utilise sumUpstreamPowersFromBusbar + détecte puissance transmetteurs
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -3252,10 +3252,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         const category = typeConfig?.category || "consommateur";
 
         // Les transmetteurs (régulation, conversion, protection) doivent propager
-        const isTransmitter = ["regulation", "conversion", "protection", "distributeur"].includes(category);
+        const isTransmitter = ["regulation", "conversion", "protection"].includes(category);
 
-        // Si c'est un point de distribution (busbar), on s'arrête ici
-        if (category === "distribution") {
+        // Si c'est un point de distribution (busbar ou distributeur), on s'arrête ici
+        if (category === "distribution" || category === "distributeur") {
           return { total: 0, details: [] };
         }
 
@@ -3487,11 +3487,50 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           if (downstream.total > 0) {
             return { power: downstream.total, details: downstream.details };
           }
+
+          // Si pas trouvé en aval, peut-être que c'est un convertisseur avec puissance propre
+          // (comme un DC/DC ou MPPT qui a une capacité de charge)
+          if (targetItem.puissance_watts && targetItem.puissance_watts > 0) {
+            const power = targetItem.puissance_watts * (targetItem.quantite || 1);
+            return {
+              power,
+              details: [
+                {
+                  id: targetItem.id,
+                  nom: targetItem.nom_accessoire,
+                  puissance: targetItem.puissance_watts,
+                  quantite: targetItem.quantite || 1,
+                  total: power,
+                },
+              ],
+            };
+          }
         }
 
-        // Dernier recours : remonter vers les producteurs
-        const result = sumUpstreamPowersWithDetails(edge.source_node_id, new Set([edge.target_node_id]));
-        return { power: result.total, details: result.details };
+        // Dernier recours pour les busbars : chercher les producteurs via les handles "production"
+        // Utiliser sumUpstreamPowersFromBusbar avec tous les équipements connectés
+        const busbarEdgesAll = edges.filter(
+          (e) => e.source_node_id === edge.source_node_id || e.target_node_id === edge.source_node_id,
+        );
+
+        let totalPowerFallback = 0;
+        const allDetailsFallback: PowerDetail[] = [];
+        const processedItemsFallback = new Set<string>();
+
+        for (const be of busbarEdgesAll) {
+          if (be.id === edge.id) continue; // Pas l'edge actuel
+
+          const connectedNodeId = be.source_node_id === edge.source_node_id ? be.target_node_id : be.source_node_id;
+
+          if (processedItemsFallback.has(connectedNodeId)) continue;
+          processedItemsFallback.add(connectedNodeId);
+
+          const result = sumUpstreamPowersFromBusbar(connectedNodeId, new Set([edge.source_node_id]));
+          totalPowerFallback += result.total;
+          allDetailsFallback.push(...result.details);
+        }
+
+        return { power: totalPowerFallback, details: allDetailsFallback };
       }
 
       // CAS 3: La source est transparente (distributeur, protection, etc.)
@@ -3523,6 +3562,23 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           if (downstream.total > 0) {
             return { power: downstream.total, details: downstream.details };
           }
+
+          // Si pas trouvé en aval, peut-être que c'est un convertisseur avec puissance propre
+          if (targetItem.puissance_watts && targetItem.puissance_watts > 0) {
+            const power = targetItem.puissance_watts * (targetItem.quantite || 1);
+            return {
+              power,
+              details: [
+                {
+                  id: targetItem.id,
+                  nom: targetItem.nom_accessoire,
+                  puissance: targetItem.puissance_watts,
+                  quantite: targetItem.quantite || 1,
+                  total: power,
+                },
+              ],
+            };
+          }
         }
 
         // Sinon, remonter vers les producteurs
@@ -3541,6 +3597,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       isTransparentNode,
       sumUpstreamPowersWithDetails,
       sumDownstreamPowersFromEdge,
+      sumUpstreamPowersFromBusbar,
       edges,
       nodeHandleFluxTypes,
     ],
