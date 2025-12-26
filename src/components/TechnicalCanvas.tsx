@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.83 - DEBUG: logs pour comprendre le problème de flux types non détectés
+// VERSION: 3.84 - Fix: fallback par CÔTÉ pour les flux types (top-2 hérite de top-1) + auto-détection équipements
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -3414,7 +3414,28 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       // → Utiliser les types de flux définis sur les handles, ou déduire du contexte
       if (sourceIsDistribution) {
         const busbarFluxTypes = nodeHandleFluxTypes[edge.source_node_id] || {};
-        const sourceHandleFlux = edge.source_handle ? busbarFluxTypes[edge.source_handle] : undefined;
+
+        // Fonction helper pour obtenir le flux type avec fallback par côté
+        const getFluxTypeWithFallback = (handleId: string | null | undefined): HandleFluxType | undefined => {
+          if (!handleId) return undefined;
+
+          // 1) Config explicite de ce handle
+          if (busbarFluxTypes[handleId]) {
+            return busbarFluxTypes[handleId];
+          }
+
+          // 2) Fallback: chercher config d'un autre handle du même côté
+          const side = handleId.split("-")[0];
+          for (const [hId, fType] of Object.entries(busbarFluxTypes)) {
+            if (hId.startsWith(side + "-") && fType) {
+              return fType as HandleFluxType;
+            }
+          }
+
+          return undefined;
+        };
+
+        const sourceHandleFlux = getFluxTypeWithFallback(edge.source_handle);
 
         // Si le handle source est marqué "consommation", calculer les consommateurs en AVAL
         if (sourceHandleFlux === "consommation") {
@@ -3440,8 +3461,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             // Quel handle du busbar est utilisé ?
             const busbarHandle = be.source_node_id === edge.source_node_id ? be.source_handle : be.target_handle;
 
-            // Quel est le type de flux de ce handle ?
-            const handleFlux = busbarHandle ? busbarFluxTypes[busbarHandle] : undefined;
+            // Quel est le type de flux de ce handle ? (avec fallback par côté)
+            const handleFlux = getFluxTypeWithFallback(busbarHandle);
 
             // Si ce handle est marqué "production", récupérer la puissance de l'équipement connecté
             if (handleFlux === "production") {
@@ -6559,6 +6580,42 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 // Pour les busbars: utiliser les types de flux définis sur chaque handle
                 const busbarFluxTypes = nodeHandleFluxTypes[editingItem.id] || {};
 
+                // Fonction pour déduire le type de flux d'un équipement basé sur sa catégorie
+                const inferFluxTypeFromEquipmentTotal = (item: ElectricalItem): HandleFluxType | undefined => {
+                  const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
+                  const category = typeConfig?.category || "autre";
+
+                  if (category === "production") return "production";
+                  if (item.type_electrique?.toLowerCase().includes("mppt")) return "production";
+                  if (item.type_electrique?.toLowerCase().includes("panneau")) return "production";
+                  if (item.type_electrique?.toLowerCase().includes("solaire")) return "production";
+                  if (category === "consommateur") return "consommation";
+                  if (category === "stockage") return "stockage";
+                  if (item.type_electrique?.toLowerCase().includes("batterie")) return "stockage";
+                  if (category === "conversion") {
+                    if (item.type_electrique?.toLowerCase().includes("chargeur")) return "production";
+                    if (item.type_electrique?.toLowerCase().includes("dcdc")) return "production";
+                  }
+                  return undefined;
+                };
+
+                // Fonction pour obtenir le flux type avec fallback
+                const getFluxTypeForHandleTotal = (
+                  handleId: string | null | undefined,
+                  connectedItem: ElectricalItem | null,
+                ): HandleFluxType | undefined => {
+                  if (!handleId) return connectedItem ? inferFluxTypeFromEquipmentTotal(connectedItem) : undefined;
+
+                  if (busbarFluxTypes[handleId]) return busbarFluxTypes[handleId];
+
+                  const side = handleId.split("-")[0];
+                  for (const [hId, fType] of Object.entries(busbarFluxTypes)) {
+                    if (hId.startsWith(side + "-") && fType) return fType as HandleFluxType;
+                  }
+
+                  return connectedItem ? inferFluxTypeFromEquipmentTotal(connectedItem) : undefined;
+                };
+
                 // Fonction locale pour trouver la puissance en traversant les fusibles/protections
                 const findPowerThroughChainForTotal = (startNodeId: string, excludeEdgeId: string): number => {
                   const visited = new Set<string>();
@@ -6622,8 +6679,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   if (processedEquipments.has(otherNodeId)) return;
                   processedEquipments.add(otherNodeId);
 
+                  const otherItem = items.find((i) => i.id === otherNodeId);
                   const power = findPowerThroughChainForTotal(otherNodeId, e.id);
-                  const fluxType = busbarHandle ? busbarFluxTypes[busbarHandle] : undefined;
+                  const fluxType = getFluxTypeForHandleTotal(busbarHandle, otherItem || null);
 
                   if (fluxType === "production") {
                     totalProduction += power;
@@ -6821,19 +6879,66 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
                 const busbarFluxTypes = nodeHandleFluxTypes[editingItem.id] || {};
 
-                // DEBUG: Afficher les flux types disponibles
-                console.log("[DEBUG] Busbar ID:", editingItem.id);
-                console.log("[DEBUG] busbarFluxTypes:", JSON.stringify(busbarFluxTypes));
+                // Fonction pour déduire le type de flux d'un équipement basé sur sa catégorie
+                const inferFluxTypeFromEquipment = (item: ElectricalItem): HandleFluxType | undefined => {
+                  const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
+                  const category = typeConfig?.category || "autre";
+
+                  // Producteurs
+                  if (category === "production") return "production";
+                  if (item.type_electrique?.toLowerCase().includes("mppt")) return "production";
+                  if (item.type_electrique?.toLowerCase().includes("panneau")) return "production";
+                  if (item.type_electrique?.toLowerCase().includes("solaire")) return "production";
+
+                  // Consommateurs
+                  if (category === "consommateur") return "consommation";
+
+                  // Stockage
+                  if (category === "stockage") return "stockage";
+                  if (item.type_electrique?.toLowerCase().includes("batterie")) return "stockage";
+
+                  // Chargeurs produisent du courant vers le busbar
+                  if (category === "conversion") {
+                    // DC/DC, chargeur 230V = production vers le busbar
+                    if (item.type_electrique?.toLowerCase().includes("chargeur")) return "production";
+                    if (item.type_electrique?.toLowerCase().includes("dcdc")) return "production";
+                  }
+
+                  return undefined;
+                };
+
+                // Fonction pour obtenir le flux type d'un handle
+                // Priorité: 1) Config explicite du handle, 2) Config d'un autre handle du même côté, 3) Auto-détection
+                const getFluxTypeForHandle = (
+                  handleId: string | null | undefined,
+                  connectedItem: ElectricalItem | null,
+                ): HandleFluxType | undefined => {
+                  if (!handleId) return connectedItem ? inferFluxTypeFromEquipment(connectedItem) : undefined;
+
+                  // 1) Config explicite de ce handle
+                  if (busbarFluxTypes[handleId]) {
+                    return busbarFluxTypes[handleId];
+                  }
+
+                  // 2) Config d'un autre handle du même côté
+                  const side = handleId.split("-")[0];
+                  for (const [hId, fType] of Object.entries(busbarFluxTypes)) {
+                    if (hId.startsWith(side + "-") && fType) {
+                      return fType as HandleFluxType;
+                    }
+                  }
+
+                  // 3) Auto-détection basée sur l'équipement connecté
+                  if (connectedItem) {
+                    return inferFluxTypeFromEquipment(connectedItem);
+                  }
+
+                  return undefined;
+                };
 
                 const connectedEdges = edges.filter(
                   (e) => e.source_node_id === editingItem.id || e.target_node_id === editingItem.id,
                 );
-
-                // DEBUG: Afficher les handles des edges
-                connectedEdges.forEach((e) => {
-                  const busbarHandle = e.source_node_id === editingItem.id ? e.source_handle : e.target_handle;
-                  console.log("[DEBUG] Edge handle:", busbarHandle, "fluxType:", busbarFluxTypes[busbarHandle || ""]);
-                });
 
                 // Récupérer les équipements connectés avec leur handle et type de flux
                 // DÉDUPLIQUER par ID d'équipement (un équipement peut avoir plusieurs câbles + et -)
@@ -6860,7 +6965,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
                   // Trouver la puissance en traversant la chaîne, en excluant ce câble
                   const power = findPowerThroughChain(connectedId, e.id);
-                  const fluxType = busbarHandle ? busbarFluxTypes[busbarHandle] : undefined;
+                  const fluxType = getFluxTypeForHandle(busbarHandle, item);
 
                   connectedItemsMap.set(connectedId, { item, power, handleId: busbarHandle || undefined, fluxType });
                 });
