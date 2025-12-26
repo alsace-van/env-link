@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.78 - Fix: longueur visible + section pas en double + badge ne cache pas handle
+// VERSION: 3.79 - Fix: restauration logique simple + fix labels câbles (longueur + section séparés)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6492,52 +6492,49 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               const isDistribution = typeConfig?.category === "distribution" || typeConfig?.category === "distributeur";
 
               if (isDistribution && editingItem) {
-                // Fonction pour trouver les équipements derrière une protection
-                // S'arrête aux distributeurs
-                const findEquipmentsBehindForTotal = (protectionId: string, excludeEdgeId: string): number => {
-                  let totalPower = 0;
+                // Pour les busbars: utiliser les types de flux définis sur chaque handle
+                const busbarFluxTypes = nodeHandleFluxTypes[editingItem.id] || {};
+
+                // Fonction locale pour trouver la puissance en traversant les fusibles/protections
+                const findPowerThroughChainForTotal = (startNodeId: string, excludeEdgeId: string): number => {
                   const visited = new Set<string>();
 
-                  const traverse = (nodeId: string, fromEdgeId: string | null): void => {
-                    if (visited.has(nodeId)) return;
+                  const traverse = (nodeId: string, fromEdgeId: string | null): number => {
+                    if (visited.has(nodeId)) return 0;
                     visited.add(nodeId);
 
                     const item = items.find((i) => i.id === nodeId);
-                    if (!item) return;
+                    if (!item) return 0;
 
-                    const itemTypeConfig = ELECTRICAL_TYPES[item.type_electrique];
-                    const category = itemTypeConfig?.category || "autre";
+                    const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
+                    const category = typeConfig?.category || "autre";
 
-                    // Si c'est un distributeur/busbar, s'arrêter
-                    if (category === "distribution" || category === "distributeur") return;
+                    // Si c'est un busbar ou distributeur, on s'arrête
+                    if (category === "distribution" || category === "distributeur") return 0;
 
-                    // Si c'est un équipement avec puissance
-                    if (
-                      item.puissance_watts &&
-                      item.puissance_watts > 0 &&
-                      !["protection", "regulation", "conversion"].includes(category)
-                    ) {
-                      totalPower += item.puissance_watts * (item.quantite || 1);
-                      return;
+                    const isTransmitter = ["regulation", "conversion", "protection"].includes(category);
+
+                    if (item.puissance_watts && item.puissance_watts > 0 && !isTransmitter) {
+                      return item.puissance_watts * (item.quantite || 1);
                     }
 
-                    // Si c'est un transmetteur, continuer
-                    if (["protection", "regulation", "conversion"].includes(category)) {
-                      const nextEdges = edges.filter(
+                    if (isTransmitter) {
+                      let power = 0;
+                      const allEdges = edges.filter(
                         (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && e.id !== fromEdgeId,
                       );
-                      for (const e of nextEdges) {
-                        const nextId = e.source_node_id === nodeId ? e.target_node_id : e.source_node_id;
-                        traverse(nextId, e.id);
+                      for (const e of allEdges) {
+                        const nextNodeId = e.source_node_id === nodeId ? e.target_node_id : e.source_node_id;
+                        power += traverse(nextNodeId, e.id);
                       }
+                      return power;
                     }
+
+                    return 0;
                   };
 
-                  traverse(protectionId, excludeEdgeId);
-                  return totalPower;
+                  return traverse(startNodeId, excludeEdgeId);
                 };
-
-                const busbarFluxTypes = nodeHandleFluxTypes[editingItem.id] || {};
 
                 const connectedEdges = edges.filter(
                   (e) => e.source_node_id === editingItem.id || e.target_node_id === editingItem.id,
@@ -6556,23 +6553,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
                   const otherNodeId = e.source_node_id === editingItem.id ? e.target_node_id : e.source_node_id;
 
-                  const otherItem = items.find((i) => i.id === otherNodeId);
-                  if (!otherItem) return;
-
-                  const itemTypeConfig = ELECTRICAL_TYPES[otherItem.type_electrique];
-                  const category = itemTypeConfig?.category || "autre";
-
-                  let power = 0;
-
-                  // Si c'est un distributeur, ne pas traverser (power = 0)
-                  if (category === "distribution" || category === "distributeur") {
-                    power = 0;
-                  } else if (category === "protection") {
-                    power = findEquipmentsBehindForTotal(otherNodeId, e.id);
-                  } else if (otherItem.puissance_watts && otherItem.puissance_watts > 0) {
-                    power = otherItem.puissance_watts * (otherItem.quantite || 1);
-                  }
-
+                  const power = findPowerThroughChainForTotal(otherNodeId, e.id);
                   const fluxType = busbarHandle ? busbarFluxTypes[busbarHandle] : undefined;
 
                   if (fluxType === "production") {
@@ -6724,83 +6705,63 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
                 if (!isDistribution) return null;
 
-                // Fonction pour trouver les équipements derrière une protection (fusible)
-                // S'arrête aux distributeurs (ne les traverse pas)
-                const findEquipmentBehindProtection = (
-                  protectionId: string,
-                  excludeEdgeId: string,
-                ): {
-                  totalPower: number;
-                  equipments: { id: string; nom: string; power: number; type: string; category: string }[];
-                } => {
-                  const equipments: { id: string; nom: string; power: number; type: string; category: string }[] = [];
-                  let totalPower = 0;
+                // Fonction locale pour trouver la puissance en traversant les fusibles/protections
+                // S'arrête sur les distributeurs (porte-fusible) car ils ont le même comportement que les busbars
+                const findPowerThroughChain = (startNodeId: string, excludeEdgeId: string): number => {
                   const visited = new Set<string>();
 
-                  const traverse = (nodeId: string, fromEdgeId: string | null): void => {
-                    if (visited.has(nodeId)) return;
+                  const traverse = (nodeId: string, fromEdgeId: string | null): number => {
+                    if (visited.has(nodeId)) return 0;
                     visited.add(nodeId);
 
                     const item = items.find((i) => i.id === nodeId);
-                    if (!item) return;
+                    if (!item) return 0;
 
-                    const itemTypeConfig = ELECTRICAL_TYPES[item.type_electrique];
-                    const category = itemTypeConfig?.category || "autre";
+                    const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
+                    const category = typeConfig?.category || "autre";
 
-                    // Si c'est un distributeur/busbar, NE PAS traverser - c'est une frontière
-                    // On l'ajoute comme un élément avec sa propre puissance si elle existe
-                    if (category === "distribution" || category === "distributeur") {
-                      // Ne pas traverser, juste noter qu'on a atteint un distributeur
-                      return;
+                    // Si c'est un busbar ou distributeur, on s'arrête
+                    if (category === "distribution" || category === "distributeur") return 0;
+
+                    // Les transmetteurs sont les protections simples
+                    const isTransmitter = ["regulation", "conversion", "protection"].includes(category);
+
+                    // Si cet item a une puissance propre, la retourner
+                    if (item.puissance_watts && item.puissance_watts > 0 && !isTransmitter) {
+                      return item.puissance_watts * (item.quantite || 1);
                     }
 
-                    // Si c'est un équipement avec puissance (pas un transmetteur)
-                    if (
-                      item.puissance_watts &&
-                      item.puissance_watts > 0 &&
-                      !["protection", "regulation", "conversion"].includes(category)
-                    ) {
-                      const power = item.puissance_watts * (item.quantite || 1);
-                      equipments.push({
-                        id: item.id,
-                        nom: item.nom_accessoire,
-                        power,
-                        type: item.type_electrique,
-                        category,
-                      });
-                      totalPower += power;
-                      return;
-                    }
-
-                    // Si c'est un transmetteur (protection, régulation), continuer à chercher
-                    if (["protection", "regulation", "conversion"].includes(category)) {
-                      const nextEdges = edges.filter(
+                    // Si c'est un transmetteur, traverser les AUTRES connexions
+                    if (isTransmitter) {
+                      let power = 0;
+                      const allEdges = edges.filter(
                         (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && e.id !== fromEdgeId,
                       );
-                      for (const e of nextEdges) {
-                        const nextId = e.source_node_id === nodeId ? e.target_node_id : e.source_node_id;
-                        traverse(nextId, e.id);
+                      for (const e of allEdges) {
+                        const nextNodeId = e.source_node_id === nodeId ? e.target_node_id : e.source_node_id;
+                        power += traverse(nextNodeId, e.id);
                       }
+                      return power;
                     }
+
+                    return 0;
                   };
 
-                  traverse(protectionId, excludeEdgeId);
-                  return { totalPower, equipments };
+                  return traverse(startNodeId, excludeEdgeId);
                 };
 
                 const busbarFluxTypes = nodeHandleFluxTypes[editingItem.id] || {};
 
-                // Collecter les équipements par handle
                 const connectedEdges = edges.filter(
                   (e) => e.source_node_id === editingItem.id || e.target_node_id === editingItem.id,
                 );
 
+                // Récupérer les équipements connectés avec leur handle et type de flux
                 const connectedItems: {
                   item: ElectricalItem;
                   power: number;
                   handleId: string | undefined;
                   fluxType: HandleFluxType | undefined;
-                  equipments: { id: string; nom: string; power: number; type: string; category: string }[];
                 }[] = [];
 
                 connectedEdges.forEach((e) => {
@@ -6810,41 +6771,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   const item = items.find((i) => i.id === connectedId);
                   if (!item) return;
 
+                  // Trouver la puissance en traversant la chaîne, en excluant ce câble
+                  const power = findPowerThroughChain(connectedId, e.id);
                   const fluxType = busbarHandle ? busbarFluxTypes[busbarHandle] : undefined;
-                  const itemTypeConfig = ELECTRICAL_TYPES[item.type_electrique];
-                  const category = itemTypeConfig?.category || "autre";
 
-                  let power = 0;
-                  let equipments: { id: string; nom: string; power: number; type: string; category: string }[] = [];
-
-                  // Si c'est un autre distributeur, l'afficher comme tel (sans le traverser)
-                  if (category === "distribution" || category === "distributeur") {
-                    // On ne traverse pas - on affiche juste "Distributeur: nom"
-                    // La puissance sera 0 car on ne collecte pas à travers
-                    equipments = [];
-                    power = 0;
-                  }
-                  // Si c'est une protection, trouver les équipements DIRECTS derrière
-                  else if (category === "protection") {
-                    const behind = findEquipmentBehindProtection(connectedId, e.id);
-                    power = behind.totalPower;
-                    equipments = behind.equipments;
-                  }
-                  // Sinon c'est un équipement direct
-                  else if (item.puissance_watts && item.puissance_watts > 0) {
-                    power = item.puissance_watts * (item.quantite || 1);
-                    equipments = [
-                      {
-                        id: item.id,
-                        nom: item.nom_accessoire,
-                        power,
-                        type: item.type_electrique,
-                        category,
-                      },
-                    ];
-                  }
-
-                  connectedItems.push({ item, power, handleId: busbarHandle || undefined, fluxType, equipments });
+                  connectedItems.push({ item, power, handleId: busbarHandle || undefined, fluxType });
                 });
 
                 // Grouper par type de flux défini sur le handle
@@ -6870,7 +6801,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                           🔋 Production ({totalProduction}W)
                         </div>
                         <div className="space-y-1">
-                          {productionItems.map(({ item, power, handleId, equipments }) => {
+                          {productionItems.map(({ item, power, handleId }) => {
                             const config = ELECTRICAL_TYPES[item.type_electrique];
                             return (
                               <div
@@ -6885,20 +6816,6 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                   <span className="font-bold text-emerald-700 whitespace-nowrap">{power}W</span>
                                 </div>
                                 <div className="text-gray-600 mt-0.5 break-words">{item.nom_accessoire}</div>
-                                {/* Liste des équipements agrégés */}
-                                {equipments.length > 1 && (
-                                  <div className="mt-1 pl-2 border-l-2 border-emerald-200 text-[10px] text-gray-500">
-                                    {equipments.map((eq) => (
-                                      <div key={eq.id} className="flex justify-between">
-                                        <span>
-                                          {eq.nom.slice(0, 30)}
-                                          {eq.nom.length > 30 ? "..." : ""}
-                                        </span>
-                                        <span className="font-medium">{eq.power}W</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
                               </div>
                             );
                           })}
@@ -6913,7 +6830,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                           💡 Consommation ({totalConsumption}W)
                         </div>
                         <div className="space-y-1">
-                          {consumptionItems.map(({ item, power, handleId, equipments }) => {
+                          {consumptionItems.map(({ item, power, handleId }) => {
                             const config = ELECTRICAL_TYPES[item.type_electrique];
                             return (
                               <div
@@ -6928,20 +6845,6 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                   <span className="font-bold text-red-700 whitespace-nowrap">{power}W</span>
                                 </div>
                                 <div className="text-gray-600 mt-0.5 break-words">{item.nom_accessoire}</div>
-                                {/* Liste des équipements agrégés */}
-                                {equipments.length > 0 && equipments[0]?.id !== item.id && (
-                                  <div className="mt-1 pl-2 border-l-2 border-red-200 text-[10px] text-gray-500">
-                                    {equipments.map((eq) => (
-                                      <div key={eq.id} className="flex justify-between">
-                                        <span>
-                                          {eq.nom.slice(0, 30)}
-                                          {eq.nom.length > 30 ? "..." : ""}
-                                        </span>
-                                        <span className="font-medium">{eq.power}W</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
                               </div>
                             );
                           })}
@@ -6954,7 +6857,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                       <div className="mb-3">
                         <div className="text-xs font-medium text-amber-700 mb-1">🔌 Stockage</div>
                         <div className="space-y-1">
-                          {storageItems.map(({ item, power, handleId, equipments }) => {
+                          {storageItems.map(({ item, power, handleId }) => {
                             const config = ELECTRICAL_TYPES[item.type_electrique];
                             return (
                               <div
@@ -6971,20 +6874,6 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                   )}
                                 </div>
                                 <div className="text-gray-600 mt-0.5 break-words">{item.nom_accessoire}</div>
-                                {/* Liste des équipements agrégés */}
-                                {equipments.length > 0 && equipments[0]?.id !== item.id && (
-                                  <div className="mt-1 pl-2 border-l-2 border-amber-200 text-[10px] text-gray-500">
-                                    {equipments.map((eq) => (
-                                      <div key={eq.id} className="flex justify-between">
-                                        <span>
-                                          {eq.nom.slice(0, 30)}
-                                          {eq.nom.length > 30 ? "..." : ""}
-                                        </span>
-                                        <span className="font-medium">{eq.power}W</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
                               </div>
                             );
                           })}
@@ -6999,7 +6888,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                           ⚪ Non défini (double-clic sur le handle pour définir)
                         </div>
                         <div className="space-y-1">
-                          {neutralItems.map(({ item, power, handleId, equipments }) => {
+                          {neutralItems.map(({ item, power, handleId }) => {
                             const config = ELECTRICAL_TYPES[item.type_electrique];
                             return (
                               <div
@@ -7016,20 +6905,6 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                   )}
                                 </div>
                                 <div className="text-gray-600 mt-0.5 break-words">{item.nom_accessoire}</div>
-                                {/* Liste des équipements agrégés */}
-                                {equipments.length > 0 && equipments[0]?.id !== item.id && (
-                                  <div className="mt-1 pl-2 border-l-2 border-gray-200 text-[10px] text-gray-500">
-                                    {equipments.map((eq) => (
-                                      <div key={eq.id} className="flex justify-between">
-                                        <span>
-                                          {eq.nom.slice(0, 30)}
-                                          {eq.nom.length > 30 ? "..." : ""}
-                                        </span>
-                                        <span className="font-medium">{eq.power}W</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
                               </div>
                             );
                           })}
