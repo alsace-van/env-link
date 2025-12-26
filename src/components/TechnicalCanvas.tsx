@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.85 - Fix: Distributeurs collectent les infos des sous-distributeurs (porte-fusible) sans cascader
+// VERSION: 3.86 - Fix: Grouper par numéro de circuit + classifier selon équipement FINAL (MPPT=prod, frigo=conso)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6616,17 +6616,23 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   return connectedItem ? inferFluxTypeFromEquipmentTotal(connectedItem) : undefined;
                 };
 
-                // Fonction locale pour trouver la puissance en traversant les fusibles/protections
-                // VERSION 3.85: Collecte les infos des distributeurs intermédiaires (porte-fusible) sans cascader
-                const findPowerThroughChainForTotal = (startNodeId: string, excludeEdgeId: string): number => {
+                // Fonction locale pour trouver la puissance ET l'équipement final en traversant les fusibles/protections
+                // VERSION 3.86: Retourne { power, finalItem } pour classification par équipement final
+                const findPowerThroughChainForTotal = (
+                  startNodeId: string,
+                  excludeEdgeId: string,
+                ): { power: number; finalItem: ElectricalItem | null } => {
                   const visited = new Set<string>();
 
-                  const traverse = (nodeId: string, fromEdgeId: string | null): number => {
-                    if (visited.has(nodeId)) return 0;
+                  const traverse = (
+                    nodeId: string,
+                    fromEdgeId: string | null,
+                  ): { power: number; finalItem: ElectricalItem | null } => {
+                    if (visited.has(nodeId)) return { power: 0, finalItem: null };
                     visited.add(nodeId);
 
                     const item = items.find((i) => i.id === nodeId);
-                    if (!item) return 0;
+                    if (!item) return { power: 0, finalItem: null };
 
                     const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
                     const category = typeConfig?.category || "autre";
@@ -6634,7 +6640,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                     // Si c'est un busbar ou distributeur, collecter ses connexions directes
                     // mais ne PAS cascader vers d'autres distributeurs
                     if (category === "distribution" || category === "distributeur") {
-                      let power = 0;
+                      let totalPower = 0;
+                      let foundFinalItem: ElectricalItem | null = null;
                       const distEdges = edges.filter(
                         (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && e.id !== fromEdgeId,
                       );
@@ -6648,30 +6655,39 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                         if (nextCategory === "distribution" || nextCategory === "distributeur") continue;
 
                         // Sinon on traverse normalement
-                        power += traverse(nextNodeId, e.id);
+                        const result = traverse(nextNodeId, e.id);
+                        totalPower += result.power;
+                        if (result.finalItem && !foundFinalItem) {
+                          foundFinalItem = result.finalItem;
+                        }
                       }
-                      return power;
+                      return { power: totalPower, finalItem: item };
                     }
 
                     const isTransmitter = ["regulation", "conversion", "protection"].includes(category);
 
                     if (item.puissance_watts && item.puissance_watts > 0 && !isTransmitter) {
-                      return item.puissance_watts * (item.quantite || 1);
+                      return { power: item.puissance_watts * (item.quantite || 1), finalItem: item };
                     }
 
                     if (isTransmitter) {
-                      let power = 0;
+                      let totalPower = 0;
                       const allEdges = edges.filter(
                         (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && e.id !== fromEdgeId,
                       );
                       for (const e of allEdges) {
                         const nextNodeId = e.source_node_id === nodeId ? e.target_node_id : e.source_node_id;
-                        power += traverse(nextNodeId, e.id);
+                        const result = traverse(nextNodeId, e.id);
+                        totalPower += result.power;
                       }
-                      return power;
+                      // Pour les régulateurs/convertisseurs, les identifier comme source
+                      if (category === "regulation" || category === "conversion") {
+                        return { power: totalPower, finalItem: item };
+                      }
+                      return { power: totalPower, finalItem: null };
                     }
 
-                    return 0;
+                    return { power: 0, finalItem: null };
                   };
 
                   return traverse(startNodeId, excludeEdgeId);
@@ -6681,27 +6697,34 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   (e) => e.source_node_id === editingItem.id || e.target_node_id === editingItem.id,
                 );
 
+                // VERSION 3.86: Grouper par NUMÉRO DE CIRCUIT pour éviter les doublons
+                const busbarHandleCircuitsForTotal = nodeHandleCircuits[editingItem.id] || {};
+
                 let totalProduction = 0;
                 let totalConsumption = 0;
                 let totalStockage = 0;
-                const processedHandles = new Set<string>();
-                const processedEquipments = new Set<string>(); // Éviter de compter le même équipement plusieurs fois
+                const processedCircuits = new Set<string>(); // Clé = circuit-N ou itemId
 
                 connectedEdges.forEach((e) => {
                   const busbarHandle = e.source_node_id === editingItem.id ? e.source_handle : e.target_handle;
-
-                  if (busbarHandle && processedHandles.has(busbarHandle)) return;
-                  if (busbarHandle) processedHandles.add(busbarHandle);
-
                   const otherNodeId = e.source_node_id === editingItem.id ? e.target_node_id : e.source_node_id;
 
-                  // Éviter de compter le même équipement plusieurs fois (câbles + et -)
-                  if (processedEquipments.has(otherNodeId)) return;
-                  processedEquipments.add(otherNodeId);
+                  // Récupérer le numéro de circuit du handle
+                  const circuitNumber = busbarHandle ? busbarHandleCircuitsForTotal[busbarHandle] : undefined;
 
-                  const otherItem = items.find((i) => i.id === otherNodeId);
-                  const power = findPowerThroughChainForTotal(otherNodeId, e.id);
-                  const fluxType = getFluxTypeForHandleTotal(busbarHandle, otherItem || null);
+                  // Clé de déduplication : circuit number si défini, sinon ID de l'item
+                  const dedupeKey = circuitNumber !== undefined ? `circuit-${circuitNumber}` : otherNodeId;
+
+                  // Si ce circuit est déjà traité, skip
+                  if (processedCircuits.has(dedupeKey)) return;
+                  processedCircuits.add(dedupeKey);
+
+                  const { power, finalItem } = findPowerThroughChainForTotal(otherNodeId, e.id);
+
+                  // Classifier selon l'équipement FINAL
+                  const fluxType = finalItem
+                    ? inferFluxTypeFromEquipmentTotal(finalItem)
+                    : getFluxTypeForHandleTotal(busbarHandle, items.find((i) => i.id === otherNodeId) || null);
 
                   if (fluxType === "production") {
                     totalProduction += power;
@@ -6852,17 +6875,23 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
                 if (!isDistribution) return null;
 
-                // Fonction locale pour trouver la puissance en traversant les fusibles/protections
-                // VERSION 3.85: Collecte les infos des distributeurs intermédiaires (porte-fusible) sans cascader
-                const findPowerThroughChain = (startNodeId: string, excludeEdgeId: string): number => {
+                // Fonction locale pour trouver la puissance ET l'équipement final en traversant les fusibles/protections
+                // VERSION 3.86: Retourne { power, finalItem } pour permettre la classification par équipement final
+                const findPowerThroughChain = (
+                  startNodeId: string,
+                  excludeEdgeId: string,
+                ): { power: number; finalItem: ElectricalItem | null } => {
                   const visited = new Set<string>();
 
-                  const traverse = (nodeId: string, fromEdgeId: string | null): number => {
-                    if (visited.has(nodeId)) return 0;
+                  const traverse = (
+                    nodeId: string,
+                    fromEdgeId: string | null,
+                  ): { power: number; finalItem: ElectricalItem | null } => {
+                    if (visited.has(nodeId)) return { power: 0, finalItem: null };
                     visited.add(nodeId);
 
                     const item = items.find((i) => i.id === nodeId);
-                    if (!item) return 0;
+                    if (!item) return { power: 0, finalItem: null };
 
                     const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
                     const category = typeConfig?.category || "autre";
@@ -6870,7 +6899,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                     // Si c'est un busbar ou distributeur, collecter ses connexions directes
                     // mais ne PAS cascader vers d'autres distributeurs
                     if (category === "distribution" || category === "distributeur") {
-                      let power = 0;
+                      let totalPower = 0;
+                      let foundFinalItem: ElectricalItem | null = null;
                       const distEdges = edges.filter(
                         (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && e.id !== fromEdgeId,
                       );
@@ -6884,33 +6914,48 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                         if (nextCategory === "distribution" || nextCategory === "distributeur") continue;
 
                         // Sinon on traverse normalement
-                        power += traverse(nextNodeId, e.id);
+                        const result = traverse(nextNodeId, e.id);
+                        totalPower += result.power;
+                        if (result.finalItem && !foundFinalItem) {
+                          foundFinalItem = result.finalItem;
+                        }
                       }
-                      return power;
+                      // Le distributeur lui-même est le "finalItem" pour l'affichage
+                      return { power: totalPower, finalItem: item };
                     }
 
                     // Les transmetteurs sont les protections simples
                     const isTransmitter = ["regulation", "conversion", "protection"].includes(category);
 
-                    // Si cet item a une puissance propre, la retourner
+                    // Si cet item a une puissance propre, la retourner AVEC l'item comme finalItem
                     if (item.puissance_watts && item.puissance_watts > 0 && !isTransmitter) {
-                      return item.puissance_watts * (item.quantite || 1);
+                      return {
+                        power: item.puissance_watts * (item.quantite || 1),
+                        finalItem: item,
+                      };
                     }
 
-                    // Si c'est un transmetteur, traverser les AUTRES connexions
+                    // Si c'est un transmetteur (régulateur, convertisseur), traverser mais GARDER cet item comme finalItem
+                    // Car MPPT, DC/DC sont les "sources" même s'ils n'ont pas de puissance propre affichée
                     if (isTransmitter) {
-                      let power = 0;
+                      let totalPower = 0;
                       const allEdges = edges.filter(
                         (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && e.id !== fromEdgeId,
                       );
                       for (const e of allEdges) {
                         const nextNodeId = e.source_node_id === nodeId ? e.target_node_id : e.source_node_id;
-                        power += traverse(nextNodeId, e.id);
+                        const result = traverse(nextNodeId, e.id);
+                        totalPower += result.power;
                       }
-                      return power;
+                      // Pour les régulateurs/convertisseurs, on veut les identifier comme source
+                      // même si la puissance vient d'ailleurs (panneau → MPPT)
+                      if (category === "regulation" || category === "conversion") {
+                        return { power: totalPower, finalItem: item };
+                      }
+                      return { power: totalPower, finalItem: null };
                     }
 
-                    return 0;
+                    return { power: 0, finalItem: null };
                   };
 
                   return traverse(startNodeId, excludeEdgeId);
@@ -6979,15 +7024,19 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   (e) => e.source_node_id === editingItem.id || e.target_node_id === editingItem.id,
                 );
 
-                // Récupérer les équipements connectés avec leur handle et type de flux
-                // DÉDUPLIQUER par ID d'équipement (un équipement peut avoir plusieurs câbles + et -)
+                // VERSION 3.86: Grouper par NUMÉRO DE CIRCUIT pour éviter les doublons
+                // et classifier selon l'équipement FINAL (pas le handle)
+                const busbarHandleCircuits = nodeHandleCircuits[editingItem.id] || {};
+
                 const connectedItemsMap = new Map<
-                  string,
+                  string, // Clé = circuitNumber ou itemId si pas de circuit
                   {
-                    item: ElectricalItem;
+                    item: ElectricalItem; // L'item directement connecté (pour affichage)
+                    finalItem: ElectricalItem | null; // L'équipement final (pour classification)
                     power: number;
                     handleId: string | undefined;
                     fluxType: HandleFluxType | undefined;
+                    circuitNumber: number | undefined;
                   }
                 >();
 
@@ -6998,15 +7047,32 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   const item = items.find((i) => i.id === connectedId);
                   if (!item) return;
 
-                  // Si cet équipement est déjà dans la map, ne pas l'ajouter de nouveau
-                  // (évite les doublons quand un équipement a plusieurs câbles + et -)
-                  if (connectedItemsMap.has(connectedId)) return;
+                  // Récupérer le numéro de circuit du handle
+                  const circuitNumber = busbarHandle ? busbarHandleCircuits[busbarHandle] : undefined;
 
-                  // Trouver la puissance en traversant la chaîne, en excluant ce câble
-                  const power = findPowerThroughChain(connectedId, e.id);
-                  const fluxType = getFluxTypeForHandle(busbarHandle, item);
+                  // Clé de déduplication : circuit number si défini, sinon ID de l'item
+                  const dedupeKey = circuitNumber !== undefined ? `circuit-${circuitNumber}` : connectedId;
 
-                  connectedItemsMap.set(connectedId, { item, power, handleId: busbarHandle || undefined, fluxType });
+                  // Si ce circuit est déjà dans la map, ne pas l'ajouter de nouveau
+                  if (connectedItemsMap.has(dedupeKey)) return;
+
+                  // Trouver la puissance ET l'équipement final en traversant la chaîne
+                  const { power, finalItem } = findPowerThroughChain(connectedId, e.id);
+
+                  // Classifier selon l'équipement FINAL (MPPT=production, frigo=consommation)
+                  // au lieu du handle du distributeur
+                  const fluxType = finalItem
+                    ? inferFluxTypeFromEquipment(finalItem)
+                    : getFluxTypeForHandle(busbarHandle, item);
+
+                  connectedItemsMap.set(dedupeKey, {
+                    item,
+                    finalItem,
+                    power,
+                    handleId: busbarHandle || undefined,
+                    fluxType,
+                    circuitNumber,
+                  });
                 });
 
                 const connectedItems = Array.from(connectedItemsMap.values());
