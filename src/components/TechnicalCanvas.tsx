@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.79 - Fix: restauration logique simple + fix labels câbles (longueur + section séparés)
+// VERSION: 3.80 - Fix: calcul puissance s'arrête aux busbars + dédupe équipements modale
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2838,11 +2838,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
       const category = typeConfig?.category || "consommateur";
 
-      // Les transmetteurs (régulation, conversion, distribution, protection) doivent propager
+      // IMPORTANT: S'ARRÊTER aux points de distribution (busbar, distributeur)
+      // Ils sont des frontières de circuit, on ne doit pas les traverser
+      if (category === "distribution" || category === "distributeur") {
+        return { total: 0, details: [] };
+      }
+
+      // Les transmetteurs (régulation, conversion, protection) doivent propager
       // la puissance d'amont, pas utiliser leur propre capacité
-      const isTransmitter = ["regulation", "conversion", "distribution", "protection", "distributeur"].includes(
-        category,
-      );
+      const isTransmitter = ["regulation", "conversion", "protection"].includes(category);
 
       // Si cet item est un vrai producteur (production) avec puissance, c'est une source
       if (item.puissance_watts && item.puissance_watts > 0 && !isTransmitter) {
@@ -2890,10 +2894,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
       const category = typeConfig?.category || "consommateur";
 
+      // IMPORTANT: S'ARRÊTER aux points de distribution (busbar, distributeur)
+      // Ils sont des frontières de circuit, on ne doit pas les traverser
+      if (category === "distribution" || category === "distributeur") {
+        return 0;
+      }
+
       // Les transmetteurs doivent propager, pas utiliser leur propre capacité
-      const isTransmitter = ["regulation", "conversion", "distribution", "protection", "distributeur"].includes(
-        category,
-      );
+      const isTransmitter = ["regulation", "conversion", "protection"].includes(category);
 
       // Si cet item est un vrai consommateur avec puissance, la retourner
       if (item.puissance_watts && item.puissance_watts > 0 && !isTransmitter) {
@@ -6544,6 +6552,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 let totalConsumption = 0;
                 let totalStockage = 0;
                 const processedHandles = new Set<string>();
+                const processedEquipments = new Set<string>(); // Éviter de compter le même équipement plusieurs fois
 
                 connectedEdges.forEach((e) => {
                   const busbarHandle = e.source_node_id === editingItem.id ? e.source_handle : e.target_handle;
@@ -6552,6 +6561,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   if (busbarHandle) processedHandles.add(busbarHandle);
 
                   const otherNodeId = e.source_node_id === editingItem.id ? e.target_node_id : e.source_node_id;
+
+                  // Éviter de compter le même équipement plusieurs fois (câbles + et -)
+                  if (processedEquipments.has(otherNodeId)) return;
+                  processedEquipments.add(otherNodeId);
 
                   const power = findPowerThroughChainForTotal(otherNodeId, e.id);
                   const fluxType = busbarHandle ? busbarFluxTypes[busbarHandle] : undefined;
@@ -6757,12 +6770,16 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 );
 
                 // Récupérer les équipements connectés avec leur handle et type de flux
-                const connectedItems: {
-                  item: ElectricalItem;
-                  power: number;
-                  handleId: string | undefined;
-                  fluxType: HandleFluxType | undefined;
-                }[] = [];
+                // DÉDUPLIQUER par ID d'équipement (un équipement peut avoir plusieurs câbles + et -)
+                const connectedItemsMap = new Map<
+                  string,
+                  {
+                    item: ElectricalItem;
+                    power: number;
+                    handleId: string | undefined;
+                    fluxType: HandleFluxType | undefined;
+                  }
+                >();
 
                 connectedEdges.forEach((e) => {
                   const connectedId = e.source_node_id === editingItem.id ? e.target_node_id : e.source_node_id;
@@ -6771,12 +6788,18 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                   const item = items.find((i) => i.id === connectedId);
                   if (!item) return;
 
+                  // Si cet équipement est déjà dans la map, ne pas l'ajouter de nouveau
+                  // (évite les doublons quand un équipement a plusieurs câbles + et -)
+                  if (connectedItemsMap.has(connectedId)) return;
+
                   // Trouver la puissance en traversant la chaîne, en excluant ce câble
                   const power = findPowerThroughChain(connectedId, e.id);
                   const fluxType = busbarHandle ? busbarFluxTypes[busbarHandle] : undefined;
 
-                  connectedItems.push({ item, power, handleId: busbarHandle || undefined, fluxType });
+                  connectedItemsMap.set(connectedId, { item, power, handleId: busbarHandle || undefined, fluxType });
                 });
+
+                const connectedItems = Array.from(connectedItemsMap.values());
 
                 // Grouper par type de flux défini sur le handle
                 const productionItems = connectedItems.filter((i) => i.fluxType === "production");
