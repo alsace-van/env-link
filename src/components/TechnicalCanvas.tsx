@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.81 - Fix: calcul puissance busbar utilise sumUpstreamPowersFromBusbar + détecte puissance transmetteurs
+// VERSION: 3.83 - DEBUG: logs pour comprendre le problème de flux types non détectés
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -3728,20 +3728,19 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       // 2. Obtenir le numéro de circuit
       const circuitNumber = getEdgeCircuitNumber(edge);
 
-      // 3. Calculer la puissance - utiliser la puissance MAX du circuit si défini
-      let power: number;
-      let details: PowerDetail[];
+      // 3. Calculer la puissance - Priorité : puissance propre du segment
+      // Pour les circuits de consommation, chaque segment a sa propre puissance
+      // (le frigo a 60W, même si le circuit global transporte plus)
+      const edgePower = calculateEdgePower(edge);
+      let power = edgePower.power;
+      let details = edgePower.details;
 
-      if (circuitNumber !== undefined && circuitPowers.has(circuitNumber)) {
-        // Utiliser la puissance max calculée pour tout le circuit
+      // Si le câble individuel n'a pas de puissance mais fait partie d'un circuit,
+      // utiliser la puissance du circuit comme fallback
+      if (power === 0 && circuitNumber !== undefined && circuitPowers.has(circuitNumber)) {
         const circuitPowerData = circuitPowers.get(circuitNumber)!;
         power = circuitPowerData.power;
         details = circuitPowerData.details;
-      } else {
-        // Sinon, calculer la puissance de ce câble uniquement
-        const edgePower = calculateEdgePower(edge);
-        power = edgePower.power;
-        details = edgePower.details;
       }
 
       // 4. Déterminer la tension du segment (utiliser la vraie destination)
@@ -6822,9 +6821,19 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
                 const busbarFluxTypes = nodeHandleFluxTypes[editingItem.id] || {};
 
+                // DEBUG: Afficher les flux types disponibles
+                console.log("[DEBUG] Busbar ID:", editingItem.id);
+                console.log("[DEBUG] busbarFluxTypes:", JSON.stringify(busbarFluxTypes));
+
                 const connectedEdges = edges.filter(
                   (e) => e.source_node_id === editingItem.id || e.target_node_id === editingItem.id,
                 );
+
+                // DEBUG: Afficher les handles des edges
+                connectedEdges.forEach((e) => {
+                  const busbarHandle = e.source_node_id === editingItem.id ? e.source_handle : e.target_handle;
+                  console.log("[DEBUG] Edge handle:", busbarHandle, "fluxType:", busbarFluxTypes[busbarHandle || ""]);
+                });
 
                 // Récupérer les équipements connectés avec leur handle et type de flux
                 // DÉDUPLIQUER par ID d'équipement (un équipement peut avoir plusieurs câbles + et -)
