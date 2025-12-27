@@ -1,7 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.86 - Fix: Grouper par numéro de circuit + classifier selon équipement FINAL (MPPT=prod, frigo=conso)
+// VERSION: 3.87 - Fix: Ajout try-catch pour éviter crashs + grouper par circuit + classifier par équipement final
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6706,32 +6706,36 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 const processedCircuits = new Set<string>(); // Clé = circuit-N ou itemId
 
                 connectedEdges.forEach((e) => {
-                  const busbarHandle = e.source_node_id === editingItem.id ? e.source_handle : e.target_handle;
-                  const otherNodeId = e.source_node_id === editingItem.id ? e.target_node_id : e.source_node_id;
+                  try {
+                    const busbarHandle = e.source_node_id === editingItem.id ? e.source_handle : e.target_handle;
+                    const otherNodeId = e.source_node_id === editingItem.id ? e.target_node_id : e.source_node_id;
 
-                  // Récupérer le numéro de circuit du handle
-                  const circuitNumber = busbarHandle ? busbarHandleCircuitsForTotal[busbarHandle] : undefined;
+                    // Récupérer le numéro de circuit du handle
+                    const circuitNumber = busbarHandle ? busbarHandleCircuitsForTotal[busbarHandle] : undefined;
 
-                  // Clé de déduplication : circuit number si défini, sinon ID de l'item
-                  const dedupeKey = circuitNumber !== undefined ? `circuit-${circuitNumber}` : otherNodeId;
+                    // Clé de déduplication : circuit number si défini, sinon ID de l'item
+                    const dedupeKey = circuitNumber !== undefined ? `circuit-${circuitNumber}` : otherNodeId;
 
-                  // Si ce circuit est déjà traité, skip
-                  if (processedCircuits.has(dedupeKey)) return;
-                  processedCircuits.add(dedupeKey);
+                    // Si ce circuit est déjà traité, skip
+                    if (processedCircuits.has(dedupeKey)) return;
+                    processedCircuits.add(dedupeKey);
 
-                  const { power, finalItem } = findPowerThroughChainForTotal(otherNodeId, e.id);
+                    const { power, finalItem } = findPowerThroughChainForTotal(otherNodeId, e.id);
 
-                  // Classifier selon l'équipement FINAL
-                  const fluxType = finalItem
-                    ? inferFluxTypeFromEquipmentTotal(finalItem)
-                    : getFluxTypeForHandleTotal(busbarHandle, items.find((i) => i.id === otherNodeId) || null);
+                    // Classifier selon l'équipement FINAL
+                    const fluxType = finalItem
+                      ? inferFluxTypeFromEquipmentTotal(finalItem)
+                      : getFluxTypeForHandleTotal(busbarHandle, items.find((i) => i.id === otherNodeId) || null);
 
-                  if (fluxType === "production") {
-                    totalProduction += power;
-                  } else if (fluxType === "consommation") {
-                    totalConsumption += power;
-                  } else if (fluxType === "stockage") {
-                    totalStockage += power;
+                    if (fluxType === "production") {
+                      totalProduction += power;
+                    } else if (fluxType === "consommation") {
+                      totalConsumption += power;
+                    } else if (fluxType === "stockage") {
+                      totalStockage += power;
+                    }
+                  } catch (err) {
+                    console.error("[Schema] Error calculating total for edge:", e.id, err);
                   }
                 });
 
@@ -7041,38 +7045,42 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 >();
 
                 connectedEdges.forEach((e) => {
-                  const connectedId = e.source_node_id === editingItem.id ? e.target_node_id : e.source_node_id;
-                  const busbarHandle = e.source_node_id === editingItem.id ? e.source_handle : e.target_handle;
+                  try {
+                    const connectedId = e.source_node_id === editingItem.id ? e.target_node_id : e.source_node_id;
+                    const busbarHandle = e.source_node_id === editingItem.id ? e.source_handle : e.target_handle;
 
-                  const item = items.find((i) => i.id === connectedId);
-                  if (!item) return;
+                    const item = items.find((i) => i.id === connectedId);
+                    if (!item) return;
 
-                  // Récupérer le numéro de circuit du handle
-                  const circuitNumber = busbarHandle ? busbarHandleCircuits[busbarHandle] : undefined;
+                    // Récupérer le numéro de circuit du handle
+                    const circuitNumber = busbarHandle ? busbarHandleCircuits[busbarHandle] : undefined;
 
-                  // Clé de déduplication : circuit number si défini, sinon ID de l'item
-                  const dedupeKey = circuitNumber !== undefined ? `circuit-${circuitNumber}` : connectedId;
+                    // Clé de déduplication : circuit number si défini, sinon ID de l'item
+                    const dedupeKey = circuitNumber !== undefined ? `circuit-${circuitNumber}` : connectedId;
 
-                  // Si ce circuit est déjà dans la map, ne pas l'ajouter de nouveau
-                  if (connectedItemsMap.has(dedupeKey)) return;
+                    // Si ce circuit est déjà dans la map, ne pas l'ajouter de nouveau
+                    if (connectedItemsMap.has(dedupeKey)) return;
 
-                  // Trouver la puissance ET l'équipement final en traversant la chaîne
-                  const { power, finalItem } = findPowerThroughChain(connectedId, e.id);
+                    // Trouver la puissance ET l'équipement final en traversant la chaîne
+                    const { power, finalItem } = findPowerThroughChain(connectedId, e.id);
 
-                  // Classifier selon l'équipement FINAL (MPPT=production, frigo=consommation)
-                  // au lieu du handle du distributeur
-                  const fluxType = finalItem
-                    ? inferFluxTypeFromEquipment(finalItem)
-                    : getFluxTypeForHandle(busbarHandle, item);
+                    // Classifier selon l'équipement FINAL (MPPT=production, frigo=consommation)
+                    // au lieu du handle du distributeur
+                    const fluxType = finalItem
+                      ? inferFluxTypeFromEquipment(finalItem)
+                      : getFluxTypeForHandle(busbarHandle, item);
 
-                  connectedItemsMap.set(dedupeKey, {
-                    item,
-                    finalItem,
-                    power,
-                    handleId: busbarHandle || undefined,
-                    fluxType,
-                    circuitNumber,
-                  });
+                    connectedItemsMap.set(dedupeKey, {
+                      item,
+                      finalItem,
+                      power,
+                      handleId: busbarHandle || undefined,
+                      fluxType,
+                      circuitNumber,
+                    });
+                  } catch (err) {
+                    console.error("[Schema] Error processing edge:", e.id, err);
+                  }
                 });
 
                 const connectedItems = Array.from(connectedItemsMap.values());
