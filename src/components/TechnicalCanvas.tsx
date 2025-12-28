@@ -1,9 +1,9 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.96 - Correction calcul section : suppression × 2
-//                 - La longueur saisie est la longueur totale
-//                 - Affichage calcul réel + section recommandée
+// VERSION: 3.97 - Liste utilise les données sauvegardées du circuit
+//                 - Affiche ✓ si circuit déjà configuré
+//                 - Synchronisation liste ↔ fenêtre config
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -5968,16 +5968,21 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                       const selectedEdgeIds = calc.allEdgeIdsInCircuit || [];
                                       setEditingCircuitNumber(calc.circuitNumber!);
                                       setCircuitSelectedCables(selectedEdgeIds);
-                                      // Calculer la longueur totale depuis les câbles réels
-                                      const totalLength = selectedEdgeIds.reduce((sum, edgeId) => {
-                                        const edge = edges.find((e) => e.id === edgeId);
-                                        return sum + (edge?.length_m || 0);
-                                      }, 0);
-                                      setCircuitTotalLength(totalLength);
-                                      // Récupérer la tension depuis le circuit existant ou depuis le calcul
+                                      // Récupérer le circuit existant
                                       const existingCircuit = Object.values(circuits).find(
                                         (c) => c.circuitNumber === calc.circuitNumber,
                                       );
+                                      // Utiliser la longueur sauvegardée ou calculer depuis les câbles
+                                      if (existingCircuit?.totalLength) {
+                                        setCircuitTotalLength(existingCircuit.totalLength);
+                                      } else {
+                                        const totalLength = selectedEdgeIds.reduce((sum, edgeId) => {
+                                          const edge = edges.find((e) => e.id === edgeId);
+                                          return sum + (edge?.length_m || 0);
+                                        }, 0);
+                                        setCircuitTotalLength(totalLength);
+                                      }
+                                      // Récupérer la tension sauvegardée ou depuis le calcul
                                       setCircuitVoltage(existingCircuit?.voltage || calc.voltage || 12);
                                       setCircuitSelectedEquipments(existingCircuit?.equipmentIds || []);
                                     }
@@ -5987,22 +5992,39 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                   }}
                                   onMouseLeave={() => setHoveredCircuitEdgeIds([])}
                                 >
-                                  <div className="flex items-center justify-between">
-                                    <span className="flex items-center gap-1.5">
-                                      <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold bg-amber-100 border border-amber-400 text-amber-700 rounded-full">
-                                        {calc.circuitNumber}
-                                      </span>
-                                      <span className="font-medium text-gray-700 truncate max-w-[100px]">
-                                        {calc.sourceNom.substring(0, 15)}
-                                      </span>
-                                    </span>
-                                    <span className="font-bold text-emerald-600 text-xs">{calc.section}mm²</span>
-                                  </div>
-                                  <div className="flex gap-2 text-[10px] text-gray-500 mt-0.5">
-                                    <span>⚡{calc.power}W</span>
-                                    <span>📏{calc.circuitTotalLength?.toFixed(1) || "?"}m</span>
-                                    <span>🔌{calc.allEdgeIdsInCircuit?.length || 1}</span>
-                                  </div>
+                                  {(() => {
+                                    // Utiliser les données sauvegardées si disponibles
+                                    const savedCircuit = Object.values(circuits).find(
+                                      (c) => c.circuitNumber === calc.circuitNumber,
+                                    );
+                                    const displaySection = savedCircuit?.calculatedSection || calc.section;
+                                    const displayPower = savedCircuit?.totalPower || calc.power;
+                                    const displayLength = savedCircuit?.totalLength || calc.circuitTotalLength;
+
+                                    return (
+                                      <>
+                                        <div className="flex items-center justify-between">
+                                          <span className="flex items-center gap-1.5">
+                                            <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold bg-amber-100 border border-amber-400 text-amber-700 rounded-full">
+                                              {calc.circuitNumber}
+                                            </span>
+                                            <span className="font-medium text-gray-700 truncate max-w-[100px]">
+                                              {calc.sourceNom.substring(0, 15)}
+                                            </span>
+                                          </span>
+                                          <span className="font-bold text-emerald-600 text-xs">
+                                            {displaySection}mm²
+                                          </span>
+                                        </div>
+                                        <div className="flex gap-2 text-[10px] text-gray-500 mt-0.5">
+                                          <span>⚡{displayPower}W</span>
+                                          <span>📏{displayLength?.toFixed(1) || "?"}m</span>
+                                          <span>🔌{calc.allEdgeIdsInCircuit?.length || 1}</span>
+                                          {savedCircuit && <span className="text-emerald-500">✓</span>}
+                                        </div>
+                                      </>
+                                    );
+                                  })()}
                                 </div>
                               ))}
 
