@@ -6818,7 +6818,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-lg">{config?.icon || "⚡"}</span>
+                                  {config?.icon ? <config.icon className="h-4 w-4" /> : <Zap className="h-4 w-4" />}
                                   <span className={`font-medium ${config?.color || "text-gray-600"}`}>
                                     {config?.label || item.type_electrique}
                                   </span>
@@ -7004,8 +7004,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                         >
                           <div className="flex items-center gap-2">
                             <input type="checkbox" checked={isSelected} readOnly className="pointer-events-none" />
-                            <span className="text-lg">{config?.icon || "⚡"}</span>
-                            <span className="font-medium">{item.nom}</span>
+                            {config?.icon ? <config.icon className="h-4 w-4" /> : <Zap className="h-4 w-4" />}
+                            <span className="font-medium">{item.nom || item.nom_accessoire}</span>
                           </div>
                           <span className="text-sm font-mono bg-gray-200 px-2 py-1 rounded">
                             {(item.puissance_watts || 0) * (item.quantite || 1)}W
