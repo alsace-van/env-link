@@ -1,8 +1,7 @@
 // ============================================
 // SchemaLegend.tsx
 // Composant légende auto-générée du schéma
-// VERSION: 1.2 - Ajout types chargeur/convertisseur/dcdc
-//              - dans Production et TYPE_CONFIG
+// VERSION: 1.4 - Types de connexion (cosse, MC4, borne)
 // ============================================
 
 import React, { useMemo, useState } from "react";
@@ -32,6 +31,8 @@ interface ElectricalItem {
   puissance_watts?: number;
   capacite_ah?: number;
   quantite?: number;
+  type_connexion?: string | null;
+  filetage?: string | null;
 }
 
 interface SchemaEdge {
@@ -157,6 +158,44 @@ export function SchemaLegend({
 
     return sections;
   }, [edges]);
+
+  // Analyser les connexions nécessaires (par type et filetage)
+  const presentConnexions = useMemo(() => {
+    const connexions = {
+      cosses: new Map<string, { count: number; equipments: string[] }>(),
+      mc4: { count: 0, equipments: [] as string[] },
+      bornes: { count: 0, equipments: [] as string[] },
+    };
+
+    items.forEach((item) => {
+      const qty = item.quantite || 1;
+      // Chaque équipement a généralement 2 connexions (+ et -)
+      const connectionCount = qty * 2;
+
+      if (item.type_connexion === "cosse_ronde" && item.filetage) {
+        const existing = connexions.cosses.get(item.filetage) || { count: 0, equipments: [] };
+        connexions.cosses.set(item.filetage, {
+          count: existing.count + connectionCount,
+          equipments: [...existing.equipments, item.nom_accessoire],
+        });
+      } else if (item.type_connexion === "mc4") {
+        connexions.mc4.count += connectionCount;
+        connexions.mc4.equipments.push(item.nom_accessoire);
+      } else if (item.type_connexion === "borne_vis") {
+        connexions.bornes.count += connectionCount;
+        connexions.bornes.equipments.push(item.nom_accessoire);
+      } else if (item.filetage) {
+        // Rétrocompatibilité: filetage sans type_connexion
+        const existing = connexions.cosses.get(item.filetage) || { count: 0, equipments: [] };
+        connexions.cosses.set(item.filetage, {
+          count: existing.count + connectionCount,
+          equipments: [...existing.equipments, item.nom_accessoire],
+        });
+      }
+    });
+
+    return connexions;
+  }, [items]);
 
   // Totaux
   const totals = useMemo(() => {
@@ -306,6 +345,54 @@ export function SchemaLegend({
                       {section} mm² (×{data.count}) {data.totalLength > 0 && `- ${data.totalLength.toFixed(1)}m`}
                     </Badge>
                   ))}
+              </div>
+            </div>
+          )}
+
+          {/* Connexions nécessaires */}
+          {(presentConnexions.cosses.size > 0 ||
+            presentConnexions.mc4.count > 0 ||
+            presentConnexions.bornes.count > 0) && (
+            <div>
+              <div className="text-xs font-medium text-gray-500 mb-1.5">🔌 Connexions</div>
+              <div className="flex flex-wrap gap-1">
+                {/* Cosses par filetage */}
+                {Array.from(presentConnexions.cosses.entries())
+                  .sort((a, b) => {
+                    const numA = parseInt(a[0].replace("M", "")) || 0;
+                    const numB = parseInt(b[0].replace("M", "")) || 0;
+                    return numA - numB;
+                  })
+                  .map(([filetage, data]) => (
+                    <Badge
+                      key={filetage}
+                      variant="outline"
+                      className="text-[10px] bg-purple-50 border-purple-200 text-purple-700"
+                      title={`Équipements: ${data.equipments.join(", ")}`}
+                    >
+                      🔩 {filetage} (×{data.count})
+                    </Badge>
+                  ))}
+                {/* MC4 */}
+                {presentConnexions.mc4.count > 0 && (
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] bg-orange-50 border-orange-200 text-orange-700"
+                    title={`Équipements: ${presentConnexions.mc4.equipments.join(", ")}`}
+                  >
+                    ☀️ MC4 (×{presentConnexions.mc4.count})
+                  </Badge>
+                )}
+                {/* Bornes à vis */}
+                {presentConnexions.bornes.count > 0 && (
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] bg-blue-50 border-blue-200 text-blue-700"
+                    title={`Équipements: ${presentConnexions.bornes.equipments.join(", ")}`}
+                  >
+                    🔧 Bornes (×{presentConnexions.bornes.count})
+                  </Badge>
+                )}
               </div>
             </div>
           )}

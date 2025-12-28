@@ -1,9 +1,8 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.03 - Harmonisation avec calculateur
-//                 - Résistivité 0.023 (câbles souples)
-//                 - Intensités max conservatrices
+// VERSION: 4.05 - Type de connexion (cosse, MC4, borne)
+//                 - Affichage amélioré dans blocs
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -156,6 +155,8 @@ interface ElectricalItem {
   accessory_id?: string | null; // ID de l'accessoire du catalogue (pour rafraîchir les données)
   distributeur_pair_id?: string | null; // ID du distributeur couplé (ex: Busbar+ ↔ Busbar-)
   distributeur_polarite?: string | null; // Polarité du distributeur (+, -)
+  type_connexion?: string | null; // Type de connexion (cosse_ronde, mc4, borne_vis)
+  filetage?: string | null; // Filetage des connexions (M5, M6, M8, M10) pour cosses
 }
 
 // Configuration des handles par bloc
@@ -934,6 +935,27 @@ const ElectricalBlockNode = ({ data, selected }: NodeProps) => {
           <div className="flex items-center justify-between text-xs">
             <span className="text-gray-600">Intensité</span>
             <span className="font-medium text-gray-900">{item.intensite_amperes} A</span>
+          </div>
+        )}
+        {(item.type_connexion || item.filetage) && (
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-gray-600">Connexion</span>
+            <span
+              className={`font-medium ${
+                item.type_connexion === "cosse_ronde"
+                  ? "text-purple-700"
+                  : item.type_connexion === "mc4"
+                    ? "text-orange-600"
+                    : item.type_connexion === "borne_vis"
+                      ? "text-blue-600"
+                      : "text-gray-600"
+              }`}
+            >
+              {item.type_connexion === "cosse_ronde" && `🔩 Cosse ${item.filetage || ""}`}
+              {item.type_connexion === "mc4" && "☀️ MC4"}
+              {item.type_connexion === "borne_vis" && "🔧 Borne"}
+              {!item.type_connexion && item.filetage && `🔩 ${item.filetage}`}
+            </span>
           </div>
         )}
         {item.quantite > 1 && item.puissance_watts && (
@@ -4423,7 +4445,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     const { data } = await supabase
       .from("accessories_catalog")
       .select(
-        "id, nom, marque, prix_vente_ttc, puissance_watts, capacite_ah, type_electrique, category_id, image_url, categories(nom)",
+        "id, nom, marque, prix_vente_ttc, puissance_watts, capacite_ah, type_electrique, category_id, image_url, type_connexion, filetage, categories(nom)",
       )
       .not("type_electrique", "is", null)
       .order("nom");
@@ -4454,6 +4476,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       image_url: catalogItem.image_url, // Miniature du produit
       layerId: activeLayerId, // Assigner au calque actif
       accessory_id: catalogItem.id, // ID du catalogue pour rafraîchir
+      type_connexion: catalogItem.type_connexion, // Type de connexion
+      filetage: catalogItem.filetage, // Filetage pour cosses
     };
     setItems((prev) => [...prev, newItem]);
     setCatalogOpen(false);
@@ -4500,7 +4524,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     if (accessoryIds.length > 0) {
       const { data: catalogItems } = await (supabase as any)
         .from("accessories_catalog")
-        .select("id, type_electrique, puissance_watts, capacite_ah, tension_volts, marque, image_url")
+        .select(
+          "id, type_electrique, puissance_watts, capacite_ah, tension_volts, marque, image_url, type_connexion, filetage",
+        )
         .in("id", accessoryIds);
 
       if (catalogItems) {
@@ -4527,6 +4553,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           capacite_ah: expense.capacite_ah ?? catalog?.capacite_ah,
           tension_volts: expense.tension_volts ?? catalog?.tension_volts,
           image_url: catalog?.image_url, // Miniature du produit depuis le catalogue
+          type_connexion: catalog?.type_connexion, // Type de connexion
+          filetage: catalog?.filetage, // Filetage pour cosses
         };
       })
       .filter((item: any) => item.type_electrique); // Filtrer ceux qui ont un type électrique
@@ -4556,7 +4584,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       // Récupérer tous les accessoires du catalogue
       const { data: catalogItems, error } = await supabase
         .from("accessories_catalog")
-        .select("id, nom, type_electrique, puissance_watts, capacite_ah, tension_volts");
+        .select("id, nom, type_electrique, puissance_watts, capacite_ah, tension_volts, type_connexion, filetage");
 
       if (error) {
         console.error("[Refresh] Erreur catalogue:", error);
@@ -4610,7 +4638,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           const hasChanges =
             item.type_electrique !== catalogMatch.type_electrique ||
             item.puissance_watts !== catalogMatch.puissance_watts ||
-            item.tension_volts !== catalogMatch.tension_volts;
+            item.tension_volts !== catalogMatch.tension_volts ||
+            item.type_connexion !== catalogMatch.type_connexion ||
+            item.filetage !== catalogMatch.filetage;
 
           if (hasChanges) {
             updatedCount++;
@@ -4622,6 +4652,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             type_electrique: catalogMatch.type_electrique,
             puissance_watts: catalogMatch.puissance_watts ?? item.puissance_watts,
             tension_volts: catalogMatch.tension_volts ?? item.tension_volts,
+            type_connexion: catalogMatch.type_connexion ?? item.type_connexion,
+            filetage: catalogMatch.filetage ?? item.filetage,
             accessory_id: catalogMatch.id,
           };
         }

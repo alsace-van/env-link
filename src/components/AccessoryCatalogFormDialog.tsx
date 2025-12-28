@@ -1,9 +1,10 @@
 /**
  * AccessoryCatalogFormDialog.tsx
- * Version: 2.0
+ * Version: 2.1
  * Date: 2025-12-28
  * Description: Réorganisation avec onglets (Général, Tarifs, Technique)
- *              + Ajout champ filetage (M5, M6, M8, M10)
+ *              + Type de connexion (cosse, MC4, borne à vis)
+ *              + Filetage conditionnel (M5, M6, M8, M10)
  */
 
 import { useState, useEffect } from "react";
@@ -55,6 +56,7 @@ interface AccessoryCatalogFormDialogProps {
     volume_litres?: number | null;
     couleur?: string | null;
     image_url?: string | null;
+    type_connexion?: string | null;
     filetage?: string | null;
   } | null;
 }
@@ -85,6 +87,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
     capacite_ah: "",
     tension_volts: "",
     volume_litres: "",
+    type_connexion: "",
     filetage: "",
   });
   const [couleurs, setCouleurs] = useState<string[]>([]);
@@ -175,6 +178,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           capacite_ah: accessory.capacite_ah?.toString() ?? "",
           tension_volts: accessory.tension_volts?.toString() ?? "",
           volume_litres: accessory.volume_litres?.toString() ?? "",
+          type_connexion: (accessory as any).type_connexion ?? "",
           filetage: (accessory as any).filetage ?? "",
         });
 
@@ -239,6 +243,7 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           capacite_ah: "",
           tension_volts: "",
           volume_litres: "",
+          type_connexion: "",
           filetage: "",
         });
         setCouleurs([]);
@@ -595,7 +600,8 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           couleur: couleurs.length > 0 ? JSON.stringify(couleurs.filter((c) => c.trim())) : null,
           description_media: descriptionMedia.length > 0 ? JSON.stringify(descriptionMedia) : null,
           image_url: imageUrl,
-          filetage: formData.filetage || null,
+          type_connexion: formData.type_connexion || null,
+          filetage: formData.type_connexion === "cosse_ronde" ? formData.filetage || null : null,
           needs_completion: false,
         })
         .eq("id", accessory.id);
@@ -656,7 +662,8 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
           couleur: couleurs.length > 0 ? JSON.stringify(couleurs.filter((c) => c.trim())) : null,
           description_media: descriptionMedia.length > 0 ? JSON.stringify(descriptionMedia) : null,
           image_url: imageUrl,
-          filetage: formData.filetage || null,
+          type_connexion: formData.type_connexion || null,
+          filetage: formData.type_connexion === "cosse_ronde" ? formData.filetage || null : null,
           user_id: user.id,
         })
         .select()
@@ -1373,25 +1380,93 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
                     placeholder="Ex: 12.5"
                   />
                 </div>
+              </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="filetage">Filetage connexions</Label>
-                  <Select
-                    value={formData.filetage || "none"}
-                    onValueChange={(value) => setFormData({ ...formData, filetage: value === "none" ? "" : value })}
+              {/* Type de connexion */}
+              <div className="space-y-3 p-4 border rounded-lg bg-muted/20">
+                <Label className="text-base font-semibold">🔌 Type de connexion</Label>
+                <div className="grid grid-cols-4 gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({ ...formData, type_connexion: "cosse_ronde", filetage: formData.filetage || "M6" })
+                    }
+                    className={`p-3 rounded-lg border-2 text-center transition-all ${
+                      formData.type_connexion === "cosse_ronde"
+                        ? "border-purple-500 bg-purple-50 text-purple-700"
+                        : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                    }`}
                   >
-                    <SelectTrigger id="filetage">
-                      <SelectValue placeholder="Sélectionner" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Non applicable</SelectItem>
-                      <SelectItem value="M5">M5 (5mm)</SelectItem>
-                      <SelectItem value="M6">M6 (6mm)</SelectItem>
-                      <SelectItem value="M8">M8 (8mm)</SelectItem>
-                      <SelectItem value="M10">M10 (10mm)</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <div className="text-lg mb-1">🔩</div>
+                    <div className="text-xs font-medium">Cosse ronde</div>
+                    <div className="text-[10px] text-muted-foreground">à visser</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, type_connexion: "mc4", filetage: "" })}
+                    className={`p-3 rounded-lg border-2 text-center transition-all ${
+                      formData.type_connexion === "mc4"
+                        ? "border-orange-500 bg-orange-50 text-orange-700"
+                        : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    <div className="text-lg mb-1">☀️</div>
+                    <div className="text-xs font-medium">MC4</div>
+                    <div className="text-[10px] text-muted-foreground">solaire</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, type_connexion: "borne_vis", filetage: "" })}
+                    className={`p-3 rounded-lg border-2 text-center transition-all ${
+                      formData.type_connexion === "borne_vis"
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    <div className="text-lg mb-1">🔧</div>
+                    <div className="text-xs font-medium">Borne à vis</div>
+                    <div className="text-[10px] text-muted-foreground">serrage</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, type_connexion: "", filetage: "" })}
+                    className={`p-3 rounded-lg border-2 text-center transition-all ${
+                      !formData.type_connexion
+                        ? "border-gray-500 bg-gray-50 text-gray-700"
+                        : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    <div className="text-lg mb-1">⚪</div>
+                    <div className="text-xs font-medium">Autre</div>
+                    <div className="text-[10px] text-muted-foreground">non défini</div>
+                  </button>
                 </div>
+
+                {/* Filetage - uniquement si cosse ronde */}
+                {formData.type_connexion === "cosse_ronde" && (
+                  <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                    <Label className="text-sm text-purple-700 mb-2 block">Diamètre de filetage</Label>
+                    <div className="flex gap-2">
+                      {["M5", "M6", "M8", "M10"].map((size) => (
+                        <button
+                          key={size}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, filetage: size })}
+                          className={`px-4 py-2 rounded-md font-medium transition-all ${
+                            formData.filetage === size
+                              ? "bg-purple-600 text-white"
+                              : "bg-white border border-purple-200 text-purple-600 hover:bg-purple-100"
+                          }`}
+                        >
+                          {size}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <Separator />
