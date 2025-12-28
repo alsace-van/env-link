@@ -1,7 +1,8 @@
 // ============================================
 // SchemaLegend.tsx
 // Composant légende auto-générée du schéma
-// VERSION: 1.0
+// VERSION: 1.1 - Correction calcul production (× quantité)
+//              - Ajout longueur par section
 // ============================================
 
 import React, { useMemo, useState } from "react";
@@ -57,10 +58,7 @@ interface SchemaLegendProps {
 }
 
 // Configuration des types avec leurs icônes
-const TYPE_CONFIG: Record<
-  string,
-  { label: string; icon: React.ComponentType<any>; color: string }
-> = {
+const TYPE_CONFIG: Record<string, { label: string; icon: React.ComponentType<any>; color: string }> = {
   producteur: { label: "Producteur", icon: Sun, color: "#f59e0b" },
   panneau_solaire: { label: "Panneau solaire", icon: Sun, color: "#f59e0b" },
   batterie: { label: "Batterie", icon: Battery, color: "#22c55e" },
@@ -111,11 +109,12 @@ export function SchemaLegend({
 
     items.forEach((item) => {
       const type = item.type_electrique || "accessoire";
+      const qty = item.quantite || 1;
       const existing = types.get(type) || { count: 0, totalPower: 0, totalCapacity: 0 };
       types.set(type, {
-        count: existing.count + (item.quantite || 1),
-        totalPower: existing.totalPower + (item.puissance_watts || 0),
-        totalCapacity: existing.totalCapacity + (item.capacite_ah || 0),
+        count: existing.count + qty,
+        totalPower: existing.totalPower + (item.puissance_watts || 0) * qty,
+        totalCapacity: existing.totalCapacity + (item.capacite_ah || 0) * qty,
       });
     });
 
@@ -138,14 +137,17 @@ export function SchemaLegend({
     return colors;
   }, [edges]);
 
-  // Analyser les sections de câbles
+  // Analyser les sections de câbles avec longueur totale
   const presentSections = useMemo(() => {
-    const sections = new Map<number, number>();
+    const sections = new Map<number, { count: number; totalLength: number }>();
 
     edges.forEach((edge) => {
       if (edge.section_mm2) {
-        const count = sections.get(edge.section_mm2) || 0;
-        sections.set(edge.section_mm2, count + 1);
+        const existing = sections.get(edge.section_mm2) || { count: 0, totalLength: 0 };
+        sections.set(edge.section_mm2, {
+          count: existing.count + 1,
+          totalLength: existing.totalLength + (edge.length_m || 0),
+        });
       }
     });
 
@@ -160,10 +162,11 @@ export function SchemaLegend({
 
     items.forEach((item) => {
       const type = item.type_electrique || "";
+      const qty = item.quantite || 1;
       if (type === "producteur" || type === "panneau_solaire") {
-        production += item.puissance_watts || 0;
+        production += (item.puissance_watts || 0) * qty;
       } else if (type === "batterie" || type === "stockage") {
-        stockage += item.capacite_ah || 0;
+        stockage += (item.capacite_ah || 0) * qty;
       } else if (
         type === "consommateur" ||
         type === "eclairage" ||
@@ -171,7 +174,7 @@ export function SchemaLegend({
         type === "refrigeration" ||
         type === "pompe"
       ) {
-        consommation += item.puissance_watts || 0;
+        consommation += (item.puissance_watts || 0) * qty;
       }
     });
 
@@ -207,24 +210,10 @@ export function SchemaLegend({
       <div className="flex items-center justify-between px-3 py-2 border-b">
         <span className="text-sm font-medium">Légende</span>
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0"
-            onClick={() => setIsExpanded(!isExpanded)}
-          >
-            {isExpanded ? (
-              <ChevronUp className="w-4 h-4" />
-            ) : (
-              <ChevronDown className="w-4 h-4" />
-            )}
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setIsExpanded(!isExpanded)}>
+            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0"
-            onClick={onToggleVisibility}
-          >
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onToggleVisibility}>
             <EyeOff className="w-4 h-4" />
           </Button>
         </div>
@@ -236,46 +225,32 @@ export function SchemaLegend({
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="bg-amber-50 rounded p-1.5">
               <div className="text-xs text-amber-600">Production</div>
-              <div className="text-sm font-semibold text-amber-700">
-                {totals.production} W
-              </div>
+              <div className="text-sm font-semibold text-amber-700">{totals.production} W</div>
             </div>
             <div className="bg-green-50 rounded p-1.5">
               <div className="text-xs text-green-600">Stockage</div>
-              <div className="text-sm font-semibold text-green-700">
-                {totals.stockage} Ah
-              </div>
+              <div className="text-sm font-semibold text-green-700">{totals.stockage} Ah</div>
             </div>
             <div className="bg-red-50 rounded p-1.5">
               <div className="text-xs text-red-600">Conso.</div>
-              <div className="text-sm font-semibold text-red-700">
-                {totals.consommation} W
-              </div>
+              <div className="text-sm font-semibold text-red-700">{totals.consommation} W</div>
             </div>
           </div>
 
           {/* Types de blocs */}
           <div>
-            <div className="text-xs font-medium text-gray-500 mb-1.5">
-              Équipements
-            </div>
+            <div className="text-xs font-medium text-gray-500 mb-1.5">Équipements</div>
             <div className="space-y-1">
               {Array.from(presentTypes.entries()).map(([type, data]) => {
                 const config = TYPE_CONFIG[type] || TYPE_CONFIG.accessoire;
                 const Icon = config.icon;
                 return (
-                  <div
-                    key={type}
-                    className="flex items-center gap-2 text-xs"
-                  >
+                  <div key={type} className="flex items-center gap-2 text-xs">
                     <div
                       className="w-5 h-5 rounded flex items-center justify-center"
                       style={{ backgroundColor: `${config.color}20` }}
                     >
-                      <Icon
-                        className="w-3 h-3"
-                        style={{ color: config.color }}
-                      />
+                      <Icon className="w-3 h-3" style={{ color: config.color }} />
                     </div>
                     <span className="flex-1">{config.label}</span>
                     <Badge variant="secondary" className="text-[10px] h-4">
@@ -290,28 +265,16 @@ export function SchemaLegend({
           {/* Couleurs de câbles */}
           {presentCableColors.size > 0 && (
             <div>
-              <div className="text-xs font-medium text-gray-500 mb-1.5">
-                Câblage
-              </div>
+              <div className="text-xs font-medium text-gray-500 mb-1.5">Câblage</div>
               <div className="space-y-1">
                 {Array.from(presentCableColors.entries()).map(([color, data]) => {
                   const label = CABLE_COLORS[color] || "Autre";
                   return (
-                    <div
-                      key={color}
-                      className="flex items-center gap-2 text-xs"
-                    >
-                      <div
-                        className="w-5 h-1.5 rounded-full"
-                        style={{ backgroundColor: color }}
-                      />
+                    <div key={color} className="flex items-center gap-2 text-xs">
+                      <div className="w-5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
                       <span className="flex-1">{label}</span>
                       <span className="text-gray-400">×{data.count}</span>
-                      {data.totalLength > 0 && (
-                        <span className="text-gray-400">
-                          ({data.totalLength.toFixed(1)}m)
-                        </span>
-                      )}
+                      {data.totalLength > 0 && <span className="text-gray-400">({data.totalLength.toFixed(1)}m)</span>}
                     </div>
                   );
                 })}
@@ -322,19 +285,13 @@ export function SchemaLegend({
           {/* Sections de câbles */}
           {presentSections.size > 0 && (
             <div>
-              <div className="text-xs font-medium text-gray-500 mb-1.5">
-                Sections
-              </div>
+              <div className="text-xs font-medium text-gray-500 mb-1.5">Sections</div>
               <div className="flex flex-wrap gap-1">
                 {Array.from(presentSections.entries())
                   .sort((a, b) => a[0] - b[0])
-                  .map(([section, count]) => (
-                    <Badge
-                      key={section}
-                      variant="outline"
-                      className="text-[10px]"
-                    >
-                      {section} mm² (×{count})
+                  .map(([section, data]) => (
+                    <Badge key={section} variant="outline" className="text-[10px]">
+                      {section} mm² (×{data.count}) {data.totalLength > 0 && `- ${data.totalLength.toFixed(1)}m`}
                     </Badge>
                   ))}
               </div>
@@ -344,22 +301,12 @@ export function SchemaLegend({
           {/* Calques */}
           {layers.length > 1 && (
             <div>
-              <div className="text-xs font-medium text-gray-500 mb-1.5">
-                Calques
-              </div>
+              <div className="text-xs font-medium text-gray-500 mb-1.5">Calques</div>
               <div className="space-y-1">
                 {layers.map((layer) => (
-                  <div
-                    key={layer.id}
-                    className="flex items-center gap-2 text-xs"
-                  >
-                    <div
-                      className="w-3 h-3 rounded"
-                      style={{ backgroundColor: layer.color }}
-                    />
-                    <span className={layer.visible ? "" : "text-gray-400 line-through"}>
-                      {layer.name}
-                    </span>
+                  <div key={layer.id} className="flex items-center gap-2 text-xs">
+                    <div className="w-3 h-3 rounded" style={{ backgroundColor: layer.color }} />
+                    <span className={layer.visible ? "" : "text-gray-400 line-through"}>{layer.name}</span>
                   </div>
                 ))}
               </div>
