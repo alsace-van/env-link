@@ -1,9 +1,8 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.97 - Liste utilise les données sauvegardées du circuit
-//                 - Affiche ✓ si circuit déjà configuré
-//                 - Synchronisation liste ↔ fenêtre config
+// VERSION: 3.99 - Bouton "?" avec tableau intensités max
+//                 - Surbrillance de la section correspondante
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6245,12 +6244,38 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                           const effectiveLength = circuitTotalLength > 0 ? circuitTotalLength : cableLengthSum;
                           const voltage = circuitVoltage;
                           const current = voltage > 0 ? totalPower / voltage : 0;
-                          const calculatedSection =
+
+                          // Critère 1: Section pour chute de tension 3%
+                          const sectionForVoltage =
                             effectiveLength > 0 && current > 0
                               ? (0.0175 * effectiveLength * current) / (voltage * 0.03)
                               : 0;
+
+                          // Critère 2: Section pour intensité max (cuivre, faisceau)
+                          const maxCurrentBySection: Record<number, number> = {
+                            0.5: 3,
+                            0.75: 6,
+                            1: 10,
+                            1.5: 16,
+                            2.5: 21,
+                            4: 32,
+                            6: 40,
+                            10: 53,
+                            16: 70,
+                            25: 95,
+                            35: 120,
+                            50: 160,
+                          };
                           const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
-                          const recommendedSection = standardSections.find((s) => s >= calculatedSection) || 0;
+                          const sectionForCurrent =
+                            standardSections.find((s) => maxCurrentBySection[s] >= current) || 50;
+
+                          // Section recommandée = MAX des deux critères
+                          const sectionVoltageRounded = standardSections.find((s) => s >= sectionForVoltage) || 0;
+                          const recommendedSection = Math.max(sectionVoltageRounded, sectionForCurrent);
+
+                          // Déterminer quel critère est limitant
+                          const limitingFactor = sectionForCurrent > sectionVoltageRounded ? "intensité" : "chute U";
 
                           return (
                             <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded p-2 border border-blue-200 text-[10px]">
@@ -6268,14 +6293,76 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                   L: <span className="font-bold text-gray-700">{effectiveLength.toFixed(1)}m</span>
                                 </div>
                               </div>
-                              {calculatedSection > 0 && (
-                                <div className="mt-1 pt-1 border-t border-blue-200">
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-gray-600">Calcul:</span>
-                                    <span className="font-mono text-gray-700">{calculatedSection.toFixed(2)}mm²</span>
+                              {(sectionForVoltage > 0 || current > 0) && (
+                                <div className="mt-1 pt-1 border-t border-blue-200 space-y-0.5">
+                                  <div className="flex justify-between items-center text-gray-500">
+                                    <span>Chute U (3%):</span>
+                                    <span className="font-mono">
+                                      {sectionForVoltage.toFixed(2)}mm² → {sectionVoltageRounded}mm²
+                                    </span>
                                   </div>
-                                  <div className="flex justify-between items-center mt-0.5">
-                                    <span className="text-gray-600">Section:</span>
+                                  <div className="flex justify-between items-center text-gray-500">
+                                    <span className="flex items-center gap-1">
+                                      Intensité max:
+                                      <Popover>
+                                        <PopoverTrigger asChild>
+                                          <button className="w-3.5 h-3.5 rounded-full bg-gray-300 hover:bg-gray-400 text-gray-600 text-[8px] font-bold flex items-center justify-center">
+                                            ?
+                                          </button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-2" align="start">
+                                          <div className="text-[10px]">
+                                            <div className="font-semibold mb-1 text-gray-700">
+                                              Intensité max par section (cuivre)
+                                            </div>
+                                            <table className="border-collapse">
+                                              <thead>
+                                                <tr className="bg-gray-100">
+                                                  <th className="border border-gray-300 px-2 py-0.5">Section</th>
+                                                  <th className="border border-gray-300 px-2 py-0.5">I max</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {[
+                                                  { s: "0.5mm²", i: "3A" },
+                                                  { s: "0.75mm²", i: "6A" },
+                                                  { s: "1mm²", i: "10A" },
+                                                  { s: "1.5mm²", i: "16A" },
+                                                  { s: "2.5mm²", i: "21A" },
+                                                  { s: "4mm²", i: "32A" },
+                                                  { s: "6mm²", i: "40A" },
+                                                  { s: "10mm²", i: "53A" },
+                                                  { s: "16mm²", i: "70A" },
+                                                  { s: "25mm²", i: "95A" },
+                                                  { s: "35mm²", i: "120A" },
+                                                  { s: "50mm²", i: "160A" },
+                                                ].map((row) => (
+                                                  <tr
+                                                    key={row.s}
+                                                    className={
+                                                      sectionForCurrent === parseFloat(row.s) ? "bg-amber-100" : ""
+                                                    }
+                                                  >
+                                                    <td className="border border-gray-300 px-2 py-0.5">{row.s}</td>
+                                                    <td className="border border-gray-300 px-2 py-0.5 font-mono">
+                                                      {row.i}
+                                                    </td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </PopoverContent>
+                                      </Popover>
+                                    </span>
+                                    <span className="font-mono">
+                                      {current.toFixed(1)}A → {sectionForCurrent}mm²
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between items-center pt-1 border-t border-blue-200">
+                                    <span className="text-gray-600">
+                                      Section <span className="text-amber-600">({limitingFactor})</span>:
+                                    </span>
                                     <span className="text-sm font-bold text-emerald-600">{recommendedSection}mm²</span>
                                   </div>
                                 </div>
@@ -6305,12 +6392,35 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
                             const voltage = circuitVoltage;
                             const current = voltage > 0 ? totalPower / voltage : 0;
-                            const calculatedSection =
+
+                            // Critère 1: Section pour chute de tension 3%
+                            const sectionForVoltage =
                               effectiveLength > 0 && current > 0
                                 ? (0.0175 * effectiveLength * current) / (voltage * 0.03)
                                 : 0;
+
+                            // Critère 2: Section pour intensité max (cuivre, faisceau)
+                            const maxCurrentBySection: Record<number, number> = {
+                              0.5: 3,
+                              0.75: 6,
+                              1: 10,
+                              1.5: 16,
+                              2.5: 21,
+                              4: 32,
+                              6: 40,
+                              10: 53,
+                              16: 70,
+                              25: 95,
+                              35: 120,
+                              50: 160,
+                            };
                             const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
-                            const recommendedSection = standardSections.find((s) => s >= calculatedSection) || 50;
+                            const sectionForCurrent =
+                              standardSections.find((s) => maxCurrentBySection[s] >= current) || 50;
+
+                            // Section recommandée = MAX des deux critères
+                            const sectionVoltageRounded = standardSections.find((s) => s >= sectionForVoltage) || 50;
+                            const recommendedSection = Math.max(sectionVoltageRounded, sectionForCurrent);
 
                             const circuitId = `circuit-${editingCircuitNumber}`;
                             setCircuits((prev) => ({
@@ -6339,7 +6449,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                               ),
                             );
 
-                            toast.success(`Circuit ${editingCircuitNumber} @ ${voltage}V → ${recommendedSection}mm²`);
+                            const limitingFactor = sectionForCurrent > sectionVoltageRounded ? "intensité" : "chute U";
+                            toast.success(
+                              `Circuit ${editingCircuitNumber} → ${recommendedSection}mm² (${limitingFactor})`,
+                            );
                           }}
                         >
                           💾 Sauvegarder
