@@ -5087,6 +5087,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   }, [selectedEdgeId]);
 
   const saveSchema = async () => {
+    // VERSION 3.88: Protection contre l'écrasement avec des données vides
+    if (items.length === 0 && edges.length === 0) {
+      const confirmSave = confirm(
+        "Attention: Le schéma semble vide. Voulez-vous vraiment sauvegarder ? " +
+          "Cela pourrait écraser vos données existantes.",
+      );
+      if (!confirmSave) return;
+    }
+
     setSaving(true);
     try {
       const schemaToSave = {
