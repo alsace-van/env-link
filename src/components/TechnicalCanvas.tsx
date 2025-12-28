@@ -1,7 +1,9 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.02 - Ligne sélectionnée en vert dans le tableau
+// VERSION: 4.03 - Harmonisation avec calculateur
+//                 - Résistivité 0.023 (câbles souples)
+//                 - Intensités max conservatrices
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6247,25 +6249,26 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                           // Critère 1: Section pour chute de tension 3%
                           const sectionForVoltage =
                             effectiveLength > 0 && current > 0
-                              ? (0.0175 * effectiveLength * current) / (voltage * 0.03)
+                              ? (0.023 * effectiveLength * current) / (voltage * 0.03)
                               : 0;
 
                           // Critère 2: Section pour intensité max (cuivre, faisceau)
                           // Marge de sécurité 20% = on utilise max 80% de la capacité
                           const SAFETY_MARGIN = 0.8;
+                          // Intensités max câbles souples cuivre (valeurs conservatrices)
                           const maxCurrentBySection: Record<number, number> = {
                             0.5: 3,
                             0.75: 6,
-                            1: 10,
-                            1.5: 16,
-                            2.5: 21,
-                            4: 32,
-                            6: 40,
-                            10: 53,
-                            16: 70,
-                            25: 95,
-                            35: 120,
-                            50: 160,
+                            1: 8,
+                            1.5: 10,
+                            2.5: 16,
+                            4: 21,
+                            6: 26,
+                            10: 36,
+                            16: 50,
+                            25: 68,
+                            35: 89,
+                            50: 110,
                           };
                           const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
                           // On cherche une section où I_max * 0.8 >= courant requis
@@ -6338,16 +6341,16 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                                 {[
                                                   { s: "0.5mm²", i: 3 },
                                                   { s: "0.75mm²", i: 6 },
-                                                  { s: "1mm²", i: 10 },
-                                                  { s: "1.5mm²", i: 16 },
-                                                  { s: "2.5mm²", i: 21 },
-                                                  { s: "4mm²", i: 32 },
-                                                  { s: "6mm²", i: 40 },
-                                                  { s: "10mm²", i: 53 },
-                                                  { s: "16mm²", i: 70 },
-                                                  { s: "25mm²", i: 95 },
-                                                  { s: "35mm²", i: 120 },
-                                                  { s: "50mm²", i: 160 },
+                                                  { s: "1mm²", i: 8 },
+                                                  { s: "1.5mm²", i: 10 },
+                                                  { s: "2.5mm²", i: 16 },
+                                                  { s: "4mm²", i: 21 },
+                                                  { s: "6mm²", i: 26 },
+                                                  { s: "10mm²", i: 36 },
+                                                  { s: "16mm²", i: 50 },
+                                                  { s: "25mm²", i: 68 },
+                                                  { s: "35mm²", i: 89 },
+                                                  { s: "50mm²", i: 110 },
                                                 ].map((row) => (
                                                   <tr
                                                     key={row.s}
@@ -6421,25 +6424,26 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             // Critère 1: Section pour chute de tension 3%
                             const sectionForVoltage =
                               effectiveLength > 0 && current > 0
-                                ? (0.0175 * effectiveLength * current) / (voltage * 0.03)
+                                ? (0.023 * effectiveLength * current) / (voltage * 0.03)
                                 : 0;
 
                             // Critère 2: Section pour intensité max (cuivre, faisceau)
                             // Marge de sécurité 20% = on utilise max 80% de la capacité
                             const SAFETY_MARGIN = 0.8;
+                            // Intensités max câbles souples cuivre (valeurs conservatrices)
                             const maxCurrentBySection: Record<number, number> = {
                               0.5: 3,
                               0.75: 6,
-                              1: 10,
-                              1.5: 16,
-                              2.5: 21,
-                              4: 32,
-                              6: 40,
-                              10: 53,
-                              16: 70,
-                              25: 95,
-                              35: 120,
-                              50: 160,
+                              1: 8,
+                              1.5: 10,
+                              2.5: 16,
+                              4: 21,
+                              6: 26,
+                              10: 36,
+                              16: 50,
+                              25: 68,
+                              35: 89,
+                              50: 110,
                             };
                             const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
                             const sectionForCurrent =
