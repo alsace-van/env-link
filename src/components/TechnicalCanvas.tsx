@@ -87,6 +87,7 @@ import {
   Ruler,
   Calculator,
   RefreshCw,
+  Trash,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AccessorySelector } from "./AccessorySelector";
