@@ -1,8 +1,9 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.99 - Bouton "?" avec tableau intensités max
-//                 - Surbrillance de la section correspondante
+// VERSION: 4.00 - Marge de sécurité 20% sur intensité max
+//                 - Tableau avec colonne 80%
+//                 - Affichage du % d'utilisation
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6252,6 +6253,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                               : 0;
 
                           // Critère 2: Section pour intensité max (cuivre, faisceau)
+                          // Marge de sécurité 20% = on utilise max 80% de la capacité
+                          const SAFETY_MARGIN = 0.8;
                           const maxCurrentBySection: Record<number, number> = {
                             0.5: 3,
                             0.75: 6,
@@ -6267,8 +6270,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             50: 160,
                           };
                           const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
+                          // On cherche une section où I_max * 0.8 >= courant requis
                           const sectionForCurrent =
-                            standardSections.find((s) => maxCurrentBySection[s] >= current) || 50;
+                            standardSections.find((s) => maxCurrentBySection[s] * SAFETY_MARGIN >= current) || 50;
+                          const maxCurrentForSection = maxCurrentBySection[sectionForCurrent] || 0;
+                          const usagePercent = maxCurrentForSection > 0 ? (current / maxCurrentForSection) * 100 : 0;
 
                           // Section recommandée = MAX des deux critères
                           const sectionVoltageRounded = standardSections.find((s) => s >= sectionForVoltage) || 0;
@@ -6315,37 +6321,48 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                             <div className="font-semibold mb-1 text-gray-700">
                                               Intensité max par section (cuivre)
                                             </div>
+                                            <div className="text-[9px] text-amber-600 mb-1">
+                                              ⚠️ Marge sécurité 20% appliquée
+                                            </div>
                                             <table className="border-collapse">
                                               <thead>
                                                 <tr className="bg-gray-100">
-                                                  <th className="border border-gray-300 px-2 py-0.5">Section</th>
-                                                  <th className="border border-gray-300 px-2 py-0.5">I max</th>
+                                                  <th className="border border-gray-300 px-1.5 py-0.5">Section</th>
+                                                  <th className="border border-gray-300 px-1.5 py-0.5">I max</th>
+                                                  <th className="border border-gray-300 px-1.5 py-0.5 text-amber-600">
+                                                    80%
+                                                  </th>
                                                 </tr>
                                               </thead>
                                               <tbody>
                                                 {[
-                                                  { s: "0.5mm²", i: "3A" },
-                                                  { s: "0.75mm²", i: "6A" },
-                                                  { s: "1mm²", i: "10A" },
-                                                  { s: "1.5mm²", i: "16A" },
-                                                  { s: "2.5mm²", i: "21A" },
-                                                  { s: "4mm²", i: "32A" },
-                                                  { s: "6mm²", i: "40A" },
-                                                  { s: "10mm²", i: "53A" },
-                                                  { s: "16mm²", i: "70A" },
-                                                  { s: "25mm²", i: "95A" },
-                                                  { s: "35mm²", i: "120A" },
-                                                  { s: "50mm²", i: "160A" },
+                                                  { s: "0.5mm²", i: 3 },
+                                                  { s: "0.75mm²", i: 6 },
+                                                  { s: "1mm²", i: 10 },
+                                                  { s: "1.5mm²", i: 16 },
+                                                  { s: "2.5mm²", i: 21 },
+                                                  { s: "4mm²", i: 32 },
+                                                  { s: "6mm²", i: 40 },
+                                                  { s: "10mm²", i: 53 },
+                                                  { s: "16mm²", i: 70 },
+                                                  { s: "25mm²", i: 95 },
+                                                  { s: "35mm²", i: 120 },
+                                                  { s: "50mm²", i: 160 },
                                                 ].map((row) => (
                                                   <tr
                                                     key={row.s}
                                                     className={
-                                                      sectionForCurrent === parseFloat(row.s) ? "bg-amber-100" : ""
+                                                      sectionForCurrent === parseFloat(row.s)
+                                                        ? "bg-amber-100 font-bold"
+                                                        : ""
                                                     }
                                                   >
-                                                    <td className="border border-gray-300 px-2 py-0.5">{row.s}</td>
-                                                    <td className="border border-gray-300 px-2 py-0.5 font-mono">
-                                                      {row.i}
+                                                    <td className="border border-gray-300 px-1.5 py-0.5">{row.s}</td>
+                                                    <td className="border border-gray-300 px-1.5 py-0.5 font-mono">
+                                                      {row.i}A
+                                                    </td>
+                                                    <td className="border border-gray-300 px-1.5 py-0.5 font-mono text-amber-600">
+                                                      {Math.floor(row.i * 0.8)}A
                                                     </td>
                                                   </tr>
                                                 ))}
@@ -6357,6 +6374,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                     </span>
                                     <span className="font-mono">
                                       {current.toFixed(1)}A → {sectionForCurrent}mm²
+                                      <span
+                                        className={`ml-1 ${usagePercent > 80 ? "text-amber-600" : "text-emerald-600"}`}
+                                      >
+                                        ({usagePercent.toFixed(0)}%)
+                                      </span>
                                     </span>
                                   </div>
                                   <div className="flex justify-between items-center pt-1 border-t border-blue-200">
@@ -6400,6 +6422,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                 : 0;
 
                             // Critère 2: Section pour intensité max (cuivre, faisceau)
+                            // Marge de sécurité 20% = on utilise max 80% de la capacité
+                            const SAFETY_MARGIN = 0.8;
                             const maxCurrentBySection: Record<number, number> = {
                               0.5: 3,
                               0.75: 6,
@@ -6416,7 +6440,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             };
                             const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
                             const sectionForCurrent =
-                              standardSections.find((s) => maxCurrentBySection[s] >= current) || 50;
+                              standardSections.find((s) => maxCurrentBySection[s] * SAFETY_MARGIN >= current) || 50;
 
                             // Section recommandée = MAX des deux critères
                             const sectionVoltageRounded = standardSections.find((s) => s >= sectionForVoltage) || 50;
