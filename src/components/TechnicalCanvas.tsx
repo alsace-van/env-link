@@ -140,6 +140,7 @@ interface CanvasInstanceProps {
 interface ElectricalItem {
   id: string;
   nom_accessoire: string;
+  nom?: string; // Alias pour nom_accessoire
   type_electrique: string;
   quantite: number;
   puissance_watts?: number | null;
@@ -248,10 +249,12 @@ interface SchemaEdge {
   strokeWidth?: number;
   section?: string; // Section de câble ex: "2.5mm²", "6mm²" (texte affiché)
   length_m?: number; // Longueur du câble en mètres
+  longueur_m?: number; // Longueur du câble en mètres (alias)
   section_mm2?: number; // Section calculée en mm²
   bridge?: boolean; // Pont pour passer au-dessus des autres câbles
   layerId?: string; // ID du calque auquel appartient le câble
   circuitId?: string; // ID du circuit auquel appartient le câble
+  circuitNumber?: number; // Numéro du circuit
 }
 
 // Interface pour les circuits définis
@@ -268,6 +271,11 @@ interface ElectricalCircuit {
   voltage: number; // Tension en V
   calculatedSection: number | null; // Section calculée en mm²
   manualSection: number | null; // Section manuelle si différente
+  // Champs optionnels pour rétrocompatibilité
+  power?: number; // Alias pour totalPower
+  sourceNodeId?: string; // ID du nœud source (ancien système)
+  destNodeId?: string; // ID du nœud destination (ancien système)
+  intensity?: number; // Intensité calculée
 }
 
 // Sections de câble courantes
@@ -4030,20 +4038,27 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       console.log("Intensité:", intensity.toFixed(2), "A");
       console.log("Section calculée:", calculatedSection, "mm²");
 
-      // Sauvegarder le circuit
+      // Sauvegarder le circuit (version 3.89 - compatible avec nouvelle interface)
+      const nextCircuitNumber = Math.max(0, ...Object.values(circuits).map((c) => c.circuitNumber || 0)) + 1;
       setCircuits((prev) => ({
         ...prev,
         [circuitId]: {
           id: circuitId,
+          circuitNumber: nextCircuitNumber,
           name: circuitName,
+          edgeIds,
+          equipmentIds: [], // Sera rempli via la modale de configuration
+          totalLength,
+          totalPower: power,
+          electricalType: "neutre" as const,
+          voltage,
+          calculatedSection,
+          manualSection: null,
+          // Champs de rétrocompatibilité
+          power,
           sourceNodeId,
           destNodeId,
-          edgeIds,
-          power,
-          voltage,
           intensity,
-          totalLength,
-          calculatedSection,
         },
       }));
 
@@ -4100,10 +4115,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         }
       });
 
-      if (totalLength === 0 || !circuit.power) return;
+      // Utiliser totalPower ou power (rétrocompatibilité)
+      const circuitPower = circuit.totalPower || circuit.power || 0;
+      if (totalLength === 0 || !circuitPower) return;
 
       // Calculer la section
-      const section_mm2 = quickCalculate(circuit.power, totalLength);
+      const section_mm2 = quickCalculate(circuitPower, totalLength);
 
       // Appliquer à tous les câbles du circuit
       setEdges((prev) =>
@@ -4119,7 +4136,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         }),
       );
 
-      toast.success(`Section calculée: ${section_mm2} mm² (${totalLength}m, ${circuit.power}W)`);
+      toast.success(`Section calculée: ${section_mm2} mm² (${totalLength}m, ${circuitPower}W)`);
     },
     [circuits, edges, quickCalculate],
   );
@@ -4151,9 +4168,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             }
           });
 
+          // Utiliser totalPower ou power (rétrocompatibilité)
+          const circuitPower = circuit.totalPower || circuit.power || 0;
+
           // Si on a toutes les longueurs et une puissance, calculer la section
-          if (totalLength > 0 && circuit.power) {
-            const section_mm2 = quickCalculate(circuit.power, totalLength);
+          if (totalLength > 0 && circuitPower) {
+            const section_mm2 = quickCalculate(circuitPower, totalLength);
 
             // Appliquer à tous les câbles du circuit
             return updatedEdges.map((e) => {
@@ -5080,18 +5100,20 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         }
       });
 
+      // Utiliser totalPower ou power (rétrocompatibilité)
+      const circuitPower = circuit.totalPower || circuit.power || 0;
+
       // Calculer la section si pas déjà définie
-      const calculatedSection =
-        circuit.power > 0 && totalLength > 0 ? quickCalculate(circuit.power, totalLength) : null;
+      const calculatedSection = circuitPower > 0 && totalLength > 0 ? quickCalculate(circuitPower, totalLength) : null;
 
       return {
         circuitId,
         circuitName: circuit.name,
-        power: circuit.power || 0,
+        power: circuitPower,
         totalLength,
         cableCount: circuit.edgeIds.length,
-        sourceNodeId: circuit.sourceNodeId,
-        destNodeId: circuit.destNodeId,
+        sourceNodeId: circuit.sourceNodeId || null,
+        destNodeId: circuit.destNodeId || null,
         calculatedSection,
       };
     }
