@@ -1,10 +1,9 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.94 - Ajout du champ Tension dans la config circuit
-//                 - Calcul utilise la tension saisie (pas 12V en dur)
-//                 - Bouton "Depuis équip." pour récupérer la tension
-//                 - Liste câbles + croix pour retirer
+// VERSION: 3.95 - Affichage calcul réel + section recommandée
+//                 - Fenêtre: "Calcul: 4.11mm² / Section: 6mm²"
+//                 - Liste et labels: section recommandée seulement
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6247,10 +6246,16 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                   L: <span className="font-bold text-gray-700">{effectiveLength.toFixed(1)}m</span>
                                 </div>
                               </div>
-                              {recommendedSection > 0 && (
-                                <div className="mt-1 pt-1 border-t border-blue-200 flex justify-between items-center">
-                                  <span>Section:</span>
-                                  <span className="text-sm font-bold text-emerald-600">{recommendedSection}mm²</span>
+                              {calculatedSection > 0 && (
+                                <div className="mt-1 pt-1 border-t border-blue-200">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-gray-600">Calcul:</span>
+                                    <span className="font-mono text-gray-700">{calculatedSection.toFixed(2)}mm²</span>
+                                  </div>
+                                  <div className="flex justify-between items-center mt-0.5">
+                                    <span className="text-gray-600">Section:</span>
+                                    <span className="text-sm font-bold text-emerald-600">{recommendedSection}mm²</span>
+                                  </div>
                                 </div>
                               )}
                             </div>
