@@ -1,7 +1,9 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.88 - Fix: Logique SIMPLIFIÉE - ne traverse pas les distributeurs, déduplication par ID équipement
+// VERSION: 3.89 - Configuration MANUELLE des circuits (double-clic sur câble)
+//                 - Suppression de l'auto-détection de puissance
+//                 - Sélection manuelle des équipements et longueur
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -252,13 +254,19 @@ interface SchemaEdge {
 }
 
 // Interface pour les circuits définis
+// VERSION 3.89: Interface pour la configuration MANUELLE des circuits
 interface ElectricalCircuit {
   id: string;
-  name: string;
-  sourceNodeId: string;
-  destNodeId: string;
-  edgeIds: string[];
-  power: number;
+  circuitNumber: number; // Numéro du circuit (1, 2, 3...)
+  name: string; // Nom descriptif (ex: "Circuit solaire")
+  edgeIds: string[]; // IDs des câbles du circuit
+  equipmentIds: string[]; // IDs des équipements sélectionnés
+  totalLength: number; // Longueur totale en mètres (saisie manuelle)
+  totalPower: number; // Puissance totale calculée (somme des équipements)
+  electricalType: "production" | "consommation" | "stockage" | "neutre"; // Type électrique
+  voltage: number; // Tension en V
+  calculatedSection: number | null; // Section calculée en mm²
+  manualSection: number | null; // Section manuelle si différente
 }
 
 // Sections de câble courantes
@@ -1617,6 +1625,26 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // Circuits définis (stocke les associations câbles → circuit)
   const [circuits, setCircuits] = useState<Record<string, ElectricalCircuit>>({});
 
+  // VERSION 3.89: Modale de configuration manuelle des circuits
+  const [circuitConfigOpen, setCircuitConfigOpen] = useState(false);
+  const [editingCircuitEdgeId, setEditingCircuitEdgeId] = useState<string | null>(null);
+  const [circuitConfigData, setCircuitConfigData] = useState<{
+    circuitNumber: number;
+    name: string;
+    equipmentIds: string[];
+    totalLength: number;
+    electricalType: "production" | "consommation" | "stockage" | "neutre";
+    voltage: number;
+    manualSection: number | null;
+  }>({
+    circuitNumber: 1,
+    name: "",
+    equipmentIds: [],
+    totalLength: 1,
+    electricalType: "consommation",
+    voltage: 12,
+    manualSection: null,
+  });
   // Hook calcul câble
   const { calculateCable, quickCalculate } = useCableCalculator({ defaultVoltage: 12 });
 
@@ -5689,8 +5717,38 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             onConnect={handleConnect}
             onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)}
             onEdgeDoubleClick={(_, edge) => {
-              setEdges((prev) => prev.filter((e) => e.id !== edge.id));
-              setSelectedEdgeId(null);
+              // VERSION 3.89: Ouvrir la modale de configuration du circuit au lieu de supprimer
+              const schemaEdge = edges.find((e) => e.id === edge.id);
+              const existingCircuit = Object.values(circuits).find((c) => c.edgeIds.includes(edge.id));
+
+              setEditingCircuitEdgeId(edge.id);
+
+              if (existingCircuit) {
+                // Charger les données du circuit existant
+                setCircuitConfigData({
+                  circuitNumber: existingCircuit.circuitNumber,
+                  name: existingCircuit.name,
+                  equipmentIds: existingCircuit.equipmentIds,
+                  totalLength: existingCircuit.totalLength,
+                  electricalType: existingCircuit.electricalType,
+                  voltage: existingCircuit.voltage,
+                  manualSection: existingCircuit.manualSection,
+                });
+              } else {
+                // Nouveau circuit - valeurs par défaut
+                const nextCircuitNumber = Math.max(0, ...Object.values(circuits).map((c) => c.circuitNumber)) + 1;
+                setCircuitConfigData({
+                  circuitNumber: nextCircuitNumber,
+                  name: "",
+                  equipmentIds: [],
+                  totalLength: schemaEdge?.longueur_m || 1,
+                  electricalType: "consommation",
+                  voltage: 12,
+                  manualSection: null,
+                });
+              }
+
+              setCircuitConfigOpen(true);
             }}
             onNodeClick={(_, node) => {
               console.log("=== NODE CLICK ===");
@@ -6586,242 +6644,20 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               const isDistribution = typeConfig?.category === "distribution" || typeConfig?.category === "distributeur";
 
               if (isDistribution && editingItem) {
-                // Pour les busbars: utiliser les types de flux définis sur chaque handle
-                const busbarFluxTypes = nodeHandleFluxTypes[editingItem.id] || {};
-
-                // Fonction pour déduire le type de flux d'un équipement basé sur sa catégorie
-                const inferFluxTypeFromEquipmentTotal = (item: ElectricalItem): HandleFluxType | undefined => {
-                  const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
-                  const category = typeConfig?.category || "autre";
-
-                  if (category === "production") return "production";
-                  if (item.type_electrique?.toLowerCase().includes("mppt")) return "production";
-                  if (item.type_electrique?.toLowerCase().includes("panneau")) return "production";
-                  if (item.type_electrique?.toLowerCase().includes("solaire")) return "production";
-                  if (category === "consommateur") return "consommation";
-                  if (category === "stockage") return "stockage";
-                  if (item.type_electrique?.toLowerCase().includes("batterie")) return "stockage";
-                  if (category === "conversion") {
-                    if (item.type_electrique?.toLowerCase().includes("chargeur")) return "production";
-                    if (item.type_electrique?.toLowerCase().includes("dcdc")) return "production";
-                  }
-                  return undefined;
-                };
-
-                // Fonction pour obtenir le flux type avec fallback
-                const getFluxTypeForHandleTotal = (
-                  handleId: string | null | undefined,
-                  connectedItem: ElectricalItem | null,
-                ): HandleFluxType | undefined => {
-                  if (!handleId) return connectedItem ? inferFluxTypeFromEquipmentTotal(connectedItem) : undefined;
-
-                  if (busbarFluxTypes[handleId]) return busbarFluxTypes[handleId];
-
-                  const side = handleId.split("-")[0];
-                  for (const [hId, fType] of Object.entries(busbarFluxTypes)) {
-                    if (hId.startsWith(side + "-") && fType) return fType as HandleFluxType;
-                  }
-
-                  return connectedItem ? inferFluxTypeFromEquipmentTotal(connectedItem) : undefined;
-                };
-
-                // VERSION 3.88: Logique SIMPLIFIÉE - ne traverse PAS les distributeurs
-                // Pour chaque connexion directe :
-                // - Équipement final → retourne sa puissance
-                // - Protection → traverse pour trouver l'équipement derrière
-                // - Distributeur → retourne sa puissance agrégée SANS détailler son contenu
-                const findPowerThroughChainForTotal = (
-                  startNodeId: string,
-                  excludeEdgeId: string,
-                ): { power: number; finalItem: ElectricalItem | null } => {
-                  const visited = new Set<string>();
-
-                  const traverse = (
-                    nodeId: string,
-                    fromEdgeId: string | null,
-                  ): { power: number; finalItem: ElectricalItem | null } => {
-                    if (visited.has(nodeId)) return { power: 0, finalItem: null };
-                    visited.add(nodeId);
-
-                    const item = items.find((i) => i.id === nodeId);
-                    if (!item) return { power: 0, finalItem: null };
-
-                    const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
-                    const category = typeConfig?.category || "autre";
-
-                    // CAS 1: C'est un distributeur (busbar, porte-fusible) → NE PAS TRAVERSER
-                    // On calcule sa puissance totale mais on ne détaille pas son contenu
-                    if (category === "distribution" || category === "distributeur") {
-                      // Calculer la puissance totale de ce distributeur (équipements connectés sauf autres distributeurs)
-                      let totalPower = 0;
-                      const distEdges = edges.filter(
-                        (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && e.id !== fromEdgeId,
-                      );
-
-                      for (const de of distEdges) {
-                        const nextNodeId = de.source_node_id === nodeId ? de.target_node_id : de.source_node_id;
-                        const nextItem = items.find((i) => i.id === nextNodeId);
-                        if (!nextItem) continue;
-
-                        const nextCategory = ELECTRICAL_TYPES[nextItem.type_electrique]?.category || "autre";
-
-                        // Skip les autres distributeurs pour éviter boucles infinies
-                        if (nextCategory === "distribution" || nextCategory === "distributeur") continue;
-
-                        // Pour les protections, traverser pour trouver l'équipement final
-                        if (nextCategory === "protection") {
-                          const protectionEdges = edges.filter(
-                            (pe) =>
-                              (pe.source_node_id === nextNodeId || pe.target_node_id === nextNodeId) && pe.id !== de.id,
-                          );
-                          for (const pe of protectionEdges) {
-                            const behindId = pe.source_node_id === nextNodeId ? pe.target_node_id : pe.source_node_id;
-                            const behindItem = items.find((i) => i.id === behindId);
-                            if (behindItem) {
-                              const behindCategory = ELECTRICAL_TYPES[behindItem.type_electrique]?.category || "autre";
-                              // Ne pas compter les distributeurs derrière les protections
-                              if (behindCategory !== "distribution" && behindCategory !== "distributeur") {
-                                if (behindItem.puissance_watts) {
-                                  totalPower += behindItem.puissance_watts * (behindItem.quantite || 1);
-                                }
-                              }
-                            }
-                          }
-                        } else if (nextItem.puissance_watts) {
-                          // Équipement direct avec puissance
-                          totalPower += nextItem.puissance_watts * (nextItem.quantite || 1);
-                        }
-                      }
-
-                      return { power: totalPower, finalItem: item };
-                    }
-
-                    // CAS 2: C'est une protection → traverser pour trouver l'équipement derrière
-                    if (category === "protection") {
-                      const otherEdges = edges.filter(
-                        (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && e.id !== fromEdgeId,
-                      );
-
-                      for (const oe of otherEdges) {
-                        const nextNodeId = oe.source_node_id === nodeId ? oe.target_node_id : oe.source_node_id;
-                        const result = traverse(nextNodeId, oe.id);
-                        if (result.power > 0 || result.finalItem) {
-                          return result;
-                        }
-                      }
-                      return { power: 0, finalItem: null };
-                    }
-
-                    // CAS 3: C'est un régulateur/convertisseur (MPPT, DC/DC) → retourner comme source
-                    if (category === "regulation" || category === "conversion") {
-                      if (item.puissance_watts && item.puissance_watts > 0) {
-                        return { power: item.puissance_watts * (item.quantite || 1), finalItem: item };
-                      }
-                      // Sinon chercher la puissance en amont (panneaux → MPPT)
-                      const otherEdges = edges.filter(
-                        (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && e.id !== fromEdgeId,
-                      );
-                      let totalPower = 0;
-                      for (const oe of otherEdges) {
-                        const nextNodeId = oe.source_node_id === nodeId ? oe.target_node_id : oe.source_node_id;
-                        const result = traverse(nextNodeId, oe.id);
-                        totalPower += result.power;
-                      }
-                      return { power: totalPower, finalItem: item };
-                    }
-
-                    // CAS 4: Équipement final avec puissance (frigo, panneau, batterie)
-                    if (item.puissance_watts && item.puissance_watts > 0) {
-                      return { power: item.puissance_watts * (item.quantite || 1), finalItem: item };
-                    }
-
-                    // CAS 5: Stockage (batterie sans puissance mais avec capacité)
-                    if (category === "stockage") {
-                      return { power: 0, finalItem: item };
-                    }
-
-                    return { power: 0, finalItem: item };
-                  };
-
-                  return traverse(startNodeId, excludeEdgeId);
-                };
-
-                const connectedEdges = edges.filter(
-                  (e) => e.source_node_id === editingItem.id || e.target_node_id === editingItem.id,
-                );
-
-                // VERSION 3.88: Simplification - dédupliquer par ID d'équipement connecté
-                let totalProduction = 0;
-                let totalConsumption = 0;
-                let totalStockage = 0;
-                const processedItems = new Set<string>(); // Clé = ID de l'équipement connecté
-
-                connectedEdges.forEach((e) => {
-                  try {
-                    const busbarHandle = e.source_node_id === editingItem.id ? e.source_handle : e.target_handle;
-                    const otherNodeId = e.source_node_id === editingItem.id ? e.target_node_id : e.source_node_id;
-
-                    // Si cet équipement est déjà traité, skip (évite double comptage + et -)
-                    if (processedItems.has(otherNodeId)) return;
-                    processedItems.add(otherNodeId);
-
-                    const { power, finalItem } = findPowerThroughChainForTotal(otherNodeId, e.id);
-
-                    // Classifier selon l'équipement FINAL
-                    const fluxType = finalItem
-                      ? inferFluxTypeFromEquipmentTotal(finalItem)
-                      : getFluxTypeForHandleTotal(busbarHandle, items.find((i) => i.id === otherNodeId) || null);
-
-                    if (fluxType === "production") {
-                      totalProduction += power;
-                    } else if (fluxType === "consommation") {
-                      totalConsumption += power;
-                    } else if (fluxType === "stockage") {
-                      totalStockage += power;
-                    }
-                  } catch (err) {
-                    console.error("[Schema] Error calculating total for edge:", e.id, err);
-                  }
-                });
-
-                const hasValues = totalProduction > 0 || totalConsumption > 0 || totalStockage > 0;
-
+                // VERSION 3.89: Affichage simplifié sans auto-détection
                 return (
-                  <div className="bg-gradient-to-r from-emerald-50 to-green-50 rounded-lg p-3 border border-emerald-200">
-                    <div className="text-sm font-medium text-emerald-800 mb-2">
-                      ⚡ Puissance calculée automatiquement
-                    </div>
-                    {hasValues ? (
-                      <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
-                        {totalProduction > 0 && (
-                          <div className="text-center">
-                            <div className="text-2xl font-bold text-emerald-700">{totalProduction}W</div>
-                            <div className="text-xs text-emerald-600">🔋 Production</div>
-                          </div>
-                        )}
-                        {totalConsumption > 0 && (
-                          <div className="text-center">
-                            <div className="text-2xl font-bold text-red-600">{totalConsumption}W</div>
-                            <div className="text-xs text-red-500">💡 Consommation</div>
-                          </div>
-                        )}
-                        {totalStockage > 0 && (
-                          <div className="text-center">
-                            <div className="text-2xl font-bold text-amber-600">{totalStockage}W</div>
-                            <div className="text-xs text-amber-500">🔌 Stockage</div>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="text-center text-gray-500 text-sm">
-                        <p>Définissez le type de flux sur chaque handle</p>
-                        <p className="text-xs mt-1">(double-clic sur un point de connexion)</p>
-                      </div>
-                    )}
+                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                    <div className="text-sm font-medium text-blue-800 mb-2">⚡ Point de distribution</div>
+                    <p className="text-xs text-blue-700">
+                      Les totaux de puissance sont calculés via la configuration des circuits.
+                    </p>
+                    <p className="text-xs text-blue-600 mt-1">
+                      <strong>💡 Double-cliquez sur un câble</strong> pour configurer son circuit (puissance, longueur,
+                      section).
+                    </p>
                   </div>
                 );
               }
-
               // Pour les autres types: champ éditable normal
               return (
                 <div className="grid grid-cols-4 items-center gap-4">
@@ -6915,7 +6751,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               </div>
             </div>
 
-            {/* Section connexions pour les points de distribution */}
+            {/* VERSION 3.89: Affichage SIMPLE des connexions directes (sans auto-détection) */}
             {editingItem &&
               (() => {
                 const typeConfig = ELECTRICAL_TYPES[editingItem.type_electrique];
@@ -6924,369 +6760,80 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
                 if (!isDistribution) return null;
 
-                // VERSION 3.88: Logique SIMPLIFIÉE pour l'affichage des connexions
-                // - Équipement final → retourne sa puissance
-                // - Protection → traverse pour trouver l'équipement derrière
-                // - Distributeur → retourne sa puissance agrégée (sans détailler)
-                const findPowerThroughChain = (
-                  startNodeId: string,
-                  excludeEdgeId: string,
-                ): { power: number; finalItem: ElectricalItem | null } => {
-                  const visited = new Set<string>();
-
-                  const traverse = (
-                    nodeId: string,
-                    fromEdgeId: string | null,
-                  ): { power: number; finalItem: ElectricalItem | null } => {
-                    if (visited.has(nodeId)) return { power: 0, finalItem: null };
-                    visited.add(nodeId);
-
-                    const item = items.find((i) => i.id === nodeId);
-                    if (!item) return { power: 0, finalItem: null };
-
-                    const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
-                    const category = typeConfig?.category || "autre";
-
-                    // CAS 1: C'est un distributeur → calculer sa puissance totale sans détailler
-                    if (category === "distribution" || category === "distributeur") {
-                      let totalPower = 0;
-                      const distEdges = edges.filter(
-                        (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && e.id !== fromEdgeId,
-                      );
-
-                      for (const de of distEdges) {
-                        const nextNodeId = de.source_node_id === nodeId ? de.target_node_id : de.source_node_id;
-                        const nextItem = items.find((i) => i.id === nextNodeId);
-                        if (!nextItem) continue;
-
-                        const nextCategory = ELECTRICAL_TYPES[nextItem.type_electrique]?.category || "autre";
-
-                        // Skip les autres distributeurs
-                        if (nextCategory === "distribution" || nextCategory === "distributeur") continue;
-
-                        // Pour les protections, traverser pour trouver l'équipement
-                        if (nextCategory === "protection") {
-                          const protectionEdges = edges.filter(
-                            (pe) =>
-                              (pe.source_node_id === nextNodeId || pe.target_node_id === nextNodeId) && pe.id !== de.id,
-                          );
-                          for (const pe of protectionEdges) {
-                            const behindId = pe.source_node_id === nextNodeId ? pe.target_node_id : pe.source_node_id;
-                            const behindItem = items.find((i) => i.id === behindId);
-                            if (behindItem) {
-                              const behindCategory = ELECTRICAL_TYPES[behindItem.type_electrique]?.category || "autre";
-                              if (behindCategory !== "distribution" && behindCategory !== "distributeur") {
-                                if (behindItem.puissance_watts) {
-                                  totalPower += behindItem.puissance_watts * (behindItem.quantite || 1);
-                                }
-                              }
-                            }
-                          }
-                        } else if (nextItem.puissance_watts) {
-                          totalPower += nextItem.puissance_watts * (nextItem.quantite || 1);
-                        }
-                      }
-
-                      return { power: totalPower, finalItem: item };
-                    }
-
-                    // CAS 2: Protection → traverser pour trouver l'équipement derrière
-                    if (category === "protection") {
-                      const otherEdges = edges.filter(
-                        (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && e.id !== fromEdgeId,
-                      );
-
-                      for (const oe of otherEdges) {
-                        const nextNodeId = oe.source_node_id === nodeId ? oe.target_node_id : oe.source_node_id;
-                        const result = traverse(nextNodeId, oe.id);
-                        if (result.power > 0 || result.finalItem) {
-                          return result;
-                        }
-                      }
-                      return { power: 0, finalItem: null };
-                    }
-
-                    // CAS 3: Régulateur/convertisseur (MPPT, DC/DC)
-                    if (category === "regulation" || category === "conversion") {
-                      if (item.puissance_watts && item.puissance_watts > 0) {
-                        return { power: item.puissance_watts * (item.quantite || 1), finalItem: item };
-                      }
-                      // Chercher la puissance en amont (panneaux → MPPT)
-                      const otherEdges = edges.filter(
-                        (e) => (e.source_node_id === nodeId || e.target_node_id === nodeId) && e.id !== fromEdgeId,
-                      );
-                      let totalPower = 0;
-                      for (const oe of otherEdges) {
-                        const nextNodeId = oe.source_node_id === nodeId ? oe.target_node_id : oe.source_node_id;
-                        const result = traverse(nextNodeId, oe.id);
-                        totalPower += result.power;
-                      }
-                      return { power: totalPower, finalItem: item };
-                    }
-
-                    // CAS 4: Équipement final avec puissance
-                    if (item.puissance_watts && item.puissance_watts > 0) {
-                      return { power: item.puissance_watts * (item.quantite || 1), finalItem: item };
-                    }
-
-                    // CAS 5: Stockage ou autre équipement
-                    return { power: 0, finalItem: item };
-                  };
-
-                  return traverse(startNodeId, excludeEdgeId);
-                };
-
-                const busbarFluxTypes = nodeHandleFluxTypes[editingItem.id] || {};
-
-                // Fonction pour déduire le type de flux d'un équipement basé sur sa catégorie
-                const inferFluxTypeFromEquipment = (item: ElectricalItem): HandleFluxType | undefined => {
-                  const typeConfig = ELECTRICAL_TYPES[item.type_electrique];
-                  const category = typeConfig?.category || "autre";
-
-                  // Producteurs
-                  if (category === "production") return "production";
-                  if (item.type_electrique?.toLowerCase().includes("mppt")) return "production";
-                  if (item.type_electrique?.toLowerCase().includes("panneau")) return "production";
-                  if (item.type_electrique?.toLowerCase().includes("solaire")) return "production";
-
-                  // Consommateurs
-                  if (category === "consommateur") return "consommation";
-
-                  // Stockage
-                  if (category === "stockage") return "stockage";
-                  if (item.type_electrique?.toLowerCase().includes("batterie")) return "stockage";
-
-                  // Chargeurs produisent du courant vers le busbar
-                  if (category === "conversion") {
-                    // DC/DC, chargeur 230V = production vers le busbar
-                    if (item.type_electrique?.toLowerCase().includes("chargeur")) return "production";
-                    if (item.type_electrique?.toLowerCase().includes("dcdc")) return "production";
-                  }
-
-                  return undefined;
-                };
-
-                // Fonction pour obtenir le flux type d'un handle
-                // Priorité: 1) Config explicite du handle, 2) Config d'un autre handle du même côté, 3) Auto-détection
-                const getFluxTypeForHandle = (
-                  handleId: string | null | undefined,
-                  connectedItem: ElectricalItem | null,
-                ): HandleFluxType | undefined => {
-                  if (!handleId) return connectedItem ? inferFluxTypeFromEquipment(connectedItem) : undefined;
-
-                  // 1) Config explicite de ce handle
-                  if (busbarFluxTypes[handleId]) {
-                    return busbarFluxTypes[handleId];
-                  }
-
-                  // 2) Config d'un autre handle du même côté
-                  const side = handleId.split("-")[0];
-                  for (const [hId, fType] of Object.entries(busbarFluxTypes)) {
-                    if (hId.startsWith(side + "-") && fType) {
-                      return fType as HandleFluxType;
-                    }
-                  }
-
-                  // 3) Auto-détection basée sur l'équipement connecté
-                  if (connectedItem) {
-                    return inferFluxTypeFromEquipment(connectedItem);
-                  }
-
-                  return undefined;
-                };
-
+                // Récupérer les connexions directes (sans calcul de puissance automatique)
                 const connectedEdges = edges.filter(
                   (e) => e.source_node_id === editingItem.id || e.target_node_id === editingItem.id,
                 );
 
-                // VERSION 3.88: Simplification - dédupliquer par ID d'équipement connecté
-                const connectedItemsMap = new Map<
-                  string, // Clé = ID de l'équipement connecté
-                  {
-                    item: ElectricalItem; // L'item directement connecté (pour affichage)
-                    finalItem: ElectricalItem | null; // L'équipement final (pour classification)
-                    power: number;
-                    handleId: string | undefined;
-                    fluxType: HandleFluxType | undefined;
-                  }
-                >();
-
-                connectedEdges.forEach((e) => {
-                  try {
+                const connectedItems = connectedEdges
+                  .map((e) => {
                     const connectedId = e.source_node_id === editingItem.id ? e.target_node_id : e.source_node_id;
-                    const busbarHandle = e.source_node_id === editingItem.id ? e.source_handle : e.target_handle;
-
+                    const handleId = e.source_node_id === editingItem.id ? e.source_handle : e.target_handle;
                     const item = items.find((i) => i.id === connectedId);
-                    if (!item) return;
-
-                    // Si cet équipement est déjà dans la map, skip (évite double comptage + et -)
-                    if (connectedItemsMap.has(connectedId)) return;
-
-                    // Trouver la puissance ET l'équipement final
-                    const { power, finalItem } = findPowerThroughChain(connectedId, e.id);
-
-                    // Classifier selon l'équipement FINAL (MPPT=production, frigo=consommation)
-                    const fluxType = finalItem
-                      ? inferFluxTypeFromEquipment(finalItem)
-                      : getFluxTypeForHandle(busbarHandle, item);
-
-                    connectedItemsMap.set(connectedId, {
-                      item,
-                      finalItem,
-                      power,
-                      handleId: busbarHandle || undefined,
-                      fluxType,
-                    });
-                  } catch (err) {
-                    console.error("[Schema] Error processing edge:", e.id, err);
-                  }
-                });
-
-                const connectedItems = Array.from(connectedItemsMap.values());
-
-                // Grouper par type de flux défini sur le handle
-                const productionItems = connectedItems.filter((i) => i.fluxType === "production");
-                const consumptionItems = connectedItems.filter((i) => i.fluxType === "consommation");
-                const storageItems = connectedItems.filter((i) => i.fluxType === "stockage");
-                const neutralItems = connectedItems.filter((i) => !i.fluxType || i.fluxType === "neutre");
-
-                const totalProduction = productionItems.reduce((sum, i) => sum + i.power, 0);
-                const totalConsumption = consumptionItems.reduce((sum, i) => sum + i.power, 0);
+                    return { item, handleId, edgeId: e.id };
+                  })
+                  .filter((c) => c.item);
 
                 return (
                   <div className="border-t pt-4 mt-2">
                     <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
                       <Cable className="h-4 w-4" />
-                      Connexions par handle
+                      Connexions directes
                     </div>
 
-                    {/* Production */}
-                    {productionItems.length > 0 && (
-                      <div className="mb-3">
-                        <div className="text-xs font-medium text-emerald-700 mb-1">
-                          🔋 Production ({totalProduction}W)
-                        </div>
-                        <div className="space-y-1">
-                          {productionItems.map(({ item, power, handleId }) => {
-                            const config = ELECTRICAL_TYPES[item.type_electrique];
-                            return (
-                              <div
-                                key={`${item.id}-${handleId}`}
-                                className="text-xs bg-emerald-50 rounded px-2 py-1.5 border border-emerald-200"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className={`font-medium whitespace-nowrap ${config?.color || "text-gray-600"}`}>
-                                    {config?.label || item.type_electrique}
-                                    {handleId && <span className="text-gray-400 ml-1">({handleId})</span>}
-                                  </span>
-                                  <span className="font-bold text-emerald-700 whitespace-nowrap">{power}W</span>
-                                </div>
-                                <div className="text-gray-600 mt-0.5 break-words">{item.nom_accessoire}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+                    {connectedItems.length > 0 ? (
+                      <div className="space-y-2">
+                        {connectedItems.map(({ item, handleId, edgeId }) => {
+                          if (!item) return null;
+                          const config = ELECTRICAL_TYPES[item.type_electrique];
+                          const circuit = Object.values(circuits).find((c) => c.edgeIds.includes(edgeId));
 
-                    {/* Consommation */}
-                    {consumptionItems.length > 0 && (
-                      <div className="mb-3">
-                        <div className="text-xs font-medium text-red-700 mb-1">
-                          💡 Consommation ({totalConsumption}W)
-                        </div>
-                        <div className="space-y-1">
-                          {consumptionItems.map(({ item, power, handleId }) => {
-                            const config = ELECTRICAL_TYPES[item.type_electrique];
-                            return (
-                              <div
-                                key={`${item.id}-${handleId}`}
-                                className="text-xs bg-red-50 rounded px-2 py-1.5 border border-red-200"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className={`font-medium whitespace-nowrap ${config?.color || "text-gray-600"}`}>
+                          return (
+                            <div
+                              key={`${item.id}-${handleId}`}
+                              className="text-xs bg-gray-50 rounded px-2 py-1.5 border border-gray-200"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-lg">{config?.icon || "⚡"}</span>
+                                  <span className={`font-medium ${config?.color || "text-gray-600"}`}>
                                     {config?.label || item.type_electrique}
-                                    {handleId && <span className="text-gray-400 ml-1">({handleId})</span>}
                                   </span>
-                                  <span className="font-bold text-red-700 whitespace-nowrap">{power}W</span>
+                                  {handleId && <span className="text-gray-400">({handleId})</span>}
                                 </div>
-                                <div className="text-gray-600 mt-0.5 break-words">{item.nom_accessoire}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Stockage */}
-                    {storageItems.length > 0 && (
-                      <div className="mb-3">
-                        <div className="text-xs font-medium text-amber-700 mb-1">🔌 Stockage</div>
-                        <div className="space-y-1">
-                          {storageItems.map(({ item, power, handleId }) => {
-                            const config = ELECTRICAL_TYPES[item.type_electrique];
-                            return (
-                              <div
-                                key={`${item.id}-${handleId}`}
-                                className="text-xs bg-amber-50 rounded px-2 py-1.5 border border-amber-200"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className={`font-medium whitespace-nowrap ${config?.color || "text-gray-600"}`}>
-                                    {config?.label || item.type_electrique}
-                                    {handleId && <span className="text-gray-400 ml-1">({handleId})</span>}
-                                  </span>
-                                  {power > 0 && (
-                                    <span className="font-bold text-amber-700 whitespace-nowrap">{power}W</span>
+                                <div className="flex items-center gap-2">
+                                  {item.puissance_watts && (
+                                    <span className="font-mono bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                                      {item.puissance_watts * (item.quantite || 1)}W
+                                    </span>
+                                  )}
+                                  {circuit && (
+                                    <span className="font-mono bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+                                      Circuit {circuit.circuitNumber}
+                                    </span>
                                   )}
                                 </div>
-                                <div className="text-gray-600 mt-0.5 break-words">{item.nom_accessoire}</div>
                               </div>
-                            );
-                          })}
-                        </div>
+                              <div className="text-gray-600 mt-0.5">{item.nom || item.nom_accessoire}</div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    )}
-
-                    {/* Non définis */}
-                    {neutralItems.length > 0 && (
-                      <div className="mb-3">
-                        <div className="text-xs font-medium text-gray-600 mb-1">
-                          ⚪ Non défini (double-clic sur le handle pour définir)
-                        </div>
-                        <div className="space-y-1">
-                          {neutralItems.map(({ item, power, handleId }) => {
-                            const config = ELECTRICAL_TYPES[item.type_electrique];
-                            return (
-                              <div
-                                key={`${item.id}-${handleId}`}
-                                className="text-xs bg-gray-50 rounded px-2 py-1.5 border border-gray-200"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className={`font-medium whitespace-nowrap ${config?.color || "text-gray-600"}`}>
-                                    {config?.label || item.type_electrique}
-                                    {handleId && <span className="text-gray-400 ml-1">({handleId})</span>}
-                                  </span>
-                                  {power > 0 && (
-                                    <span className="font-bold text-gray-600 whitespace-nowrap">{power}W</span>
-                                  )}
-                                </div>
-                                <div className="text-gray-600 mt-0.5 break-words">{item.nom_accessoire}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {connectedItems.length === 0 && (
+                    ) : (
                       <div className="text-xs text-gray-500 italic">
-                        Aucune connexion détectée. Reliez ce point de distribution à d'autres éléments.
+                        Aucune connexion. Reliez ce point de distribution à d'autres éléments.
                       </div>
                     )}
+
+                    <div className="mt-3 p-2 bg-blue-50 rounded border border-blue-200">
+                      <p className="text-xs text-blue-700">
+                        <strong>💡 Pour configurer un circuit :</strong> Double-cliquez sur un câble pour définir le
+                        numéro de circuit, la longueur, les équipements et calculer la section.
+                      </p>
+                    </div>
                   </div>
                 );
               })()}
-
             {/* TODO: Couplage Distributeur - désactivé temporairement pour debug */}
 
             {/* Info aide */}
@@ -7300,6 +6847,327 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               Annuler
             </Button>
             <Button onClick={saveEditedItem}>Sauvegarder</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* VERSION 3.89: Modale de configuration manuelle des circuits */}
+      <Dialog open={circuitConfigOpen} onOpenChange={setCircuitConfigOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Cable className="h-5 w-5 text-blue-600" />
+              Configuration du circuit
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Numéro et nom du circuit */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="circuit-number">Numéro de circuit</Label>
+                <Input
+                  id="circuit-number"
+                  type="number"
+                  min={1}
+                  value={circuitConfigData.circuitNumber}
+                  onChange={(e) =>
+                    setCircuitConfigData((prev) => ({ ...prev, circuitNumber: parseInt(e.target.value) || 1 }))
+                  }
+                />
+              </div>
+              <div>
+                <Label htmlFor="circuit-name">Nom du circuit (optionnel)</Label>
+                <Input
+                  id="circuit-name"
+                  placeholder="Ex: Circuit solaire"
+                  value={circuitConfigData.name}
+                  onChange={(e) => setCircuitConfigData((prev) => ({ ...prev, name: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            {/* Type électrique */}
+            <div>
+              <Label>Type électrique</Label>
+              <div className="flex gap-2 mt-2">
+                {(["production", "consommation", "stockage", "neutre"] as const).map((type) => (
+                  <Button
+                    key={type}
+                    variant={circuitConfigData.electricalType === type ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setCircuitConfigData((prev) => ({ ...prev, electricalType: type }))}
+                    className={
+                      circuitConfigData.electricalType === type
+                        ? type === "production"
+                          ? "bg-emerald-600 hover:bg-emerald-700"
+                          : type === "consommation"
+                            ? "bg-red-600 hover:bg-red-700"
+                            : type === "stockage"
+                              ? "bg-amber-600 hover:bg-amber-700"
+                              : "bg-gray-600 hover:bg-gray-700"
+                        : ""
+                    }
+                  >
+                    {type === "production" && "🔋 Production"}
+                    {type === "consommation" && "💡 Consommation"}
+                    {type === "stockage" && "🔌 Stockage"}
+                    {type === "neutre" && "⚡ Neutre"}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tension et longueur */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="circuit-voltage">Tension (V)</Label>
+                <Input
+                  id="circuit-voltage"
+                  type="number"
+                  min={1}
+                  value={circuitConfigData.voltage}
+                  onChange={(e) =>
+                    setCircuitConfigData((prev) => ({ ...prev, voltage: parseFloat(e.target.value) || 12 }))
+                  }
+                />
+              </div>
+              <div>
+                <Label htmlFor="circuit-length">Longueur totale câble (m)</Label>
+                <Input
+                  id="circuit-length"
+                  type="number"
+                  min={0.1}
+                  step={0.1}
+                  value={circuitConfigData.totalLength}
+                  onChange={(e) =>
+                    setCircuitConfigData((prev) => ({ ...prev, totalLength: parseFloat(e.target.value) || 1 }))
+                  }
+                />
+              </div>
+            </div>
+
+            {/* Sélection des équipements */}
+            <div>
+              <Label className="flex items-center gap-2">
+                <Zap className="h-4 w-4" />
+                Équipements du circuit (sélectionner pour additionner les puissances)
+              </Label>
+              <div className="border rounded-lg p-3 mt-2 max-h-48 overflow-y-auto space-y-2">
+                {items.filter((item) => item.puissance_watts && item.puissance_watts > 0).length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Aucun équipement avec puissance définie
+                  </p>
+                ) : (
+                  items
+                    .filter((item) => item.puissance_watts && item.puissance_watts > 0)
+                    .map((item) => {
+                      const isSelected = circuitConfigData.equipmentIds.includes(item.id);
+                      const config = ELECTRICAL_TYPES[item.type_electrique];
+                      return (
+                        <div
+                          key={item.id}
+                          className={`flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${
+                            isSelected ? "bg-blue-100 border border-blue-300" : "bg-gray-50 hover:bg-gray-100"
+                          }`}
+                          onClick={() => {
+                            setCircuitConfigData((prev) => ({
+                              ...prev,
+                              equipmentIds: isSelected
+                                ? prev.equipmentIds.filter((id) => id !== item.id)
+                                : [...prev.equipmentIds, item.id],
+                            }));
+                          }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <input type="checkbox" checked={isSelected} readOnly className="pointer-events-none" />
+                            <span className="text-lg">{config?.icon || "⚡"}</span>
+                            <span className="font-medium">{item.nom}</span>
+                          </div>
+                          <span className="text-sm font-mono bg-gray-200 px-2 py-1 rounded">
+                            {(item.puissance_watts || 0) * (item.quantite || 1)}W
+                          </span>
+                        </div>
+                      );
+                    })
+                )}
+              </div>
+            </div>
+
+            {/* Résumé et calcul */}
+            {(() => {
+              const selectedItems = items.filter((i) => circuitConfigData.equipmentIds.includes(i.id));
+              const totalPower = selectedItems.reduce(
+                (sum, i) => sum + (i.puissance_watts || 0) * (i.quantite || 1),
+                0,
+              );
+              const current = circuitConfigData.voltage > 0 ? totalPower / circuitConfigData.voltage : 0;
+
+              // Calcul de la section recommandée (simplifié)
+              const lengthFactor = circuitConfigData.totalLength;
+              const currentFactor = current;
+              // Formule simplifiée: S = (ρ × L × I × 2) / (U × %chute)
+              // Avec ρ cuivre ≈ 0.0175, chute 3%
+              const calculatedSection =
+                (0.0175 * lengthFactor * currentFactor * 2) / (circuitConfigData.voltage * 0.03);
+              const roundedSection = Math.ceil(calculatedSection * 2) / 2; // Arrondir à 0.5 près
+
+              // Trouver la section standard supérieure
+              const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
+              const recommendedSection = standardSections.find((s) => s >= roundedSection) || 50;
+
+              return (
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
+                  <div className="text-sm font-medium text-blue-800 mb-3">📊 Résumé du circuit</div>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-600">Puissance totale:</span>
+                      <span className="ml-2 font-bold text-blue-700">{totalPower}W</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Intensité:</span>
+                      <span className="ml-2 font-bold text-blue-700">{current.toFixed(1)}A</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Longueur:</span>
+                      <span className="ml-2 font-bold">{circuitConfigData.totalLength}m</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-600">Tension:</span>
+                      <span className="ml-2 font-bold">{circuitConfigData.voltage}V</span>
+                    </div>
+                  </div>
+                  {totalPower > 0 && (
+                    <div className="mt-4 pt-3 border-t border-blue-200">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-700 font-medium">Section recommandée:</span>
+                        <span className="text-xl font-bold text-emerald-600">{recommendedSection}mm²</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">Calculé pour une chute de tension max de 3%</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Section manuelle optionnelle */}
+            <div>
+              <Label htmlFor="manual-section">Section manuelle (optionnel, remplace le calcul)</Label>
+              <div className="flex gap-2 mt-1">
+                <Input
+                  id="manual-section"
+                  type="number"
+                  min={0.5}
+                  step={0.5}
+                  placeholder="Ex: 6"
+                  value={circuitConfigData.manualSection || ""}
+                  onChange={(e) =>
+                    setCircuitConfigData((prev) => ({
+                      ...prev,
+                      manualSection: e.target.value ? parseFloat(e.target.value) : null,
+                    }))
+                  }
+                />
+                <span className="flex items-center text-sm text-muted-foreground">mm²</span>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCircuitConfigOpen(false);
+                setEditingCircuitEdgeId(null);
+              }}
+            >
+              Annuler
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                // Supprimer le câble
+                if (editingCircuitEdgeId) {
+                  setEdges((prev) => prev.filter((e) => e.id !== editingCircuitEdgeId));
+                  // Supprimer le circuit associé si existe
+                  const circuitToDelete = Object.entries(circuits).find(([, c]) =>
+                    c.edgeIds.includes(editingCircuitEdgeId),
+                  );
+                  if (circuitToDelete) {
+                    setCircuits((prev) => {
+                      const newCircuits = { ...prev };
+                      delete newCircuits[circuitToDelete[0]];
+                      return newCircuits;
+                    });
+                  }
+                }
+                setCircuitConfigOpen(false);
+                setEditingCircuitEdgeId(null);
+                toast.success("Câble supprimé");
+              }}
+            >
+              <Trash className="h-4 w-4 mr-1" />
+              Supprimer câble
+            </Button>
+            <Button
+              onClick={() => {
+                if (!editingCircuitEdgeId) return;
+
+                const selectedItems = items.filter((i) => circuitConfigData.equipmentIds.includes(i.id));
+                const totalPower = selectedItems.reduce(
+                  (sum, i) => sum + (i.puissance_watts || 0) * (i.quantite || 1),
+                  0,
+                );
+
+                // Calculer la section
+                const current = circuitConfigData.voltage > 0 ? totalPower / circuitConfigData.voltage : 0;
+                const calculatedSection =
+                  (0.0175 * circuitConfigData.totalLength * current * 2) / (circuitConfigData.voltage * 0.03);
+                const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
+                const recommendedSection =
+                  standardSections.find((s) => s >= Math.ceil(calculatedSection * 2) / 2) || 50;
+
+                const newCircuit: ElectricalCircuit = {
+                  id: `circuit-${circuitConfigData.circuitNumber}`,
+                  circuitNumber: circuitConfigData.circuitNumber,
+                  name: circuitConfigData.name,
+                  edgeIds: [editingCircuitEdgeId],
+                  equipmentIds: circuitConfigData.equipmentIds,
+                  totalLength: circuitConfigData.totalLength,
+                  totalPower,
+                  electricalType: circuitConfigData.electricalType,
+                  voltage: circuitConfigData.voltage,
+                  calculatedSection: recommendedSection,
+                  manualSection: circuitConfigData.manualSection,
+                };
+
+                // Mettre à jour l'edge avec les infos du circuit
+                setEdges((prev) =>
+                  prev.map((e) =>
+                    e.id === editingCircuitEdgeId
+                      ? {
+                          ...e,
+                          circuitNumber: circuitConfigData.circuitNumber,
+                          longueur_m: circuitConfigData.totalLength,
+                          section_mm2: circuitConfigData.manualSection || recommendedSection,
+                        }
+                      : e,
+                  ),
+                );
+
+                // Sauvegarder le circuit
+                setCircuits((prev) => ({
+                  ...prev,
+                  [newCircuit.id]: newCircuit,
+                }));
+
+                setCircuitConfigOpen(false);
+                setEditingCircuitEdgeId(null);
+                toast.success(`Circuit ${circuitConfigData.circuitNumber} configuré`);
+              }}
+            >
+              Sauvegarder
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
