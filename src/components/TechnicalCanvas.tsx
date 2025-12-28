@@ -4958,8 +4958,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         }
 
         const isHovered = hoveredCircuitEdgeIds.includes(edge.id);
-        // VERSION 3.90: Highlight pour les câbles sélectionnés dans le mode circuit
-        const isCircuitSelected = circuitCableSelectionMode && circuitSelectedCables.includes(edge.id);
+        // VERSION 3.92: Highlight vert pour les câbles du circuit sélectionné
+        const isCircuitActive = !circuitCableSelectionMode && circuitSelectedCables.includes(edge.id);
+        // Orange uniquement en mode sélection de câbles
+        const isInSelectionMode = circuitCableSelectionMode && circuitSelectedCables.includes(edge.id);
+        // Combiné: vert si hover OU circuit actif, orange si mode sélection
+        const isHighlighted = isHovered || isCircuitActive;
         // Utiliser la section calculée si disponible (lors du survol), sinon la section stockée
         const calculatedSection = hoveredCircuitSections[edge.id];
         const displaySection =
@@ -4980,36 +4984,36 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             turnNearTarget: targetHeight < sourceHeight,
             // Passer tous les nodes pour le contournement des obstacles
             allNodes: nodes.filter((n) => n.id !== edge.source_node_id && n.id !== edge.target_node_id),
-            isHovered, // Pour grossir le label au survol dans le popover
+            isHovered: isHighlighted, // Pour grossir le label au survol dans le popover
             section: displaySection, // Section pour le badge (calculée ou stockée)
           },
           label: cableLabel,
           labelStyle: {
-            fill: isCircuitSelected ? "#f59e0b" : edgeColor,
-            fontWeight: isHovered || isCircuitSelected ? 700 : 600,
-            fontSize: isHovered ? 14 : isCircuitSelected ? 12 : 11,
+            fill: isInSelectionMode ? "#f59e0b" : isHighlighted ? "#10b981" : edgeColor,
+            fontWeight: isHighlighted || isInSelectionMode ? 700 : 600,
+            fontSize: isHighlighted ? 14 : isInSelectionMode ? 12 : 11,
             transition: "all 0.2s ease",
           },
           labelBgStyle: {
-            fill: isCircuitSelected ? "#fef3c7" : isHovered ? "#ecfdf5" : "white",
+            fill: isInSelectionMode ? "#fef3c7" : isHighlighted ? "#ecfdf5" : "white",
             fillOpacity: 0.95,
-            stroke: isCircuitSelected ? "#f59e0b" : isHovered ? "#10b981" : undefined,
-            strokeWidth: isCircuitSelected || isHovered ? 2 : 0,
+            stroke: isInSelectionMode ? "#f59e0b" : isHighlighted ? "#10b981" : undefined,
+            strokeWidth: isInSelectionMode || isHighlighted ? 2 : 0,
           },
           labelBgPadding: [4, 2] as [number, number],
           labelBgBorderRadius: 4,
           style: {
-            strokeWidth: isCircuitSelected
+            strokeWidth: isInSelectionMode
               ? edgeWidth + 4
-              : isHovered
+              : isHighlighted
                 ? edgeWidth + 3
                 : isSelected
                   ? edgeWidth + 2
                   : edgeWidth,
-            stroke: isCircuitSelected ? "#f59e0b" : isHovered ? "#10b981" : edgeColor,
-            filter: isCircuitSelected
+            stroke: isInSelectionMode ? "#f59e0b" : isHighlighted ? "#10b981" : edgeColor,
+            filter: isInSelectionMode
               ? "drop-shadow(0 0 8px rgba(245, 158, 11, 0.9))"
-              : isHovered
+              : isHighlighted
                 ? "drop-shadow(0 0 6px rgba(16, 185, 129, 0.8))"
                 : isSelected
                   ? "drop-shadow(0 0 4px rgba(59, 130, 246, 0.8))"
