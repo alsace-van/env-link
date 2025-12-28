@@ -1,8 +1,8 @@
 // ============================================
 // SchemaLegend.tsx
 // Composant légende auto-générée du schéma
-// VERSION: 1.1 - Correction calcul production (× quantité)
-//              - Ajout longueur par section
+// VERSION: 1.2 - Ajout types chargeur/convertisseur/dcdc
+//              - dans Production et TYPE_CONFIG
 // ============================================
 
 import React, { useMemo, useState } from "react";
@@ -61,6 +61,10 @@ interface SchemaLegendProps {
 const TYPE_CONFIG: Record<string, { label: string; icon: React.ComponentType<any>; color: string }> = {
   producteur: { label: "Producteur", icon: Sun, color: "#f59e0b" },
   panneau_solaire: { label: "Panneau solaire", icon: Sun, color: "#f59e0b" },
+  chargeur: { label: "Chargeur", icon: Zap, color: "#f59e0b" },
+  convertisseur: { label: "Convertisseur", icon: Zap, color: "#f59e0b" },
+  dcdc: { label: "DC/DC", icon: Zap, color: "#f59e0b" },
+  "dc-dc": { label: "DC/DC", icon: Zap, color: "#f59e0b" },
   batterie: { label: "Batterie", icon: Battery, color: "#22c55e" },
   stockage: { label: "Stockage", icon: Battery, color: "#22c55e" },
   consommateur: { label: "Consommateur", icon: Zap, color: "#ef4444" },
@@ -163,7 +167,15 @@ export function SchemaLegend({
     items.forEach((item) => {
       const type = item.type_electrique || "";
       const qty = item.quantite || 1;
-      if (type === "producteur" || type === "panneau_solaire") {
+      // Producteurs : panneaux solaires, chargeurs DC/DC, convertisseurs
+      if (
+        type === "producteur" ||
+        type === "panneau_solaire" ||
+        type === "chargeur" ||
+        type === "convertisseur" ||
+        type === "dcdc" ||
+        type === "dc-dc"
+      ) {
         production += (item.puissance_watts || 0) * qty;
       } else if (type === "batterie" || type === "stockage") {
         stockage += (item.capacite_ah || 0) * qty;
