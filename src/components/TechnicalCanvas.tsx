@@ -1,10 +1,10 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.90 - Configuration MANUELLE des circuits via sidebar légère
-//                 - Clic sur circuit dans la liste → ouvre sidebar
-//                 - Mode sélection de câbles (clic pour ajouter)
-//                 - Dropdowns pour sélectionner les équipements
+// VERSION: 3.91 - Sidebar à 2 volets pour configuration des circuits
+//                 - Volet 1: liste des circuits avec résumé
+//                 - Volet 2: détails + sélection câbles + équipements
+//                 - Overlay très translucide
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -5020,7 +5020,17 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         };
       }) as any,
     );
-  }, [edges, selectedEdgeId, hoveredCircuitEdgeIds, hoveredCircuitSections, layers, nodes, getNodeHeight]);
+  }, [
+    edges,
+    selectedEdgeId,
+    hoveredCircuitEdgeIds,
+    hoveredCircuitSections,
+    layers,
+    nodes,
+    getNodeHeight,
+    circuitCableSelectionMode,
+    circuitSelectedCables,
+  ]);
 
   const handleConnect = useCallback(
     (connection: Connection) => {
@@ -5859,6 +5869,17 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
                   Rafraîchir types
+                </Button>
+
+                {/* Bouton Configurer circuits - ouvre la sidebar */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs gap-1.5 bg-white/95 hover:bg-amber-50 border-amber-300 text-amber-700"
+                  onClick={() => setCircuitSidebarOpen(true)}
+                >
+                  <Cable className="h-3.5 w-3.5" />
+                  Circuits
                 </Button>
 
                 <Popover>
@@ -6875,288 +6896,307 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         </DialogContent>
       </Dialog>
 
-      {/* VERSION 3.90: Sidebar légère de configuration des circuits */}
+      {/* VERSION 3.91: Sidebar à 2 volets pour configuration des circuits */}
       {circuitSidebarOpen && (
-        <div
-          className="fixed inset-0 z-50"
-          onClick={() => {
-            if (!circuitCableSelectionMode) {
-              setCircuitSidebarOpen(false);
-              setEditingCircuitNumber(null);
-            }
-          }}
-        >
-          {/* Overlay transparent */}
-          <div className="absolute inset-0 bg-black/20" />
-
-          {/* Sidebar à droite */}
+        <div className="fixed inset-0 z-40 pointer-events-none">
+          {/* Overlay très translucide */}
           <div
-            className="absolute right-0 top-0 h-full w-80 bg-white shadow-xl border-l overflow-y-auto"
+            className="absolute inset-0 bg-white/10 pointer-events-auto"
+            onClick={() => {
+              if (!circuitCableSelectionMode) {
+                setCircuitSidebarOpen(false);
+                setEditingCircuitNumber(null);
+              }
+            }}
+          />
+
+          {/* Sidebar à 2 volets - à gauche */}
+          <div
+            className="absolute left-4 top-20 bottom-4 flex gap-2 pointer-events-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
-            <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold flex items-center gap-2">
-                  <Cable className="h-5 w-5" />
-                  Circuit {editingCircuitNumber}
-                </h3>
-                <button
-                  onClick={() => {
-                    setCircuitSidebarOpen(false);
-                    setEditingCircuitNumber(null);
-                    setCircuitCableSelectionMode(false);
-                  }}
-                  className="p-1 hover:bg-white/20 rounded"
-                >
-                  <X className="h-5 w-5" />
-                </button>
+            {/* Volet 1: Liste des circuits */}
+            <div className="w-56 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 overflow-hidden flex flex-col">
+              <div className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white px-3 py-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-sm flex items-center gap-1.5">
+                    <Cable className="h-4 w-4" />
+                    Circuits
+                  </span>
+                  <button
+                    onClick={() => {
+                      setCircuitSidebarOpen(false);
+                      setEditingCircuitNumber(null);
+                      setCircuitCableSelectionMode(false);
+                    }}
+                    className="p-0.5 hover:bg-white/20 rounded"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+                {(() => {
+                  const calculations = calculateAllEdgeSections();
+                  const uniqueCircuits = calculations.filter((calc, index) => {
+                    if (calc.circuitNumber !== undefined) {
+                      return calculations.findIndex((c) => c.circuitNumber === calc.circuitNumber) === index;
+                    }
+                    return false;
+                  });
+
+                  if (uniqueCircuits.length === 0) {
+                    return (
+                      <div className="text-xs text-gray-500 text-center py-4">
+                        Aucun circuit défini.
+                        <br />
+                        <span className="text-[10px]">Assignez des numéros aux handles.</span>
+                      </div>
+                    );
+                  }
+
+                  return uniqueCircuits.map((calc) => (
+                    <div
+                      key={calc.circuitNumber}
+                      className={`p-2 rounded-lg border cursor-pointer transition-all text-xs ${
+                        editingCircuitNumber === calc.circuitNumber
+                          ? "bg-blue-50 border-blue-400 ring-1 ring-blue-400"
+                          : "bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50/50"
+                      }`}
+                      onClick={() => {
+                        setEditingCircuitNumber(calc.circuitNumber!);
+                        setCircuitSelectedCables(calc.allEdgeIdsInCircuit || []);
+                        setCircuitTotalLength(calc.circuitTotalLength || 0);
+                        const existingCircuit = Object.values(circuits).find(
+                          (c) => c.circuitNumber === calc.circuitNumber,
+                        );
+                        setCircuitSelectedEquipments(existingCircuit?.equipmentIds || []);
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="flex items-center gap-1.5">
+                          <span className="inline-flex items-center justify-center w-5 h-5 text-[10px] font-bold bg-amber-100 border border-amber-400 text-amber-700 rounded-full">
+                            {calc.circuitNumber}
+                          </span>
+                          <span className="font-medium text-gray-700">{calc.sourceNom.substring(0, 12)}</span>
+                        </span>
+                        <span className="font-bold text-emerald-600">{calc.section}mm²</span>
+                      </div>
+                      <div className="flex gap-2 text-[10px] text-gray-500">
+                        <span>⚡{calc.power}W</span>
+                        <span>📏{calc.circuitTotalLength?.toFixed(1) || "?"}m</span>
+                        <span>🔌{calc.allEdgeIdsInCircuit?.length || 1}</span>
+                      </div>
+                    </div>
+                  ));
+                })()}
               </div>
             </div>
 
-            <div className="p-4 space-y-4">
-              {/* Section Câbles */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <Label className="text-sm font-medium flex items-center gap-1">
-                    <Cable className="h-4 w-4" />
-                    Câbles du circuit
-                  </Label>
-                  <span className="text-xs text-gray-500">{circuitSelectedCables.length} sélectionné(s)</span>
+            {/* Volet 2: Détails du circuit sélectionné */}
+            {editingCircuitNumber && (
+              <div className="w-64 bg-white/95 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 overflow-hidden flex flex-col">
+                <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-3 py-2">
+                  <span className="font-medium text-sm">Circuit {editingCircuitNumber}</span>
                 </div>
 
-                <Button
-                  variant={circuitCableSelectionMode ? "default" : "outline"}
-                  size="sm"
-                  className={`w-full ${circuitCableSelectionMode ? "bg-amber-500 hover:bg-amber-600" : ""}`}
-                  onClick={() => {
-                    setCircuitCableSelectionMode(!circuitCableSelectionMode);
-                    if (!circuitCableSelectionMode) {
-                      toast.info("Cliquez sur les câbles du schéma pour les ajouter au circuit");
-                    }
-                  }}
-                >
-                  {circuitCableSelectionMode ? (
-                    <>
-                      <Eye className="h-4 w-4 mr-2" />
-                      Terminer la sélection
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Sélectionner les câbles
-                    </>
-                  )}
-                </Button>
+                <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                  {/* Câbles */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                        <Cable className="h-3 w-3" />
+                        Câbles
+                      </span>
+                      <span className="text-[10px] text-gray-500">{circuitSelectedCables.length}</span>
+                    </div>
+                    <Button
+                      variant={circuitCableSelectionMode ? "default" : "outline"}
+                      size="sm"
+                      className={`w-full h-7 text-xs ${circuitCableSelectionMode ? "bg-amber-500 hover:bg-amber-600" : ""}`}
+                      onClick={() => {
+                        setCircuitCableSelectionMode(!circuitCableSelectionMode);
+                        if (!circuitCableSelectionMode) {
+                          toast.info("Cliquez sur les câbles pour les ajouter");
+                        }
+                      }}
+                    >
+                      {circuitCableSelectionMode ? "✓ Terminer" : "+ Sélectionner"}
+                    </Button>
+                  </div>
 
-                {/* Liste des câbles sélectionnés */}
-                {circuitSelectedCables.length > 0 && (
-                  <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
-                    {circuitSelectedCables.map((edgeId) => {
-                      const edge = edges.find((e) => e.id === edgeId);
-                      const sourceItem = items.find((i) => i.id === edge?.source_node_id);
-                      const targetItem = items.find((i) => i.id === edge?.target_node_id);
-                      return (
-                        <div
-                          key={edgeId}
-                          className="flex items-center justify-between text-xs bg-gray-50 rounded px-2 py-1"
-                        >
-                          <span className="truncate">
-                            {sourceItem?.nom_accessoire?.substring(0, 10) || "?"} →{" "}
-                            {targetItem?.nom_accessoire?.substring(0, 10) || "?"}
-                          </span>
+                  {/* Longueur */}
+                  <div>
+                    <Label className="text-xs font-medium text-gray-700 flex items-center gap-1 mb-1">
+                      <Ruler className="h-3 w-3" />
+                      Longueur (m)
+                    </Label>
+                    <Input
+                      type="number"
+                      min={0.1}
+                      step={0.1}
+                      value={circuitTotalLength}
+                      onChange={(e) => setCircuitTotalLength(parseFloat(e.target.value) || 0)}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+
+                  {/* Équipements */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-medium text-gray-700 flex items-center gap-1">
+                        <Zap className="h-3 w-3" />
+                        Équipements
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 text-[10px] px-1"
+                        onClick={() => setCircuitSelectedEquipments((prev) => [...prev, ""])}
+                      >
+                        + Ajouter
+                      </Button>
+                    </div>
+                    <div className="space-y-1">
+                      {circuitSelectedEquipments.map((equipId, index) => (
+                        <div key={index} className="flex items-center gap-1">
+                          <select
+                            className="flex-1 text-[10px] border rounded px-1.5 py-1 bg-white"
+                            value={equipId}
+                            onChange={(e) => {
+                              setCircuitSelectedEquipments((prev) => {
+                                const newArr = [...prev];
+                                newArr[index] = e.target.value;
+                                return newArr;
+                              });
+                            }}
+                          >
+                            <option value="">-- Choisir --</option>
+                            {items.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.nom_accessoire?.substring(0, 20)}{" "}
+                                {item.puissance_watts ? `(${item.puissance_watts}W)` : ""}
+                              </option>
+                            ))}
+                          </select>
                           <button
-                            onClick={() => setCircuitSelectedCables((prev) => prev.filter((id) => id !== edgeId))}
-                            className="text-red-500 hover:text-red-700 ml-1"
+                            onClick={() => setCircuitSelectedEquipments((prev) => prev.filter((_, i) => i !== index))}
+                            className="text-red-400 hover:text-red-600 p-0.5"
                           >
                             <X className="h-3 w-3" />
                           </button>
                         </div>
-                      );
-                    })}
+                      ))}
+                      {circuitSelectedEquipments.length === 0 && (
+                        <p className="text-[10px] text-gray-400 italic">Aucun équipement</p>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
 
-              {/* Section Longueur totale */}
-              <div>
-                <Label className="text-sm font-medium flex items-center gap-1 mb-2">
-                  <Ruler className="h-4 w-4" />
-                  Longueur totale (m)
-                </Label>
-                <Input
-                  type="number"
-                  min={0.1}
-                  step={0.1}
-                  value={circuitTotalLength}
-                  onChange={(e) => setCircuitTotalLength(parseFloat(e.target.value) || 0)}
-                  placeholder="Ex: 5.5"
-                />
-              </div>
+                  {/* Résumé calcul */}
+                  {(() => {
+                    const selectedItems = items.filter((i) => circuitSelectedEquipments.includes(i.id));
+                    const totalPower = selectedItems.reduce(
+                      (sum, i) => sum + (i.puissance_watts || 0) * (i.quantite || 1),
+                      0,
+                    );
+                    const voltage = 12;
+                    const current = voltage > 0 ? totalPower / voltage : 0;
+                    const calculatedSection =
+                      circuitTotalLength > 0 && current > 0
+                        ? (0.0175 * circuitTotalLength * current * 2) / (voltage * 0.03)
+                        : 0;
+                    const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
+                    const recommendedSection = standardSections.find((s) => s >= calculatedSection) || 0;
 
-              {/* Section Équipements */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <Label className="text-sm font-medium flex items-center gap-1">
-                    <Zap className="h-4 w-4" />
-                    Équipements
-                  </Label>
+                    return (
+                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-2 border border-blue-200">
+                        <div className="grid grid-cols-2 gap-1 text-[10px]">
+                          <div>
+                            <span className="text-gray-500">Puissance:</span>{" "}
+                            <span className="font-bold text-blue-700">{totalPower}W</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Intensité:</span>{" "}
+                            <span className="font-bold text-blue-700">{current.toFixed(1)}A</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Longueur:</span>{" "}
+                            <span className="font-bold">{circuitTotalLength}m</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Câbles:</span>{" "}
+                            <span className="font-bold">{circuitSelectedCables.length}</span>
+                          </div>
+                        </div>
+                        {recommendedSection > 0 && (
+                          <div className="mt-2 pt-2 border-t border-blue-200 flex items-center justify-between">
+                            <span className="text-[10px] text-gray-600">Section:</span>
+                            <span className="text-sm font-bold text-emerald-600">{recommendedSection}mm²</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Bouton sauvegarder */}
                   <Button
-                    variant="ghost"
                     size="sm"
-                    className="h-6 text-xs"
-                    onClick={() => setCircuitSelectedEquipments((prev) => [...prev, ""])}
+                    className="w-full h-8 bg-emerald-600 hover:bg-emerald-700 text-xs"
+                    onClick={() => {
+                      if (!editingCircuitNumber) return;
+
+                      const selectedItems = items.filter((i) => circuitSelectedEquipments.includes(i.id));
+                      const totalPower = selectedItems.reduce(
+                        (sum, i) => sum + (i.puissance_watts || 0) * (i.quantite || 1),
+                        0,
+                      );
+                      const voltage = 12;
+                      const current = voltage > 0 ? totalPower / voltage : 0;
+                      const calculatedSection =
+                        circuitTotalLength > 0 && current > 0
+                          ? (0.0175 * circuitTotalLength * current * 2) / (voltage * 0.03)
+                          : 0;
+                      const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
+                      const recommendedSection = standardSections.find((s) => s >= calculatedSection) || 50;
+
+                      const circuitId = `circuit-${editingCircuitNumber}`;
+                      setCircuits((prev) => ({
+                        ...prev,
+                        [circuitId]: {
+                          id: circuitId,
+                          circuitNumber: editingCircuitNumber,
+                          name: `Circuit ${editingCircuitNumber}`,
+                          edgeIds: circuitSelectedCables,
+                          equipmentIds: circuitSelectedEquipments.filter(Boolean),
+                          totalLength: circuitTotalLength,
+                          totalPower,
+                          electricalType: "neutre" as const,
+                          voltage,
+                          calculatedSection: recommendedSection,
+                          manualSection: null,
+                          power: totalPower,
+                        },
+                      }));
+
+                      setEdges((prev) =>
+                        prev.map((e) =>
+                          circuitSelectedCables.includes(e.id)
+                            ? { ...e, section_mm2: recommendedSection, circuitId }
+                            : e,
+                        ),
+                      );
+
+                      toast.success(`Circuit ${editingCircuitNumber} sauvegardé`);
+                      setCircuitCableSelectionMode(false);
+                    }}
                   >
-                    <Plus className="h-3 w-3 mr-1" />
-                    Ajouter
+                    💾 Sauvegarder
                   </Button>
                 </div>
-
-                <div className="space-y-2">
-                  {circuitSelectedEquipments.map((equipId, index) => (
-                    <div key={index} className="flex items-center gap-1">
-                      <select
-                        className="flex-1 text-xs border rounded px-2 py-1.5 bg-white"
-                        value={equipId}
-                        onChange={(e) => {
-                          setCircuitSelectedEquipments((prev) => {
-                            const newArr = [...prev];
-                            newArr[index] = e.target.value;
-                            return newArr;
-                          });
-                        }}
-                      >
-                        <option value="">-- Sélectionner --</option>
-                        {items.map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.nom_accessoire} {item.puissance_watts ? `(${item.puissance_watts}W)` : ""}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={() => {
-                          setCircuitSelectedEquipments((prev) => prev.filter((_, i) => i !== index));
-                        }}
-                        className="text-red-500 hover:text-red-700 p-1"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
-
-                  {circuitSelectedEquipments.length === 0 && (
-                    <p className="text-xs text-gray-500 italic">Aucun équipement. Cliquez sur + Ajouter.</p>
-                  )}
-                </div>
               </div>
-
-              {/* Résumé et calcul automatique */}
-              {(() => {
-                const selectedItems = items.filter((i) => circuitSelectedEquipments.includes(i.id));
-                const totalPower = selectedItems.reduce(
-                  (sum, i) => sum + (i.puissance_watts || 0) * (i.quantite || 1),
-                  0,
-                );
-                const voltage = 12; // TODO: récupérer depuis les équipements
-                const current = voltage > 0 ? totalPower / voltage : 0;
-
-                // Calcul section
-                const calculatedSection =
-                  circuitTotalLength > 0 && current > 0
-                    ? (0.0175 * circuitTotalLength * current * 2) / (voltage * 0.03)
-                    : 0;
-                const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
-                const recommendedSection = standardSections.find((s) => s >= calculatedSection) || 50;
-
-                return (
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-3 border border-blue-200">
-                    <div className="text-sm font-medium text-blue-800 mb-2">📊 Résumé</div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <span className="text-gray-600">Puissance:</span>
-                        <span className="ml-1 font-bold text-blue-700">{totalPower}W</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Intensité:</span>
-                        <span className="ml-1 font-bold text-blue-700">{current.toFixed(1)}A</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Longueur:</span>
-                        <span className="ml-1 font-bold">{circuitTotalLength}m</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Câbles:</span>
-                        <span className="ml-1 font-bold">{circuitSelectedCables.length}</span>
-                      </div>
-                    </div>
-                    {totalPower > 0 && circuitTotalLength > 0 && (
-                      <div className="mt-2 pt-2 border-t border-blue-200">
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-700 text-xs">Section recommandée:</span>
-                          <span className="text-lg font-bold text-emerald-600">{recommendedSection}mm²</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* Bouton Sauvegarder */}
-              <Button
-                className="w-full bg-emerald-600 hover:bg-emerald-700"
-                onClick={() => {
-                  if (!editingCircuitNumber) return;
-
-                  const selectedItems = items.filter((i) => circuitSelectedEquipments.includes(i.id));
-                  const totalPower = selectedItems.reduce(
-                    (sum, i) => sum + (i.puissance_watts || 0) * (i.quantite || 1),
-                    0,
-                  );
-                  const voltage = 12;
-                  const current = voltage > 0 ? totalPower / voltage : 0;
-                  const calculatedSection =
-                    circuitTotalLength > 0 && current > 0
-                      ? (0.0175 * circuitTotalLength * current * 2) / (voltage * 0.03)
-                      : 0;
-                  const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
-                  const recommendedSection = standardSections.find((s) => s >= calculatedSection) || 50;
-
-                  // Sauvegarder le circuit
-                  const circuitId = `circuit-${editingCircuitNumber}`;
-                  setCircuits((prev) => ({
-                    ...prev,
-                    [circuitId]: {
-                      id: circuitId,
-                      circuitNumber: editingCircuitNumber,
-                      name: `Circuit ${editingCircuitNumber}`,
-                      edgeIds: circuitSelectedCables,
-                      equipmentIds: circuitSelectedEquipments.filter(Boolean),
-                      totalLength: circuitTotalLength,
-                      totalPower,
-                      electricalType: "neutre" as const,
-                      voltage,
-                      calculatedSection: recommendedSection,
-                      manualSection: null,
-                      power: totalPower,
-                    },
-                  }));
-
-                  // Appliquer la section aux câbles
-                  setEdges((prev) =>
-                    prev.map((e) =>
-                      circuitSelectedCables.includes(e.id) ? { ...e, section_mm2: recommendedSection, circuitId } : e,
-                    ),
-                  );
-
-                  toast.success(`Circuit ${editingCircuitNumber} sauvegardé (${recommendedSection}mm²)`);
-                  setCircuitSidebarOpen(false);
-                  setEditingCircuitNumber(null);
-                  setCircuitCableSelectionMode(false);
-                }}
-              >
-                Sauvegarder le circuit
-              </Button>
-            </div>
+            )}
           </div>
         </div>
       )}
