@@ -1,9 +1,10 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.89 - Configuration MANUELLE des circuits (double-clic sur câble)
-//                 - Suppression de l'auto-détection de puissance
-//                 - Sélection manuelle des équipements et longueur
+// VERSION: 3.90 - Configuration MANUELLE des circuits via sidebar légère
+//                 - Clic sur circuit dans la liste → ouvre sidebar
+//                 - Mode sélection de câbles (clic pour ajouter)
+//                 - Dropdowns pour sélectionner les équipements
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1634,26 +1635,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // Circuits définis (stocke les associations câbles → circuit)
   const [circuits, setCircuits] = useState<Record<string, ElectricalCircuit>>({});
 
-  // VERSION 3.89: Modale de configuration manuelle des circuits
-  const [circuitConfigOpen, setCircuitConfigOpen] = useState(false);
-  const [editingCircuitEdgeId, setEditingCircuitEdgeId] = useState<string | null>(null);
-  const [circuitConfigData, setCircuitConfigData] = useState<{
-    circuitNumber: number;
-    name: string;
-    equipmentIds: string[];
-    totalLength: number;
-    electricalType: "production" | "consommation" | "stockage" | "neutre";
-    voltage: number;
-    manualSection: number | null;
-  }>({
-    circuitNumber: 1,
-    name: "",
-    equipmentIds: [],
-    totalLength: 1,
-    electricalType: "consommation",
-    voltage: 12,
-    manualSection: null,
-  });
+  // VERSION 3.90: Sidebar de configuration des circuits
+  const [circuitSidebarOpen, setCircuitSidebarOpen] = useState(false);
+  const [editingCircuitNumber, setEditingCircuitNumber] = useState<number | null>(null);
+  const [circuitCableSelectionMode, setCircuitCableSelectionMode] = useState(false);
+  const [circuitSelectedCables, setCircuitSelectedCables] = useState<string[]>([]);
+  const [circuitSelectedEquipments, setCircuitSelectedEquipments] = useState<string[]>([]);
+  const [circuitTotalLength, setCircuitTotalLength] = useState<number>(0);
   // Hook calcul câble
   const { calculateCable, quickCalculate } = useCableCalculator({ defaultVoltage: 12 });
 
@@ -4971,6 +4959,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         }
 
         const isHovered = hoveredCircuitEdgeIds.includes(edge.id);
+        // VERSION 3.90: Highlight pour les câbles sélectionnés dans le mode circuit
+        const isCircuitSelected = circuitCableSelectionMode && circuitSelectedCables.includes(edge.id);
         // Utiliser la section calculée si disponible (lors du survol), sinon la section stockée
         const calculatedSection = hoveredCircuitSections[edge.id];
         const displaySection =
@@ -4996,27 +4986,35 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           },
           label: cableLabel,
           labelStyle: {
-            fill: edgeColor,
-            fontWeight: isHovered ? 700 : 600,
-            fontSize: isHovered ? 14 : 11,
+            fill: isCircuitSelected ? "#f59e0b" : edgeColor,
+            fontWeight: isHovered || isCircuitSelected ? 700 : 600,
+            fontSize: isHovered ? 14 : isCircuitSelected ? 12 : 11,
             transition: "all 0.2s ease",
           },
           labelBgStyle: {
-            fill: isHovered ? "#ecfdf5" : "white",
+            fill: isCircuitSelected ? "#fef3c7" : isHovered ? "#ecfdf5" : "white",
             fillOpacity: 0.95,
-            stroke: isHovered ? "#10b981" : undefined,
-            strokeWidth: isHovered ? 2 : 0,
+            stroke: isCircuitSelected ? "#f59e0b" : isHovered ? "#10b981" : undefined,
+            strokeWidth: isCircuitSelected || isHovered ? 2 : 0,
           },
           labelBgPadding: [4, 2] as [number, number],
           labelBgBorderRadius: 4,
           style: {
-            strokeWidth: isHovered ? edgeWidth + 3 : isSelected ? edgeWidth + 2 : edgeWidth,
-            stroke: isHovered ? "#10b981" : edgeColor,
-            filter: isHovered
-              ? "drop-shadow(0 0 6px rgba(16, 185, 129, 0.8))"
-              : isSelected
-                ? "drop-shadow(0 0 4px rgba(59, 130, 246, 0.8))"
-                : undefined,
+            strokeWidth: isCircuitSelected
+              ? edgeWidth + 4
+              : isHovered
+                ? edgeWidth + 3
+                : isSelected
+                  ? edgeWidth + 2
+                  : edgeWidth,
+            stroke: isCircuitSelected ? "#f59e0b" : isHovered ? "#10b981" : edgeColor,
+            filter: isCircuitSelected
+              ? "drop-shadow(0 0 8px rgba(245, 158, 11, 0.9))"
+              : isHovered
+                ? "drop-shadow(0 0 6px rgba(16, 185, 129, 0.8))"
+                : isSelected
+                  ? "drop-shadow(0 0 4px rgba(59, 130, 246, 0.8))"
+                  : undefined,
             transition: "all 0.2s ease",
           },
         };
@@ -5738,40 +5736,27 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             onNodesChange={handleNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={handleConnect}
-            onEdgeClick={(_, edge) => setSelectedEdgeId(edge.id)}
-            onEdgeDoubleClick={(_, edge) => {
-              // VERSION 3.89: Ouvrir la modale de configuration du circuit au lieu de supprimer
-              const schemaEdge = edges.find((e) => e.id === edge.id);
-              const existingCircuit = Object.values(circuits).find((c) => c.edgeIds.includes(edge.id));
-
-              setEditingCircuitEdgeId(edge.id);
-
-              if (existingCircuit) {
-                // Charger les données du circuit existant
-                setCircuitConfigData({
-                  circuitNumber: existingCircuit.circuitNumber,
-                  name: existingCircuit.name,
-                  equipmentIds: existingCircuit.equipmentIds,
-                  totalLength: existingCircuit.totalLength,
-                  electricalType: existingCircuit.electricalType,
-                  voltage: existingCircuit.voltage,
-                  manualSection: existingCircuit.manualSection,
+            onEdgeClick={(_, edge) => {
+              // VERSION 3.90: Mode sélection de câbles pour les circuits
+              if (circuitCableSelectionMode) {
+                setCircuitSelectedCables((prev) => {
+                  if (prev.includes(edge.id)) {
+                    toast.info("Câble retiré du circuit");
+                    return prev.filter((id) => id !== edge.id);
+                  } else {
+                    toast.success("Câble ajouté au circuit");
+                    return [...prev, edge.id];
+                  }
                 });
               } else {
-                // Nouveau circuit - valeurs par défaut
-                const nextCircuitNumber = Math.max(0, ...Object.values(circuits).map((c) => c.circuitNumber)) + 1;
-                setCircuitConfigData({
-                  circuitNumber: nextCircuitNumber,
-                  name: "",
-                  equipmentIds: [],
-                  totalLength: schemaEdge?.longueur_m || 1,
-                  electricalType: "consommation",
-                  voltage: 12,
-                  manualSection: null,
-                });
+                setSelectedEdgeId(edge.id);
               }
-
-              setCircuitConfigOpen(true);
+            }}
+            onEdgeDoubleClick={(_, edge) => {
+              // VERSION 3.90: Double-clic supprime le câble (comportement original)
+              // La configuration se fait via la sidebar
+              setEdges((prev) => prev.filter((e) => e.id !== edge.id));
+              setSelectedEdgeId(null);
             }}
             onNodeClick={(_, node) => {
               console.log("=== NODE CLICK ===");
@@ -5977,7 +5962,23 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                       calc.allEdgeIdsInCircuit.some((id) => hoveredCircuitEdgeIds.includes(id))
                                         ? "ring-2 ring-emerald-400 bg-emerald-50"
                                         : ""
-                                    }`}
+                                    } hover:bg-blue-50`}
+                                    onClick={() => {
+                                      // VERSION 3.90: Ouvrir la sidebar pour configurer ce circuit
+                                      if (calc.circuitNumber !== undefined) {
+                                        setEditingCircuitNumber(calc.circuitNumber);
+                                        setCircuitSelectedCables(calc.allEdgeIdsInCircuit || [calc.edgeId]);
+                                        setCircuitTotalLength(calc.circuitTotalLength || 0);
+                                        // Récupérer les équipements depuis le circuit existant
+                                        const existingCircuit = Object.values(circuits).find(
+                                          (c) => c.circuitNumber === calc.circuitNumber,
+                                        );
+                                        setCircuitSelectedEquipments(existingCircuit?.equipmentIds || []);
+                                        setCircuitSidebarOpen(true);
+                                      } else {
+                                        toast.info("Assignez d'abord un numéro de circuit aux handles");
+                                      }
+                                    }}
                                     onMouseEnter={() => {
                                       const edgeIds =
                                         calc.allEdgeIdsInCircuit.length > 0 ? calc.allEdgeIdsInCircuit : [calc.edgeId];
@@ -6874,326 +6875,291 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         </DialogContent>
       </Dialog>
 
-      {/* VERSION 3.89: Modale de configuration manuelle des circuits */}
-      <Dialog open={circuitConfigOpen} onOpenChange={setCircuitConfigOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Cable className="h-5 w-5 text-blue-600" />
-              Configuration du circuit
-            </DialogTitle>
-          </DialogHeader>
+      {/* VERSION 3.90: Sidebar légère de configuration des circuits */}
+      {circuitSidebarOpen && (
+        <div
+          className="fixed inset-0 z-50"
+          onClick={() => {
+            if (!circuitCableSelectionMode) {
+              setCircuitSidebarOpen(false);
+              setEditingCircuitNumber(null);
+            }
+          }}
+        >
+          {/* Overlay transparent */}
+          <div className="absolute inset-0 bg-black/20" />
 
-          <div className="space-y-6 py-4">
-            {/* Numéro et nom du circuit */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="circuit-number">Numéro de circuit</Label>
-                <Input
-                  id="circuit-number"
-                  type="number"
-                  min={1}
-                  value={circuitConfigData.circuitNumber}
-                  onChange={(e) =>
-                    setCircuitConfigData((prev) => ({ ...prev, circuitNumber: parseInt(e.target.value) || 1 }))
-                  }
-                />
-              </div>
-              <div>
-                <Label htmlFor="circuit-name">Nom du circuit (optionnel)</Label>
-                <Input
-                  id="circuit-name"
-                  placeholder="Ex: Circuit solaire"
-                  value={circuitConfigData.name}
-                  onChange={(e) => setCircuitConfigData((prev) => ({ ...prev, name: e.target.value }))}
-                />
+          {/* Sidebar à droite */}
+          <div
+            className="absolute right-0 top-0 h-full w-80 bg-white shadow-xl border-l overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <Cable className="h-5 w-5" />
+                  Circuit {editingCircuitNumber}
+                </h3>
+                <button
+                  onClick={() => {
+                    setCircuitSidebarOpen(false);
+                    setEditingCircuitNumber(null);
+                    setCircuitCableSelectionMode(false);
+                  }}
+                  className="p-1 hover:bg-white/20 rounded"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
             </div>
 
-            {/* Type électrique */}
-            <div>
-              <Label>Type électrique</Label>
-              <div className="flex gap-2 mt-2">
-                {(["production", "consommation", "stockage", "neutre"] as const).map((type) => (
-                  <Button
-                    key={type}
-                    variant={circuitConfigData.electricalType === type ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setCircuitConfigData((prev) => ({ ...prev, electricalType: type }))}
-                    className={
-                      circuitConfigData.electricalType === type
-                        ? type === "production"
-                          ? "bg-emerald-600 hover:bg-emerald-700"
-                          : type === "consommation"
-                            ? "bg-red-600 hover:bg-red-700"
-                            : type === "stockage"
-                              ? "bg-amber-600 hover:bg-amber-700"
-                              : "bg-gray-600 hover:bg-gray-700"
-                        : ""
+            <div className="p-4 space-y-4">
+              {/* Section Câbles */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-sm font-medium flex items-center gap-1">
+                    <Cable className="h-4 w-4" />
+                    Câbles du circuit
+                  </Label>
+                  <span className="text-xs text-gray-500">{circuitSelectedCables.length} sélectionné(s)</span>
+                </div>
+
+                <Button
+                  variant={circuitCableSelectionMode ? "default" : "outline"}
+                  size="sm"
+                  className={`w-full ${circuitCableSelectionMode ? "bg-amber-500 hover:bg-amber-600" : ""}`}
+                  onClick={() => {
+                    setCircuitCableSelectionMode(!circuitCableSelectionMode);
+                    if (!circuitCableSelectionMode) {
+                      toast.info("Cliquez sur les câbles du schéma pour les ajouter au circuit");
                     }
-                  >
-                    {type === "production" && "🔋 Production"}
-                    {type === "consommation" && "💡 Consommation"}
-                    {type === "stockage" && "🔌 Stockage"}
-                    {type === "neutre" && "⚡ Neutre"}
-                  </Button>
-                ))}
-              </div>
-            </div>
+                  }}
+                >
+                  {circuitCableSelectionMode ? (
+                    <>
+                      <Eye className="h-4 w-4 mr-2" />
+                      Terminer la sélection
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Sélectionner les câbles
+                    </>
+                  )}
+                </Button>
 
-            {/* Tension et longueur */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="circuit-voltage">Tension (V)</Label>
-                <Input
-                  id="circuit-voltage"
-                  type="number"
-                  min={1}
-                  value={circuitConfigData.voltage}
-                  onChange={(e) =>
-                    setCircuitConfigData((prev) => ({ ...prev, voltage: parseFloat(e.target.value) || 12 }))
-                  }
-                />
+                {/* Liste des câbles sélectionnés */}
+                {circuitSelectedCables.length > 0 && (
+                  <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
+                    {circuitSelectedCables.map((edgeId) => {
+                      const edge = edges.find((e) => e.id === edgeId);
+                      const sourceItem = items.find((i) => i.id === edge?.source_node_id);
+                      const targetItem = items.find((i) => i.id === edge?.target_node_id);
+                      return (
+                        <div
+                          key={edgeId}
+                          className="flex items-center justify-between text-xs bg-gray-50 rounded px-2 py-1"
+                        >
+                          <span className="truncate">
+                            {sourceItem?.nom_accessoire?.substring(0, 10) || "?"} →{" "}
+                            {targetItem?.nom_accessoire?.substring(0, 10) || "?"}
+                          </span>
+                          <button
+                            onClick={() => setCircuitSelectedCables((prev) => prev.filter((id) => id !== edgeId))}
+                            className="text-red-500 hover:text-red-700 ml-1"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
+
+              {/* Section Longueur totale */}
               <div>
-                <Label htmlFor="circuit-length">Longueur totale câble (m)</Label>
+                <Label className="text-sm font-medium flex items-center gap-1 mb-2">
+                  <Ruler className="h-4 w-4" />
+                  Longueur totale (m)
+                </Label>
                 <Input
-                  id="circuit-length"
                   type="number"
                   min={0.1}
                   step={0.1}
-                  value={circuitConfigData.totalLength}
-                  onChange={(e) =>
-                    setCircuitConfigData((prev) => ({ ...prev, totalLength: parseFloat(e.target.value) || 1 }))
-                  }
+                  value={circuitTotalLength}
+                  onChange={(e) => setCircuitTotalLength(parseFloat(e.target.value) || 0)}
+                  placeholder="Ex: 5.5"
                 />
               </div>
-            </div>
 
-            {/* Sélection des équipements */}
-            <div>
-              <Label className="flex items-center gap-2">
-                <Zap className="h-4 w-4" />
-                Équipements du circuit (sélectionner pour additionner les puissances)
-              </Label>
-              <div className="border rounded-lg p-3 mt-2 max-h-48 overflow-y-auto space-y-2">
-                {items.filter((item) => item.puissance_watts && item.puissance_watts > 0).length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    Aucun équipement avec puissance définie
-                  </p>
-                ) : (
-                  items
-                    .filter((item) => item.puissance_watts && item.puissance_watts > 0)
-                    .map((item) => {
-                      const isSelected = circuitConfigData.equipmentIds.includes(item.id);
-                      const config = ELECTRICAL_TYPES[item.type_electrique];
-                      return (
-                        <div
-                          key={item.id}
-                          className={`flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${
-                            isSelected ? "bg-blue-100 border border-blue-300" : "bg-gray-50 hover:bg-gray-100"
-                          }`}
-                          onClick={() => {
-                            setCircuitConfigData((prev) => ({
-                              ...prev,
-                              equipmentIds: isSelected
-                                ? prev.equipmentIds.filter((id) => id !== item.id)
-                                : [...prev.equipmentIds, item.id],
-                            }));
-                          }}
-                        >
-                          <div className="flex items-center gap-2">
-                            <input type="checkbox" checked={isSelected} readOnly className="pointer-events-none" />
-                            {config?.icon ? <config.icon className="h-4 w-4" /> : <Zap className="h-4 w-4" />}
-                            <span className="font-medium">{item.nom || item.nom_accessoire}</span>
-                          </div>
-                          <span className="text-sm font-mono bg-gray-200 px-2 py-1 rounded">
-                            {(item.puissance_watts || 0) * (item.quantite || 1)}W
-                          </span>
-                        </div>
-                      );
-                    })
-                )}
-              </div>
-            </div>
+              {/* Section Équipements */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-sm font-medium flex items-center gap-1">
+                    <Zap className="h-4 w-4" />
+                    Équipements
+                  </Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs"
+                    onClick={() => setCircuitSelectedEquipments((prev) => [...prev, ""])}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Ajouter
+                  </Button>
+                </div>
 
-            {/* Résumé et calcul */}
-            {(() => {
-              const selectedItems = items.filter((i) => circuitConfigData.equipmentIds.includes(i.id));
-              const totalPower = selectedItems.reduce(
-                (sum, i) => sum + (i.puissance_watts || 0) * (i.quantite || 1),
-                0,
-              );
-              const current = circuitConfigData.voltage > 0 ? totalPower / circuitConfigData.voltage : 0;
+                <div className="space-y-2">
+                  {circuitSelectedEquipments.map((equipId, index) => (
+                    <div key={index} className="flex items-center gap-1">
+                      <select
+                        className="flex-1 text-xs border rounded px-2 py-1.5 bg-white"
+                        value={equipId}
+                        onChange={(e) => {
+                          setCircuitSelectedEquipments((prev) => {
+                            const newArr = [...prev];
+                            newArr[index] = e.target.value;
+                            return newArr;
+                          });
+                        }}
+                      >
+                        <option value="">-- Sélectionner --</option>
+                        {items.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.nom_accessoire} {item.puissance_watts ? `(${item.puissance_watts}W)` : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => {
+                          setCircuitSelectedEquipments((prev) => prev.filter((_, i) => i !== index));
+                        }}
+                        className="text-red-500 hover:text-red-700 p-1"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
 
-              // Calcul de la section recommandée (simplifié)
-              const lengthFactor = circuitConfigData.totalLength;
-              const currentFactor = current;
-              // Formule simplifiée: S = (ρ × L × I × 2) / (U × %chute)
-              // Avec ρ cuivre ≈ 0.0175, chute 3%
-              const calculatedSection =
-                (0.0175 * lengthFactor * currentFactor * 2) / (circuitConfigData.voltage * 0.03);
-              const roundedSection = Math.ceil(calculatedSection * 2) / 2; // Arrondir à 0.5 près
-
-              // Trouver la section standard supérieure
-              const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
-              const recommendedSection = standardSections.find((s) => s >= roundedSection) || 50;
-
-              return (
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200">
-                  <div className="text-sm font-medium text-blue-800 mb-3">📊 Résumé du circuit</div>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-gray-600">Puissance totale:</span>
-                      <span className="ml-2 font-bold text-blue-700">{totalPower}W</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Intensité:</span>
-                      <span className="ml-2 font-bold text-blue-700">{current.toFixed(1)}A</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Longueur:</span>
-                      <span className="ml-2 font-bold">{circuitConfigData.totalLength}m</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Tension:</span>
-                      <span className="ml-2 font-bold">{circuitConfigData.voltage}V</span>
-                    </div>
-                  </div>
-                  {totalPower > 0 && (
-                    <div className="mt-4 pt-3 border-t border-blue-200">
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-700 font-medium">Section recommandée:</span>
-                        <span className="text-xl font-bold text-emerald-600">{recommendedSection}mm²</span>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1">Calculé pour une chute de tension max de 3%</p>
-                    </div>
+                  {circuitSelectedEquipments.length === 0 && (
+                    <p className="text-xs text-gray-500 italic">Aucun équipement. Cliquez sur + Ajouter.</p>
                   )}
                 </div>
-              );
-            })()}
-
-            {/* Section manuelle optionnelle */}
-            <div>
-              <Label htmlFor="manual-section">Section manuelle (optionnel, remplace le calcul)</Label>
-              <div className="flex gap-2 mt-1">
-                <Input
-                  id="manual-section"
-                  type="number"
-                  min={0.5}
-                  step={0.5}
-                  placeholder="Ex: 6"
-                  value={circuitConfigData.manualSection || ""}
-                  onChange={(e) =>
-                    setCircuitConfigData((prev) => ({
-                      ...prev,
-                      manualSection: e.target.value ? parseFloat(e.target.value) : null,
-                    }))
-                  }
-                />
-                <span className="flex items-center text-sm text-muted-foreground">mm²</span>
               </div>
-            </div>
-          </div>
 
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setCircuitConfigOpen(false);
-                setEditingCircuitEdgeId(null);
-              }}
-            >
-              Annuler
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                // Supprimer le câble
-                if (editingCircuitEdgeId) {
-                  setEdges((prev) => prev.filter((e) => e.id !== editingCircuitEdgeId));
-                  // Supprimer le circuit associé si existe
-                  const circuitToDelete = Object.entries(circuits).find(([, c]) =>
-                    c.edgeIds.includes(editingCircuitEdgeId),
-                  );
-                  if (circuitToDelete) {
-                    setCircuits((prev) => {
-                      const newCircuits = { ...prev };
-                      delete newCircuits[circuitToDelete[0]];
-                      return newCircuits;
-                    });
-                  }
-                }
-                setCircuitConfigOpen(false);
-                setEditingCircuitEdgeId(null);
-                toast.success("Câble supprimé");
-              }}
-            >
-              <Trash className="h-4 w-4 mr-1" />
-              Supprimer câble
-            </Button>
-            <Button
-              onClick={() => {
-                if (!editingCircuitEdgeId) return;
-
-                const selectedItems = items.filter((i) => circuitConfigData.equipmentIds.includes(i.id));
+              {/* Résumé et calcul automatique */}
+              {(() => {
+                const selectedItems = items.filter((i) => circuitSelectedEquipments.includes(i.id));
                 const totalPower = selectedItems.reduce(
                   (sum, i) => sum + (i.puissance_watts || 0) * (i.quantite || 1),
                   0,
                 );
+                const voltage = 12; // TODO: récupérer depuis les équipements
+                const current = voltage > 0 ? totalPower / voltage : 0;
 
-                // Calculer la section
-                const current = circuitConfigData.voltage > 0 ? totalPower / circuitConfigData.voltage : 0;
+                // Calcul section
                 const calculatedSection =
-                  (0.0175 * circuitConfigData.totalLength * current * 2) / (circuitConfigData.voltage * 0.03);
+                  circuitTotalLength > 0 && current > 0
+                    ? (0.0175 * circuitTotalLength * current * 2) / (voltage * 0.03)
+                    : 0;
                 const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
-                const recommendedSection =
-                  standardSections.find((s) => s >= Math.ceil(calculatedSection * 2) / 2) || 50;
+                const recommendedSection = standardSections.find((s) => s >= calculatedSection) || 50;
 
-                const newCircuit: ElectricalCircuit = {
-                  id: `circuit-${circuitConfigData.circuitNumber}`,
-                  circuitNumber: circuitConfigData.circuitNumber,
-                  name: circuitConfigData.name,
-                  edgeIds: [editingCircuitEdgeId],
-                  equipmentIds: circuitConfigData.equipmentIds,
-                  totalLength: circuitConfigData.totalLength,
-                  totalPower,
-                  electricalType: circuitConfigData.electricalType,
-                  voltage: circuitConfigData.voltage,
-                  calculatedSection: recommendedSection,
-                  manualSection: circuitConfigData.manualSection,
-                };
-
-                // Mettre à jour l'edge avec les infos du circuit
-                setEdges((prev) =>
-                  prev.map((e) =>
-                    e.id === editingCircuitEdgeId
-                      ? {
-                          ...e,
-                          circuitNumber: circuitConfigData.circuitNumber,
-                          longueur_m: circuitConfigData.totalLength,
-                          section_mm2: circuitConfigData.manualSection || recommendedSection,
-                        }
-                      : e,
-                  ),
+                return (
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-3 border border-blue-200">
+                    <div className="text-sm font-medium text-blue-800 mb-2">📊 Résumé</div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-gray-600">Puissance:</span>
+                        <span className="ml-1 font-bold text-blue-700">{totalPower}W</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Intensité:</span>
+                        <span className="ml-1 font-bold text-blue-700">{current.toFixed(1)}A</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Longueur:</span>
+                        <span className="ml-1 font-bold">{circuitTotalLength}m</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Câbles:</span>
+                        <span className="ml-1 font-bold">{circuitSelectedCables.length}</span>
+                      </div>
+                    </div>
+                    {totalPower > 0 && circuitTotalLength > 0 && (
+                      <div className="mt-2 pt-2 border-t border-blue-200">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-700 text-xs">Section recommandée:</span>
+                          <span className="text-lg font-bold text-emerald-600">{recommendedSection}mm²</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 );
+              })()}
 
-                // Sauvegarder le circuit
-                setCircuits((prev) => ({
-                  ...prev,
-                  [newCircuit.id]: newCircuit,
-                }));
+              {/* Bouton Sauvegarder */}
+              <Button
+                className="w-full bg-emerald-600 hover:bg-emerald-700"
+                onClick={() => {
+                  if (!editingCircuitNumber) return;
 
-                setCircuitConfigOpen(false);
-                setEditingCircuitEdgeId(null);
-                toast.success(`Circuit ${circuitConfigData.circuitNumber} configuré`);
-              }}
-            >
-              Sauvegarder
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                  const selectedItems = items.filter((i) => circuitSelectedEquipments.includes(i.id));
+                  const totalPower = selectedItems.reduce(
+                    (sum, i) => sum + (i.puissance_watts || 0) * (i.quantite || 1),
+                    0,
+                  );
+                  const voltage = 12;
+                  const current = voltage > 0 ? totalPower / voltage : 0;
+                  const calculatedSection =
+                    circuitTotalLength > 0 && current > 0
+                      ? (0.0175 * circuitTotalLength * current * 2) / (voltage * 0.03)
+                      : 0;
+                  const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
+                  const recommendedSection = standardSections.find((s) => s >= calculatedSection) || 50;
+
+                  // Sauvegarder le circuit
+                  const circuitId = `circuit-${editingCircuitNumber}`;
+                  setCircuits((prev) => ({
+                    ...prev,
+                    [circuitId]: {
+                      id: circuitId,
+                      circuitNumber: editingCircuitNumber,
+                      name: `Circuit ${editingCircuitNumber}`,
+                      edgeIds: circuitSelectedCables,
+                      equipmentIds: circuitSelectedEquipments.filter(Boolean),
+                      totalLength: circuitTotalLength,
+                      totalPower,
+                      electricalType: "neutre" as const,
+                      voltage,
+                      calculatedSection: recommendedSection,
+                      manualSection: null,
+                      power: totalPower,
+                    },
+                  }));
+
+                  // Appliquer la section aux câbles
+                  setEdges((prev) =>
+                    prev.map((e) =>
+                      circuitSelectedCables.includes(e.id) ? { ...e, section_mm2: recommendedSection, circuitId } : e,
+                    ),
+                  );
+
+                  toast.success(`Circuit ${editingCircuitNumber} sauvegardé (${recommendedSection}mm²)`);
+                  setCircuitSidebarOpen(false);
+                  setEditingCircuitNumber(null);
+                  setCircuitCableSelectionMode(false);
+                }}
+              >
+                Sauvegarder le circuit
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
