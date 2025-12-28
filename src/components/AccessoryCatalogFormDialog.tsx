@@ -1,10 +1,10 @@
 /**
  * AccessoryCatalogFormDialog.tsx
- * Version: 2.1
+ * Version: 2.2
  * Date: 2025-12-28
  * Description: Réorganisation avec onglets (Général, Tarifs, Technique)
  *              + Type de connexion (cosse, MC4, borne à vis)
- *              + Filetage conditionnel (M5, M6, M8, M10)
+ *              + Boutons compacts
  */
 
 import { useState, useEffect } from "react";
@@ -1383,79 +1383,75 @@ const AccessoryCatalogFormDialog = ({ isOpen, onClose, onSuccess, accessory }: A
               </div>
 
               {/* Type de connexion */}
-              <div className="space-y-3 p-4 border rounded-lg bg-muted/20">
-                <Label className="text-base font-semibold">🔌 Type de connexion</Label>
-                <div className="grid grid-cols-4 gap-2">
+              <div className="space-y-2 p-3 border rounded-lg bg-muted/20">
+                <Label className="text-sm font-medium">🔌 Type de connexion</Label>
+                <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() =>
                       setFormData({ ...formData, type_connexion: "cosse_ronde", filetage: formData.filetage || "M6" })
                     }
-                    className={`p-3 rounded-lg border-2 text-center transition-all ${
+                    className={`px-3 py-1.5 rounded-md border text-center transition-all flex items-center gap-1.5 ${
                       formData.type_connexion === "cosse_ronde"
                         ? "border-purple-500 bg-purple-50 text-purple-700"
                         : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                     }`}
                   >
-                    <div className="text-lg mb-1">🔩</div>
-                    <div className="text-xs font-medium">Cosse ronde</div>
-                    <div className="text-[10px] text-muted-foreground">à visser</div>
+                    <span className="text-sm">🔩</span>
+                    <span className="text-xs font-medium">Cosse</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, type_connexion: "mc4", filetage: "" })}
-                    className={`p-3 rounded-lg border-2 text-center transition-all ${
+                    className={`px-3 py-1.5 rounded-md border text-center transition-all flex items-center gap-1.5 ${
                       formData.type_connexion === "mc4"
                         ? "border-orange-500 bg-orange-50 text-orange-700"
                         : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                     }`}
                   >
-                    <div className="text-lg mb-1">☀️</div>
-                    <div className="text-xs font-medium">MC4</div>
-                    <div className="text-[10px] text-muted-foreground">solaire</div>
+                    <span className="text-sm">☀️</span>
+                    <span className="text-xs font-medium">MC4</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, type_connexion: "borne_vis", filetage: "" })}
-                    className={`p-3 rounded-lg border-2 text-center transition-all ${
+                    className={`px-3 py-1.5 rounded-md border text-center transition-all flex items-center gap-1.5 ${
                       formData.type_connexion === "borne_vis"
                         ? "border-blue-500 bg-blue-50 text-blue-700"
                         : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                     }`}
                   >
-                    <div className="text-lg mb-1">🔧</div>
-                    <div className="text-xs font-medium">Borne à vis</div>
-                    <div className="text-[10px] text-muted-foreground">serrage</div>
+                    <span className="text-sm">🔧</span>
+                    <span className="text-xs font-medium">Borne</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, type_connexion: "", filetage: "" })}
-                    className={`p-3 rounded-lg border-2 text-center transition-all ${
+                    className={`px-3 py-1.5 rounded-md border text-center transition-all flex items-center gap-1.5 ${
                       !formData.type_connexion
                         ? "border-gray-500 bg-gray-50 text-gray-700"
                         : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                     }`}
                   >
-                    <div className="text-lg mb-1">⚪</div>
-                    <div className="text-xs font-medium">Autre</div>
-                    <div className="text-[10px] text-muted-foreground">non défini</div>
+                    <span className="text-sm">⚪</span>
+                    <span className="text-xs font-medium">Autre</span>
                   </button>
                 </div>
 
                 {/* Filetage - uniquement si cosse ronde */}
                 {formData.type_connexion === "cosse_ronde" && (
-                  <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
-                    <Label className="text-sm text-purple-700 mb-2 block">Diamètre de filetage</Label>
-                    <div className="flex gap-2">
+                  <div className="mt-2 p-2 bg-purple-50 rounded-md border border-purple-200">
+                    <Label className="text-xs text-purple-700 mb-1.5 block">Filetage</Label>
+                    <div className="flex gap-1.5">
                       {["M5", "M6", "M8", "M10"].map((size) => (
                         <button
                           key={size}
                           type="button"
                           onClick={() => setFormData({ ...formData, filetage: size })}
-                          className={`px-4 py-2 rounded-md font-medium transition-all ${
+                          className={`px-3 py-1 rounded text-xs font-medium transition-all ${
                             formData.filetage === size
                               ? "bg-purple-600 text-white"
                               : "bg-white border border-purple-200 text-purple-600 hover:bg-purple-100"
