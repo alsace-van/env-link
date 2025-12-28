@@ -1,9 +1,9 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.95 - Affichage calcul réel + section recommandée
-//                 - Fenêtre: "Calcul: 4.11mm² / Section: 6mm²"
-//                 - Liste et labels: section recommandée seulement
+// VERSION: 3.96 - Correction calcul section : suppression × 2
+//                 - La longueur saisie est la longueur totale
+//                 - Affichage calcul réel + section recommandée
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6225,7 +6225,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                           const current = voltage > 0 ? totalPower / voltage : 0;
                           const calculatedSection =
                             effectiveLength > 0 && current > 0
-                              ? (0.0175 * effectiveLength * current * 2) / (voltage * 0.03)
+                              ? (0.0175 * effectiveLength * current) / (voltage * 0.03)
                               : 0;
                           const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
                           const recommendedSection = standardSections.find((s) => s >= calculatedSection) || 0;
@@ -6285,7 +6285,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             const current = voltage > 0 ? totalPower / voltage : 0;
                             const calculatedSection =
                               effectiveLength > 0 && current > 0
-                                ? (0.0175 * effectiveLength * current * 2) / (voltage * 0.03)
+                                ? (0.0175 * effectiveLength * current) / (voltage * 0.03)
                                 : 0;
                             const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
                             const recommendedSection = standardSections.find((s) => s >= calculatedSection) || 50;
