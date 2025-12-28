@@ -1,9 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.01 - Alignement propre du bloc calcul
-//                 - "?" après le texte Intensité max
-//                 - Colonnes alignées gauche/droite
+// VERSION: 4.02 - Ligne sélectionnée en vert dans le tableau
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6355,7 +6353,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                                     key={row.s}
                                                     className={
                                                       sectionForCurrent === parseFloat(row.s)
-                                                        ? "bg-amber-100 font-bold"
+                                                        ? "bg-emerald-100 font-bold"
                                                         : ""
                                                     }
                                                   >
