@@ -1,10 +1,10 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.93 - Liste détaillée des câbles avec longueurs
-//                 - Croix pour retirer un câble
-//                 - Longueur totale calculée auto depuis câbles
-//                 - Bouton recalculer la longueur
+// VERSION: 3.94 - Ajout du champ Tension dans la config circuit
+//                 - Calcul utilise la tension saisie (pas 12V en dur)
+//                 - Bouton "Depuis équip." pour récupérer la tension
+//                 - Liste câbles + croix pour retirer
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1642,6 +1642,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const [circuitSelectedCables, setCircuitSelectedCables] = useState<string[]>([]);
   const [circuitSelectedEquipments, setCircuitSelectedEquipments] = useState<string[]>([]);
   const [circuitTotalLength, setCircuitTotalLength] = useState<number>(0);
+  const [circuitVoltage, setCircuitVoltage] = useState<number>(12);
   // Hook calcul câble
   const { calculateCable, quickCalculate } = useCableCalculator({ defaultVoltage: 12 });
 
@@ -5974,9 +5975,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                         return sum + (edge?.length_m || 0);
                                       }, 0);
                                       setCircuitTotalLength(totalLength);
+                                      // Récupérer la tension depuis le circuit existant ou depuis le calcul
                                       const existingCircuit = Object.values(circuits).find(
                                         (c) => c.circuitNumber === calc.circuitNumber,
                                       );
+                                      setCircuitVoltage(existingCircuit?.voltage || calc.voltage || 12);
                                       setCircuitSelectedEquipments(existingCircuit?.equipmentIds || []);
                                     }
                                   }}
@@ -6125,6 +6128,40 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                           />
                         </div>
 
+                        {/* Tension */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <Label className="text-[10px] font-medium text-gray-600">Tension (V)</Label>
+                            <button
+                              onClick={() => {
+                                // Récupérer la tension depuis le premier équipement sélectionné
+                                const firstEquipId = circuitSelectedEquipments.find(Boolean);
+                                if (firstEquipId) {
+                                  const equip = items.find((i) => i.id === firstEquipId);
+                                  const voltage =
+                                    equip?.tension_entree_volts ||
+                                    equip?.tension_sortie_volts ||
+                                    equip?.tension_volts ||
+                                    12;
+                                  setCircuitVoltage(voltage);
+                                  toast.success(`Tension récupérée: ${voltage}V`);
+                                }
+                              }}
+                              className="text-[9px] text-blue-600 hover:text-blue-800"
+                            >
+                              ↻ Depuis équip.
+                            </button>
+                          </div>
+                          <Input
+                            type="number"
+                            min={1}
+                            step={1}
+                            value={circuitVoltage}
+                            onChange={(e) => setCircuitVoltage(parseFloat(e.target.value) || 12)}
+                            className="h-7 text-xs"
+                          />
+                        </div>
+
                         {/* Équipements */}
                         <div>
                           <div className="flex items-center justify-between mb-1">
@@ -6185,7 +6222,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                           }, 0);
                           // Utiliser la longueur manuelle si différente, sinon la somme des câbles
                           const effectiveLength = circuitTotalLength > 0 ? circuitTotalLength : cableLengthSum;
-                          const voltage = 12;
+                          const voltage = circuitVoltage;
                           const current = voltage > 0 ? totalPower / voltage : 0;
                           const calculatedSection =
                             effectiveLength > 0 && current > 0
@@ -6201,14 +6238,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                   P: <span className="font-bold text-blue-700">{totalPower}W</span>
                                 </div>
                                 <div>
+                                  U: <span className="font-bold text-blue-700">{voltage}V</span>
+                                </div>
+                                <div>
                                   I: <span className="font-bold text-blue-700">{current.toFixed(1)}A</span>
                                 </div>
                                 <div>
                                   L: <span className="font-bold text-gray-700">{effectiveLength.toFixed(1)}m</span>
-                                </div>
-                                <div>
-                                  Câbles:{" "}
-                                  <span className="font-bold text-gray-700">{circuitSelectedCables.length}</span>
                                 </div>
                               </div>
                               {recommendedSection > 0 && (
@@ -6240,7 +6276,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             }, 0);
                             const effectiveLength = circuitTotalLength > 0 ? circuitTotalLength : cableLengthSum;
 
-                            const voltage = 12;
+                            const voltage = circuitVoltage;
                             const current = voltage > 0 ? totalPower / voltage : 0;
                             const calculatedSection =
                               effectiveLength > 0 && current > 0
@@ -6276,7 +6312,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                               ),
                             );
 
-                            toast.success(`Circuit ${editingCircuitNumber} → ${recommendedSection}mm²`);
+                            toast.success(`Circuit ${editingCircuitNumber} @ ${voltage}V → ${recommendedSection}mm²`);
                           }}
                         >
                           💾 Sauvegarder
