@@ -1,9 +1,9 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.00 - Marge de sécurité 20% sur intensité max
-//                 - Tableau avec colonne 80%
-//                 - Affichage du % d'utilisation
+// VERSION: 4.01 - Alignement propre du bloc calcul
+//                 - "?" après le texte Intensité max
+//                 - Colonnes alignées gauche/droite
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6300,19 +6300,21 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                 </div>
                               </div>
                               {(sectionForVoltage > 0 || current > 0) && (
-                                <div className="mt-1 pt-1 border-t border-blue-200 space-y-0.5">
-                                  <div className="flex justify-between items-center text-gray-500">
-                                    <span>Chute U (3%):</span>
-                                    <span className="font-mono">
+                                <div className="mt-1 pt-1 border-t border-blue-200 text-[9px]">
+                                  {/* Ligne Chute U */}
+                                  <div className="flex items-center text-gray-500 py-0.5">
+                                    <span className="w-24">Chute U (3%)</span>
+                                    <span className="font-mono flex-1 text-right">
                                       {sectionForVoltage.toFixed(2)}mm² → {sectionVoltageRounded}mm²
                                     </span>
                                   </div>
-                                  <div className="flex justify-between items-center text-gray-500">
-                                    <span className="flex items-center gap-1">
-                                      Intensité max:
+                                  {/* Ligne Intensité max */}
+                                  <div className="flex items-center text-gray-500 py-0.5">
+                                    <span className="w-24 flex items-center gap-1">
+                                      Intensité max
                                       <Popover>
                                         <PopoverTrigger asChild>
-                                          <button className="w-3.5 h-3.5 rounded-full bg-gray-300 hover:bg-gray-400 text-gray-600 text-[8px] font-bold flex items-center justify-center">
+                                          <button className="w-3 h-3 rounded-full bg-gray-300 hover:bg-gray-400 text-gray-600 text-[7px] font-bold flex items-center justify-center">
                                             ?
                                           </button>
                                         </PopoverTrigger>
@@ -6372,7 +6374,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                         </PopoverContent>
                                       </Popover>
                                     </span>
-                                    <span className="font-mono">
+                                    <span className="font-mono flex-1 text-right">
                                       {current.toFixed(1)}A → {sectionForCurrent}mm²
                                       <span
                                         className={`ml-1 ${usagePercent > 80 ? "text-amber-600" : "text-emerald-600"}`}
@@ -6381,11 +6383,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                       </span>
                                     </span>
                                   </div>
-                                  <div className="flex justify-between items-center pt-1 border-t border-blue-200">
+                                  {/* Ligne Section finale */}
+                                  <div className="flex items-center pt-1 mt-1 border-t border-blue-200">
                                     <span className="text-gray-600">
-                                      Section <span className="text-amber-600">({limitingFactor})</span>:
+                                      Section <span className="text-amber-600">({limitingFactor})</span>
                                     </span>
-                                    <span className="text-sm font-bold text-emerald-600">{recommendedSection}mm²</span>
+                                    <span className="text-sm font-bold text-emerald-600 flex-1 text-right">
+                                      {recommendedSection}mm²
+                                    </span>
                                   </div>
                                 </div>
                               )}
