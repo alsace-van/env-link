@@ -1,9 +1,10 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 3.92 - Panneau Circuits intégré (liste + config)
-//                 - Un seul panneau flottant à 2 volets
-//                 - Plus de doublon popup/sidebar
+// VERSION: 3.93 - Liste détaillée des câbles avec longueurs
+//                 - Croix pour retirer un câble
+//                 - Longueur totale calculée auto depuis câbles
+//                 - Bouton recalculer la longueur
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -5964,9 +5965,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                       setEditingCircuitNumber(null);
                                       setCircuitCableSelectionMode(false);
                                     } else {
+                                      const selectedEdgeIds = calc.allEdgeIdsInCircuit || [];
                                       setEditingCircuitNumber(calc.circuitNumber!);
-                                      setCircuitSelectedCables(calc.allEdgeIdsInCircuit || []);
-                                      setCircuitTotalLength(calc.circuitTotalLength || 0);
+                                      setCircuitSelectedCables(selectedEdgeIds);
+                                      // Calculer la longueur totale depuis les câbles réels
+                                      const totalLength = selectedEdgeIds.reduce((sum, edgeId) => {
+                                        const edge = edges.find((e) => e.id === edgeId);
+                                        return sum + (edge?.length_m || 0);
+                                      }, 0);
+                                      setCircuitTotalLength(totalLength);
                                       const existingCircuit = Object.values(circuits).find(
                                         (c) => c.circuitNumber === calc.circuitNumber,
                                       );
@@ -6027,12 +6034,54 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                       </div>
 
                       <div className="p-2 space-y-2 max-h-[50vh] overflow-y-auto">
-                        {/* Câbles */}
+                        {/* Câbles - Liste détaillée */}
                         <div>
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] font-medium text-gray-600">Câbles</span>
-                            <span className="text-[10px] text-gray-400">{circuitSelectedCables.length}</span>
+                            <span className="text-[10px] font-medium text-gray-600">
+                              Câbles ({circuitSelectedCables.length})
+                            </span>
+                            <span className="text-[10px] font-bold text-blue-600">
+                              {(() => {
+                                const total = circuitSelectedCables.reduce((sum, edgeId) => {
+                                  const edge = edges.find((e) => e.id === edgeId);
+                                  return sum + (edge?.length_m || 0);
+                                }, 0);
+                                return `${total.toFixed(1)}m`;
+                              })()}
+                            </span>
                           </div>
+
+                          {/* Liste des câbles sélectionnés */}
+                          {circuitSelectedCables.length > 0 && (
+                            <div className="space-y-0.5 mb-1.5 max-h-24 overflow-y-auto">
+                              {circuitSelectedCables.map((edgeId) => {
+                                const edge = edges.find((e) => e.id === edgeId);
+                                const sourceItem = items.find((i) => i.id === edge?.source_node_id);
+                                const targetItem = items.find((i) => i.id === edge?.target_node_id);
+                                return (
+                                  <div
+                                    key={edgeId}
+                                    className="flex items-center justify-between text-[9px] bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5"
+                                  >
+                                    <span className="truncate flex-1 text-gray-700">
+                                      {sourceItem?.nom_accessoire?.substring(0, 8) || "?"} →{" "}
+                                      {targetItem?.nom_accessoire?.substring(0, 8) || "?"}
+                                    </span>
+                                    <span className="font-mono text-emerald-700 mx-1">{edge?.length_m || 0}m</span>
+                                    <button
+                                      onClick={() =>
+                                        setCircuitSelectedCables((prev) => prev.filter((id) => id !== edgeId))
+                                      }
+                                      className="text-red-400 hover:text-red-600 p-0.5"
+                                    >
+                                      <X className="h-2.5 w-2.5" />
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
                           <Button
                             variant={circuitCableSelectionMode ? "default" : "outline"}
                             size="sm"
@@ -6048,9 +6097,24 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                           </Button>
                         </div>
 
-                        {/* Longueur */}
+                        {/* Longueur totale (calculée auto ou manuelle) */}
                         <div>
-                          <Label className="text-[10px] font-medium text-gray-600 mb-1 block">Longueur (m)</Label>
+                          <div className="flex items-center justify-between mb-1">
+                            <Label className="text-[10px] font-medium text-gray-600">Longueur totale (m)</Label>
+                            <button
+                              onClick={() => {
+                                const total = circuitSelectedCables.reduce((sum, edgeId) => {
+                                  const edge = edges.find((e) => e.id === edgeId);
+                                  return sum + (edge?.length_m || 0);
+                                }, 0);
+                                setCircuitTotalLength(total);
+                                toast.success(`Longueur recalculée: ${total.toFixed(1)}m`);
+                              }}
+                              className="text-[9px] text-blue-600 hover:text-blue-800"
+                            >
+                              ↻ Recalculer
+                            </button>
+                          </div>
                           <Input
                             type="number"
                             min={0.1}
@@ -6114,11 +6178,18 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             (sum, i) => sum + (i.puissance_watts || 0) * (i.quantite || 1),
                             0,
                           );
+                          // Calculer la longueur depuis les câbles sélectionnés
+                          const cableLengthSum = circuitSelectedCables.reduce((sum, edgeId) => {
+                            const edge = edges.find((e) => e.id === edgeId);
+                            return sum + (edge?.length_m || 0);
+                          }, 0);
+                          // Utiliser la longueur manuelle si différente, sinon la somme des câbles
+                          const effectiveLength = circuitTotalLength > 0 ? circuitTotalLength : cableLengthSum;
                           const voltage = 12;
                           const current = voltage > 0 ? totalPower / voltage : 0;
                           const calculatedSection =
-                            circuitTotalLength > 0 && current > 0
-                              ? (0.0175 * circuitTotalLength * current * 2) / (voltage * 0.03)
+                            effectiveLength > 0 && current > 0
+                              ? (0.0175 * effectiveLength * current * 2) / (voltage * 0.03)
                               : 0;
                           const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
                           const recommendedSection = standardSections.find((s) => s >= calculatedSection) || 0;
@@ -6131,6 +6202,13 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                 </div>
                                 <div>
                                   I: <span className="font-bold text-blue-700">{current.toFixed(1)}A</span>
+                                </div>
+                                <div>
+                                  L: <span className="font-bold text-gray-700">{effectiveLength.toFixed(1)}m</span>
+                                </div>
+                                <div>
+                                  Câbles:{" "}
+                                  <span className="font-bold text-gray-700">{circuitSelectedCables.length}</span>
                                 </div>
                               </div>
                               {recommendedSection > 0 && (
@@ -6155,11 +6233,18 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                               (sum, i) => sum + (i.puissance_watts || 0) * (i.quantite || 1),
                               0,
                             );
+                            // Calculer la longueur depuis les câbles sélectionnés
+                            const cableLengthSum = circuitSelectedCables.reduce((sum, edgeId) => {
+                              const edge = edges.find((e) => e.id === edgeId);
+                              return sum + (edge?.length_m || 0);
+                            }, 0);
+                            const effectiveLength = circuitTotalLength > 0 ? circuitTotalLength : cableLengthSum;
+
                             const voltage = 12;
                             const current = voltage > 0 ? totalPower / voltage : 0;
                             const calculatedSection =
-                              circuitTotalLength > 0 && current > 0
-                                ? (0.0175 * circuitTotalLength * current * 2) / (voltage * 0.03)
+                              effectiveLength > 0 && current > 0
+                                ? (0.0175 * effectiveLength * current * 2) / (voltage * 0.03)
                                 : 0;
                             const standardSections = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50];
                             const recommendedSection = standardSections.find((s) => s >= calculatedSection) || 50;
@@ -6173,7 +6258,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                                 name: `Circuit ${editingCircuitNumber}`,
                                 edgeIds: circuitSelectedCables,
                                 equipmentIds: circuitSelectedEquipments.filter(Boolean),
-                                totalLength: circuitTotalLength,
+                                totalLength: effectiveLength,
                                 totalPower,
                                 electricalType: "neutre" as const,
                                 voltage,
