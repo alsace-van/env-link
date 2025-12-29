@@ -1,8 +1,7 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.05 - Type de connexion (cosse, MC4, borne)
-//                 - Affichage amélioré dans blocs
+// VERSION: 4.06 - Fix cast as any pour type_connexion
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -4442,7 +4441,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   // Charger les articles du catalogue avec type électrique
   const loadCatalogItems = async () => {
     setCatalogLoading(true);
-    const { data } = await supabase
+    const { data } = await (supabase as any)
       .from("accessories_catalog")
       .select(
         "id, nom, marque, prix_vente_ttc, puissance_watts, capacite_ah, type_electrique, category_id, image_url, type_connexion, filetage, categories(nom)",
@@ -4582,7 +4581,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
     try {
       // Récupérer tous les accessoires du catalogue
-      const { data: catalogItems, error } = await supabase
+      const { data: catalogItems, error } = await (supabase as any)
         .from("accessories_catalog")
         .select("id, nom, type_electrique, puissance_watts, capacite_ah, tension_volts, type_connexion, filetage");
 
