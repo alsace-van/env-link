@@ -1,8 +1,8 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.10 - Ajout logs diagnostic montage
-//                 et chargement pour debug
+// VERSION: 4.12 - Auto-recovery + bouton rechargement
+//                 si canvas vide mais données existantes
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1547,6 +1547,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const [hoveredCircuitEdgeIds, setHoveredCircuitEdgeIds] = useState<string[]>([]); // Pour grossir tout le circuit au survol dans le popover
   const [hoveredCircuitSections, setHoveredCircuitSections] = useState<Record<string, number>>({}); // Sections calculées pour les edges survolés
 
+  // VERSION 4.11: Protection contre la perte de données
+  const initialItemsCountRef = useRef<number | null>(null); // Nombre d'items au chargement initial
+  const hasLoadedDataRef = useRef(false); // Flag pour savoir si le chargement est terminé
+
   // Log de diagnostic pour BlocksInstance
   useEffect(() => {
     console.log("[BlocksInstance] 🟢 MOUNTED - projectId:", projectId);
@@ -1555,8 +1559,48 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // Log quand items change
   useEffect(() => {
-    console.log("[BlocksInstance] items changed:", items.length, "items");
-  }, [items]);
+    console.log(
+      "[BlocksInstance] items changed:",
+      items.length,
+      "items",
+      "initialCount:",
+      initialItemsCountRef.current,
+      "hasLoaded:",
+      hasLoadedDataRef.current,
+    );
+
+    // VERSION 4.12: Auto-recovery - si items devient vide après chargement initial avec données
+    if (
+      hasLoadedDataRef.current &&
+      items.length === 0 &&
+      initialItemsCountRef.current !== null &&
+      initialItemsCountRef.current > 0
+    ) {
+      console.warn("[BlocksInstance] ⚠️ ANOMALY DETECTED: items emptied unexpectedly!");
+      console.warn("[BlocksInstance] Attempting auto-recovery from localStorage...");
+
+      // Tenter de recharger depuis le localStorage
+      const storageKey = `electrical_schema_${projectId}`;
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          if (parsed.items && parsed.items.length > 0) {
+            console.log("[BlocksInstance] ✅ Auto-recovery: found", parsed.items.length, "items in localStorage");
+            setItems(parsed.items);
+            if (parsed.edges) setEdges(parsed.edges);
+            if (parsed.nodeHandles) setNodeHandles(parsed.nodeHandles);
+            if (parsed.layers) setLayers(parsed.layers);
+            toast.info("Schéma rechargé automatiquement");
+          } else {
+            console.warn("[BlocksInstance] ❌ Auto-recovery failed: localStorage also empty");
+          }
+        } catch (e) {
+          console.error("[BlocksInstance] Auto-recovery parse error:", e);
+        }
+      }
+    }
+  }, [items, projectId]);
 
   // État pour les handles personnalisés par bloc
   const [nodeHandles, setNodeHandles] = useState<Record<string, BlockHandles>>({});
@@ -4447,9 +4491,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         if (parsed.items && parsed.items.length > 0) {
           console.log("[Schema] loadSchemaData - setting items:", parsed.items.length);
           setItems(parsed.items);
+          // VERSION 4.11: Mémoriser le nombre initial d'items
+          initialItemsCountRef.current = parsed.items.length;
         } else {
           console.log("[Schema] loadSchemaData - no items in localStorage");
           setItems([]);
+          initialItemsCountRef.current = 0;
         }
 
         // Charger les annotations sauvegardées
@@ -4462,7 +4509,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           setCircuits(parsed.circuits);
         }
 
-        console.log("[Schema] loadSchemaData - DONE loading from localStorage");
+        // VERSION 4.11: Marquer le chargement comme terminé
+        hasLoadedDataRef.current = true;
+        console.log(
+          "[Schema] loadSchemaData - DONE loading from localStorage, initialItems:",
+          initialItemsCountRef.current,
+        );
       } else {
         console.log("[Schema] loadSchemaData - no localStorage data found");
         setItems([]);
@@ -4472,6 +4524,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         setActiveLayerId("layer-default");
         setAnnotations([]);
         setCircuits({});
+        // VERSION 4.11: Aucune donnée initiale
+        initialItemsCountRef.current = 0;
+        hasLoadedDataRef.current = true;
       }
     } catch (error) {
       console.error("[Schema] loadSchemaData - ERROR:", error);
@@ -4481,6 +4536,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       setNodeHandles({});
       setLayers([createDefaultLayer()]);
       setActiveLayerId("layer-default");
+      // VERSION 4.11: Erreur = pas de données fiables
+      hasLoadedDataRef.current = true;
+      initialItemsCountRef.current = 0;
     }
   }, [projectId]);
 
@@ -5262,13 +5320,39 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   }, [selectedEdgeId]);
 
   const saveSchema = async () => {
-    // VERSION 3.88: Protection contre l'écrasement avec des données vides
+    // VERSION 4.11: Protection renforcée contre la perte de données
+    console.log(
+      "[Schema] saveSchema called - items:",
+      items.length,
+      "hasLoaded:",
+      hasLoadedDataRef.current,
+      "initialCount:",
+      initialItemsCountRef.current,
+    );
+
+    // Ne pas sauvegarder si le chargement n'est pas terminé
+    if (!hasLoadedDataRef.current) {
+      console.warn("[Schema] saveSchema BLOCKED - data not loaded yet");
+      toast.error("Attendez le chargement complet avant de sauvegarder");
+      return;
+    }
+
+    // Protection contre l'écrasement avec des données vides
     if (items.length === 0 && edges.length === 0) {
-      const confirmSave = confirm(
-        "Attention: Le schéma semble vide. Voulez-vous vraiment sauvegarder ? " +
-          "Cela pourrait écraser vos données existantes.",
-      );
-      if (!confirmSave) return;
+      // Si on avait des items au chargement, c'est suspect
+      if (initialItemsCountRef.current && initialItemsCountRef.current > 0) {
+        const confirmSave = confirm(
+          `⚠️ ATTENTION: Vous aviez ${initialItemsCountRef.current} équipements au chargement, mais le schéma est maintenant vide.\n\n` +
+            "Voulez-vous vraiment sauvegarder ? Cela effacera définitivement vos données.",
+        );
+        if (!confirmSave) {
+          console.log("[Schema] saveSchema CANCELLED by user - protecting data");
+          return;
+        }
+      } else {
+        const confirmSave = confirm("Le schéma est vide. Voulez-vous vraiment sauvegarder ?");
+        if (!confirmSave) return;
+      }
     }
 
     setSaving(true);
@@ -5290,8 +5374,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         circuits, // Sauvegarder les circuits définis
       };
       localStorage.setItem(`electrical_schema_${projectId}`, JSON.stringify(schemaToSave));
+      console.log("[Schema] saveSchema SUCCESS - items:", items.length);
+      // Mettre à jour le compteur initial après une sauvegarde réussie
+      initialItemsCountRef.current = items.length;
       toast.success("Schéma sauvegardé");
-    } catch {
+    } catch (error) {
+      console.error("[Schema] saveSchema ERROR:", error);
       toast.error("Erreur lors de la sauvegarde");
     }
     setSaving(false);
@@ -5305,6 +5393,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     setNodeHandles({});
     setNodeHandleCircuits({});
     setNodeHandleFluxTypes({});
+    // VERSION 4.11: Reset le compteur initial
+    initialItemsCountRef.current = 0;
     toast.success("Schéma réinitialisé");
   };
 
@@ -5835,6 +5925,40 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             <p className="text-lg font-medium">Aucun équipement électrique</p>
             <p className="text-sm mt-1 mb-4">Ajoutez des articles depuis le scénario ou le catalogue</p>
             <div className="flex items-center gap-3">
+              {/* VERSION 4.12: Bouton de rechargement forcé si localStorage a des données */}
+              {(() => {
+                const stored = localStorage.getItem(`electrical_schema_${projectId}`);
+                if (stored) {
+                  try {
+                    const parsed = JSON.parse(stored);
+                    if (parsed.items && parsed.items.length > 0) {
+                      return (
+                        <Button
+                          variant="destructive"
+                          onClick={() => {
+                            console.log("[BlocksInstance] Force reload from localStorage");
+                            setItems(parsed.items);
+                            if (parsed.edges) setEdges(parsed.edges);
+                            if (parsed.nodeHandles) setNodeHandles(parsed.nodeHandles);
+                            if (parsed.layers && parsed.layers.length > 0) setLayers(parsed.layers);
+                            if (parsed.nodeHandleCircuits) setNodeHandleCircuits(parsed.nodeHandleCircuits);
+                            if (parsed.nodeHandleFluxTypes) setNodeHandleFluxTypes(parsed.nodeHandleFluxTypes);
+                            initialItemsCountRef.current = parsed.items.length;
+                            toast.success(`${parsed.items.length} équipements rechargés`);
+                          }}
+                          className="gap-2"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                          Recharger ({parsed.items.length} équipements)
+                        </Button>
+                      );
+                    }
+                  } catch (e) {
+                    console.error("Parse error:", e);
+                  }
+                }
+                return null;
+              })()}
               <Button
                 variant="default"
                 onClick={() => {
