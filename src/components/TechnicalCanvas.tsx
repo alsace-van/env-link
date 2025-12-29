@@ -1,8 +1,8 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.12 - Auto-recovery + bouton rechargement
-//                 si canvas vide mais données existantes
+// VERSION: 4.13 - Système de backup automatique
+//                 + bouton restauration backup
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -87,6 +87,7 @@ import {
   Calculator,
   RefreshCw,
   Trash,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AccessorySelector } from "./AccessorySelector";
@@ -5372,7 +5373,16 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         layers, // Sauvegarder les calques
         annotations, // Sauvegarder les annotations
         circuits, // Sauvegarder les circuits définis
+        savedAt: new Date().toISOString(), // VERSION 4.13: Timestamp de sauvegarde
       };
+
+      // VERSION 4.13: Créer un backup avant d'écraser si on a des données valides
+      if (items.length > 0) {
+        const backupKey = `electrical_schema_backup_${projectId}`;
+        localStorage.setItem(backupKey, JSON.stringify(schemaToSave));
+        console.log("[Schema] Backup created with", items.length, "items");
+      }
+
       localStorage.setItem(`electrical_schema_${projectId}`, JSON.stringify(schemaToSave));
       console.log("[Schema] saveSchema SUCCESS - items:", items.length);
       // Mettre à jour le compteur initial après une sauvegarde réussie
@@ -5383,6 +5393,51 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       toast.error("Erreur lors de la sauvegarde");
     }
     setSaving(false);
+  };
+
+  // VERSION 4.13: Restaurer depuis le backup
+  const restoreFromBackup = () => {
+    const backupKey = `electrical_schema_backup_${projectId}`;
+    const backup = localStorage.getItem(backupKey);
+    if (!backup) {
+      toast.error("Aucun backup disponible");
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(backup);
+      if (!parsed.items || parsed.items.length === 0) {
+        toast.error("Le backup est vide");
+        return;
+      }
+
+      const confirmRestore = confirm(
+        `Restaurer le backup du ${new Date(parsed.savedAt).toLocaleString()} ?\n` +
+          `(${parsed.items.length} équipements, ${parsed.edges?.length || 0} câbles)`,
+      );
+      if (!confirmRestore) return;
+
+      // Restaurer les données
+      if (parsed.items) setItems(parsed.items);
+      if (parsed.edges) setEdges(parsed.edges);
+      if (parsed.nodeHandles) setNodeHandles(parsed.nodeHandles);
+      if (parsed.nodeHandleCircuits) setNodeHandleCircuits(parsed.nodeHandleCircuits);
+      if (parsed.nodeHandleFluxTypes) setNodeHandleFluxTypes(parsed.nodeHandleFluxTypes);
+      if (parsed.layers && parsed.layers.length > 0) setLayers(parsed.layers);
+      if (parsed.annotations) setAnnotations(parsed.annotations);
+      if (parsed.circuits) setCircuits(parsed.circuits);
+
+      initialItemsCountRef.current = parsed.items.length;
+
+      // Sauvegarder immédiatement la restauration
+      localStorage.setItem(`electrical_schema_${projectId}`, backup);
+
+      toast.success(`${parsed.items.length} équipements restaurés depuis le backup`);
+      console.log("[Schema] Restored from backup:", parsed.items.length, "items");
+    } catch (error) {
+      console.error("[Schema] Restore error:", error);
+      toast.error("Erreur lors de la restauration");
+    }
   };
 
   const resetSchema = () => {
@@ -5611,6 +5666,32 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             <Trash2 className="h-4 w-4 mr-1" />
             Réinitialiser
           </Button>
+
+          {/* VERSION 4.13: Bouton restaurer backup */}
+          {(() => {
+            const backupKey = `electrical_schema_backup_${projectId}`;
+            const backup = localStorage.getItem(backupKey);
+            if (backup) {
+              try {
+                const parsed = JSON.parse(backup);
+                if (parsed.items && parsed.items.length > 0) {
+                  return (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={restoreFromBackup}
+                      className="text-amber-600 border-amber-300 hover:bg-amber-50"
+                      title={`Backup du ${new Date(parsed.savedAt).toLocaleString()}`}
+                    >
+                      <RotateCcw className="h-4 w-4 mr-1" />
+                      Backup ({parsed.items.length})
+                    </Button>
+                  );
+                }
+              } catch (e) {}
+            }
+            return null;
+          })()}
 
           {/* Bouton Calques */}
           <SchemaLayersPanel
