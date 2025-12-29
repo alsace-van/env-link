@@ -1,8 +1,8 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.07 - Nettoyage circuits/câbles orphelins
-//                 lors réduction handles
+// VERSION: 4.08 - Fix surbrillance verte reste
+//                 après fermeture panneau circuits
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -5985,6 +5985,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                     if (circuitSidebarOpen) {
                       setEditingCircuitNumber(null);
                       setCircuitCableSelectionMode(false);
+                      setCircuitSelectedCables([]); // Désélectionner les câbles
                     }
                   }}
                 >
@@ -6011,6 +6012,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                             setCircuitSidebarOpen(false);
                             setEditingCircuitNumber(null);
                             setCircuitCableSelectionMode(false);
+                            setCircuitSelectedCables([]); // Désélectionner les câbles
                           }}
                           className="p-0.5 hover:bg-emerald-200 rounded text-emerald-600"
                         >
