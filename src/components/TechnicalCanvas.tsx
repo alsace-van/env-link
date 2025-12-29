@@ -1,8 +1,8 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.14 - Sauvegarde Supabase + localStorage
-//                 Migration automatique des anciennes données
+// VERSION: 4.15 - Nettoyage automatique câbles orphelins
+//                 + bouton nettoyage manuel
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2561,6 +2561,60 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     });
   }, []);
 
+  // VERSION 4.15: Nettoyer les câbles orphelins (connectés à des handles inexistants)
+  const cleanOrphanEdges = useCallback(
+    (currentEdges: typeof edges, currentHandles: typeof nodeHandles, currentItems: typeof items) => {
+      const itemIds = new Set(currentItems.map((item) => item.id));
+
+      const orphanEdgeIds: string[] = [];
+
+      currentEdges.forEach((edge) => {
+        const sourceNodeId = edge.source_node_id || edge.source;
+        const targetNodeId = edge.target_node_id || edge.target;
+        const sourceHandle = edge.source_handle || edge.sourceHandle;
+        const targetHandle = edge.target_handle || edge.targetHandle;
+
+        // Vérifier que les nodes existent
+        if (!itemIds.has(sourceNodeId) || !itemIds.has(targetNodeId)) {
+          orphanEdgeIds.push(edge.id);
+          return;
+        }
+
+        // Vérifier les handles source
+        if (sourceHandle) {
+          const [side, numStr] = sourceHandle.split("-");
+          const num = parseInt(numStr, 10);
+          const nodeHandlesConfig = currentHandles[sourceNodeId] || DEFAULT_HANDLES;
+          const maxForSide = nodeHandlesConfig[side as keyof BlockHandles] || 1;
+          if (num > maxForSide) {
+            orphanEdgeIds.push(edge.id);
+            return;
+          }
+        }
+
+        // Vérifier les handles target
+        if (targetHandle) {
+          const [side, numStr] = targetHandle.split("-");
+          const num = parseInt(numStr, 10);
+          const nodeHandlesConfig = currentHandles[targetNodeId] || DEFAULT_HANDLES;
+          const maxForSide = nodeHandlesConfig[side as keyof BlockHandles] || 1;
+          if (num > maxForSide) {
+            orphanEdgeIds.push(edge.id);
+            return;
+          }
+        }
+      });
+
+      if (orphanEdgeIds.length > 0) {
+        console.log("[Schema] cleanOrphanEdges - Found", orphanEdgeIds.length, "orphan edges:", orphanEdgeIds);
+        return currentEdges.filter((edge) => !orphanEdgeIds.includes(edge.id));
+      }
+
+      return currentEdges;
+    },
+    [],
+  );
+
   // === NOUVELLES FONCTIONS ===
 
   // Copier les blocs sélectionnés
@@ -4489,10 +4543,20 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           circuits: Object.keys(parsed.circuits || {}).length,
         });
 
-        // Charger les edges
-        if (parsed.edges) {
-          setEdges(parsed.edges);
+        // VERSION 4.15: Nettoyer les câbles orphelins AVANT de charger
+        let cleanedEdges = parsed.edges || [];
+        if (parsed.edges && parsed.items) {
+          const beforeCount = parsed.edges.length;
+          cleanedEdges = cleanOrphanEdges(parsed.edges, parsed.nodeHandles || {}, parsed.items);
+          const removedCount = beforeCount - cleanedEdges.length;
+          if (removedCount > 0) {
+            console.log("[Schema] loadSchemaData - Cleaned", removedCount, "orphan edges");
+            toast.info(`${removedCount} câble(s) orphelin(s) supprimé(s)`);
+          }
         }
+
+        // Charger les edges (nettoyés)
+        setEdges(cleanedEdges);
 
         // Charger les handles
         if (parsed.nodeHandles) {
@@ -4582,7 +4646,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       hasLoadedDataRef.current = true;
       initialItemsCountRef.current = 0;
     }
-  }, [projectId]);
+  }, [projectId, cleanOrphanEdges]);
 
   // Charger le scénario principal
   useEffect(() => {
@@ -5727,6 +5791,31 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
             <Trash2 className="h-4 w-4 mr-1" />
             Réinitialiser
           </Button>
+
+          {/* VERSION 4.15: Bouton nettoyer câbles orphelins */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const beforeCount = edges.length;
+                  const cleanedEdges = cleanOrphanEdges(edges, nodeHandles, items);
+                  const removedCount = beforeCount - cleanedEdges.length;
+                  if (removedCount > 0) {
+                    setEdges(cleanedEdges);
+                    toast.success(`${removedCount} câble(s) orphelin(s) supprimé(s)`);
+                  } else {
+                    toast.info("Aucun câble orphelin trouvé");
+                  }
+                }}
+                className="px-2"
+              >
+                <Trash className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Nettoyer les câbles orphelins</TooltipContent>
+          </Tooltip>
 
           {/* VERSION 4.13: Bouton restaurer backup */}
           {(() => {
