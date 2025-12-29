@@ -2569,13 +2569,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       const orphanEdgeIds: string[] = [];
 
       currentEdges.forEach((edge) => {
-        const sourceNodeId = edge.source_node_id || edge.source;
-        const targetNodeId = edge.target_node_id || edge.target;
-        const sourceHandle = edge.source_handle || edge.sourceHandle;
-        const targetHandle = edge.target_handle || edge.targetHandle;
+        // Utiliser les propriétés snake_case de SchemaEdge
+        const sourceNodeId = edge.source_node_id;
+        const targetNodeId = edge.target_node_id;
+        const sourceHandle = edge.source_handle;
+        const targetHandle = edge.target_handle;
 
         // Vérifier que les nodes existent
-        if (!itemIds.has(sourceNodeId) || !itemIds.has(targetNodeId)) {
+        if (!sourceNodeId || !targetNodeId || !itemIds.has(sourceNodeId) || !itemIds.has(targetNodeId)) {
           orphanEdgeIds.push(edge.id);
           return;
         }
