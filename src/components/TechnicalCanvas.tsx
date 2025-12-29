@@ -1,8 +1,8 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.09 - Fix stabilité updateNodeHandles
-//                 + nettoyage asynchrone
+// VERSION: 4.10 - Ajout logs diagnostic montage
+//                 et chargement pour debug
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1546,6 +1546,17 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [hoveredCircuitEdgeIds, setHoveredCircuitEdgeIds] = useState<string[]>([]); // Pour grossir tout le circuit au survol dans le popover
   const [hoveredCircuitSections, setHoveredCircuitSections] = useState<Record<string, number>>({}); // Sections calculées pour les edges survolés
+
+  // Log de diagnostic pour BlocksInstance
+  useEffect(() => {
+    console.log("[BlocksInstance] 🟢 MOUNTED - projectId:", projectId);
+    return () => console.log("[BlocksInstance] 🔴 UNMOUNTED");
+  }, []);
+
+  // Log quand items change
+  useEffect(() => {
+    console.log("[BlocksInstance] items changed:", items.length, "items");
+  }, [items]);
 
   // État pour les handles personnalisés par bloc
   const [nodeHandles, setNodeHandles] = useState<Record<string, BlockHandles>>({});
@@ -5814,6 +5825,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
       {/* Canvas ReactFlow */}
       <div ref={reactFlowWrapper} className="flex-1 border rounded-lg overflow-hidden bg-white relative">
+        {(() => {
+          console.log("[BlocksInstance] RENDER check - items.length:", items.length);
+          return null;
+        })()}
         {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-500">
             <Cable className="h-16 w-16 mb-4 text-gray-300" />
@@ -8285,9 +8300,23 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
   const [viewMode, setViewMode] = useState<"blocks" | "drawing">("blocks");
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  // Log de diagnostic au montage
+  useEffect(() => {
+    console.log("[TechnicalCanvas] 🟢 Component MOUNTED - v4.10 - projectId:", projectId);
+    console.log("[TechnicalCanvas] Session check:", {
+      timestamp: new Date().toISOString(),
+      userAgent: navigator.userAgent.slice(0, 50),
+    });
+
+    return () => {
+      console.log("[TechnicalCanvas] 🔴 Component UNMOUNTED");
+    };
+  }, []);
+
   // Charger les schémas existants
   useEffect(() => {
     const loadSchemas = async () => {
+      console.log("[TechnicalCanvas] loadSchemas START - projectId:", projectId);
       try {
         const { data, error } = await (supabase as any)
           .from("technical_schemas")
@@ -8295,15 +8324,21 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
           .eq("project_id", projectId)
           .order("schema_number");
 
-        if (error) throw error;
+        if (error) {
+          console.error("[TechnicalCanvas] loadSchemas ERROR:", error);
+          throw error;
+        }
+
+        console.log("[TechnicalCanvas] loadSchemas SUCCESS - data:", data?.length || 0, "schemas");
 
         if (data && data.length > 0) {
           const schemaNumbers = (data as any).map((s: any) => s.schema_number);
           setSchemas(schemaNumbers);
         }
       } catch (error) {
-        console.error("Erreur lors du chargement des schémas:", error);
+        console.error("[TechnicalCanvas] loadSchemas CATCH:", error);
       } finally {
+        console.log("[TechnicalCanvas] loadSchemas DONE - setIsLoading(false)");
         setIsLoading(false);
       }
     };
@@ -8359,8 +8394,11 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
   }, [isFullscreen]);
 
   if (isLoading) {
+    console.log("[TechnicalCanvas] RENDER: Loading state...");
     return <div className="text-center py-8 text-muted-foreground">Chargement des schémas...</div>;
   }
+
+  console.log("[TechnicalCanvas] RENDER: Full canvas - schemas:", schemas.length, "activeTab:", activeTab);
 
   return (
     <div className={`${isFullscreen ? "fixed inset-0 z-50 bg-white p-4" : "space-y-4"}`}>
