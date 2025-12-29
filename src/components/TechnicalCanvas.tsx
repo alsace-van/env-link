@@ -1,8 +1,8 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.08 - Fix surbrillance verte reste
-//                 après fermeture panneau circuits
+// VERSION: 4.09 - Fix stabilité updateNodeHandles
+//                 + nettoyage asynchrone
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2407,72 +2407,75 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // Fonction pour mettre à jour les handles d'un bloc
   const updateNodeHandles = useCallback((nodeId: string, handles: BlockHandles) => {
-    setNodeHandles((prev) => ({ ...prev, [nodeId]: handles }));
+    // Mettre à jour les handles
+    setNodeHandles((prev) => {
+      const oldHandles = prev[nodeId] || DEFAULT_HANDLES;
 
-    // Nettoyer les circuits et flux types orphelins (handles qui n'existent plus)
-    setNodeHandleCircuits((prev) => {
-      const nodeCircuits = prev[nodeId] || {};
-      const cleanedCircuits: HandleCircuits = {};
-
-      Object.entries(nodeCircuits).forEach(([handleId, circuitNum]) => {
-        // Extraire le côté et le numéro du handle (ex: "top-2" -> side="top", num=2)
-        const [side, numStr] = handleId.split("-");
-        const num = parseInt(numStr, 10);
-
-        // Garder seulement si le handle existe encore
-        const maxForSide = handles[side as keyof BlockHandles] || 1;
-        if (num <= maxForSide) {
-          cleanedCircuits[handleId] = circuitNum;
+      // Déterminer si on a réduit des handles
+      const sidesReduced: string[] = [];
+      (["top", "bottom", "left", "right"] as const).forEach((side) => {
+        if (handles[side] < (oldHandles[side] || 1)) {
+          sidesReduced.push(side);
         }
       });
 
-      return { ...prev, [nodeId]: cleanedCircuits };
-    });
+      // Si des handles ont été réduits, nettoyer les données orphelines
+      if (sidesReduced.length > 0) {
+        // Nettoyer circuits (dans un setTimeout pour éviter les conflits)
+        setTimeout(() => {
+          setNodeHandleCircuits((prevCircuits) => {
+            const nodeCircuits = prevCircuits[nodeId] || {};
+            const cleanedCircuits: HandleCircuits = {};
+            Object.entries(nodeCircuits).forEach(([handleId, circuitNum]) => {
+              const [side, numStr] = handleId.split("-");
+              const num = parseInt(numStr, 10);
+              const maxForSide = handles[side as keyof BlockHandles] || 1;
+              if (num <= maxForSide) {
+                cleanedCircuits[handleId] = circuitNum;
+              }
+            });
+            return { ...prevCircuits, [nodeId]: cleanedCircuits };
+          });
 
-    setNodeHandleFluxTypes((prev) => {
-      const nodeFluxTypes = prev[nodeId] || {};
-      const cleanedFluxTypes: HandleFluxTypes = {};
+          setNodeHandleFluxTypes((prevFlux) => {
+            const nodeFluxTypes = prevFlux[nodeId] || {};
+            const cleanedFluxTypes: HandleFluxTypes = {};
+            Object.entries(nodeFluxTypes).forEach(([handleId, fluxType]) => {
+              const [side, numStr] = handleId.split("-");
+              const num = parseInt(numStr, 10);
+              const maxForSide = handles[side as keyof BlockHandles] || 1;
+              if (num <= maxForSide) {
+                cleanedFluxTypes[handleId] = fluxType;
+              }
+            });
+            return { ...prevFlux, [nodeId]: cleanedFluxTypes };
+          });
 
-      Object.entries(nodeFluxTypes).forEach(([handleId, fluxType]) => {
-        const [side, numStr] = handleId.split("-");
-        const num = parseInt(numStr, 10);
+          setEdges((prevEdges) => {
+            return prevEdges.filter((edge) => {
+              const isSource = edge.source_node_id === nodeId;
+              const isTarget = edge.target_node_id === nodeId;
+              if (!isSource && !isTarget) return true;
 
-        const maxForSide = handles[side as keyof BlockHandles] || 1;
-        if (num <= maxForSide) {
-          cleanedFluxTypes[handleId] = fluxType;
-        }
-      });
+              if (isSource && edge.source_handle) {
+                const [side, numStr] = edge.source_handle.split("-");
+                const num = parseInt(numStr, 10);
+                const maxForSide = handles[side as keyof BlockHandles] || 1;
+                if (num > maxForSide) return false;
+              }
+              if (isTarget && edge.target_handle) {
+                const [side, numStr] = edge.target_handle.split("-");
+                const num = parseInt(numStr, 10);
+                const maxForSide = handles[side as keyof BlockHandles] || 1;
+                if (num > maxForSide) return false;
+              }
+              return true;
+            });
+          });
+        }, 0);
+      }
 
-      return { ...prev, [nodeId]: cleanedFluxTypes };
-    });
-
-    // Supprimer les câbles connectés aux handles supprimés
-    setEdges((prev) => {
-      return prev.filter((edge) => {
-        // Vérifier si le câble est connecté à ce noeud
-        const isSource = edge.source_node_id === nodeId;
-        const isTarget = edge.target_node_id === nodeId;
-
-        if (!isSource && !isTarget) return true; // Pas concerné
-
-        // Vérifier le handle source
-        if (isSource && edge.source_handle) {
-          const [side, numStr] = edge.source_handle.split("-");
-          const num = parseInt(numStr, 10);
-          const maxForSide = handles[side as keyof BlockHandles] || 1;
-          if (num > maxForSide) return false; // Handle supprimé
-        }
-
-        // Vérifier le handle target
-        if (isTarget && edge.target_handle) {
-          const [side, numStr] = edge.target_handle.split("-");
-          const num = parseInt(numStr, 10);
-          const maxForSide = handles[side as keyof BlockHandles] || 1;
-          if (num > maxForSide) return false; // Handle supprimé
-        }
-
-        return true;
-      });
+      return { ...prev, [nodeId]: handles };
     });
   }, []);
 
