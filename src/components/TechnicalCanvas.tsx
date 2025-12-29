@@ -1,8 +1,8 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.15 - Nettoyage automatique câbles orphelins
-//                 + bouton nettoyage manuel
+// VERSION: 4.16 - Debug nettoyage câbles orphelins
+//                 + support format ReactFlow et SchemaEdge
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2566,17 +2566,34 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     (currentEdges: typeof edges, currentHandles: typeof nodeHandles, currentItems: typeof items) => {
       const itemIds = new Set(currentItems.map((item) => item.id));
 
+      console.log("[cleanOrphanEdges] Checking", currentEdges.length, "edges");
+      console.log("[cleanOrphanEdges] Known items:", Array.from(itemIds).slice(0, 5), "...");
+      console.log("[cleanOrphanEdges] NodeHandles keys:", Object.keys(currentHandles).slice(0, 5), "...");
+
+      // Log du premier edge pour voir sa structure
+      if (currentEdges.length > 0) {
+        console.log("[cleanOrphanEdges] First edge structure:", JSON.stringify(currentEdges[0], null, 2));
+      }
+
       const orphanEdgeIds: string[] = [];
 
       currentEdges.forEach((edge) => {
         // Utiliser les propriétés snake_case de SchemaEdge
-        const sourceNodeId = edge.source_node_id;
-        const targetNodeId = edge.target_node_id;
-        const sourceHandle = edge.source_handle;
-        const targetHandle = edge.target_handle;
+        // Mais aussi vérifier les propriétés ReactFlow au cas où
+        const sourceNodeId = edge.source_node_id || (edge as any).source;
+        const targetNodeId = edge.target_node_id || (edge as any).target;
+        const sourceHandle = edge.source_handle || (edge as any).sourceHandle;
+        const targetHandle = edge.target_handle || (edge as any).targetHandle;
 
         // Vérifier que les nodes existent
-        if (!sourceNodeId || !targetNodeId || !itemIds.has(sourceNodeId) || !itemIds.has(targetNodeId)) {
+        if (!sourceNodeId || !targetNodeId) {
+          console.log("[cleanOrphanEdges] Edge", edge.id, "missing node ids");
+          orphanEdgeIds.push(edge.id);
+          return;
+        }
+
+        if (!itemIds.has(sourceNodeId) || !itemIds.has(targetNodeId)) {
+          console.log("[cleanOrphanEdges] Edge", edge.id, "has unknown nodes:", sourceNodeId, "->", targetNodeId);
           orphanEdgeIds.push(edge.id);
           return;
         }
@@ -2588,6 +2605,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           const nodeHandlesConfig = currentHandles[sourceNodeId] || DEFAULT_HANDLES;
           const maxForSide = nodeHandlesConfig[side as keyof BlockHandles] || 1;
           if (num > maxForSide) {
+            console.log("[cleanOrphanEdges] Edge", edge.id, "orphan source handle:", sourceHandle, "max:", maxForSide);
             orphanEdgeIds.push(edge.id);
             return;
           }
@@ -2600,6 +2618,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           const nodeHandlesConfig = currentHandles[targetNodeId] || DEFAULT_HANDLES;
           const maxForSide = nodeHandlesConfig[side as keyof BlockHandles] || 1;
           if (num > maxForSide) {
+            console.log("[cleanOrphanEdges] Edge", edge.id, "orphan target handle:", targetHandle, "max:", maxForSide);
             orphanEdgeIds.push(edge.id);
             return;
           }
