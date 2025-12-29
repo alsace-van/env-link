@@ -1,8 +1,8 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.13 - Système de backup automatique
-//                 + bouton restauration backup
+// VERSION: 4.14 - Sauvegarde Supabase + localStorage
+//                 Migration automatique des anciennes données
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -4438,22 +4438,50 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     [snapToGrid, snapPosition, onNodesChange],
   );
 
-  // Charger les items sauvegardés dans le schéma (depuis localStorage)
-  const loadSchemaData = useCallback(() => {
+  // Charger les items sauvegardés dans le schéma (depuis Supabase, avec fallback localStorage)
+  const loadSchemaData = useCallback(async () => {
     if (!projectId) {
       console.log("[Schema] loadSchemaData - no projectId, skipping");
       return;
     }
 
     try {
-      const storageKey = `electrical_schema_${projectId}`;
-      const stored = localStorage.getItem(storageKey);
-      console.log("[Schema] loadSchemaData - key:", storageKey);
-      console.log("[Schema] loadSchemaData - stored data exists:", !!stored);
+      console.log("[Schema] loadSchemaData - Loading from Supabase for project:", projectId);
 
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        console.log("[Schema] loadSchemaData - parsed data:", {
+      // 1. Essayer de charger depuis Supabase d'abord
+      const { data: supabaseData, error: supabaseError } = await (supabase as any)
+        .from("electrical_schemas")
+        .select("schema_data, items_count, edges_count, updated_at")
+        .eq("project_id", projectId)
+        .single();
+
+      let parsed: any = null;
+      let source = "none";
+
+      if (supabaseData && !supabaseError) {
+        // Données trouvées dans Supabase
+        parsed = supabaseData.schema_data;
+        source = "supabase";
+        console.log("[Schema] loadSchemaData - Found in Supabase:", {
+          items: supabaseData.items_count,
+          edges: supabaseData.edges_count,
+          updated_at: supabaseData.updated_at,
+        });
+      } else {
+        // 2. Fallback sur localStorage
+        console.log("[Schema] loadSchemaData - Not in Supabase, trying localStorage...");
+        const storageKey = `electrical_schema_${projectId}`;
+        const stored = localStorage.getItem(storageKey);
+
+        if (stored) {
+          parsed = JSON.parse(stored);
+          source = "localStorage";
+          console.log("[Schema] loadSchemaData - Found in localStorage");
+        }
+      }
+
+      if (parsed) {
+        console.log("[Schema] loadSchemaData - Loading from", source, ":", {
           edges: parsed.edges?.length || 0,
           items: parsed.items?.length || 0,
           layers: parsed.layers?.length || 0,
@@ -4492,10 +4520,29 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         if (parsed.items && parsed.items.length > 0) {
           console.log("[Schema] loadSchemaData - setting items:", parsed.items.length);
           setItems(parsed.items);
-          // VERSION 4.11: Mémoriser le nombre initial d'items
           initialItemsCountRef.current = parsed.items.length;
+
+          // Si chargé depuis localStorage mais pas dans Supabase, migrer vers Supabase
+          if (source === "localStorage") {
+            console.log("[Schema] Migrating localStorage data to Supabase...");
+            // Migration automatique en arrière-plan
+            const { data: userData } = await supabase.auth.getUser();
+            if (userData?.user?.id) {
+              await (supabase as any).from("electrical_schemas").upsert(
+                {
+                  project_id: projectId,
+                  user_id: userData.user.id,
+                  schema_data: parsed,
+                  items_count: parsed.items?.length || 0,
+                  edges_count: parsed.edges?.length || 0,
+                },
+                { onConflict: "project_id" },
+              );
+              console.log("[Schema] Migration to Supabase completed");
+            }
+          }
         } else {
-          console.log("[Schema] loadSchemaData - no items in localStorage");
+          console.log("[Schema] loadSchemaData - no items found");
           setItems([]);
           initialItemsCountRef.current = 0;
         }
@@ -4510,14 +4557,10 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           setCircuits(parsed.circuits);
         }
 
-        // VERSION 4.11: Marquer le chargement comme terminé
         hasLoadedDataRef.current = true;
-        console.log(
-          "[Schema] loadSchemaData - DONE loading from localStorage, initialItems:",
-          initialItemsCountRef.current,
-        );
+        console.log("[Schema] loadSchemaData - DONE from", source, ", initialItems:", initialItemsCountRef.current);
       } else {
-        console.log("[Schema] loadSchemaData - no localStorage data found");
+        console.log("[Schema] loadSchemaData - no data found anywhere");
         setItems([]);
         setEdges([]);
         setNodeHandles({});
@@ -4525,7 +4568,6 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         setActiveLayerId("layer-default");
         setAnnotations([]);
         setCircuits({});
-        // VERSION 4.11: Aucune donnée initiale
         initialItemsCountRef.current = 0;
         hasLoadedDataRef.current = true;
       }
@@ -4537,7 +4579,6 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       setNodeHandles({});
       setLayers([createDefaultLayer()]);
       setActiveLayerId("layer-default");
-      // VERSION 4.11: Erreur = pas de données fiables
       hasLoadedDataRef.current = true;
       initialItemsCountRef.current = 0;
     }
@@ -5321,7 +5362,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   }, [selectedEdgeId]);
 
   const saveSchema = async () => {
-    // VERSION 4.11: Protection renforcée contre la perte de données
+    // VERSION 4.14: Sauvegarde dans Supabase + localStorage backup
     console.log(
       "[Schema] saveSchema called - items:",
       items.length,
@@ -5367,27 +5408,47 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         })),
         edges,
         nodeHandles,
-        nodeHandleCircuits, // Sauvegarder les numéros de circuit par handle
-        nodeHandleFluxTypes, // Sauvegarder les types de flux par handle
-        items, // Sauvegarder aussi les items ajoutés au schéma
-        layers, // Sauvegarder les calques
-        annotations, // Sauvegarder les annotations
-        circuits, // Sauvegarder les circuits définis
-        savedAt: new Date().toISOString(), // VERSION 4.13: Timestamp de sauvegarde
+        nodeHandleCircuits,
+        nodeHandleFluxTypes,
+        items,
+        layers,
+        annotations,
+        circuits,
+        savedAt: new Date().toISOString(),
       };
 
-      // VERSION 4.13: Créer un backup avant d'écraser si on a des données valides
+      // 1. Sauvegarder dans Supabase (priorité)
+      const { data: userData } = await supabase.auth.getUser();
+      if (userData?.user?.id) {
+        const { error: supabaseError } = await (supabase as any).from("electrical_schemas").upsert(
+          {
+            project_id: projectId,
+            user_id: userData.user.id,
+            schema_data: schemaToSave,
+            items_count: items.length,
+            edges_count: edges.length,
+          },
+          { onConflict: "project_id" },
+        );
+
+        if (supabaseError) {
+          console.error("[Schema] Supabase save error:", supabaseError);
+          toast.error("Erreur Supabase, sauvegarde locale uniquement");
+        } else {
+          console.log("[Schema] Saved to Supabase - items:", items.length, "edges:", edges.length);
+        }
+      }
+
+      // 2. Backup local (toujours, même si Supabase a réussi)
       if (items.length > 0) {
         const backupKey = `electrical_schema_backup_${projectId}`;
         localStorage.setItem(backupKey, JSON.stringify(schemaToSave));
-        console.log("[Schema] Backup created with", items.length, "items");
       }
-
       localStorage.setItem(`electrical_schema_${projectId}`, JSON.stringify(schemaToSave));
+
       console.log("[Schema] saveSchema SUCCESS - items:", items.length);
-      // Mettre à jour le compteur initial après une sauvegarde réussie
       initialItemsCountRef.current = items.length;
-      toast.success("Schéma sauvegardé");
+      toast.success("Schéma sauvegardé (Supabase + local)");
     } catch (error) {
       console.error("[Schema] saveSchema ERROR:", error);
       toast.error("Erreur lors de la sauvegarde");
