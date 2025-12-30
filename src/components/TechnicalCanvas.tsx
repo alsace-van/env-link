@@ -1,8 +1,8 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.20 - Nettoyage câbles orphelins moins agressif
-//                 Ne vérifie handles que si config explicite
+// VERSION: 4.21 - FIX CRITIQUE: utiliser item.position pour les nodes
+//                 Positions Supabase maintenant appliquées aux blocs
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -5254,8 +5254,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         const savedNode = savedNodes.find((n: any) => n.expense_id === item.id);
         const handles = nodeHandles[item.id] || DEFAULT_HANDLES;
 
-        // Priorité: position actuelle > position sauvegardée > position par défaut
+        // VERSION 4.21: Priorité: position actuelle > position dans item (Supabase) > position localStorage > défaut
         const position = currentNode?.position ??
+          (item.position && typeof item.position.x === "number" ? item.position : null) ??
           (savedNode ? { x: savedNode.position_x, y: savedNode.position_y } : null) ?? {
             x: 100 + (index % 4) * 300,
             y: 100 + Math.floor(index / 4) * 250,
