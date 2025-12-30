@@ -1,8 +1,8 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.17 - Correction restauration positions des blocs
-//                 + nettoyage câbles orphelins
+// VERSION: 4.18 - Debug détaillé sauvegarde/chargement
+//                 Logs positions et timestamps
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -4541,6 +4541,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           items: supabaseData.items_count,
           edges: supabaseData.edges_count,
           updated_at: supabaseData.updated_at,
+          savedAt_in_data: parsed?.savedAt || "not set",
         });
       } else {
         // 2. Fallback sur localStorage
@@ -4556,13 +4557,31 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       }
 
       if (parsed) {
+        // VERSION 4.18: Log détaillé avec timestamp
         console.log("[Schema] loadSchemaData - Loading from", source, ":", {
           edges: parsed.edges?.length || 0,
           items: parsed.items?.length || 0,
           layers: parsed.layers?.length || 0,
           annotations: parsed.annotations?.length || 0,
           circuits: Object.keys(parsed.circuits || {}).length,
+          savedAt: parsed.savedAt || "unknown",
+          hasPositionsInItems: parsed.items?.[0]?.position ? "YES" : "NO",
+          hasNodes: parsed.nodes?.length || 0,
         });
+
+        // Log des positions pour debug
+        if (parsed.items) {
+          console.log("[Schema] loadSchemaData - Checking positions in items:");
+          parsed.items.slice(0, 3).forEach((item: any) => {
+            console.log(`  - ${item.id}: position =`, item.position);
+          });
+        }
+        if (parsed.nodes) {
+          console.log("[Schema] loadSchemaData - Checking positions in nodes:");
+          parsed.nodes.slice(0, 3).forEach((node: any) => {
+            console.log(`  - ${node.id}: x=${node.position_x}, y=${node.position_y}`);
+          });
+        }
 
         // VERSION 4.15: Nettoyer les câbles orphelins AVANT de charger
         let cleanedEdges = parsed.edges || [];
@@ -5538,6 +5557,12 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         };
       });
 
+      // VERSION 4.18: Log des positions pour debug
+      console.log("[Schema] saveSchema - positions to save:");
+      itemsWithPositions.forEach((item) => {
+        console.log(`  - ${item.id}: position =`, item.position);
+      });
+
       const schemaToSave = {
         nodes: nodes.map((node) => ({
           id: node.id,
@@ -5556,26 +5581,41 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         savedAt: new Date().toISOString(),
       };
 
+      console.log("[Schema] saveSchema - schemaToSave.nodes:", schemaToSave.nodes.length, "nodes with positions");
+      console.log("[Schema] saveSchema - schemaToSave.items:", schemaToSave.items.length, "items");
+      console.log("[Schema] saveSchema - first item position:", schemaToSave.items[0]?.position);
+
       // 1. Sauvegarder dans Supabase (priorité)
       const { data: userData } = await supabase.auth.getUser();
+      console.log("[Schema] saveSchema - user:", userData?.user?.id);
+
       if (userData?.user?.id) {
-        const { error: supabaseError } = await (supabase as any).from("electrical_schemas").upsert(
-          {
-            project_id: projectId,
-            user_id: userData.user.id,
-            schema_data: schemaToSave,
-            items_count: items.length,
-            edges_count: edges.length,
-          },
-          { onConflict: "project_id" },
-        );
+        console.log("[Schema] saveSchema - Attempting Supabase upsert...");
+        const { data: upsertData, error: supabaseError } = await (supabase as any)
+          .from("electrical_schemas")
+          .upsert(
+            {
+              project_id: projectId,
+              user_id: userData.user.id,
+              schema_data: schemaToSave,
+              items_count: items.length,
+              edges_count: edges.length,
+            },
+            { onConflict: "project_id" },
+          )
+          .select();
 
         if (supabaseError) {
           console.error("[Schema] Supabase save error:", supabaseError);
-          toast.error("Erreur Supabase, sauvegarde locale uniquement");
+          toast.error("Erreur Supabase: " + supabaseError.message);
         } else {
+          console.log("[Schema] Supabase upsert SUCCESS - response:", upsertData);
           console.log("[Schema] Saved to Supabase - items:", items.length, "edges:", edges.length);
+          toast.success(`Sauvegardé dans Supabase (${items.length} items, ${edges.length} câbles)`);
         }
+      } else {
+        console.error("[Schema] saveSchema - No user ID, cannot save to Supabase!");
+        toast.error("Erreur: utilisateur non connecté");
       }
 
       // 2. Backup local (toujours, même si Supabase a réussi)
