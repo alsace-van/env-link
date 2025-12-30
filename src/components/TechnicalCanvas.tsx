@@ -1,8 +1,8 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.16 - Debug nettoyage câbles orphelins
-//                 + support format ReactFlow et SchemaEdge
+// VERSION: 4.17 - Correction restauration positions des blocs
+//                 + nettoyage câbles orphelins
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -4603,7 +4603,52 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         // Charger les items sauvegardés
         if (parsed.items && parsed.items.length > 0) {
           console.log("[Schema] loadSchemaData - setting items:", parsed.items.length);
-          setItems(parsed.items);
+
+          // VERSION 4.17: Restaurer les positions
+          // Priorité: 1) position dans l'item, 2) position dans nodes, 3) position par défaut
+          let positionMap = new Map<string, { x: number; y: number }>();
+
+          // D'abord, collecter les positions depuis parsed.nodes (backup)
+          if (parsed.nodes && parsed.nodes.length > 0) {
+            parsed.nodes.forEach((node: any) => {
+              if (node.id && (node.position_x !== undefined || node.position?.x !== undefined)) {
+                positionMap.set(node.id, {
+                  x: node.position_x ?? node.position?.x ?? 100,
+                  y: node.position_y ?? node.position?.y ?? 100,
+                });
+              }
+            });
+            console.log("[Schema] loadSchemaData - found", positionMap.size, "positions from nodes");
+          }
+
+          // Appliquer les positions aux items
+          const itemsWithPositions = parsed.items.map((item: any, index: number) => {
+            // Si l'item a déjà une position valide, la garder
+            if (item.position && typeof item.position.x === "number" && typeof item.position.y === "number") {
+              console.log("[Schema] Item", item.id, "has position:", item.position.x, item.position.y);
+              return item;
+            }
+
+            // Sinon, chercher dans positionMap
+            const savedPosition = positionMap.get(item.id);
+            if (savedPosition) {
+              console.log("[Schema] Item", item.id, "restored position from nodes:", savedPosition.x, savedPosition.y);
+              return {
+                ...item,
+                position: savedPosition,
+              };
+            }
+
+            // Position par défaut (grille)
+            const defaultPos = { x: 100 + (index % 5) * 250, y: 100 + Math.floor(index / 5) * 200 };
+            console.log("[Schema] Item", item.id, "using default position:", defaultPos.x, defaultPos.y);
+            return {
+              ...item,
+              position: defaultPos,
+            };
+          });
+
+          setItems(itemsWithPositions);
           initialItemsCountRef.current = parsed.items.length;
 
           // Si chargé depuis localStorage mais pas dans Supabase, migrer vers Supabase
@@ -5483,6 +5528,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
     setSaving(true);
     try {
+      // VERSION 4.17: Sauvegarder les items avec leurs positions actuelles
+      const itemsWithPositions = items.map((item) => {
+        const node = nodes.find((n) => n.id === item.id);
+        return {
+          ...item,
+          position: node ? { x: node.position.x, y: node.position.y } : item.position,
+        };
+      });
+
       const schemaToSave = {
         nodes: nodes.map((node) => ({
           id: node.id,
@@ -5494,7 +5548,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         nodeHandles,
         nodeHandleCircuits,
         nodeHandleFluxTypes,
-        items,
+        items: itemsWithPositions, // Utiliser items avec positions
         layers,
         annotations,
         circuits,
