@@ -1,8 +1,8 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.18 - Debug détaillé sauvegarde/chargement
-//                 Logs positions et timestamps
+// VERSION: 4.19 - Correction nettoyage câbles orphelins
+//                 Vérification stricte des handles
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2563,6 +2563,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   }, []);
 
   // VERSION 4.15: Nettoyer les câbles orphelins (connectés à des handles inexistants)
+  // VERSION 4.19: Amélioration détection câbles orphelins
   const cleanOrphanEdges = useCallback(
     (currentEdges: typeof edges, currentHandles: typeof nodeHandles, currentItems: typeof items) => {
       const itemIds = new Set(currentItems.map((item) => item.id));
@@ -2577,6 +2578,9 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       }
 
       const orphanEdgeIds: string[] = [];
+
+      // VERSION 4.19: DEFAULT pour les blocs sans config = 1 handle par côté (plus strict)
+      const STRICT_DEFAULT: BlockHandles = { top: 1, bottom: 1, left: 1, right: 1 };
 
       currentEdges.forEach((edge) => {
         // Utiliser les propriétés snake_case de SchemaEdge
@@ -2599,29 +2603,67 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           return;
         }
 
+        // VERSION 4.19: Vérification plus stricte des handles
+        // Si le bloc a une config dans nodeHandles, l'utiliser
+        // Sinon utiliser STRICT_DEFAULT (1 handle par côté)
+
         // Vérifier les handles source
         if (sourceHandle) {
-          const [side, numStr] = sourceHandle.split("-");
-          const num = parseInt(numStr, 10);
-          const nodeHandlesConfig = currentHandles[sourceNodeId] || DEFAULT_HANDLES;
-          const maxForSide = nodeHandlesConfig[side as keyof BlockHandles] || 1;
-          if (num > maxForSide) {
-            console.log("[cleanOrphanEdges] Edge", edge.id, "orphan source handle:", sourceHandle, "max:", maxForSide);
-            orphanEdgeIds.push(edge.id);
-            return;
+          const parts = sourceHandle.split("-");
+          if (parts.length === 2) {
+            const [side, numStr] = parts;
+            const num = parseInt(numStr, 10);
+
+            // Utiliser la config du bloc OU strict default
+            const hasExplicitConfig = currentHandles.hasOwnProperty(sourceNodeId);
+            const nodeHandlesConfig = hasExplicitConfig ? currentHandles[sourceNodeId] : STRICT_DEFAULT;
+
+            const maxForSide = nodeHandlesConfig[side as keyof BlockHandles];
+
+            if (maxForSide === undefined || num > maxForSide || num < 1) {
+              console.log(
+                "[cleanOrphanEdges] Edge",
+                edge.id,
+                "orphan source handle:",
+                sourceHandle,
+                "max:",
+                maxForSide,
+                "hasConfig:",
+                hasExplicitConfig,
+              );
+              orphanEdgeIds.push(edge.id);
+              return;
+            }
           }
         }
 
         // Vérifier les handles target
         if (targetHandle) {
-          const [side, numStr] = targetHandle.split("-");
-          const num = parseInt(numStr, 10);
-          const nodeHandlesConfig = currentHandles[targetNodeId] || DEFAULT_HANDLES;
-          const maxForSide = nodeHandlesConfig[side as keyof BlockHandles] || 1;
-          if (num > maxForSide) {
-            console.log("[cleanOrphanEdges] Edge", edge.id, "orphan target handle:", targetHandle, "max:", maxForSide);
-            orphanEdgeIds.push(edge.id);
-            return;
+          const parts = targetHandle.split("-");
+          if (parts.length === 2) {
+            const [side, numStr] = parts;
+            const num = parseInt(numStr, 10);
+
+            // Utiliser la config du bloc OU strict default
+            const hasExplicitConfig = currentHandles.hasOwnProperty(targetNodeId);
+            const nodeHandlesConfig = hasExplicitConfig ? currentHandles[targetNodeId] : STRICT_DEFAULT;
+
+            const maxForSide = nodeHandlesConfig[side as keyof BlockHandles];
+
+            if (maxForSide === undefined || num > maxForSide || num < 1) {
+              console.log(
+                "[cleanOrphanEdges] Edge",
+                edge.id,
+                "orphan target handle:",
+                targetHandle,
+                "max:",
+                maxForSide,
+                "hasConfig:",
+                hasExplicitConfig,
+              );
+              orphanEdgeIds.push(edge.id);
+              return;
+            }
           }
         }
       });
@@ -4585,13 +4627,14 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
         // VERSION 4.15: Nettoyer les câbles orphelins AVANT de charger
         let cleanedEdges = parsed.edges || [];
+        let orphansRemoved = 0;
         if (parsed.edges && parsed.items) {
           const beforeCount = parsed.edges.length;
           cleanedEdges = cleanOrphanEdges(parsed.edges, parsed.nodeHandles || {}, parsed.items);
-          const removedCount = beforeCount - cleanedEdges.length;
-          if (removedCount > 0) {
-            console.log("[Schema] loadSchemaData - Cleaned", removedCount, "orphan edges");
-            toast.info(`${removedCount} câble(s) orphelin(s) supprimé(s)`);
+          orphansRemoved = beforeCount - cleanedEdges.length;
+          if (orphansRemoved > 0) {
+            console.log("[Schema] loadSchemaData - Cleaned", orphansRemoved, "orphan edges");
+            toast.info(`${orphansRemoved} câble(s) orphelin(s) supprimé(s)`);
           }
         }
 
@@ -4708,6 +4751,41 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
         hasLoadedDataRef.current = true;
         console.log("[Schema] loadSchemaData - DONE from", source, ", initialItems:", initialItemsCountRef.current);
+
+        // VERSION 4.19: Auto-save si des orphelins ont été supprimés
+        if (orphansRemoved > 0) {
+          console.log("[Schema] Auto-saving after orphan cleanup...");
+          // Sauvegarde différée pour éviter conflits avec le state
+          setTimeout(async () => {
+            const { data: userData } = await supabase.auth.getUser();
+            if (userData?.user?.id) {
+              // Mettre à jour parsed avec les edges nettoyés
+              const cleanedSchema = {
+                ...parsed,
+                edges: cleanedEdges,
+                savedAt: new Date().toISOString(),
+              };
+
+              const { error: saveError } = await (supabase as any).from("electrical_schemas").upsert(
+                {
+                  project_id: projectId,
+                  user_id: userData.user.id,
+                  schema_data: cleanedSchema,
+                  items_count: parsed.items?.length || 0,
+                  edges_count: cleanedEdges.length,
+                },
+                { onConflict: "project_id" },
+              );
+
+              if (saveError) {
+                console.error("[Schema] Auto-save orphan cleanup failed:", saveError);
+              } else {
+                console.log("[Schema] Auto-save orphan cleanup SUCCESS - edges:", cleanedEdges.length);
+                toast.success(`Nettoyage auto sauvegardé (${orphansRemoved} câbles orphelins supprimés)`);
+              }
+            }
+          }, 1000);
+        }
       } else {
         console.log("[Schema] loadSchemaData - no data found anywhere");
         setItems([]);
