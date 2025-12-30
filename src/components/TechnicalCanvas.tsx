@@ -1,8 +1,8 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.19 - Correction nettoyage câbles orphelins
-//                 Vérification stricte des handles
+// VERSION: 4.20 - Nettoyage câbles orphelins moins agressif
+//                 Ne vérifie handles que si config explicite
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2563,7 +2563,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
   }, []);
 
   // VERSION 4.15: Nettoyer les câbles orphelins (connectés à des handles inexistants)
-  // VERSION 4.19: Amélioration détection câbles orphelins
+  // VERSION 4.20: Correction nettoyage câbles orphelins (moins agressif)
   const cleanOrphanEdges = useCallback(
     (currentEdges: typeof edges, currentHandles: typeof nodeHandles, currentItems: typeof items) => {
       const itemIds = new Set(currentItems.map((item) => item.id));
@@ -2579,16 +2579,11 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
       const orphanEdgeIds: string[] = [];
 
-      // VERSION 4.19: DEFAULT pour les blocs sans config = 1 handle par côté (plus strict)
-      const STRICT_DEFAULT: BlockHandles = { top: 1, bottom: 1, left: 1, right: 1 };
-
       currentEdges.forEach((edge) => {
         // Utiliser les propriétés snake_case de SchemaEdge
         // Mais aussi vérifier les propriétés ReactFlow au cas où
         const sourceNodeId = edge.source_node_id || (edge as any).source;
         const targetNodeId = edge.target_node_id || (edge as any).target;
-        const sourceHandle = edge.source_handle || (edge as any).sourceHandle;
-        const targetHandle = edge.target_handle || (edge as any).targetHandle;
 
         // Vérifier que les nodes existent
         if (!sourceNodeId || !targetNodeId) {
@@ -2597,30 +2592,28 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           return;
         }
 
+        // VERSION 4.20: Seulement vérifier si les NODES existent
+        // Ne pas vérifier les handles car DEFAULT_HANDLES permet 2 par côté
         if (!itemIds.has(sourceNodeId) || !itemIds.has(targetNodeId)) {
           console.log("[cleanOrphanEdges] Edge", edge.id, "has unknown nodes:", sourceNodeId, "->", targetNodeId);
           orphanEdgeIds.push(edge.id);
           return;
         }
 
-        // VERSION 4.19: Vérification plus stricte des handles
-        // Si le bloc a une config dans nodeHandles, l'utiliser
-        // Sinon utiliser STRICT_DEFAULT (1 handle par côté)
+        // VERSION 4.20: Vérifier les handles SEULEMENT si le bloc a une config explicite
+        const sourceHandle = edge.source_handle || (edge as any).sourceHandle;
+        const targetHandle = edge.target_handle || (edge as any).targetHandle;
 
-        // Vérifier les handles source
-        if (sourceHandle) {
+        // Vérifier handle source seulement si config explicite existe
+        if (sourceHandle && currentHandles.hasOwnProperty(sourceNodeId)) {
           const parts = sourceHandle.split("-");
           if (parts.length === 2) {
             const [side, numStr] = parts;
             const num = parseInt(numStr, 10);
-
-            // Utiliser la config du bloc OU strict default
-            const hasExplicitConfig = currentHandles.hasOwnProperty(sourceNodeId);
-            const nodeHandlesConfig = hasExplicitConfig ? currentHandles[sourceNodeId] : STRICT_DEFAULT;
-
+            const nodeHandlesConfig = currentHandles[sourceNodeId];
             const maxForSide = nodeHandlesConfig[side as keyof BlockHandles];
 
-            if (maxForSide === undefined || num > maxForSide || num < 1) {
+            if (maxForSide !== undefined && (num > maxForSide || num < 1)) {
               console.log(
                 "[cleanOrphanEdges] Edge",
                 edge.id,
@@ -2628,8 +2621,6 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 sourceHandle,
                 "max:",
                 maxForSide,
-                "hasConfig:",
-                hasExplicitConfig,
               );
               orphanEdgeIds.push(edge.id);
               return;
@@ -2637,20 +2628,16 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           }
         }
 
-        // Vérifier les handles target
-        if (targetHandle) {
+        // Vérifier handle target seulement si config explicite existe
+        if (targetHandle && currentHandles.hasOwnProperty(targetNodeId)) {
           const parts = targetHandle.split("-");
           if (parts.length === 2) {
             const [side, numStr] = parts;
             const num = parseInt(numStr, 10);
-
-            // Utiliser la config du bloc OU strict default
-            const hasExplicitConfig = currentHandles.hasOwnProperty(targetNodeId);
-            const nodeHandlesConfig = hasExplicitConfig ? currentHandles[targetNodeId] : STRICT_DEFAULT;
-
+            const nodeHandlesConfig = currentHandles[targetNodeId];
             const maxForSide = nodeHandlesConfig[side as keyof BlockHandles];
 
-            if (maxForSide === undefined || num > maxForSide || num < 1) {
+            if (maxForSide !== undefined && (num > maxForSide || num < 1)) {
               console.log(
                 "[cleanOrphanEdges] Edge",
                 edge.id,
@@ -2658,8 +2645,6 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 targetHandle,
                 "max:",
                 maxForSide,
-                "hasConfig:",
-                hasExplicitConfig,
               );
               orphanEdgeIds.push(edge.id);
               return;
