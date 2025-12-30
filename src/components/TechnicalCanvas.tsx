@@ -158,6 +158,7 @@ interface ElectricalItem {
   distributeur_polarite?: string | null; // Polarité du distributeur (+, -)
   type_connexion?: string | null; // Type de connexion (cosse_ronde, mc4, borne_vis)
   filetage?: string | null; // Filetage des connexions (M5, M6, M8, M10) pour cosses
+  position?: { x: number; y: number }; // VERSION 4.17: Position du bloc sur le canvas
 }
 
 // Configuration des handles par bloc
