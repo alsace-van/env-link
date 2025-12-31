@@ -1,12 +1,11 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.23 - Sauvegarde auto après réduction handles
-//                 Évite les câbles orphelins persistants
+// VERSION: 4.24 - Bouton suppression calque + nettoyage silencieux
 // ============================================
 
 // Constante de version (utilisée dans les logs)
-const TECHNICAL_CANVAS_VERSION = "4.23";
+const TECHNICAL_CANVAS_VERSION = "4.24";
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -6102,7 +6101,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
               <div
                 key={layer.id}
                 className={`
-                  flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-md text-sm font-medium transition-all flex-shrink-0
+                  group flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-md text-sm font-medium transition-all flex-shrink-0
                   ${isActive ? "bg-white shadow-sm" : "hover:bg-white/50"}
                   ${!layer.visible ? "opacity-50" : ""}
                 `}
@@ -6184,6 +6183,64 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                     <EyeOff className="h-3.5 w-3.5 text-slate-400" />
                   )}
                 </button>
+                {/* VERSION 4.23: Bouton X pour supprimer le calque */}
+                {layers.length > 1 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const itemsInLayer = items.filter((i) => (i.layerId || "layer-default") === layer.id).length;
+                      const edgesInLayer = edges.filter((e) => (e.layerId || "layer-default") === layer.id).length;
+                      const totalInLayer = itemsInLayer + edgesInLayer;
+
+                      let confirmMsg = `Supprimer le calque "${layer.name}" ?`;
+                      if (totalInLayer > 0) {
+                        confirmMsg = `Le calque "${layer.name}" contient ${totalInLayer} élément(s).\n\nIls seront déplacés vers le premier calque restant.\n\nContinuer ?`;
+                      }
+
+                      if (confirm(confirmMsg)) {
+                        // Trouver le premier calque restant pour y déplacer les éléments
+                        const remainingLayers = layers.filter((l) => l.id !== layer.id);
+                        const targetLayerId = remainingLayers[0]?.id || "layer-default";
+
+                        // Déplacer les items
+                        if (itemsInLayer > 0) {
+                          setItems((prev) =>
+                            prev.map((item) =>
+                              (item.layerId || "layer-default") === layer.id
+                                ? { ...item, layerId: targetLayerId }
+                                : item,
+                            ),
+                          );
+                        }
+
+                        // Déplacer les edges
+                        if (edgesInLayer > 0) {
+                          setEdges((prev) =>
+                            prev.map((edge) =>
+                              (edge.layerId || "layer-default") === layer.id
+                                ? { ...edge, layerId: targetLayerId }
+                                : edge,
+                            ),
+                          );
+                        }
+
+                        // Supprimer le calque
+                        handleLayersChange(remainingLayers);
+
+                        // Si le calque supprimé était actif, activer le premier restant
+                        if (activeLayerId === layer.id) {
+                          setActiveLayerId(targetLayerId);
+                        }
+
+                        toast.success(`Calque "${layer.name}" supprimé`);
+                      }
+                    }}
+                    className="p-1 rounded hover:bg-red-100 transition-colors opacity-0 group-hover:opacity-100"
+                    title="Supprimer ce calque"
+                  >
+                    <X className="h-3.5 w-3.5 text-red-500" />
+                  </button>
+                )}
               </div>
             );
           })}
