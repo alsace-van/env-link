@@ -6183,13 +6183,15 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                     <EyeOff className="h-3.5 w-3.5 text-slate-400" />
                   )}
                 </button>
-                {/* VERSION 4.23: Bouton X pour supprimer le calque */}
+                {/* VERSION 4.24: Bouton X pour supprimer le calque */}
                 {layers.length > 1 && (
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={(evt) => {
+                      evt.stopPropagation();
                       const itemsInLayer = items.filter((i) => (i.layerId || "layer-default") === layer.id).length;
-                      const edgesInLayer = edges.filter((e) => (e.layerId || "layer-default") === layer.id).length;
+                      const edgesInLayer = edges.filter(
+                        (edge) => (edge.layerId || "layer-default") === layer.id,
+                      ).length;
                       const totalInLayer = itemsInLayer + edgesInLayer;
 
                       let confirmMsg = `Supprimer le calque "${layer.name}" ?`;
@@ -6216,10 +6218,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                         // Déplacer les edges
                         if (edgesInLayer > 0) {
                           setEdges((prev) =>
-                            prev.map((edge) =>
-                              (edge.layerId || "layer-default") === layer.id
-                                ? { ...edge, layerId: targetLayerId }
-                                : edge,
+                            prev.map((edg) =>
+                              (edg.layerId || "layer-default") === layer.id ? { ...edg, layerId: targetLayerId } : edg,
                             ),
                           );
                         }
