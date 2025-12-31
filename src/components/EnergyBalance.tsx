@@ -1,7 +1,7 @@
 // ============================================
 // EnergyBalance.tsx
 // Bilan énergétique du projet
-// VERSION: 2.6 - Support puissance_charge_watts pour chargeurs et combis
+// VERSION: 2.7 - Import catalogue avec capacite_ah pour batteries
 // ============================================
 
 import { useEffect, useState, useRef } from "react";
@@ -46,6 +46,8 @@ interface Accessory {
   marque?: string;
   prix_vente_ttc?: number;
   puissance_watts?: number;
+  puissance_charge_watts?: number;
+  capacite_ah?: number;
   category_id: string;
   type_electrique?: string;
 }
@@ -173,9 +175,12 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
   };
 
   const loadAccessoriesByCategory = async (categoryId: string) => {
+    // VERSION 2.7: Récupérer tous les champs techniques pour batteries et chargeurs
     const { data, error } = await supabase
       .from("accessories_catalog")
-      .select("id, nom, marque, prix_vente_ttc, puissance_watts, category_id, type_electrique")
+      .select(
+        "id, nom, marque, prix_vente_ttc, puissance_watts, puissance_charge_watts, capacite_ah, category_id, type_electrique",
+      )
       .eq("category_id", categoryId)
       .not("type_electrique", "is", null);
 
@@ -262,12 +267,14 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
       return;
     }
 
+    // VERSION 2.7: Inclure capacite_ah pour les batteries
     const newDraftItem: DraftItem = {
       id: `draft-${Date.now()}-${Math.random()}`,
       nom_accessoire: `${selectedAccessory.nom}${selectedAccessory.marque ? ` - ${selectedAccessory.marque}` : ""}`,
       type_electrique: selectedAccessory.type_electrique || "consommateur",
       quantite: 1,
-      puissance_watts: selectedAccessory.puissance_watts || null,
+      puissance_watts: selectedAccessory.puissance_watts || selectedAccessory.puissance_charge_watts || null,
+      capacite_ah: selectedAccessory.capacite_ah || null,
       intensite_amperes: null,
       temps_utilisation_heures: null,
       temps_production_heures: null,
@@ -307,7 +314,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
 
     const itemsToTransfer = draftItems.filter((item) => selectedDraftItems.has(item.id));
 
-    // Insérer dans project_expenses avec le scenario_id
+    // VERSION 2.7: Inclure capacite_ah dans le transfert
     const expensesToInsert = itemsToTransfer.map((item) => ({
       project_id: projectId,
       scenario_id: principalScenarioId,
@@ -315,6 +322,7 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
       type_electrique: item.type_electrique,
       quantite: item.quantite,
       puissance_watts: item.puissance_watts,
+      capacite_ah: item.capacite_ah,
       intensite_amperes: item.intensite_amperes,
       temps_utilisation_heures: item.temps_utilisation_heures,
       temps_production_heures: item.temps_production_heures,
