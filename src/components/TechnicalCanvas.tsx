@@ -1,9 +1,11 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.21 - FIX CRITIQUE: utiliser item.position pour les nodes
-//                 Positions Supabase maintenant appliquées aux blocs
+// VERSION: 4.22 - Affichage version dynamique dans les logs
 // ============================================
+
+// Constante de version (utilisée dans les logs)
+const TECHNICAL_CANVAS_VERSION = "4.22";
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -8836,7 +8838,7 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
 
   // Log de diagnostic au montage
   useEffect(() => {
-    console.log("[TechnicalCanvas] 🟢 Component MOUNTED - v4.10 - projectId:", projectId);
+    console.log(`[TechnicalCanvas] 🟢 Component MOUNTED - v${TECHNICAL_CANVAS_VERSION} - projectId:`, projectId);
     console.log("[TechnicalCanvas] Session check:", {
       timestamp: new Date().toISOString(),
       userAgent: navigator.userAgent.slice(0, 50),
