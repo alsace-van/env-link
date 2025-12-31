@@ -76,8 +76,9 @@ const Dashboard = () => {
     }
   };
 
-  const handleProjectCreated = () => {
+  const handleProjectCreated = (projectId?: string) => {
     setRefreshKey((prev) => prev + 1);
+    // La navigation est maintenant gérée dans ProjectForm
   };
 
   const handleProjectSelect = (projectId: string) => {

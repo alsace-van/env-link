@@ -1,10 +1,11 @@
 // ============================================
 // COMPOSANT: ProjectForm
 // Formulaire de création/édition de projet
-// VERSION: 2.2 - Fix parsing pays (objet JSON)
+// VERSION: 2.3 - Navigation automatique vers le projet créé
 // ============================================
 
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,12 +45,14 @@ interface VehicleCatalog {
 }
 
 interface ProjectFormProps {
-  onProjectCreated: () => void;
+  onProjectCreated: (projectId?: string) => void;
   existingProject?: any; // Projet existant à éditer
   isEditMode?: boolean; // Mode édition
 }
 
 const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: ProjectFormProps) => {
+  const navigate = useNavigate();
+
   // Fonction pour convertir une date française (JJ/MM/AAAA) en format ISO (AAAA-MM-JJ)
   const convertFrenchDateToISO = (frenchDate: string | undefined | null): string | null => {
     if (!frenchDate) return null;
@@ -592,12 +595,17 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
     };
 
     let result;
+    let newProjectId: string | null = null;
+
     if (isEditMode && existingProject) {
       // Mode édition : update
       result = await supabase.from("projects").update(projectData).eq("id", existingProject.id);
     } else {
-      // Mode création : insert
-      result = await supabase.from("projects").insert(projectData);
+      // Mode création : insert avec retour de l'ID
+      result = await supabase.from("projects").insert(projectData).select("id").single();
+      if (result.data) {
+        newProjectId = result.data.id;
+      }
     }
 
     const { error } = result;
@@ -616,8 +624,10 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
       return;
     }
 
-    // En mode création seulement : reset du formulaire
+    // En mode création : toast + navigation vers le projet
     toast.success("Projet créé avec succès !");
+
+    // Reset du formulaire
     e.currentTarget.reset();
     setSelectedMarque("");
     setSelectedModele("");
@@ -633,10 +643,15 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
     setManualDateMiseCirculation("");
     setManualTypeMine("");
 
-    // Petit délai pour laisser la BDD persister les données
-    setTimeout(() => {
-      onProjectCreated();
-    }, 200);
+    // Notifier le parent et naviguer vers le projet
+    onProjectCreated(newProjectId || undefined);
+
+    // VERSION 2.3: Navigation automatique vers le projet créé
+    if (newProjectId) {
+      setTimeout(() => {
+        navigate(`/project/${newProjectId}`);
+      }, 300);
+    }
   };
 
   return (

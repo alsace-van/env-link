@@ -1924,7 +1924,7 @@ const ProjectDetail = () => {
           <ProjectForm
             existingProject={project}
             isEditMode={true}
-            onProjectCreated={async () => {
+            onProjectCreated={async (_projectId?: string) => {
               setIsEditDimensionsOpen(false);
               // Recharger le projet
               const { data: updatedProject } = await supabase
