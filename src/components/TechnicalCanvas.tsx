@@ -5775,6 +5775,20 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
     }
   };
 
+  // VERSION 4.24: Ref pour saveSchema (évite les dépendances circulaires)
+  const saveSchemaRef = useRef(saveSchema);
+  saveSchemaRef.current = saveSchema;
+
+  // VERSION 4.24: Listener pour sauvegarde auto après réduction handles
+  useEffect(() => {
+    const handleSchemaNeedsSave = () => {
+      console.log("[BlocksInstance] 💾 Received schema-needs-save event - auto-saving...");
+      saveSchemaRef.current();
+    };
+    window.addEventListener("schema-needs-save", handleSchemaNeedsSave);
+    return () => window.removeEventListener("schema-needs-save", handleSchemaNeedsSave);
+  }, []);
+
   const resetSchema = () => {
     if (!confirm("Réinitialiser le schéma ? Tous les blocs et câbles seront supprimés.")) return;
     localStorage.removeItem(`electrical_schema_${projectId}`);
@@ -9015,16 +9029,6 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isFullscreen]);
-
-  // VERSION 4.23: Listener pour sauvegarde auto après réduction handles
-  useEffect(() => {
-    const handleSchemaNeedsSave = () => {
-      console.log("[TechnicalCanvas] 💾 Received schema-needs-save event - auto-saving...");
-      saveSchema();
-    };
-    window.addEventListener("schema-needs-save", handleSchemaNeedsSave);
-    return () => window.removeEventListener("schema-needs-save", handleSchemaNeedsSave);
-  }, [items, edges, nodeHandles, layers, nodes]);
 
   if (isLoading) {
     console.log("[TechnicalCanvas] RENDER: Loading state...");
