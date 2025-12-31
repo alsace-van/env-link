@@ -1,11 +1,12 @@
 // ============================================
 // TechnicalCanvas.tsx
 // Schéma électrique interactif avec ReactFlow
-// VERSION: 4.22 - Affichage version dynamique dans les logs
+// VERSION: 4.23 - Sauvegarde auto après réduction handles
+//                 Évite les câbles orphelins persistants
 // ============================================
 
 // Constante de version (utilisée dans les logs)
-const TECHNICAL_CANVAS_VERSION = "4.22";
+const TECHNICAL_CANVAS_VERSION = "4.23";
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -2478,10 +2479,28 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
         }
       });
 
+      // VERSION 4.23: Log des changements de handles
+      if (sidesReduced.length > 0) {
+        console.log(
+          "[updateNodeHandles] Node:",
+          nodeId,
+          "Reducing sides:",
+          sidesReduced,
+          "from",
+          oldHandles,
+          "to",
+          handles,
+        );
+      }
+
       // Si des handles ont été réduits, nettoyer les données orphelines
       if (sidesReduced.length > 0) {
+        console.log("[updateNodeHandles] 🧹 Cleaning orphan data for reduced sides:", sidesReduced);
+
         // Nettoyer circuits (dans un setTimeout pour éviter les conflits)
         setTimeout(() => {
+          let edgesRemoved = 0;
+
           setNodeHandleCircuits((prevCircuits) => {
             const nodeCircuits = prevCircuits[nodeId] || {};
             const cleanedCircuits: HandleCircuits = {};
@@ -2511,7 +2530,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           });
 
           setEdges((prevEdges) => {
-            return prevEdges.filter((edge) => {
+            const beforeCount = prevEdges.length;
+            const filtered = prevEdges.filter((edge) => {
               const isSource = edge.source_node_id === nodeId;
               const isTarget = edge.target_node_id === nodeId;
               if (!isSource && !isTarget) return true;
@@ -2520,17 +2540,53 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 const [side, numStr] = edge.source_handle.split("-");
                 const num = parseInt(numStr, 10);
                 const maxForSide = handles[side as keyof BlockHandles] || 1;
-                if (num > maxForSide) return false;
+                if (num > maxForSide) {
+                  console.log(
+                    "[updateNodeHandles] 🗑️ Removing edge",
+                    edge.id,
+                    "- source handle",
+                    edge.source_handle,
+                    "exceeds max",
+                    maxForSide,
+                  );
+                  return false;
+                }
               }
               if (isTarget && edge.target_handle) {
                 const [side, numStr] = edge.target_handle.split("-");
                 const num = parseInt(numStr, 10);
                 const maxForSide = handles[side as keyof BlockHandles] || 1;
-                if (num > maxForSide) return false;
+                if (num > maxForSide) {
+                  console.log(
+                    "[updateNodeHandles] 🗑️ Removing edge",
+                    edge.id,
+                    "- target handle",
+                    edge.target_handle,
+                    "exceeds max",
+                    maxForSide,
+                  );
+                  return false;
+                }
               }
               return true;
             });
+
+            edgesRemoved = beforeCount - filtered.length;
+            if (edgesRemoved > 0) {
+              console.log("[updateNodeHandles] ✅ Cleaned", edgesRemoved, "orphan edges (silent for user)");
+              // VERSION 4.23: Pas de toast - transparent pour l'utilisateur
+            }
+            return filtered;
           });
+
+          // VERSION 4.23: Déclencher sauvegarde auto après 500ms si des edges ont été supprimés
+          // Note: on ne peut pas accéder à edgesRemoved ici car setEdges est async
+          // Donc on déclenche la sauvegarde dans tous les cas quand des handles sont réduits
+          setTimeout(() => {
+            console.log("[updateNodeHandles] 💾 Auto-triggering save after handle reduction");
+            // Déclencher un événement pour forcer la sauvegarde
+            window.dispatchEvent(new CustomEvent("schema-needs-save"));
+          }, 500);
         }, 0);
       }
 
@@ -2566,24 +2622,16 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
 
   // VERSION 4.15: Nettoyer les câbles orphelins (connectés à des handles inexistants)
   // VERSION 4.20: Correction nettoyage câbles orphelins (moins agressif)
+  // VERSION 4.23: Simplifié - ne vérifie que si les nodes existent
   const cleanOrphanEdges = useCallback(
     (currentEdges: typeof edges, currentHandles: typeof nodeHandles, currentItems: typeof items) => {
       const itemIds = new Set(currentItems.map((item) => item.id));
 
-      console.log("[cleanOrphanEdges] Checking", currentEdges.length, "edges");
-      console.log("[cleanOrphanEdges] Known items:", Array.from(itemIds).slice(0, 5), "...");
-      console.log("[cleanOrphanEdges] NodeHandles keys:", Object.keys(currentHandles).slice(0, 5), "...");
-
-      // Log du premier edge pour voir sa structure
-      if (currentEdges.length > 0) {
-        console.log("[cleanOrphanEdges] First edge structure:", JSON.stringify(currentEdges[0], null, 2));
-      }
+      console.log("[cleanOrphanEdges] Checking", currentEdges.length, "edges against", itemIds.size, "items");
 
       const orphanEdgeIds: string[] = [];
 
       currentEdges.forEach((edge) => {
-        // Utiliser les propriétés snake_case de SchemaEdge
-        // Mais aussi vérifier les propriétés ReactFlow au cas où
         const sourceNodeId = edge.source_node_id || (edge as any).source;
         const targetNodeId = edge.target_node_id || (edge as any).target;
 
@@ -2594,60 +2642,42 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           return;
         }
 
-        // VERSION 4.20: Seulement vérifier si les NODES existent
-        // Ne pas vérifier les handles car DEFAULT_HANDLES permet 2 par côté
+        // Supprimer si les nodes n'existent plus
         if (!itemIds.has(sourceNodeId) || !itemIds.has(targetNodeId)) {
           console.log("[cleanOrphanEdges] Edge", edge.id, "has unknown nodes:", sourceNodeId, "->", targetNodeId);
           orphanEdgeIds.push(edge.id);
           return;
         }
 
-        // VERSION 4.20: Vérifier les handles SEULEMENT si le bloc a une config explicite
+        // VERSION 4.23: Vérifier les handles UNIQUEMENT si le bloc a une config explicite
+        // ET la config est dans nodeHandles (pas DEFAULT_HANDLES)
         const sourceHandle = edge.source_handle || (edge as any).sourceHandle;
         const targetHandle = edge.target_handle || (edge as any).targetHandle;
 
-        // Vérifier handle source seulement si config explicite existe
-        if (sourceHandle && currentHandles.hasOwnProperty(sourceNodeId)) {
+        // Vérifier handle source si config explicite
+        if (sourceHandle && currentHandles[sourceNodeId]) {
           const parts = sourceHandle.split("-");
           if (parts.length === 2) {
             const [side, numStr] = parts;
             const num = parseInt(numStr, 10);
-            const nodeHandlesConfig = currentHandles[sourceNodeId];
-            const maxForSide = nodeHandlesConfig[side as keyof BlockHandles];
-
-            if (maxForSide !== undefined && (num > maxForSide || num < 1)) {
-              console.log(
-                "[cleanOrphanEdges] Edge",
-                edge.id,
-                "orphan source handle:",
-                sourceHandle,
-                "max:",
-                maxForSide,
-              );
+            const maxForSide = currentHandles[sourceNodeId][side as keyof BlockHandles];
+            if (maxForSide !== undefined && num > maxForSide) {
+              console.log("[cleanOrphanEdges] Edge", edge.id, "orphan: source", sourceHandle, ">", maxForSide);
               orphanEdgeIds.push(edge.id);
               return;
             }
           }
         }
 
-        // Vérifier handle target seulement si config explicite existe
-        if (targetHandle && currentHandles.hasOwnProperty(targetNodeId)) {
+        // Vérifier handle target si config explicite
+        if (targetHandle && currentHandles[targetNodeId]) {
           const parts = targetHandle.split("-");
           if (parts.length === 2) {
             const [side, numStr] = parts;
             const num = parseInt(numStr, 10);
-            const nodeHandlesConfig = currentHandles[targetNodeId];
-            const maxForSide = nodeHandlesConfig[side as keyof BlockHandles];
-
-            if (maxForSide !== undefined && (num > maxForSide || num < 1)) {
-              console.log(
-                "[cleanOrphanEdges] Edge",
-                edge.id,
-                "orphan target handle:",
-                targetHandle,
-                "max:",
-                maxForSide,
-              );
+            const maxForSide = currentHandles[targetNodeId][side as keyof BlockHandles];
+            if (maxForSide !== undefined && num > maxForSide) {
+              console.log("[cleanOrphanEdges] Edge", edge.id, "orphan: target", targetHandle, ">", maxForSide);
               orphanEdgeIds.push(edge.id);
               return;
             }
@@ -2656,7 +2686,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
       });
 
       if (orphanEdgeIds.length > 0) {
-        console.log("[Schema] cleanOrphanEdges - Found", orphanEdgeIds.length, "orphan edges:", orphanEdgeIds);
+        console.log("[cleanOrphanEdges] Found", orphanEdgeIds.length, "orphan edges:", orphanEdgeIds);
         return currentEdges.filter((edge) => !orphanEdgeIds.includes(edge.id));
       }
 
@@ -4620,8 +4650,8 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
           cleanedEdges = cleanOrphanEdges(parsed.edges, parsed.nodeHandles || {}, parsed.items);
           orphansRemoved = beforeCount - cleanedEdges.length;
           if (orphansRemoved > 0) {
-            console.log("[Schema] loadSchemaData - Cleaned", orphansRemoved, "orphan edges");
-            toast.info(`${orphansRemoved} câble(s) orphelin(s) supprimé(s)`);
+            console.log("[Schema] loadSchemaData - Cleaned", orphansRemoved, "orphan edges (silent)");
+            // VERSION 4.23: Pas de toast - transparent pour l'utilisateur
           }
         }
 
@@ -4768,7 +4798,7 @@ const BlocksInstance = ({ projectId, isFullscreen, onToggleFullscreen }: BlocksI
                 console.error("[Schema] Auto-save orphan cleanup failed:", saveError);
               } else {
                 console.log("[Schema] Auto-save orphan cleanup SUCCESS - edges:", cleanedEdges.length);
-                toast.success(`Nettoyage auto sauvegardé (${orphansRemoved} câbles orphelins supprimés)`);
+                // VERSION 4.23: Pas de toast - transparent pour l'utilisateur
               }
             }
           }, 1000);
@@ -8928,6 +8958,16 @@ export const TechnicalCanvas = ({ projectId, onExpenseAdded }: TechnicalCanvasPr
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isFullscreen]);
+
+  // VERSION 4.23: Listener pour sauvegarde auto après réduction handles
+  useEffect(() => {
+    const handleSchemaNeedsSave = () => {
+      console.log("[TechnicalCanvas] 💾 Received schema-needs-save event - auto-saving...");
+      saveSchema();
+    };
+    window.addEventListener("schema-needs-save", handleSchemaNeedsSave);
+    return () => window.removeEventListener("schema-needs-save", handleSchemaNeedsSave);
+  }, [items, edges, nodeHandles, layers, nodes]);
 
   if (isLoading) {
     console.log("[TechnicalCanvas] RENDER: Loading state...");
