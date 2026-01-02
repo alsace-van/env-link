@@ -1,12 +1,13 @@
 // ============================================
 // MechanicalProcedures.tsx
 // Gestion des procédures mécaniques avec canvas
-// VERSION: 3.4 - Marge bas pour centrage canvas + hauteur augmentée
+// VERSION: 3.5 - Utilise le modèle Gemini configuré dans l'admin
 // ============================================
 
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { getGeminiApiUrl } from "@/services/aiService";
 import {
   ReactFlow,
   Background,
@@ -2500,24 +2501,21 @@ Règles :
 Réponds UNIQUEMENT avec le JSON, sans markdown, sans backticks, sans explication.`;
       }
 
-      const geminiResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [{ inlineData: { mimeType, data: base64Image } }, { text: prompt }],
-              },
-            ],
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: 8192,
+      const geminiResponse = await fetch(await getGeminiApiUrl(apiKey), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [{ inlineData: { mimeType, data: base64Image } }, { text: prompt }],
             },
-          }),
-        },
-      );
+          ],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 8192,
+          },
+        }),
+      });
 
       const data = await geminiResponse.json();
 
@@ -2935,32 +2933,29 @@ RÈGLES :
 
 RÉPONDS UNIQUEMENT avec le JSON valide, sans markdown, sans backticks, sans texte avant ou après.`;
 
-      const geminiResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    inlineData: {
-                      mimeType: "application/pdf",
-                      data: base64Pdf,
-                    },
+      const geminiResponse = await fetch(await getGeminiApiUrl(apiKey), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: "application/pdf",
+                    data: base64Pdf,
                   },
-                  { text: prompt },
-                ],
-              },
-            ],
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: 65536,
+                },
+                { text: prompt },
+              ],
             },
-          }),
-        },
-      );
+          ],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 65536,
+          },
+        }),
+      });
 
       const data = await geminiResponse.json();
 
@@ -3207,32 +3202,29 @@ RÉPONDS UNIQUEMENT avec le JSON valide, sans markdown, sans backticks, sans tex
       const mimeType = audioBlob.type || "audio/mpeg";
 
       // Appel à l'API Gemini
-      const geminiResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    inline_data: {
-                      mime_type: mimeType,
-                      data: base64Audio,
-                    },
-                  },
-                  {
-                    text: "Transcris fidèlement cet enregistrement audio. Détecte automatiquement la langue parlée et transcris dans cette même langue. Si tu détectes plusieurs interlocuteurs, indique les changements de locuteur avec [Locuteur 1], [Locuteur 2], etc.",
-                  },
-                ],
-              },
-            ],
-          }),
+      const geminiResponse = await fetch(await getGeminiApiUrl(apiKey), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: base64Audio,
+                  },
+                },
+                {
+                  text: "Transcris fidèlement cet enregistrement audio. Détecte automatiquement la langue parlée et transcris dans cette même langue. Si tu détectes plusieurs interlocuteurs, indique les changements de locuteur avec [Locuteur 1], [Locuteur 2], etc.",
+                },
+              ],
+            },
+          ],
+        }),
+      });
 
       if (!geminiResponse.ok) {
         const error = await geminiResponse.json();
@@ -3273,29 +3265,26 @@ RÉPONDS UNIQUEMENT avec le JSON valide, sans markdown, sans backticks, sans tex
     setSummarizingBlockId(blockId);
 
     try {
-      const geminiResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: `Résume ce texte de manière concise dans la même langue que le texte original. Garde les points clés et les informations importantes. Utilise des puces pour les points principaux.
+      const geminiResponse = await fetch(await getGeminiApiUrl(apiKey), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: `Résume ce texte de manière concise dans la même langue que le texte original. Garde les points clés et les informations importantes. Utilise des puces pour les points principaux.
 
 Texte à résumer :
 ${block.content}`,
-                  },
-                ],
-              },
-            ],
-          }),
-        },
-      );
+                },
+              ],
+            },
+          ],
+        }),
+      });
 
       if (!geminiResponse.ok) {
         const error = await geminiResponse.json();
@@ -3338,29 +3327,26 @@ ${block.content}`,
     setTranslatingBlockId(blockId);
 
     try {
-      const geminiResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: `Traduis ce texte en ${targetLanguage}. Garde la mise en forme (puces, paragraphes, etc.) et le sens fidèle au texte original.
+      const geminiResponse = await fetch(await getGeminiApiUrl(apiKey), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: `Traduis ce texte en ${targetLanguage}. Garde la mise en forme (puces, paragraphes, etc.) et le sens fidèle au texte original.
 
 Texte à traduire :
 ${block.content}`,
-                  },
-                ],
-              },
-            ],
-          }),
-        },
-      );
+                },
+              ],
+            },
+          ],
+        }),
+      });
 
       if (!geminiResponse.ok) {
         const error = await geminiResponse.json();

@@ -9,6 +9,7 @@ import { Upload, Loader2, ChevronDown, ChevronUp, Scan } from "lucide-react";
 import { useAIConfig } from "@/hooks/useAIConfig";
 import { ScanConfirmationModal } from "./ScanConfirmationModal";
 import { type VehicleRegistrationData } from "@/lib/registrationCardParser";
+import { getGeminiApiUrl } from "@/services/aiService";
 
 // ============================================
 // PROMPT OCR CARTE GRISE - FORMAT FRANÇAIS
@@ -75,32 +76,32 @@ CODES CARTE GRISE:
 // ============================================
 
 async function extractVehicleRegistration(imageBase64: string, apiKey: string): Promise<VehicleRegistrationData> {
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: VEHICLE_REGISTRATION_OCR_PROMPT },
-              {
-                inline_data: {
-                  mime_type: "image/jpeg",
-                  data: imageBase64,
-                },
+  // Utilise le modèle configuré dans l'admin
+  const apiUrl = await getGeminiApiUrl(apiKey);
+
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [
+            { text: VEHICLE_REGISTRATION_OCR_PROMPT },
+            {
+              inline_data: {
+                mime_type: "image/jpeg",
+                data: imageBase64,
               },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 2000,
+            },
+          ],
         },
-      }),
-    },
-  );
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 2000,
+      },
+    }),
+  });
 
   const data = await response.json();
 
