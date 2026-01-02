@@ -5,22 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from "@/components/ui/select";
-import { 
-  Sparkles, 
-  Save, 
-  RefreshCw, 
-  AlertTriangle, 
-  CheckCircle2, 
-  ExternalLink,
-  Info
-} from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sparkles, Save, RefreshCw, AlertTriangle, CheckCircle2, ExternalLink, Info } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -35,8 +21,7 @@ interface AISettingRow {
 // Modèles connus par fournisseur (à jour décembre 2025)
 const KNOWN_MODELS = {
   gemini: [
-    { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash (Recommandé)", free: true },
-    { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash", free: true },
+    { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (Recommandé)", free: true },
     { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", free: true },
     { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro (Payant)", free: false },
   ],
@@ -57,25 +42,25 @@ const KNOWN_MODELS = {
 };
 
 const PROVIDERS_INFO = {
-  gemini: { 
-    name: "Google Gemini", 
+  gemini: {
+    name: "Google Gemini",
     docsUrl: "https://ai.google.dev/gemini-api/docs/models",
-    deprecationUrl: "https://ai.google.dev/gemini-api/docs/deprecations"
+    deprecationUrl: "https://ai.google.dev/gemini-api/docs/deprecations",
   },
-  openai: { 
-    name: "OpenAI", 
+  openai: {
+    name: "OpenAI",
     docsUrl: "https://platform.openai.com/docs/models",
-    deprecationUrl: "https://platform.openai.com/docs/deprecations"
+    deprecationUrl: "https://platform.openai.com/docs/deprecations",
   },
-  anthropic: { 
-    name: "Anthropic Claude", 
+  anthropic: {
+    name: "Anthropic Claude",
     docsUrl: "https://docs.anthropic.com/en/docs/about-claude/models",
-    deprecationUrl: "https://docs.anthropic.com/en/docs/resources/model-deprecations"
+    deprecationUrl: "https://docs.anthropic.com/en/docs/resources/model-deprecations",
   },
-  mistral: { 
-    name: "Mistral AI", 
+  mistral: {
+    name: "Mistral AI",
     docsUrl: "https://docs.mistral.ai/getting-started/models/",
-    deprecationUrl: "https://docs.mistral.ai/"
+    deprecationUrl: "https://docs.mistral.ai/",
   },
 };
 
@@ -115,16 +100,13 @@ export const AdminAISettings = () => {
   const handleSave = async (key: string, value: string) => {
     setSaving(key);
     try {
-      const { error } = await (supabase as any)
-        .from("app_settings")
-        .update({ value })
-        .eq("key", key);
+      const { error } = await (supabase as any).from("app_settings").update({ value }).eq("key", key);
 
       if (error) throw error;
 
-      setSettings(prev => ({
+      setSettings((prev) => ({
         ...prev,
-        [key]: { ...prev[key], value, updated_at: new Date().toISOString() }
+        [key]: { ...prev[key], value, updated_at: new Date().toISOString() },
       }));
 
       toast.success("Modèle mis à jour avec succès !");
@@ -141,7 +123,7 @@ export const AdminAISettings = () => {
   };
 
   const isKnownModel = (provider: keyof typeof KNOWN_MODELS, model: string) => {
-    return KNOWN_MODELS[provider].some(m => m.value === model);
+    return KNOWN_MODELS[provider].some((m) => m.value === model);
   };
 
   const renderProviderCard = (settingKey: string) => {
@@ -166,21 +148,13 @@ export const AdminAISettings = () => {
               </CardDescription>
             </div>
             <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                asChild
-              >
+              <Button variant="outline" size="sm" asChild>
                 <a href={providerInfo.docsUrl} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="h-3 w-3 mr-1" />
                   Modèles
                 </a>
               </Button>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                asChild
-              >
+              <Button variant="ghost" size="sm" asChild>
                 <a href={providerInfo.deprecationUrl} target="_blank" rel="noopener noreferrer">
                   <AlertTriangle className="h-3 w-3 mr-1" />
                   Dépréciations
@@ -198,7 +172,7 @@ export const AdminAISettings = () => {
                 value={isCustom ? "custom" : currentValue}
                 onValueChange={(value) => {
                   if (value === "custom") {
-                    setCustomModel(prev => ({ ...prev, [settingKey]: currentValue }));
+                    setCustomModel((prev) => ({ ...prev, [settingKey]: currentValue }));
                   } else {
                     handleSave(settingKey, value);
                   }
@@ -213,7 +187,9 @@ export const AdminAISettings = () => {
                       <div className="flex items-center gap-2">
                         {model.label}
                         {model.free && (
-                          <Badge variant="secondary" className="text-xs">Gratuit</Badge>
+                          <Badge variant="secondary" className="text-xs">
+                            Gratuit
+                          </Badge>
                         )}
                       </div>
                     </SelectItem>
@@ -224,9 +200,7 @@ export const AdminAISettings = () => {
                 </SelectContent>
               </Select>
 
-              {saving === settingKey && (
-                <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
-              )}
+              {saving === settingKey && <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />}
             </div>
           </div>
 
@@ -237,14 +211,14 @@ export const AdminAISettings = () => {
               <div className="flex gap-2">
                 <Input
                   value={customModel[settingKey] ?? currentValue}
-                  onChange={(e) => setCustomModel(prev => ({ ...prev, [settingKey]: e.target.value }))}
+                  onChange={(e) => setCustomModel((prev) => ({ ...prev, [settingKey]: e.target.value }))}
                   placeholder="ex: gemini-3.0-flash"
                 />
-                <Button 
+                <Button
                   onClick={() => {
                     if (customModel[settingKey]) {
                       handleSave(settingKey, customModel[settingKey]);
-                      setCustomModel(prev => {
+                      setCustomModel((prev) => {
                         const copy = { ...prev };
                         delete copy[settingKey];
                         return copy;
@@ -294,8 +268,8 @@ export const AdminAISettings = () => {
       <Alert>
         <Info className="h-4 w-4" />
         <AlertDescription>
-          Ces paramètres définissent les modèles IA utilisés par l'application. 
-          Si un fournisseur désactive un modèle, vous pouvez le changer ici sans toucher au code.
+          Ces paramètres définissent les modèles IA utilisés par l'application. Si un fournisseur désactive un modèle,
+          vous pouvez le changer ici sans toucher au code.
           <strong className="block mt-1">
             Conseil : Consultez régulièrement les pages de dépréciation des fournisseurs.
           </strong>
@@ -319,18 +293,10 @@ export const AdminAISettings = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="text-sm space-y-2">
-          <p>
-            1. Consultez la page des modèles du fournisseur (liens ci-dessus)
-          </p>
-          <p>
-            2. Trouvez le nouveau modèle recommandé (généralement similaire avec un numéro de version plus récent)
-          </p>
-          <p>
-            3. Sélectionnez-le dans la liste ou entrez le nom exact en "modèle personnalisé"
-          </p>
-          <p>
-            4. Testez avec une fonctionnalité IA (ex: résumé de notice) pour vérifier que ça fonctionne
-          </p>
+          <p>1. Consultez la page des modèles du fournisseur (liens ci-dessus)</p>
+          <p>2. Trouvez le nouveau modèle recommandé (généralement similaire avec un numéro de version plus récent)</p>
+          <p>3. Sélectionnez-le dans la liste ou entrez le nom exact en "modèle personnalisé"</p>
+          <p>4. Testez avec une fonctionnalité IA (ex: résumé de notice) pour vérifier que ça fonctionne</p>
         </CardContent>
       </Card>
     </div>
