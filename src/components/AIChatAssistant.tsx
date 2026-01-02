@@ -1,6 +1,6 @@
 // Composant Chat IA flottant avec conversations organisées
 // Assistant pour recherche, comparaison et génération de documents
-// VERSION: 2.1 - Textarea avec retours à la ligne
+// VERSION: 2.2 - Génération PDF RTI avec Gemini + pdf-lib
 
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { ChatMessage, SearchResult, ChatAction, processUserMessage } from "@/services/aiSearchService";
 import { toast } from "sonner";
 import { RTIPreviewDialog } from "@/components/RTIPreviewDialog";
+import { generateAndDownloadRTIPdf, generateAndDownloadRTIDossier } from "@/services/rtiPdfService";
 
 // ============================================
 // TYPES
@@ -519,13 +520,30 @@ const AIChatAssistant = ({ projectId, projectName }: AIChatAssistantProps) => {
     }
   };
 
-  const handleActionClick = (action: ChatAction) => {
+  const handleActionClick = async (action: ChatAction) => {
     switch (action.type) {
-      case "generate_rti":
       case "view_rti":
         // Ouvrir la modale d'aperçu RTI
         if (projectId) {
           setShowRTIPreview(true);
+        } else {
+          toast.error("Sélectionnez d'abord un projet");
+        }
+        break;
+      case "generate_rti":
+        // Générer et télécharger le PDF RTI (pièces de base)
+        if (projectId) {
+          const projectName = action.data?.projectName || activeConversation?.title;
+          await generateAndDownloadRTIPdf(projectId, projectName);
+        } else {
+          toast.error("Sélectionnez d'abord un projet");
+        }
+        break;
+      case "generate_rti_dossier":
+        // Générer et télécharger le dossier RTI complet (ZIP avec documents conditionnels)
+        if (projectId) {
+          const projectName = action.data?.projectName || activeConversation?.title;
+          await generateAndDownloadRTIDossier(projectId, projectName);
         } else {
           toast.error("Sélectionnez d'abord un projet");
         }

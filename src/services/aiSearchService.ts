@@ -1,5 +1,6 @@
 // services/aiSearchService.ts
-// Service de recherche IA - VERSION 2.2
+// Service de recherche IA - VERSION 2.3
+// VERSION 2.3: Dossier RTI complet (ZIP) avec documents conditionnels
 // VERSION 2.2: Prompt système amélioré + contexte projet TOUJOURS chargé + historique enrichi
 // VERSION 2.1: Fusion données véhicule (carte grise scannée + saisie manuelle)
 // Recherche hybride : embeddings (documents) + SQL (données structurées)
@@ -32,7 +33,7 @@ export interface ChatMessage {
 }
 
 export interface ChatAction {
-  type: "generate_rti" | "view_rti" | "change_supplier" | "view_document" | "view_accessory";
+  type: "generate_rti" | "generate_rti_dossier" | "view_rti" | "change_supplier" | "view_document" | "view_accessory";
   label: string;
   data: Record<string, any>;
 }
@@ -760,15 +761,15 @@ Réponds directement:`;
   if (intent.type === "generate_rti" || intent.type === "generate_document") {
     if (projectId) {
       // On a directement le projectId depuis le contexte
-      // Proposer d'abord l'aperçu puis la génération
+      // Proposer d'abord l'aperçu puis le dossier complet
       actions.push({
         type: "view_rti",
-        label: "📋 Voir l'aperçu RTI",
+        label: "👁️ Aperçu des données",
         data: { projectId: projectId },
       });
       actions.push({
-        type: "generate_rti",
-        label: "📄 Générer le RTI",
+        type: "generate_rti_dossier",
+        label: "📦 Télécharger le dossier RTI complet",
         data: { projectId: projectId },
       });
     } else if (context.some((c) => c.type === "project")) {
@@ -776,12 +777,12 @@ Réponds directement:`;
       if (project) {
         actions.push({
           type: "view_rti",
-          label: "📋 Voir l'aperçu RTI",
+          label: "👁️ Aperçu des données",
           data: { projectId: project.id, projectName: project.title },
         });
         actions.push({
-          type: "generate_rti",
-          label: "📄 Générer le RTI",
+          type: "generate_rti_dossier",
+          label: "📦 Télécharger le dossier RTI complet",
           data: { projectId: project.id, projectName: project.title },
         });
       }
