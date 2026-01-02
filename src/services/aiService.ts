@@ -62,9 +62,9 @@ export async function getGeminiModel(): Promise<string> {
  */
 async function getModelForProvider(provider: AIProvider): Promise<string> {
   const now = Date.now();
-  
+
   // Si le cache est valide, l'utiliser
-  if (modelsCache && (now - modelsCacheTime) < CACHE_DURATION) {
+  if (modelsCache && now - modelsCacheTime < CACHE_DURATION) {
     return modelsCache[provider] || DEFAULT_MODELS[provider];
   }
 
@@ -111,10 +111,10 @@ export function refreshModelsCache() {
 export async function getConfiguredModels(): Promise<Record<AIProvider, string>> {
   // Force refresh
   refreshModelsCache();
-  
+
   // Charger chaque modèle pour remplir le cache
   await getModelForProvider("gemini");
-  
+
   return modelsCache || DEFAULT_MODELS;
 }
 
@@ -166,7 +166,7 @@ async function callGemini(
   { pdfBase64, imageBase64, imageMimeType, maxTokens }: ProviderExtraParams,
 ): Promise<AIResponse> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  
+
   console.log(`🔗 Gemini URL: ${url.replace(apiKey, "API_KEY_HIDDEN")}`);
   console.log(`📝 Modèle utilisé: ${model}`);
 
@@ -199,14 +199,18 @@ async function callGemini(
 
     const data = await response.json();
     console.log("✅ Gemini response reçue");
-    
+
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text as string | undefined;
     const tokensUsed = data.usageMetadata?.totalTokenCount || 0;
 
-  if (!text) throw new Error("Pas de réponse du modèle");
+    if (!text) throw new Error("Pas de réponse du modèle");
 
-  trackTokenUsage(tokensUsed);
-  return { success: true, text, tokensUsed };
+    trackTokenUsage(tokensUsed);
+    return { success: true, text, tokensUsed };
+  } catch (error: any) {
+    console.error("❌ Erreur callGemini:", error);
+    throw error;
+  }
 }
 
 // ========================
