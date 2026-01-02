@@ -1,4 +1,7 @@
-// Service de recherche IA
+// services/aiSearchService.ts
+// Service de recherche IA - VERSION 2.2
+// VERSION 2.2: Prompt système amélioré + contexte projet TOUJOURS chargé + historique enrichi
+// VERSION 2.1: Fusion données véhicule (carte grise scannée + saisie manuelle)
 // Recherche hybride : embeddings (documents) + SQL (données structurées)
 
 import { supabase } from "@/integrations/supabase/client";
@@ -453,25 +456,54 @@ async function getProjectContext(projectId: string): Promise<string | null> {
       context += `Aucune fiche client détaillée associée.\n`;
     }
 
-    context += `\n--- VÉHICULE (depuis carte grise scannée) ---\n`;
-    if (vehicleReg) {
-      context += `Marque: ${vehicleReg.marque || "Non renseigné"}\n`;
-      context += `Modèle: ${vehicleReg.modele || "Non renseigné"}\n`;
-      context += `Immatriculation: ${vehicleReg.immatriculation || "Non renseignée"}\n`;
-      context += `VIN (N° série): ${vehicleReg.vin || "Non renseigné"}\n`;
-      context += `Date 1ère immat: ${vehicleReg.date_premiere_immatriculation || "Non renseignée"}\n`;
-      context += `PTAC: ${vehicleReg.ptac ? vehicleReg.ptac + " kg" : "Non renseigné"}\n`;
-      context += `Poids à vide: ${vehicleReg.poids_vide ? vehicleReg.poids_vide + " kg" : "Non renseigné"}\n`;
-      context += `Genre: ${vehicleReg.genre || "Non renseigné"}\n`;
-      context += `Carrosserie: ${vehicleReg.carrosserie || "Non renseignée"}\n`;
-      context += `Type: ${vehicleReg.type || "Non renseigné"}\n`;
-      context += `Puissance fiscale: ${vehicleReg.puissance_fiscale || "Non renseignée"} CV\n`;
-      context += `Énergie: ${vehicleReg.energie || "Non renseignée"}\n`;
-      context += `Places assises: ${vehicleReg.places_assises || "Non renseigné"}\n`;
-      context += `Cylindrée: ${vehicleReg.cylindree || "Non renseignée"} cm³\n`;
-      context += `CO2: ${vehicleReg.co2 || "Non renseigné"} g/km\n`;
+    context += `\n--- VÉHICULE ---\n`;
+
+    // Utiliser les données de vehicle_registration OU les données saisies dans le projet
+    const vehicleData = {
+      marque: vehicleReg?.marque || project.marque || project.marque_vehicule || null,
+      modele: vehicleReg?.modele || project.modele || project.modele_vehicule || null,
+      immatriculation: vehicleReg?.immatriculation || project.immatriculation || null,
+      vin: vehicleReg?.vin || project.vin || project.numero_chassis || project.numero_chassis_vin || null,
+      date_premiere_immatriculation:
+        vehicleReg?.date_premiere_immatriculation ||
+        project.date_premiere_immatriculation ||
+        project.date_premiere_circulation ||
+        null,
+      ptac: vehicleReg?.ptac || project.ptac_kg || null,
+      poids_vide: vehicleReg?.poids_vide || project.poids_vide_kg || project.masse_vide || null,
+      genre: vehicleReg?.genre || project.genre_national || null,
+      carrosserie: vehicleReg?.carrosserie || project.carrosserie || project.carrosserie_nationale || null,
+      type: vehicleReg?.type || project.type_mine || project.type_variante || null,
+      puissance_fiscale: vehicleReg?.puissance_fiscale || project.puissance_fiscale || null,
+      energie: vehicleReg?.energie || project.energie || null,
+      places_assises: vehicleReg?.places_assises || project.places_assises_origine || project.nombre_places || null,
+      cylindree: vehicleReg?.cylindree || project.cylindree || null,
+      co2: vehicleReg?.co2 || project.co2_emission || null,
+    };
+
+    // Vérifier si on a au moins quelques données
+    const hasVehicleData = vehicleData.marque || vehicleData.vin || vehicleData.immatriculation || vehicleData.ptac;
+
+    if (hasVehicleData) {
+      const source = vehicleReg ? "(depuis carte grise scannée)" : "(saisie manuelle)";
+      context += `Source: ${source}\n`;
+      context += `Marque: ${vehicleData.marque || "Non renseigné"}\n`;
+      context += `Modèle: ${vehicleData.modele || "Non renseigné"}\n`;
+      context += `Immatriculation: ${vehicleData.immatriculation || "Non renseignée"}\n`;
+      context += `VIN (N° série/châssis): ${vehicleData.vin || "Non renseigné"}\n`;
+      context += `Date 1ère immat: ${vehicleData.date_premiere_immatriculation || "Non renseignée"}\n`;
+      context += `PTAC: ${vehicleData.ptac ? vehicleData.ptac + " kg" : "Non renseigné"}\n`;
+      context += `Poids à vide: ${vehicleData.poids_vide ? vehicleData.poids_vide + " kg" : "Non renseigné"}\n`;
+      context += `Genre: ${vehicleData.genre || "Non renseigné"}\n`;
+      context += `Carrosserie: ${vehicleData.carrosserie || "Non renseignée"}\n`;
+      context += `Type: ${vehicleData.type || "Non renseigné"}\n`;
+      context += `Puissance fiscale: ${vehicleData.puissance_fiscale || "Non renseignée"} CV\n`;
+      context += `Énergie: ${vehicleData.energie || "Non renseignée"}\n`;
+      context += `Places assises: ${vehicleData.places_assises || "Non renseigné"}\n`;
+      context += `Cylindrée: ${vehicleData.cylindree || "Non renseignée"} cm³\n`;
+      context += `CO2: ${vehicleData.co2 || "Non renseigné"} g/km\n`;
     } else {
-      context += `Aucune carte grise scannée pour ce projet.\n`;
+      context += `Aucune donnée véhicule disponible (ni carte grise scannée, ni saisie manuelle).\n`;
     }
 
     let totalPoidsAccessoires = 0;
@@ -649,35 +681,54 @@ export async function generateResponse(
     contextText += "Aucune donnée trouvée dans la base.\n\n";
   }
 
-  // Historique de conversation (limité aux 5 derniers messages)
-  const recentHistory = conversationHistory.slice(-5);
+  // Historique de conversation (limité aux 6 derniers messages, contenu plus complet)
+  const recentHistory = conversationHistory.slice(-6);
   let historyText = "";
   if (recentHistory.length > 0) {
-    historyText = "Historique récent:\n";
+    historyText = "=== HISTORIQUE DE NOTRE CONVERSATION ===\n";
     recentHistory.forEach((msg) => {
-      historyText += `${msg.role === "user" ? "Utilisateur" : "Assistant"}: ${msg.content.substring(0, 200)}...\n`;
+      const content = msg.content.length > 400 ? msg.content.substring(0, 400) + "..." : msg.content;
+      historyText += `[${msg.role === "user" ? "Utilisateur" : "Toi (assistant)"}]: ${content}\n`;
+      // Si l'assistant a proposé des actions, les mentionner
+      if (msg.role === "assistant" && msg.actions && msg.actions.length > 0) {
+        historyText += `(Tu as proposé les boutons: ${msg.actions.map((a) => a.label).join(", ")})\n`;
+      }
     });
-    historyText += "\n";
+    historyText += "=== FIN HISTORIQUE ===\n\n";
   }
 
   // Prompt selon l'intention
-  let systemPrompt = `Tu es un assistant efficace pour une application de gestion d'aménagement de fourgons.
+  let systemPrompt = `Tu es l'assistant IA de VPB (Van Project Builder), une application de gestion d'aménagement de fourgons.
 
-RÈGLES IMPORTANTES:
-1. SOIS DIRECT - Exécute les demandes immédiatement sans poser de questions inutiles
-2. UTILISE LES DONNÉES - Si des données sont fournies dans le contexte, utilise-les dans ta réponse. Ne mets JAMAIS de placeholders comme "[insérer ici]" ou "[à compléter]"
-3. AGIS MAINTENANT - Si l'utilisateur demande une liste, donne la liste. S'il demande une comparaison, fais la comparaison.
-4. PAS D'EXCUSES - Ne dis pas "ce serait long" ou "peux-tu préciser". Fais ce qui est demandé.
-5. CONCIS - Réponds de manière directe et utile en français.
+=== CE QUE TU PEUX FAIRE ===
+1. LIRE LES DONNÉES : Tu reçois les données du projet actuel dans le contexte ci-dessous (véhicule, client, équipements, poids). Ces données viennent de la base de données - tu y as accès !
+2. RÉPONDRE AUX QUESTIONS : Utilise les données du contexte pour répondre aux questions sur le projet.
+3. LISTER/COMPARER : Tu peux lister les articles du catalogue, comparer les prix, etc.
+4. RÉSUMER : Tu peux résumer les données pour l'utilisateur.
 
-Tu peux:
-- Lister les produits du catalogue avec leurs prix
-- Comparer les fournisseurs
-- Rechercher dans les notices techniques
-- Préparer les documents d'homologation`;
+=== CE QUE TU NE PEUX PAS FAIRE DIRECTEMENT ===
+1. GÉNÉRER DES PDF : Tu ne peux pas créer de fichiers PDF. Mais l'application propose des boutons pour ça.
+2. MODIFIER LA BASE : Tu ne peux pas modifier les données, juste les lire.
+
+=== RÈGLES DE RÉPONSE ===
+- Sois DIRECT et CONCIS
+- Si tu as les données dans le contexte, UTILISE-LES dans ta réponse
+- Ne dis JAMAIS "je n'ai pas accès à la base de données" si tu vois des données dans le contexte
+- Ne mets JAMAIS de placeholders comme "[insérer ici]"
+- Réponds en français
+
+=== IMPORTANT ===
+Quand l'utilisateur demande un document RTI/CERFA, tu dois :
+1. Résumer les données disponibles (véhicule, client, poids)
+2. L'informer que des boutons d'action apparaîtront sous ta réponse pour voir l'aperçu ou générer le document`;
 
   if (intent.type === "generate_rti" || intent.type === "generate_document") {
-    systemPrompt += `\n\nL'utilisateur veut préparer un document RTI. Présente un résumé des données disponibles et propose de voir l'aperçu détaillé.`;
+    systemPrompt += `
+
+L'utilisateur veut préparer un document RTI. 
+- Présente un RÉSUMÉ des données véhicule et client disponibles dans le contexte
+- Indique clairement si des données sont manquantes
+- Dis-lui qu'il peut cliquer sur les boutons qui apparaîtront sous ta réponse pour voir l'aperçu complet ou générer le document`;
   }
 
   if (intent.type === "compare_prices" || intent.type === "compare_suppliers") {
@@ -772,9 +823,10 @@ export async function processUserMessage(
     // 1. Analyser l'intention
     const intent = await analyzeIntent(message, aiConfig);
 
-    // 2. Si on a un projectId et que l'intention concerne le projet, récupérer les données
+    // 2. TOUJOURS récupérer le contexte projet si on a un projectId
+    // Cela permet au chatbot d'avoir accès aux données même si l'intention n'est pas bien détectée
     let projectContext = "";
-    if (projectId && ["generate_rti", "generate_document", "project_info", "scenario_info"].includes(intent.type)) {
+    if (projectId) {
       const projectData = await getProjectContext(projectId);
       if (projectData) {
         projectContext = projectData;
