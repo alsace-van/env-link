@@ -1,6 +1,6 @@
 // components/scenarios/CompactExpensesList.tsx
 // Liste compacte des dépenses pour un scénario - optimisée pour 450px
-// VERSION: 2.4 - Filtre par statut livraison + Modale plein écran
+// VERSION: 2.5 - Fix modale qui reste ouverte lors des modifications
 // ✅ MODIFIÉ: Groupement par catégorie avec séparateurs + décodage HTML
 
 import { useState, useEffect } from "react";
@@ -285,8 +285,14 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
       toast.error("Erreur lors de la suppression");
     } else {
       toast.success("Dépense supprimée");
-      loadExpenses();
-      onExpenseChange();
+
+      // VERSION 2.4: Mise à jour locale pour éviter de fermer la modale
+      setExpenses((prev) => prev.filter((e) => e.id !== id));
+
+      // Ne notifier le parent que si on n'est PAS en mode fullscreen
+      if (!isFullscreenOpen) {
+        onExpenseChange();
+      }
     }
   };
 
@@ -309,8 +315,15 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
       toast.error("Erreur lors de la mise à jour");
     } else {
       toast.success("Statut de livraison mis à jour");
-      loadExpenses();
-      onExpenseChange();
+
+      // VERSION 2.4: Mise à jour locale pour éviter de fermer la modale
+      setExpenses((prev) => prev.map((e) => (e.id === expense.id ? { ...e, statut_livraison: nextStatus } : e)));
+
+      // Ne notifier le parent que si on n'est PAS en mode fullscreen
+      // (sinon ça ferme la modale)
+      if (!isFullscreenOpen) {
+        onExpenseChange();
+      }
     }
   };
 
@@ -772,7 +785,16 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
       />
 
       {/* VERSION 2.4: Modale plein écran */}
-      <Dialog open={isFullscreenOpen} onOpenChange={setIsFullscreenOpen}>
+      <Dialog
+        open={isFullscreenOpen}
+        onOpenChange={(open) => {
+          setIsFullscreenOpen(open);
+          // Notifier le parent à la fermeture pour synchroniser les changements
+          if (!open) {
+            onExpenseChange();
+          }
+        }}
+      >
         <DialogContent className="max-w-5xl h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
