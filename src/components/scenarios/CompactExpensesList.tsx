@@ -1,9 +1,9 @@
 // components/scenarios/CompactExpensesList.tsx
 // Liste compacte des dépenses pour un scénario - optimisée pour 450px
-// VERSION: 2.5 - Fix modale qui reste ouverte lors des modifications
+// VERSION: 2.6 - Mode sélection multiple + pas de refresh à chaque action
 // ✅ MODIFIÉ: Groupement par catégorie avec séparateurs + décodage HTML
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -27,6 +27,9 @@ import {
   Maximize2,
   PackageCheck,
   Clock,
+  CheckSquare,
+  Square,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import ExpenseFormDialog from "@/components/ExpenseFormDialog";
@@ -85,9 +88,16 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [categoryIcons, setCategoryIcons] = useState<Record<string, string>>({});
 
-  // VERSION 2.4: Filtre par statut de livraison + modale plein écran
+  // VERSION 2.5: Filtre par statut de livraison + modale plein écran
   const [selectedDeliveryStatus, setSelectedDeliveryStatus] = useState<Expense["statut_livraison"] | null>(null);
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
+
+  // VERSION 2.6: Mode sélection multiple
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState<Set<string>>(new Set());
+
+  // Ref pour tracker si on a des changements non synchronisés
+  const hasUnsyncedChanges = useRef(false);
 
   // Charger les catégories depuis la table categories (catalogue)
   const loadAllCategories = async () => {
@@ -286,13 +296,9 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
     } else {
       toast.success("Dépense supprimée");
 
-      // VERSION 2.4: Mise à jour locale pour éviter de fermer la modale
+      // VERSION 2.6: Mise à jour locale uniquement
       setExpenses((prev) => prev.filter((e) => e.id !== id));
-
-      // Ne notifier le parent que si on n'est PAS en mode fullscreen
-      if (!isFullscreenOpen) {
-        onExpenseChange();
-      }
+      hasUnsyncedChanges.current = true;
     }
   };
 
@@ -314,16 +320,76 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
     if (error) {
       toast.error("Erreur lors de la mise à jour");
     } else {
-      toast.success("Statut de livraison mis à jour");
+      toast.success("Statut mis à jour");
 
-      // VERSION 2.4: Mise à jour locale pour éviter de fermer la modale
+      // VERSION 2.6: Mise à jour locale uniquement (pas de refresh)
       setExpenses((prev) => prev.map((e) => (e.id === expense.id ? { ...e, statut_livraison: nextStatus } : e)));
+      hasUnsyncedChanges.current = true;
+    }
+  };
 
-      // Ne notifier le parent que si on n'est PAS en mode fullscreen
-      // (sinon ça ferme la modale)
-      if (!isFullscreenOpen) {
-        onExpenseChange();
+  // VERSION 2.6: Changer le statut de plusieurs articles en même temps
+  const bulkChangeDeliveryStatus = async (newStatus: Expense["statut_livraison"]) => {
+    if (isLocked) {
+      toast.error("Le devis est verrouillé");
+      return;
+    }
+
+    if (selectedExpenseIds.size === 0) {
+      toast.error("Aucun article sélectionné");
+      return;
+    }
+
+    const ids = Array.from(selectedExpenseIds);
+
+    const { error } = await supabase.from("project_expenses").update({ statut_livraison: newStatus }).in("id", ids);
+
+    if (error) {
+      toast.error("Erreur lors de la mise à jour");
+    } else {
+      toast.success(`${ids.length} article(s) mis à jour`);
+
+      // Mise à jour locale
+      setExpenses((prev) =>
+        prev.map((e) => (selectedExpenseIds.has(e.id) ? { ...e, statut_livraison: newStatus } : e)),
+      );
+
+      // Désélectionner et quitter le mode sélection
+      setSelectedExpenseIds(new Set());
+      setIsSelectionMode(false);
+      hasUnsyncedChanges.current = true;
+    }
+  };
+
+  // VERSION 2.6: Toggle sélection d'un article
+  const toggleExpenseSelection = (expenseId: string) => {
+    setSelectedExpenseIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(expenseId)) {
+        newSet.delete(expenseId);
+      } else {
+        newSet.add(expenseId);
       }
+      return newSet;
+    });
+  };
+
+  // VERSION 2.6: Sélectionner/Désélectionner tout
+  const toggleSelectAll = () => {
+    if (selectedExpenseIds.size === filteredExpenses.length) {
+      setSelectedExpenseIds(new Set());
+    } else {
+      setSelectedExpenseIds(new Set(filteredExpenses.map((e) => e.id)));
+    }
+  };
+
+  // VERSION 2.6: Synchroniser avec le parent quand on quitte le mode sélection
+  const exitSelectionMode = () => {
+    setIsSelectionMode(false);
+    setSelectedExpenseIds(new Set());
+    if (hasUnsyncedChanges.current) {
+      onExpenseChange();
+      hasUnsyncedChanges.current = false;
     }
   };
 
@@ -470,8 +536,24 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
 
   // Fonction pour rendre une carte d'expense (évite la duplication)
   const renderExpenseCard = (expense: Expense) => (
-    <Card key={expense.id} className="p-2.5">
+    <Card
+      key={expense.id}
+      className={`p-2.5 ${isSelectionMode && selectedExpenseIds.has(expense.id) ? "ring-2 ring-blue-500 bg-blue-50/50" : ""}`}
+      onClick={isSelectionMode ? () => toggleExpenseSelection(expense.id) : undefined}
+      style={isSelectionMode ? { cursor: "pointer" } : undefined}
+    >
       <div className="flex items-start justify-between gap-2">
+        {/* VERSION 2.6: Checkbox en mode sélection */}
+        {isSelectionMode && (
+          <div className="shrink-0 pt-0.5">
+            {selectedExpenseIds.has(expense.id) ? (
+              <CheckSquare className="h-5 w-5 text-blue-600" />
+            ) : (
+              <Square className="h-5 w-5 text-gray-400" />
+            )}
+          </div>
+        )}
+
         {/* Infos principales */}
         <div className="flex-1 min-w-0">
           <div className="flex items-start gap-1.5 mb-1">
@@ -509,7 +591,8 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
               value={expense.quantite}
               onChange={(e) => updateQuantity(expense.id, parseInt(e.target.value) || 1)}
               className="h-5 w-10 text-center text-xs p-0.5"
-              disabled={isLocked}
+              disabled={isLocked || isSelectionMode}
+              onClick={(e) => e.stopPropagation()}
             />
           </div>
 
@@ -540,63 +623,74 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
           )}
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-1">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className={`h-6 w-6 ${getDeliveryInfo(expense.statut_livraison).color}`}
-                  onClick={() => cycleDeliveryStatus(expense)}
-                  disabled={isLocked}
-                >
-                  {getDeliveryInfo(expense.statut_livraison).icon}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{getDeliveryInfo(expense.statut_livraison).label}</p>
-              </TooltipContent>
-            </Tooltip>
+        {/* Actions - masquées en mode sélection */}
+        {!isSelectionMode && (
+          <div className="flex items-center gap-1">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className={`h-6 w-6 ${getDeliveryInfo(expense.statut_livraison).color}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      cycleDeliveryStatus(expense);
+                    }}
+                    disabled={isLocked}
+                  >
+                    {getDeliveryInfo(expense.statut_livraison).icon}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{getDeliveryInfo(expense.statut_livraison).label}</p>
+                </TooltipContent>
+              </Tooltip>
 
-            {!isLocked && (
-              <>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => setEditingExpense(expense)}
-                    >
-                      <Edit className="h-3 w-3" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Modifier</p>
-                  </TooltipContent>
-                </Tooltip>
+              {!isLocked && (
+                <>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingExpense(expense);
+                        }}
+                      >
+                        <Edit className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Modifier</p>
+                    </TooltipContent>
+                  </Tooltip>
 
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="destructive"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => deleteExpense(expense.id)}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Supprimer</p>
-                  </TooltipContent>
-                </Tooltip>
-              </>
-            )}
-          </TooltipProvider>
-        </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteExpense(expense.id);
+                        }}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Supprimer</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </>
+              )}
+            </TooltipProvider>
+          </div>
+        )}
       </div>
     </Card>
   );
@@ -639,6 +733,25 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
             </Tooltip>
           </TooltipProvider>
 
+          {/* VERSION 2.6: Bouton mode sélection */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="sm"
+                  variant={isSelectionMode ? "default" : "outline"}
+                  onClick={() => (isSelectionMode ? exitSelectionMode() : setIsSelectionMode(true))}
+                  className="gap-1"
+                >
+                  <CheckSquare className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{isSelectionMode ? "Quitter le mode sélection" : "Mode sélection multiple"}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
           {/* VERSION 2.4: Bouton plein écran */}
           <TooltipProvider>
             <Tooltip>
@@ -652,6 +765,65 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+        </div>
+      )}
+
+      {/* VERSION 2.6: Barre d'actions mode sélection */}
+      {isSelectionMode && (
+        <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
+          <Button size="sm" variant="ghost" onClick={toggleSelectAll} className="gap-1 text-xs">
+            {selectedExpenseIds.size === filteredExpenses.length ? (
+              <CheckSquare className="h-3.5 w-3.5" />
+            ) : (
+              <Square className="h-3.5 w-3.5" />
+            )}
+            {selectedExpenseIds.size === filteredExpenses.length ? "Désélectionner" : "Tout sélectionner"}
+          </Button>
+
+          <div className="w-px h-5 bg-blue-200" />
+
+          <span className="text-xs text-blue-700 font-medium">{selectedExpenseIds.size} sélectionné(s)</span>
+
+          <div className="w-px h-5 bg-blue-200" />
+
+          <span className="text-xs text-muted-foreground">Changer en :</span>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => bulkChangeDeliveryStatus("commande")}
+            disabled={selectedExpenseIds.size === 0}
+            className="gap-1 text-xs h-7 bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100"
+          >
+            <Clock className="h-3 w-3" />
+            Commandé
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => bulkChangeDeliveryStatus("en_livraison")}
+            disabled={selectedExpenseIds.size === 0}
+            className="gap-1 text-xs h-7 bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+          >
+            <Truck className="h-3 w-3" />
+            En livraison
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => bulkChangeDeliveryStatus("livre")}
+            disabled={selectedExpenseIds.size === 0}
+            className="gap-1 text-xs h-7 bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
+          >
+            <PackageCheck className="h-3 w-3" />
+            Livré
+          </Button>
+
+          <Button size="sm" variant="ghost" onClick={exitSelectionMode} className="ml-auto h-7 w-7 p-0">
+            <X className="h-4 w-4" />
+          </Button>
         </div>
       )}
 
@@ -784,14 +956,15 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
         }}
       />
 
-      {/* VERSION 2.4: Modale plein écran */}
+      {/* VERSION 2.6: Modale plein écran */}
       <Dialog
         open={isFullscreenOpen}
         onOpenChange={(open) => {
           setIsFullscreenOpen(open);
-          // Notifier le parent à la fermeture pour synchroniser les changements
-          if (!open) {
+          // Synchroniser les changements à la fermeture
+          if (!open && hasUnsyncedChanges.current) {
             onExpenseChange();
+            hasUnsyncedChanges.current = false;
           }
         }}
       >
