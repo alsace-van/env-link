@@ -1,6 +1,6 @@
 // components/scenarios/CompactExpensesList.tsx
 // Liste compacte des dépenses pour un scénario - optimisée pour 450px
-// VERSION: 2.7 - Cercles de sélection + badge statut visible en mode sélection
+// VERSION: 2.8 - Barre sélection compacte sur 2 lignes
 // ✅ MODIFIÉ: Groupement par catégorie avec séparateurs + décodage HTML
 
 import { useState, useEffect, useRef } from "react";
@@ -776,62 +776,85 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
         </div>
       )}
 
-      {/* VERSION 2.6: Barre d'actions mode sélection */}
+      {/* VERSION 2.7: Barre d'actions mode sélection - compacte sur 2 lignes */}
       {isSelectionMode && (
-        <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
-          <Button size="sm" variant="ghost" onClick={toggleSelectAll} className="gap-1 text-xs">
-            {selectedExpenseIds.size === filteredExpenses.length ? (
-              <CheckSquare className="h-3.5 w-3.5" />
-            ) : (
-              <Square className="h-3.5 w-3.5" />
-            )}
-            {selectedExpenseIds.size === filteredExpenses.length ? "Désélectionner" : "Tout sélectionner"}
-          </Button>
+        <div className="p-2 bg-blue-50 rounded-lg border border-blue-200 space-y-2">
+          {/* Ligne 1: Sélection + compteur + fermer */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="ghost" onClick={toggleSelectAll} className="gap-1 text-xs h-7 px-2">
+                {selectedExpenseIds.size === filteredExpenses.length ? (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                ) : (
+                  <Circle className="h-3.5 w-3.5" />
+                )}
+                Tout
+              </Button>
 
-          <div className="w-px h-5 bg-blue-200" />
+              <Badge variant="secondary" className="text-xs">
+                {selectedExpenseIds.size} sélectionné(s)
+              </Badge>
+            </div>
 
-          <span className="text-xs text-blue-700 font-medium">{selectedExpenseIds.size} sélectionné(s)</span>
+            <Button size="sm" variant="ghost" onClick={exitSelectionMode} className="h-7 w-7 p-0">
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
 
-          <div className="w-px h-5 bg-blue-200" />
+          {/* Ligne 2: Boutons de changement de statut */}
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground mr-1">Changer en :</span>
 
-          <span className="text-xs text-muted-foreground">Changer en :</span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => bulkChangeDeliveryStatus("commande")}
+                    disabled={selectedExpenseIds.size === 0}
+                    className="gap-1 text-xs h-7 px-2 bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100"
+                  >
+                    <Clock className="h-3.5 w-3.5" />
+                    Commandé
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Marquer comme commandé</TooltipContent>
+              </Tooltip>
 
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => bulkChangeDeliveryStatus("commande")}
-            disabled={selectedExpenseIds.size === 0}
-            className="gap-1 text-xs h-7 bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100"
-          >
-            <Clock className="h-3 w-3" />
-            Commandé
-          </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => bulkChangeDeliveryStatus("en_livraison")}
+                    disabled={selectedExpenseIds.size === 0}
+                    className="gap-1 text-xs h-7 px-2 bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                  >
+                    <Truck className="h-3.5 w-3.5" />
+                    En cours
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Marquer comme en livraison</TooltipContent>
+              </Tooltip>
 
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => bulkChangeDeliveryStatus("en_livraison")}
-            disabled={selectedExpenseIds.size === 0}
-            className="gap-1 text-xs h-7 bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
-          >
-            <Truck className="h-3 w-3" />
-            En livraison
-          </Button>
-
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => bulkChangeDeliveryStatus("livre")}
-            disabled={selectedExpenseIds.size === 0}
-            className="gap-1 text-xs h-7 bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
-          >
-            <PackageCheck className="h-3 w-3" />
-            Livré
-          </Button>
-
-          <Button size="sm" variant="ghost" onClick={exitSelectionMode} className="ml-auto h-7 w-7 p-0">
-            <X className="h-4 w-4" />
-          </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => bulkChangeDeliveryStatus("livre")}
+                    disabled={selectedExpenseIds.size === 0}
+                    className="gap-1 text-xs h-7 px-2 bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
+                  >
+                    <PackageCheck className="h-3.5 w-3.5" />
+                    Livré
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Marquer comme livré</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
         </div>
       )}
 
