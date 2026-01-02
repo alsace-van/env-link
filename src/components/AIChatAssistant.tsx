@@ -1,12 +1,14 @@
 // Composant Chat IA flottant avec conversations organisées
 // Assistant pour recherche, comparaison et génération de documents
+// VERSION: 2.1 - Textarea avec retours à la ligne
 
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
 import {
   MessageCircle,
   X,
@@ -304,7 +306,7 @@ const AIChatAssistant = ({ projectId, projectName }: AIChatAssistantProps) => {
   const [showRTIPreview, setShowRTIPreview] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const { config, isConfigured } = useAIConfig();
 
@@ -677,26 +679,53 @@ const AIChatAssistant = ({ projectId, projectName }: AIChatAssistantProps) => {
                 </div>
               )}
 
-              {/* Input */}
+              {/* Input - Textarea avec retours à la ligne */}
               <div className="p-3 border-t">
-                <div className="flex gap-2">
-                  <Input
+                <div className="flex gap-2 items-end">
+                  <Textarea
                     ref={inputRef}
                     value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder={isConfigured ? "Posez votre question..." : "Configurez d'abord l'IA"}
+                    onChange={(e) => {
+                      setInput(e.target.value);
+                      // Auto-resize
+                      e.target.style.height = "auto";
+                      e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
+                    }}
+                    placeholder={
+                      isConfigured
+                        ? "Posez votre question... (Shift+Enter pour retour à la ligne)"
+                        : "Configurez d'abord l'IA"
+                    }
                     disabled={!isConfigured || isLoading}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
                         handleSend();
+                        // Reset height après envoi
+                        if (inputRef.current) {
+                          inputRef.current.style.height = "auto";
+                        }
                       }
                     }}
+                    className="min-h-[40px] max-h-[120px] resize-none py-2"
+                    rows={1}
                   />
-                  <Button size="icon" onClick={handleSend} disabled={!input.trim() || isLoading || !isConfigured}>
+                  <Button
+                    size="icon"
+                    onClick={() => {
+                      handleSend();
+                      // Reset height après envoi
+                      if (inputRef.current) {
+                        inputRef.current.style.height = "auto";
+                      }
+                    }}
+                    disabled={!input.trim() || isLoading || !isConfigured}
+                    className="shrink-0 h-10 w-10"
+                  >
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>
+                <p className="text-[10px] text-muted-foreground mt-1">Enter = envoyer • Shift+Enter = nouvelle ligne</p>
               </div>
             </>
           )}
