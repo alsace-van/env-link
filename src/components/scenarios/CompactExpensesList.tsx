@@ -1,6 +1,6 @@
 // components/scenarios/CompactExpensesList.tsx
 // Liste compacte des dépenses pour un scénario - optimisée pour 450px
-// VERSION: 2.3 - Catégories chargées depuis table categories du catalogue
+// VERSION: 2.4 - Filtre par statut livraison + Modale plein écran
 // ✅ MODIFIÉ: Groupement par catégorie avec séparateurs + décodage HTML
 
 import { useState, useEffect } from "react";
@@ -10,7 +10,24 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus, Edit, Trash2, Package, Truck, ArrowRight, RefreshCw, Zap, Battery, Sun, Check } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Package,
+  Truck,
+  ArrowRight,
+  RefreshCw,
+  Zap,
+  Battery,
+  Sun,
+  Check,
+  Maximize2,
+  PackageCheck,
+  Clock,
+} from "lucide-react";
 import { toast } from "sonner";
 import ExpenseFormDialog from "@/components/ExpenseFormDialog";
 
@@ -67,6 +84,10 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
   const [allCategories, setAllCategories] = useState<string[]>([]); // Catégories unifiées pour le formulaire
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [categoryIcons, setCategoryIcons] = useState<Record<string, string>>({});
+
+  // VERSION 2.4: Filtre par statut de livraison + modale plein écran
+  const [selectedDeliveryStatus, setSelectedDeliveryStatus] = useState<Expense["statut_livraison"] | null>(null);
+  const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
 
   // Charger les catégories depuis la table categories (catalogue)
   const loadAllCategories = async () => {
@@ -393,12 +414,26 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
     {} as Record<string, Expense[]>,
   );
 
-  const filteredExpenses = selectedCategory
-    ? expenses.filter((e) => {
-        const expenseCategory = e.categorie && e.categorie.trim() !== "" ? e.categorie : "Non catégorisé";
-        return expenseCategory === selectedCategory;
-      })
-    : expenses;
+  // VERSION 2.4: Filtrage combiné (catégorie + statut livraison)
+  const filteredExpenses = expenses.filter((e) => {
+    // Filtre par catégorie
+    if (selectedCategory) {
+      const expenseCategory = e.categorie && e.categorie.trim() !== "" ? e.categorie : "Non catégorisé";
+      if (expenseCategory !== selectedCategory) return false;
+    }
+    // Filtre par statut de livraison
+    if (selectedDeliveryStatus) {
+      if (e.statut_livraison !== selectedDeliveryStatus) return false;
+    }
+    return true;
+  });
+
+  // VERSION 2.4: Compteurs par statut de livraison
+  const deliveryStatusCounts = {
+    commande: expenses.filter((e) => e.statut_livraison === "commande").length,
+    en_livraison: expenses.filter((e) => e.statut_livraison === "en_livraison").length,
+    livre: expenses.filter((e) => e.statut_livraison === "livre").length,
+  };
 
   // Compter les articles avec/sans données techniques
   const articlesWithTechData = expenses.filter((e) => e.type_electrique || e.puissance_watts).length;
@@ -590,6 +625,20 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+
+          {/* VERSION 2.4: Bouton plein écran */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="sm" variant="outline" onClick={() => setIsFullscreenOpen(true)} className="gap-1">
+                  <Maximize2 className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Ouvrir en plein écran</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       )}
 
@@ -627,11 +676,53 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
         </div>
       )}
 
+      {/* VERSION 2.4: Filtres par statut de livraison */}
+      {expenses.length > 0 && (
+        <div className="flex gap-1.5 flex-wrap">
+          <Badge
+            variant={selectedDeliveryStatus === null ? "secondary" : "outline"}
+            className="cursor-pointer text-xs"
+            onClick={() => setSelectedDeliveryStatus(null)}
+          >
+            <Truck className="h-3 w-3 mr-1" />
+            Tous ({expenses.length})
+          </Badge>
+          <Badge
+            variant={selectedDeliveryStatus === "commande" ? "secondary" : "outline"}
+            className={`cursor-pointer text-xs ${selectedDeliveryStatus === "commande" ? "bg-orange-100 text-orange-700 border-orange-300" : ""}`}
+            onClick={() => setSelectedDeliveryStatus(selectedDeliveryStatus === "commande" ? null : "commande")}
+          >
+            <Clock className="h-3 w-3 mr-1" />
+            Commandé ({deliveryStatusCounts.commande})
+          </Badge>
+          <Badge
+            variant={selectedDeliveryStatus === "en_livraison" ? "secondary" : "outline"}
+            className={`cursor-pointer text-xs ${selectedDeliveryStatus === "en_livraison" ? "bg-blue-100 text-blue-700 border-blue-300" : ""}`}
+            onClick={() => setSelectedDeliveryStatus(selectedDeliveryStatus === "en_livraison" ? null : "en_livraison")}
+          >
+            <Truck className="h-3 w-3 mr-1" />
+            En livraison ({deliveryStatusCounts.en_livraison})
+          </Badge>
+          <Badge
+            variant={selectedDeliveryStatus === "livre" ? "secondary" : "outline"}
+            className={`cursor-pointer text-xs ${selectedDeliveryStatus === "livre" ? "bg-green-100 text-green-700 border-green-300" : ""}`}
+            onClick={() => setSelectedDeliveryStatus(selectedDeliveryStatus === "livre" ? null : "livre")}
+          >
+            <PackageCheck className="h-3 w-3 mr-1" />
+            Livré ({deliveryStatusCounts.livre})
+          </Badge>
+        </div>
+      )}
+
       {/* Liste des dépenses - groupées par catégorie */}
       {filteredExpenses.length === 0 ? (
-        <div className="text-center py-6 text-sm text-muted-foreground">Aucun article dans ce scénario</div>
-      ) : selectedCategory ? (
-        // Mode filtre : affichage simple d'une catégorie
+        <div className="text-center py-6 text-sm text-muted-foreground">
+          {expenses.length === 0
+            ? "Aucun article dans ce scénario"
+            : "Aucun article ne correspond aux filtres sélectionnés"}
+        </div>
+      ) : selectedCategory || selectedDeliveryStatus ? (
+        // Mode filtre : affichage simple (catégorie ou livraison sélectionnée)
         <div className="space-y-2">{filteredExpenses.map((expense) => renderExpenseCard(expense))}</div>
       ) : (
         // Mode groupé : afficher toutes les catégories avec séparateurs
@@ -679,6 +770,174 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
           setEditingExpense(null);
         }}
       />
+
+      {/* VERSION 2.4: Modale plein écran */}
+      <Dialog open={isFullscreenOpen} onOpenChange={setIsFullscreenOpen}>
+        <DialogContent className="max-w-5xl h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span>Liste des articles ({expenses.length})</span>
+              <div className="flex gap-2 text-sm font-normal">
+                <Badge variant="outline" className="bg-orange-50">
+                  <Clock className="h-3 w-3 mr-1" />
+                  Commandé: {deliveryStatusCounts.commande}
+                </Badge>
+                <Badge variant="outline" className="bg-blue-50">
+                  <Truck className="h-3 w-3 mr-1" />
+                  En livraison: {deliveryStatusCounts.en_livraison}
+                </Badge>
+                <Badge variant="outline" className="bg-green-50">
+                  <PackageCheck className="h-3 w-3 mr-1" />
+                  Livré: {deliveryStatusCounts.livre}
+                </Badge>
+              </div>
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* Filtres dans la modale */}
+          <div className="flex gap-2 flex-wrap border-b pb-3">
+            {/* Filtres catégorie */}
+            <div className="flex gap-1.5 flex-wrap">
+              <Badge
+                variant={selectedCategory === null ? "default" : "outline"}
+                className="cursor-pointer text-xs"
+                onClick={() => setSelectedCategory(null)}
+              >
+                Toutes catégories ({expenses.length})
+              </Badge>
+              {categories.map((cat) => (
+                <Badge
+                  key={cat}
+                  variant={selectedCategory === cat ? "default" : "outline"}
+                  className="cursor-pointer text-xs"
+                  onClick={() => setSelectedCategory(cat)}
+                >
+                  <span className="mr-1">{categoryIcons[cat] || "📦"}</span>
+                  {cat} ({groupedByCategory[cat]?.length || 0})
+                </Badge>
+              ))}
+            </div>
+
+            {/* Séparateur */}
+            <div className="w-px h-6 bg-border self-center" />
+
+            {/* Filtres livraison */}
+            <div className="flex gap-1.5 flex-wrap">
+              <Badge
+                variant={selectedDeliveryStatus === null ? "secondary" : "outline"}
+                className="cursor-pointer text-xs"
+                onClick={() => setSelectedDeliveryStatus(null)}
+              >
+                Tous statuts
+              </Badge>
+              <Badge
+                variant={selectedDeliveryStatus === "commande" ? "secondary" : "outline"}
+                className={`cursor-pointer text-xs ${selectedDeliveryStatus === "commande" ? "bg-orange-100 text-orange-700" : ""}`}
+                onClick={() => setSelectedDeliveryStatus(selectedDeliveryStatus === "commande" ? null : "commande")}
+              >
+                <Clock className="h-3 w-3 mr-1" />
+                Commandé
+              </Badge>
+              <Badge
+                variant={selectedDeliveryStatus === "en_livraison" ? "secondary" : "outline"}
+                className={`cursor-pointer text-xs ${selectedDeliveryStatus === "en_livraison" ? "bg-blue-100 text-blue-700" : ""}`}
+                onClick={() =>
+                  setSelectedDeliveryStatus(selectedDeliveryStatus === "en_livraison" ? null : "en_livraison")
+                }
+              >
+                <Truck className="h-3 w-3 mr-1" />
+                En livraison
+              </Badge>
+              <Badge
+                variant={selectedDeliveryStatus === "livre" ? "secondary" : "outline"}
+                className={`cursor-pointer text-xs ${selectedDeliveryStatus === "livre" ? "bg-green-100 text-green-700" : ""}`}
+                onClick={() => setSelectedDeliveryStatus(selectedDeliveryStatus === "livre" ? null : "livre")}
+              >
+                <PackageCheck className="h-3 w-3 mr-1" />
+                Livré
+              </Badge>
+            </div>
+          </div>
+
+          {/* Liste scrollable */}
+          <ScrollArea className="flex-1">
+            <div className="grid grid-cols-2 gap-3 p-1">
+              {filteredExpenses.map((expense) => (
+                <Card key={expense.id} className="p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start gap-2 mb-1">
+                        <span className="text-lg shrink-0">{categoryIcons[expense.categorie] || "📦"}</span>
+                        <div>
+                          <h4 className="font-medium leading-tight">{decodeHtml(expense.nom_accessoire)}</h4>
+                          {expense.marque && <p className="text-sm text-muted-foreground">{expense.marque}</p>}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 text-sm mt-2">
+                        <span className="text-muted-foreground">
+                          {expense.prix?.toFixed(2)} € × {expense.quantite}
+                        </span>
+                        {expense.prix_vente_ttc && (
+                          <span className="text-green-600 font-medium">
+                            Vente: {(expense.prix_vente_ttc * expense.quantite).toFixed(2)} €
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex flex-col gap-1">
+                      {/* Statut livraison */}
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => cycleDeliveryStatus(expense)}
+                              disabled={isLocked}
+                              className={`h-8 px-2 ${getDeliveryInfo(expense.statut_livraison).className}`}
+                            >
+                              {getDeliveryInfo(expense.statut_livraison).icon}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{getDeliveryInfo(expense.statut_livraison).label}</p>
+                            <p className="text-xs text-muted-foreground">Cliquer pour changer</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+
+                      {/* Boutons éditer/supprimer */}
+                      {!isLocked && (
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEditingExpense(expense)}
+                            className="h-7 w-7 p-0"
+                          >
+                            <Edit className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => deleteExpense(expense.id)}
+                            className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
