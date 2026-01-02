@@ -1,6 +1,6 @@
 // Composant Chat IA flottant avec conversations organisées
 // Assistant pour recherche, comparaison et génération de documents
-// VERSION: 2.2 - Génération PDF RTI avec Gemini + pdf-lib
+// VERSION: 2.4 - Scroll automatique amélioré (ouverture + suivi conversation)
 
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -307,6 +307,7 @@ const AIChatAssistant = ({ projectId, projectName }: AIChatAssistantProps) => {
   const [showRTIPreview, setShowRTIPreview] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const { config, isConfigured } = useAIConfig();
@@ -367,12 +368,35 @@ const AIChatAssistant = ({ projectId, projectName }: AIChatAssistantProps) => {
     getUser();
   }, []);
 
-  // Scroll automatique
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  // Scroll automatique vers le bas
+  const scrollToBottom = (smooth = true) => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({
+        behavior: smooth ? "smooth" : "instant",
+        block: "end",
+      });
     }
+  };
+
+  // Scroll quand les messages changent
+  useEffect(() => {
+    scrollToBottom();
   }, [messages]);
+
+  // Scroll quand isLoading change (pour suivre la réponse)
+  useEffect(() => {
+    if (isLoading) {
+      scrollToBottom();
+    }
+  }, [isLoading]);
+
+  // Scroll quand le chat s'ouvre
+  useEffect(() => {
+    if (isOpen && !isMinimized && !showHistory) {
+      // Petit délai pour laisser le DOM se mettre à jour
+      setTimeout(() => scrollToBottom(false), 100);
+    }
+  }, [isOpen, isMinimized, showHistory, activeConversationId]);
 
   // Focus input quand ouvert
   useEffect(() => {
@@ -676,6 +700,9 @@ const AIChatAssistant = ({ projectId, projectName }: AIChatAssistantProps) => {
                       </div>
                     </div>
                   )}
+
+                  {/* Élément invisible pour le scroll automatique */}
+                  <div ref={messagesEndRef} />
                 </div>
               </ScrollArea>
 
