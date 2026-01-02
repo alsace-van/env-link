@@ -1,6 +1,6 @@
 // components/scenarios/CompactExpensesList.tsx
 // Liste compacte des dépenses pour un scénario - optimisée pour 450px
-// VERSION: 2.6 - Mode sélection multiple + pas de refresh à chaque action
+// VERSION: 2.7 - Cercles de sélection + badge statut visible en mode sélection
 // ✅ MODIFIÉ: Groupement par catégorie avec séparateurs + décodage HTML
 
 import { useState, useEffect, useRef } from "react";
@@ -30,6 +30,8 @@ import {
   CheckSquare,
   Square,
   X,
+  Circle,
+  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import ExpenseFormDialog from "@/components/ExpenseFormDialog";
@@ -543,14 +545,20 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
       style={isSelectionMode ? { cursor: "pointer" } : undefined}
     >
       <div className="flex items-start justify-between gap-2">
-        {/* VERSION 2.6: Checkbox en mode sélection */}
+        {/* VERSION 2.6: Cercle de sélection + badge statut en mode sélection */}
         {isSelectionMode && (
-          <div className="shrink-0 pt-0.5">
+          <div className="shrink-0 pt-0.5 flex items-center gap-2">
             {selectedExpenseIds.has(expense.id) ? (
-              <CheckSquare className="h-5 w-5 text-blue-600" />
+              <CheckCircle2 className="h-5 w-5 text-blue-600" />
             ) : (
-              <Square className="h-5 w-5 text-gray-400" />
+              <Circle className="h-5 w-5 text-gray-400" />
             )}
+            {/* Badge statut de livraison visible en mode sélection */}
+            <div
+              className={`px-1.5 py-0.5 rounded text-xs flex items-center gap-1 ${getDeliveryInfo(expense.statut_livraison).color}`}
+            >
+              {getDeliveryInfo(expense.statut_livraison).icon}
+            </div>
           </div>
         )}
 
