@@ -897,7 +897,7 @@ const CompactExpensesList = ({ projectId, scenarioId, isLocked, onExpenseChange 
                               variant="ghost"
                               onClick={() => cycleDeliveryStatus(expense)}
                               disabled={isLocked}
-                              className={`h-8 px-2 ${getDeliveryInfo(expense.statut_livraison).className}`}
+                              className={`h-8 px-2 ${getDeliveryInfo(expense.statut_livraison).color}`}
                             >
                               {getDeliveryInfo(expense.statut_livraison).icon}
                             </Button>
