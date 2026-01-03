@@ -1,5 +1,8 @@
+// Widget d'affichage de l'usage IA avec indicateur de configuration
+// VERSION: 1.1 - Ajout coche verte quand clé API configurée
+
 import { useState } from "react";
-import { Sparkles, ExternalLink, ChevronUp, ChevronDown, RotateCcw, Settings2 } from "lucide-react";
+import { Sparkles, ExternalLink, ChevronUp, ChevronDown, RotateCcw, Settings2, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAIConfig, AI_PROVIDERS } from "@/hooks/useAIConfig";
 import { getAIUsageStats, resetAIUsageStats } from "@/services/aiService";
@@ -103,6 +106,7 @@ export function AIUsageWidget({ variant = "compact", className = "" }: AIUsageWi
               <div className="flex items-center gap-1.5">
                 <Sparkles className="h-4 w-4 text-purple-600" />
                 <span className="text-sm font-medium">{providerInfo.name}</span>
+                <CheckCircle className="h-3.5 w-3.5 text-green-500" />
               </div>
               <div className="flex items-center gap-1">
                 <TooltipProvider>
