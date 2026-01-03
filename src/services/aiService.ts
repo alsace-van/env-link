@@ -27,7 +27,7 @@ export interface AIResponse {
 // MODÈLES PAR DÉFAUT (fallback si DB inaccessible)
 // ========================================
 const DEFAULT_MODELS: Record<AIProvider, string> = {
-  gemini: "gemini-2.0-flash",
+  gemini: "gemini-2.0-flash-exp",
   openai: "gpt-4o-mini",
   anthropic: "claude-3-haiku-20240307",
   mistral: "mistral-small-latest",

@@ -21,7 +21,8 @@ interface AISettingRow {
 // Modèles connus par fournisseur (à jour janvier 2026)
 const KNOWN_MODELS = {
   gemini: [
-    { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash (15 RPM, 1500 RPD) ⭐", free: true },
+    { value: "gemini-2.0-flash-exp", label: "Gemini 2.0 Flash Exp (Quotas généreux) ⭐", free: true },
+    { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash (15 RPM, 1500 RPD)", free: true },
     { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (5 RPM, 20 RPD)", free: true },
     { value: "gemini-2.0-flash-lite", label: "Gemini 2.0 Flash Lite", free: true },
     { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", free: true },
