@@ -1,4 +1,7 @@
-import { useState } from "react";
+// components/AIConfigDialog.tsx
+// VERSION: 2.0 - Synchronisation avec useAIConfig (source unique user_ai_settings)
+
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +16,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Sparkles, ExternalLink, Trash2, AlertTriangle } from "lucide-react";
+import { Sparkles, ExternalLink, Trash2, AlertTriangle, Eye, EyeOff } from "lucide-react";
 import { useAIConfig, AIProvider, AI_PROVIDERS } from "@/hooks/useAIConfig";
 import { toast } from "sonner";
 
@@ -23,12 +26,32 @@ interface AIConfigDialogProps {
 }
 
 export function AIConfigDialog({ open, onOpenChange }: AIConfigDialogProps) {
-  const { provider, apiKey, dailyLimit, warningThreshold, saveConfig, clearConfig } = useAIConfig();
+  const { provider, apiKey, dailyLimit, warningThreshold, saveConfig, clearConfig, isLoading } = useAIConfig();
   const [tempProvider, setTempProvider] = useState<AIProvider>(provider);
   const [tempApiKey, setTempApiKey] = useState(apiKey);
   const [tempLimitEnabled, setTempLimitEnabled] = useState(dailyLimit !== null);
   const [tempLimit, setTempLimit] = useState<string>(dailyLimit ? (dailyLimit / 1000).toString() : "");
   const [tempWarningThreshold, setTempWarningThreshold] = useState(warningThreshold);
+  const [showApiKey, setShowApiKey] = useState(false);
+
+  // Synchroniser les valeurs quand la modale s'ouvre ou quand les données sont chargées
+  useEffect(() => {
+    if (open && !isLoading) {
+      setTempProvider(provider);
+      setTempApiKey(apiKey);
+      setTempLimitEnabled(dailyLimit !== null);
+      setTempLimit(dailyLimit ? (dailyLimit / 1000).toString() : "");
+      setTempWarningThreshold(warningThreshold);
+      setShowApiKey(false); // Masquer la clé par défaut
+    }
+  }, [open, isLoading, provider, apiKey, dailyLimit, warningThreshold]);
+
+  // Masquer la clé API pour l'affichage
+  const maskApiKey = (key: string) => {
+    if (!key) return "";
+    if (key.length <= 8) return "••••••••";
+    return key.substring(0, 6) + "••••••••••••" + key.substring(key.length - 4);
+  };
 
   const handleSave = () => {
     if (!tempApiKey.trim()) {
@@ -52,6 +75,7 @@ export function AIConfigDialog({ open, onOpenChange }: AIConfigDialogProps) {
     setTempApiKey("");
     setTempLimitEnabled(false);
     setTempLimit("");
+    setShowApiKey(false);
     toast.success("Configuration IA supprimée");
   };
 
@@ -108,12 +132,31 @@ export function AIConfigDialog({ open, onOpenChange }: AIConfigDialogProps) {
           {/* Clé API */}
           <div className="space-y-2">
             <Label>Clé API</Label>
-            <Input
-              type="password"
-              value={tempApiKey}
-              onChange={(e) => setTempApiKey(e.target.value)}
-              placeholder={currentProviderInfo.placeholder}
-            />
+            <div className="relative">
+              <Input
+                type={showApiKey ? "text" : "password"}
+                value={showApiKey ? tempApiKey : tempApiKey ? maskApiKey(tempApiKey) : ""}
+                onChange={(e) => {
+                  if (showApiKey) {
+                    setTempApiKey(e.target.value);
+                  }
+                }}
+                onFocus={() => {
+                  if (!showApiKey && tempApiKey) {
+                    setShowApiKey(true);
+                  }
+                }}
+                placeholder={currentProviderInfo.placeholder}
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowApiKey(!showApiKey)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
             <a
               href={currentProviderInfo.helpUrl}
               target="_blank"
@@ -187,7 +230,7 @@ export function AIConfigDialog({ open, onOpenChange }: AIConfigDialogProps) {
             )}
           </div>
 
-          {apiKey && (
+          {tempApiKey && (
             <div className="pt-2 border-t">
               <Button
                 variant="outline"
