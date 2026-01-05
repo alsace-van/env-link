@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 2.4 - Fix toggle VASP sans rechargement
+// VERSION: 2.5 - Fix boucle infinie useEffect
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -1298,18 +1298,7 @@ export const LayoutCanvas = ({
     return () => {
       paper.project.clear();
     };
-  }, [
-    projectId,
-    scale,
-    loadAreaLength,
-    loadAreaWidth,
-    scaledLoadAreaLength,
-    scaledLoadAreaWidth,
-    empattement,
-    porteFauxAvant,
-    vehicleLength,
-    rangeesSieges,
-  ]);
+  }, [projectId, loadAreaLength, loadAreaWidth, empattement, porteFauxAvant, vehicleLength]);
 
   // useEffect séparé pour gérer le toggle VASP (afficher/masquer les éléments)
   useEffect(() => {
