@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 2.0 - Ajout essieux, rangées sièges, cotation intelligente
+// VERSION: 2.1 - Cotation intelligente fonctionnelle
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -97,6 +97,21 @@ export const LayoutCanvas = ({
   const [loadAreaLength, setLoadAreaLength] = useState(initialLoadAreaLength || Math.round(vehicleLength * 0.7));
   const [loadAreaWidth, setLoadAreaWidth] = useState(initialLoadAreaWidth || Math.round(vehicleWidth * 0.9));
   const [isEditingDimensions, setIsEditingDimensions] = useState(false);
+
+  // États pour la cotation intelligente
+  const [cotationStep, setCotationStep] = useState<0 | 1 | 2>(0); // 0: aucun, 1: référence sélectionnée, 2: cible sélectionnée
+  const [cotationReference, setCotationReference] = useState<{ x: number; type: string; label: string } | null>(null);
+  const [cotationTarget, setCotationTarget] = useState<{
+    x: number;
+    type: string;
+    label: string;
+    itemId?: string;
+  } | null>(null);
+  const [cotationCurrentDistance, setCotationCurrentDistance] = useState<number>(0);
+  const [cotationNewDistance, setCotationNewDistance] = useState<string>("");
+  const [showCotationDialog, setShowCotationDialog] = useState(false);
+  const [cotationLine, setCotationLine] = useState<paper.Path.Line | null>(null);
+
   const [furnitureForm, setFurnitureForm] = useState({
     longueur_mm: 0,
     largeur_mm: 0,
@@ -135,6 +150,8 @@ export const LayoutCanvas = ({
   const scaleRef = useRef(scale);
   const loadAreaLengthRef = useRef(loadAreaLength);
   const loadAreaWidthRef = useRef(loadAreaWidth);
+  const cotationStepRef = useRef(cotationStep);
+  const cotationReferenceRef = useRef(cotationReference);
 
   useEffect(() => {
     activeToolRef.current = activeTool;
@@ -160,6 +177,133 @@ export const LayoutCanvas = ({
     loadAreaLengthRef.current = loadAreaLength;
     loadAreaWidthRef.current = loadAreaWidth;
   }, [loadAreaLength, loadAreaWidth]);
+
+  useEffect(() => {
+    cotationStepRef.current = cotationStep;
+  }, [cotationStep]);
+
+  useEffect(() => {
+    cotationReferenceRef.current = cotationReference;
+  }, [cotationReference]);
+
+  // Réinitialiser la cotation quand on change d'outil
+  useEffect(() => {
+    if (activeTool !== "cotation") {
+      setCotationStep(0);
+      setCotationReference(null);
+      setCotationTarget(null);
+      // Nettoyer les éléments temporaires de cotation
+      if (paper.project && paper.project.activeLayer) {
+        const toRemove: paper.Item[] = [];
+        paper.project.activeLayer.children.forEach((child) => {
+          if (child.data.isCotationIndicator || child.data.isCotationLine || child.data.isCotationText) {
+            toRemove.push(child);
+          }
+        });
+        toRemove.forEach((item) => item.remove());
+      }
+      if (cotationLine) {
+        cotationLine.remove();
+        setCotationLine(null);
+      }
+    }
+  }, [activeTool]);
+
+  // Fonction pour calculer la position X de l'essieu AV
+  const getEssieuAvX = useCallback(() => {
+    const currentScale = scaleRef.current;
+    const currentLength = loadAreaLengthRef.current;
+    const scaledLength = currentLength * currentScale;
+    const areaLeft = (CANVAS_WIDTH - scaledLength) / 2;
+    const calculatedPorteFauxAvant = porteFauxAvant || Math.round(vehicleLength * 0.15);
+    const scaledPorteFauxAvant = calculatedPorteFauxAvant * currentScale;
+    return areaLeft + scaledPorteFauxAvant;
+  }, [porteFauxAvant, vehicleLength]);
+
+  // Fonction pour appliquer la nouvelle distance de cotation
+  const applyCotation = useCallback(() => {
+    if (!cotationReference || !cotationTarget) return;
+
+    const newDistanceMm = Number(cotationNewDistance);
+    if (isNaN(newDistanceMm) || newDistanceMm < 0) {
+      toast.error("Distance invalide");
+      return;
+    }
+
+    const currentScale = scaleRef.current;
+    const newDistancePx = newDistanceMm * currentScale;
+    const newX = cotationReference.x + newDistancePx;
+
+    // Trouver et déplacer l'élément cible
+    if (cotationTarget.itemId && paper.project && paper.project.activeLayer) {
+      paper.project.activeLayer.children.forEach((child) => {
+        if (child instanceof paper.Group && child.data.furnitureId === cotationTarget.itemId) {
+          const deltaX = newX - child.bounds.center.x;
+          child.position = child.position.add(new paper.Point(deltaX, 0));
+
+          // Mettre à jour le label de distance AV dans le meuble
+          const distanceAV = Math.round((newX - getEssieuAvX()) / currentScale);
+          console.log("📏 Nouvelle distance essieu AV:", distanceAV, "mm");
+
+          toast.success(`Meuble repositionné à ${newDistanceMm} mm de la référence`);
+        }
+      });
+    }
+
+    // Fermer le dialogue et réinitialiser
+    setShowCotationDialog(false);
+    setCotationStep(0);
+    setCotationReference(null);
+    setCotationTarget(null);
+    setCotationNewDistance("");
+
+    // Supprimer tous les éléments temporaires de cotation
+    if (paper.project && paper.project.activeLayer) {
+      const toRemove: paper.Item[] = [];
+      paper.project.activeLayer.children.forEach((child) => {
+        if (child.data.isCotationIndicator || child.data.isCotationLine || child.data.isCotationText) {
+          toRemove.push(child);
+        }
+      });
+      toRemove.forEach((item) => item.remove());
+    }
+    if (cotationLine) {
+      cotationLine.remove();
+      setCotationLine(null);
+    }
+
+    // Sauvegarder automatiquement
+    setTimeout(() => {
+      (window as any).layoutCanvasSave?.();
+    }, 100);
+  }, [cotationReference, cotationTarget, cotationNewDistance, cotationLine, getEssieuAvX]);
+
+  // Fonction pour nettoyer tous les éléments temporaires de cotation
+  const cleanupCotationElements = useCallback(() => {
+    if (paper.project && paper.project.activeLayer) {
+      const toRemove: paper.Item[] = [];
+      paper.project.activeLayer.children.forEach((child) => {
+        if (child.data.isCotationIndicator || child.data.isCotationLine || child.data.isCotationText) {
+          toRemove.push(child);
+        }
+      });
+      toRemove.forEach((item) => item.remove());
+    }
+    if (cotationLine) {
+      cotationLine.remove();
+      setCotationLine(null);
+    }
+  }, [cotationLine]);
+
+  // Fonction pour annuler la cotation
+  const cancelCotation = useCallback(() => {
+    setShowCotationDialog(false);
+    setCotationStep(0);
+    setCotationReference(null);
+    setCotationTarget(null);
+    setCotationNewDistance("");
+    cleanupCotationElements();
+  }, [cleanupCotationElements]);
 
   // Fonction pour supprimer un meuble depuis la liste
   const handleDeleteFromList = async (furnitureId: string) => {
@@ -453,6 +597,143 @@ export const LayoutCanvas = ({
     const tool = new paper.Tool();
 
     tool.onMouseDown = (event: paper.ToolEvent) => {
+      // Mode cotation intelligente
+      if (activeToolRef.current === "cotation") {
+        const hitResult = paper.project.hitTest(event.point, {
+          fill: true,
+          stroke: true,
+          tolerance: 10,
+        });
+
+        const currentScale = scaleRef.current;
+        const currentLength = loadAreaLengthRef.current;
+        const scaledLength = currentLength * currentScale;
+        const areaLeft = (CANVAS_WIDTH - scaledLength) / 2;
+
+        // Calculer la position de l'essieu AV
+        const calculatedPorteFauxAvant = porteFauxAvant || Math.round(vehicleLength * 0.15);
+        const scaledPorteFauxAvant = calculatedPorteFauxAvant * currentScale;
+        const essieuAvX = areaLeft + scaledPorteFauxAvant;
+
+        // Vérifier si on clique sur un essieu VASP
+        let clickedOnEssieuAv = false;
+        let clickedOnEssieuAr = false;
+        let clickedItem: paper.Item | null = null;
+        let clickedFurnitureId: string | null = null;
+
+        if (hitResult?.item) {
+          if (hitResult.item.data.elementType === "essieu_av") {
+            clickedOnEssieuAv = true;
+          } else if (hitResult.item.data.elementType === "essieu_ar") {
+            clickedOnEssieuAr = true;
+          } else if (hitResult.item.parent instanceof paper.Group && hitResult.item.parent.data.isFurniture) {
+            clickedItem = hitResult.item.parent;
+            clickedFurnitureId = hitResult.item.parent.data.furnitureId;
+          } else if (hitResult.item instanceof paper.Group && hitResult.item.data.isFurniture) {
+            clickedItem = hitResult.item;
+            clickedFurnitureId = hitResult.item.data.furnitureId;
+          }
+        }
+
+        // Si on a cliqué sur l'essieu AV, on peut aussi vérifier par la position X
+        if (!clickedOnEssieuAv && empattement && empattement > 0) {
+          const tolerance = 15;
+          if (Math.abs(event.point.x - essieuAvX) < tolerance) {
+            clickedOnEssieuAv = true;
+          }
+          const essieuArX = essieuAvX + empattement * currentScale;
+          if (Math.abs(event.point.x - essieuArX) < tolerance) {
+            clickedOnEssieuAr = true;
+          }
+        }
+
+        const step = cotationStepRef.current;
+
+        if (step === 0) {
+          // Première sélection (référence)
+          let reference: { x: number; type: string; label: string } | null = null;
+
+          if (clickedOnEssieuAv) {
+            reference = { x: essieuAvX, type: "essieu_av", label: "Essieu AV" };
+          } else if (clickedOnEssieuAr) {
+            const essieuArX = essieuAvX + (empattement || 0) * currentScale;
+            reference = { x: essieuArX, type: "essieu_ar", label: "Essieu AR" };
+          } else if (clickedItem) {
+            reference = {
+              x: clickedItem.bounds.center.x,
+              type: "furniture",
+              label: `Meuble ${clickedFurnitureId?.slice(-4) || ""}`,
+            };
+          }
+
+          if (reference) {
+            setCotationReference(reference);
+            setCotationStep(1);
+            toast.info(`Référence: ${reference.label}. Cliquez sur l'élément cible.`);
+
+            // Créer un indicateur visuel sur l'élément de référence
+            const indicator = new paper.Path.Circle({
+              center: [reference.x, event.point.y],
+              radius: 8,
+              fillColor: new paper.Color("#8b5cf6"),
+              strokeColor: new paper.Color("#6d28d9"),
+              strokeWidth: 2,
+            });
+            indicator.data.isCotationIndicator = true;
+          } else {
+            toast.warning("Cliquez sur un essieu ou un meuble pour définir la référence");
+          }
+        } else if (step === 1 && cotationReferenceRef.current) {
+          // Deuxième sélection (cible) - doit être un meuble
+          if (clickedItem && clickedFurnitureId) {
+            const targetX = clickedItem.bounds.center.x;
+            const referenceX = cotationReferenceRef.current.x;
+            const distancePx = Math.abs(targetX - referenceX);
+            const distanceMm = Math.round(distancePx / currentScale);
+
+            setCotationTarget({
+              x: targetX,
+              type: "furniture",
+              label: `Meuble ${clickedFurnitureId.slice(-4)}`,
+              itemId: clickedFurnitureId,
+            });
+            setCotationCurrentDistance(distanceMm);
+            setCotationNewDistance(distanceMm.toString());
+            setCotationStep(2);
+
+            // Dessiner une ligne de cotation temporaire
+            const cotLine = new paper.Path.Line({
+              from: [referenceX, event.point.y],
+              to: [targetX, event.point.y],
+              strokeColor: new paper.Color("#8b5cf6"),
+              strokeWidth: 2,
+              dashArray: [8, 4],
+            });
+            cotLine.data.isCotationLine = true;
+            setCotationLine(cotLine);
+
+            // Ajouter le texte de distance
+            const midX = (referenceX + targetX) / 2;
+            const cotText = new paper.PointText({
+              point: [midX, event.point.y - 10],
+              content: `${distanceMm} mm`,
+              fillColor: new paper.Color("#8b5cf6"),
+              fontSize: 12,
+              fontWeight: "bold",
+              justification: "center",
+            });
+            cotText.data.isCotationText = true;
+
+            // Afficher le dialogue
+            setShowCotationDialog(true);
+          } else {
+            toast.warning("Cliquez sur un meuble pour définir la cible");
+          }
+        }
+
+        return;
+      }
+
       if (activeToolRef.current === "measure") {
         if (currentMeasureLine) {
           currentMeasureLine.remove();
@@ -1190,10 +1471,14 @@ export const LayoutCanvas = ({
                 variant={activeTool === "cotation" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setActiveTool("cotation")}
-                title="Cotation intelligente (C)"
+                title="Cotation intelligente - Cliquez sur une référence puis sur un meuble"
+                className={activeTool === "cotation" ? "bg-purple-600 hover:bg-purple-700" : ""}
               >
                 <Crosshair className="h-4 w-4 mr-2" />
                 Cotation
+                {cotationStep > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 text-xs bg-white/20 rounded">{cotationStep}/2</span>
+                )}
               </Button>
 
               <Separator orientation="vertical" className="h-6" />
@@ -1270,6 +1555,41 @@ export const LayoutCanvas = ({
                 Exporter
               </Button>
             </div>
+
+            {/* Guide mode cotation */}
+            {activeTool === "cotation" && (
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 flex items-center gap-3">
+                <Crosshair className="h-5 w-5 text-purple-600 flex-shrink-0" />
+                <div className="flex-1">
+                  {cotationStep === 0 && (
+                    <p className="text-sm text-purple-700">
+                      <span className="font-medium">Étape 1/2 :</span> Cliquez sur la{" "}
+                      <span className="font-bold">référence</span> (essieu AV, essieu AR ou meuble)
+                    </p>
+                  )}
+                  {cotationStep === 1 && (
+                    <p className="text-sm text-purple-700">
+                      <span className="font-medium">Étape 2/2 :</span> Cliquez sur le{" "}
+                      <span className="font-bold">meuble à repositionner</span>
+                      <span className="ml-2 text-xs text-purple-500">Référence: {cotationReference?.label}</span>
+                    </p>
+                  )}
+                  {cotationStep === 2 && (
+                    <p className="text-sm text-purple-700">Définissez la nouvelle distance dans le dialogue</p>
+                  )}
+                </div>
+                {cotationStep > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={cancelCotation}
+                    className="text-purple-600 hover:text-purple-700"
+                  >
+                    Annuler
+                  </Button>
+                )}
+              </div>
+            )}
 
             <div className="bg-muted/30 rounded-lg p-2">
               <canvas
@@ -1652,6 +1972,91 @@ export const LayoutCanvas = ({
           </>
         )}
       </div>
+
+      {/* Dialogue de cotation intelligente */}
+      <Dialog
+        open={showCotationDialog}
+        onOpenChange={(open) => {
+          if (!open) cancelCotation();
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Crosshair className="h-5 w-5 text-purple-600" />
+              Cotation intelligente
+            </DialogTitle>
+            <DialogDescription>Définissez la distance entre les deux éléments sélectionnés</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Éléments sélectionnés */}
+            <div className="grid grid-cols-2 gap-4 p-3 bg-muted/50 rounded-lg">
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">Référence</p>
+                <p className="font-medium text-purple-600">{cotationReference?.label || "-"}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">Cible</p>
+                <p className="font-medium text-blue-600">{cotationTarget?.label || "-"}</p>
+              </div>
+            </div>
+
+            {/* Distance actuelle */}
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="text-sm text-muted-foreground">Distance actuelle :</span>
+              <span className="font-semibold">{cotationCurrentDistance} mm</span>
+            </div>
+
+            {/* Nouvelle distance */}
+            <div className="space-y-2">
+              <Label htmlFor="new_distance">Nouvelle distance (mm)</Label>
+              <Input
+                id="new_distance"
+                type="number"
+                value={cotationNewDistance}
+                onChange={(e) => setCotationNewDistance(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    applyCotation();
+                  }
+                }}
+                placeholder="Entrez la distance souhaitée"
+                className="text-lg font-mono"
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground">
+                Le meuble cible sera repositionné à cette distance de la référence
+              </p>
+            </div>
+
+            {/* Raccourcis */}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => setCotationNewDistance("0")}>
+                0 mm
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setCotationNewDistance("500")}>
+                500 mm
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setCotationNewDistance("1000")}>
+                1000 mm
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setCotationNewDistance("1500")}>
+                1500 mm
+              </Button>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={cancelCotation}>
+              Annuler
+            </Button>
+            <Button onClick={applyCotation} className="bg-purple-600 hover:bg-purple-700">
+              Appliquer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Calculateur de poids de meuble */}
       <FurnitureWeightCalculator />
