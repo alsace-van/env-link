@@ -1,8 +1,9 @@
 // Service d'indexation des documents (notices, docs DREAL)
 // Extraction PDF → Découpage en chunks → Embeddings → Stockage pgvector
-// VERSION: 1.1 - Fix récupération clé API (format useAIConfig)
+// VERSION: 2.0 - Source unique: user_ai_settings via getAIApiKey
 
 import { supabase } from "@/integrations/supabase/client";
+import { getAIApiKey, AIProvider } from "@/hooks/useAIConfig";
 import * as pdfjsLib from "pdfjs-dist";
 
 // Configurer le worker PDF.js
@@ -138,40 +139,20 @@ export function splitIntoChunks(pages: { pageNumber: number; text: string }[]): 
 // GÉNÉRATION EMBEDDINGS
 // ============================================
 
-async function getEmbeddingProvider(): Promise<{ provider: string; apiKey: string | null }> {
-  // Récupérer le provider configuré
+async function getEmbeddingProvider(): Promise<{ provider: AIProvider; apiKey: string | null }> {
+  // Récupérer le provider configuré dans les paramètres admin
   const { data: setting } = await (supabase as any)
     .from("app_settings")
     .select("value")
     .eq("key", "embedding_provider")
     .single();
 
-  const provider = setting?.value || "gemini";
+  const provider = (setting?.value as AIProvider) || "gemini";
 
-  // Récupérer la clé API depuis le localStorage (format useAIConfig)
-  const savedProvider = localStorage.getItem("ai_provider");
-  const savedApiKey = localStorage.getItem("ai_api_key");
+  // Récupérer la clé API depuis la source unique (user_ai_settings)
+  const apiKey = await getAIApiKey(provider);
 
-  // Si le provider configuré correspond au provider sauvegardé, utiliser la clé
-  if (savedApiKey && (savedProvider === provider || provider === "gemini")) {
-    return { provider, apiKey: savedApiKey };
-  }
-
-  // Fallback: ancien format "ai_config" (rétrocompatibilité)
-  const configStr = localStorage.getItem("ai_config");
-  if (configStr) {
-    try {
-      const config = JSON.parse(configStr);
-      const apiKey = provider === "gemini" ? config.geminiKey : config.openaiKey;
-      if (apiKey) {
-        return { provider, apiKey };
-      }
-    } catch (e) {
-      console.warn("Erreur parsing ai_config:", e);
-    }
-  }
-
-  return { provider, apiKey: null };
+  return { provider, apiKey };
 }
 
 export async function generateEmbedding(text: string): Promise<number[]> {

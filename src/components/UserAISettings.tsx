@@ -1,22 +1,14 @@
+// components/UserAISettings.tsx
+// VERSION: 2.0 - Synchronisation avec useAIConfig via événement ai_config_updated
+// Source unique: table user_ai_settings (Supabase)
+
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { 
-  Eye, 
-  EyeOff, 
-  Save, 
-  Check, 
-  ExternalLink,
-  Sparkles,
-  Bot,
-  Cpu,
-  Zap,
-  AlertCircle,
-  Loader2,
-} from "lucide-react";
+import { Eye, EyeOff, Save, Check, ExternalLink, Sparkles, Bot, Cpu, Zap, AlertCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface AIProvider {
@@ -102,14 +94,14 @@ const UserAISettings = () => {
       if (data) {
         const loadedSettings: Record<string, string> = {};
         const loadedSavedKeys = new Set<string>();
-        
+
         AI_PROVIDERS.forEach((provider) => {
           if (data[provider.keyField]) {
             loadedSettings[provider.keyField] = data[provider.keyField];
             loadedSavedKeys.add(provider.id);
           }
         });
-        
+
         setSettings(loadedSettings);
         setSavedKeys(loadedSavedKeys);
       }
@@ -122,7 +114,7 @@ const UserAISettings = () => {
 
   const handleSaveKey = async (provider: AIProvider) => {
     const value = settings[provider.keyField];
-    
+
     if (!value || value.trim() === "") {
       toast.error("Veuillez entrer une clé API");
       return;
@@ -140,29 +132,50 @@ const UserAISettings = () => {
       // Vérifier si un enregistrement existe déjà
       const { data: existing } = await (supabase as any)
         .from("user_ai_settings")
-        .select("id")
+        .select("id, default_provider")
         .eq("user_id", userData.user.id)
         .single();
 
+      // Si pas de default_provider, utiliser ce provider comme défaut
+      const shouldSetDefault = !existing?.default_provider;
+
       if (existing) {
         // Mettre à jour
+        const updateData: Record<string, any> = {
+          [provider.keyField]: value.trim(),
+          updated_at: new Date().toISOString(),
+        };
+
+        // Définir ce provider comme défaut si pas encore défini
+        if (shouldSetDefault) {
+          updateData.default_provider = provider.id;
+        }
+
         const { error } = await (supabase as any)
           .from("user_ai_settings")
-          .update({ [provider.keyField]: value.trim() })
+          .update(updateData)
           .eq("user_id", userData.user.id);
 
         if (error) throw error;
       } else {
-        // Créer
-        const { error } = await (supabase as any)
-          .from("user_ai_settings")
-          .insert({
-            user_id: userData.user.id,
-            [provider.keyField]: value.trim(),
-          });
+        // Créer avec ce provider comme défaut
+        const { error } = await (supabase as any).from("user_ai_settings").insert({
+          user_id: userData.user.id,
+          [provider.keyField]: value.trim(),
+          default_provider: provider.id,
+        });
 
         if (error) throw error;
       }
+
+      // Mettre à jour le cache localStorage pour synchronisation immédiate
+      if (shouldSetDefault || existing?.default_provider === provider.id) {
+        localStorage.setItem("ai_provider", provider.id);
+        localStorage.setItem("ai_api_key", value.trim());
+      }
+
+      // Notifier les autres composants (useAIConfig, chatbot, etc.)
+      window.dispatchEvent(new Event("ai_config_updated"));
 
       setSavedKeys(new Set([...savedKeys, provider.id]));
       toast.success(`Clé ${provider.name} enregistrée !`);
@@ -181,9 +194,28 @@ const UserAISettings = () => {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;
 
+      // Vérifier si c'était le provider par défaut
+      const { data: existing } = await (supabase as any)
+        .from("user_ai_settings")
+        .select("default_provider")
+        .eq("user_id", userData.user.id)
+        .single();
+
+      const updateData: Record<string, any> = {
+        [provider.keyField]: null,
+        updated_at: new Date().toISOString(),
+      };
+
+      // Si c'était le provider par défaut, le réinitialiser
+      if (existing?.default_provider === provider.id) {
+        updateData.default_provider = null;
+        localStorage.removeItem("ai_provider");
+        localStorage.removeItem("ai_api_key");
+      }
+
       const { error } = await (supabase as any)
         .from("user_ai_settings")
-        .update({ [provider.keyField]: null })
+        .update(updateData)
         .eq("user_id", userData.user.id);
 
       if (error) throw error;
@@ -192,7 +224,10 @@ const UserAISettings = () => {
       const newSavedKeys = new Set(savedKeys);
       newSavedKeys.delete(provider.id);
       setSavedKeys(newSavedKeys);
-      
+
+      // Notifier les autres composants
+      window.dispatchEvent(new Event("ai_config_updated"));
+
       toast.success(`Clé ${provider.name} supprimée`);
     } catch (error) {
       console.error("Erreur suppression:", error);
@@ -231,8 +266,8 @@ const UserAISettings = () => {
       <div className="space-y-2">
         <h2 className="text-2xl font-bold">Paramètres IA</h2>
         <p className="text-muted-foreground">
-          Configurez vos clés API pour utiliser les fonctionnalités d'intelligence artificielle.
-          Chaque clé est stockée de manière sécurisée et n'est utilisée que pour votre compte.
+          Configurez vos clés API pour utiliser les fonctionnalités d'intelligence artificielle. Chaque clé est stockée
+          de manière sécurisée et n'est utilisée que pour votre compte.
         </p>
       </div>
 
@@ -240,7 +275,10 @@ const UserAISettings = () => {
         <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
         <div className="text-sm text-amber-800 dark:text-amber-200">
           <p className="font-medium">Important</p>
-          <p>Vos clés API sont personnelles. Ne les partagez jamais. Chaque fournisseur facture l'utilisation de son API selon ses propres tarifs.</p>
+          <p>
+            Vos clés API sont personnelles. Ne les partagez jamais. Chaque fournisseur facture l'utilisation de son API
+            selon ses propres tarifs.
+          </p>
         </div>
       </div>
 
@@ -288,7 +326,7 @@ const UserAISettings = () => {
                   <div className="relative flex-1">
                     <Input
                       type={isVisible ? "text" : "password"}
-                      value={isVisible ? currentValue : (currentValue ? maskKey(currentValue) : "")}
+                      value={isVisible ? currentValue : currentValue ? maskKey(currentValue) : ""}
                       onChange={(e) => {
                         if (isVisible) {
                           setSettings({ ...settings, [provider.keyField]: e.target.value });
@@ -310,11 +348,8 @@ const UserAISettings = () => {
                       {isVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
-                  
-                  <Button
-                    onClick={() => handleSaveKey(provider)}
-                    disabled={isSaving || !currentValue}
-                  >
+
+                  <Button onClick={() => handleSaveKey(provider)} disabled={isSaving || !currentValue}>
                     {isSaving ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
@@ -324,7 +359,7 @@ const UserAISettings = () => {
                       </>
                     )}
                   </Button>
-                  
+
                   {isConfigured && (
                     <Button
                       variant="outline"
@@ -345,13 +380,22 @@ const UserAISettings = () => {
       <div className="text-sm text-muted-foreground space-y-2 pt-4 border-t">
         <p className="font-medium">Utilisation des clés API :</p>
         <ul className="list-disc list-inside space-y-1 ml-2">
-          <li><strong>Gemini</strong> : Scan carte grise, transcription audio, résumé PDF</li>
-          <li><strong>OpenAI</strong> : Génération de texte, images (optionnel)</li>
-          <li><strong>Anthropic</strong> : Analyse avancée de documents (optionnel)</li>
-          <li><strong>Mistral</strong> : Alternative française (optionnel)</li>
+          <li>
+            <strong>Gemini</strong> : Scan carte grise, transcription audio, résumé PDF
+          </li>
+          <li>
+            <strong>OpenAI</strong> : Génération de texte, images (optionnel)
+          </li>
+          <li>
+            <strong>Anthropic</strong> : Analyse avancée de documents (optionnel)
+          </li>
+          <li>
+            <strong>Mistral</strong> : Alternative française (optionnel)
+          </li>
         </ul>
         <p className="text-xs mt-2">
-          💡 <strong>Gemini</strong> est recommandé comme clé principale car il offre le meilleur rapport qualité/prix pour les fonctionnalités de l'application.
+          💡 <strong>Gemini</strong> est recommandé comme clé principale car il offre le meilleur rapport qualité/prix
+          pour les fonctionnalités de l'application.
         </p>
       </div>
     </div>
