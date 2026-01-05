@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: ProjectForm
 // Formulaire de création/édition de projet
-// VERSION: 2.3 - Navigation automatique vers le projet créé
+// VERSION: 2.4 - Ajout des champs COC pour dossier VASP
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -96,6 +96,14 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
   const [showClientSelector, setShowClientSelector] = useState(false);
   const [selectedClient, setSelectedClient] = useState<VPBClient | null>(null);
 
+  // États pour les données COC (Certificate of Conformity) - VASP
+  const [showCOCSection, setShowCOCSection] = useState(false);
+  const [cocMmta, setCocMmta] = useState<string>("");
+  const [cocMmtaEssieuAv, setCocMmtaEssieuAv] = useState<string>("");
+  const [cocMmtaEssieuAr, setCocMmtaEssieuAr] = useState<string>("");
+  const [cocEmpattement, setCocEmpattement] = useState<string>("");
+  const [cocChargeAttelage, setCocChargeAttelage] = useState<string>("");
+
   // Compute available options for cascade dropdowns
   const availableMarques = Array.from(new Set(vehicles.map((v) => v.marque))).sort();
 
@@ -162,6 +170,28 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
       // Charger le client lié si présent
       if (existingProject.client_id) {
         loadExistingClient(existingProject.client_id);
+      }
+
+      // Pré-remplir les données COC si présentes
+      if (existingProject.mmta_kg) {
+        setCocMmta(existingProject.mmta_kg.toString());
+        setShowCOCSection(true);
+      }
+      if (existingProject.mmta_essieu_av_kg) {
+        setCocMmtaEssieuAv(existingProject.mmta_essieu_av_kg.toString());
+        setShowCOCSection(true);
+      }
+      if (existingProject.mmta_essieu_ar_kg) {
+        setCocMmtaEssieuAr(existingProject.mmta_essieu_ar_kg.toString());
+        setShowCOCSection(true);
+      }
+      if (existingProject.empattement_mm) {
+        setCocEmpattement(existingProject.empattement_mm.toString());
+        setShowCOCSection(true);
+      }
+      if (existingProject.charge_attelage_s_kg) {
+        setCocChargeAttelage(existingProject.charge_attelage_s_kg.toString());
+        setShowCOCSection(true);
       }
     }
   }, [isEditMode, existingProject]);
@@ -592,6 +622,12 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
         : selectedVehicle?.poids_vide_kg || scannedData?.masseVide || null,
       charge_utile_kg: selectedVehicle?.charge_utile_kg || null,
       ptac_kg: customPtac ? parseInt(customPtac) : selectedVehicle?.ptac_kg || scannedData?.masseEnChargeMax || null,
+      // Données COC pour dossier VASP
+      mmta_kg: cocMmta ? parseInt(cocMmta) : null,
+      mmta_essieu_av_kg: cocMmtaEssieuAv ? parseInt(cocMmtaEssieuAv) : null,
+      mmta_essieu_ar_kg: cocMmtaEssieuAr ? parseInt(cocMmtaEssieuAr) : null,
+      empattement_mm: cocEmpattement ? parseInt(cocEmpattement) : null,
+      charge_attelage_s_kg: cocChargeAttelage ? parseInt(cocChargeAttelage) : null,
     };
 
     let result;
@@ -642,6 +678,13 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
     setManualNumeroChassis("");
     setManualDateMiseCirculation("");
     setManualTypeMine("");
+    // Reset des états COC
+    setShowCOCSection(false);
+    setCocMmta("");
+    setCocMmtaEssieuAv("");
+    setCocMmtaEssieuAr("");
+    setCocEmpattement("");
+    setCocChargeAttelage("");
 
     // Notifier le parent et naviguer vers le projet
     onProjectCreated(newProjectId || undefined);
@@ -990,6 +1033,95 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
                       />
                     </div>
                   </div>
+
+                  {/* Section Données COC pour VASP */}
+                  <div className="pt-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowCOCSection(!showCOCSection)}
+                      className="w-full"
+                    >
+                      {showCOCSection ? "Masquer" : "Afficher"} les données COC (VASP)
+                    </Button>
+                  </div>
+
+                  {showCOCSection && (
+                    <div className="space-y-4 p-4 bg-blue-50/50 rounded-lg border border-blue-200">
+                      <h4 className="text-sm font-semibold text-blue-700">Données COC (Certificate of Conformity)</h4>
+                      
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="coc_mmta" className="text-xs">MMTA (COC 16.1)</Label>
+                          <Input
+                            id="coc_mmta"
+                            type="number"
+                            value={cocMmta}
+                            onChange={(e) => setCocMmta(e.target.value)}
+                            disabled={isLoading}
+                            placeholder="kg"
+                            className="h-9"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="coc_mmta_av" className="text-xs">MMTA Ess.AV (16.2)</Label>
+                          <Input
+                            id="coc_mmta_av"
+                            type="number"
+                            value={cocMmtaEssieuAv}
+                            onChange={(e) => setCocMmtaEssieuAv(e.target.value)}
+                            disabled={isLoading}
+                            placeholder="kg"
+                            className="h-9"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="coc_mmta_ar" className="text-xs">MMTA Ess.AR (16.2)</Label>
+                          <Input
+                            id="coc_mmta_ar"
+                            type="number"
+                            value={cocMmtaEssieuAr}
+                            onChange={(e) => setCocMmtaEssieuAr(e.target.value)}
+                            disabled={isLoading}
+                            placeholder="kg"
+                            className="h-9"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="coc_empattement" className="text-xs">Empattement (COC 4.1)</Label>
+                          <Input
+                            id="coc_empattement"
+                            type="number"
+                            value={cocEmpattement}
+                            onChange={(e) => setCocEmpattement(e.target.value)}
+                            disabled={isLoading}
+                            placeholder="mm"
+                            className="h-9"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="coc_charge_s" className="text-xs">Charge attelage S (COC 19)</Label>
+                          <Input
+                            id="coc_charge_s"
+                            type="number"
+                            value={cocChargeAttelage}
+                            onChange={(e) => setCocChargeAttelage(e.target.value)}
+                            disabled={isLoading}
+                            placeholder="kg"
+                            className="h-9"
+                          />
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">
+                        Ces données seront utilisées pour le calcul de répartition des charges (dossier VASP M1)
+                      </p>
+                    </div>
+                  )}
                 </>
               )}
 
