@@ -13,11 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Plus,
   Trash2,
@@ -34,6 +30,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import {
   VASPRangeeSiege,
   VASPCoffre,
@@ -103,22 +100,14 @@ export const VASPDataPanel = ({
   });
 
   const [rangeesSieges, setRangeesSieges] = useState<VASPRangeeSiege[]>(
-    projectData?.vasp_rangees_sieges || [
-      { id: "rang-1", nom: "Rangée 1", distance_av_mm: 0, nb_occupants: 1 },
-    ]
+    projectData?.vasp_rangees_sieges || [{ id: "rang-1", nom: "Rangée 1", distance_av_mm: 0, nb_occupants: 1 }],
   );
 
-  const [coffres, setCoffres] = useState<VASPCoffre[]>(
-    projectData?.vasp_coffres || []
-  );
+  const [coffres, setCoffres] = useState<VASPCoffre[]>(projectData?.vasp_coffres || []);
 
-  const [reservoirsEau, setReservoirsEau] = useState<VASPReservoirEau[]>(
-    projectData?.vasp_reservoirs_eau || []
-  );
+  const [reservoirsEau, setReservoirsEau] = useState<VASPReservoirEau[]>(projectData?.vasp_reservoirs_eau || []);
 
-  const [reservoirGaz, setReservoirGaz] = useState<VASPReservoirGaz | null>(
-    projectData?.vasp_reservoir_gaz || null
-  );
+  const [reservoirGaz, setReservoirGaz] = useState<VASPReservoirGaz | null>(projectData?.vasp_reservoir_gaz || null);
 
   const [isSaving, setIsSaving] = useState(false);
 
@@ -127,26 +116,27 @@ export const VASPDataPanel = ({
     const peseeAv = Number(donneesPesee.pesee_essieu_av_kg) || 0;
     const peseeAr = Number(donneesPesee.pesee_essieu_ar_kg) || 0;
     const ptac = Number(projectData?.ptac_kg) || Number(donneesCOC.mmta_kg) || 0;
-    const nombrePlaces = Number(projectData?.nombre_places) || rangeesSieges.reduce((sum, r) => sum + r.nb_occupants, 0);
+    const nombrePlaces =
+      Number(projectData?.nombre_places) || rangeesSieges.reduce((sum, r) => sum + r.nb_occupants, 0);
     const chargeAttelage = Number(donneesCOC.charge_attelage_s_kg) || 0;
 
     // Masses manquantes liquides
     const masseCarburantManquante = calculerMasseCarburantManquante(
       Number(donneesReservoirs.reservoir_carburant_litres) || 0,
       Number(donneesReservoirs.reservoir_carburant_taux_remplissage) || 100,
-      DENSITES_LIQUIDES.diesel
+      DENSITES_LIQUIDES.diesel,
     );
 
     const masseGplManquante = calculerMasseCarburantManquante(
       Number(donneesReservoirs.reservoir_gpl_litres) || 0,
       Number(donneesReservoirs.reservoir_gpl_taux_remplissage) || 100,
-      DENSITES_LIQUIDES.gpl
+      DENSITES_LIQUIDES.gpl,
     );
 
     const masseAdblueManquante = calculerMasseCarburantManquante(
       Number(donneesReservoirs.reservoir_adblue_litres) || 0,
       Number(donneesReservoirs.reservoir_adblue_taux_remplissage) || 100,
-      DENSITES_LIQUIDES.adblue
+      DENSITES_LIQUIDES.adblue,
     );
 
     const masseOrdreMarche = calculerMasseOrdreMarche(
@@ -154,7 +144,7 @@ export const VASPDataPanel = ({
       peseeAr,
       masseCarburantManquante,
       masseGplManquante,
-      masseAdblueManquante
+      masseAdblueManquante,
     );
 
     const chargeUtile = calculerChargeUtile(ptac, masseOrdreMarche, nombrePlaces, chargeAttelage);
@@ -212,9 +202,7 @@ export const VASPDataPanel = ({
   // Mettre à jour une rangée de sièges
   const updateRangeeSiege = (id: string, field: keyof VASPRangeeSiege, value: any) => {
     setRangeesSieges(
-      rangeesSieges.map((r) =>
-        r.id === id ? { ...r, [field]: field === "nom" ? value : Number(value) || 0 } : r
-      )
+      rangeesSieges.map((r) => (r.id === id ? { ...r, [field]: field === "nom" ? value : Number(value) || 0 } : r)),
     );
   };
 
@@ -237,11 +225,7 @@ export const VASPDataPanel = ({
 
   // Mettre à jour un coffre
   const updateCoffre = (id: string, field: keyof VASPCoffre, value: any) => {
-    setCoffres(
-      coffres.map((c) =>
-        c.id === id ? { ...c, [field]: field === "nom" ? value : Number(value) || 0 } : c
-      )
-    );
+    setCoffres(coffres.map((c) => (c.id === id ? { ...c, [field]: field === "nom" ? value : Number(value) || 0 } : c)));
   };
 
   // Ajouter un réservoir d'eau
@@ -264,9 +248,7 @@ export const VASPDataPanel = ({
   // Mettre à jour un réservoir d'eau
   const updateReservoirEau = (id: string, field: keyof VASPReservoirEau, value: any) => {
     setReservoirsEau(
-      reservoirsEau.map((r) =>
-        r.id === id ? { ...r, [field]: field === "nom" ? value : Number(value) || 0 } : r
-      )
+      reservoirsEau.map((r) => (r.id === id ? { ...r, [field]: field === "nom" ? value : Number(value) || 0 } : r)),
     );
   };
 
@@ -298,11 +280,11 @@ export const VASPDataPanel = ({
           reservoir_adblue_litres: Number(donneesReservoirs.reservoir_adblue_litres) || null,
           reservoir_adblue_distance_av_mm: Number(donneesReservoirs.reservoir_adblue_distance_av_mm) || null,
           reservoir_adblue_taux_remplissage: Number(donneesReservoirs.reservoir_adblue_taux_remplissage) || null,
-          // Données VASP JSON
-          vasp_rangees_sieges: rangeesSieges,
-          vasp_coffres: coffres,
-          vasp_reservoirs_eau: reservoirsEau,
-          vasp_reservoir_gaz: reservoirGaz,
+          // Données VASP JSON (cast vers Json pour Supabase)
+          vasp_rangees_sieges: rangeesSieges as unknown as Json,
+          vasp_coffres: coffres as unknown as Json,
+          vasp_reservoirs_eau: reservoirsEau as unknown as Json,
+          vasp_reservoir_gaz: reservoirGaz as unknown as Json,
         })
         .eq("id", projectId);
 
@@ -471,21 +453,33 @@ export const VASPDataPanel = ({
                       type="number"
                       placeholder="Litres"
                       value={donneesReservoirs.reservoir_carburant_litres}
-                      onChange={(e) => setDonneesReservoirs({ ...donneesReservoirs, reservoir_carburant_litres: e.target.value })}
+                      onChange={(e) =>
+                        setDonneesReservoirs({ ...donneesReservoirs, reservoir_carburant_litres: e.target.value })
+                      }
                       className="h-7 text-xs"
                     />
                     <Input
                       type="number"
                       placeholder="Dist. AV (mm)"
                       value={donneesReservoirs.reservoir_carburant_distance_av_mm}
-                      onChange={(e) => setDonneesReservoirs({ ...donneesReservoirs, reservoir_carburant_distance_av_mm: e.target.value })}
+                      onChange={(e) =>
+                        setDonneesReservoirs({
+                          ...donneesReservoirs,
+                          reservoir_carburant_distance_av_mm: e.target.value,
+                        })
+                      }
                       className="h-7 text-xs"
                     />
                     <Input
                       type="number"
                       placeholder="Taux %"
                       value={donneesReservoirs.reservoir_carburant_taux_remplissage}
-                      onChange={(e) => setDonneesReservoirs({ ...donneesReservoirs, reservoir_carburant_taux_remplissage: e.target.value })}
+                      onChange={(e) =>
+                        setDonneesReservoirs({
+                          ...donneesReservoirs,
+                          reservoir_carburant_taux_remplissage: e.target.value,
+                        })
+                      }
                       className="h-7 text-xs"
                     />
                   </div>
@@ -498,21 +492,27 @@ export const VASPDataPanel = ({
                       type="number"
                       placeholder="Litres"
                       value={donneesReservoirs.reservoir_gpl_litres}
-                      onChange={(e) => setDonneesReservoirs({ ...donneesReservoirs, reservoir_gpl_litres: e.target.value })}
+                      onChange={(e) =>
+                        setDonneesReservoirs({ ...donneesReservoirs, reservoir_gpl_litres: e.target.value })
+                      }
                       className="h-7 text-xs"
                     />
                     <Input
                       type="number"
                       placeholder="Dist. AV (mm)"
                       value={donneesReservoirs.reservoir_gpl_distance_av_mm}
-                      onChange={(e) => setDonneesReservoirs({ ...donneesReservoirs, reservoir_gpl_distance_av_mm: e.target.value })}
+                      onChange={(e) =>
+                        setDonneesReservoirs({ ...donneesReservoirs, reservoir_gpl_distance_av_mm: e.target.value })
+                      }
                       className="h-7 text-xs"
                     />
                     <Input
                       type="number"
                       placeholder="Taux %"
                       value={donneesReservoirs.reservoir_gpl_taux_remplissage}
-                      onChange={(e) => setDonneesReservoirs({ ...donneesReservoirs, reservoir_gpl_taux_remplissage: e.target.value })}
+                      onChange={(e) =>
+                        setDonneesReservoirs({ ...donneesReservoirs, reservoir_gpl_taux_remplissage: e.target.value })
+                      }
                       className="h-7 text-xs"
                     />
                   </div>
@@ -525,21 +525,30 @@ export const VASPDataPanel = ({
                       type="number"
                       placeholder="Litres"
                       value={donneesReservoirs.reservoir_adblue_litres}
-                      onChange={(e) => setDonneesReservoirs({ ...donneesReservoirs, reservoir_adblue_litres: e.target.value })}
+                      onChange={(e) =>
+                        setDonneesReservoirs({ ...donneesReservoirs, reservoir_adblue_litres: e.target.value })
+                      }
                       className="h-7 text-xs"
                     />
                     <Input
                       type="number"
                       placeholder="Dist. AV (mm)"
                       value={donneesReservoirs.reservoir_adblue_distance_av_mm}
-                      onChange={(e) => setDonneesReservoirs({ ...donneesReservoirs, reservoir_adblue_distance_av_mm: e.target.value })}
+                      onChange={(e) =>
+                        setDonneesReservoirs({ ...donneesReservoirs, reservoir_adblue_distance_av_mm: e.target.value })
+                      }
                       className="h-7 text-xs"
                     />
                     <Input
                       type="number"
                       placeholder="Taux %"
                       value={donneesReservoirs.reservoir_adblue_taux_remplissage}
-                      onChange={(e) => setDonneesReservoirs({ ...donneesReservoirs, reservoir_adblue_taux_remplissage: e.target.value })}
+                      onChange={(e) =>
+                        setDonneesReservoirs({
+                          ...donneesReservoirs,
+                          reservoir_adblue_taux_remplissage: e.target.value,
+                        })
+                      }
                       className="h-7 text-xs"
                     />
                   </div>
@@ -555,7 +564,9 @@ export const VASPDataPanel = ({
                 <div className="flex items-center gap-2">
                   <Armchair className="h-4 w-4 text-purple-600" />
                   <span className="font-medium">Rangées de sièges</span>
-                  <Badge variant="secondary" className="ml-2">{rangeesSieges.length}</Badge>
+                  <Badge variant="secondary" className="ml-2">
+                    {rangeesSieges.length}
+                  </Badge>
                 </div>
                 {openSections.sieges ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
               </CollapsibleTrigger>
@@ -607,7 +618,9 @@ export const VASPDataPanel = ({
                 <div className="flex items-center gap-2">
                   <Package className="h-4 w-4 text-orange-600" />
                   <span className="font-medium">Coffres / Rangements</span>
-                  <Badge variant="secondary" className="ml-2">{coffres.length}</Badge>
+                  <Badge variant="secondary" className="ml-2">
+                    {coffres.length}
+                  </Badge>
                 </div>
                 {openSections.coffres ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
               </CollapsibleTrigger>
@@ -634,12 +647,7 @@ export const VASPDataPanel = ({
                       onChange={(e) => updateCoffre(coffre.id, "masse_kg", e.target.value)}
                       className="h-7 text-xs w-16"
                     />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => supprimerCoffre(coffre.id)}
-                    >
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => supprimerCoffre(coffre.id)}>
                       <Trash2 className="h-3 w-3 text-destructive" />
                     </Button>
                   </div>
@@ -659,7 +667,9 @@ export const VASPDataPanel = ({
                 <div className="flex items-center gap-2">
                   <Droplets className="h-4 w-4 text-blue-400" />
                   <span className="font-medium">Réservoirs d'eau</span>
-                  <Badge variant="secondary" className="ml-2">{reservoirsEau.length}</Badge>
+                  <Badge variant="secondary" className="ml-2">
+                    {reservoirsEau.length}
+                  </Badge>
                 </div>
                 {openSections.eau ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
               </CollapsibleTrigger>
@@ -735,7 +745,9 @@ export const VASPDataPanel = ({
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Charge utile disponible:</span>
-                    <span className={`font-semibold ${Number(resultatsCalculs.chargeUtile) < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    <span
+                      className={`font-semibold ${Number(resultatsCalculs.chargeUtile) < 0 ? "text-red-600" : "text-green-600"}`}
+                    >
                       {resultatsCalculs.chargeUtile} kg
                     </span>
                   </div>
