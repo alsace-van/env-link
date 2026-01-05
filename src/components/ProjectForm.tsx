@@ -1050,10 +1050,12 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
                   {showCOCSection && (
                     <div className="space-y-4 p-4 bg-blue-50/50 rounded-lg border border-blue-200">
                       <h4 className="text-sm font-semibold text-blue-700">Données COC (Certificate of Conformity)</h4>
-                      
+
                       <div className="grid grid-cols-3 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="coc_mmta" className="text-xs">MMTA (COC 16.1)</Label>
+                          <Label htmlFor="coc_mmta" className="text-xs">
+                            MMTA (COC 16.1)
+                          </Label>
                           <Input
                             id="coc_mmta"
                             type="number"
@@ -1065,7 +1067,9 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="coc_mmta_av" className="text-xs">MMTA Ess.AV (16.2)</Label>
+                          <Label htmlFor="coc_mmta_av" className="text-xs">
+                            MMTA Ess.AV (16.2)
+                          </Label>
                           <Input
                             id="coc_mmta_av"
                             type="number"
@@ -1077,7 +1081,9 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="coc_mmta_ar" className="text-xs">MMTA Ess.AR (16.2)</Label>
+                          <Label htmlFor="coc_mmta_ar" className="text-xs">
+                            MMTA Ess.AR (16.2)
+                          </Label>
                           <Input
                             id="coc_mmta_ar"
                             type="number"
@@ -1092,7 +1098,9 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
 
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label htmlFor="coc_empattement" className="text-xs">Empattement (COC 4.1)</Label>
+                          <Label htmlFor="coc_empattement" className="text-xs">
+                            Empattement (COC 4.1)
+                          </Label>
                           <Input
                             id="coc_empattement"
                             type="number"
@@ -1104,7 +1112,9 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="coc_charge_s" className="text-xs">Charge attelage S (COC 19)</Label>
+                          <Label htmlFor="coc_charge_s" className="text-xs">
+                            Charge attelage S (COC 19)
+                          </Label>
                           <Input
                             id="coc_charge_s"
                             type="number"
