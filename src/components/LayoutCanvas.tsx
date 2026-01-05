@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 2.6 - Ajout contour véhicule complet + zone chargement
+// VERSION: 2.7 - Canvas 900x700, échelle basée sur véhicule complet
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -76,8 +76,8 @@ interface FurnitureData {
   distance_essieu_av_mm?: number; // Distance calculée à l'essieu AV
 }
 
-const CANVAS_WIDTH = 800;
-const CANVAS_HEIGHT = 600;
+const CANVAS_WIDTH = 900;
+const CANVAS_HEIGHT = 700;
 
 export const LayoutCanvas = ({
   projectId,
@@ -148,8 +148,9 @@ export const LayoutCanvas = ({
     return surface * (thickness / 1000) * density;
   };
 
-  // Calcul de l'échelle pour adapter la zone de chargement au canvas (avec marge)
-  const scale = Math.min((CANVAS_WIDTH - 100) / loadAreaLength, (CANVAS_HEIGHT - 100) / loadAreaWidth);
+  // Calcul de l'échelle basée sur le VÉHICULE complet (pas la zone de chargement)
+  // Marge de 120px pour les labels et cotes
+  const scale = Math.min((CANVAS_WIDTH - 120) / vehicleLength, (CANVAS_HEIGHT - 120) / vehicleWidth);
 
   const scaledLoadAreaLength = loadAreaLength * scale;
   const scaledLoadAreaWidth = loadAreaWidth * scale;
@@ -161,6 +162,8 @@ export const LayoutCanvas = ({
   const scaleRef = useRef(scale);
   const loadAreaLengthRef = useRef(loadAreaLength);
   const loadAreaWidthRef = useRef(loadAreaWidth);
+  const vehicleLengthRef = useRef(vehicleLength);
+  const vehicleWidthRef = useRef(vehicleWidth);
   const cotationStepRef = useRef(cotationStep);
   const cotationReferenceRef = useRef(cotationReference);
 
@@ -188,6 +191,11 @@ export const LayoutCanvas = ({
     loadAreaLengthRef.current = loadAreaLength;
     loadAreaWidthRef.current = loadAreaWidth;
   }, [loadAreaLength, loadAreaWidth]);
+
+  useEffect(() => {
+    vehicleLengthRef.current = vehicleLength;
+    vehicleWidthRef.current = vehicleWidth;
+  }, [vehicleLength, vehicleWidth]);
 
   useEffect(() => {
     cotationStepRef.current = cotationStep;
@@ -362,16 +370,18 @@ export const LayoutCanvas = ({
       const currentScale = scaleRef.current;
       const currentLength = loadAreaLengthRef.current;
       const currentWidth = loadAreaWidthRef.current;
+      const currentVehicleLength = vehicleLengthRef.current;
+      const currentVehicleWidth = vehicleWidthRef.current;
 
       const scaledLength = currentLength * currentScale;
       const scaledWidth = currentWidth * currentScale;
 
       // Calculer les dimensions du véhicule complet
-      const scaledVehicleLength = vehicleLength * currentScale;
-      const scaledVehicleWidth = vehicleWidth * currentScale;
+      const scaledVehicleLength = currentVehicleLength * currentScale;
+      const scaledVehicleWidth = currentVehicleWidth * currentScale;
 
       console.log("🚐 Dessin contours:", {
-        vehicule: { longueur: vehicleLength, largeur: vehicleWidth },
+        vehicule: { longueur: currentVehicleLength, largeur: currentVehicleWidth },
         zoneChargement: { longueur: currentLength, largeur: currentWidth },
         echelle: currentScale,
       });
@@ -392,7 +402,7 @@ export const LayoutCanvas = ({
       // Label dimensions véhicule
       const vehicleLabelTop = new paper.PointText({
         point: [CANVAS_WIDTH / 2, (CANVAS_HEIGHT - scaledVehicleWidth) / 2 - 8],
-        content: `Véhicule: ${vehicleLength} x ${vehicleWidth} mm`,
+        content: `Véhicule: ${currentVehicleLength} x ${currentVehicleWidth} mm`,
         fillColor: new paper.Color("#6b7280"),
         fontSize: 10,
         justification: "center",
@@ -421,6 +431,19 @@ export const LayoutCanvas = ({
       });
       loadAreaLabel.data.isLoadAreaOutline = true;
       loadAreaLabel.locked = true;
+
+      // Afficher l'échelle en bas à gauche
+      const scaleRatio = Math.round(1 / currentScale);
+      const scaleLabel = new paper.PointText({
+        point: [10, CANVAS_HEIGHT - 10],
+        content: `Échelle : 1:${scaleRatio}`,
+        fillColor: new paper.Color("#6b7280"),
+        fontSize: 11,
+        fontWeight: "bold",
+        justification: "left",
+      });
+      scaleLabel.data.isLoadAreaOutline = true;
+      scaleLabel.locked = true;
     };
 
     // Fonction pour dessiner les éléments VASP (essieux, contour véhicule)
