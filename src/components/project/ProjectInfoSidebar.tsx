@@ -58,6 +58,12 @@ interface Project {
   norme_euro?: string;
   carrosserie_ce?: string;
   carrosserie_nationale?: string;
+  // Données COC pour VASP
+  mmta_kg?: number;
+  mmta_essieu_av_kg?: number;
+  mmta_essieu_ar_kg?: number;
+  empattement_mm?: number;
+  charge_attelage_s_kg?: number;
 }
 
 interface ProjectInfoSidebarProps {
@@ -101,7 +107,16 @@ export const ProjectInfoSidebar = ({ project, isOpen, onClose, onEdit }: Project
     project.ptra
   );
 
-  const hasExtendedContent = hasRTIData || hasDimensionsData || hasWeightData;
+  // Données COC pour VASP
+  const hasCOCData = !!(
+    project.mmta_kg ||
+    project.mmta_essieu_av_kg ||
+    project.mmta_essieu_ar_kg ||
+    project.empattement_mm ||
+    project.charge_attelage_s_kg
+  );
+
+  const hasExtendedContent = hasRTIData || hasDimensionsData || hasWeightData || hasCOCData;
 
   return (
     <>
@@ -479,6 +494,48 @@ export const ProjectInfoSidebar = ({ project, isOpen, onClose, onEdit }: Project
                       <div className="flex justify-between text-xs">
                         <span className="text-muted-foreground">PTRA</span>
                         <span className="font-medium">{project.ptra} kg</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Données COC pour VASP */}
+              {hasCOCData && (
+                <div className="p-4 rounded-lg bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 mt-4">
+                  <h4 className="text-xs font-semibold text-purple-700 dark:text-purple-400 mb-3 flex items-center gap-2">
+                    <Car className="h-4 w-4" />
+                    Données COC (VASP)
+                  </h4>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                    {project.mmta_kg && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">MMTA (16.1)</span>
+                        <span className="font-medium">{project.mmta_kg} kg</span>
+                      </div>
+                    )}
+                    {project.mmta_essieu_av_kg && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">MMTA Ess.AV (16.2)</span>
+                        <span className="font-medium">{project.mmta_essieu_av_kg} kg</span>
+                      </div>
+                    )}
+                    {project.mmta_essieu_ar_kg && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">MMTA Ess.AR (16.2)</span>
+                        <span className="font-medium">{project.mmta_essieu_ar_kg} kg</span>
+                      </div>
+                    )}
+                    {project.empattement_mm && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Empattement (4.1)</span>
+                        <span className="font-medium text-purple-700">{project.empattement_mm} mm</span>
+                      </div>
+                    )}
+                    {project.charge_attelage_s_kg && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Charge S (19)</span>
+                        <span className="font-medium">{project.charge_attelage_s_kg} kg</span>
                       </div>
                     )}
                   </div>
