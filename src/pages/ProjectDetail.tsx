@@ -152,6 +152,12 @@ interface Project {
   norme_euro?: string;
   carrosserie_ce?: string;
   carrosserie_nationale?: string;
+  // Champs COC pour VASP
+  mmta_kg?: number;
+  mmta_essieu_av_kg?: number;
+  mmta_essieu_ar_kg?: number;
+  empattement_mm?: number;
+  charge_attelage_s_kg?: number;
   // Propriétés pour les scénarios
   statut_financier?: string;
   date_validation_devis?: string;
