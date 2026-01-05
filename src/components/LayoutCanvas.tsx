@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 2.7 - Canvas 900x700, échelle basée sur véhicule complet
+// VERSION: 3.0 - Persistance offset zone chargement
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -47,6 +47,7 @@ interface LayoutCanvasProps {
   vehicleWidth?: number; // largeur totale en mm
   loadAreaLength?: number; // longueur zone de chargement en mm
   loadAreaWidth?: number; // largeur zone de chargement en mm
+  loadAreaOffsetX?: number; // distance entre l'avant du véhicule et le début de la zone de chargement en mm
   maxLoad?: number; // charge utile en kg
   // Props VASP
   empattement?: number; // empattement en mm (distance entre essieux)
@@ -85,6 +86,7 @@ export const LayoutCanvas = ({
   vehicleWidth = 1800,
   loadAreaLength: initialLoadAreaLength,
   loadAreaWidth: initialLoadAreaWidth,
+  loadAreaOffsetX: initialLoadAreaOffsetX,
   maxLoad = 500,
   empattement,
   porteFauxAvant,
@@ -107,6 +109,11 @@ export const LayoutCanvas = ({
   const [loadAreaLength, setLoadAreaLength] = useState(initialLoadAreaLength || Math.round(vehicleLength * 0.7));
   const [loadAreaWidth, setLoadAreaWidth] = useState(initialLoadAreaWidth || Math.round(vehicleWidth * 0.9));
   const [isEditingDimensions, setIsEditingDimensions] = useState(false);
+
+  // État pour l'offset de la zone de chargement (par défaut alignée à l'arrière du véhicule)
+  const [loadAreaOffsetX, setLoadAreaOffsetX] = useState(
+    initialLoadAreaOffsetX ?? vehicleLength - (initialLoadAreaLength || Math.round(vehicleLength * 0.7)),
+  );
 
   // États pour la cotation intelligente
   const [cotationStep, setCotationStep] = useState<0 | 1 | 2>(0); // 0: aucun, 1: référence sélectionnée, 2: cible sélectionnée
@@ -162,6 +169,7 @@ export const LayoutCanvas = ({
   const scaleRef = useRef(scale);
   const loadAreaLengthRef = useRef(loadAreaLength);
   const loadAreaWidthRef = useRef(loadAreaWidth);
+  const loadAreaOffsetXRef = useRef(loadAreaOffsetX);
   const vehicleLengthRef = useRef(vehicleLength);
   const vehicleWidthRef = useRef(vehicleWidth);
   const cotationStepRef = useRef(cotationStep);
@@ -190,7 +198,8 @@ export const LayoutCanvas = ({
   useEffect(() => {
     loadAreaLengthRef.current = loadAreaLength;
     loadAreaWidthRef.current = loadAreaWidth;
-  }, [loadAreaLength, loadAreaWidth]);
+    loadAreaOffsetXRef.current = loadAreaOffsetX;
+  }, [loadAreaLength, loadAreaWidth, loadAreaOffsetX]);
 
   useEffect(() => {
     vehicleLengthRef.current = vehicleLength;
@@ -231,13 +240,13 @@ export const LayoutCanvas = ({
   // Fonction pour calculer la position X de l'essieu AV
   const getEssieuAvX = useCallback(() => {
     const currentScale = scaleRef.current;
-    const currentLength = loadAreaLengthRef.current;
-    const scaledLength = currentLength * currentScale;
-    const areaLeft = (CANVAS_WIDTH - scaledLength) / 2;
-    const calculatedPorteFauxAvant = porteFauxAvant || Math.round(vehicleLength * 0.15);
+    const currentVehicleLength = vehicleLengthRef.current;
+    const scaledVehicleLength = currentVehicleLength * currentScale;
+    const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
+    const calculatedPorteFauxAvant = porteFauxAvant || Math.round(currentVehicleLength * 0.15);
     const scaledPorteFauxAvant = calculatedPorteFauxAvant * currentScale;
-    return areaLeft + scaledPorteFauxAvant;
-  }, [porteFauxAvant, vehicleLength]);
+    return vehicleLeft + scaledPorteFauxAvant;
+  }, [porteFauxAvant]);
 
   // Fonction pour appliquer la nouvelle distance de cotation
   const applyCotation = useCallback(() => {
@@ -253,8 +262,8 @@ export const LayoutCanvas = ({
     const newDistancePx = newDistanceMm * currentScale;
     const newX = cotationReference.x + newDistancePx;
 
-    // Trouver et déplacer l'élément cible
-    if (cotationTarget.itemId && paper.project && paper.project.activeLayer) {
+    // Cas 1: Repositionner un meuble
+    if (cotationTarget.type === "furniture" && cotationTarget.itemId && paper.project && paper.project.activeLayer) {
       paper.project.activeLayer.children.forEach((child) => {
         if (child instanceof paper.Group && child.data.furnitureId === cotationTarget.itemId) {
           const deltaX = newX - child.bounds.center.x;
@@ -267,6 +276,27 @@ export const LayoutCanvas = ({
           toast.success(`Meuble repositionné à ${newDistanceMm} mm de la référence`);
         }
       });
+    }
+
+    // Cas 2: Repositionner la zone de chargement
+    if (cotationTarget.type === "load_area") {
+      const currentVehicleLength = vehicleLengthRef.current;
+      const scaledVehicleLength = currentVehicleLength * currentScale;
+      const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
+
+      // Calculer le nouvel offset (en mm)
+      const newLoadAreaLeftPx = newX;
+      const newOffsetPx = newLoadAreaLeftPx - vehicleLeft;
+      const newOffsetMm = Math.round(newOffsetPx / currentScale);
+
+      // Vérifier que l'offset est valide (entre 0 et vehicleLength - loadAreaLength)
+      const maxOffset = currentVehicleLength - loadAreaLengthRef.current;
+      const clampedOffset = Math.max(0, Math.min(maxOffset, newOffsetMm));
+
+      console.log("📐 Nouvel offset zone chargement:", clampedOffset, "mm");
+      setLoadAreaOffsetX(clampedOffset);
+
+      toast.success(`Zone de chargement repositionnée à ${newDistanceMm} mm de ${cotationReference.label}`);
     }
 
     // Fermer le dialogue et réinitialiser
@@ -370,25 +400,35 @@ export const LayoutCanvas = ({
       const currentScale = scaleRef.current;
       const currentLength = loadAreaLengthRef.current;
       const currentWidth = loadAreaWidthRef.current;
+      const currentOffsetX = loadAreaOffsetXRef.current;
       const currentVehicleLength = vehicleLengthRef.current;
       const currentVehicleWidth = vehicleWidthRef.current;
 
       const scaledLength = currentLength * currentScale;
       const scaledWidth = currentWidth * currentScale;
+      const scaledOffsetX = currentOffsetX * currentScale;
 
       // Calculer les dimensions du véhicule complet
       const scaledVehicleLength = currentVehicleLength * currentScale;
       const scaledVehicleWidth = currentVehicleWidth * currentScale;
 
+      // Position du véhicule (centré dans le canvas)
+      const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
+      const vehicleTop = (CANVAS_HEIGHT - scaledVehicleWidth) / 2;
+
+      // Position de la zone de chargement (avec offset depuis l'avant du véhicule)
+      const loadAreaLeft = vehicleLeft + scaledOffsetX;
+      const loadAreaTop = vehicleTop + (scaledVehicleWidth - scaledWidth) / 2; // Centré verticalement
+
       console.log("🚐 Dessin contours:", {
         vehicule: { longueur: currentVehicleLength, largeur: currentVehicleWidth },
-        zoneChargement: { longueur: currentLength, largeur: currentWidth },
+        zoneChargement: { longueur: currentLength, largeur: currentWidth, offsetX: currentOffsetX },
         echelle: currentScale,
       });
 
       // 1. Contour GRIS = Véhicule complet (dimensions totales)
       const vehicleOutline = new paper.Path.Rectangle({
-        point: [(CANVAS_WIDTH - scaledVehicleLength) / 2, (CANVAS_HEIGHT - scaledVehicleWidth) / 2],
+        point: [vehicleLeft, vehicleTop],
         size: [scaledVehicleLength, scaledVehicleWidth],
         strokeColor: new paper.Color("#6b7280"),
         strokeWidth: 2,
@@ -401,7 +441,7 @@ export const LayoutCanvas = ({
 
       // Label dimensions véhicule
       const vehicleLabelTop = new paper.PointText({
-        point: [CANVAS_WIDTH / 2, (CANVAS_HEIGHT - scaledVehicleWidth) / 2 - 8],
+        point: [CANVAS_WIDTH / 2, vehicleTop - 8],
         content: `Véhicule: ${currentVehicleLength} x ${currentVehicleWidth} mm`,
         fillColor: new paper.Color("#6b7280"),
         fontSize: 10,
@@ -410,20 +450,22 @@ export const LayoutCanvas = ({
       vehicleLabelTop.data.isVehicleOutline = true;
       vehicleLabelTop.locked = true;
 
-      // 2. Contour BLEU pointillé = Zone de chargement
+      // 2. Contour BLEU pointillé = Zone de chargement (positionnée avec offset)
       const loadAreaOutline = new paper.Path.Rectangle({
-        point: [(CANVAS_WIDTH - scaledLength) / 2, (CANVAS_HEIGHT - scaledWidth) / 2],
+        point: [loadAreaLeft, loadAreaTop],
         size: [scaledLength, scaledWidth],
         strokeColor: new paper.Color("#3b82f6"),
         strokeWidth: 3,
         dashArray: [10, 5],
+        fillColor: new paper.Color("#dbeafe"),
         locked: true,
       });
+      loadAreaOutline.fillColor!.alpha = 0.4;
       loadAreaOutline.data.isLoadAreaOutline = true;
 
       // Label zone de chargement
       const loadAreaLabel = new paper.PointText({
-        point: [CANVAS_WIDTH / 2, (CANVAS_HEIGHT + scaledWidth) / 2 + 15],
+        point: [loadAreaLeft + scaledLength / 2, loadAreaTop + scaledWidth + 15],
         content: `Zone chargement: ${currentLength} x ${currentWidth} mm`,
         fillColor: new paper.Color("#3b82f6"),
         fontSize: 10,
@@ -456,26 +498,28 @@ export const LayoutCanvas = ({
       });
 
       const currentScale = scaleRef.current;
-      const currentLength = loadAreaLengthRef.current;
-      const currentWidth = loadAreaWidthRef.current;
-      const scaledLength = currentLength * currentScale;
-      const scaledWidth = currentWidth * currentScale;
-      const areaLeft = (CANVAS_WIDTH - scaledLength) / 2;
-      const areaTop = (CANVAS_HEIGHT - scaledWidth) / 2;
+      const currentVehicleLength = vehicleLengthRef.current;
+      const currentVehicleWidth = vehicleWidthRef.current;
+      const scaledVehicleLength = currentVehicleLength * currentScale;
+      const scaledVehicleWidth = currentVehicleWidth * currentScale;
+
+      // Position du véhicule (centré dans le canvas)
+      const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
+      const vehicleTop = (CANVAS_HEIGHT - scaledVehicleWidth) / 2;
 
       // Calculer les positions des essieux si empattement est fourni
       if (empattement && empattement > 0) {
         const scaledEmpattement = empattement * currentScale;
-        const calculatedPorteFauxAvant = porteFauxAvant || Math.round(vehicleLength * 0.15);
+        const calculatedPorteFauxAvant = porteFauxAvant || Math.round(currentVehicleLength * 0.15);
         const scaledPorteFauxAvant = calculatedPorteFauxAvant * currentScale;
 
         // Position de l'essieu avant (à partir du bord gauche du véhicule + porte-à-faux)
-        const essieuAvX = areaLeft + scaledPorteFauxAvant;
+        const essieuAvX = vehicleLeft + scaledPorteFauxAvant;
 
         // Ligne essieu avant (pointillés verts)
         const essieuAv = new paper.Path.Line({
-          from: [essieuAvX, areaTop - 20],
-          to: [essieuAvX, areaTop + scaledWidth + 20],
+          from: [essieuAvX, vehicleTop - 20],
+          to: [essieuAvX, vehicleTop + scaledVehicleWidth + 20],
           strokeColor: new paper.Color("#22c55e"),
           strokeWidth: 2,
           dashArray: [8, 4],
@@ -486,7 +530,7 @@ export const LayoutCanvas = ({
 
         // Label essieu avant
         const labelAv = new paper.PointText({
-          point: [essieuAvX, areaTop - 25],
+          point: [essieuAvX, vehicleTop - 25],
           content: "Essieu AV",
           fillColor: new paper.Color("#22c55e"),
           fontSize: 10,
@@ -501,8 +545,8 @@ export const LayoutCanvas = ({
 
         // Ligne essieu arrière (pointillés verts)
         const essieuAr = new paper.Path.Line({
-          from: [essieuArX, areaTop - 20],
-          to: [essieuArX, areaTop + scaledWidth + 20],
+          from: [essieuArX, vehicleTop - 20],
+          to: [essieuArX, vehicleTop + scaledVehicleWidth + 20],
           strokeColor: new paper.Color("#22c55e"),
           strokeWidth: 2,
           dashArray: [8, 4],
@@ -513,7 +557,7 @@ export const LayoutCanvas = ({
 
         // Label essieu arrière
         const labelAr = new paper.PointText({
-          point: [essieuArX, areaTop - 25],
+          point: [essieuArX, vehicleTop - 25],
           content: "Essieu AR",
           fillColor: new paper.Color("#22c55e"),
           fontSize: 10,
@@ -524,7 +568,7 @@ export const LayoutCanvas = ({
         labelAr.locked = true;
 
         // Côte d'empattement (flèche horizontale entre les essieux)
-        const coteY = areaTop + scaledWidth + 35;
+        const coteY = vehicleTop + scaledVehicleWidth + 35;
         const coteLine = new paper.Path();
         coteLine.add(new paper.Point(essieuAvX, coteY));
         coteLine.add(new paper.Point(essieuArX, coteY));
@@ -572,8 +616,8 @@ export const LayoutCanvas = ({
 
             // Ligne horizontale pour la rangée de sièges (orange)
             const siegeLine = new paper.Path.Line({
-              from: [siegeX, areaTop + 10],
-              to: [siegeX, areaTop + scaledWidth - 10],
+              from: [siegeX, vehicleTop + 10],
+              to: [siegeX, vehicleTop + scaledVehicleWidth - 10],
               strokeColor: new paper.Color("#f97316"),
               strokeWidth: 3,
               dashArray: [4, 2],
@@ -585,10 +629,10 @@ export const LayoutCanvas = ({
 
             // Icônes de sièges
             const siegeIconSize = 12;
-            const siegeSpacing = scaledWidth / (rangee.nombre_places + 1);
+            const siegeSpacing = scaledVehicleWidth / (rangee.nombre_places + 1);
 
             for (let i = 1; i <= rangee.nombre_places; i++) {
-              const siegeY = areaTop + siegeSpacing * i;
+              const siegeY = vehicleTop + siegeSpacing * i;
 
               // Rectangle représentant un siège
               const siegeRect = new paper.Path.Rectangle({
@@ -605,7 +649,7 @@ export const LayoutCanvas = ({
 
             // Label de la rangée
             const siegeLabel = new paper.PointText({
-              point: [siegeX, areaTop - 5],
+              point: [siegeX, vehicleTop - 5],
               content: `R${rangee.numero_rangee} (${rangee.nombre_places}p)`,
               fillColor: new paper.Color("#f97316"),
               fontSize: 9,
@@ -616,7 +660,7 @@ export const LayoutCanvas = ({
             siegeLabel.locked = true;
 
             // Cote de distance à l'essieu AV
-            const coteSiegeY = areaTop + scaledWidth + 55;
+            const coteSiegeY = vehicleTop + scaledVehicleWidth + 55;
             const coteSiegeLine = new paper.Path.Line({
               from: [essieuAvX, coteSiegeY],
               to: [siegeX, coteSiegeY],
@@ -652,12 +696,12 @@ export const LayoutCanvas = ({
       if (!showVASPOverlay || !empattement || empattement <= 0) return;
 
       const currentScale = scaleRef.current;
-      const currentLength = loadAreaLengthRef.current;
-      const scaledLength = currentLength * currentScale;
-      const areaLeft = (CANVAS_WIDTH - scaledLength) / 2;
-      const calculatedPorteFauxAvant = porteFauxAvant || Math.round(vehicleLength * 0.15);
+      const currentVehicleLength = vehicleLengthRef.current;
+      const scaledVehicleLength = currentVehicleLength * currentScale;
+      const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
+      const calculatedPorteFauxAvant = porteFauxAvant || Math.round(currentVehicleLength * 0.15);
       const scaledPorteFauxAvant = calculatedPorteFauxAvant * currentScale;
-      const essieuAvX = areaLeft + scaledPorteFauxAvant;
+      const essieuAvX = vehicleLeft + scaledPorteFauxAvant;
 
       // Parcourir tous les meubles et afficher leur distance
       paper.project.activeLayer.children.forEach((child) => {
@@ -796,18 +840,32 @@ export const LayoutCanvas = ({
         });
 
         const currentScale = scaleRef.current;
-        const currentLength = loadAreaLengthRef.current;
-        const scaledLength = currentLength * currentScale;
-        const areaLeft = (CANVAS_WIDTH - scaledLength) / 2;
+        const currentVehicleLength = vehicleLengthRef.current;
+        const currentVehicleWidth = vehicleWidthRef.current;
+        const scaledVehicleLength = currentVehicleLength * currentScale;
+        const scaledVehicleWidth = currentVehicleWidth * currentScale;
+        const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
+        const vehicleTop = (CANVAS_HEIGHT - scaledVehicleWidth) / 2;
 
         // Calculer la position de l'essieu AV
-        const calculatedPorteFauxAvant = porteFauxAvant || Math.round(vehicleLength * 0.15);
+        const calculatedPorteFauxAvant = porteFauxAvant || Math.round(currentVehicleLength * 0.15);
         const scaledPorteFauxAvant = calculatedPorteFauxAvant * currentScale;
-        const essieuAvX = areaLeft + scaledPorteFauxAvant;
+        const essieuAvX = vehicleLeft + scaledPorteFauxAvant;
+
+        // Calculer la position de la zone de chargement
+        const currentOffsetX = loadAreaOffsetXRef.current;
+        const currentLoadLength = loadAreaLengthRef.current;
+        const currentLoadWidth = loadAreaWidthRef.current;
+        const scaledOffsetX = currentOffsetX * currentScale;
+        const scaledLoadLength = currentLoadLength * currentScale;
+        const scaledLoadWidth = currentLoadWidth * currentScale;
+        const loadAreaLeft = vehicleLeft + scaledOffsetX;
+        const loadAreaTop = vehicleTop + (scaledVehicleWidth - scaledLoadWidth) / 2;
 
         // Vérifier si on clique sur un essieu VASP
         let clickedOnEssieuAv = false;
         let clickedOnEssieuAr = false;
+        let clickedOnLoadAreaLeft = false; // Bord gauche de la zone de chargement
         let clickedItem: paper.Item | null = null;
         let clickedFurnitureId: string | null = null;
 
@@ -822,10 +880,16 @@ export const LayoutCanvas = ({
           } else if (hitResult.item instanceof paper.Group && hitResult.item.data.isFurniture) {
             clickedItem = hitResult.item;
             clickedFurnitureId = hitResult.item.data.furnitureId;
+          } else if (hitResult.item.data.isLoadAreaOutline) {
+            // Vérifier si on clique sur le bord gauche de la zone de chargement
+            const tolerance = 15;
+            if (Math.abs(event.point.x - loadAreaLeft) < tolerance) {
+              clickedOnLoadAreaLeft = true;
+            }
           }
         }
 
-        // Si on a cliqué sur l'essieu AV, on peut aussi vérifier par la position X
+        // Si on a cliqué sur l'essieu AV/AR, on peut aussi vérifier par la position X
         if (!clickedOnEssieuAv && empattement && empattement > 0) {
           const tolerance = 15;
           if (Math.abs(event.point.x - essieuAvX) < tolerance) {
@@ -834,6 +898,18 @@ export const LayoutCanvas = ({
           const essieuArX = essieuAvX + empattement * currentScale;
           if (Math.abs(event.point.x - essieuArX) < tolerance) {
             clickedOnEssieuAr = true;
+          }
+        }
+
+        // Vérifier si on clique sur le bord gauche de la zone de chargement par position
+        if (!clickedOnLoadAreaLeft) {
+          const tolerance = 15;
+          if (
+            Math.abs(event.point.x - loadAreaLeft) < tolerance &&
+            event.point.y >= loadAreaTop &&
+            event.point.y <= loadAreaTop + scaledLoadWidth
+          ) {
+            clickedOnLoadAreaLeft = true;
           }
         }
 
@@ -859,7 +935,7 @@ export const LayoutCanvas = ({
           if (reference) {
             setCotationReference(reference);
             setCotationStep(1);
-            toast.info(`Référence: ${reference.label}. Cliquez sur l'élément cible.`);
+            toast.info(`Référence: ${reference.label}. Cliquez sur un meuble ou le bord de la zone de chargement.`);
 
             // Créer un indicateur visuel sur l'élément de référence
             const indicator = new paper.Path.Circle({
@@ -874,18 +950,34 @@ export const LayoutCanvas = ({
             toast.warning("Cliquez sur un essieu ou un meuble pour définir la référence");
           }
         } else if (step === 1 && cotationReferenceRef.current) {
-          // Deuxième sélection (cible) - doit être un meuble
+          // Deuxième sélection (cible) - meuble OU zone de chargement
+          let targetX: number | null = null;
+          let targetType: string = "";
+          let targetLabel: string = "";
+          let targetItemId: string | undefined = undefined;
+
           if (clickedItem && clickedFurnitureId) {
-            const targetX = clickedItem.bounds.center.x;
+            targetX = clickedItem.bounds.center.x;
+            targetType = "furniture";
+            targetLabel = `Meuble ${clickedFurnitureId.slice(-4)}`;
+            targetItemId = clickedFurnitureId;
+          } else if (clickedOnLoadAreaLeft) {
+            targetX = loadAreaLeft;
+            targetType = "load_area";
+            targetLabel = "Zone de chargement";
+            targetItemId = "load_area";
+          }
+
+          if (targetX !== null) {
             const referenceX = cotationReferenceRef.current.x;
             const distancePx = Math.abs(targetX - referenceX);
             const distanceMm = Math.round(distancePx / currentScale);
 
             setCotationTarget({
               x: targetX,
-              type: "furniture",
-              label: `Meuble ${clickedFurnitureId.slice(-4)}`,
-              itemId: clickedFurnitureId,
+              type: targetType,
+              label: targetLabel,
+              itemId: targetItemId,
             });
             setCotationCurrentDistance(distanceMm);
             setCotationNewDistance(distanceMm.toString());
@@ -1063,15 +1155,25 @@ export const LayoutCanvas = ({
           // Calculer la nouvelle position
           const newPosition = selectedItem.position.add(event.delta);
 
-          // Obtenir les limites du rectangle bleu (zone de chargement)
+          // Obtenir les limites de la zone de chargement avec offset
           const currentScale = scaleRef.current;
           const currentLength = loadAreaLengthRef.current;
           const currentWidth = loadAreaWidthRef.current;
+          const currentOffsetX = loadAreaOffsetXRef.current;
+          const currentVehicleLength = vehicleLengthRef.current;
+          const currentVehicleWidth = vehicleWidthRef.current;
+
           const scaledLength = currentLength * currentScale;
           const scaledWidth = currentWidth * currentScale;
+          const scaledOffsetX = currentOffsetX * currentScale;
+          const scaledVehicleLength = currentVehicleLength * currentScale;
+          const scaledVehicleWidth = currentVehicleWidth * currentScale;
 
-          const loadAreaLeft = (CANVAS_WIDTH - scaledLength) / 2;
-          const loadAreaTop = (CANVAS_HEIGHT - scaledWidth) / 2;
+          // Position du véhicule et de la zone de chargement
+          const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
+          const vehicleTop = (CANVAS_HEIGHT - scaledVehicleWidth) / 2;
+          const loadAreaLeft = vehicleLeft + scaledOffsetX;
+          const loadAreaTop = vehicleTop + (scaledVehicleWidth - scaledWidth) / 2;
           const loadAreaRight = loadAreaLeft + scaledLength;
           const loadAreaBottom = loadAreaTop + scaledWidth;
 
@@ -1201,7 +1303,15 @@ export const LayoutCanvas = ({
 
       console.log("🔍 Sauvegarde - Nombre de meubles sur le canvas:", canvasFurnitureIds.size);
       console.log("🔍 Sauvegarde - Nombre de meubles dans les données:", furnitureData.length);
-      console.log("🔍 Dimensions zone de chargement:", loadAreaLength, "×", loadAreaWidth, "mm");
+      console.log(
+        "🔍 Dimensions zone de chargement:",
+        loadAreaLength,
+        "×",
+        loadAreaWidth,
+        "mm, offset:",
+        loadAreaOffsetXRef.current,
+        "mm",
+      );
       console.log("Détails meubles:", furnitureData);
 
       // Synchroniser furnitureItems avec le canvas
@@ -1224,6 +1334,7 @@ export const LayoutCanvas = ({
             furniture_data: furnitureData,
             longueur_chargement_mm: loadAreaLength,
             largeur_chargement_mm: loadAreaWidth,
+            offset_zone_chargement_mm: loadAreaOffsetXRef.current,
           } as any)
           .eq("id", projectId);
 
@@ -1282,7 +1393,9 @@ export const LayoutCanvas = ({
       try {
         const { data, error } = (await supabase
           .from("projects")
-          .select("layout_canvas_data, furniture_data, longueur_chargement_mm, largeur_chargement_mm")
+          .select(
+            "layout_canvas_data, furniture_data, longueur_chargement_mm, largeur_chargement_mm, offset_zone_chargement_mm",
+          )
           .eq("id", projectId)
           .single()) as any;
 
@@ -1293,9 +1406,15 @@ export const LayoutCanvas = ({
           console.log("📐 Dimensions chargées:", {
             longueur: data.longueur_chargement_mm,
             largeur: data.largeur_chargement_mm,
+            offset: data.offset_zone_chargement_mm,
           });
           setLoadAreaLength(data.longueur_chargement_mm);
           setLoadAreaWidth(data.largeur_chargement_mm);
+        }
+
+        // Charger l'offset de la zone de chargement
+        if (data?.offset_zone_chargement_mm !== null && data?.offset_zone_chargement_mm !== undefined) {
+          setLoadAreaOffsetX(data.offset_zone_chargement_mm);
         }
 
         if (data?.layout_canvas_data && typeof data.layout_canvas_data === "string") {
@@ -1357,7 +1476,16 @@ export const LayoutCanvas = ({
     return () => {
       paper.project.clear();
     };
-  }, [projectId, loadAreaLength, loadAreaWidth, empattement, porteFauxAvant, vehicleLength, vehicleWidth]);
+  }, [
+    projectId,
+    loadAreaLength,
+    loadAreaWidth,
+    loadAreaOffsetX,
+    empattement,
+    porteFauxAvant,
+    vehicleLength,
+    vehicleWidth,
+  ]);
 
   // useEffect séparé pour gérer le toggle VASP (afficher/masquer les éléments)
   useEffect(() => {
@@ -1452,12 +1580,23 @@ export const LayoutCanvas = ({
         const scaledWidth = furnitureForm.longueur_mm * currentScale;
         const scaledHeight = furnitureForm.largeur_mm * currentScale;
 
-        // Calculer le centre de la zone de chargement
-        const loadAreaCenterX =
-          (CANVAS_WIDTH - loadAreaLengthRef.current * currentScale) / 2 +
-          (loadAreaLengthRef.current * currentScale) / 2;
-        const loadAreaCenterY =
-          (CANVAS_HEIGHT - loadAreaWidthRef.current * currentScale) / 2 + (loadAreaWidthRef.current * currentScale) / 2;
+        // Calculer le centre de la zone de chargement avec offset
+        const currentOffsetX = loadAreaOffsetXRef.current;
+        const currentVehicleLength = vehicleLengthRef.current;
+        const currentVehicleWidth = vehicleWidthRef.current;
+        const scaledOffsetX = currentOffsetX * currentScale;
+        const scaledVehicleLength = currentVehicleLength * currentScale;
+        const scaledVehicleWidth = currentVehicleWidth * currentScale;
+        const scaledLoadLength = loadAreaLengthRef.current * currentScale;
+        const scaledLoadWidth = loadAreaWidthRef.current * currentScale;
+
+        const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
+        const vehicleTop = (CANVAS_HEIGHT - scaledVehicleWidth) / 2;
+        const loadAreaLeft = vehicleLeft + scaledOffsetX;
+        const loadAreaTop = vehicleTop + (scaledVehicleWidth - scaledLoadWidth) / 2;
+
+        const loadAreaCenterX = loadAreaLeft + scaledLoadLength / 2;
+        const loadAreaCenterY = loadAreaTop + scaledLoadWidth / 2;
         const center = new paper.Point(loadAreaCenterX, loadAreaCenterY);
 
         const newBounds = new paper.Rectangle(
