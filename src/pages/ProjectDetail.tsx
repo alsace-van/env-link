@@ -60,7 +60,6 @@ import { CableSectionCalculator } from "@/components/CableSectionCalculator";
 import { EnergyBalance } from "@/components/EnergyBalance";
 import { LayoutCanvas } from "@/components/LayoutCanvas";
 import { Layout3DView } from "@/components/Layout3DView";
-import { VASPDataPanel } from "@/components/VASPDataPanel";
 import { User } from "@supabase/supabase-js";
 import { AdminMessagesNotification } from "@/components/AdminMessagesNotification";
 import { AIUsageWidget } from "@/components/AIUsageWidget";
@@ -1837,39 +1836,23 @@ const ProjectDetail = () => {
                       </TabsList>
 
                       <TabsContent value="2d" className="mt-6">
-                        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-                          {/* Canvas 2D - 3/4 de largeur */}
-                          <div className="lg:col-span-3">
-                            <LayoutCanvas
-                              key={layoutCanvasKey}
-                              projectId={project.id}
-                              vehicleLength={project.longueur_mm || project.longueur_chargement_mm || 3000}
-                              vehicleWidth={project.largeur_mm || project.largeur_chargement_mm || 1800}
-                              loadAreaLength={
-                                project.longueur_chargement_mm || Math.round((project.longueur_mm || 3000) * 0.7)
-                              }
-                              loadAreaWidth={
-                                project.largeur_chargement_mm || Math.round((project.largeur_mm || 1800) * 0.9)
-                              }
-                              maxLoad={
-                                project.charge_utile_kg ||
-                                (project.ptac_kg && project.poids_vide_kg ? project.ptac_kg - project.poids_vide_kg : 500)
-                              }
-                              empattement={project.empattement_mm || undefined}
-                            />
-                          </div>
-                          {/* Panneau VASP - 1/4 de largeur */}
-                          <div className="lg:col-span-1">
-                            <VASPDataPanel
-                              projectId={project.id}
-                              projectData={project}
-                              onDataChange={() => {
-                                // Rafraîchir les données du projet
-                                loadProject();
-                              }}
-                            />
-                          </div>
-                        </div>
+                        <LayoutCanvas
+                          key={layoutCanvasKey}
+                          projectId={project.id}
+                          vehicleLength={project.longueur_mm || project.longueur_chargement_mm || 3000}
+                          vehicleWidth={project.largeur_mm || project.largeur_chargement_mm || 1800}
+                          loadAreaLength={
+                            project.longueur_chargement_mm || Math.round((project.longueur_mm || 3000) * 0.7)
+                          }
+                          loadAreaWidth={
+                            project.largeur_chargement_mm || Math.round((project.largeur_mm || 1800) * 0.9)
+                          }
+                          maxLoad={
+                            project.charge_utile_kg ||
+                            (project.ptac_kg && project.poids_vide_kg ? project.ptac_kg - project.poids_vide_kg : 500)
+                          }
+                          empattement={project.empattement_mm || undefined}
+                        />
                       </TabsContent>
 
                       <TabsContent value="3d" className="mt-6">
