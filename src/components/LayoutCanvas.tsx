@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 2.5 - Fix boucle infinie useEffect
+// VERSION: 2.6 - Ajout contour véhicule complet + zone chargement
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -352,9 +352,9 @@ export const LayoutCanvas = ({
 
     // Fonction pour dessiner le contour de la zone de chargement
     const drawLoadAreaOutline = () => {
-      // Supprimer l'ancien rectangle s'il existe
+      // Supprimer les anciens rectangles s'ils existent
       paper.project.activeLayer.children.forEach((child) => {
-        if (child.data?.isLoadAreaOutline) {
+        if (child.data?.isLoadAreaOutline || child.data?.isVehicleOutline) {
           child.remove();
         }
       });
@@ -366,14 +366,41 @@ export const LayoutCanvas = ({
       const scaledLength = currentLength * currentScale;
       const scaledWidth = currentWidth * currentScale;
 
-      console.log("🔵 Dessin rectangle bleu:", {
-        longueur: currentLength,
-        largeur: currentWidth,
+      // Calculer les dimensions du véhicule complet
+      const scaledVehicleLength = vehicleLength * currentScale;
+      const scaledVehicleWidth = vehicleWidth * currentScale;
+
+      console.log("🚐 Dessin contours:", {
+        vehicule: { longueur: vehicleLength, largeur: vehicleWidth },
+        zoneChargement: { longueur: currentLength, largeur: currentWidth },
         echelle: currentScale,
-        scaledLength,
-        scaledWidth,
       });
 
+      // 1. Contour GRIS = Véhicule complet (dimensions totales)
+      const vehicleOutline = new paper.Path.Rectangle({
+        point: [(CANVAS_WIDTH - scaledVehicleLength) / 2, (CANVAS_HEIGHT - scaledVehicleWidth) / 2],
+        size: [scaledVehicleLength, scaledVehicleWidth],
+        strokeColor: new paper.Color("#6b7280"),
+        strokeWidth: 2,
+        fillColor: new paper.Color("#f3f4f6"),
+        locked: true,
+      });
+      vehicleOutline.fillColor!.alpha = 0.3;
+      vehicleOutline.data.isVehicleOutline = true;
+      vehicleOutline.sendToBack();
+
+      // Label dimensions véhicule
+      const vehicleLabelTop = new paper.PointText({
+        point: [CANVAS_WIDTH / 2, (CANVAS_HEIGHT - scaledVehicleWidth) / 2 - 8],
+        content: `Véhicule: ${vehicleLength} x ${vehicleWidth} mm`,
+        fillColor: new paper.Color("#6b7280"),
+        fontSize: 10,
+        justification: "center",
+      });
+      vehicleLabelTop.data.isVehicleOutline = true;
+      vehicleLabelTop.locked = true;
+
+      // 2. Contour BLEU pointillé = Zone de chargement
       const loadAreaOutline = new paper.Path.Rectangle({
         point: [(CANVAS_WIDTH - scaledLength) / 2, (CANVAS_HEIGHT - scaledWidth) / 2],
         size: [scaledLength, scaledWidth],
@@ -382,9 +409,18 @@ export const LayoutCanvas = ({
         dashArray: [10, 5],
         locked: true,
       });
-
       loadAreaOutline.data.isLoadAreaOutline = true;
-      loadAreaOutline.sendToBack();
+
+      // Label zone de chargement
+      const loadAreaLabel = new paper.PointText({
+        point: [CANVAS_WIDTH / 2, (CANVAS_HEIGHT + scaledWidth) / 2 + 15],
+        content: `Zone chargement: ${currentLength} x ${currentWidth} mm`,
+        fillColor: new paper.Color("#3b82f6"),
+        fontSize: 10,
+        justification: "center",
+      });
+      loadAreaLabel.data.isLoadAreaOutline = true;
+      loadAreaLabel.locked = true;
     };
 
     // Fonction pour dessiner les éléments VASP (essieux, contour véhicule)
@@ -1298,7 +1334,7 @@ export const LayoutCanvas = ({
     return () => {
       paper.project.clear();
     };
-  }, [projectId, loadAreaLength, loadAreaWidth, empattement, porteFauxAvant, vehicleLength]);
+  }, [projectId, loadAreaLength, loadAreaWidth, empattement, porteFauxAvant, vehicleLength, vehicleWidth]);
 
   // useEffect séparé pour gérer le toggle VASP (afficher/masquer les éléments)
   useEffect(() => {
