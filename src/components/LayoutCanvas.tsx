@@ -9,7 +9,21 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Square, Trash2, Undo, Redo, Download, Save, Upload, Ruler, Package, RefreshCw, Edit, Crosshair, Armchair } from "lucide-react";
+import {
+  Square,
+  Trash2,
+  Undo,
+  Redo,
+  Download,
+  Save,
+  Upload,
+  Ruler,
+  Package,
+  RefreshCw,
+  Edit,
+  Crosshair,
+  Armchair,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import { Card } from "@/components/ui/card";
@@ -243,7 +257,7 @@ export const LayoutCanvas = ({
 
         // Position de l'essieu avant (à partir du bord gauche du véhicule + porte-à-faux)
         const essieuAvX = areaLeft + scaledPorteFauxAvant;
-        
+
         // Ligne essieu avant (pointillés verts)
         const essieuAv = new paper.Path.Line({
           from: [essieuAvX, areaTop - 20],
@@ -308,18 +322,18 @@ export const LayoutCanvas = ({
         // Flèches aux extrémités
         const arrowSize = 6;
         const arrowLeft = new paper.Path();
-        arrowLeft.add(new paper.Point(essieuAvX + arrowSize, coteY - arrowSize/2));
+        arrowLeft.add(new paper.Point(essieuAvX + arrowSize, coteY - arrowSize / 2));
         arrowLeft.add(new paper.Point(essieuAvX, coteY));
-        arrowLeft.add(new paper.Point(essieuAvX + arrowSize, coteY + arrowSize/2));
+        arrowLeft.add(new paper.Point(essieuAvX + arrowSize, coteY + arrowSize / 2));
         arrowLeft.strokeColor = new paper.Color("#22c55e");
         arrowLeft.strokeWidth = 1;
         arrowLeft.data.isVASPElement = true;
         arrowLeft.locked = true;
 
         const arrowRight = new paper.Path();
-        arrowRight.add(new paper.Point(essieuArX - arrowSize, coteY - arrowSize/2));
+        arrowRight.add(new paper.Point(essieuArX - arrowSize, coteY - arrowSize / 2));
         arrowRight.add(new paper.Point(essieuArX, coteY));
-        arrowRight.add(new paper.Point(essieuArX - arrowSize, coteY + arrowSize/2));
+        arrowRight.add(new paper.Point(essieuArX - arrowSize, coteY + arrowSize / 2));
         arrowRight.strokeColor = new paper.Color("#22c55e");
         arrowRight.strokeWidth = 1;
         arrowRight.data.isVASPElement = true;
@@ -864,7 +878,18 @@ export const LayoutCanvas = ({
     return () => {
       paper.project.clear();
     };
-  }, [projectId, scale, loadAreaLength, loadAreaWidth, scaledLoadAreaLength, scaledLoadAreaWidth, showVASPOverlay, empattement, porteFauxAvant, vehicleLength]);
+  }, [
+    projectId,
+    scale,
+    loadAreaLength,
+    loadAreaWidth,
+    scaledLoadAreaLength,
+    scaledLoadAreaWidth,
+    showVASPOverlay,
+    empattement,
+    porteFauxAvant,
+    vehicleLength,
+  ]);
 
   const handleFurnitureSubmit = () => {
     if (editingFurnitureId) {
