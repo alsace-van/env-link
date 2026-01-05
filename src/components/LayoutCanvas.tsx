@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 2.1 - Cotation intelligente fonctionnelle
+// VERSION: 2.4 - Fix toggle VASP sans rechargement
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -53,6 +53,13 @@ interface LayoutCanvasProps {
   porteFauxAvant?: number; // porte-à-faux avant en mm
   porteFauxArriere?: number; // porte-à-faux arrière en mm
   onElementPositionChange?: (elementId: string, distanceAv: number) => void; // callback pour position
+  // Rangées de sièges VASP
+  rangeesSieges?: Array<{
+    id: string;
+    numero_rangee: number;
+    nombre_places: number;
+    distance_essieu_av_mm: number;
+  }>;
 }
 
 interface FurnitureData {
@@ -65,6 +72,8 @@ interface FurnitureData {
   wood_type?: "okoume" | "bouleau" | "peuplier";
   thickness?: number; // en mm: 5, 8, 10, 12, 15
   surface?: number; // en m²
+  masse_contenu_kg?: number; // Masse max du contenu pour VASP
+  distance_essieu_av_mm?: number; // Distance calculée à l'essieu AV
 }
 
 const CANVAS_WIDTH = 800;
@@ -81,6 +90,7 @@ export const LayoutCanvas = ({
   porteFauxAvant,
   porteFauxArriere,
   onElementPositionChange,
+  rangeesSieges = [],
 }: LayoutCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [activeTool, setActiveTool] = useState<"select" | "rectangle" | "measure" | "cotation">("select");
@@ -121,6 +131,7 @@ export const LayoutCanvas = ({
     wood_type: "okoume" as "okoume" | "bouleau" | "peuplier",
     thickness: 15,
     surface: 0,
+    masse_contenu_kg: 0, // Masse max du contenu pour VASP
   });
 
   // Masses volumiques des contreplaqués (kg/m³)
@@ -495,21 +506,141 @@ export const LayoutCanvas = ({
         coteText.data.isVASPElement = true;
         coteText.locked = true;
 
+        // Dessiner les rangées de sièges
+        if (rangeesSieges && rangeesSieges.length > 0) {
+          rangeesSieges.forEach((rangee) => {
+            const siegeX = essieuAvX + rangee.distance_essieu_av_mm * currentScale;
+
+            // Ligne horizontale pour la rangée de sièges (orange)
+            const siegeLine = new paper.Path.Line({
+              from: [siegeX, areaTop + 10],
+              to: [siegeX, areaTop + scaledWidth - 10],
+              strokeColor: new paper.Color("#f97316"),
+              strokeWidth: 3,
+              dashArray: [4, 2],
+            });
+            siegeLine.data.isVASPElement = true;
+            siegeLine.data.elementType = "rangee_siege";
+            siegeLine.data.rangeeId = rangee.id;
+            siegeLine.locked = true;
+
+            // Icônes de sièges
+            const siegeIconSize = 12;
+            const siegeSpacing = scaledWidth / (rangee.nombre_places + 1);
+
+            for (let i = 1; i <= rangee.nombre_places; i++) {
+              const siegeY = areaTop + siegeSpacing * i;
+
+              // Rectangle représentant un siège
+              const siegeRect = new paper.Path.Rectangle({
+                point: [siegeX - siegeIconSize / 2, siegeY - siegeIconSize / 2],
+                size: [siegeIconSize, siegeIconSize],
+                fillColor: new paper.Color("#f97316"),
+                strokeColor: new paper.Color("#ea580c"),
+                strokeWidth: 1,
+                radius: 2,
+              });
+              siegeRect.data.isVASPElement = true;
+              siegeRect.locked = true;
+            }
+
+            // Label de la rangée
+            const siegeLabel = new paper.PointText({
+              point: [siegeX, areaTop - 5],
+              content: `R${rangee.numero_rangee} (${rangee.nombre_places}p)`,
+              fillColor: new paper.Color("#f97316"),
+              fontSize: 9,
+              fontWeight: "bold",
+              justification: "center",
+            });
+            siegeLabel.data.isVASPElement = true;
+            siegeLabel.locked = true;
+
+            // Cote de distance à l'essieu AV
+            const coteSiegeY = areaTop + scaledWidth + 55;
+            const coteSiegeLine = new paper.Path.Line({
+              from: [essieuAvX, coteSiegeY],
+              to: [siegeX, coteSiegeY],
+              strokeColor: new paper.Color("#f97316"),
+              strokeWidth: 1,
+            });
+            coteSiegeLine.data.isVASPElement = true;
+            coteSiegeLine.locked = true;
+
+            const coteSiegeText = new paper.PointText({
+              point: [(essieuAvX + siegeX) / 2, coteSiegeY - 3],
+              content: `${rangee.distance_essieu_av_mm} mm`,
+              fillColor: new paper.Color("#f97316"),
+              fontSize: 9,
+              justification: "center",
+            });
+            coteSiegeText.data.isVASPElement = true;
+            coteSiegeText.locked = true;
+          });
+        }
+
         console.log("🚗 Dessin éléments VASP:", {
           empattement,
           essieuAvX,
           essieuArX,
+          rangeesSieges: rangeesSieges?.length || 0,
         });
       }
+    };
+
+    // Fonction pour afficher la distance à l'essieu AV pour les meubles
+    const drawFurnitureDistances = () => {
+      if (!showVASPOverlay || !empattement || empattement <= 0) return;
+
+      const currentScale = scaleRef.current;
+      const currentLength = loadAreaLengthRef.current;
+      const scaledLength = currentLength * currentScale;
+      const areaLeft = (CANVAS_WIDTH - scaledLength) / 2;
+      const calculatedPorteFauxAvant = porteFauxAvant || Math.round(vehicleLength * 0.15);
+      const scaledPorteFauxAvant = calculatedPorteFauxAvant * currentScale;
+      const essieuAvX = areaLeft + scaledPorteFauxAvant;
+
+      // Parcourir tous les meubles et afficher leur distance
+      paper.project.activeLayer.children.forEach((child) => {
+        if (child instanceof paper.Group && child.data.isFurniture && child.data.furnitureId) {
+          const furnitureX = child.bounds.center.x;
+          const distanceMm = Math.round((furnitureX - essieuAvX) / currentScale);
+
+          // Supprimer l'ancien label de distance s'il existe
+          paper.project.activeLayer.children.forEach((label) => {
+            if (label.data.isDistanceLabel && label.data.forFurnitureId === child.data.furnitureId) {
+              label.remove();
+            }
+          });
+
+          // Afficher la distance sous le meuble
+          const distanceLabel = new paper.PointText({
+            point: [child.bounds.center.x, child.bounds.bottom + 12],
+            content: `↔ ${distanceMm} mm`,
+            fillColor: new paper.Color("#8b5cf6"),
+            fontSize: 9,
+            fontWeight: "bold",
+            justification: "center",
+          });
+          distanceLabel.data.isDistanceLabel = true;
+          distanceLabel.data.forFurnitureId = child.data.furnitureId;
+          distanceLabel.data.isVASPElement = true;
+          distanceLabel.locked = true;
+
+          // Mettre à jour la distance dans les données du meuble
+          const furnitureData = furnitureItemsRef.current.get(child.data.furnitureId);
+          if (furnitureData) {
+            furnitureData.distance_essieu_av_mm = distanceMm;
+          }
+        }
+      });
     };
 
     // Dessiner le contour initial
     drawLoadAreaOutline();
 
-    // Dessiner les éléments VASP si disponibles
-    if (showVASPOverlay) {
-      drawVASPElements();
-    }
+    // Toujours dessiner les éléments VASP (la visibilité est gérée par un useEffect séparé)
+    drawVASPElements();
 
     let currentPath: paper.Path.Rectangle | null = null;
     let selectedItem: paper.Item | null = null;
@@ -925,6 +1056,10 @@ export const LayoutCanvas = ({
           console.log("🔄 Sauvegarde automatique après déplacement du meuble");
           setTimeout(() => handleSave(), 100);
           itemWasMoved = false;
+          // Mettre à jour les distances à l'essieu AV
+          if (showVASPOverlay) {
+            drawFurnitureDistances();
+          }
         }
       }
 
@@ -1149,6 +1284,10 @@ export const LayoutCanvas = ({
       await handleLoad();
       // Réactiver l'outil après le chargement
       tool.activate();
+      // Afficher les distances à l'essieu AV pour les meubles
+      if (showVASPOverlay) {
+        drawFurnitureDistances();
+      }
     };
 
     (window as any).layoutCanvasLoad = loadAndReactivateTool;
@@ -1166,11 +1305,22 @@ export const LayoutCanvas = ({
     loadAreaWidth,
     scaledLoadAreaLength,
     scaledLoadAreaWidth,
-    showVASPOverlay,
     empattement,
     porteFauxAvant,
     vehicleLength,
+    rangeesSieges,
   ]);
+
+  // useEffect séparé pour gérer le toggle VASP (afficher/masquer les éléments)
+  useEffect(() => {
+    if (!paper.project || !paper.project.activeLayer) return;
+
+    paper.project.activeLayer.children.forEach((child) => {
+      if (child.data?.isVASPElement || child.data?.isDistanceLabel) {
+        child.visible = showVASPOverlay;
+      }
+    });
+  }, [showVASPOverlay]);
 
   const handleFurnitureSubmit = () => {
     if (editingFurnitureId) {
@@ -1228,6 +1378,7 @@ export const LayoutCanvas = ({
         wood_type: "okoume",
         thickness: 15,
         surface: 0,
+        masse_contenu_kg: 0,
       });
       toast.success("Meuble modifié");
 
@@ -1309,6 +1460,7 @@ export const LayoutCanvas = ({
         wood_type: "okoume",
         thickness: 15,
         surface: 0,
+        masse_contenu_kg: 0,
       });
       toast.success("Meuble ajouté");
     }
@@ -1330,6 +1482,7 @@ export const LayoutCanvas = ({
       wood_type: "okoume",
       thickness: 15,
       surface: 0,
+      masse_contenu_kg: 0,
     });
   };
 
@@ -1350,6 +1503,7 @@ export const LayoutCanvas = ({
         wood_type: furnitureData.wood_type || "okoume",
         thickness: furnitureData.thickness || 15,
         surface: furnitureData.surface || 0,
+        masse_contenu_kg: furnitureData.masse_contenu_kg || 0,
       });
       setShowFurnitureDialog(true);
       setContextMenu(null);
@@ -1784,7 +1938,7 @@ export const LayoutCanvas = ({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="poids">Poids (kg)</Label>
+                  <Label htmlFor="poids">Poids structure (kg)</Label>
                   <Input
                     id="poids"
                     type="number"
@@ -1804,6 +1958,7 @@ export const LayoutCanvas = ({
                     }}
                     placeholder="0.0"
                   />
+                  <p className="text-xs text-muted-foreground">Poids du meuble vide (inclus dans la pesée)</p>
                 </div>
               </div>
 
@@ -1829,6 +1984,36 @@ export const LayoutCanvas = ({
                 />
                 <p className="text-xs text-muted-foreground">
                   Distance entre le sol et le dessous du meuble (0 = posé au sol)
+                </p>
+              </div>
+
+              {/* Masse du contenu pour VASP */}
+              <div className="space-y-2 p-3 bg-purple-50 dark:bg-purple-950/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                <Label htmlFor="masse_contenu" className="text-purple-700 dark:text-purple-400 font-medium">
+                  Masse contenu (kg) - VASP
+                </Label>
+                <Input
+                  id="masse_contenu"
+                  type="number"
+                  step="0.1"
+                  value={furnitureForm.masse_contenu_kg || ""}
+                  onChange={(e) =>
+                    setFurnitureForm((prev) => ({
+                      ...prev,
+                      masse_contenu_kg: Number(e.target.value) || 0,
+                    }))
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleFurnitureSubmit();
+                    }
+                    e.stopPropagation();
+                  }}
+                  placeholder="0.0"
+                  className="border-purple-300"
+                />
+                <p className="text-xs text-purple-600 dark:text-purple-400">
+                  Chargement prévu après pesée (le meuble vide est déjà inclus dans la pesée)
                 </p>
               </div>
 
