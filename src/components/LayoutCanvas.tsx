@@ -1,9 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+// ============================================
+// COMPOSANT: LayoutCanvas
+// Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
+// VERSION: 2.0 - Ajout essieux, rangées sièges, cotation intelligente
+// ============================================
+
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Square, Trash2, Undo, Redo, Download, Save, Upload, Ruler, Package, RefreshCw, Edit } from "lucide-react";
+import { Square, Trash2, Undo, Redo, Download, Save, Upload, Ruler, Package, RefreshCw, Edit, Crosshair, Armchair } from "lucide-react";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
 import { Card } from "@/components/ui/card";
@@ -28,6 +34,11 @@ interface LayoutCanvasProps {
   loadAreaLength?: number; // longueur zone de chargement en mm
   loadAreaWidth?: number; // largeur zone de chargement en mm
   maxLoad?: number; // charge utile en kg
+  // Props VASP
+  empattement?: number; // empattement en mm (distance entre essieux)
+  porteFauxAvant?: number; // porte-à-faux avant en mm
+  porteFauxArriere?: number; // porte-à-faux arrière en mm
+  onElementPositionChange?: (elementId: string, distanceAv: number) => void; // callback pour position
 }
 
 interface FurnitureData {
@@ -52,9 +63,14 @@ export const LayoutCanvas = ({
   loadAreaLength: initialLoadAreaLength,
   loadAreaWidth: initialLoadAreaWidth,
   maxLoad = 500,
+  empattement,
+  porteFauxAvant,
+  porteFauxArriere,
+  onElementPositionChange,
 }: LayoutCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [activeTool, setActiveTool] = useState<"select" | "rectangle" | "measure">("select");
+  const [activeTool, setActiveTool] = useState<"select" | "rectangle" | "measure" | "cotation">("select");
+  const [showVASPOverlay, setShowVASPOverlay] = useState(true); // Afficher les éléments VASP
   const [color, setColor] = useState("#3b82f6");
   const [strokeWidth, setStrokeWidth] = useState(2);
   const [totalWeight, setTotalWeight] = useState(0);
@@ -202,8 +218,140 @@ export const LayoutCanvas = ({
       loadAreaOutline.sendToBack();
     };
 
+    // Fonction pour dessiner les éléments VASP (essieux, contour véhicule)
+    const drawVASPElements = () => {
+      // Supprimer les anciens éléments VASP
+      paper.project.activeLayer.children.forEach((child) => {
+        if (child.data?.isVASPElement) {
+          child.remove();
+        }
+      });
+
+      const currentScale = scaleRef.current;
+      const currentLength = loadAreaLengthRef.current;
+      const currentWidth = loadAreaWidthRef.current;
+      const scaledLength = currentLength * currentScale;
+      const scaledWidth = currentWidth * currentScale;
+      const areaLeft = (CANVAS_WIDTH - scaledLength) / 2;
+      const areaTop = (CANVAS_HEIGHT - scaledWidth) / 2;
+
+      // Calculer les positions des essieux si empattement est fourni
+      if (empattement && empattement > 0) {
+        const scaledEmpattement = empattement * currentScale;
+        const calculatedPorteFauxAvant = porteFauxAvant || Math.round(vehicleLength * 0.15);
+        const scaledPorteFauxAvant = calculatedPorteFauxAvant * currentScale;
+
+        // Position de l'essieu avant (à partir du bord gauche du véhicule + porte-à-faux)
+        const essieuAvX = areaLeft + scaledPorteFauxAvant;
+        
+        // Ligne essieu avant (pointillés verts)
+        const essieuAv = new paper.Path.Line({
+          from: [essieuAvX, areaTop - 20],
+          to: [essieuAvX, areaTop + scaledWidth + 20],
+          strokeColor: new paper.Color("#22c55e"),
+          strokeWidth: 2,
+          dashArray: [8, 4],
+        });
+        essieuAv.data.isVASPElement = true;
+        essieuAv.data.elementType = "essieu_av";
+        essieuAv.locked = true;
+
+        // Label essieu avant
+        const labelAv = new paper.PointText({
+          point: [essieuAvX, areaTop - 25],
+          content: "Essieu AV",
+          fillColor: new paper.Color("#22c55e"),
+          fontSize: 10,
+          fontWeight: "bold",
+          justification: "center",
+        });
+        labelAv.data.isVASPElement = true;
+        labelAv.locked = true;
+
+        // Position de l'essieu arrière
+        const essieuArX = essieuAvX + scaledEmpattement;
+
+        // Ligne essieu arrière (pointillés verts)
+        const essieuAr = new paper.Path.Line({
+          from: [essieuArX, areaTop - 20],
+          to: [essieuArX, areaTop + scaledWidth + 20],
+          strokeColor: new paper.Color("#22c55e"),
+          strokeWidth: 2,
+          dashArray: [8, 4],
+        });
+        essieuAr.data.isVASPElement = true;
+        essieuAr.data.elementType = "essieu_ar";
+        essieuAr.locked = true;
+
+        // Label essieu arrière
+        const labelAr = new paper.PointText({
+          point: [essieuArX, areaTop - 25],
+          content: "Essieu AR",
+          fillColor: new paper.Color("#22c55e"),
+          fontSize: 10,
+          fontWeight: "bold",
+          justification: "center",
+        });
+        labelAr.data.isVASPElement = true;
+        labelAr.locked = true;
+
+        // Côte d'empattement (flèche horizontale entre les essieux)
+        const coteY = areaTop + scaledWidth + 35;
+        const coteLine = new paper.Path();
+        coteLine.add(new paper.Point(essieuAvX, coteY));
+        coteLine.add(new paper.Point(essieuArX, coteY));
+        coteLine.strokeColor = new paper.Color("#22c55e");
+        coteLine.strokeWidth = 1;
+        coteLine.data.isVASPElement = true;
+        coteLine.locked = true;
+
+        // Flèches aux extrémités
+        const arrowSize = 6;
+        const arrowLeft = new paper.Path();
+        arrowLeft.add(new paper.Point(essieuAvX + arrowSize, coteY - arrowSize/2));
+        arrowLeft.add(new paper.Point(essieuAvX, coteY));
+        arrowLeft.add(new paper.Point(essieuAvX + arrowSize, coteY + arrowSize/2));
+        arrowLeft.strokeColor = new paper.Color("#22c55e");
+        arrowLeft.strokeWidth = 1;
+        arrowLeft.data.isVASPElement = true;
+        arrowLeft.locked = true;
+
+        const arrowRight = new paper.Path();
+        arrowRight.add(new paper.Point(essieuArX - arrowSize, coteY - arrowSize/2));
+        arrowRight.add(new paper.Point(essieuArX, coteY));
+        arrowRight.add(new paper.Point(essieuArX - arrowSize, coteY + arrowSize/2));
+        arrowRight.strokeColor = new paper.Color("#22c55e");
+        arrowRight.strokeWidth = 1;
+        arrowRight.data.isVASPElement = true;
+        arrowRight.locked = true;
+
+        // Texte de la cote
+        const coteText = new paper.PointText({
+          point: [(essieuAvX + essieuArX) / 2, coteY - 5],
+          content: `${empattement} mm`,
+          fillColor: new paper.Color("#22c55e"),
+          fontSize: 11,
+          fontWeight: "bold",
+          justification: "center",
+        });
+        coteText.data.isVASPElement = true;
+        coteText.locked = true;
+
+        console.log("🚗 Dessin éléments VASP:", {
+          empattement,
+          essieuAvX,
+          essieuArX,
+        });
+      }
+    };
+
     // Dessiner le contour initial
     drawLoadAreaOutline();
+
+    // Dessiner les éléments VASP si disponibles
+    if (showVASPOverlay) {
+      drawVASPElements();
+    }
 
     let currentPath: paper.Path.Rectangle | null = null;
     let selectedItem: paper.Item | null = null;
@@ -716,7 +864,7 @@ export const LayoutCanvas = ({
     return () => {
       paper.project.clear();
     };
-  }, [projectId, scale, loadAreaLength, loadAreaWidth, scaledLoadAreaLength, scaledLoadAreaWidth]);
+  }, [projectId, scale, loadAreaLength, loadAreaWidth, scaledLoadAreaLength, scaledLoadAreaWidth, showVASPOverlay, empattement, porteFauxAvant, vehicleLength]);
 
   const handleFurnitureSubmit = () => {
     if (editingFurnitureId) {
@@ -1012,6 +1160,28 @@ export const LayoutCanvas = ({
               >
                 <Ruler className="h-4 w-4 mr-2" />
                 Mesurer
+              </Button>
+              <Button
+                variant={activeTool === "cotation" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveTool("cotation")}
+                title="Cotation intelligente (C)"
+              >
+                <Crosshair className="h-4 w-4 mr-2" />
+                Cotation
+              </Button>
+
+              <Separator orientation="vertical" className="h-6" />
+
+              <Button
+                variant={showVASPOverlay ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowVASPOverlay(!showVASPOverlay)}
+                className={showVASPOverlay ? "bg-green-600 hover:bg-green-700" : ""}
+                title="Afficher/masquer les éléments VASP (essieux)"
+              >
+                <Armchair className="h-4 w-4 mr-2" />
+                VASP
               </Button>
 
               <Separator orientation="vertical" className="h-6" />
