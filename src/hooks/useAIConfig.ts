@@ -1,6 +1,6 @@
 // hooks/useAIConfig.ts
-// VERSION: 2.0 - Source unique: table user_ai_settings (Supabase)
-// Suppression du double stockage user_ai_config / localStorage
+// VERSION: 2.1 - Source unique: table user_ai_settings (Supabase)
+// Fix: Ordre des hooks corrigé
 
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -63,13 +63,22 @@ export const AI_PROVIDERS = {
   },
 };
 
+// Fonction helper pour charger depuis localStorage (définie hors du hook)
+function getFromLocalStorage(): { provider: AIProvider; apiKey: string } {
+  const savedProvider = localStorage.getItem(AI_PROVIDER_KEY);
+  const savedApiKey = localStorage.getItem(AI_API_KEY);
+  return {
+    provider: (savedProvider as AIProvider) || "gemini",
+    apiKey: savedApiKey || "",
+  };
+}
+
 export function useAIConfig() {
   const [provider, setProvider] = useState<AIProvider>("gemini");
   const [apiKey, setApiKey] = useState<string>("");
   const [dailyLimit, setDailyLimit] = useState<number | null>(null);
   const [warningThreshold, setWarningThreshold] = useState<number>(80);
   const [isLoading, setIsLoading] = useState(true);
-  const [userId, setUserId] = useState<string | null>(null);
 
   // Charger la config depuis Supabase (source unique)
   const loadConfig = useCallback(async () => {
@@ -80,12 +89,12 @@ export function useAIConfig() {
 
       if (!user) {
         // Pas connecté, utiliser le cache localStorage
-        loadFromLocalStorage();
+        const cached = getFromLocalStorage();
+        setProvider(cached.provider);
+        setApiKey(cached.apiKey);
         setIsLoading(false);
         return;
       }
-
-      setUserId(user.id);
 
       // Charger depuis user_ai_settings (source unique)
       const { data, error } = await (supabase as any)
@@ -116,46 +125,19 @@ export function useAIConfig() {
       } else {
         // Pas de config Supabase, cache localStorage
         console.log("ℹ️ Pas de config IA dans Supabase, utilisation du cache local");
-        loadFromLocalStorage();
+        const cached = getFromLocalStorage();
+        setProvider(cached.provider);
+        setApiKey(cached.apiKey);
       }
     } catch (error) {
       console.error("Erreur chargement config IA:", error);
-      loadFromLocalStorage();
+      const cached = getFromLocalStorage();
+      setProvider(cached.provider);
+      setApiKey(cached.apiKey);
     } finally {
       setIsLoading(false);
     }
   }, []);
-
-  // Charger depuis le cache localStorage (fallback)
-  const loadFromLocalStorage = () => {
-    const savedProvider = localStorage.getItem(AI_PROVIDER_KEY);
-    const savedApiKey = localStorage.getItem(AI_API_KEY);
-
-    setProvider((savedProvider as AIProvider) || "gemini");
-    setApiKey(savedApiKey || "");
-  };
-
-  // Charger au démarrage
-  useEffect(() => {
-    loadConfig();
-  }, [loadConfig]);
-
-  // Écouter les changements de config (synchronisation entre composants)
-  useEffect(() => {
-    const handleConfigUpdate = () => {
-      loadConfig();
-    };
-
-    window.addEventListener(AI_CONFIG_EVENT, handleConfigUpdate);
-    window.addEventListener("storage", handleConfigUpdate);
-
-    return () => {
-      window.removeEventListener(AI_CONFIG_EVENT, handleConfigUpdate);
-      window.removeEventListener("storage", handleConfigUpdate);
-    };
-  }, [loadConfig]);
-
-  const isConfigured = !!apiKey;
 
   // Sauvegarder la config dans Supabase (source unique)
   const saveConfig = useCallback(
@@ -264,39 +246,27 @@ export function useAIConfig() {
     window.dispatchEvent(new Event(AI_CONFIG_EVENT));
   }, []);
 
-  // Récupérer la clé API d'un provider spécifique (utile pour les services)
-  const getApiKeyForProvider = useCallback(
-    async (targetProvider: AIProvider): Promise<string | null> => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+  // Charger au démarrage
+  useEffect(() => {
+    loadConfig();
+  }, [loadConfig]);
 
-      if (!user) {
-        // Fallback localStorage si même provider
-        if (targetProvider === provider) {
-          return apiKey || null;
-        }
-        return null;
-      }
+  // Écouter les changements de config (synchronisation entre composants)
+  useEffect(() => {
+    const handleConfigUpdate = () => {
+      loadConfig();
+    };
 
-      try {
-        const { data, error } = await (supabase as any)
-          .from("user_ai_settings")
-          .select(PROVIDER_KEY_COLUMNS[targetProvider])
-          .eq("user_id", user.id)
-          .single();
+    window.addEventListener(AI_CONFIG_EVENT, handleConfigUpdate);
+    window.addEventListener("storage", handleConfigUpdate);
 
-        if (data && !error) {
-          return data[PROVIDER_KEY_COLUMNS[targetProvider]] || null;
-        }
-      } catch (error) {
-        console.error(`Erreur récupération clé ${targetProvider}:`, error);
-      }
+    return () => {
+      window.removeEventListener(AI_CONFIG_EVENT, handleConfigUpdate);
+      window.removeEventListener("storage", handleConfigUpdate);
+    };
+  }, [loadConfig]);
 
-      return null;
-    },
-    [provider, apiKey],
-  );
+  const isConfigured = !!apiKey;
 
   const config: AIConfig = {
     provider,
@@ -320,7 +290,6 @@ export function useAIConfig() {
     setWarningThreshold,
     saveConfig,
     clearConfig,
-    getApiKeyForProvider,
     reloadConfig: loadConfig,
     providerInfo: AI_PROVIDERS[provider],
   };
@@ -336,11 +305,9 @@ export async function getAIApiKey(targetProvider: AIProvider = "gemini"): Promis
 
     if (!user) {
       // Fallback localStorage
-      const savedProvider = localStorage.getItem(AI_PROVIDER_KEY);
-      const savedApiKey = localStorage.getItem(AI_API_KEY);
-
-      if (savedProvider === targetProvider && savedApiKey) {
-        return savedApiKey;
+      const cached = getFromLocalStorage();
+      if (cached.provider === targetProvider && cached.apiKey) {
+        return cached.apiKey;
       }
       return null;
     }
