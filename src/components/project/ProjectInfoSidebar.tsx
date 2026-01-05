@@ -500,13 +500,13 @@ export const ProjectInfoSidebar = ({ project, isOpen, onClose, onEdit }: Project
                 </div>
               )}
 
-              {/* Données COC pour VASP */}
-              {hasCOCData && (
-                <div className="p-4 rounded-lg bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 mt-4">
-                  <h4 className="text-xs font-semibold text-purple-700 dark:text-purple-400 mb-3 flex items-center gap-2">
-                    <Car className="h-4 w-4" />
-                    Données COC (VASP)
-                  </h4>
+              {/* Données COC pour VASP - Toujours affiché */}
+              <div className="p-4 rounded-lg bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 mt-4">
+                <h4 className="text-xs font-semibold text-purple-700 dark:text-purple-400 mb-3 flex items-center gap-2">
+                  <Car className="h-4 w-4" />
+                  Données COC (VASP)
+                </h4>
+                {hasCOCData ? (
                   <div className="grid grid-cols-2 gap-x-6 gap-y-2">
                     {project.mmta_kg && (
                       <div className="flex justify-between text-xs">
@@ -539,8 +539,13 @@ export const ProjectInfoSidebar = ({ project, isOpen, onClose, onEdit }: Project
                       </div>
                     )}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">
+                    Aucune donnée COC renseignée. Modifiez le projet pour ajouter les données du certificat de
+                    conformité.
+                  </p>
+                )}
+              </div>
             </ScrollArea>
           </div>
         )}
