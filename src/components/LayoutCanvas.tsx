@@ -1,1660 +1,552 @@
-// ============================================
-// COMPOSANT: LayoutCanvas
-// Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 2.0 - Ajout essieux, rangées sièges, cotation intelligente
-// ============================================
-
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Square,
-  Trash2,
-  Undo,
-  Redo,
-  Download,
-  Save,
-  Upload,
-  Ruler,
-  Package,
-  RefreshCw,
-  Edit,
-  Crosshair,
-  Armchair,
-} from "lucide-react";
-import { toast } from "sonner";
-import { Progress } from "@/components/ui/progress";
-import { Card } from "@/components/ui/card";
-import { supabase } from "@/integrations/supabase/client";
-import paper from "paper";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FurnitureWeightCalculator } from "@/components/FurnitureWeightCalculator";
+import { X, Edit, ChevronLeft, ChevronRight, FileText, User, Ruler, Weight, Car, ClipboardList } from "lucide-react";
 
-interface LayoutCanvasProps {
-  projectId: string;
-  vehicleLength?: number; // longueur totale en mm
-  vehicleWidth?: number; // largeur totale en mm
-  loadAreaLength?: number; // longueur zone de chargement en mm
-  loadAreaWidth?: number; // largeur zone de chargement en mm
-  maxLoad?: number; // charge utile en kg
-  // Props VASP
-  empattement?: number; // empattement en mm (distance entre essieux)
-  porteFauxAvant?: number; // porte-à-faux avant en mm
-  porteFauxArriere?: number; // porte-à-faux arrière en mm
-  onElementPositionChange?: (elementId: string, distanceAv: number) => void; // callback pour position
-}
-
-interface FurnitureData {
+interface Project {
   id: string;
-  longueur_mm: number;
-  largeur_mm: number;
-  hauteur_mm: number;
-  poids_kg: number;
-  hauteur_sol_mm: number;
-  wood_type?: "okoume" | "bouleau" | "peuplier";
-  thickness?: number; // en mm: 5, 8, 10, 12, 15
-  surface?: number; // en m²
+  nom_proprietaire: string;
+  nom_projet?: string;
+  adresse_proprietaire?: string;
+  telephone_proprietaire?: string;
+  email_proprietaire?: string;
+  numero_chassis?: string;
+  immatriculation?: string;
+  type_mine?: string;
+  date_premiere_circulation?: string;
+  marque_custom?: string;
+  modele_custom?: string;
+  longueur_mm?: number;
+  largeur_mm?: number;
+  hauteur_mm?: number;
+  longueur_chargement_mm?: number;
+  largeur_chargement_mm?: number;
+  poids_vide_kg?: number;
+  charge_utile_kg?: number;
+  ptac_kg?: number;
+  vehicles_catalog?: {
+    marque: string;
+    modele: string;
+  };
+  prenom_proprietaire?: string;
+  ville_proprietaire?: string;
+  code_postal_proprietaire?: string;
+  date_premiere_immatriculation?: string;
+  puissance_fiscale?: number;
+  cylindree?: number;
+  masse_vide?: number;
+  masse_en_charge_max?: number;
+  numero_chassis_vin?: string;
+  vin?: string;
+  denomination_commerciale?: string;
+  genre_national?: string;
+  carrosserie?: string;
+  energie?: string;
+  ptra?: number;
+  masse_ordre_marche_kg?: number;
+  marque_officielle?: string;
+  modele_officiel?: string;
+  nombre_places?: number;
+  marque_vehicule?: string;
+  modele_vehicule?: string;
+  categorie_international?: string;
+  type_variante?: string;
+  numero_reception_ce?: string;
+  places_assises_origine?: number;
+  puissance_kw?: number;
+  co2_emission?: number;
+  norme_euro?: string;
+  carrosserie_ce?: string;
+  carrosserie_nationale?: string;
+  // Données COC pour VASP
+  mmta_kg?: number;
+  mmta_essieu_av_kg?: number;
+  mmta_essieu_ar_kg?: number;
+  empattement_mm?: number;
+  charge_attelage_s_kg?: number;
 }
 
-const CANVAS_WIDTH = 800;
-const CANVAS_HEIGHT = 600;
-
-export const LayoutCanvas = ({
-  projectId,
-  vehicleLength = 3000,
-  vehicleWidth = 1800,
-  loadAreaLength: initialLoadAreaLength,
-  loadAreaWidth: initialLoadAreaWidth,
-  maxLoad = 500,
-  empattement,
-  porteFauxAvant,
-  porteFauxArriere,
-  onElementPositionChange,
-}: LayoutCanvasProps) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [activeTool, setActiveTool] = useState<"select" | "rectangle" | "measure" | "cotation">("select");
-  const [showVASPOverlay, setShowVASPOverlay] = useState(true); // Afficher les éléments VASP
-  const [color, setColor] = useState("#3b82f6");
-  const [strokeWidth, setStrokeWidth] = useState(2);
-  const [totalWeight, setTotalWeight] = useState(0);
-  const [accessoriesWeight, setAccessoriesWeight] = useState(0);
-  const [furnitureItems, setFurnitureItems] = useState<Map<string, FurnitureData>>(new Map());
-  const [showFurnitureDialog, setShowFurnitureDialog] = useState(false);
-  const [pendingRectangle, setPendingRectangle] = useState<paper.Path.Rectangle | null>(null);
-  const [editingFurnitureId, setEditingFurnitureId] = useState<string | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; furnitureId: string } | null>(null);
-  const [loadAreaLength, setLoadAreaLength] = useState(initialLoadAreaLength || Math.round(vehicleLength * 0.7));
-  const [loadAreaWidth, setLoadAreaWidth] = useState(initialLoadAreaWidth || Math.round(vehicleWidth * 0.9));
-  const [isEditingDimensions, setIsEditingDimensions] = useState(false);
-  const [furnitureForm, setFurnitureForm] = useState({
-    longueur_mm: 0,
-    largeur_mm: 0,
-    hauteur_mm: 0,
-    poids_kg: 0,
-    hauteur_sol_mm: 0,
-    wood_type: "okoume" as "okoume" | "bouleau" | "peuplier",
-    thickness: 15,
-    surface: 0,
-  });
-
-  // Masses volumiques des contreplaqués (kg/m³)
-  const WOOD_DENSITIES = {
-    okoume: 420,
-    bouleau: 680,
-    peuplier: 475,
-  };
-
-  // Calcul automatique du poids basé sur le bois, épaisseur et surface
-  const calculateWeight = (woodType: string, thickness: number, surface: number): number => {
-    const density = WOOD_DENSITIES[woodType as keyof typeof WOOD_DENSITIES] || 420;
-    // Poids (kg) = surface (m²) × épaisseur (m) × masse volumique (kg/m³)
-    return surface * (thickness / 1000) * density;
-  };
-
-  // Calcul de l'échelle pour adapter la zone de chargement au canvas (avec marge)
-  const scale = Math.min((CANVAS_WIDTH - 100) / loadAreaLength, (CANVAS_HEIGHT - 100) / loadAreaWidth);
-
-  const scaledLoadAreaLength = loadAreaLength * scale;
-  const scaledLoadAreaWidth = loadAreaWidth * scale;
-
-  const activeToolRef = useRef(activeTool);
-  const colorRef = useRef(color);
-  const strokeWidthRef = useRef(strokeWidth);
-  const furnitureItemsRef = useRef(furnitureItems);
-  const scaleRef = useRef(scale);
-  const loadAreaLengthRef = useRef(loadAreaLength);
-  const loadAreaWidthRef = useRef(loadAreaWidth);
-
-  useEffect(() => {
-    activeToolRef.current = activeTool;
-  }, [activeTool]);
-
-  useEffect(() => {
-    colorRef.current = color;
-  }, [color]);
-
-  useEffect(() => {
-    strokeWidthRef.current = strokeWidth;
-  }, [strokeWidth]);
-
-  useEffect(() => {
-    furnitureItemsRef.current = furnitureItems;
-  }, [furnitureItems]);
-
-  useEffect(() => {
-    scaleRef.current = scale;
-  }, [scale]);
-
-  useEffect(() => {
-    loadAreaLengthRef.current = loadAreaLength;
-    loadAreaWidthRef.current = loadAreaWidth;
-  }, [loadAreaLength, loadAreaWidth]);
-
-  // Fonction pour supprimer un meuble depuis la liste
-  const handleDeleteFromList = async (furnitureId: string) => {
-    console.log("🗑️ Suppression du meuble depuis la liste:", furnitureId);
-
-    // Supprimer du state
-    setFurnitureItems((prev) => {
-      const newMap = new Map(prev);
-      newMap.delete(furnitureId);
-      return newMap;
-    });
-
-    // Supprimer du canvas Paper.js
-    if (paper.project && paper.project.activeLayer) {
-      paper.project.activeLayer.children.forEach((child) => {
-        if (child instanceof paper.Group && child.data.furnitureId === furnitureId) {
-          child.remove();
-        }
-      });
-    }
-
-    toast.success("Meuble supprimé");
-
-    // Sauvegarder automatiquement
-    setTimeout(() => {
-      (window as any).layoutCanvasSave?.();
-    }, 100);
-  };
-
-  useEffect(() => {
-    if (!canvasRef.current) return;
-
-    // Setup Paper.js
-    paper.setup(canvasRef.current);
-
-    // Fonction pour dessiner le contour de la zone de chargement
-    const drawLoadAreaOutline = () => {
-      // Supprimer l'ancien rectangle s'il existe
-      paper.project.activeLayer.children.forEach((child) => {
-        if (child.data?.isLoadAreaOutline) {
-          child.remove();
-        }
-      });
-
-      const currentScale = scaleRef.current;
-      const currentLength = loadAreaLengthRef.current;
-      const currentWidth = loadAreaWidthRef.current;
-
-      const scaledLength = currentLength * currentScale;
-      const scaledWidth = currentWidth * currentScale;
-
-      console.log("🔵 Dessin rectangle bleu:", {
-        longueur: currentLength,
-        largeur: currentWidth,
-        echelle: currentScale,
-        scaledLength,
-        scaledWidth,
-      });
-
-      const loadAreaOutline = new paper.Path.Rectangle({
-        point: [(CANVAS_WIDTH - scaledLength) / 2, (CANVAS_HEIGHT - scaledWidth) / 2],
-        size: [scaledLength, scaledWidth],
-        strokeColor: new paper.Color("#3b82f6"),
-        strokeWidth: 3,
-        dashArray: [10, 5],
-        locked: true,
-      });
-
-      loadAreaOutline.data.isLoadAreaOutline = true;
-      loadAreaOutline.sendToBack();
-    };
-
-    // Fonction pour dessiner les éléments VASP (essieux, contour véhicule)
-    const drawVASPElements = () => {
-      // Supprimer les anciens éléments VASP
-      paper.project.activeLayer.children.forEach((child) => {
-        if (child.data?.isVASPElement) {
-          child.remove();
-        }
-      });
-
-      const currentScale = scaleRef.current;
-      const currentLength = loadAreaLengthRef.current;
-      const currentWidth = loadAreaWidthRef.current;
-      const scaledLength = currentLength * currentScale;
-      const scaledWidth = currentWidth * currentScale;
-      const areaLeft = (CANVAS_WIDTH - scaledLength) / 2;
-      const areaTop = (CANVAS_HEIGHT - scaledWidth) / 2;
-
-      // Calculer les positions des essieux si empattement est fourni
-      if (empattement && empattement > 0) {
-        const scaledEmpattement = empattement * currentScale;
-        const calculatedPorteFauxAvant = porteFauxAvant || Math.round(vehicleLength * 0.15);
-        const scaledPorteFauxAvant = calculatedPorteFauxAvant * currentScale;
-
-        // Position de l'essieu avant (à partir du bord gauche du véhicule + porte-à-faux)
-        const essieuAvX = areaLeft + scaledPorteFauxAvant;
-
-        // Ligne essieu avant (pointillés verts)
-        const essieuAv = new paper.Path.Line({
-          from: [essieuAvX, areaTop - 20],
-          to: [essieuAvX, areaTop + scaledWidth + 20],
-          strokeColor: new paper.Color("#22c55e"),
-          strokeWidth: 2,
-          dashArray: [8, 4],
-        });
-        essieuAv.data.isVASPElement = true;
-        essieuAv.data.elementType = "essieu_av";
-        essieuAv.locked = true;
-
-        // Label essieu avant
-        const labelAv = new paper.PointText({
-          point: [essieuAvX, areaTop - 25],
-          content: "Essieu AV",
-          fillColor: new paper.Color("#22c55e"),
-          fontSize: 10,
-          fontWeight: "bold",
-          justification: "center",
-        });
-        labelAv.data.isVASPElement = true;
-        labelAv.locked = true;
-
-        // Position de l'essieu arrière
-        const essieuArX = essieuAvX + scaledEmpattement;
-
-        // Ligne essieu arrière (pointillés verts)
-        const essieuAr = new paper.Path.Line({
-          from: [essieuArX, areaTop - 20],
-          to: [essieuArX, areaTop + scaledWidth + 20],
-          strokeColor: new paper.Color("#22c55e"),
-          strokeWidth: 2,
-          dashArray: [8, 4],
-        });
-        essieuAr.data.isVASPElement = true;
-        essieuAr.data.elementType = "essieu_ar";
-        essieuAr.locked = true;
-
-        // Label essieu arrière
-        const labelAr = new paper.PointText({
-          point: [essieuArX, areaTop - 25],
-          content: "Essieu AR",
-          fillColor: new paper.Color("#22c55e"),
-          fontSize: 10,
-          fontWeight: "bold",
-          justification: "center",
-        });
-        labelAr.data.isVASPElement = true;
-        labelAr.locked = true;
-
-        // Côte d'empattement (flèche horizontale entre les essieux)
-        const coteY = areaTop + scaledWidth + 35;
-        const coteLine = new paper.Path();
-        coteLine.add(new paper.Point(essieuAvX, coteY));
-        coteLine.add(new paper.Point(essieuArX, coteY));
-        coteLine.strokeColor = new paper.Color("#22c55e");
-        coteLine.strokeWidth = 1;
-        coteLine.data.isVASPElement = true;
-        coteLine.locked = true;
-
-        // Flèches aux extrémités
-        const arrowSize = 6;
-        const arrowLeft = new paper.Path();
-        arrowLeft.add(new paper.Point(essieuAvX + arrowSize, coteY - arrowSize / 2));
-        arrowLeft.add(new paper.Point(essieuAvX, coteY));
-        arrowLeft.add(new paper.Point(essieuAvX + arrowSize, coteY + arrowSize / 2));
-        arrowLeft.strokeColor = new paper.Color("#22c55e");
-        arrowLeft.strokeWidth = 1;
-        arrowLeft.data.isVASPElement = true;
-        arrowLeft.locked = true;
-
-        const arrowRight = new paper.Path();
-        arrowRight.add(new paper.Point(essieuArX - arrowSize, coteY - arrowSize / 2));
-        arrowRight.add(new paper.Point(essieuArX, coteY));
-        arrowRight.add(new paper.Point(essieuArX - arrowSize, coteY + arrowSize / 2));
-        arrowRight.strokeColor = new paper.Color("#22c55e");
-        arrowRight.strokeWidth = 1;
-        arrowRight.data.isVASPElement = true;
-        arrowRight.locked = true;
-
-        // Texte de la cote
-        const coteText = new paper.PointText({
-          point: [(essieuAvX + essieuArX) / 2, coteY - 5],
-          content: `${empattement} mm`,
-          fillColor: new paper.Color("#22c55e"),
-          fontSize: 11,
-          fontWeight: "bold",
-          justification: "center",
-        });
-        coteText.data.isVASPElement = true;
-        coteText.locked = true;
-
-        console.log("🚗 Dessin éléments VASP:", {
-          empattement,
-          essieuAvX,
-          essieuArX,
-        });
-      }
-    };
-
-    // Dessiner le contour initial
-    drawLoadAreaOutline();
-
-    // Dessiner les éléments VASP si disponibles
-    if (showVASPOverlay) {
-      drawVASPElements();
-    }
-
-    let currentPath: paper.Path.Rectangle | null = null;
-    let selectedItem: paper.Item | null = null;
-    let handles: paper.Path.Circle[] = [];
-    let draggedHandle: paper.Path.Circle | null = null;
-    let currentMeasureLine: paper.Path.Line | null = null;
-    let currentMeasureText: paper.PointText | null = null;
-    const history: string[] = [];
-    let historyIndex = -1;
-    let itemWasMoved = false; // Flag pour détecter si un meuble a été déplacé
-
-    const saveState = () => {
-      const state = paper.project.exportJSON();
-      if (historyIndex < history.length - 1) {
-        history.splice(historyIndex + 1);
-      }
-      history.push(state);
-      historyIndex = history.length - 1;
-    };
-
-    const createHandles = (item: paper.Item) => {
-      handles.forEach((h) => h.remove());
-      handles = [];
-
-      if (item instanceof paper.Path.Rectangle) {
-        const bounds = item.bounds;
-        const corners = [bounds.topLeft, bounds.topRight, bounds.bottomRight, bounds.bottomLeft];
-
-        corners.forEach((corner, index) => {
-          const handle = new paper.Path.Circle({
-            center: corner,
-            radius: 8,
-            fillColor: new paper.Color("#ffffff"),
-            strokeColor: new paper.Color("#3b82f6"),
-            strokeWidth: 3,
-          });
-          handle.data.isHandle = true;
-          handle.data.handleIndex = index;
-          handles.push(handle);
-        });
-      }
-    };
-
-    const removeHandles = () => {
-      handles.forEach((h) => h.remove());
-      handles = [];
-    };
-
-    const clearSelection = () => {
-      if (selectedItem && !selectedItem.data.isHandle) {
-        selectedItem.selected = false;
-      }
-      selectedItem = null;
-      removeHandles();
-    };
-
-    const clearAllMeasures = () => {
-      const itemsToRemove: paper.Item[] = [];
-      paper.project.activeLayer.children.forEach((child) => {
-        if (child.data.isMeasure) {
-          itemsToRemove.push(child);
-        }
-      });
-      itemsToRemove.forEach((item) => item.remove());
-      toast.success("Mesures effacées");
-    };
-
-    const addFurnitureLabel = (rect: paper.Path.Rectangle, furnitureId: string) => {
-      const furnitureData = furnitureItemsRef.current.get(furnitureId);
-      if (!furnitureData) return;
-
-      const text = new paper.PointText({
-        point: rect.bounds.center,
-        content: `${furnitureData.longueur_mm}x${furnitureData.largeur_mm}x${furnitureData.hauteur_mm}mm\n${furnitureData.poids_kg}kg`,
-        fillColor: new paper.Color("#000"),
-        fontSize: 12,
-        justification: "center",
-      });
-      text.data.isFurnitureLabel = true;
-      text.data.furnitureId = furnitureId;
-
-      return text;
-    };
-
-    const tool = new paper.Tool();
-
-    tool.onMouseDown = (event: paper.ToolEvent) => {
-      if (activeToolRef.current === "measure") {
-        if (currentMeasureLine) {
-          currentMeasureLine.remove();
-          currentMeasureText?.remove();
-          currentMeasureLine = null;
-          currentMeasureText = null;
-        }
-
-        currentMeasureLine = new paper.Path.Line({
-          from: event.point,
-          to: event.point,
-          strokeColor: new paper.Color("#ef4444"),
-          strokeWidth: 2,
-          dashArray: [5, 5],
-        });
-        currentMeasureLine.data.isMeasure = true;
-
-        return;
-      }
-
-      if (activeToolRef.current === "rectangle") {
-        currentPath = new paper.Path.Rectangle({
-          from: event.point,
-          to: event.point,
-          strokeColor: new paper.Color(colorRef.current),
-          strokeWidth: strokeWidthRef.current,
-          fillColor: new paper.Color(colorRef.current).clone(),
-        });
-        currentPath.fillColor.alpha = 0.3;
-        return;
-      }
-
-      if (activeToolRef.current === "select") {
-        const hitResult = paper.project.hitTest(event.point, {
-          fill: true,
-          stroke: true,
-          tolerance: 5,
-        });
-
-        if (hitResult?.item.data.isHandle) {
-          draggedHandle = hitResult.item as paper.Path.Circle;
-        } else if (hitResult?.item) {
-          clearSelection();
-
-          let itemToSelect = hitResult.item;
-          if (hitResult.item.parent instanceof paper.Group && hitResult.item.parent.data.isFurniture) {
-            itemToSelect = hitResult.item.parent;
-          }
-
-          if (!itemToSelect.locked) {
-            selectedItem = itemToSelect;
-            selectedItem.selected = true;
-            if (selectedItem instanceof paper.Path.Rectangle || selectedItem instanceof paper.Group) {
-              createHandles(selectedItem.children ? selectedItem.children[0] : selectedItem);
-            }
-          }
-        } else {
-          clearSelection();
-        }
-      }
-    };
-
-    tool.onMouseDrag = (event: paper.ToolEvent) => {
-      if (activeToolRef.current === "measure" && currentMeasureLine) {
-        currentMeasureLine.segments[1].point = event.point;
-
-        const distance = currentMeasureLine.length / scaleRef.current;
-
-        if (currentMeasureText) {
-          currentMeasureText.remove();
-        }
-
-        const midPoint = new paper.Point(
-          (currentMeasureLine.segments[0].point.x + currentMeasureLine.segments[1].point.x) / 2,
-          (currentMeasureLine.segments[0].point.y + currentMeasureLine.segments[1].point.y) / 2,
-        );
-
-        currentMeasureText = new paper.PointText({
-          point: midPoint.add(new paper.Point(0, -10)),
-          content: `${Math.round(distance)}mm`,
-          fillColor: new paper.Color("#ef4444"),
-          fontSize: 14,
-          fontWeight: "bold",
-          justification: "center",
-        });
-        currentMeasureText.data.isMeasure = true;
-
-        return;
-      }
-
-      if (activeToolRef.current === "rectangle" && currentPath) {
-        const rect = new paper.Rectangle(event.downPoint, event.point);
-        currentPath.remove();
-        currentPath = new paper.Path.Rectangle({
-          rectangle: rect,
-          strokeColor: new paper.Color(colorRef.current),
-          strokeWidth: strokeWidthRef.current,
-          fillColor: new paper.Color(colorRef.current).clone(),
-        });
-        currentPath.fillColor.alpha = 0.3;
-        return;
-      }
-
-      if (activeToolRef.current === "select") {
-        if (draggedHandle) {
-          const handleIndex = draggedHandle.data.handleIndex;
-          if (selectedItem instanceof paper.Group && selectedItem.children[0] instanceof paper.Path.Rectangle) {
-            const rect = selectedItem.children[0] as paper.Path.Rectangle;
-            const bounds = rect.bounds;
-
-            const newBounds = new paper.Rectangle(bounds);
-
-            switch (handleIndex) {
-              case 0:
-                newBounds.topLeft = event.point;
-                break;
-              case 1:
-                newBounds.topRight = event.point;
-                break;
-              case 2:
-                newBounds.bottomRight = event.point;
-                break;
-              case 3:
-                newBounds.bottomLeft = event.point;
-                break;
-            }
-
-            rect.bounds = newBounds;
-
-            if (selectedItem.children[1] instanceof paper.PointText) {
-              selectedItem.children[1].position = rect.bounds.center;
-            }
-
-            createHandles(rect);
-          }
-        } else if (selectedItem && !selectedItem.locked) {
-          // Calculer la nouvelle position
-          const newPosition = selectedItem.position.add(event.delta);
-
-          // Obtenir les limites du rectangle bleu (zone de chargement)
-          const currentScale = scaleRef.current;
-          const currentLength = loadAreaLengthRef.current;
-          const currentWidth = loadAreaWidthRef.current;
-          const scaledLength = currentLength * currentScale;
-          const scaledWidth = currentWidth * currentScale;
-
-          const loadAreaLeft = (CANVAS_WIDTH - scaledLength) / 2;
-          const loadAreaTop = (CANVAS_HEIGHT - scaledWidth) / 2;
-          const loadAreaRight = loadAreaLeft + scaledLength;
-          const loadAreaBottom = loadAreaTop + scaledWidth;
-
-          // Obtenir les limites de l'objet sélectionné
-          const itemBounds = selectedItem.bounds;
-          const halfWidth = itemBounds.width / 2;
-          const halfHeight = itemBounds.height / 2;
-
-          // Contraindre la position pour rester dans la zone de chargement
-          const constrainedX = Math.max(loadAreaLeft + halfWidth, Math.min(loadAreaRight - halfWidth, newPosition.x));
-          const constrainedY = Math.max(loadAreaTop + halfHeight, Math.min(loadAreaBottom - halfHeight, newPosition.y));
-
-          selectedItem.position = new paper.Point(constrainedX, constrainedY);
-          itemWasMoved = true; // Marquer que l'élément a été déplacé
-
-          if (handles.length > 0) {
-            if (selectedItem instanceof paper.Group && selectedItem.children[0]) {
-              createHandles(selectedItem.children[0]);
-            } else {
-              createHandles(selectedItem);
-            }
-          }
-        }
-      }
-    };
-
-    tool.onMouseUp = (event: paper.ToolEvent) => {
-      if (draggedHandle) {
-        draggedHandle = null;
-        saveState();
-      } else if (activeToolRef.current === "rectangle" && currentPath) {
-        setPendingRectangle(currentPath);
-        setShowFurnitureDialog(true);
-      } else if (activeToolRef.current === "measure" && currentMeasureLine) {
-        currentMeasureLine = null;
-        currentMeasureText = null;
-      } else if (activeToolRef.current === "select" && selectedItem) {
-        saveState();
-        // Sauvegarder automatiquement dans la base de données si un meuble a été déplacé
-        if (itemWasMoved) {
-          console.log("🔄 Sauvegarde automatique après déplacement du meuble");
-          setTimeout(() => handleSave(), 100);
-          itemWasMoved = false;
-        }
-      }
-
-      currentPath = null;
-    };
-
-    canvasRef.current.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-
-      if (activeToolRef.current === "measure") {
-        clearAllMeasures();
-        return;
-      }
-
-      setContextMenu(null);
-
-      const point = new paper.Point(e.offsetX || e.layerX, e.offsetY || e.layerY);
-
-      const hitResult = paper.project.hitTest(point, {
-        fill: true,
-        stroke: true,
-        tolerance: 5,
-      });
-
-      if (hitResult?.item) {
-        let furnitureId: string | null = null;
-
-        if (hitResult.item instanceof paper.Group && hitResult.item.data.isFurniture) {
-          furnitureId = hitResult.item.data.furnitureId;
-        } else if (hitResult.item.parent instanceof paper.Group && hitResult.item.parent.data.isFurniture) {
-          furnitureId = hitResult.item.parent.data.furnitureId;
-        } else if (hitResult.item.data.furnitureId) {
-          furnitureId = hitResult.item.data.furnitureId;
-        }
-
-        if (furnitureId) {
-          setContextMenu({
-            x: e.clientX,
-            y: e.clientY,
-            furnitureId: furnitureId,
-          });
-        }
-      }
-    });
-
-    const handleUndo = () => {
-      if (historyIndex > 0) {
-        historyIndex--;
-        paper.project.clear();
-        paper.project.importJSON(history[historyIndex]);
-      }
-    };
-
-    const handleRedo = () => {
-      if (historyIndex < history.length - 1) {
-        historyIndex++;
-        paper.project.clear();
-        paper.project.importJSON(history[historyIndex]);
-      }
-    };
-
-    const handleSave = async () => {
-      const json = paper.project.exportJSON();
-
-      // Extraire les IDs des meubles présents sur le canvas
-      const canvasFurnitureIds = new Set<string>();
-      paper.project.activeLayer.children.forEach((child) => {
-        if (child instanceof paper.Group && child.data.isFurniture && child.data.furnitureId) {
-          canvasFurnitureIds.add(child.data.furnitureId);
-        }
-      });
-
-      // Ne sauvegarder que les meubles qui sont sur le canvas
-      const furnitureData = Array.from(furnitureItemsRef.current.entries())
-        .filter(([id]) => canvasFurnitureIds.has(id))
-        .map(([id, data]) => ({
-          id,
-          ...data,
-        }));
-
-      console.log("🔍 Sauvegarde - Nombre de meubles sur le canvas:", canvasFurnitureIds.size);
-      console.log("🔍 Sauvegarde - Nombre de meubles dans les données:", furnitureData.length);
-      console.log("🔍 Dimensions zone de chargement:", loadAreaLength, "×", loadAreaWidth, "mm");
-      console.log("Détails meubles:", furnitureData);
-
-      // Synchroniser furnitureItems avec le canvas
-      setFurnitureItems((prev) => {
-        const newMap = new Map<string, FurnitureData>();
-        canvasFurnitureIds.forEach((id) => {
-          const data = prev.get(id);
-          if (data) {
-            newMap.set(id, data);
-          }
-        });
-        return newMap;
-      });
-
-      try {
-        const { error } = await supabase
-          .from("projects")
-          .update({
-            layout_canvas_data: json,
-            furniture_data: furnitureData,
-            longueur_chargement_mm: loadAreaLength,
-            largeur_chargement_mm: loadAreaWidth,
-          } as any)
-          .eq("id", projectId);
-
-        if (error) throw error;
-        console.log("✅ Sauvegarde réussie");
-        toast.success("Plan d'aménagement sauvegardé");
-      } catch (error) {
-        console.error("❌ Erreur lors de la sauvegarde:", error);
-        toast.error("Erreur lors de la sauvegarde");
-      }
-    };
-
-    const handleDelete = async () => {
-      if (selectedItem && !selectedItem.locked && !selectedItem.data.isHandle) {
-        const itemId = selectedItem.data.furnitureId;
-
-        // Si c'est un groupe de meuble, récupérer l'ID depuis le groupe
-        let furnitureId = itemId;
-        if (selectedItem instanceof paper.Group && selectedItem.data.isFurniture) {
-          furnitureId = selectedItem.data.furnitureId;
-        }
-
-        console.log("🗑️ Suppression du meuble depuis le canvas:", furnitureId);
-
-        if (furnitureId) {
-          // Supprimer du state
-          setFurnitureItems((prev) => {
-            const newMap = new Map(prev);
-            newMap.delete(furnitureId);
-            return newMap;
-          });
-        }
-
-        selectedItem.remove();
-        removeHandles();
-        selectedItem = null;
-        saveState();
-        toast.success("Élément supprimé");
-
-        // Sauvegarder automatiquement
-        await handleSave();
-      }
-    };
-
-    const handleExport = () => {
-      if (!canvasRef.current) return;
-      const dataUrl = canvasRef.current.toDataURL("image/png");
-      const link = document.createElement("a");
-      link.download = `amenagement-${Date.now()}.png`;
-      link.href = dataUrl;
-      link.click();
-      toast.success("Plan d'aménagement exporté");
-    };
-
-    const handleLoad = async () => {
-      try {
-        const { data, error } = (await supabase
-          .from("projects")
-          .select("layout_canvas_data, furniture_data, longueur_chargement_mm, largeur_chargement_mm")
-          .eq("id", projectId)
-          .single()) as any;
-
-        if (error) throw error;
-
-        // Charger les dimensions de la zone de chargement
-        if (data?.longueur_chargement_mm && data?.largeur_chargement_mm) {
-          console.log("📐 Dimensions chargées:", {
-            longueur: data.longueur_chargement_mm,
-            largeur: data.largeur_chargement_mm,
-          });
-          setLoadAreaLength(data.longueur_chargement_mm);
-          setLoadAreaWidth(data.largeur_chargement_mm);
-        }
-
-        if (data?.layout_canvas_data && typeof data.layout_canvas_data === "string") {
-          paper.project.clear();
-          paper.project.importJSON(data.layout_canvas_data);
-
-          // Redessiner le rectangle bleu après le chargement
-          setTimeout(() => drawLoadAreaOutline(), 10);
-
-          saveState();
-          toast.success("Plan d'aménagement chargé");
-        } else {
-          // Pas de données sauvegardées, juste redessiner le rectangle
-          drawLoadAreaOutline();
-        }
-
-        if (data?.furniture_data && Array.isArray(data.furniture_data)) {
-          const newMap = new Map<string, FurnitureData>();
-          data.furniture_data.forEach((item: any) => {
-            newMap.set(item.id, {
-              id: item.id,
-              longueur_mm: item.longueur_mm,
-              largeur_mm: item.largeur_mm,
-              hauteur_mm: item.hauteur_mm,
-              poids_kg: item.poids_kg,
-              hauteur_sol_mm: item.hauteur_sol_mm || 0,
-            });
-          });
-          setFurnitureItems(newMap);
-        }
-      } catch (error) {
-        console.error("Error loading layout:", error);
-        toast.error("Erreur lors du chargement");
-      }
-    };
-
-    (window as any).layoutCanvasUndo = handleUndo;
-    (window as any).layoutCanvasRedo = handleRedo;
-    (window as any).layoutCanvasDelete = handleDelete;
-    (window as any).layoutCanvasSave = handleSave;
-    (window as any).layoutCanvasExport = handleExport;
-
-    // Fonction de chargement modifiée pour réactiver l'outil après
-    const loadAndReactivateTool = async () => {
-      await handleLoad();
-      // Réactiver l'outil après le chargement
-      tool.activate();
-    };
-
-    (window as any).layoutCanvasLoad = loadAndReactivateTool;
-
-    // Charger automatiquement les données sauvegardées au montage du canvas
-    loadAndReactivateTool();
-
-    return () => {
-      paper.project.clear();
-    };
-  }, [
-    projectId,
-    scale,
-    loadAreaLength,
-    loadAreaWidth,
-    scaledLoadAreaLength,
-    scaledLoadAreaWidth,
-    showVASPOverlay,
-    empattement,
-    porteFauxAvant,
-    vehicleLength,
-  ]);
-
-  const handleFurnitureSubmit = () => {
-    if (editingFurnitureId) {
-      const newFurnitureData = {
-        id: editingFurnitureId,
-        ...furnitureForm,
-      };
-
-      setFurnitureItems((prev) => {
-        const newMap = new Map(prev);
-        newMap.set(editingFurnitureId, newFurnitureData);
-        return newMap;
-      });
-
-      paper.project.activeLayer.children.forEach((child) => {
-        if (child instanceof paper.Group && child.data.furnitureId === editingFurnitureId) {
-          const rect = child.children[0] as paper.Path.Rectangle;
-          const text = child.children[1] as paper.PointText;
-
-          if (rect && text) {
-            const currentScale = scaleRef.current;
-            const scaledWidth = furnitureForm.longueur_mm * currentScale;
-            const scaledHeight = furnitureForm.largeur_mm * currentScale;
-
-            console.log("📏 Édition meuble:", {
-              longueur_mm: furnitureForm.longueur_mm,
-              largeur_mm: furnitureForm.largeur_mm,
-              scaledWidth,
-              scaledHeight,
-              echelle: currentScale,
-            });
-
-            const center = rect.bounds.center;
-
-            const newBounds = new paper.Rectangle(
-              center.subtract(new paper.Point(scaledWidth / 2, scaledHeight / 2)),
-              new paper.Size(scaledWidth, scaledHeight),
-            );
-            rect.bounds = newBounds;
-
-            text.content = `${furnitureForm.longueur_mm}x${furnitureForm.largeur_mm}x${furnitureForm.hauteur_mm}mm\n${furnitureForm.poids_kg}kg`;
-            text.position = rect.bounds.center;
-          }
-        }
-      });
-
-      setEditingFurnitureId(null);
-      setShowFurnitureDialog(false);
-      setFurnitureForm({
-        longueur_mm: 0,
-        largeur_mm: 0,
-        hauteur_mm: 0,
-        poids_kg: 0,
-        hauteur_sol_mm: 0,
-        wood_type: "okoume",
-        thickness: 15,
-        surface: 0,
-      });
-      toast.success("Meuble modifié");
-
-      setTimeout(() => {
-        (window as any).layoutCanvasSave?.();
-      }, 100);
-    } else if (pendingRectangle) {
-      const furnitureId = `furniture-${Date.now()}`;
-
-      const newFurnitureData = {
-        id: furnitureId,
-        ...furnitureForm,
-      };
-
-      setFurnitureItems((prev) => {
-        const newMap = new Map(prev);
-        newMap.set(furnitureId, newFurnitureData);
-        return newMap;
-      });
-
-      setTimeout(() => {
-        const currentScale = scaleRef.current;
-        const scaledWidth = furnitureForm.longueur_mm * currentScale;
-        const scaledHeight = furnitureForm.largeur_mm * currentScale;
-
-        // Calculer le centre de la zone de chargement
-        const loadAreaCenterX =
-          (CANVAS_WIDTH - loadAreaLengthRef.current * currentScale) / 2 +
-          (loadAreaLengthRef.current * currentScale) / 2;
-        const loadAreaCenterY =
-          (CANVAS_HEIGHT - loadAreaWidthRef.current * currentScale) / 2 + (loadAreaWidthRef.current * currentScale) / 2;
-        const center = new paper.Point(loadAreaCenterX, loadAreaCenterY);
-
-        const newBounds = new paper.Rectangle(
-          center.subtract(new paper.Point(scaledWidth / 2, scaledHeight / 2)),
-          new paper.Size(scaledWidth, scaledHeight),
-        );
-        pendingRectangle!.bounds = newBounds;
-
-        console.log("📏 Création meuble:", {
-          longueur_mm: furnitureForm.longueur_mm,
-          largeur_mm: furnitureForm.largeur_mm,
-          scaledWidth,
-          scaledHeight,
-          echelle: currentScale,
-          zone_longueur_mm: loadAreaLengthRef.current,
-          zone_largeur_mm: loadAreaWidthRef.current,
-        });
-
-        const text = new paper.PointText({
-          point: pendingRectangle!.bounds.center,
-          content: `${furnitureForm.longueur_mm}x${furnitureForm.largeur_mm}x${furnitureForm.hauteur_mm}mm\n${furnitureForm.poids_kg}kg`,
-          fillColor: new paper.Color("#000"),
-          fontSize: 12,
-          justification: "center",
-        });
-        text.data.isFurnitureLabel = true;
-        text.data.furnitureId = furnitureId;
-
-        const group = new paper.Group([pendingRectangle!, text]);
-        group.data.isFurniture = true;
-        group.data.furnitureId = furnitureId;
-
-        pendingRectangle!.data = {};
-
-        setTimeout(() => {
-          (window as any).layoutCanvasSave?.();
-        }, 100);
-      }, 0);
-
-      setPendingRectangle(null);
-      setShowFurnitureDialog(false);
-      setFurnitureForm({
-        longueur_mm: 0,
-        largeur_mm: 0,
-        hauteur_mm: 0,
-        poids_kg: 0,
-        hauteur_sol_mm: 0,
-        wood_type: "okoume",
-        thickness: 15,
-        surface: 0,
-      });
-      toast.success("Meuble ajouté");
-    }
-  };
-
-  const handleFurnitureCancel = () => {
-    if (pendingRectangle) {
-      pendingRectangle.remove();
-    }
-    setPendingRectangle(null);
-    setEditingFurnitureId(null);
-    setShowFurnitureDialog(false);
-    setFurnitureForm({
-      longueur_mm: 0,
-      largeur_mm: 0,
-      hauteur_mm: 0,
-      poids_kg: 0,
-      hauteur_sol_mm: 0,
-      wood_type: "okoume",
-      thickness: 15,
-      surface: 0,
-    });
-  };
-
-  const handleContextMenuEdit = (furnitureId?: string) => {
-    const id = furnitureId || contextMenu?.furnitureId;
-    if (!id) return;
-
-    const furnitureData = furnitureItemsRef.current.get(id);
-
-    if (furnitureData) {
-      setEditingFurnitureId(id);
-      setFurnitureForm({
-        longueur_mm: furnitureData.longueur_mm,
-        largeur_mm: furnitureData.largeur_mm,
-        hauteur_mm: furnitureData.hauteur_mm,
-        poids_kg: furnitureData.poids_kg,
-        hauteur_sol_mm: furnitureData.hauteur_sol_mm || 0,
-        wood_type: furnitureData.wood_type || "okoume",
-        thickness: furnitureData.thickness || 15,
-        surface: furnitureData.surface || 0,
-      });
-      setShowFurnitureDialog(true);
-      setContextMenu(null);
-    }
-  };
-
-  // Calculer le poids total des meubles
-  useEffect(() => {
-    const furnitureWeight = Array.from(furnitureItems.values()).reduce((sum, item) => sum + (item.poids_kg || 0), 0);
-
-    // Récupérer le poids des accessoires depuis les dépenses du projet
-    // ✅ CORRIGÉ: Filtre les articles archivés et ne prend que les scénarios existants
-    const fetchAccessoriesWeight = async () => {
-      try {
-        // D'abord récupérer les IDs des scénarios actifs du projet
-        const { data: scenarios, error: scenarioError } = await supabase
-          .from("project_scenarios")
-          .select("id")
-          .eq("project_id", projectId);
-
-        if (scenarioError) throw scenarioError;
-
-        const activeScenarioIds = scenarios?.map((s) => s.id) || [];
-
-        if (activeScenarioIds.length === 0) {
-          setAccessoriesWeight(0);
-          setTotalWeight(furnitureWeight);
-          return;
-        }
-
-        // Récupérer les dépenses des scénarios actifs, non archivées
-        const { data, error } = await supabase
-          .from("project_expenses")
-          .select("poids_kg, quantite, scenario_id")
-          .eq("project_id", projectId)
-          .in("scenario_id", activeScenarioIds)
-          .or("est_archive.is.null,est_archive.eq.false");
-
-        if (error) throw error;
-
-        const accessoriesTotal =
-          data?.reduce((sum, expense) => sum + (expense.poids_kg || 0) * (expense.quantite || 1), 0) || 0;
-
-        setAccessoriesWeight(accessoriesTotal);
-        setTotalWeight(furnitureWeight + accessoriesTotal);
-      } catch (error) {
-        console.error("Erreur lors du calcul du poids des accessoires:", error);
-        setAccessoriesWeight(0);
-        setTotalWeight(furnitureWeight);
-      }
-    };
-
-    fetchAccessoriesWeight();
-  }, [furnitureItems, projectId]);
-
-  const weightPercentage = (totalWeight / maxLoad) * 100;
-  const remainingWeight = maxLoad - totalWeight;
-
-  // Convertir la Map en Array pour l'affichage
-  const furnitureList = Array.from(furnitureItems.values());
+interface ProjectInfoSidebarProps {
+  project: Project;
+  isOpen: boolean;
+  onClose: () => void;
+  onEdit: () => void;
+}
+
+export const ProjectInfoSidebar = ({ project, isOpen, onClose, onEdit }: ProjectInfoSidebarProps) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  if (!isOpen) return null;
+
+  // Vérifie si on a des données RTI / Dimensions / Poids
+  const hasRTIData = !!(
+    project.categorie_international ||
+    project.type_variante ||
+    project.numero_reception_ce ||
+    project.places_assises_origine ||
+    project.puissance_kw ||
+    project.norme_euro ||
+    project.co2_emission
+  );
+
+  const hasDimensionsData = !!(
+    project.longueur_mm ||
+    project.largeur_mm ||
+    project.hauteur_mm ||
+    project.longueur_chargement_mm ||
+    project.largeur_chargement_mm
+  );
+
+  const hasWeightData = !!(
+    project.poids_vide_kg ||
+    project.masse_vide ||
+    project.masse_ordre_marche_kg ||
+    project.charge_utile_kg ||
+    project.ptac_kg ||
+    project.masse_en_charge_max ||
+    project.ptra
+  );
+
+  // Données COC pour VASP
+  const hasCOCData = !!(
+    project.mmta_kg ||
+    project.mmta_essieu_av_kg ||
+    project.mmta_essieu_ar_kg ||
+    project.empattement_mm ||
+    project.charge_attelage_s_kg
+  );
+
+  const hasExtendedContent = hasRTIData || hasDimensionsData || hasWeightData || hasCOCData;
 
   return (
     <>
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr,320px] gap-4">
-        {/* Colonne de gauche : Canvas */}
-        <div className="space-y-4">
-          <Card className="p-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Jauge de Poids</h3>
-                <div className="text-sm text-muted-foreground">
-                  Surface utile : {loadAreaLength}mm x {loadAreaWidth}mm
-                </div>
-              </div>
+      {/* Overlay transparent */}
+      <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} />
 
-              <div className="space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span>Meubles : {totalWeight - accessoriesWeight} kg</span>
-                  <span>Accessoires : {accessoriesWeight} kg</span>
-                </div>
-                <Progress value={weightPercentage} className="h-3" />
-                <div className="flex justify-between text-sm font-medium">
-                  <span>Total : {totalWeight.toFixed(1)} kg</span>
-                  <span className={remainingWeight < 0 ? "text-red-500" : "text-green-600"}>
-                    {remainingWeight < 0 ? "Surcharge" : "Reste"} : {Math.abs(remainingWeight).toFixed(1)} kg
-                  </span>
-                </div>
-                <div className="text-xs text-muted-foreground text-center">Charge utile maximale : {maxLoad} kg</div>
-              </div>
+      {/* Sidebar avec animation */}
+      <div
+        className={`fixed left-0 top-1/2 -translate-y-1/2 z-50 h-[85vh] bg-card shadow-2xl rounded-r-xl overflow-hidden transition-all duration-300 flex ${
+          isExpanded ? "w-[850px]" : "w-[380px]"
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Panneau principal - Informations générales + Propriétaire */}
+        <div className="w-[380px] flex flex-col border-r border-blue-200 dark:border-blue-800">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b bg-blue-50 dark:bg-blue-950/30 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-600" />
+              <h2 className="text-lg font-semibold">Informations Projet</h2>
             </div>
-          </Card>
-
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 flex-wrap bg-muted/30 p-3 rounded-lg">
-              <Button
-                variant={activeTool === "select" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setActiveTool("select")}
-              >
-                Sélectionner
+            <div className="flex items-center gap-1">
+              {hasExtendedContent && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsExpanded(!isExpanded)}
+                  title={isExpanded ? "Réduire" : "Voir RTI & Dimensions"}
+                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-100"
+                >
+                  {isExpanded ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+                </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={onEdit}>
+                <Edit className="h-4 w-4 mr-2" />
+                Modifier
               </Button>
-              <Button
-                variant={activeTool === "rectangle" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setActiveTool("rectangle")}
-              >
-                <Square className="h-4 w-4 mr-2" />
-                Meuble
+              <Button variant="ghost" size="icon" onClick={onClose}>
+                <X className="h-5 w-5" />
               </Button>
-              <Button
-                variant={activeTool === "measure" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setActiveTool("measure")}
-              >
-                <Ruler className="h-4 w-4 mr-2" />
-                Mesurer
-              </Button>
-              <Button
-                variant={activeTool === "cotation" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setActiveTool("cotation")}
-                title="Cotation intelligente (C)"
-              >
-                <Crosshair className="h-4 w-4 mr-2" />
-                Cotation
-              </Button>
-
-              <Separator orientation="vertical" className="h-6" />
-
-              <Button
-                variant={showVASPOverlay ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowVASPOverlay(!showVASPOverlay)}
-                className={showVASPOverlay ? "bg-green-600 hover:bg-green-700" : ""}
-                title="Afficher/masquer les éléments VASP (essieux)"
-              >
-                <Armchair className="h-4 w-4 mr-2" />
-                VASP
-              </Button>
-
-              <Separator orientation="vertical" className="h-6" />
-
-              <div className="flex items-center gap-2">
-                <Label htmlFor="color" className="text-sm">
-                  Couleur :
-                </Label>
-                <input
-                  id="color"
-                  type="color"
-                  value={color}
-                  onChange={(e) => setColor(e.target.value)}
-                  className="w-10 h-8 rounded cursor-pointer"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Label htmlFor="strokeWidth" className="text-sm">
-                  Épaisseur :
-                </Label>
-                <Input
-                  id="strokeWidth"
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={strokeWidth}
-                  onChange={(e) => setStrokeWidth(Number(e.target.value))}
-                  className="w-20"
-                />
-              </div>
-
-              <Separator orientation="vertical" className="h-6" />
-
-              <Button variant="outline" size="sm" onClick={() => (window as any).layoutCanvasUndo?.()}>
-                <Undo className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => (window as any).layoutCanvasRedo?.()}>
-                <Redo className="h-4 w-4" />
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => (window as any).layoutCanvasDelete?.()}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
-
-              <Separator orientation="vertical" className="h-6" />
-
-              <Button variant="outline" size="sm" onClick={() => (window as any).layoutCanvasSave?.()}>
-                <Save className="h-4 w-4 mr-2" />
-                Sauvegarder
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => (window as any).layoutCanvasLoad?.()}>
-                <Upload className="h-4 w-4 mr-2" />
-                Charger
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => (window as any).layoutCanvasLoad?.()}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Rafraîchir
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => (window as any).layoutCanvasExport?.()}>
-                <Download className="h-4 w-4 mr-2" />
-                Exporter
-              </Button>
-            </div>
-
-            <div className="bg-muted/30 rounded-lg p-2">
-              <canvas
-                ref={canvasRef}
-                width={CANVAS_WIDTH}
-                height={CANVAS_HEIGHT}
-                className="border rounded bg-white cursor-crosshair"
-              />
-            </div>
-
-            <div className="mt-2 text-xs text-muted-foreground">
-              Échelle : 1:{Math.round(1 / scale)} • Zone en pointillés bleus = zone de chargement utile (
-              {loadAreaLength} x {loadAreaWidth} mm)
             </div>
           </div>
-        </div>
 
-        {/* Colonne de droite : Liste des meubles */}
-        <Card className="p-4 h-fit lg:sticky lg:top-4">
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Package className="h-5 w-5 text-primary" />
-              <h3 className="text-lg font-semibold">Liste des meubles</h3>
-              <span className="ml-auto text-sm text-muted-foreground">({furnitureList.length})</span>
+          {/* Contenu scrollable - Infos générales + Propriétaire */}
+          <ScrollArea className="flex-1 p-4">
+            {/* Informations générales */}
+            <div className="space-y-1.5 mb-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Car className="h-4 w-4 text-blue-600" />
+                <h4 className="text-sm font-semibold text-blue-600">Véhicule</h4>
+              </div>
+
+              {project.nom_projet && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">Nom du projet :</span>
+                  <p className="font-medium">{project.nom_projet}</p>
+                </div>
+              )}
+              {project.immatriculation && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">Immatriculation :</span>
+                  <p className="font-medium">{project.immatriculation}</p>
+                </div>
+              )}
+              {(project.vin || project.numero_chassis_vin || project.numero_chassis) && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">N° châssis (VIN) :</span>
+                  <p className="font-medium text-xs">
+                    {project.vin || project.numero_chassis_vin || project.numero_chassis}
+                  </p>
+                </div>
+              )}
+              {project.type_mine && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">Type mine :</span>
+                  <p className="font-medium">{project.type_mine}</p>
+                </div>
+              )}
+              {(project.marque_officielle || project.marque_vehicule || project.marque_custom) && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">Marque :</span>
+                  <p className="font-medium">
+                    {project.marque_officielle || project.marque_vehicule || project.marque_custom}
+                  </p>
+                </div>
+              )}
+              {(project.modele_officiel || project.modele_vehicule || project.modele_custom) && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">Modèle :</span>
+                  <p className="font-medium">
+                    {project.modele_officiel || project.modele_vehicule || project.modele_custom}
+                  </p>
+                </div>
+              )}
+              {project.denomination_commerciale && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">Dénomination :</span>
+                  <p className="font-medium">{project.denomination_commerciale}</p>
+                </div>
+              )}
+              {project.genre_national && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">Genre :</span>
+                  <p className="font-medium">{project.genre_national}</p>
+                </div>
+              )}
+              {project.carrosserie && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">Carrosserie :</span>
+                  <p className="font-medium">{project.carrosserie}</p>
+                </div>
+              )}
+              {project.energie && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">Énergie :</span>
+                  <p className="font-medium">{project.energie}</p>
+                </div>
+              )}
+              {project.nombre_places && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">Nombre de places :</span>
+                  <p className="font-medium">{project.nombre_places}</p>
+                </div>
+              )}
+              {project.puissance_fiscale && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">Puissance fiscale :</span>
+                  <p className="font-medium">{project.puissance_fiscale} CV</p>
+                </div>
+              )}
+              {project.cylindree && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">Cylindrée :</span>
+                  <p className="font-medium">{project.cylindree} cm³</p>
+                </div>
+              )}
+              {project.date_premiere_circulation && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">1ère circulation :</span>
+                  <p className="font-medium">
+                    {new Date(project.date_premiere_circulation).toLocaleDateString("fr-FR")}
+                  </p>
+                </div>
+              )}
+              {project.date_premiere_immatriculation && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">1ère immat. :</span>
+                  <p className="font-medium">
+                    {new Date(project.date_premiere_immatriculation).toLocaleDateString("fr-FR")}
+                  </p>
+                </div>
+              )}
             </div>
 
-            <Separator />
+            {/* Propriétaire */}
+            <div className="space-y-1.5 pt-4 border-t">
+              <div className="flex items-center gap-2 mb-3">
+                <User className="h-4 w-4 text-green-600" />
+                <h4 className="text-sm font-semibold text-green-600">Propriétaire</h4>
+              </div>
 
-            <ScrollArea className="h-[600px] pr-4">
-              {furnitureList.length === 0 ? (
-                <div className="text-center text-muted-foreground py-8">
-                  <Package className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">Aucun meuble</p>
-                  <p className="text-xs mt-1">Ajoutez un meuble sur le canvas</p>
+              {(project.prenom_proprietaire || project.nom_proprietaire) && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">Nom :</span>
+                  <p className="font-medium">
+                    {project.prenom_proprietaire} {project.nom_proprietaire}
+                  </p>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  {furnitureList.map((furniture) => (
-                    <Card key={furniture.id} className="p-3 hover:bg-muted/50 transition-colors">
-                      <div className="space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm truncate">Meuble #{furniture.id.split("-").pop()}</p>
-                            <div className="text-xs text-muted-foreground space-y-0.5 mt-1">
-                              <p>
-                                📏 {furniture.longueur_mm} × {furniture.largeur_mm} × {furniture.hauteur_mm} mm
-                              </p>
-                              <p>⚖️ {furniture.poids_kg} kg</p>
-                              {furniture.wood_type && (
-                                <p>
-                                  🌳{" "}
-                                  {furniture.wood_type === "okoume"
-                                    ? "Okoumé"
-                                    : furniture.wood_type === "bouleau"
-                                      ? "Bouleau"
-                                      : "Peuplier"}{" "}
-                                  - {furniture.thickness}mm
-                                </p>
-                              )}
-                              {furniture.surface && furniture.surface > 0 && (
-                                <p>📐 Surface: {furniture.surface.toFixed(2)} m²</p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
-                              onClick={() => handleContextMenuEdit(furniture.id)}
-                              title="Modifier"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => handleDeleteFromList(furniture.id)}
-                              title="Supprimer"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
+              )}
+              {project.adresse_proprietaire && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">Adresse :</span>
+                  <p className="font-medium">{project.adresse_proprietaire}</p>
+                </div>
+              )}
+              {(project.code_postal_proprietaire || project.ville_proprietaire) && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">Ville :</span>
+                  <p className="font-medium">
+                    {project.code_postal_proprietaire} {project.ville_proprietaire}
+                  </p>
+                </div>
+              )}
+              {project.telephone_proprietaire && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">Téléphone :</span>
+                  <p className="font-medium">{project.telephone_proprietaire}</p>
+                </div>
+              )}
+              {project.email_proprietaire && (
+                <div className="flex gap-2 text-xs">
+                  <span className="text-muted-foreground shrink-0 w-32">Email :</span>
+                  <p className="font-medium">{project.email_proprietaire}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Bouton pour étendre si non étendu et données disponibles */}
+            {hasExtendedContent && !isExpanded && (
+              <div className="mt-6 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  className="w-full text-blue-600 border-blue-200 hover:bg-blue-50"
+                  onClick={() => setIsExpanded(true)}
+                >
+                  <ChevronRight className="h-4 w-4 mr-2" />
+                  Voir données RTI & Dimensions
+                </Button>
+              </div>
+            )}
+          </ScrollArea>
+        </div>
+
+        {/* Panneau étendu - RTI + Dimensions + Poids */}
+        {isExpanded && (
+          <div className="w-[470px] flex flex-col bg-muted/10">
+            {/* Header du panneau étendu */}
+            <div className="flex items-center justify-between p-4 border-b bg-orange-50 dark:bg-orange-950/30 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <ClipboardList className="h-5 w-5 text-orange-600" />
+                <h3 className="font-semibold text-orange-700 dark:text-orange-400">Données techniques & Dimensions</h3>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsExpanded(false)}
+                title="Replier ce volet"
+                className="text-orange-600 hover:text-orange-700 hover:bg-orange-100"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+            </div>
+
+            <ScrollArea className="flex-1 p-4">
+              {/* Données techniques RTI */}
+              {hasRTIData && (
+                <div className="space-y-2 mb-6 p-4 rounded-lg bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                  <h4 className="text-sm font-semibold text-blue-700 dark:text-blue-400 mb-3 flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Données techniques RTI
+                  </h4>
+                  {project.categorie_international && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0 w-36">Catégorie (J) :</span>
+                      <p className="font-bold text-blue-700 dark:text-blue-400">{project.categorie_international}</p>
+                    </div>
+                  )}
+                  {project.type_variante && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0 w-36">Type variante (D.2) :</span>
+                      <p className="font-medium font-mono">{project.type_variante}</p>
+                    </div>
+                  )}
+                  {project.numero_reception_ce && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0 w-36">N° Réception (K) :</span>
+                      <p className="font-medium font-mono">{project.numero_reception_ce}</p>
+                    </div>
+                  )}
+                  {project.places_assises_origine && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0 w-36">Places origine (S.1) :</span>
+                      <p className="font-medium">{project.places_assises_origine}</p>
+                    </div>
+                  )}
+                  {project.puissance_kw && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0 w-36">Puissance (P.2) :</span>
+                      <p className="font-medium">{project.puissance_kw} kW</p>
+                    </div>
+                  )}
+                  {project.norme_euro && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0 w-36">Norme Euro (V.9) :</span>
+                      <p className="font-medium text-green-700 dark:text-green-400">{project.norme_euro}</p>
+                    </div>
+                  )}
+                  {project.co2_emission && (
+                    <div className="flex gap-2 text-xs">
+                      <span className="text-muted-foreground shrink-0 w-36">CO2 (V.7) :</span>
+                      <p className="font-medium">{project.co2_emission} g/km</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Dimensions totales */}
+              {hasDimensionsData && (
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  {/* Dimensions totales */}
+                  {(project.longueur_mm || project.largeur_mm || project.hauteur_mm) && (
+                    <div className="p-4 rounded-lg bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                      <h4 className="text-xs font-semibold text-blue-700 dark:text-blue-400 mb-3 flex items-center gap-2">
+                        <Ruler className="h-4 w-4" />
+                        Dimensions totales
+                      </h4>
+                      {project.longueur_mm && (
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-muted-foreground">Longueur</span>
+                          <span className="font-medium">{project.longueur_mm} mm</span>
                         </div>
+                      )}
+                      {project.largeur_mm && (
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-muted-foreground">Largeur</span>
+                          <span className="font-medium">{project.largeur_mm} mm</span>
+                        </div>
+                      )}
+                      {project.hauteur_mm && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Hauteur</span>
+                          <span className="font-medium">{project.hauteur_mm} mm</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Surface utile */}
+                  {(project.longueur_chargement_mm || project.largeur_chargement_mm) && (
+                    <div className="p-4 rounded-lg bg-orange-50/50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800">
+                      <h4 className="text-xs font-semibold text-orange-700 dark:text-orange-400 mb-3 flex items-center gap-2">
+                        <Ruler className="h-4 w-4" />
+                        Surface utile
+                      </h4>
+                      {project.longueur_chargement_mm && (
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-muted-foreground">Longueur</span>
+                          <span className="font-medium">{project.longueur_chargement_mm} mm</span>
+                        </div>
+                      )}
+                      {project.largeur_chargement_mm && (
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Largeur</span>
+                          <span className="font-medium">{project.largeur_chargement_mm} mm</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Poids */}
+              {hasWeightData && (
+                <div className="p-4 rounded-lg bg-green-50/50 dark:bg-green-950/20 border border-green-200 dark:border-green-800">
+                  <h4 className="text-xs font-semibold text-green-700 dark:text-green-400 mb-3 flex items-center gap-2">
+                    <Weight className="h-4 w-4" />
+                    Poids
+                  </h4>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                    {(project.poids_vide_kg || project.masse_vide) && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Poids à vide</span>
+                        <span className="font-medium">{project.poids_vide_kg || project.masse_vide} kg</span>
                       </div>
-                    </Card>
-                  ))}
+                    )}
+                    {project.masse_ordre_marche_kg && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Masse ordre marche</span>
+                        <span className="font-medium">{project.masse_ordre_marche_kg} kg</span>
+                      </div>
+                    )}
+                    {project.charge_utile_kg && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Charge utile</span>
+                        <span className="font-medium text-green-700">{project.charge_utile_kg} kg</span>
+                      </div>
+                    )}
+                    {(project.ptac_kg || project.masse_en_charge_max) && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">PTAC</span>
+                        <span className="font-medium">{project.ptac_kg || project.masse_en_charge_max} kg</span>
+                      </div>
+                    )}
+                    {project.ptra && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">PTRA</span>
+                        <span className="font-medium">{project.ptra} kg</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Données COC pour VASP */}
+              {hasCOCData && (
+                <div className="p-4 rounded-lg bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 mt-4">
+                  <h4 className="text-xs font-semibold text-purple-700 dark:text-purple-400 mb-3 flex items-center gap-2">
+                    <Car className="h-4 w-4" />
+                    Données COC (VASP)
+                  </h4>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                    {project.mmta_kg && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">MMTA (16.1)</span>
+                        <span className="font-medium">{project.mmta_kg} kg</span>
+                      </div>
+                    )}
+                    {project.mmta_essieu_av_kg && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">MMTA Ess.AV (16.2)</span>
+                        <span className="font-medium">{project.mmta_essieu_av_kg} kg</span>
+                      </div>
+                    )}
+                    {project.mmta_essieu_ar_kg && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">MMTA Ess.AR (16.2)</span>
+                        <span className="font-medium">{project.mmta_essieu_ar_kg} kg</span>
+                      </div>
+                    )}
+                    {project.empattement_mm && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Empattement (4.1)</span>
+                        <span className="font-medium text-purple-700">{project.empattement_mm} mm</span>
+                      </div>
+                    )}
+                    {project.charge_attelage_s_kg && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Charge S (19)</span>
+                        <span className="font-medium">{project.charge_attelage_s_kg} kg</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </ScrollArea>
-
-            {furnitureList.length > 0 && (
-              <>
-                <Separator />
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm font-medium">
-                    <span>Poids total des meubles :</span>
-                    <span className="text-primary">{(totalWeight - accessoriesWeight).toFixed(1)} kg</span>
-                  </div>
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>+ Accessoires :</span>
-                    <span>{accessoriesWeight.toFixed(1)} kg</span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between text-sm font-bold">
-                    <span>Total :</span>
-                    <span className={weightPercentage > 100 ? "text-red-500" : "text-green-600"}>
-                      {totalWeight.toFixed(1)} kg
-                    </span>
-                  </div>
-                </div>
-              </>
-            )}
           </div>
-        </Card>
-
-        {/* Dialogues et menus contextuels */}
-        <Dialog open={showFurnitureDialog} onOpenChange={setShowFurnitureDialog}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{editingFurnitureId ? "Modifier le meuble" : "Propriétés du meuble"}</DialogTitle>
-              <DialogDescription>Renseignez les dimensions et le poids du meuble</DialogDescription>
-            </DialogHeader>
-
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="longueur">Longueur (mm)</Label>
-                  <Input
-                    id="longueur"
-                    type="number"
-                    value={furnitureForm.longueur_mm || ""}
-                    onChange={(e) =>
-                      setFurnitureForm((prev) => ({
-                        ...prev,
-                        longueur_mm: Number(e.target.value) || 0,
-                      }))
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        handleFurnitureSubmit();
-                      }
-                      e.stopPropagation();
-                    }}
-                    placeholder="0"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="largeur">Largeur (mm)</Label>
-                  <Input
-                    id="largeur"
-                    type="number"
-                    value={furnitureForm.largeur_mm || ""}
-                    onChange={(e) =>
-                      setFurnitureForm((prev) => ({
-                        ...prev,
-                        largeur_mm: Number(e.target.value) || 0,
-                      }))
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        handleFurnitureSubmit();
-                      }
-                      e.stopPropagation();
-                    }}
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="hauteur">Hauteur (mm)</Label>
-                  <Input
-                    id="hauteur"
-                    type="number"
-                    value={furnitureForm.hauteur_mm || ""}
-                    onChange={(e) =>
-                      setFurnitureForm((prev) => ({
-                        ...prev,
-                        hauteur_mm: Number(e.target.value) || 0,
-                      }))
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        handleFurnitureSubmit();
-                      }
-                      e.stopPropagation();
-                    }}
-                    placeholder="0"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="poids">Poids (kg)</Label>
-                  <Input
-                    id="poids"
-                    type="number"
-                    step="0.1"
-                    value={furnitureForm.poids_kg || ""}
-                    onChange={(e) =>
-                      setFurnitureForm((prev) => ({
-                        ...prev,
-                        poids_kg: Number(e.target.value) || 0,
-                      }))
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        handleFurnitureSubmit();
-                      }
-                      e.stopPropagation();
-                    }}
-                    placeholder="0.0"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="hauteur_sol">Hauteur par rapport au sol (mm)</Label>
-                <Input
-                  id="hauteur_sol"
-                  type="number"
-                  value={furnitureForm.hauteur_sol_mm || ""}
-                  onChange={(e) =>
-                    setFurnitureForm((prev) => ({
-                      ...prev,
-                      hauteur_sol_mm: Number(e.target.value) || 0,
-                    }))
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      handleFurnitureSubmit();
-                    }
-                    e.stopPropagation();
-                  }}
-                  placeholder="0"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Distance entre le sol et le dessous du meuble (0 = posé au sol)
-                </p>
-              </div>
-
-              {/* Champs pour le bois */}
-              <Separator />
-              <div className="space-y-4">
-                <h4 className="font-medium text-sm">Caractéristiques du bois</h4>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="wood_type">Type de bois</Label>
-                    <Select
-                      value={furnitureForm.wood_type}
-                      onValueChange={(value: "okoume" | "bouleau" | "peuplier") =>
-                        setFurnitureForm((prev) => {
-                          const newForm = { ...prev, wood_type: value };
-                          // Recalculer le poids si surface et épaisseur sont définis
-                          if (newForm.surface && newForm.surface > 0) {
-                            newForm.poids_kg = calculateWeight(value, newForm.thickness, newForm.surface);
-                          }
-                          return newForm;
-                        })
-                      }
-                    >
-                      <SelectTrigger id="wood_type">
-                        <SelectValue placeholder="Choisir..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="okoume">Okoumé (420 kg/m³)</SelectItem>
-                        <SelectItem value="bouleau">Bouleau (680 kg/m³)</SelectItem>
-                        <SelectItem value="peuplier">Peuplier (475 kg/m³)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="thickness">Épaisseur (mm)</Label>
-                    <Select
-                      value={furnitureForm.thickness.toString()}
-                      onValueChange={(value) =>
-                        setFurnitureForm((prev) => {
-                          const newForm = { ...prev, thickness: Number(value) };
-                          // Recalculer le poids si surface est définie
-                          if (newForm.surface && newForm.surface > 0) {
-                            newForm.poids_kg = calculateWeight(newForm.wood_type, Number(value), newForm.surface);
-                          }
-                          return newForm;
-                        })
-                      }
-                    >
-                      <SelectTrigger id="thickness">
-                        <SelectValue placeholder="Choisir..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="5">5 mm</SelectItem>
-                        <SelectItem value="8">8 mm</SelectItem>
-                        <SelectItem value="10">10 mm</SelectItem>
-                        <SelectItem value="12">12 mm</SelectItem>
-                        <SelectItem value="15">15 mm</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="surface">Surface de bois utilisé (m²)</Label>
-                  <Input
-                    id="surface"
-                    type="number"
-                    step="0.01"
-                    value={furnitureForm.surface || ""}
-                    onChange={(e) => {
-                      const surface = Number(e.target.value) || 0;
-                      setFurnitureForm((prev) => ({
-                        ...prev,
-                        surface,
-                        // Recalculer le poids automatiquement
-                        poids_kg:
-                          surface > 0 ? calculateWeight(prev.wood_type, prev.thickness, surface) : prev.poids_kg,
-                      }));
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        handleFurnitureSubmit();
-                      }
-                      e.stopPropagation();
-                    }}
-                    placeholder="0.00"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Le poids sera calculé automatiquement selon le type de bois et l'épaisseur
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <DialogFooter>
-              <Button variant="outline" onClick={handleFurnitureCancel}>
-                Annuler
-              </Button>
-              <Button onClick={handleFurnitureSubmit}>{editingFurnitureId ? "Modifier" : "Valider"}</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {contextMenu && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} />
-            <div
-              className="fixed z-50 bg-white border rounded-lg shadow-lg py-1 min-w-[150px]"
-              style={{
-                left: `${contextMenu.x}px`,
-                top: `${contextMenu.y}px`,
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                className="w-full px-4 py-2 text-left hover:bg-muted transition-colors flex items-center gap-2"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleContextMenuEdit();
-                }}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                  <path d="m15 5 4 4" />
-                </svg>
-                Modifier
-              </button>
-            </div>
-          </>
         )}
       </div>
-
-      {/* Calculateur de poids de meuble */}
-      <FurnitureWeightCalculator />
     </>
   );
 };
+
+export default ProjectInfoSidebar;
