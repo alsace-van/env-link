@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 5.1 - Fix nettoyage des lignes d'essieu
+// VERSION: 5.2 - Ajout liste des meubles en mode plein écran
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -683,9 +683,9 @@ export const LayoutCanvas = ({
 
   // Fonctions pour le plein écran
   const calculateFullscreenDimensions = useCallback(() => {
-    // Calculer les dimensions du canvas pour remplir tout l'écran
-    // En tenant compte de la barre d'outils (~70px) et du padding (32px)
-    const screenWidth = window.innerWidth - 32; // padding horizontal
+    // Calculer les dimensions du canvas pour remplir l'écran
+    // En tenant compte de la barre d'outils (~70px), du padding (32px) et du panneau meubles (288px + 16px)
+    const screenWidth = window.innerWidth - 32 - 304; // padding + panneau meubles à droite
     const screenHeight = window.innerHeight - 100; // barre d'outils + padding
 
     return { width: screenWidth, height: screenHeight };
@@ -3017,7 +3017,7 @@ export const LayoutCanvas = ({
               {/* Contrôles de zoom et plein écran - position fixe en fullscreen */}
               <div
                 className={`flex items-center gap-1 bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1 z-50 ${
-                  isFullscreen ? "fixed bottom-6 right-6" : "absolute bottom-4 right-4"
+                  isFullscreen ? "fixed bottom-6 right-80" : "absolute bottom-4 right-4"
                 }`}
               >
                 <Button
@@ -3070,9 +3070,77 @@ export const LayoutCanvas = ({
               </div>
             )}
 
+            {/* Panneau liste des meubles en mode plein écran */}
+            {isFullscreen && (
+              <div className="fixed top-20 right-4 bottom-4 w-72 bg-white rounded-lg shadow-lg overflow-hidden flex flex-col z-40">
+                <div className="p-3 border-b bg-gray-50">
+                  <div className="flex items-center gap-2">
+                    <Package className="h-4 w-4 text-primary" />
+                    <h3 className="font-semibold text-sm">Meubles ({furnitureList.length})</h3>
+                  </div>
+                </div>
+                <ScrollArea className="flex-1 p-2">
+                  {furnitureList.length === 0 ? (
+                    <div className="text-center text-muted-foreground py-4">
+                      <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-xs">Aucun meuble</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {furnitureList.map((furniture) => (
+                        <Card key={furniture.id} className="p-2 hover:bg-muted/50 transition-colors">
+                          <div className="flex items-start justify-between gap-1">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-xs truncate">#{furniture.id.split("-").pop()}</p>
+                              <div className="text-[10px] text-muted-foreground mt-0.5">
+                                <p>
+                                  {furniture.longueur_mm}×{furniture.largeur_mm}×{furniture.hauteur_mm}mm
+                                </p>
+                                <p>{furniture.poids_kg}kg</p>
+                              </div>
+                            </div>
+                            <div className="flex gap-0.5">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-blue-500 hover:text-blue-700"
+                                onClick={() => handleContextMenuEdit(furniture.id)}
+                                title="Modifier"
+                              >
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                                onClick={() => handleDeleteFromList(furniture.id)}
+                                title="Supprimer"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+                {furnitureList.length > 0 && (
+                  <div className="p-2 border-t bg-gray-50 text-xs">
+                    <div className="flex justify-between font-medium">
+                      <span>Total :</span>
+                      <span className={weightPercentage > 100 ? "text-red-500" : "text-green-600"}>
+                        {totalWeight.toFixed(1)} kg
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Indication en mode plein écran */}
             {isFullscreen && (
-              <div className="absolute top-4 right-4 bg-gray-100 backdrop-blur-sm rounded-lg shadow-md px-3 py-1.5 text-sm text-gray-600">
+              <div className="fixed top-4 right-80 bg-gray-100 backdrop-blur-sm rounded-lg shadow-md px-3 py-1.5 text-sm text-gray-600 z-40">
                 Appuyez sur <kbd className="px-1.5 py-0.5 bg-gray-300 rounded text-xs font-mono">Échap</kbd> pour
                 quitter
               </div>
