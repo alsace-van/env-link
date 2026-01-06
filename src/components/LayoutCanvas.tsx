@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 4.2 - Plein écran avec scale dynamique
+// VERSION: 4.3 - Plein écran avec fond blanc
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -661,16 +661,15 @@ export const LayoutCanvas = ({
 
   // Fonctions pour le plein écran
   const calculateFullscreenScale = useCallback(() => {
-    // Calculer le scale pour remplir l'écran tout en gardant le ratio
+    // Calculer le scale pour remplir au maximum l'écran tout en gardant le canvas visible
     const screenWidth = window.innerWidth;
     const screenHeight = window.innerHeight;
-    const padding = 40; // Marge pour les contrôles
 
-    const scaleX = (screenWidth - padding) / CANVAS_WIDTH;
-    const scaleY = (screenHeight - padding) / CANVAS_HEIGHT;
+    const scaleX = screenWidth / CANVAS_WIDTH;
+    const scaleY = screenHeight / CANVAS_HEIGHT;
 
     // Prendre le plus petit pour garder tout visible
-    return Math.min(scaleX, scaleY, 2); // Max 2x pour éviter le flou
+    return Math.min(scaleX, scaleY);
   }, []);
 
   const toggleFullscreen = useCallback(() => {
@@ -2931,7 +2930,7 @@ export const LayoutCanvas = ({
             <div
               ref={canvasContainerRef}
               className={`bg-muted/30 rounded-lg p-2 relative ${
-                isFullscreen ? "fixed inset-0 z-50 flex items-center justify-center bg-black overflow-hidden" : ""
+                isFullscreen ? "fixed inset-0 z-50 flex items-center justify-center bg-white overflow-hidden" : ""
               }`}
             >
               <canvas
