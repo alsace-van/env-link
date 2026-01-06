@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 3.7 - Outil Coller étendu (meuble, zone chargement, carrosserie)
+// VERSION: 3.9 - Pan avec molette maintenue + glisser
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -25,6 +25,8 @@ import {
   Armchair,
   AlignHorizontalJustifyCenter,
   Magnet,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
@@ -149,6 +151,12 @@ export const LayoutCanvas = ({
   const [snapStep, setSnapStep] = useState<0 | 1>(0); // 0: aucun, 1: meuble 1 sélectionné
   const [snapSource, setSnapSource] = useState<AlignSelection | null>(null);
   const [snapHighlight, setSnapHighlight] = useState<paper.Path.Line | null>(null);
+
+  // États pour le zoom et pan
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
+  const lastPanPoint = useRef<{ x: number; y: number } | null>(null);
 
   const [furnitureForm, setFurnitureForm] = useState({
     longueur_mm: 0,
@@ -525,6 +533,147 @@ export const LayoutCanvas = ({
     },
     [getSidePosition],
   );
+
+  // Fonctions de zoom
+  const MIN_ZOOM = 0.5;
+  const MAX_ZOOM = 4;
+  const ZOOM_STEP = 0.1;
+
+  const handleZoom = useCallback(
+    (delta: number, centerX?: number, centerY?: number) => {
+      if (!paper.view) return;
+
+      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomLevel + delta));
+
+      if (newZoom !== zoomLevel) {
+        // Si on a un point de centre (position de la souris), zoomer vers ce point
+        if (centerX !== undefined && centerY !== undefined) {
+          const viewPosition = new paper.Point(centerX, centerY);
+          const viewCenter = paper.view.center;
+
+          // Calculer le nouveau centre pour zoomer vers le point de la souris
+          const zoomFactor = newZoom / zoomLevel;
+          const newCenter = viewCenter.add(viewPosition.subtract(viewCenter).multiply(1 - 1 / zoomFactor));
+
+          paper.view.zoom = newZoom;
+          paper.view.center = newCenter;
+        } else {
+          paper.view.zoom = newZoom;
+        }
+
+        setZoomLevel(newZoom);
+      }
+    },
+    [zoomLevel],
+  );
+
+  const handleZoomIn = useCallback(() => {
+    handleZoom(ZOOM_STEP);
+  }, [handleZoom]);
+
+  const handleZoomOut = useCallback(() => {
+    handleZoom(-ZOOM_STEP);
+  }, [handleZoom]);
+
+  const handleZoomReset = useCallback(() => {
+    if (!paper.view) return;
+    paper.view.zoom = 1;
+    paper.view.center = new paper.Point(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+    setZoomLevel(1);
+  }, []);
+
+  const handleWheel = useCallback(
+    (event: React.WheelEvent<HTMLCanvasElement>) => {
+      event.preventDefault();
+
+      // Récupérer la position de la souris relative au canvas
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const mouseX = event.clientX - rect.left;
+      const mouseY = event.clientY - rect.top;
+
+      // Convertir en coordonnées Paper.js
+      const viewPoint = paper.view?.viewToProject(new paper.Point(mouseX, mouseY));
+
+      // Delta négatif = scroll vers le haut = zoom in
+      const delta = event.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+
+      handleZoom(delta, viewPoint?.x, viewPoint?.y);
+    },
+    [handleZoom],
+  );
+
+  // Gestion du pan (déplacement) avec clic molette maintenu
+  const handleMouseDownForPan = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
+    // Clic molette (button 1) pour pan
+    if (event.button === 1) {
+      event.preventDefault();
+      event.stopPropagation();
+      setIsPanning(true);
+      setPanStart({ x: event.clientX, y: event.clientY });
+      lastPanPoint.current = { x: event.clientX, y: event.clientY };
+    }
+  }, []);
+
+  const handleMouseMoveForPan = useCallback(
+    (event: React.MouseEvent<HTMLCanvasElement>) => {
+      if (isPanning && lastPanPoint.current && paper.view) {
+        event.preventDefault();
+        const deltaX = event.clientX - lastPanPoint.current.x;
+        const deltaY = event.clientY - lastPanPoint.current.y;
+
+        // Déplacer la vue dans la direction opposée au mouvement de la souris
+        const currentCenter = paper.view.center;
+        paper.view.center = new paper.Point(
+          currentCenter.x - deltaX / paper.view.zoom,
+          currentCenter.y - deltaY / paper.view.zoom,
+        );
+
+        lastPanPoint.current = { x: event.clientX, y: event.clientY };
+      }
+    },
+    [isPanning],
+  );
+
+  const handleMouseUpForPan = useCallback(
+    (event: React.MouseEvent<HTMLCanvasElement>) => {
+      if (event.button === 1 || isPanning) {
+        event.preventDefault();
+        setIsPanning(false);
+        setPanStart(null);
+        lastPanPoint.current = null;
+      }
+    },
+    [isPanning],
+  );
+
+  // Empêcher le comportement par défaut du clic molette (autoscroll du navigateur)
+  const handleAuxClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
+  }, []);
+
+  // Empêcher le menu contextuel sur clic molette
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const preventMiddleClickScroll = (e: MouseEvent) => {
+      if (e.button === 1) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    // Empêcher l'autoscroll du navigateur
+    canvas.addEventListener("mousedown", preventMiddleClickScroll);
+    canvas.addEventListener("auxclick", preventMiddleClickScroll);
+
+    return () => {
+      canvas.removeEventListener("mousedown", preventMiddleClickScroll);
+      canvas.removeEventListener("auxclick", preventMiddleClickScroll);
+    };
+  }, []);
 
   // Fonction pour appliquer la nouvelle distance de cotation
   const applyCotation = useCallback(() => {
@@ -2718,18 +2867,58 @@ export const LayoutCanvas = ({
               </div>
             )}
 
-            <div className="bg-muted/30 rounded-lg p-2">
+            <div className="bg-muted/30 rounded-lg p-2 relative">
               <canvas
                 ref={canvasRef}
                 width={CANVAS_WIDTH}
                 height={CANVAS_HEIGHT}
-                className="border rounded bg-white cursor-crosshair"
+                className={`border rounded bg-white ${isPanning ? "cursor-grabbing" : "cursor-crosshair"}`}
+                onWheel={handleWheel}
+                onMouseDown={handleMouseDownForPan}
+                onMouseMove={handleMouseMoveForPan}
+                onMouseUp={handleMouseUpForPan}
+                onMouseLeave={handleMouseUpForPan}
+                onAuxClick={handleAuxClick}
               />
+
+              {/* Contrôles de zoom */}
+              <div className="absolute bottom-4 right-4 flex items-center gap-1 bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleZoomOut}
+                  disabled={zoomLevel <= MIN_ZOOM}
+                  className="h-8 w-8 p-0"
+                  title="Zoom arrière"
+                >
+                  <ZoomOut className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleZoomReset}
+                  className="h-8 px-2 text-xs font-mono"
+                  title="Réinitialiser le zoom"
+                >
+                  {Math.round(zoomLevel * 100)}%
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleZoomIn}
+                  disabled={zoomLevel >= MAX_ZOOM}
+                  className="h-8 w-8 p-0"
+                  title="Zoom avant"
+                >
+                  <ZoomIn className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
             <div className="mt-2 text-xs text-muted-foreground">
-              Échelle : 1:{Math.round(1 / scale)} • Zone en pointillés bleus = zone de chargement utile (
-              {loadAreaLength} x {loadAreaWidth} mm)
+              Échelle : 1:{Math.round(1 / scale)} • Zoom: {Math.round(zoomLevel * 100)}% • Zone en pointillés bleus =
+              zone de chargement utile ({loadAreaLength} x {loadAreaWidth} mm) • Molette: zoom • Molette maintenue +
+              glisser: déplacer
             </div>
           </div>
         </div>
