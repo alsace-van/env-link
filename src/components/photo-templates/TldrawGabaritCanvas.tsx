@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: TldrawGabaritCanvas
 // Canvas moderne pour gabarits CNC avec tldraw
-// VERSION: 1.4 - Fix zoom molette + courbes Bézier
+// VERSION: 1.6 - Force zoom molette
 // ============================================
 
 import { useEffect, useCallback, useState, useRef } from "react";
@@ -21,11 +21,11 @@ import {
   MousePointer,
   Hand,
   Pencil,
-  Minus,
   Square,
-  Circle,
   Eraser,
   Spline,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -38,14 +38,7 @@ interface TldrawGabaritCanvasProps {
 }
 
 // Outils à garder
-const ALLOWED_TOOLS = [
-  "select",
-  "hand",
-  "draw", // Courbe libre
-  "line", // Ligne droite (peut aussi faire des courbes)
-  "geo", // Formes géométriques
-  "eraser", // Gomme
-];
+const ALLOWED_TOOLS = ["select", "hand", "draw", "line", "geo", "eraser"];
 
 // Override pour personnaliser les outils
 const uiOverrides: TLUiOverrides = {
@@ -401,36 +394,49 @@ export function TldrawGabaritCanvas({
   const [editor, setEditor] = useState<Editor | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeTool, setActiveTool] = useState<string>("select");
+  const [zoomLevel, setZoomLevel] = useState(100);
   const containerRef = useRef<HTMLDivElement>(null);
-  const tldrawContainerRef = useRef<HTMLDivElement>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
 
-  // Empêcher le scroll de la page et forcer le zoom sur le canvas
+  // Intercepter la molette pour forcer le zoom au lieu du pan
   useEffect(() => {
-    const container = tldrawContainerRef.current;
-    if (!container) return;
+    if (!editor || !canvasContainerRef.current) return;
+
+    const container = canvasContainerRef.current;
 
     const handleWheel = (e: WheelEvent) => {
-      // Empêcher le scroll de la page
       e.preventDefault();
       e.stopPropagation();
+
+      // Position de la souris pour zoomer vers ce point
+      const screenPoint = { x: e.clientX, y: e.clientY };
+
+      // Scroll down = zoom out, scroll up = zoom in
+      if (e.deltaY > 0) {
+        editor.zoomOut(screenPoint, { duration: 0 });
+      } else {
+        editor.zoomIn(screenPoint, { duration: 0 });
+      }
+
+      setZoomLevel(Math.round(editor.getZoomLevel() * 100));
     };
 
-    // Ajouter avec passive: false pour permettre preventDefault
     container.addEventListener("wheel", handleWheel, { passive: false });
 
     return () => {
       container.removeEventListener("wheel", handleWheel);
     };
-  }, []);
+  }, [editor]);
 
   const handleMount = useCallback(
     (editorInstance: Editor) => {
       setEditor(editorInstance);
 
-      // Écouter les changements d'outil
+      // Écouter les changements d'outil et de zoom
       editorInstance.on("change", () => {
         const currentTool = editorInstance.getCurrentToolId();
         setActiveTool(currentTool);
+        setZoomLevel(Math.round(editorInstance.getZoomLevel() * 100));
       });
 
       // Charger l'image de fond
@@ -472,6 +478,7 @@ export function TldrawGabaritCanvas({
           });
 
           editorInstance.zoomToFit();
+          setZoomLevel(Math.round(editorInstance.getZoomLevel() * 100));
         };
         img.src = imageUrl;
       }
@@ -492,7 +499,7 @@ export function TldrawGabaritCanvas({
     [imageUrl, templateId, initialData],
   );
 
-  // Fonctions pour changer d'outil via notre barre personnalisée
+  // Fonctions pour changer d'outil
   const selectTool = useCallback(
     (toolId: string) => {
       if (editor) {
@@ -502,6 +509,21 @@ export function TldrawGabaritCanvas({
     },
     [editor],
   );
+
+  // Fonctions de zoom manuel
+  const handleZoomIn = useCallback(() => {
+    if (editor) {
+      editor.zoomIn();
+      setZoomLevel(Math.round(editor.getZoomLevel() * 100));
+    }
+  }, [editor]);
+
+  const handleZoomOut = useCallback(() => {
+    if (editor) {
+      editor.zoomOut();
+      setZoomLevel(Math.round(editor.getZoomLevel() * 100));
+    }
+  }, [editor]);
 
   const handleSave = useCallback(() => {
     if (!editor || !onSave) return;
@@ -619,6 +641,7 @@ export function TldrawGabaritCanvas({
   const handleResetView = useCallback(() => {
     if (editor) {
       editor.zoomToFit();
+      setZoomLevel(Math.round(editor.getZoomLevel() * 100));
     }
   }, [editor]);
 
@@ -652,6 +675,19 @@ export function TldrawGabaritCanvas({
           <ToolButton toolId="line" icon={Spline} label="Ligne/Courbe (L)" />
           <ToolButton toolId="geo" icon={Square} label="Formes (R)" />
           <ToolButton toolId="eraser" icon={Eraser} label="Gomme (E)" />
+        </div>
+
+        <Separator orientation="vertical" className="h-6" />
+
+        {/* Contrôles de zoom */}
+        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+          <Button variant="ghost" size="sm" onClick={handleZoomOut} title="Zoom arrière" className="h-8 w-8 p-0">
+            <ZoomOut className="h-4 w-4" />
+          </Button>
+          <span className="text-xs font-mono w-12 text-center">{zoomLevel}%</span>
+          <Button variant="ghost" size="sm" onClick={handleZoomIn} title="Zoom avant" className="h-8 w-8 p-0">
+            <ZoomIn className="h-4 w-4" />
+          </Button>
         </div>
 
         <Separator orientation="vertical" className="h-6" />
@@ -696,17 +732,17 @@ export function TldrawGabaritCanvas({
         )}
       </div>
 
-      {/* Canvas tldraw avec blocage du scroll */}
-      <div ref={tldrawContainerRef} className="flex-1 relative" style={{ overflow: "hidden" }}>
+      {/* Canvas tldraw avec interception de la molette */}
+      <div ref={canvasContainerRef} className="flex-1 relative" style={{ overflow: "hidden" }}>
         <Tldraw onMount={handleMount} overrides={uiOverrides} hideUi={false} />
       </div>
 
       {/* Info en bas */}
       <div className="p-2 bg-gray-50 border-t text-xs text-muted-foreground flex justify-between">
         <span>
-          💡 <strong>Ligne/Courbe</strong>: Double-clic pour terminer • Clic sur un point pour ajouter une courbe
+          💡 <strong>Molette</strong>: zoom • <strong>Clic milieu / Espace+glisser</strong>: déplacer
         </span>
-        <span>Molette: zoom • Espace+glisser: déplacer</span>
+        <span>Ligne/Courbe: double-clic pour terminer</span>
       </div>
     </div>
   );
