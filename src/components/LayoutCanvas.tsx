@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 4.6 - Canvas plein écran dynamique (16/9 sans déformation)
+// VERSION: 4.7 - Fix zoom molette et boutons en plein écran
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -631,7 +631,7 @@ export const LayoutCanvas = ({
     return () => {
       canvas.removeEventListener("wheel", handleWheelNative);
     };
-  }, [handleWheelNative]);
+  }, [handleWheelNative, canvasWidth, canvasHeight]); // Réattacher quand le canvas change de taille
 
   // Gestion du pan (déplacement) avec l'outil Main
   const handleMouseDownForPan = useCallback(
@@ -2966,7 +2966,7 @@ export const LayoutCanvas = ({
 
             <div
               className={`bg-muted/30 rounded-lg p-2 relative ${
-                isFullscreen ? "flex-1 flex items-center justify-center" : ""
+                isFullscreen ? "flex-1 flex items-center justify-center overflow-hidden" : ""
               }`}
             >
               <canvas
@@ -2983,8 +2983,12 @@ export const LayoutCanvas = ({
                 onMouseLeave={handleMouseUpForPan}
               />
 
-              {/* Contrôles de zoom et plein écran */}
-              <div className="absolute bottom-4 right-4 flex items-center gap-1 bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1">
+              {/* Contrôles de zoom et plein écran - position fixe en fullscreen */}
+              <div
+                className={`flex items-center gap-1 bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1 z-50 ${
+                  isFullscreen ? "fixed bottom-6 right-6" : "absolute bottom-4 right-4"
+                }`}
+              >
                 <Button
                   variant="ghost"
                   size="sm"
