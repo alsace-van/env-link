@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 3.5 - Fix affichage essieux persistant (utilisation refs)
+// VERSION: 3.6 - Ajout outils Aligner et Coller (align/snap)
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -23,6 +23,8 @@ import {
   Edit,
   Crosshair,
   Armchair,
+  AlignHorizontalJustifyCenter,
+  Magnet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
@@ -95,7 +97,9 @@ export const LayoutCanvas = ({
   rangeesSieges = [],
 }: LayoutCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [activeTool, setActiveTool] = useState<"select" | "rectangle" | "measure" | "cotation">("select");
+  const [activeTool, setActiveTool] = useState<"select" | "rectangle" | "measure" | "cotation" | "align" | "snap">(
+    "select",
+  );
   const [showVASPOverlay, setShowVASPOverlay] = useState(true); // Afficher les éléments VASP
   const [color, setColor] = useState("#3b82f6");
   const [strokeWidth, setStrokeWidth] = useState(2);
@@ -128,6 +132,23 @@ export const LayoutCanvas = ({
   const [cotationNewDistance, setCotationNewDistance] = useState<string>("");
   const [showCotationDialog, setShowCotationDialog] = useState(false);
   const [cotationLine, setCotationLine] = useState<paper.Path.Line | null>(null);
+
+  // États pour l'outil Aligner (aligner deux façades sur le même plan)
+  type FurnitureSide = "left" | "right" | "top" | "bottom";
+  interface AlignSelection {
+    furnitureId: string;
+    side: FurnitureSide;
+    position: number; // position X ou Y du côté
+    item: paper.Group;
+  }
+  const [alignStep, setAlignStep] = useState<0 | 1>(0); // 0: aucun, 1: meuble 1 sélectionné
+  const [alignSource, setAlignSource] = useState<AlignSelection | null>(null);
+  const [alignHighlight, setAlignHighlight] = useState<paper.Path.Line | null>(null);
+
+  // États pour l'outil Coller (coller deux meubles l'un contre l'autre)
+  const [snapStep, setSnapStep] = useState<0 | 1>(0); // 0: aucun, 1: meuble 1 sélectionné
+  const [snapSource, setSnapSource] = useState<AlignSelection | null>(null);
+  const [snapHighlight, setSnapHighlight] = useState<paper.Path.Line | null>(null);
 
   const [furnitureForm, setFurnitureForm] = useState({
     longueur_mm: 0,
@@ -223,6 +244,22 @@ export const LayoutCanvas = ({
     porteFauxArriereRef.current = porteFauxArriere;
   }, [empattement, porteFauxAvant, porteFauxArriere]);
 
+  // Refs pour align et snap
+  const alignStepRef = useRef(alignStep);
+  const alignSourceRef = useRef(alignSource);
+  const snapStepRef = useRef(snapStep);
+  const snapSourceRef = useRef(snapSource);
+
+  useEffect(() => {
+    alignStepRef.current = alignStep;
+    alignSourceRef.current = alignSource;
+  }, [alignStep, alignSource]);
+
+  useEffect(() => {
+    snapStepRef.current = snapStep;
+    snapSourceRef.current = snapSource;
+  }, [snapStep, snapSource]);
+
   // Réinitialiser la cotation quand on change d'outil
   useEffect(() => {
     if (activeTool !== "cotation") {
@@ -246,6 +283,50 @@ export const LayoutCanvas = ({
     }
   }, [activeTool]);
 
+  // Réinitialiser l'outil Aligner quand on change d'outil
+  useEffect(() => {
+    if (activeTool !== "align") {
+      setAlignStep(0);
+      setAlignSource(null);
+      if (alignHighlight) {
+        alignHighlight.remove();
+        setAlignHighlight(null);
+      }
+      // Nettoyer les indicateurs visuels
+      if (paper.project && paper.project.activeLayer) {
+        const toRemove: paper.Item[] = [];
+        paper.project.activeLayer.children.forEach((child) => {
+          if (child.data.isAlignIndicator) {
+            toRemove.push(child);
+          }
+        });
+        toRemove.forEach((item) => item.remove());
+      }
+    }
+  }, [activeTool, alignHighlight]);
+
+  // Réinitialiser l'outil Coller quand on change d'outil
+  useEffect(() => {
+    if (activeTool !== "snap") {
+      setSnapStep(0);
+      setSnapSource(null);
+      if (snapHighlight) {
+        snapHighlight.remove();
+        setSnapHighlight(null);
+      }
+      // Nettoyer les indicateurs visuels
+      if (paper.project && paper.project.activeLayer) {
+        const toRemove: paper.Item[] = [];
+        paper.project.activeLayer.children.forEach((child) => {
+          if (child.data.isSnapIndicator) {
+            toRemove.push(child);
+          }
+        });
+        toRemove.forEach((item) => item.remove());
+      }
+    }
+  }, [activeTool, snapHighlight]);
+
   // Fonction pour calculer la position X de l'essieu AV
   const getEssieuAvX = useCallback(() => {
     const currentScale = scaleRef.current;
@@ -257,6 +338,193 @@ export const LayoutCanvas = ({
     const scaledPorteFauxAvant = calculatedPorteFauxAvant * currentScale;
     return vehicleLeft + scaledPorteFauxAvant;
   }, []);
+
+  // Fonction pour détecter le côté le plus proche d'un meuble par rapport au point cliqué
+  const getClosestSide = useCallback((item: paper.Group, clickPoint: paper.Point): FurnitureSide => {
+    const bounds = item.bounds;
+
+    // Distances aux 4 côtés
+    const distances = {
+      left: Math.abs(clickPoint.x - bounds.left),
+      right: Math.abs(clickPoint.x - bounds.right),
+      top: Math.abs(clickPoint.y - bounds.top),
+      bottom: Math.abs(clickPoint.y - bounds.bottom),
+    };
+
+    // Trouver le côté le plus proche
+    let minDist = Infinity;
+    let closest: FurnitureSide = "left";
+    (Object.keys(distances) as FurnitureSide[]).forEach((side) => {
+      if (distances[side] < minDist) {
+        minDist = distances[side];
+        closest = side;
+      }
+    });
+
+    return closest;
+  }, []);
+
+  // Fonction pour obtenir la position (X ou Y) d'un côté
+  const getSidePosition = useCallback((item: paper.Group, side: FurnitureSide): number => {
+    const bounds = item.bounds;
+    switch (side) {
+      case "left":
+        return bounds.left;
+      case "right":
+        return bounds.right;
+      case "top":
+        return bounds.top;
+      case "bottom":
+        return bounds.bottom;
+    }
+  }, []);
+
+  // Fonction pour créer une ligne de surbrillance sur un côté
+  const createSideHighlight = useCallback(
+    (item: paper.Group, side: FurnitureSide, color: string, dataFlag: string): paper.Path.Line => {
+      const bounds = item.bounds;
+      let from: paper.Point, to: paper.Point;
+
+      switch (side) {
+        case "left":
+          from = new paper.Point(bounds.left, bounds.top);
+          to = new paper.Point(bounds.left, bounds.bottom);
+          break;
+        case "right":
+          from = new paper.Point(bounds.right, bounds.top);
+          to = new paper.Point(bounds.right, bounds.bottom);
+          break;
+        case "top":
+          from = new paper.Point(bounds.left, bounds.top);
+          to = new paper.Point(bounds.right, bounds.top);
+          break;
+        case "bottom":
+          from = new paper.Point(bounds.left, bounds.bottom);
+          to = new paper.Point(bounds.right, bounds.bottom);
+          break;
+      }
+
+      const highlight = new paper.Path.Line(from, to);
+      highlight.strokeColor = new paper.Color(color);
+      highlight.strokeWidth = 4;
+      highlight.data[dataFlag] = true;
+      return highlight;
+    },
+    [],
+  );
+
+  // Fonction pour appliquer l'alignement (aligner les côtés sur le même plan)
+  const applyAlign = useCallback(
+    (source: AlignSelection, target: AlignSelection) => {
+      const sourcePos = getSidePosition(source.item, source.side);
+      const targetPos = getSidePosition(target.item, target.side);
+
+      // Calculer le déplacement nécessaire
+      let delta: paper.Point;
+      if (source.side === "left" || source.side === "right") {
+        // Alignement horizontal (même X)
+        delta = new paper.Point(targetPos - sourcePos, 0);
+      } else {
+        // Alignement vertical (même Y)
+        delta = new paper.Point(0, targetPos - sourcePos);
+      }
+
+      // Déplacer le meuble source
+      source.item.position = source.item.position.add(delta);
+
+      const currentScale = scaleRef.current;
+      const deltaMm = Math.round(Math.sqrt(delta.x * delta.x + delta.y * delta.y) / currentScale);
+      toast.success(`Meuble aligné (déplacement: ${deltaMm} mm)`);
+
+      // Nettoyer les highlights
+      if (paper.project && paper.project.activeLayer) {
+        const toRemove: paper.Item[] = [];
+        paper.project.activeLayer.children.forEach((child) => {
+          if (child.data.isAlignIndicator) {
+            toRemove.push(child);
+          }
+        });
+        toRemove.forEach((item) => item.remove());
+      }
+
+      // Réinitialiser l'outil
+      setAlignStep(0);
+      setAlignSource(null);
+      setAlignHighlight(null);
+    },
+    [getSidePosition],
+  );
+
+  // Fonction pour appliquer le collage (coller deux meubles l'un contre l'autre)
+  const applySnap = useCallback(
+    (source: AlignSelection, target: AlignSelection) => {
+      const sourceBounds = source.item.bounds;
+      const targetBounds = target.item.bounds;
+
+      // Calculer le déplacement pour coller les côtés
+      let delta: paper.Point;
+
+      // Selon les côtés sélectionnés, on calcule le déplacement
+      if (source.side === "right" && target.side === "left") {
+        // Coller le côté droit de source contre le côté gauche de target
+        delta = new paper.Point(targetBounds.left - sourceBounds.right, 0);
+      } else if (source.side === "left" && target.side === "right") {
+        // Coller le côté gauche de source contre le côté droit de target
+        delta = new paper.Point(targetBounds.right - sourceBounds.left, 0);
+      } else if (source.side === "bottom" && target.side === "top") {
+        // Coller le côté bas de source contre le côté haut de target
+        delta = new paper.Point(0, targetBounds.top - sourceBounds.bottom);
+      } else if (source.side === "top" && target.side === "bottom") {
+        // Coller le côté haut de source contre le côté bas de target
+        delta = new paper.Point(0, targetBounds.bottom - sourceBounds.top);
+      } else if (source.side === "left" && target.side === "left") {
+        // Les deux côtés gauches → coller sur le même X
+        delta = new paper.Point(targetBounds.left - sourceBounds.left, 0);
+      } else if (source.side === "right" && target.side === "right") {
+        // Les deux côtés droits → coller sur le même X
+        delta = new paper.Point(targetBounds.right - sourceBounds.right, 0);
+      } else if (source.side === "top" && target.side === "top") {
+        // Les deux côtés hauts → coller sur le même Y
+        delta = new paper.Point(0, targetBounds.top - sourceBounds.top);
+      } else if (source.side === "bottom" && target.side === "bottom") {
+        // Les deux côtés bas → coller sur le même Y
+        delta = new paper.Point(0, targetBounds.bottom - sourceBounds.bottom);
+      } else {
+        // Cas par défaut: coller les centres des côtés
+        const sourcePos = getSidePosition(source.item, source.side);
+        const targetPos = getSidePosition(target.item, target.side);
+        if (source.side === "left" || source.side === "right") {
+          delta = new paper.Point(targetPos - sourcePos, 0);
+        } else {
+          delta = new paper.Point(0, targetPos - sourcePos);
+        }
+      }
+
+      // Déplacer le meuble source
+      source.item.position = source.item.position.add(delta);
+
+      const currentScale = scaleRef.current;
+      const deltaMm = Math.round(Math.sqrt(delta.x * delta.x + delta.y * delta.y) / currentScale);
+      toast.success(`Meuble collé (déplacement: ${deltaMm} mm)`);
+
+      // Nettoyer les highlights
+      if (paper.project && paper.project.activeLayer) {
+        const toRemove: paper.Item[] = [];
+        paper.project.activeLayer.children.forEach((child) => {
+          if (child.data.isSnapIndicator) {
+            toRemove.push(child);
+          }
+        });
+        toRemove.forEach((item) => item.remove());
+      }
+
+      // Réinitialiser l'outil
+      setSnapStep(0);
+      setSnapSource(null);
+      setSnapHighlight(null);
+    },
+    [getSidePosition],
+  );
 
   // Fonction pour appliquer la nouvelle distance de cotation
   const applyCotation = useCallback(() => {
@@ -1032,6 +1300,175 @@ export const LayoutCanvas = ({
           } else {
             toast.warning("Cliquez sur un meuble pour définir la cible");
           }
+        }
+
+        return;
+      }
+
+      // Mode Aligner (align)
+      if (activeToolRef.current === "align") {
+        const hitResult = paper.project.hitTest(event.point, {
+          fill: true,
+          stroke: true,
+          tolerance: 10,
+        });
+
+        // Chercher un meuble
+        let clickedFurniture: paper.Group | null = null;
+        if (hitResult?.item) {
+          if (hitResult.item.parent instanceof paper.Group && hitResult.item.parent.data.isFurniture) {
+            clickedFurniture = hitResult.item.parent as paper.Group;
+          } else if (hitResult.item instanceof paper.Group && hitResult.item.data.isFurniture) {
+            clickedFurniture = hitResult.item as paper.Group;
+          }
+        }
+
+        if (!clickedFurniture) {
+          toast.warning("Cliquez sur un meuble");
+          return;
+        }
+
+        const currentAlignStep = alignStepRef.current;
+        const currentAlignSource = alignSourceRef.current;
+
+        if (currentAlignStep === 0) {
+          // Première sélection - meuble source
+          const side = getClosestSide(clickedFurniture, event.point);
+          const position = getSidePosition(clickedFurniture, side);
+
+          // Supprimer les anciens highlights
+          if (paper.project && paper.project.activeLayer) {
+            paper.project.activeLayer.children.forEach((child) => {
+              if (child.data.isAlignIndicator) child.remove();
+            });
+          }
+
+          // Créer le highlight bleu
+          const highlight = createSideHighlight(clickedFurniture, side, "#3b82f6", "isAlignIndicator");
+          setAlignHighlight(highlight);
+
+          setAlignSource({
+            furnitureId: clickedFurniture.data.furnitureId,
+            side,
+            position,
+            item: clickedFurniture,
+          });
+          setAlignStep(1);
+
+          const sideLabels = { left: "gauche", right: "droit", top: "haut", bottom: "bas" };
+          toast.info(`Meuble 1 sélectionné (côté ${sideLabels[side]}). Cliquez sur le côté du meuble 2 pour aligner.`);
+        } else if (currentAlignStep === 1 && currentAlignSource) {
+          // Deuxième sélection - meuble cible
+          if (clickedFurniture.data.furnitureId === currentAlignSource.furnitureId) {
+            toast.warning("Sélectionnez un autre meuble");
+            return;
+          }
+
+          const side = getClosestSide(clickedFurniture, event.point);
+
+          // Vérifier que les côtés sont compatibles (même orientation)
+          const sourceIsHorizontal = currentAlignSource.side === "left" || currentAlignSource.side === "right";
+          const targetIsHorizontal = side === "left" || side === "right";
+
+          if (sourceIsHorizontal !== targetIsHorizontal) {
+            toast.warning("Les côtés doivent être de même orientation (gauche/droit ou haut/bas)");
+            return;
+          }
+
+          // Créer le highlight vert pour la cible
+          const highlight2 = createSideHighlight(clickedFurniture, side, "#22c55e", "isAlignIndicator");
+
+          const target: AlignSelection = {
+            furnitureId: clickedFurniture.data.furnitureId,
+            side,
+            position: getSidePosition(clickedFurniture, side),
+            item: clickedFurniture,
+          };
+
+          // Appliquer l'alignement
+          setTimeout(() => {
+            applyAlign(currentAlignSource, target);
+          }, 200);
+        }
+
+        return;
+      }
+
+      // Mode Coller (snap)
+      if (activeToolRef.current === "snap") {
+        const hitResult = paper.project.hitTest(event.point, {
+          fill: true,
+          stroke: true,
+          tolerance: 10,
+        });
+
+        // Chercher un meuble
+        let clickedFurniture: paper.Group | null = null;
+        if (hitResult?.item) {
+          if (hitResult.item.parent instanceof paper.Group && hitResult.item.parent.data.isFurniture) {
+            clickedFurniture = hitResult.item.parent as paper.Group;
+          } else if (hitResult.item instanceof paper.Group && hitResult.item.data.isFurniture) {
+            clickedFurniture = hitResult.item as paper.Group;
+          }
+        }
+
+        if (!clickedFurniture) {
+          toast.warning("Cliquez sur un meuble");
+          return;
+        }
+
+        const currentSnapStep = snapStepRef.current;
+        const currentSnapSource = snapSourceRef.current;
+
+        if (currentSnapStep === 0) {
+          // Première sélection - meuble source
+          const side = getClosestSide(clickedFurniture, event.point);
+          const position = getSidePosition(clickedFurniture, side);
+
+          // Supprimer les anciens highlights
+          if (paper.project && paper.project.activeLayer) {
+            paper.project.activeLayer.children.forEach((child) => {
+              if (child.data.isSnapIndicator) child.remove();
+            });
+          }
+
+          // Créer le highlight orange
+          const highlight = createSideHighlight(clickedFurniture, side, "#f97316", "isSnapIndicator");
+          setSnapHighlight(highlight);
+
+          setSnapSource({
+            furnitureId: clickedFurniture.data.furnitureId,
+            side,
+            position,
+            item: clickedFurniture,
+          });
+          setSnapStep(1);
+
+          const sideLabels = { left: "gauche", right: "droit", top: "haut", bottom: "bas" };
+          toast.info(`Meuble 1 sélectionné (côté ${sideLabels[side]}). Cliquez sur le côté du meuble 2 pour coller.`);
+        } else if (currentSnapStep === 1 && currentSnapSource) {
+          // Deuxième sélection - meuble cible
+          if (clickedFurniture.data.furnitureId === currentSnapSource.furnitureId) {
+            toast.warning("Sélectionnez un autre meuble");
+            return;
+          }
+
+          const side = getClosestSide(clickedFurniture, event.point);
+
+          // Créer le highlight rouge pour la cible
+          const highlight2 = createSideHighlight(clickedFurniture, side, "#ef4444", "isSnapIndicator");
+
+          const target: AlignSelection = {
+            furnitureId: clickedFurniture.data.furnitureId,
+            side,
+            position: getSidePosition(clickedFurniture, side),
+            item: clickedFurniture,
+          };
+
+          // Appliquer le collage
+          setTimeout(() => {
+            applySnap(currentSnapSource, target);
+          }, 200);
         }
 
         return;
@@ -1952,6 +2389,28 @@ export const LayoutCanvas = ({
                 {cotationStep > 0 && (
                   <span className="ml-1 px-1.5 py-0.5 text-xs bg-white/20 rounded">{cotationStep}/2</span>
                 )}
+              </Button>
+              <Button
+                variant={activeTool === "align" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveTool("align")}
+                title="Aligner - Aligne deux façades de meubles sur le même plan"
+                className={activeTool === "align" ? "bg-blue-600 hover:bg-blue-700" : ""}
+              >
+                <AlignHorizontalJustifyCenter className="h-4 w-4 mr-2" />
+                Aligner
+                {alignStep > 0 && <span className="ml-1 px-1.5 py-0.5 text-xs bg-white/20 rounded">1/2</span>}
+              </Button>
+              <Button
+                variant={activeTool === "snap" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveTool("snap")}
+                title="Coller - Colle un meuble contre un autre"
+                className={activeTool === "snap" ? "bg-orange-600 hover:bg-orange-700" : ""}
+              >
+                <Magnet className="h-4 w-4 mr-2" />
+                Coller
+                {snapStep > 0 && <span className="ml-1 px-1.5 py-0.5 text-xs bg-white/20 rounded">1/2</span>}
               </Button>
 
               <Separator orientation="vertical" className="h-6" />
