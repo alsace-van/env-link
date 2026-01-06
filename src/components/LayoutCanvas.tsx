@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 3.2 - Sauvegarde position meubles en mm + recréation au chargement
+// VERSION: 3.3 - Utilisation des porte-à-faux depuis les props COC
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
