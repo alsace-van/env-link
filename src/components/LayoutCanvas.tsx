@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 4.8 - Fix double zone de chargement en plein écran
+// VERSION: 5.0 - Fix majeur transition plein écran
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -889,9 +889,24 @@ export const LayoutCanvas = ({
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    // Setup Paper.js
+    // Cleanup agressif avant setup
+    if (paper.projects && paper.projects.length > 0) {
+      paper.projects.forEach((proj) => {
+        if (proj) {
+          proj.clear();
+          proj.remove();
+        }
+      });
+    }
+
+    // Setup Paper.js avec le canvas actuel
     paper.setup(canvasRef.current);
     paperInitializedRef.current = true;
+
+    // Vérifier que viewSize correspond aux dimensions du canvas
+    if (paper.view) {
+      paper.view.viewSize = new paper.Size(canvasWidth, canvasHeight);
+    }
 
     // Fonction pour dessiner le contour de la zone de chargement
     const drawLoadAreaOutline = () => {
@@ -904,12 +919,15 @@ export const LayoutCanvas = ({
       });
       toRemove.forEach((item) => item.remove());
 
-      const currentScale = scaleRef.current;
-      const currentLength = loadAreaLengthRef.current;
-      const currentWidth = loadAreaWidthRef.current;
-      const currentOffsetX = loadAreaOffsetXRef.current;
-      const currentVehicleLength = vehicleLengthRef.current;
-      const currentVehicleWidth = vehicleWidthRef.current;
+      // Utiliser les valeurs directes capturées dans la closure
+      const currentCanvasWidth = canvasWidth;
+      const currentCanvasHeight = canvasHeight;
+      const currentScale = scale;
+      const currentLength = loadAreaLength;
+      const currentWidth = loadAreaWidth;
+      const currentOffsetX = loadAreaOffsetX;
+      const currentVehicleLength = vehicleLength;
+      const currentVehicleWidth = vehicleWidth;
 
       const scaledLength = currentLength * currentScale;
       const scaledWidth = currentWidth * currentScale;
@@ -920,8 +938,8 @@ export const LayoutCanvas = ({
       const scaledVehicleWidth = currentVehicleWidth * currentScale;
 
       // Position du véhicule (centré dans le canvas)
-      const vehicleLeft = (canvasWidthRef.current - scaledVehicleLength) / 2;
-      const vehicleTop = (canvasHeightRef.current - scaledVehicleWidth) / 2;
+      const vehicleLeft = (currentCanvasWidth - scaledVehicleLength) / 2;
+      const vehicleTop = (currentCanvasHeight - scaledVehicleWidth) / 2;
 
       // Position de la zone de chargement (avec offset depuis l'avant du véhicule)
       const loadAreaLeft = vehicleLeft + scaledOffsetX;
@@ -931,6 +949,7 @@ export const LayoutCanvas = ({
         vehicule: { longueur: currentVehicleLength, largeur: currentVehicleWidth },
         zoneChargement: { longueur: currentLength, largeur: currentWidth, offsetX: currentOffsetX },
         echelle: currentScale,
+        canvasDimensions: { width: currentCanvasWidth, height: currentCanvasHeight },
       });
 
       // 1. Contour GRIS = Véhicule complet (dimensions totales)
@@ -948,7 +967,7 @@ export const LayoutCanvas = ({
 
       // Label dimensions véhicule
       const vehicleLabelTop = new paper.PointText({
-        point: [canvasWidthRef.current / 2, vehicleTop - 8],
+        point: [currentCanvasWidth / 2, vehicleTop - 8],
         content: `Véhicule: ${currentVehicleLength} x ${currentVehicleWidth} mm`,
         fillColor: new paper.Color("#6b7280"),
         fontSize: 10,
@@ -984,7 +1003,7 @@ export const LayoutCanvas = ({
       // Afficher l'échelle en bas à gauche
       const scaleRatio = Math.round(1 / currentScale);
       const scaleLabel = new paper.PointText({
-        point: [10, canvasHeightRef.current - 10],
+        point: [10, currentCanvasHeight - 10],
         content: `Échelle : 1:${scaleRatio}`,
         fillColor: new paper.Color("#6b7280"),
         fontSize: 11,
@@ -2467,7 +2486,10 @@ export const LayoutCanvas = ({
     loadAndReactivateTool();
 
     return () => {
-      paper.project.clear();
+      // Cleanup complet quand on change de projet ou de dimensions
+      if (paper.project) {
+        paper.project.clear();
+      }
       paperInitializedRef.current = false;
     };
   }, [
@@ -2479,120 +2501,9 @@ export const LayoutCanvas = ({
     porteFauxAvant,
     vehicleLength,
     vehicleWidth,
+    canvasWidth,
+    canvasHeight,
   ]);
-
-  // useEffect séparé pour gérer le redimensionnement du canvas
-  useEffect(() => {
-    if (!paper.view || !paperInitializedRef.current) return;
-
-    // Mettre à jour la taille de la vue Paper.js
-    paper.view.viewSize = new paper.Size(canvasWidth, canvasHeight);
-
-    // Supprimer et redessiner les contours (véhicule et zone de chargement)
-    const toRemove: paper.Item[] = [];
-    paper.project.activeLayer.children.forEach((child) => {
-      if (child.data?.isLoadAreaOutline || child.data?.isVehicleOutline) {
-        toRemove.push(child);
-      }
-    });
-    toRemove.forEach((item) => item.remove());
-
-    // Recalculer les positions avec les nouvelles dimensions
-    const currentScale = scaleRef.current;
-    const currentLength = loadAreaLengthRef.current;
-    const currentWidth = loadAreaWidthRef.current;
-    const currentOffsetX = loadAreaOffsetXRef.current;
-    const currentVehicleLength = vehicleLengthRef.current;
-    const currentVehicleWidth = vehicleWidthRef.current;
-
-    const scaledLength = currentLength * currentScale;
-    const scaledWidth = currentWidth * currentScale;
-    const scaledOffsetX = currentOffsetX * currentScale;
-    const scaledVehicleLength = currentVehicleLength * currentScale;
-    const scaledVehicleWidth = currentVehicleWidth * currentScale;
-
-    const vehicleLeft = (canvasWidth - scaledVehicleLength) / 2;
-    const vehicleTop = (canvasHeight - scaledVehicleWidth) / 2;
-    const loadAreaLeft = vehicleLeft + scaledOffsetX;
-    const loadAreaTop = vehicleTop + (scaledVehicleWidth - scaledWidth) / 2;
-
-    // Redessiner le véhicule
-    const vehicleOutline = new paper.Path.Rectangle({
-      point: [vehicleLeft, vehicleTop],
-      size: [scaledVehicleLength, scaledVehicleWidth],
-      strokeColor: new paper.Color("#9ca3af"),
-      strokeWidth: 2,
-      fillColor: new paper.Color("#f9fafb"),
-      locked: true,
-    });
-    vehicleOutline.data.isVehicleOutline = true;
-    vehicleOutline.sendToBack();
-
-    // Label véhicule
-    const vehicleLabelTop = new paper.PointText({
-      point: [canvasWidth / 2, vehicleTop - 8],
-      content: `Véhicule: ${currentVehicleLength} x ${currentVehicleWidth} mm`,
-      fillColor: new paper.Color("#6b7280"),
-      fontSize: 10,
-      justification: "center",
-    });
-    vehicleLabelTop.data.isVehicleOutline = true;
-    vehicleLabelTop.locked = true;
-
-    // Zone de chargement
-    const loadAreaOutline = new paper.Path.Rectangle({
-      point: [loadAreaLeft, loadAreaTop],
-      size: [scaledLength, scaledWidth],
-      strokeColor: new paper.Color("#3b82f6"),
-      strokeWidth: 3,
-      dashArray: [10, 5],
-      fillColor: new paper.Color("#dbeafe"),
-      locked: true,
-    });
-    loadAreaOutline.fillColor!.alpha = 0.4;
-    loadAreaOutline.data.isLoadAreaOutline = true;
-
-    // Label zone de chargement
-    const loadAreaLabel = new paper.PointText({
-      point: [loadAreaLeft + scaledLength / 2, loadAreaTop + scaledWidth + 15],
-      content: `Zone chargement: ${currentLength} x ${currentWidth} mm`,
-      fillColor: new paper.Color("#3b82f6"),
-      fontSize: 10,
-      justification: "center",
-    });
-    loadAreaLabel.data.isLoadAreaOutline = true;
-    loadAreaLabel.locked = true;
-
-    // Label échelle
-    const scaleRatio = Math.round(1 / currentScale);
-    const scaleLabel = new paper.PointText({
-      point: [10, canvasHeight - 10],
-      content: `Échelle : 1:${scaleRatio}`,
-      fillColor: new paper.Color("#6b7280"),
-      fontSize: 11,
-      fontWeight: "bold",
-      justification: "left",
-    });
-    scaleLabel.data.isLoadAreaOutline = true;
-    scaleLabel.locked = true;
-
-    // Repositionner les meubles existants
-    paper.project.activeLayer.children.forEach((child) => {
-      if (child.data?.isFurniture && child.data?.positionMm) {
-        const posXMm = child.data.positionMm.x;
-        const posYMm = child.data.positionMm.y;
-        const newX = loadAreaLeft + posXMm * currentScale;
-        const newY = loadAreaTop + posYMm * currentScale;
-
-        if (child instanceof paper.Group) {
-          const currentBounds = child.bounds;
-          const deltaX = newX - currentBounds.left;
-          const deltaY = newY - currentBounds.top;
-          child.translate(new paper.Point(deltaX, deltaY));
-        }
-      }
-    });
-  }, [canvasWidth, canvasHeight, scale]);
 
   // useEffect séparé pour gérer le toggle VASP (afficher/masquer les éléments)
   useEffect(() => {
