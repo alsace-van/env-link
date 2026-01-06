@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 4.7 - Fix zoom molette et boutons en plein écran
+// VERSION: 4.8 - Fix double zone de chargement en plein écran
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -217,6 +217,7 @@ export const LayoutCanvas = ({
   const porteFauxArriereRef = useRef(porteFauxArriere);
   const canvasWidthRef = useRef(canvasWidth);
   const canvasHeightRef = useRef(canvasHeight);
+  const paperInitializedRef = useRef(false);
 
   useEffect(() => {
     activeToolRef.current = activeTool;
@@ -890,15 +891,18 @@ export const LayoutCanvas = ({
 
     // Setup Paper.js
     paper.setup(canvasRef.current);
+    paperInitializedRef.current = true;
 
     // Fonction pour dessiner le contour de la zone de chargement
     const drawLoadAreaOutline = () => {
       // Supprimer les anciens rectangles s'ils existent
+      const toRemove: paper.Item[] = [];
       paper.project.activeLayer.children.forEach((child) => {
         if (child.data?.isLoadAreaOutline || child.data?.isVehicleOutline) {
-          child.remove();
+          toRemove.push(child);
         }
       });
+      toRemove.forEach((item) => item.remove());
 
       const currentScale = scaleRef.current;
       const currentLength = loadAreaLengthRef.current;
@@ -2464,6 +2468,7 @@ export const LayoutCanvas = ({
 
     return () => {
       paper.project.clear();
+      paperInitializedRef.current = false;
     };
   }, [
     projectId,
@@ -2474,9 +2479,120 @@ export const LayoutCanvas = ({
     porteFauxAvant,
     vehicleLength,
     vehicleWidth,
-    canvasWidth,
-    canvasHeight,
   ]);
+
+  // useEffect séparé pour gérer le redimensionnement du canvas
+  useEffect(() => {
+    if (!paper.view || !paperInitializedRef.current) return;
+
+    // Mettre à jour la taille de la vue Paper.js
+    paper.view.viewSize = new paper.Size(canvasWidth, canvasHeight);
+
+    // Supprimer et redessiner les contours (véhicule et zone de chargement)
+    const toRemove: paper.Item[] = [];
+    paper.project.activeLayer.children.forEach((child) => {
+      if (child.data?.isLoadAreaOutline || child.data?.isVehicleOutline) {
+        toRemove.push(child);
+      }
+    });
+    toRemove.forEach((item) => item.remove());
+
+    // Recalculer les positions avec les nouvelles dimensions
+    const currentScale = scaleRef.current;
+    const currentLength = loadAreaLengthRef.current;
+    const currentWidth = loadAreaWidthRef.current;
+    const currentOffsetX = loadAreaOffsetXRef.current;
+    const currentVehicleLength = vehicleLengthRef.current;
+    const currentVehicleWidth = vehicleWidthRef.current;
+
+    const scaledLength = currentLength * currentScale;
+    const scaledWidth = currentWidth * currentScale;
+    const scaledOffsetX = currentOffsetX * currentScale;
+    const scaledVehicleLength = currentVehicleLength * currentScale;
+    const scaledVehicleWidth = currentVehicleWidth * currentScale;
+
+    const vehicleLeft = (canvasWidth - scaledVehicleLength) / 2;
+    const vehicleTop = (canvasHeight - scaledVehicleWidth) / 2;
+    const loadAreaLeft = vehicleLeft + scaledOffsetX;
+    const loadAreaTop = vehicleTop + (scaledVehicleWidth - scaledWidth) / 2;
+
+    // Redessiner le véhicule
+    const vehicleOutline = new paper.Path.Rectangle({
+      point: [vehicleLeft, vehicleTop],
+      size: [scaledVehicleLength, scaledVehicleWidth],
+      strokeColor: new paper.Color("#9ca3af"),
+      strokeWidth: 2,
+      fillColor: new paper.Color("#f9fafb"),
+      locked: true,
+    });
+    vehicleOutline.data.isVehicleOutline = true;
+    vehicleOutline.sendToBack();
+
+    // Label véhicule
+    const vehicleLabelTop = new paper.PointText({
+      point: [canvasWidth / 2, vehicleTop - 8],
+      content: `Véhicule: ${currentVehicleLength} x ${currentVehicleWidth} mm`,
+      fillColor: new paper.Color("#6b7280"),
+      fontSize: 10,
+      justification: "center",
+    });
+    vehicleLabelTop.data.isVehicleOutline = true;
+    vehicleLabelTop.locked = true;
+
+    // Zone de chargement
+    const loadAreaOutline = new paper.Path.Rectangle({
+      point: [loadAreaLeft, loadAreaTop],
+      size: [scaledLength, scaledWidth],
+      strokeColor: new paper.Color("#3b82f6"),
+      strokeWidth: 3,
+      dashArray: [10, 5],
+      fillColor: new paper.Color("#dbeafe"),
+      locked: true,
+    });
+    loadAreaOutline.fillColor!.alpha = 0.4;
+    loadAreaOutline.data.isLoadAreaOutline = true;
+
+    // Label zone de chargement
+    const loadAreaLabel = new paper.PointText({
+      point: [loadAreaLeft + scaledLength / 2, loadAreaTop + scaledWidth + 15],
+      content: `Zone chargement: ${currentLength} x ${currentWidth} mm`,
+      fillColor: new paper.Color("#3b82f6"),
+      fontSize: 10,
+      justification: "center",
+    });
+    loadAreaLabel.data.isLoadAreaOutline = true;
+    loadAreaLabel.locked = true;
+
+    // Label échelle
+    const scaleRatio = Math.round(1 / currentScale);
+    const scaleLabel = new paper.PointText({
+      point: [10, canvasHeight - 10],
+      content: `Échelle : 1:${scaleRatio}`,
+      fillColor: new paper.Color("#6b7280"),
+      fontSize: 11,
+      fontWeight: "bold",
+      justification: "left",
+    });
+    scaleLabel.data.isLoadAreaOutline = true;
+    scaleLabel.locked = true;
+
+    // Repositionner les meubles existants
+    paper.project.activeLayer.children.forEach((child) => {
+      if (child.data?.isFurniture && child.data?.positionMm) {
+        const posXMm = child.data.positionMm.x;
+        const posYMm = child.data.positionMm.y;
+        const newX = loadAreaLeft + posXMm * currentScale;
+        const newY = loadAreaTop + posYMm * currentScale;
+
+        if (child instanceof paper.Group) {
+          const currentBounds = child.bounds;
+          const deltaX = newX - currentBounds.left;
+          const deltaY = newY - currentBounds.top;
+          child.translate(new paper.Point(deltaX, deltaY));
+        }
+      }
+    });
+  }, [canvasWidth, canvasHeight, scale]);
 
   // useEffect séparé pour gérer le toggle VASP (afficher/masquer les éléments)
   useEffect(() => {
@@ -2970,7 +3086,6 @@ export const LayoutCanvas = ({
               }`}
             >
               <canvas
-                key={`canvas-${canvasWidth}-${canvasHeight}`}
                 ref={canvasRef}
                 width={canvasWidth}
                 height={canvasHeight}
