@@ -24,6 +24,8 @@ import Downloads from "./pages/Downloads";
 import EvolizSettingsPage from "./pages/EvolizSettingsPage";
 import EvolizQuotesPage from "./pages/EvolizQuotesPage";
 import EvolizClientsPage from "./pages/EvolizClientsPage";
+// Tldraw Demo
+import TldrawDemo from "./pages/TldrawDemo";
 
 const queryClient = new QueryClient();
 
@@ -59,6 +61,9 @@ const App = () => (
                 <Route path="/settings/evoliz" element={<EvolizSettingsPage />} />
                 <Route path="/evoliz/quotes" element={<EvolizQuotesPage />} />
                 <Route path="/evoliz/clients" element={<EvolizClientsPage />} />
+
+                {/* Route démo tldraw */}
+                <Route path="/tldraw-demo" element={<TldrawDemo />} />
 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
