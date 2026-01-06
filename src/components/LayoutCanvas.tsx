@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 3.6 - Ajout outils Aligner et Coller (align/snap)
+// VERSION: 3.7 - Outil Coller étendu (meuble, zone chargement, carrosserie)
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -1399,8 +1399,30 @@ export const LayoutCanvas = ({
         const hitResult = paper.project.hitTest(event.point, {
           fill: true,
           stroke: true,
-          tolerance: 10,
+          tolerance: 15,
         });
+
+        const currentScale = scaleRef.current;
+        const currentVehicleLength = vehicleLengthRef.current;
+        const currentVehicleWidth = vehicleWidthRef.current;
+        const scaledVehicleLength = currentVehicleLength * currentScale;
+        const scaledVehicleWidth = currentVehicleWidth * currentScale;
+        const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
+        const vehicleRight = vehicleLeft + scaledVehicleLength;
+        const vehicleTop = (CANVAS_HEIGHT - scaledVehicleWidth) / 2;
+        const vehicleBottom = vehicleTop + scaledVehicleWidth;
+
+        // Zone de chargement
+        const currentOffsetX = loadAreaOffsetXRef.current;
+        const currentLoadLength = loadAreaLengthRef.current;
+        const currentLoadWidth = loadAreaWidthRef.current;
+        const scaledOffsetX = currentOffsetX * currentScale;
+        const scaledLoadLength = currentLoadLength * currentScale;
+        const scaledLoadWidth = currentLoadWidth * currentScale;
+        const loadAreaLeft = vehicleLeft + scaledOffsetX;
+        const loadAreaRight = loadAreaLeft + scaledLoadLength;
+        const loadAreaTop = vehicleTop + (scaledVehicleWidth - scaledLoadWidth) / 2;
+        const loadAreaBottom = loadAreaTop + scaledLoadWidth;
 
         // Chercher un meuble
         let clickedFurniture: paper.Group | null = null;
@@ -1412,16 +1434,16 @@ export const LayoutCanvas = ({
           }
         }
 
-        if (!clickedFurniture) {
-          toast.warning("Cliquez sur un meuble");
-          return;
-        }
-
         const currentSnapStep = snapStepRef.current;
         const currentSnapSource = snapSourceRef.current;
 
         if (currentSnapStep === 0) {
-          // Première sélection - meuble source
+          // Première sélection - meuble source (obligatoirement un meuble)
+          if (!clickedFurniture) {
+            toast.warning("Cliquez sur un meuble pour le sélectionner");
+            return;
+          }
+
           const side = getClosestSide(clickedFurniture, event.point);
           const position = getSidePosition(clickedFurniture, side);
 
@@ -1445,30 +1467,203 @@ export const LayoutCanvas = ({
           setSnapStep(1);
 
           const sideLabels = { left: "gauche", right: "droit", top: "haut", bottom: "bas" };
-          toast.info(`Meuble 1 sélectionné (côté ${sideLabels[side]}). Cliquez sur le côté du meuble 2 pour coller.`);
+          toast.info(
+            `Meuble sélectionné (côté ${sideLabels[side]}). Cliquez sur un meuble, la zone de chargement ou la carrosserie.`,
+          );
         } else if (currentSnapStep === 1 && currentSnapSource) {
-          // Deuxième sélection - meuble cible
-          if (clickedFurniture.data.furnitureId === currentSnapSource.furnitureId) {
-            toast.warning("Sélectionnez un autre meuble");
+          // Deuxième sélection - cible (meuble, zone de chargement ou carrosserie)
+
+          // Vérifier si on clique sur le même meuble
+          if (clickedFurniture && clickedFurniture.data.furnitureId === currentSnapSource.furnitureId) {
+            toast.warning("Sélectionnez une autre cible");
             return;
           }
 
-          const side = getClosestSide(clickedFurniture, event.point);
+          const tolerance = 20;
+          let targetType: "furniture" | "load_area" | "vehicle" | null = null;
+          let targetSide: FurnitureSide | null = null;
+          let targetPosition: number = 0;
 
-          // Créer le highlight rouge pour la cible
-          const highlight2 = createSideHighlight(clickedFurniture, side, "#ef4444", "isSnapIndicator");
+          if (clickedFurniture) {
+            // Cible = un autre meuble
+            targetType = "furniture";
+            targetSide = getClosestSide(clickedFurniture, event.point);
+            targetPosition = getSidePosition(clickedFurniture, targetSide);
 
-          const target: AlignSelection = {
-            furnitureId: clickedFurniture.data.furnitureId,
-            side,
-            position: getSidePosition(clickedFurniture, side),
-            item: clickedFurniture,
-          };
+            // Créer le highlight rouge
+            createSideHighlight(clickedFurniture, targetSide, "#ef4444", "isSnapIndicator");
+          } else {
+            // Vérifier si on clique sur la zone de chargement
+            const distToLoadLeft = Math.abs(event.point.x - loadAreaLeft);
+            const distToLoadRight = Math.abs(event.point.x - loadAreaRight);
+            const distToLoadTop = Math.abs(event.point.y - loadAreaTop);
+            const distToLoadBottom = Math.abs(event.point.y - loadAreaBottom);
+            const inLoadYRange =
+              event.point.y >= loadAreaTop - tolerance && event.point.y <= loadAreaBottom + tolerance;
+            const inLoadXRange =
+              event.point.x >= loadAreaLeft - tolerance && event.point.x <= loadAreaRight + tolerance;
+
+            // Vérifier si on clique sur la carrosserie
+            const distToVehicleLeft = Math.abs(event.point.x - vehicleLeft);
+            const distToVehicleRight = Math.abs(event.point.x - vehicleRight);
+            const distToVehicleTop = Math.abs(event.point.y - vehicleTop);
+            const distToVehicleBottom = Math.abs(event.point.y - vehicleBottom);
+            const inVehicleYRange =
+              event.point.y >= vehicleTop - tolerance && event.point.y <= vehicleBottom + tolerance;
+            const inVehicleXRange =
+              event.point.x >= vehicleLeft - tolerance && event.point.x <= vehicleRight + tolerance;
+
+            // Priorité : zone de chargement > carrosserie
+            if (distToLoadLeft < tolerance && inLoadYRange) {
+              targetType = "load_area";
+              targetSide = "left";
+              targetPosition = loadAreaLeft;
+            } else if (distToLoadRight < tolerance && inLoadYRange) {
+              targetType = "load_area";
+              targetSide = "right";
+              targetPosition = loadAreaRight;
+            } else if (distToLoadTop < tolerance && inLoadXRange) {
+              targetType = "load_area";
+              targetSide = "top";
+              targetPosition = loadAreaTop;
+            } else if (distToLoadBottom < tolerance && inLoadXRange) {
+              targetType = "load_area";
+              targetSide = "bottom";
+              targetPosition = loadAreaBottom;
+            } else if (distToVehicleLeft < tolerance && inVehicleYRange) {
+              targetType = "vehicle";
+              targetSide = "left";
+              targetPosition = vehicleLeft;
+            } else if (distToVehicleRight < tolerance && inVehicleYRange) {
+              targetType = "vehicle";
+              targetSide = "right";
+              targetPosition = vehicleRight;
+            } else if (distToVehicleTop < tolerance && inVehicleXRange) {
+              targetType = "vehicle";
+              targetSide = "top";
+              targetPosition = vehicleTop;
+            } else if (distToVehicleBottom < tolerance && inVehicleXRange) {
+              targetType = "vehicle";
+              targetSide = "bottom";
+              targetPosition = vehicleBottom;
+            }
+
+            if (targetType && targetSide) {
+              // Créer une ligne de highlight pour la cible non-meuble
+              let from: paper.Point, to: paper.Point;
+              if (targetSide === "left" || targetSide === "right") {
+                const yStart = targetType === "load_area" ? loadAreaTop : vehicleTop;
+                const yEnd = targetType === "load_area" ? loadAreaBottom : vehicleBottom;
+                from = new paper.Point(targetPosition, yStart);
+                to = new paper.Point(targetPosition, yEnd);
+              } else {
+                const xStart = targetType === "load_area" ? loadAreaLeft : vehicleLeft;
+                const xEnd = targetType === "load_area" ? loadAreaRight : vehicleRight;
+                from = new paper.Point(xStart, targetPosition);
+                to = new paper.Point(xEnd, targetPosition);
+              }
+              const highlightLine = new paper.Path.Line(from, to);
+              highlightLine.strokeColor = new paper.Color("#ef4444");
+              highlightLine.strokeWidth = 4;
+              highlightLine.data.isSnapIndicator = true;
+            }
+          }
+
+          if (!targetType || !targetSide) {
+            toast.warning("Cliquez sur un meuble, la zone de chargement ou la carrosserie");
+            return;
+          }
 
           // Appliquer le collage
-          setTimeout(() => {
-            applySnap(currentSnapSource, target);
-          }, 200);
+          const sourceBounds = currentSnapSource.item.bounds;
+          let delta: paper.Point;
+
+          // Calculer le déplacement selon les côtés
+          if (targetType === "furniture" && clickedFurniture) {
+            // Coller contre un autre meuble
+            const targetBounds = clickedFurniture.bounds;
+            if (currentSnapSource.side === "right" && targetSide === "left") {
+              delta = new paper.Point(targetBounds.left - sourceBounds.right, 0);
+            } else if (currentSnapSource.side === "left" && targetSide === "right") {
+              delta = new paper.Point(targetBounds.right - sourceBounds.left, 0);
+            } else if (currentSnapSource.side === "bottom" && targetSide === "top") {
+              delta = new paper.Point(0, targetBounds.top - sourceBounds.bottom);
+            } else if (currentSnapSource.side === "top" && targetSide === "bottom") {
+              delta = new paper.Point(0, targetBounds.bottom - sourceBounds.top);
+            } else {
+              // Même côté = alignement
+              if (currentSnapSource.side === "left" || currentSnapSource.side === "right") {
+                delta = new paper.Point(
+                  targetPosition - getSidePosition(currentSnapSource.item, currentSnapSource.side),
+                  0,
+                );
+              } else {
+                delta = new paper.Point(
+                  0,
+                  targetPosition - getSidePosition(currentSnapSource.item, currentSnapSource.side),
+                );
+              }
+            }
+          } else {
+            // Coller contre zone de chargement ou carrosserie
+            if (currentSnapSource.side === "right" && targetSide === "left") {
+              delta = new paper.Point(targetPosition - sourceBounds.right, 0);
+            } else if (currentSnapSource.side === "left" && targetSide === "right") {
+              delta = new paper.Point(targetPosition - sourceBounds.left, 0);
+            } else if (currentSnapSource.side === "left" && targetSide === "left") {
+              delta = new paper.Point(targetPosition - sourceBounds.left, 0);
+            } else if (currentSnapSource.side === "right" && targetSide === "right") {
+              delta = new paper.Point(targetPosition - sourceBounds.right, 0);
+            } else if (currentSnapSource.side === "bottom" && targetSide === "top") {
+              delta = new paper.Point(0, targetPosition - sourceBounds.bottom);
+            } else if (currentSnapSource.side === "top" && targetSide === "bottom") {
+              delta = new paper.Point(0, targetPosition - sourceBounds.top);
+            } else if (currentSnapSource.side === "top" && targetSide === "top") {
+              delta = new paper.Point(0, targetPosition - sourceBounds.top);
+            } else if (currentSnapSource.side === "bottom" && targetSide === "bottom") {
+              delta = new paper.Point(0, targetPosition - sourceBounds.bottom);
+            } else {
+              // Cas par défaut
+              if (currentSnapSource.side === "left" || currentSnapSource.side === "right") {
+                delta = new paper.Point(
+                  targetPosition - getSidePosition(currentSnapSource.item, currentSnapSource.side),
+                  0,
+                );
+              } else {
+                delta = new paper.Point(
+                  0,
+                  targetPosition - getSidePosition(currentSnapSource.item, currentSnapSource.side),
+                );
+              }
+            }
+          }
+
+          // Déplacer le meuble source
+          currentSnapSource.item.position = currentSnapSource.item.position.add(delta);
+
+          const deltaMm = Math.round(Math.sqrt(delta.x * delta.x + delta.y * delta.y) / currentScale);
+          const targetLabels = {
+            furniture: "meuble",
+            load_area: "zone de chargement",
+            vehicle: "carrosserie",
+          };
+          toast.success(`Meuble collé contre ${targetLabels[targetType]} (déplacement: ${deltaMm} mm)`);
+
+          // Nettoyer les highlights
+          if (paper.project && paper.project.activeLayer) {
+            const toRemove: paper.Item[] = [];
+            paper.project.activeLayer.children.forEach((child) => {
+              if (child.data.isSnapIndicator) {
+                toRemove.push(child);
+              }
+            });
+            toRemove.forEach((item) => item.remove());
+          }
+
+          // Réinitialiser l'outil
+          setSnapStep(0);
+          setSnapSource(null);
+          setSnapHighlight(null);
         }
 
         return;
@@ -2405,7 +2600,7 @@ export const LayoutCanvas = ({
                 variant={activeTool === "snap" ? "default" : "outline"}
                 size="sm"
                 onClick={() => setActiveTool("snap")}
-                title="Coller - Colle un meuble contre un autre"
+                title="Coller - Colle un meuble contre un autre, la zone de chargement ou la carrosserie"
                 className={activeTool === "snap" ? "bg-orange-600 hover:bg-orange-700" : ""}
               >
                 <Magnet className="h-4 w-4 mr-2" />
