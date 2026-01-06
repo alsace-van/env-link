@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 3.3 - Utilisation des porte-à-faux depuis les props COC
+// VERSION: 3.5 - Fix affichage essieux persistant (utilisation refs)
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -174,6 +174,9 @@ export const LayoutCanvas = ({
   const vehicleWidthRef = useRef(vehicleWidth);
   const cotationStepRef = useRef(cotationStep);
   const cotationReferenceRef = useRef(cotationReference);
+  const empattementRef = useRef(empattement);
+  const porteFauxAvantRef = useRef(porteFauxAvant);
+  const porteFauxArriereRef = useRef(porteFauxArriere);
 
   useEffect(() => {
     activeToolRef.current = activeTool;
@@ -214,6 +217,12 @@ export const LayoutCanvas = ({
     cotationReferenceRef.current = cotationReference;
   }, [cotationReference]);
 
+  useEffect(() => {
+    empattementRef.current = empattement;
+    porteFauxAvantRef.current = porteFauxAvant;
+    porteFauxArriereRef.current = porteFauxArriere;
+  }, [empattement, porteFauxAvant, porteFauxArriere]);
+
   // Réinitialiser la cotation quand on change d'outil
   useEffect(() => {
     if (activeTool !== "cotation") {
@@ -243,10 +252,11 @@ export const LayoutCanvas = ({
     const currentVehicleLength = vehicleLengthRef.current;
     const scaledVehicleLength = currentVehicleLength * currentScale;
     const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
-    const calculatedPorteFauxAvant = porteFauxAvant || Math.round(currentVehicleLength * 0.15);
+    const currentPorteFauxAvant = porteFauxAvantRef.current;
+    const calculatedPorteFauxAvant = currentPorteFauxAvant || Math.round(currentVehicleLength * 0.15);
     const scaledPorteFauxAvant = calculatedPorteFauxAvant * currentScale;
     return vehicleLeft + scaledPorteFauxAvant;
-  }, [porteFauxAvant]);
+  }, []);
 
   // Fonction pour appliquer la nouvelle distance de cotation
   const applyCotation = useCallback(() => {
@@ -507,10 +517,14 @@ export const LayoutCanvas = ({
       const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
       const vehicleTop = (CANVAS_HEIGHT - scaledVehicleWidth) / 2;
 
+      // Utiliser les refs pour les valeurs COC
+      const currentEmpattement = empattementRef.current;
+      const currentPorteFauxAvant = porteFauxAvantRef.current;
+
       // Calculer les positions des essieux si empattement est fourni
-      if (empattement && empattement > 0) {
-        const scaledEmpattement = empattement * currentScale;
-        const calculatedPorteFauxAvant = porteFauxAvant || Math.round(currentVehicleLength * 0.15);
+      if (currentEmpattement && currentEmpattement > 0) {
+        const scaledEmpattement = currentEmpattement * currentScale;
+        const calculatedPorteFauxAvant = currentPorteFauxAvant || Math.round(currentVehicleLength * 0.15);
         const scaledPorteFauxAvant = calculatedPorteFauxAvant * currentScale;
 
         // Position de l'essieu avant (à partir du bord gauche du véhicule + porte-à-faux)
@@ -600,7 +614,7 @@ export const LayoutCanvas = ({
         // Texte de la cote
         const coteText = new paper.PointText({
           point: [(essieuAvX + essieuArX) / 2, coteY - 5],
-          content: `${empattement} mm`,
+          content: `${currentEmpattement} mm`,
           fillColor: new paper.Color("#22c55e"),
           fontSize: 11,
           fontWeight: "bold",
@@ -683,7 +697,7 @@ export const LayoutCanvas = ({
         }
 
         console.log("🚗 Dessin éléments VASP:", {
-          empattement,
+          empattement: currentEmpattement,
           essieuAvX,
           essieuArX,
           rangeesSieges: rangeesSieges?.length || 0,
@@ -693,13 +707,16 @@ export const LayoutCanvas = ({
 
     // Fonction pour afficher la distance à l'essieu AV pour les meubles
     const drawFurnitureDistances = () => {
-      if (!showVASPOverlay || !empattement || empattement <= 0) return;
+      const currentEmpattement = empattementRef.current;
+      const currentPorteFauxAvant = porteFauxAvantRef.current;
+
+      if (!showVASPOverlay || !currentEmpattement || currentEmpattement <= 0) return;
 
       const currentScale = scaleRef.current;
       const currentVehicleLength = vehicleLengthRef.current;
       const scaledVehicleLength = currentVehicleLength * currentScale;
       const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
-      const calculatedPorteFauxAvant = porteFauxAvant || Math.round(currentVehicleLength * 0.15);
+      const calculatedPorteFauxAvant = currentPorteFauxAvant || Math.round(currentVehicleLength * 0.15);
       const scaledPorteFauxAvant = calculatedPorteFauxAvant * currentScale;
       const essieuAvX = vehicleLeft + scaledPorteFauxAvant;
 
@@ -847,8 +864,12 @@ export const LayoutCanvas = ({
         const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
         const vehicleTop = (CANVAS_HEIGHT - scaledVehicleWidth) / 2;
 
+        // Utiliser les refs pour les valeurs COC
+        const currentEmpattement = empattementRef.current;
+        const currentPorteFauxAvant = porteFauxAvantRef.current;
+
         // Calculer la position de l'essieu AV
-        const calculatedPorteFauxAvant = porteFauxAvant || Math.round(currentVehicleLength * 0.15);
+        const calculatedPorteFauxAvant = currentPorteFauxAvant || Math.round(currentVehicleLength * 0.15);
         const scaledPorteFauxAvant = calculatedPorteFauxAvant * currentScale;
         const essieuAvX = vehicleLeft + scaledPorteFauxAvant;
 
@@ -890,12 +911,12 @@ export const LayoutCanvas = ({
         }
 
         // Si on a cliqué sur l'essieu AV/AR, on peut aussi vérifier par la position X
-        if (!clickedOnEssieuAv && empattement && empattement > 0) {
+        if (!clickedOnEssieuAv && currentEmpattement && currentEmpattement > 0) {
           const tolerance = 15;
           if (Math.abs(event.point.x - essieuAvX) < tolerance) {
             clickedOnEssieuAv = true;
           }
-          const essieuArX = essieuAvX + empattement * currentScale;
+          const essieuArX = essieuAvX + currentEmpattement * currentScale;
           if (Math.abs(event.point.x - essieuArX) < tolerance) {
             clickedOnEssieuAr = true;
           }
@@ -922,7 +943,7 @@ export const LayoutCanvas = ({
           if (clickedOnEssieuAv) {
             reference = { x: essieuAvX, type: "essieu_av", label: "Essieu AV" };
           } else if (clickedOnEssieuAr) {
-            const essieuArX = essieuAvX + (empattement || 0) * currentScale;
+            const essieuArX = essieuAvX + (currentEmpattement || 0) * currentScale;
             reference = { x: essieuArX, type: "essieu_ar", label: "Essieu AR" };
           } else if (clickedItem) {
             reference = {
@@ -1485,8 +1506,9 @@ export const LayoutCanvas = ({
           paper.project.clear();
         }
 
-        // Redessiner les contours
+        // Redessiner les contours et les éléments VASP
         drawLoadAreaOutline();
+        drawVASPElements();
 
         // Recréer les meubles avec la bonne échelle et position
         furnitureMap.forEach((furnitureData, id) => {
