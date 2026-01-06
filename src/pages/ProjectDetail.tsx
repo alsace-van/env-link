@@ -44,6 +44,7 @@ import {
   ShoppingCart,
   LayoutGrid,
   Store,
+  Car,
 } from "lucide-react";
 import { toast } from "sonner";
 import PhotosTab from "@/components/PhotosTab";
@@ -60,6 +61,7 @@ import { CableSectionCalculator } from "@/components/CableSectionCalculator";
 import { EnergyBalance } from "@/components/EnergyBalance";
 import { LayoutCanvas } from "@/components/LayoutCanvas";
 import { Layout3DView } from "@/components/Layout3DView";
+import { VASPDataPanel } from "@/components/VASPDataPanel";
 import { User } from "@supabase/supabase-js";
 import { AdminMessagesNotification } from "@/components/AdminMessagesNotification";
 import { AIUsageWidget } from "@/components/AIUsageWidget";
@@ -158,6 +160,17 @@ interface Project {
   mmta_essieu_ar_kg?: number;
   empattement_mm?: number;
   charge_attelage_s_kg?: number;
+  porte_faux_avant_mm?: number;
+  porte_faux_arriere_mm?: number;
+  // Données canvas
+  offset_zone_chargement_mm?: number;
+  // Données VASP JSON
+  vasp_rangees_sieges?: Array<{
+    id: string;
+    numero_rangee: number;
+    nombre_places: number;
+    distance_essieu_av_mm: number;
+  }>;
   // Propriétés pour les scénarios
   statut_financier?: string;
   date_validation_devis?: string;
@@ -1836,9 +1849,13 @@ const ProjectDetail = () => {
 
                   <TabsContent value="layout" className="mt-6">
                     <Tabs defaultValue="2d" className="w-full">
-                      <TabsList className="grid w-full grid-cols-2">
+                      <TabsList className="grid w-full grid-cols-3">
                         <TabsTrigger value="2d">Plan 2D</TabsTrigger>
                         <TabsTrigger value="3d">Vue 3D</TabsTrigger>
+                        <TabsTrigger value="vasp" className="text-purple-600">
+                          <Car className="h-4 w-4 mr-2" />
+                          VASP M1
+                        </TabsTrigger>
                       </TabsList>
 
                       <TabsContent value="2d" className="mt-6">
@@ -1853,11 +1870,15 @@ const ProjectDetail = () => {
                           loadAreaWidth={
                             project.largeur_chargement_mm || Math.round((project.largeur_mm || 1800) * 0.9)
                           }
+                          loadAreaOffsetX={project.offset_zone_chargement_mm || undefined}
                           maxLoad={
                             project.charge_utile_kg ||
                             (project.ptac_kg && project.poids_vide_kg ? project.ptac_kg - project.poids_vide_kg : 500)
                           }
                           empattement={project.empattement_mm || undefined}
+                          porteFauxAvant={project.porte_faux_avant_mm || undefined}
+                          porteFauxArriere={project.porte_faux_arriere_mm || undefined}
+                          rangeesSieges={project.vasp_rangees_sieges || []}
                         />
                       </TabsContent>
 
@@ -1868,6 +1889,17 @@ const ProjectDetail = () => {
                           loadAreaLength={project.longueur_chargement_mm || 0}
                           loadAreaWidth={project.largeur_chargement_mm || 0}
                           loadAreaHeight={project.hauteur_mm || 0}
+                        />
+                      </TabsContent>
+
+                      <TabsContent value="vasp" className="mt-6">
+                        <VASPDataPanel
+                          projectId={project.id}
+                          projectData={project}
+                          onDataChange={() => {
+                            // Rafraîchir les données du projet
+                            loadProject();
+                          }}
                         />
                       </TabsContent>
                     </Tabs>
