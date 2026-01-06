@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: TldrawGabaritCanvas
 // Canvas moderne pour gabarits CNC avec tldraw
-// VERSION: 1.6 - Force zoom molette
+// VERSION: 1.7 - Fix zoom avec capture phase
 // ============================================
 
 import { useEffect, useCallback, useState, useRef } from "react";
@@ -397,46 +397,62 @@ export function TldrawGabaritCanvas({
   const [zoomLevel, setZoomLevel] = useState(100);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<Editor | null>(null);
 
-  // Intercepter la molette pour forcer le zoom au lieu du pan
+  // Stocker l'éditeur dans une ref pour y accéder dans le handler
   useEffect(() => {
-    if (!editor || !canvasContainerRef.current) return;
+    editorRef.current = editor;
+  }, [editor]);
 
+  // Intercepter la molette en phase de CAPTURE (avant tldraw)
+  useEffect(() => {
     const container = canvasContainerRef.current;
+    if (!container) return;
 
     const handleWheel = (e: WheelEvent) => {
+      const currentEditor = editorRef.current;
+      if (!currentEditor) return;
+
+      // Bloquer complètement l'événement
       e.preventDefault();
       e.stopPropagation();
+      e.stopImmediatePropagation();
 
-      // Position de la souris pour zoomer vers ce point
-      const screenPoint = { x: e.clientX, y: e.clientY };
+      // Calculer le nouveau zoom manuellement
+      const currentZoom = currentEditor.getZoomLevel();
+      const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+      const newZoom = Math.min(Math.max(currentZoom * zoomFactor, 0.1), 8);
 
-      // Scroll down = zoom out, scroll up = zoom in
-      if (e.deltaY > 0) {
-        editor.zoomOut(screenPoint, { duration: 0 });
-      } else {
-        editor.zoomIn(screenPoint, { duration: 0 });
-      }
+      // Obtenir la position de la souris dans le canvas
+      const point = currentEditor.screenToPage({ x: e.clientX, y: e.clientY });
 
-      setZoomLevel(Math.round(editor.getZoomLevel() * 100));
+      // Appliquer le zoom centré sur la souris
+      currentEditor.setCamera({
+        x: currentEditor.getCamera().x,
+        y: currentEditor.getCamera().y,
+        z: newZoom,
+      });
+
+      setZoomLevel(Math.round(newZoom * 100));
     };
 
-    container.addEventListener("wheel", handleWheel, { passive: false });
+    // CAPTURE: true = intercepte l'événement AVANT qu'il n'arrive aux enfants
+    container.addEventListener("wheel", handleWheel, { passive: false, capture: true });
 
     return () => {
-      container.removeEventListener("wheel", handleWheel);
+      container.removeEventListener("wheel", handleWheel, { capture: true });
     };
-  }, [editor]);
+  }, []);
 
   const handleMount = useCallback(
     (editorInstance: Editor) => {
       setEditor(editorInstance);
+      editorRef.current = editorInstance;
 
-      // Écouter les changements d'outil et de zoom
+      // Écouter les changements d'outil
       editorInstance.on("change", () => {
         const currentTool = editorInstance.getCurrentToolId();
         setActiveTool(currentTool);
-        setZoomLevel(Math.round(editorInstance.getZoomLevel() * 100));
       });
 
       // Charger l'image de fond
@@ -513,15 +529,27 @@ export function TldrawGabaritCanvas({
   // Fonctions de zoom manuel
   const handleZoomIn = useCallback(() => {
     if (editor) {
-      editor.zoomIn();
-      setZoomLevel(Math.round(editor.getZoomLevel() * 100));
+      const currentZoom = editor.getZoomLevel();
+      const newZoom = Math.min(currentZoom * 1.2, 8);
+      editor.setCamera({
+        x: editor.getCamera().x,
+        y: editor.getCamera().y,
+        z: newZoom,
+      });
+      setZoomLevel(Math.round(newZoom * 100));
     }
   }, [editor]);
 
   const handleZoomOut = useCallback(() => {
     if (editor) {
-      editor.zoomOut();
-      setZoomLevel(Math.round(editor.getZoomLevel() * 100));
+      const currentZoom = editor.getZoomLevel();
+      const newZoom = Math.max(currentZoom * 0.8, 0.1);
+      editor.setCamera({
+        x: editor.getCamera().x,
+        y: editor.getCamera().y,
+        z: newZoom,
+      });
+      setZoomLevel(Math.round(newZoom * 100));
     }
   }, [editor]);
 
@@ -732,7 +760,7 @@ export function TldrawGabaritCanvas({
         )}
       </div>
 
-      {/* Canvas tldraw avec interception de la molette */}
+      {/* Canvas tldraw avec interception de la molette en capture */}
       <div ref={canvasContainerRef} className="flex-1 relative" style={{ overflow: "hidden" }}>
         <Tldraw onMount={handleMount} overrides={uiOverrides} hideUi={false} />
       </div>
@@ -740,7 +768,7 @@ export function TldrawGabaritCanvas({
       {/* Info en bas */}
       <div className="p-2 bg-gray-50 border-t text-xs text-muted-foreground flex justify-between">
         <span>
-          💡 <strong>Molette</strong>: zoom • <strong>Clic milieu / Espace+glisser</strong>: déplacer
+          🖱️ <strong>Molette</strong>: zoom • <strong>Espace+glisser</strong> ou <strong>Main</strong>: déplacer
         </span>
         <span>Ligne/Courbe: double-clic pour terminer</span>
       </div>
