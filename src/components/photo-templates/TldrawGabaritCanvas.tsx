@@ -723,8 +723,8 @@ export function TldrawGabaritCanvas({
           <Tldraw onMount={handleMount} hideUi={true} />
         </div>
 
-        {/* Barre d'outils flottante draggable - EN DEHORS du canvas */}
-        <Draggable handle=".drag-handle" bounds="parent" defaultPosition={{ x: 20, y: 20 }} nodeRef={nodeRef}>
+        {/* Barre d'outils flottante draggable - libre */}
+        <Draggable handle=".drag-handle" defaultPosition={{ x: 20, y: 20 }} nodeRef={nodeRef}>
           <div
             ref={nodeRef}
             className="absolute bg-white rounded-xl shadow-2xl border-2 border-gray-200"
