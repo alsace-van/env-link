@@ -1,3 +1,8 @@
+// ============================================
+// PAGE: ProjectDetail
+// VERSION: 3.6 - Fix TypeScript: parseProjectData pour vasp_rangees_sieges, loadProject -> reloadProject
+// ============================================
+
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -177,6 +182,20 @@ interface Project {
   date_encaissement_acompte?: string;
   montant_acompte?: number;
 }
+
+// Fonction pour parser les données du projet depuis Supabase
+// Convertit les types Json en types TypeScript corrects
+const parseProjectData = (data: any): Project => {
+  return {
+    ...data,
+    // Parser vasp_rangees_sieges qui est stocké en JSON
+    vasp_rangees_sieges: data.vasp_rangees_sieges
+      ? typeof data.vasp_rangees_sieges === "string"
+        ? JSON.parse(data.vasp_rangees_sieges)
+        : data.vasp_rangees_sieges
+      : undefined,
+  } as Project;
+};
 
 // Composant Widget Agenda Compact pour l'entête
 interface AgendaWidgetProps {
@@ -978,7 +997,9 @@ const ProjectDetail = () => {
           return;
         }
 
-        setProject(projectData);
+        if (projectData) {
+          setProject(parseProjectData(projectData));
+        }
       } catch (error) {
         console.error("Erreur:", error);
         toast.error("Une erreur est survenue");
@@ -1077,7 +1098,7 @@ const ProjectDetail = () => {
       .single();
 
     if (!error && projectData) {
-      setProject(projectData);
+      setProject(parseProjectData(projectData));
     }
   };
 
@@ -1384,7 +1405,7 @@ const ProjectDetail = () => {
         .single();
 
       if (updatedProject) {
-        setProject(updatedProject);
+        setProject(parseProjectData(updatedProject));
         setLayout3DKey((prev) => prev + 1);
         setLayoutCanvasKey((prev) => prev + 1);
       }
@@ -1905,7 +1926,7 @@ const ProjectDetail = () => {
                           projectData={project}
                           onDataChange={() => {
                             // Rafraîchir les données du projet
-                            loadProject();
+                            reloadProject();
                           }}
                         />
                       </TabsContent>
@@ -1988,7 +2009,7 @@ const ProjectDetail = () => {
                 .single();
 
               if (updatedProject) {
-                setProject(updatedProject);
+                setProject(parseProjectData(updatedProject));
               }
               toast.success("Projet modifié avec succès");
             }}
