@@ -1862,8 +1862,15 @@ const ProjectDetail = () => {
                         <LayoutCanvas
                           key={layoutCanvasKey}
                           projectId={project.id}
-                          vehicleLength={project.longueur_mm || project.longueur_chargement_mm || 3000}
-                          vehicleWidth={project.largeur_mm || project.largeur_chargement_mm || 1800}
+                          vehicleLength={
+                            project.longueur_mm ||
+                            // Calculer à partir des données COC si disponibles
+                            (project.porte_faux_avant_mm && project.empattement_mm && project.porte_faux_arriere_mm
+                              ? project.porte_faux_avant_mm + project.empattement_mm + project.porte_faux_arriere_mm
+                              : undefined) ||
+                            3000
+                          }
+                          vehicleWidth={project.largeur_mm || 1904}
                           loadAreaLength={
                             project.longueur_chargement_mm || Math.round((project.longueur_mm || 3000) * 0.7)
                           }
