@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 3.9 - Pan avec molette maintenue + glisser
+// VERSION: 4.0 - Outil Main dédié pour déplacer la vue
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -27,6 +27,7 @@ import {
   Magnet,
   ZoomIn,
   ZoomOut,
+  Hand,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
@@ -99,9 +100,9 @@ export const LayoutCanvas = ({
   rangeesSieges = [],
 }: LayoutCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [activeTool, setActiveTool] = useState<"select" | "rectangle" | "measure" | "cotation" | "align" | "snap">(
-    "select",
-  );
+  const [activeTool, setActiveTool] = useState<
+    "select" | "rectangle" | "measure" | "cotation" | "align" | "snap" | "pan"
+  >("select");
   const [showVASPOverlay, setShowVASPOverlay] = useState(true); // Afficher les éléments VASP
   const [color, setColor] = useState("#3b82f6");
   const [strokeWidth, setStrokeWidth] = useState(2);
@@ -604,17 +605,20 @@ export const LayoutCanvas = ({
     [handleZoom],
   );
 
-  // Gestion du pan (déplacement) avec clic molette maintenu
-  const handleMouseDownForPan = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
-    // Clic molette (button 1) pour pan
-    if (event.button === 1) {
-      event.preventDefault();
-      event.stopPropagation();
-      setIsPanning(true);
-      setPanStart({ x: event.clientX, y: event.clientY });
-      lastPanPoint.current = { x: event.clientX, y: event.clientY };
-    }
-  }, []);
+  // Gestion du pan (déplacement) avec l'outil Main
+  const handleMouseDownForPan = useCallback(
+    (event: React.MouseEvent<HTMLCanvasElement>) => {
+      // Clic gauche quand l'outil pan est actif
+      if (event.button === 0 && activeTool === "pan") {
+        event.preventDefault();
+        event.stopPropagation();
+        setIsPanning(true);
+        setPanStart({ x: event.clientX, y: event.clientY });
+        lastPanPoint.current = { x: event.clientX, y: event.clientY };
+      }
+    },
+    [activeTool],
+  );
 
   const handleMouseMoveForPan = useCallback(
     (event: React.MouseEvent<HTMLCanvasElement>) => {
@@ -638,7 +642,7 @@ export const LayoutCanvas = ({
 
   const handleMouseUpForPan = useCallback(
     (event: React.MouseEvent<HTMLCanvasElement>) => {
-      if (event.button === 1 || isPanning) {
+      if (isPanning) {
         event.preventDefault();
         setIsPanning(false);
         setPanStart(null);
@@ -647,33 +651,6 @@ export const LayoutCanvas = ({
     },
     [isPanning],
   );
-
-  // Empêcher le comportement par défaut du clic molette (autoscroll du navigateur)
-  const handleAuxClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
-    event.preventDefault();
-  }, []);
-
-  // Empêcher le menu contextuel sur clic molette
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const preventMiddleClickScroll = (e: MouseEvent) => {
-      if (e.button === 1) {
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    };
-
-    // Empêcher l'autoscroll du navigateur
-    canvas.addEventListener("mousedown", preventMiddleClickScroll);
-    canvas.addEventListener("auxclick", preventMiddleClickScroll);
-
-    return () => {
-      canvas.removeEventListener("mousedown", preventMiddleClickScroll);
-      canvas.removeEventListener("auxclick", preventMiddleClickScroll);
-    };
-  }, []);
 
   // Fonction pour appliquer la nouvelle distance de cotation
   const applyCotation = useCallback(() => {
@@ -2756,6 +2733,16 @@ export const LayoutCanvas = ({
                 Coller
                 {snapStep > 0 && <span className="ml-1 px-1.5 py-0.5 text-xs bg-white/20 rounded">1/2</span>}
               </Button>
+              <Button
+                variant={activeTool === "pan" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveTool("pan")}
+                title="Main - Déplacer la vue (clic + glisser)"
+                className={activeTool === "pan" ? "bg-slate-600 hover:bg-slate-700" : ""}
+              >
+                <Hand className="h-4 w-4 mr-2" />
+                Main
+              </Button>
 
               <Separator orientation="vertical" className="h-6" />
 
@@ -2872,13 +2859,14 @@ export const LayoutCanvas = ({
                 ref={canvasRef}
                 width={CANVAS_WIDTH}
                 height={CANVAS_HEIGHT}
-                className={`border rounded bg-white ${isPanning ? "cursor-grabbing" : "cursor-crosshair"}`}
+                className={`border rounded bg-white ${
+                  isPanning ? "cursor-grabbing" : activeTool === "pan" ? "cursor-grab" : "cursor-crosshair"
+                }`}
                 onWheel={handleWheel}
                 onMouseDown={handleMouseDownForPan}
                 onMouseMove={handleMouseMoveForPan}
                 onMouseUp={handleMouseUpForPan}
                 onMouseLeave={handleMouseUpForPan}
-                onAuxClick={handleAuxClick}
               />
 
               {/* Contrôles de zoom */}
@@ -2917,8 +2905,8 @@ export const LayoutCanvas = ({
 
             <div className="mt-2 text-xs text-muted-foreground">
               Échelle : 1:{Math.round(1 / scale)} • Zoom: {Math.round(zoomLevel * 100)}% • Zone en pointillés bleus =
-              zone de chargement utile ({loadAreaLength} x {loadAreaWidth} mm) • Molette: zoom • Molette maintenue +
-              glisser: déplacer
+              zone de chargement utile ({loadAreaLength} x {loadAreaWidth} mm) • Molette: zoom • Outil Main: déplacer la
+              vue
             </div>
           </div>
         </div>
