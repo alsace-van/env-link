@@ -1,25 +1,66 @@
 // ============================================
 // COMPOSANT: TldrawGabaritCanvas
 // Canvas moderne pour gabarits CNC avec tldraw
-// VERSION: 1.2 - Fix API tldraw v2
+// VERSION: 1.4 - Fix zoom molette + courbes Bézier
 // ============================================
 
 import { useEffect, useCallback, useState, useRef } from "react";
-import { Tldraw, Editor, createShapeId } from "@tldraw/tldraw";
+import { Tldraw, Editor, createShapeId, TLUiOverrides, TLUiToolsContextType } from "@tldraw/tldraw";
 import "@tldraw/tldraw/tldraw.css";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Download, Save, Ruler, Maximize, Minimize, FileDown, RotateCcw } from "lucide-react";
+import {
+  Download,
+  Save,
+  Ruler,
+  Maximize,
+  Minimize,
+  FileDown,
+  RotateCcw,
+  MousePointer,
+  Hand,
+  Pencil,
+  Minus,
+  Square,
+  Circle,
+  Eraser,
+  Spline,
+} from "lucide-react";
 import { toast } from "sonner";
 
 interface TldrawGabaritCanvasProps {
   imageUrl: string;
-  scaleFactor: number; // pixels par mm
+  scaleFactor: number;
   templateId: string;
   initialData?: any;
   onSave?: (data: any) => void;
 }
+
+// Outils à garder
+const ALLOWED_TOOLS = [
+  "select",
+  "hand",
+  "draw", // Courbe libre
+  "line", // Ligne droite (peut aussi faire des courbes)
+  "geo", // Formes géométriques
+  "eraser", // Gomme
+];
+
+// Override pour personnaliser les outils
+const uiOverrides: TLUiOverrides = {
+  tools(editor, tools) {
+    const filteredTools: TLUiToolsContextType = {};
+
+    for (const [key, tool] of Object.entries(tools)) {
+      if (ALLOWED_TOOLS.includes(key)) {
+        filteredTools[key] = tool;
+      }
+    }
+
+    return filteredTools;
+  },
+};
 
 // Fonction de conversion SVG vers DXF
 const svgToDxf = (svgString: string, scale: number = 1): string => {
@@ -78,11 +119,9 @@ SECTION
 ENTITIES
 `;
 
-  // Parser les éléments SVG
   const processElement = (element: Element, layer: string = "CONTOURS") => {
     const tagName = element.tagName.toLowerCase();
 
-    // Récupérer la transformation si présente
     const transform = element.getAttribute("transform") || "";
     let translateX = 0,
       translateY = 0;
@@ -171,6 +210,7 @@ ${r.toFixed(4)}
         const cy = -(parseFloat(element.getAttribute("cy") || "0") + translateY) / scale;
         const rx = parseFloat(element.getAttribute("rx") || "0") / scale;
         const ry = parseFloat(element.getAttribute("ry") || "0") / scale;
+        if (rx === 0) break;
         dxf += `0
 ELLIPSE
 8
@@ -260,7 +300,6 @@ ${(-y).toFixed(4)}
     }
   };
 
-  // Parser un path SVG simplifié
   const parsePathToPoints = (d: string, tx: number, ty: number, scale: number): number[][] => {
     const points: number[][] = [];
     const commands = d.match(/[MLQCZ][^MLQCZ]*/gi) || [];
@@ -291,7 +330,7 @@ ${(-y).toFixed(4)}
             qcy = coords[1];
           const qex = coords[2],
             qey = coords[3];
-          for (let t = 0.25; t <= 1; t += 0.25) {
+          for (let t = 0.1; t <= 1; t += 0.1) {
             const x = (1 - t) * (1 - t) * currentX + 2 * (1 - t) * t * qcx + t * t * qex;
             const y = (1 - t) * (1 - t) * currentY + 2 * (1 - t) * t * qcy + t * t * qey;
             points.push([(x + tx) / scale, (y + ty) / scale]);
@@ -306,7 +345,7 @@ ${(-y).toFixed(4)}
             c2y = coords[3];
           const cex = coords[4],
             cey = coords[5];
-          for (let t = 0.2; t <= 1; t += 0.2) {
+          for (let t = 0.1; t <= 1; t += 0.1) {
             const x =
               Math.pow(1 - t, 3) * currentX +
               3 * Math.pow(1 - t, 2) * t * c1x +
@@ -361,12 +400,38 @@ export function TldrawGabaritCanvas({
 }: TldrawGabaritCanvasProps) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [activeTool, setActiveTool] = useState<string>("select");
   const containerRef = useRef<HTMLDivElement>(null);
+  const tldrawContainerRef = useRef<HTMLDivElement>(null);
 
-  // Charger l'image de fond au montage
+  // Empêcher le scroll de la page et forcer le zoom sur le canvas
+  useEffect(() => {
+    const container = tldrawContainerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      // Empêcher le scroll de la page
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    // Ajouter avec passive: false pour permettre preventDefault
+    container.addEventListener("wheel", handleWheel, { passive: false });
+
+    return () => {
+      container.removeEventListener("wheel", handleWheel);
+    };
+  }, []);
+
   const handleMount = useCallback(
     (editorInstance: Editor) => {
       setEditor(editorInstance);
+
+      // Écouter les changements d'outil
+      editorInstance.on("change", () => {
+        const currentTool = editorInstance.getCurrentToolId();
+        setActiveTool(currentTool);
+      });
 
       // Charger l'image de fond
       if (imageUrl) {
@@ -376,7 +441,6 @@ export function TldrawGabaritCanvas({
           const assetId = `asset:bg-${templateId}` as any;
           const shapeId = createShapeId(`bg-${templateId}`);
 
-          // Créer l'asset
           editorInstance.createAssets([
             {
               id: assetId,
@@ -394,7 +458,6 @@ export function TldrawGabaritCanvas({
             },
           ]);
 
-          // Créer la shape image
           editorInstance.createShape({
             id: shapeId,
             type: "image",
@@ -408,13 +471,12 @@ export function TldrawGabaritCanvas({
             isLocked: true,
           });
 
-          // Centrer la vue
           editorInstance.zoomToFit();
         };
         img.src = imageUrl;
       }
 
-      // Charger les données initiales si présentes
+      // Charger les données initiales
       if (initialData?.shapes) {
         try {
           initialData.shapes.forEach((shape: any) => {
@@ -430,7 +492,17 @@ export function TldrawGabaritCanvas({
     [imageUrl, templateId, initialData],
   );
 
-  // Sauvegarder
+  // Fonctions pour changer d'outil via notre barre personnalisée
+  const selectTool = useCallback(
+    (toolId: string) => {
+      if (editor) {
+        editor.setCurrentTool(toolId);
+        setActiveTool(toolId);
+      }
+    },
+    [editor],
+  );
+
   const handleSave = useCallback(() => {
     if (!editor || !onSave) return;
 
@@ -454,7 +526,6 @@ export function TldrawGabaritCanvas({
     toast.success("Gabarit sauvegardé !");
   }, [editor, onSave, scaleFactor]);
 
-  // Export SVG - utilise l'API native de tldraw v2
   const handleExportSVG = useCallback(async () => {
     if (!editor) return;
 
@@ -467,10 +538,8 @@ export function TldrawGabaritCanvas({
         return;
       }
 
-      // Sélectionner les shapes à exporter
       editor.select(...drawingShapes.map((s) => s.id));
 
-      // Utiliser getSvgString de l'éditeur
       const svgResult = await editor.getSvgString(drawingShapes.map((s) => s.id));
 
       if (!svgResult || !svgResult.svg) {
@@ -494,7 +563,6 @@ export function TldrawGabaritCanvas({
     }
   }, [editor, templateId]);
 
-  // Export DXF
   const handleExportDXF = useCallback(async () => {
     if (!editor) return;
 
@@ -534,12 +602,10 @@ export function TldrawGabaritCanvas({
     }
   }, [editor, templateId, scaleFactor]);
 
-  // Plein écran
   const toggleFullscreen = useCallback(() => {
     setIsFullscreen(!isFullscreen);
   }, [isFullscreen]);
 
-  // Touche Échap
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isFullscreen) {
@@ -550,34 +616,61 @@ export function TldrawGabaritCanvas({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isFullscreen]);
 
-  // Reset vue
   const handleResetView = useCallback(() => {
     if (editor) {
       editor.zoomToFit();
     }
   }, [editor]);
 
+  // Bouton d'outil personnalisé
+  const ToolButton = ({ toolId, icon: Icon, label }: { toolId: string; icon: any; label: string }) => (
+    <Button
+      variant={activeTool === toolId ? "default" : "outline"}
+      size="sm"
+      onClick={() => selectTool(toolId)}
+      title={label}
+      className="h-9 w-9 p-0"
+    >
+      <Icon className="h-4 w-4" />
+    </Button>
+  );
+
   return (
     <div ref={containerRef} className={`flex flex-col ${isFullscreen ? "fixed inset-0 z-50 bg-white" : "h-[700px]"}`}>
-      {/* Barre d'outils */}
+      {/* Barre d'outils personnalisée */}
       <div className="flex items-center gap-2 p-2 bg-gray-100 border-b flex-wrap">
+        {/* Outils de dessin */}
+        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+          <ToolButton toolId="select" icon={MousePointer} label="Sélection (V)" />
+          <ToolButton toolId="hand" icon={Hand} label="Main - Déplacer (H)" />
+        </div>
+
+        <Separator orientation="vertical" className="h-6" />
+
+        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+          <ToolButton toolId="draw" icon={Pencil} label="Courbe libre (D)" />
+          <ToolButton toolId="line" icon={Spline} label="Ligne/Courbe (L)" />
+          <ToolButton toolId="geo" icon={Square} label="Formes (R)" />
+          <ToolButton toolId="eraser" icon={Eraser} label="Gomme (E)" />
+        </div>
+
+        <Separator orientation="vertical" className="h-6" />
+
         <Badge variant="outline" className="text-xs">
           <Ruler className="h-3 w-3 mr-1" />
-          Échelle: 1px = {(1 / scaleFactor).toFixed(2)}mm
+          1px = {(1 / scaleFactor).toFixed(2)}mm
         </Badge>
 
         <Separator orientation="vertical" className="h-6" />
 
         <Button variant="outline" size="sm" onClick={handleResetView}>
           <RotateCcw className="h-4 w-4 mr-1" />
-          Reset vue
+          Reset
         </Button>
-
-        <Separator orientation="vertical" className="h-6" />
 
         <Button variant="outline" size="sm" onClick={handleSave}>
           <Save className="h-4 w-4 mr-1" />
-          Sauvegarder
+          Sauver
         </Button>
 
         <Button variant="outline" size="sm" onClick={handleExportSVG}>
@@ -587,7 +680,7 @@ export function TldrawGabaritCanvas({
 
         <Button variant="default" size="sm" onClick={handleExportDXF}>
           <Download className="h-4 w-4 mr-1" />
-          DXF (Fusion 360)
+          DXF
         </Button>
 
         <div className="flex-1" />
@@ -598,20 +691,22 @@ export function TldrawGabaritCanvas({
 
         {isFullscreen && (
           <Badge variant="secondary" className="text-xs">
-            <kbd className="mx-1 px-1 bg-gray-300 rounded">Échap</kbd> pour quitter
+            <kbd className="mx-1 px-1 bg-gray-300 rounded">Échap</kbd>
           </Badge>
         )}
       </div>
 
-      {/* Canvas tldraw */}
-      <div className="flex-1 relative">
-        <Tldraw onMount={handleMount} />
+      {/* Canvas tldraw avec blocage du scroll */}
+      <div ref={tldrawContainerRef} className="flex-1 relative" style={{ overflow: "hidden" }}>
+        <Tldraw onMount={handleMount} overrides={uiOverrides} hideUi={false} />
       </div>
 
       {/* Info en bas */}
-      <div className="p-2 bg-gray-50 border-t text-xs text-muted-foreground flex items-center gap-4">
-        <span>💡 Outils : lignes, rectangles, ellipses, crayon libre, flèches</span>
-        <span className="ml-auto">Molette: zoom • Clic droit + glisser: déplacer</span>
+      <div className="p-2 bg-gray-50 border-t text-xs text-muted-foreground flex justify-between">
+        <span>
+          💡 <strong>Ligne/Courbe</strong>: Double-clic pour terminer • Clic sur un point pour ajouter une courbe
+        </span>
+        <span>Molette: zoom • Espace+glisser: déplacer</span>
       </div>
     </div>
   );
