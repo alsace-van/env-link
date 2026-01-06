@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: ProjectForm
 // Formulaire de création/édition de projet
-// VERSION: 2.5 - Ajout des champs porte-à-faux AV et AR pour VASP
+// VERSION: 2.6 - Label "Version / Taille" au lieu de "Dimensions (L×H)"
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -944,7 +944,7 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
 
               {selectedMarque && selectedModele && availableDimensions.length > 0 && (
                 <div className="space-y-2">
-                  <Label htmlFor="dimension">Dimensions (L×H) {!isEditMode && "*"}</Label>
+                  <Label htmlFor="dimension">Version / Taille {!isEditMode && "*"}</Label>
                   <Select
                     value={selectedDimension}
                     onValueChange={handleDimensionChange}
@@ -952,7 +952,7 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
                     disabled={isLoading}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Sélectionnez les dimensions" />
+                      <SelectValue placeholder="Sélectionnez la version" />
                     </SelectTrigger>
                     <SelectContent>
                       {availableDimensions.map((dimension) => (
