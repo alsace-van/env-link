@@ -1,15 +1,17 @@
 // ============================================
 // COMPOSANT: TldrawGabaritCanvas
 // Canvas moderne pour gabarits CNC avec tldraw
-// VERSION: 1.7 - Fix zoom avec capture phase
+// VERSION: 1.8 - Barre d'outils flottante draggable
 // ============================================
 
 import { useEffect, useCallback, useState, useRef } from "react";
-import { Tldraw, Editor, createShapeId, TLUiOverrides, TLUiToolsContextType } from "@tldraw/tldraw";
+import Draggable from "react-draggable";
+import { Tldraw, Editor, createShapeId } from "@tldraw/tldraw";
 import "@tldraw/tldraw/tldraw.css";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Card } from "@/components/ui/card";
 import {
   Download,
   Save,
@@ -22,10 +24,13 @@ import {
   Hand,
   Pencil,
   Square,
+  Circle,
   Eraser,
   Spline,
   ZoomIn,
   ZoomOut,
+  GripVertical,
+  Minus,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -36,24 +41,6 @@ interface TldrawGabaritCanvasProps {
   initialData?: any;
   onSave?: (data: any) => void;
 }
-
-// Outils à garder
-const ALLOWED_TOOLS = ["select", "hand", "draw", "line", "geo", "eraser"];
-
-// Override pour personnaliser les outils
-const uiOverrides: TLUiOverrides = {
-  tools(editor, tools) {
-    const filteredTools: TLUiToolsContextType = {};
-
-    for (const [key, tool] of Object.entries(tools)) {
-      if (ALLOWED_TOOLS.includes(key)) {
-        filteredTools[key] = tool;
-      }
-    }
-
-    return filteredTools;
-  },
-};
 
 // Fonction de conversion SVG vers DXF
 const svgToDxf = (svgString: string, scale: number = 1): string => {
@@ -398,6 +385,7 @@ export function TldrawGabaritCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Editor | null>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
 
   // Stocker l'éditeur dans une ref pour y accéder dans le handler
   useEffect(() => {
@@ -413,20 +401,14 @@ export function TldrawGabaritCanvas({
       const currentEditor = editorRef.current;
       if (!currentEditor) return;
 
-      // Bloquer complètement l'événement
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
 
-      // Calculer le nouveau zoom manuellement
       const currentZoom = currentEditor.getZoomLevel();
       const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
       const newZoom = Math.min(Math.max(currentZoom * zoomFactor, 0.1), 8);
 
-      // Obtenir la position de la souris dans le canvas
-      const point = currentEditor.screenToPage({ x: e.clientX, y: e.clientY });
-
-      // Appliquer le zoom centré sur la souris
       currentEditor.setCamera({
         x: currentEditor.getCamera().x,
         y: currentEditor.getCamera().y,
@@ -436,7 +418,6 @@ export function TldrawGabaritCanvas({
       setZoomLevel(Math.round(newZoom * 100));
     };
 
-    // CAPTURE: true = intercepte l'événement AVANT qu'il n'arrive aux enfants
     container.addEventListener("wheel", handleWheel, { passive: false, capture: true });
 
     return () => {
@@ -449,13 +430,11 @@ export function TldrawGabaritCanvas({
       setEditor(editorInstance);
       editorRef.current = editorInstance;
 
-      // Écouter les changements d'outil
       editorInstance.on("change", () => {
         const currentTool = editorInstance.getCurrentToolId();
         setActiveTool(currentTool);
       });
 
-      // Charger l'image de fond
       if (imageUrl) {
         const img = new Image();
         img.crossOrigin = "anonymous";
@@ -499,7 +478,6 @@ export function TldrawGabaritCanvas({
         img.src = imageUrl;
       }
 
-      // Charger les données initiales
       if (initialData?.shapes) {
         try {
           initialData.shapes.forEach((shape: any) => {
@@ -515,7 +493,6 @@ export function TldrawGabaritCanvas({
     [imageUrl, templateId, initialData],
   );
 
-  // Fonctions pour changer d'outil
   const selectTool = useCallback(
     (toolId: string) => {
       if (editor) {
@@ -526,7 +503,6 @@ export function TldrawGabaritCanvas({
     [editor],
   );
 
-  // Fonctions de zoom manuel
   const handleZoomIn = useCallback(() => {
     if (editor) {
       const currentZoom = editor.getZoomLevel();
@@ -673,53 +649,23 @@ export function TldrawGabaritCanvas({
     }
   }, [editor]);
 
-  // Bouton d'outil personnalisé
+  // Bouton d'outil pour la barre flottante
   const ToolButton = ({ toolId, icon: Icon, label }: { toolId: string; icon: any; label: string }) => (
     <Button
-      variant={activeTool === toolId ? "default" : "outline"}
+      variant={activeTool === toolId ? "default" : "ghost"}
       size="sm"
       onClick={() => selectTool(toolId)}
       title={label}
-      className="h-9 w-9 p-0"
+      className={`h-10 w-10 p-0 ${activeTool === toolId ? "bg-blue-500 text-white" : ""}`}
     >
-      <Icon className="h-4 w-4" />
+      <Icon className="h-5 w-5" />
     </Button>
   );
 
   return (
     <div ref={containerRef} className={`flex flex-col ${isFullscreen ? "fixed inset-0 z-50 bg-white" : "h-[700px]"}`}>
-      {/* Barre d'outils personnalisée */}
-      <div className="flex items-center gap-2 p-2 bg-gray-100 border-b flex-wrap">
-        {/* Outils de dessin */}
-        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
-          <ToolButton toolId="select" icon={MousePointer} label="Sélection (V)" />
-          <ToolButton toolId="hand" icon={Hand} label="Main - Déplacer (H)" />
-        </div>
-
-        <Separator orientation="vertical" className="h-6" />
-
-        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
-          <ToolButton toolId="draw" icon={Pencil} label="Courbe libre (D)" />
-          <ToolButton toolId="line" icon={Spline} label="Ligne/Courbe (L)" />
-          <ToolButton toolId="geo" icon={Square} label="Formes (R)" />
-          <ToolButton toolId="eraser" icon={Eraser} label="Gomme (E)" />
-        </div>
-
-        <Separator orientation="vertical" className="h-6" />
-
-        {/* Contrôles de zoom */}
-        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
-          <Button variant="ghost" size="sm" onClick={handleZoomOut} title="Zoom arrière" className="h-8 w-8 p-0">
-            <ZoomOut className="h-4 w-4" />
-          </Button>
-          <span className="text-xs font-mono w-12 text-center">{zoomLevel}%</span>
-          <Button variant="ghost" size="sm" onClick={handleZoomIn} title="Zoom avant" className="h-8 w-8 p-0">
-            <ZoomIn className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <Separator orientation="vertical" className="h-6" />
-
+      {/* Barre d'actions en haut */}
+      <div className="flex items-center gap-2 p-2 bg-gray-100 border-b">
         <Badge variant="outline" className="text-xs">
           <Ruler className="h-3 w-3 mr-1" />
           1px = {(1 / scaleFactor).toFixed(2)}mm
@@ -727,10 +673,22 @@ export function TldrawGabaritCanvas({
 
         <Separator orientation="vertical" className="h-6" />
 
-        <Button variant="outline" size="sm" onClick={handleResetView}>
-          <RotateCcw className="h-4 w-4 mr-1" />
-          Reset
+        {/* Contrôles de zoom */}
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-8 w-8 p-0">
+            <ZoomOut className="h-4 w-4" />
+          </Button>
+          <span className="text-xs font-mono w-12 text-center">{zoomLevel}%</span>
+          <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-8 w-8 p-0">
+            <ZoomIn className="h-4 w-4" />
+          </Button>
+        </div>
+
+        <Button variant="ghost" size="sm" onClick={handleResetView}>
+          <RotateCcw className="h-4 w-4" />
         </Button>
+
+        <Separator orientation="vertical" className="h-6" />
 
         <Button variant="outline" size="sm" onClick={handleSave}>
           <Save className="h-4 w-4 mr-1" />
@@ -760,17 +718,63 @@ export function TldrawGabaritCanvas({
         )}
       </div>
 
-      {/* Canvas tldraw avec interception de la molette en capture */}
+      {/* Canvas tldraw */}
       <div ref={canvasContainerRef} className="flex-1 relative" style={{ overflow: "hidden" }}>
-        <Tldraw onMount={handleMount} overrides={uiOverrides} hideUi={false} />
+        <Tldraw onMount={handleMount} hideUi={true} />
+
+        {/* Barre d'outils flottante draggable */}
+        <Draggable handle=".drag-handle" bounds="parent" defaultPosition={{ x: 20, y: 20 }}>
+          <Card ref={toolbarRef} className="absolute shadow-lg bg-white/95 backdrop-blur-sm border-2 z-10">
+            {/* Poignée de drag */}
+            <div className="drag-handle flex items-center justify-center py-1 px-2 bg-gray-100 cursor-move border-b rounded-t-lg">
+              <GripVertical className="h-4 w-4 text-gray-400" />
+              <span className="text-xs text-gray-500 ml-1">Outils</span>
+            </div>
+
+            {/* Outils */}
+            <div className="p-2 flex flex-col gap-1">
+              {/* Navigation */}
+              <div className="flex gap-1">
+                <ToolButton toolId="select" icon={MousePointer} label="Sélection (V)" />
+                <ToolButton toolId="hand" icon={Hand} label="Main (H)" />
+              </div>
+
+              <Separator className="my-1" />
+
+              {/* Dessin */}
+              <div className="flex gap-1">
+                <ToolButton toolId="draw" icon={Pencil} label="Courbe libre (D)" />
+                <ToolButton toolId="line" icon={Spline} label="Ligne/Courbe (L)" />
+              </div>
+
+              <div className="flex gap-1">
+                <ToolButton toolId="geo" icon={Square} label="Rectangle (R)" />
+                <ToolButton toolId="eraser" icon={Eraser} label="Gomme (E)" />
+              </div>
+
+              <Separator className="my-1" />
+
+              {/* Info outil actif */}
+              <div className="text-xs text-center text-gray-500 px-1">
+                {activeTool === "select" && "🖱️ Sélection"}
+                {activeTool === "hand" && "✋ Déplacer"}
+                {activeTool === "draw" && "✏️ Courbe libre"}
+                {activeTool === "line" && "〰️ Ligne/Courbe"}
+                {activeTool === "geo" && "⬜ Formes"}
+                {activeTool === "eraser" && "🧹 Gomme"}
+              </div>
+            </div>
+          </Card>
+        </Draggable>
       </div>
 
       {/* Info en bas */}
       <div className="p-2 bg-gray-50 border-t text-xs text-muted-foreground flex justify-between">
         <span>
-          🖱️ <strong>Molette</strong>: zoom • <strong>Espace+glisser</strong> ou <strong>Main</strong>: déplacer
+          🖱️ <strong>Molette</strong>: zoom • <strong>Espace+glisser</strong>: déplacer • Déplacez la boîte d'outils où
+          vous voulez
         </span>
-        <span>Ligne/Courbe: double-clic pour terminer</span>
+        <span>Double-clic pour terminer une ligne</span>
       </div>
     </div>
   );
