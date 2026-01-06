@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 4.1 - Ajout bouton plein écran
+// VERSION: 4.2 - Plein écran avec scale dynamique
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -163,6 +163,7 @@ export const LayoutCanvas = ({
 
   // États pour le plein écran
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenScale, setFullscreenScale] = useState(1);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   const [furnitureForm, setFurnitureForm] = useState({
@@ -659,6 +660,19 @@ export const LayoutCanvas = ({
   );
 
   // Fonctions pour le plein écran
+  const calculateFullscreenScale = useCallback(() => {
+    // Calculer le scale pour remplir l'écran tout en gardant le ratio
+    const screenWidth = window.innerWidth;
+    const screenHeight = window.innerHeight;
+    const padding = 40; // Marge pour les contrôles
+
+    const scaleX = (screenWidth - padding) / CANVAS_WIDTH;
+    const scaleY = (screenHeight - padding) / CANVAS_HEIGHT;
+
+    // Prendre le plus petit pour garder tout visible
+    return Math.min(scaleX, scaleY, 2); // Max 2x pour éviter le flou
+  }, []);
+
   const toggleFullscreen = useCallback(() => {
     if (!canvasContainerRef.current) return;
 
@@ -667,6 +681,7 @@ export const LayoutCanvas = ({
         .requestFullscreen()
         .then(() => {
           setIsFullscreen(true);
+          setFullscreenScale(calculateFullscreenScale());
         })
         .catch((err) => {
           console.error("Erreur plein écran:", err);
@@ -677,24 +692,39 @@ export const LayoutCanvas = ({
         .exitFullscreen()
         .then(() => {
           setIsFullscreen(false);
+          setFullscreenScale(1);
         })
         .catch((err) => {
           console.error("Erreur sortie plein écran:", err);
         });
     }
-  }, []);
+  }, [calculateFullscreenScale]);
 
   // Écouter les changements de plein écran (ex: touche Échap)
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      const isNowFullscreen = !!document.fullscreenElement;
+      setIsFullscreen(isNowFullscreen);
+      if (isNowFullscreen) {
+        setFullscreenScale(calculateFullscreenScale());
+      } else {
+        setFullscreenScale(1);
+      }
+    };
+
+    const handleResize = () => {
+      if (isFullscreen) {
+        setFullscreenScale(calculateFullscreenScale());
+      }
     };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
+    window.addEventListener("resize", handleResize);
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      window.removeEventListener("resize", handleResize);
     };
-  }, []);
+  }, [isFullscreen, calculateFullscreenScale]);
 
   // Fonction pour appliquer la nouvelle distance de cotation
   const applyCotation = useCallback(() => {
@@ -2901,7 +2931,7 @@ export const LayoutCanvas = ({
             <div
               ref={canvasContainerRef}
               className={`bg-muted/30 rounded-lg p-2 relative ${
-                isFullscreen ? "fixed inset-0 z-50 flex items-center justify-center bg-black" : ""
+                isFullscreen ? "fixed inset-0 z-50 flex items-center justify-center bg-black overflow-hidden" : ""
               }`}
             >
               <canvas
@@ -2910,7 +2940,15 @@ export const LayoutCanvas = ({
                 height={CANVAS_HEIGHT}
                 className={`border rounded bg-white ${
                   isPanning ? "cursor-grabbing" : activeTool === "pan" ? "cursor-grab" : "cursor-crosshair"
-                } ${isFullscreen ? "max-w-full max-h-full" : ""}`}
+                }`}
+                style={
+                  isFullscreen
+                    ? {
+                        transform: `scale(${fullscreenScale})`,
+                        transformOrigin: "center center",
+                      }
+                    : undefined
+                }
                 onWheel={handleWheel}
                 onMouseDown={handleMouseDownForPan}
                 onMouseMove={handleMouseMoveForPan}
