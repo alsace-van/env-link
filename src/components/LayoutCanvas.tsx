@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 4.3 - Plein écran avec fond blanc
+// VERSION: 4.5 - Fix scroll page pendant zoom molette
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -590,9 +590,10 @@ export const LayoutCanvas = ({
     setZoomLevel(1);
   }, []);
 
-  const handleWheel = useCallback(
-    (event: React.WheelEvent<HTMLCanvasElement>) => {
+  const handleWheelNative = useCallback(
+    (event: WheelEvent) => {
       event.preventDefault();
+      event.stopPropagation();
 
       // Récupérer la position de la souris relative au canvas
       const rect = canvasRef.current?.getBoundingClientRect();
@@ -611,6 +612,18 @@ export const LayoutCanvas = ({
     },
     [handleZoom],
   );
+
+  // Attacher l'événement wheel avec passive: false pour permettre preventDefault
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvas.addEventListener("wheel", handleWheelNative, { passive: false });
+
+    return () => {
+      canvas.removeEventListener("wheel", handleWheelNative);
+    };
+  }, [handleWheelNative]);
 
   // Gestion du pan (déplacement) avec l'outil Main
   const handleMouseDownForPan = useCallback(
@@ -661,9 +674,10 @@ export const LayoutCanvas = ({
 
   // Fonctions pour le plein écran
   const calculateFullscreenScale = useCallback(() => {
-    // Calculer le scale pour remplir au maximum l'écran tout en gardant le canvas visible
-    const screenWidth = window.innerWidth;
-    const screenHeight = window.innerHeight;
+    // Calculer le scale pour remplir au maximum l'écran
+    // En tenant compte de la barre d'outils (~80px) et du padding (32px)
+    const screenWidth = window.innerWidth - 32; // padding horizontal
+    const screenHeight = window.innerHeight - 120; // barre d'outils + padding
 
     const scaleX = screenWidth / CANVAS_WIDTH;
     const scaleY = screenHeight / CANVAS_HEIGHT;
@@ -2746,8 +2760,17 @@ export const LayoutCanvas = ({
             </div>
           </Card>
 
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 flex-wrap bg-muted/30 p-3 rounded-lg">
+          <div
+            ref={canvasContainerRef}
+            className={`space-y-2 ${
+              isFullscreen ? "fixed inset-0 z-50 flex flex-col bg-white overflow-hidden p-4" : ""
+            }`}
+          >
+            <div
+              className={`flex items-center gap-2 flex-wrap bg-muted/30 p-3 rounded-lg ${
+                isFullscreen ? "bg-gray-100 shadow-md" : ""
+              }`}
+            >
               <Button
                 variant={activeTool === "select" ? "default" : "outline"}
                 size="sm"
@@ -2928,9 +2951,8 @@ export const LayoutCanvas = ({
             )}
 
             <div
-              ref={canvasContainerRef}
               className={`bg-muted/30 rounded-lg p-2 relative ${
-                isFullscreen ? "fixed inset-0 z-50 flex items-center justify-center bg-white overflow-hidden" : ""
+                isFullscreen ? "flex-1 flex items-center justify-center" : ""
               }`}
             >
               <canvas
@@ -2948,7 +2970,6 @@ export const LayoutCanvas = ({
                       }
                     : undefined
                 }
-                onWheel={handleWheel}
                 onMouseDown={handleMouseDownForPan}
                 onMouseMove={handleMouseMoveForPan}
                 onMouseUp={handleMouseUpForPan}
@@ -2997,21 +3018,23 @@ export const LayoutCanvas = ({
                   {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
                 </Button>
               </div>
-
-              {/* Indication en mode plein écran */}
-              {isFullscreen && (
-                <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg shadow-md px-3 py-1.5 text-sm text-gray-600">
-                  Appuyez sur <kbd className="px-1.5 py-0.5 bg-gray-200 rounded text-xs font-mono">Échap</kbd> pour
-                  quitter
-                </div>
-              )}
             </div>
 
-            <div className="mt-2 text-xs text-muted-foreground">
-              Échelle : 1:{Math.round(1 / scale)} • Zoom: {Math.round(zoomLevel * 100)}% • Zone en pointillés bleus =
-              zone de chargement utile ({loadAreaLength} x {loadAreaWidth} mm) • Molette: zoom • Outil Main: déplacer la
-              vue
-            </div>
+            {!isFullscreen && (
+              <div className="mt-2 text-xs text-muted-foreground">
+                Échelle : 1:{Math.round(1 / scale)} • Zoom: {Math.round(zoomLevel * 100)}% • Zone en pointillés bleus =
+                zone de chargement utile ({loadAreaLength} x {loadAreaWidth} mm) • Molette: zoom • Outil Main: déplacer
+                la vue
+              </div>
+            )}
+
+            {/* Indication en mode plein écran */}
+            {isFullscreen && (
+              <div className="absolute top-4 right-4 bg-gray-100 backdrop-blur-sm rounded-lg shadow-md px-3 py-1.5 text-sm text-gray-600">
+                Appuyez sur <kbd className="px-1.5 py-0.5 bg-gray-300 rounded text-xs font-mono">Échap</kbd> pour
+                quitter
+              </div>
+            )}
           </div>
         </div>
 
