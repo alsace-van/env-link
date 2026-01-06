@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 4.0 - Outil Main dédié pour déplacer la vue
+// VERSION: 4.1 - Ajout bouton plein écran
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -28,6 +28,8 @@ import {
   ZoomIn,
   ZoomOut,
   Hand,
+  Maximize,
+  Minimize,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
@@ -158,6 +160,10 @@ export const LayoutCanvas = ({
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
   const lastPanPoint = useRef<{ x: number; y: number } | null>(null);
+
+  // États pour le plein écran
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   const [furnitureForm, setFurnitureForm] = useState({
     longueur_mm: 0,
@@ -651,6 +657,44 @@ export const LayoutCanvas = ({
     },
     [isPanning],
   );
+
+  // Fonctions pour le plein écran
+  const toggleFullscreen = useCallback(() => {
+    if (!canvasContainerRef.current) return;
+
+    if (!document.fullscreenElement) {
+      canvasContainerRef.current
+        .requestFullscreen()
+        .then(() => {
+          setIsFullscreen(true);
+        })
+        .catch((err) => {
+          console.error("Erreur plein écran:", err);
+          toast.error("Impossible de passer en plein écran");
+        });
+    } else {
+      document
+        .exitFullscreen()
+        .then(() => {
+          setIsFullscreen(false);
+        })
+        .catch((err) => {
+          console.error("Erreur sortie plein écran:", err);
+        });
+    }
+  }, []);
+
+  // Écouter les changements de plein écran (ex: touche Échap)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
 
   // Fonction pour appliquer la nouvelle distance de cotation
   const applyCotation = useCallback(() => {
@@ -2854,14 +2898,19 @@ export const LayoutCanvas = ({
               </div>
             )}
 
-            <div className="bg-muted/30 rounded-lg p-2 relative">
+            <div
+              ref={canvasContainerRef}
+              className={`bg-muted/30 rounded-lg p-2 relative ${
+                isFullscreen ? "fixed inset-0 z-50 flex items-center justify-center bg-black" : ""
+              }`}
+            >
               <canvas
                 ref={canvasRef}
                 width={CANVAS_WIDTH}
                 height={CANVAS_HEIGHT}
                 className={`border rounded bg-white ${
                   isPanning ? "cursor-grabbing" : activeTool === "pan" ? "cursor-grab" : "cursor-crosshair"
-                }`}
+                } ${isFullscreen ? "max-w-full max-h-full" : ""}`}
                 onWheel={handleWheel}
                 onMouseDown={handleMouseDownForPan}
                 onMouseMove={handleMouseMoveForPan}
@@ -2869,7 +2918,7 @@ export const LayoutCanvas = ({
                 onMouseLeave={handleMouseUpForPan}
               />
 
-              {/* Contrôles de zoom */}
+              {/* Contrôles de zoom et plein écran */}
               <div className="absolute bottom-4 right-4 flex items-center gap-1 bg-white/90 backdrop-blur-sm rounded-lg shadow-md p-1">
                 <Button
                   variant="ghost"
@@ -2900,7 +2949,25 @@ export const LayoutCanvas = ({
                 >
                   <ZoomIn className="h-4 w-4" />
                 </Button>
+                <div className="w-px h-6 bg-gray-300 mx-1" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleFullscreen}
+                  className="h-8 w-8 p-0"
+                  title={isFullscreen ? "Quitter le plein écran (Échap)" : "Plein écran"}
+                >
+                  {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+                </Button>
               </div>
+
+              {/* Indication en mode plein écran */}
+              {isFullscreen && (
+                <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg shadow-md px-3 py-1.5 text-sm text-gray-600">
+                  Appuyez sur <kbd className="px-1.5 py-0.5 bg-gray-200 rounded text-xs font-mono">Échap</kbd> pour
+                  quitter
+                </div>
+              )}
             </div>
 
             <div className="mt-2 text-xs text-muted-foreground">
