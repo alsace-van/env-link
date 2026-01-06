@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 3.0 - Persistance offset zone chargement
+// VERSION: 3.2 - Sauvegarde position meubles en mm + recréation au chargement
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -1284,24 +1284,43 @@ export const LayoutCanvas = ({
 
     const handleSave = async () => {
       const json = paper.project.exportJSON();
+      const currentScale = scaleRef.current;
 
-      // Extraire les IDs des meubles présents sur le canvas
-      const canvasFurnitureIds = new Set<string>();
+      // Calculer la position du véhicule pour convertir les positions
+      const currentVehicleLength = vehicleLengthRef.current;
+      const currentVehicleWidth = vehicleWidthRef.current;
+      const scaledVehicleLength = currentVehicleLength * currentScale;
+      const scaledVehicleWidth = currentVehicleWidth * currentScale;
+      const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
+      const vehicleTop = (CANVAS_HEIGHT - scaledVehicleWidth) / 2;
+
+      // Extraire les IDs et positions des meubles présents sur le canvas
+      const canvasFurniture = new Map<string, { x: number; y: number }>();
       paper.project.activeLayer.children.forEach((child) => {
         if (child instanceof paper.Group && child.data.isFurniture && child.data.furnitureId) {
-          canvasFurnitureIds.add(child.data.furnitureId);
+          // Convertir la position du centre en mm (par rapport au coin avant-gauche du véhicule)
+          const centerX = child.bounds.center.x;
+          const centerY = child.bounds.center.y;
+          const positionXmm = Math.round((centerX - vehicleLeft) / currentScale);
+          const positionYmm = Math.round((centerY - vehicleTop) / currentScale);
+          canvasFurniture.set(child.data.furnitureId, { x: positionXmm, y: positionYmm });
         }
       });
 
-      // Ne sauvegarder que les meubles qui sont sur le canvas
+      // Ne sauvegarder que les meubles qui sont sur le canvas, avec leur position
       const furnitureData = Array.from(furnitureItemsRef.current.entries())
-        .filter(([id]) => canvasFurnitureIds.has(id))
-        .map(([id, data]) => ({
-          id,
-          ...data,
-        }));
+        .filter(([id]) => canvasFurniture.has(id))
+        .map(([id, data]) => {
+          const position = canvasFurniture.get(id)!;
+          return {
+            id,
+            ...data,
+            position_x_mm: position.x,
+            position_y_mm: position.y,
+          };
+        });
 
-      console.log("🔍 Sauvegarde - Nombre de meubles sur le canvas:", canvasFurnitureIds.size);
+      console.log("🔍 Sauvegarde - Nombre de meubles sur le canvas:", canvasFurniture.size);
       console.log("🔍 Sauvegarde - Nombre de meubles dans les données:", furnitureData.length);
       console.log(
         "🔍 Dimensions zone de chargement:",
@@ -1317,7 +1336,7 @@ export const LayoutCanvas = ({
       // Synchroniser furnitureItems avec le canvas
       setFurnitureItems((prev) => {
         const newMap = new Map<string, FurnitureData>();
-        canvasFurnitureIds.forEach((id) => {
+        canvasFurniture.forEach((_, id) => {
           const data = prev.get(id);
           if (data) {
             newMap.set(id, data);
@@ -1417,33 +1436,124 @@ export const LayoutCanvas = ({
           setLoadAreaOffsetX(data.offset_zone_chargement_mm);
         }
 
-        if (data?.layout_canvas_data && typeof data.layout_canvas_data === "string") {
-          paper.project.clear();
-          paper.project.importJSON(data.layout_canvas_data);
+        // Calculer l'échelle actuelle et la position du véhicule
+        const currentScale = scaleRef.current;
+        const currentVehicleLength = vehicleLengthRef.current;
+        const currentVehicleWidth = vehicleWidthRef.current;
+        const scaledVehicleLength = currentVehicleLength * currentScale;
+        const scaledVehicleWidth = currentVehicleWidth * currentScale;
+        const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
+        const vehicleTop = (CANVAS_HEIGHT - scaledVehicleWidth) / 2;
 
-          // Redessiner le rectangle bleu après le chargement
-          setTimeout(() => drawLoadAreaOutline(), 10);
-
-          saveState();
-          toast.success("Plan d'aménagement chargé");
-        } else {
-          // Pas de données sauvegardées, juste redessiner le rectangle
-          drawLoadAreaOutline();
-        }
+        // Charger les données des meubles
+        const furnitureMap = new Map<string, FurnitureData>();
+        const furniturePositions = new Map<string, { x: number; y: number }>();
 
         if (data?.furniture_data && Array.isArray(data.furniture_data)) {
-          const newMap = new Map<string, FurnitureData>();
           data.furniture_data.forEach((item: any) => {
-            newMap.set(item.id, {
+            furnitureMap.set(item.id, {
               id: item.id,
               longueur_mm: item.longueur_mm,
               largeur_mm: item.largeur_mm,
               hauteur_mm: item.hauteur_mm,
               poids_kg: item.poids_kg,
               hauteur_sol_mm: item.hauteur_sol_mm || 0,
+              masse_contenu_kg: item.masse_contenu_kg || 0,
             });
+            // Sauvegarder la position si elle existe
+            if (item.position_x_mm !== undefined && item.position_y_mm !== undefined) {
+              furniturePositions.set(item.id, { x: item.position_x_mm, y: item.position_y_mm });
+            }
           });
-          setFurnitureItems(newMap);
+          setFurnitureItems(furnitureMap);
+        }
+
+        // Importer le JSON du canvas (sans les meubles, on va les recréer)
+        if (data?.layout_canvas_data && typeof data.layout_canvas_data === "string") {
+          paper.project.clear();
+          paper.project.importJSON(data.layout_canvas_data);
+
+          // Supprimer tous les meubles importés (on va les recréer)
+          const toRemove: paper.Item[] = [];
+          paper.project.activeLayer.children.forEach((child) => {
+            if (child instanceof paper.Group && child.data.isFurniture) {
+              toRemove.push(child);
+            }
+          });
+          toRemove.forEach((item) => item.remove());
+        } else {
+          paper.project.clear();
+        }
+
+        // Redessiner les contours
+        drawLoadAreaOutline();
+
+        // Recréer les meubles avec la bonne échelle et position
+        furnitureMap.forEach((furnitureData, id) => {
+          const scaledWidth = furnitureData.longueur_mm * currentScale;
+          const scaledHeight = furnitureData.largeur_mm * currentScale;
+
+          // Calculer la position du centre
+          let centerX: number;
+          let centerY: number;
+
+          const position = furniturePositions.get(id);
+          if (position) {
+            // Position sauvegardée en mm, convertir en pixels
+            centerX = vehicleLeft + position.x * currentScale;
+            centerY = vehicleTop + position.y * currentScale;
+          } else {
+            // Pas de position sauvegardée, centrer dans la zone de chargement
+            const loadOffsetX = loadAreaOffsetXRef.current;
+            const loadLength = loadAreaLengthRef.current;
+            const loadWidth = loadAreaWidthRef.current;
+            const loadAreaLeft = vehicleLeft + loadOffsetX * currentScale;
+            const loadAreaTop = vehicleTop + ((currentVehicleWidth - loadWidth) / 2) * currentScale;
+            centerX = loadAreaLeft + (loadLength * currentScale) / 2;
+            centerY = loadAreaTop + (loadWidth * currentScale) / 2;
+          }
+
+          // Créer le rectangle du meuble
+          const rect = new paper.Path.Rectangle({
+            point: [centerX - scaledWidth / 2, centerY - scaledHeight / 2],
+            size: [scaledWidth, scaledHeight],
+            strokeColor: new paper.Color("#3b82f6"),
+            strokeWidth: 2,
+            fillColor: new paper.Color("#3b82f6"),
+          });
+          rect.fillColor!.alpha = 0.3;
+
+          // Créer le texte
+          const text = new paper.PointText({
+            point: [centerX, centerY],
+            content: `${furnitureData.longueur_mm}x${furnitureData.largeur_mm}x${furnitureData.hauteur_mm}mm\n${furnitureData.poids_kg}kg`,
+            fillColor: new paper.Color("#000"),
+            fontSize: 12,
+            justification: "center",
+          });
+          text.data.isFurnitureLabel = true;
+          text.data.furnitureId = id;
+
+          // Créer le groupe
+          const group = new paper.Group([rect, text]);
+          group.data.isFurniture = true;
+          group.data.furnitureId = id;
+
+          console.log("📦 Meuble recréé:", {
+            id,
+            longueur_mm: furnitureData.longueur_mm,
+            largeur_mm: furnitureData.largeur_mm,
+            scaledWidth,
+            scaledHeight,
+            centerX,
+            centerY,
+            echelle: currentScale,
+          });
+        });
+
+        saveState();
+        if (furnitureMap.size > 0 || data?.layout_canvas_data) {
+          toast.success("Plan d'aménagement chargé");
         }
       } catch (error) {
         console.error("Error loading layout:", error);
