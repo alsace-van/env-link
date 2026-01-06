@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: ProjectForm
 // Formulaire de création/édition de projet
-// VERSION: 2.4 - Ajout des champs COC pour dossier VASP
+// VERSION: 2.5 - Ajout des champs porte-à-faux AV et AR pour VASP
 // ============================================
 
 import { useState, useEffect } from "react";
@@ -103,6 +103,8 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
   const [cocMmtaEssieuAr, setCocMmtaEssieuAr] = useState<string>("");
   const [cocEmpattement, setCocEmpattement] = useState<string>("");
   const [cocChargeAttelage, setCocChargeAttelage] = useState<string>("");
+  const [cocPorteFauxAvant, setCocPorteFauxAvant] = useState<string>("");
+  const [cocPorteFauxArriere, setCocPorteFauxArriere] = useState<string>("");
 
   // Compute available options for cascade dropdowns
   const availableMarques = Array.from(new Set(vehicles.map((v) => v.marque))).sort();
@@ -191,6 +193,14 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
       }
       if (existingProject.charge_attelage_s_kg) {
         setCocChargeAttelage(existingProject.charge_attelage_s_kg.toString());
+        setShowCOCSection(true);
+      }
+      if (existingProject.porte_faux_avant_mm) {
+        setCocPorteFauxAvant(existingProject.porte_faux_avant_mm.toString());
+        setShowCOCSection(true);
+      }
+      if (existingProject.porte_faux_arriere_mm) {
+        setCocPorteFauxArriere(existingProject.porte_faux_arriere_mm.toString());
         setShowCOCSection(true);
       }
     }
@@ -628,6 +638,8 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
       mmta_essieu_ar_kg: cocMmtaEssieuAr ? parseInt(cocMmtaEssieuAr) : null,
       empattement_mm: cocEmpattement ? parseInt(cocEmpattement) : null,
       charge_attelage_s_kg: cocChargeAttelage ? parseInt(cocChargeAttelage) : null,
+      porte_faux_avant_mm: cocPorteFauxAvant ? parseInt(cocPorteFauxAvant) : null,
+      porte_faux_arriere_mm: cocPorteFauxArriere ? parseInt(cocPorteFauxArriere) : null,
     };
 
     let result;
@@ -685,6 +697,8 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
     setCocMmtaEssieuAr("");
     setCocEmpattement("");
     setCocChargeAttelage("");
+    setCocPorteFauxAvant("");
+    setCocPorteFauxArriere("");
 
     // Notifier le parent et naviguer vers le projet
     onProjectCreated(newProjectId || undefined);
@@ -1122,6 +1136,37 @@ const ProjectForm = ({ onProjectCreated, existingProject, isEditMode = false }: 
                             onChange={(e) => setCocChargeAttelage(e.target.value)}
                             disabled={isLoading}
                             placeholder="kg"
+                            className="h-9"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="coc_porte_faux_av" className="text-xs">
+                            Porte-à-faux avant
+                          </Label>
+                          <Input
+                            id="coc_porte_faux_av"
+                            type="number"
+                            value={cocPorteFauxAvant}
+                            onChange={(e) => setCocPorteFauxAvant(e.target.value)}
+                            disabled={isLoading}
+                            placeholder="mm"
+                            className="h-9"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="coc_porte_faux_ar" className="text-xs">
+                            Porte-à-faux arrière
+                          </Label>
+                          <Input
+                            id="coc_porte_faux_ar"
+                            type="number"
+                            value={cocPorteFauxArriere}
+                            onChange={(e) => setCocPorteFauxArriere(e.target.value)}
+                            disabled={isLoading}
+                            placeholder="mm"
                             className="h-9"
                           />
                         </div>
