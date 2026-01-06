@@ -64,6 +64,8 @@ interface Project {
   mmta_essieu_ar_kg?: number;
   empattement_mm?: number;
   charge_attelage_s_kg?: number;
+  porte_faux_avant_mm?: number;
+  porte_faux_arriere_mm?: number;
 }
 
 interface ProjectInfoSidebarProps {
@@ -113,7 +115,9 @@ export const ProjectInfoSidebar = ({ project, isOpen, onClose, onEdit }: Project
     project.mmta_essieu_av_kg ||
     project.mmta_essieu_ar_kg ||
     project.empattement_mm ||
-    project.charge_attelage_s_kg
+    project.charge_attelage_s_kg ||
+    project.porte_faux_avant_mm ||
+    project.porte_faux_arriere_mm
   );
 
   const hasExtendedContent = hasRTIData || hasDimensionsData || hasWeightData || hasCOCData;
@@ -530,6 +534,18 @@ export const ProjectInfoSidebar = ({ project, isOpen, onClose, onEdit }: Project
                       <div className="flex justify-between text-xs">
                         <span className="text-muted-foreground">Empattement (4.1)</span>
                         <span className="font-medium text-purple-700">{project.empattement_mm} mm</span>
+                      </div>
+                    )}
+                    {project.porte_faux_avant_mm && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Porte-à-faux AV</span>
+                        <span className="font-medium text-purple-700">{project.porte_faux_avant_mm} mm</span>
+                      </div>
+                    )}
+                    {project.porte_faux_arriere_mm && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Porte-à-faux AR</span>
+                        <span className="font-medium text-purple-700">{project.porte_faux_arriere_mm} mm</span>
                       </div>
                     )}
                     {project.charge_attelage_s_kg && (
