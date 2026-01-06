@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 5.0 - Fix majeur transition plein écran
+// VERSION: 5.1 - Fix nettoyage des lignes d'essieu
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -910,10 +910,15 @@ export const LayoutCanvas = ({
 
     // Fonction pour dessiner le contour de la zone de chargement
     const drawLoadAreaOutline = () => {
-      // Supprimer les anciens rectangles s'ils existent
+      // Supprimer les anciens rectangles et éléments VASP s'ils existent
       const toRemove: paper.Item[] = [];
       paper.project.activeLayer.children.forEach((child) => {
-        if (child.data?.isLoadAreaOutline || child.data?.isVehicleOutline) {
+        if (
+          child.data?.isLoadAreaOutline ||
+          child.data?.isVehicleOutline ||
+          child.data?.isVASPElement ||
+          child.data?.isDistanceLabel
+        ) {
           toRemove.push(child);
         }
       });
