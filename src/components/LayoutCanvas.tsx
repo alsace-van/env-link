@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 4.5 - Fix scroll page pendant zoom molette
+// VERSION: 4.6 - Canvas plein écran dynamique (16/9 sans déformation)
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -163,7 +163,8 @@ export const LayoutCanvas = ({
 
   // États pour le plein écran
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [fullscreenScale, setFullscreenScale] = useState(1);
+  const [canvasWidth, setCanvasWidth] = useState(CANVAS_WIDTH);
+  const [canvasHeight, setCanvasHeight] = useState(CANVAS_HEIGHT);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   const [furnitureForm, setFurnitureForm] = useState({
@@ -194,7 +195,7 @@ export const LayoutCanvas = ({
 
   // Calcul de l'échelle basée sur le VÉHICULE complet (pas la zone de chargement)
   // Marge de 120px pour les labels et cotes
-  const scale = Math.min((CANVAS_WIDTH - 120) / vehicleLength, (CANVAS_HEIGHT - 120) / vehicleWidth);
+  const scale = Math.min((canvasWidth - 120) / vehicleLength, (canvasHeight - 120) / vehicleWidth);
 
   const scaledLoadAreaLength = loadAreaLength * scale;
   const scaledLoadAreaWidth = loadAreaWidth * scale;
@@ -214,6 +215,8 @@ export const LayoutCanvas = ({
   const empattementRef = useRef(empattement);
   const porteFauxAvantRef = useRef(porteFauxAvant);
   const porteFauxArriereRef = useRef(porteFauxArriere);
+  const canvasWidthRef = useRef(canvasWidth);
+  const canvasHeightRef = useRef(canvasHeight);
 
   useEffect(() => {
     activeToolRef.current = activeTool;
@@ -259,6 +262,11 @@ export const LayoutCanvas = ({
     porteFauxAvantRef.current = porteFauxAvant;
     porteFauxArriereRef.current = porteFauxArriere;
   }, [empattement, porteFauxAvant, porteFauxArriere]);
+
+  useEffect(() => {
+    canvasWidthRef.current = canvasWidth;
+    canvasHeightRef.current = canvasHeight;
+  }, [canvasWidth, canvasHeight]);
 
   // Refs pour align et snap
   const alignStepRef = useRef(alignStep);
@@ -348,7 +356,7 @@ export const LayoutCanvas = ({
     const currentScale = scaleRef.current;
     const currentVehicleLength = vehicleLengthRef.current;
     const scaledVehicleLength = currentVehicleLength * currentScale;
-    const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
+    const vehicleLeft = (canvasWidthRef.current - scaledVehicleLength) / 2;
     const currentPorteFauxAvant = porteFauxAvantRef.current;
     const calculatedPorteFauxAvant = currentPorteFauxAvant || Math.round(currentVehicleLength * 0.15);
     const scaledPorteFauxAvant = calculatedPorteFauxAvant * currentScale;
@@ -586,7 +594,7 @@ export const LayoutCanvas = ({
   const handleZoomReset = useCallback(() => {
     if (!paper.view) return;
     paper.view.zoom = 1;
-    paper.view.center = new paper.Point(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+    paper.view.center = new paper.Point(canvasWidthRef.current / 2, canvasHeightRef.current / 2);
     setZoomLevel(1);
   }, []);
 
@@ -673,17 +681,13 @@ export const LayoutCanvas = ({
   );
 
   // Fonctions pour le plein écran
-  const calculateFullscreenScale = useCallback(() => {
-    // Calculer le scale pour remplir au maximum l'écran
-    // En tenant compte de la barre d'outils (~80px) et du padding (32px)
+  const calculateFullscreenDimensions = useCallback(() => {
+    // Calculer les dimensions du canvas pour remplir tout l'écran
+    // En tenant compte de la barre d'outils (~70px) et du padding (32px)
     const screenWidth = window.innerWidth - 32; // padding horizontal
-    const screenHeight = window.innerHeight - 120; // barre d'outils + padding
+    const screenHeight = window.innerHeight - 100; // barre d'outils + padding
 
-    const scaleX = screenWidth / CANVAS_WIDTH;
-    const scaleY = screenHeight / CANVAS_HEIGHT;
-
-    // Prendre le plus petit pour garder tout visible
-    return Math.min(scaleX, scaleY);
+    return { width: screenWidth, height: screenHeight };
   }, []);
 
   const toggleFullscreen = useCallback(() => {
@@ -694,7 +698,9 @@ export const LayoutCanvas = ({
         .requestFullscreen()
         .then(() => {
           setIsFullscreen(true);
-          setFullscreenScale(calculateFullscreenScale());
+          const { width, height } = calculateFullscreenDimensions();
+          setCanvasWidth(width);
+          setCanvasHeight(height);
         })
         .catch((err) => {
           console.error("Erreur plein écran:", err);
@@ -705,13 +711,14 @@ export const LayoutCanvas = ({
         .exitFullscreen()
         .then(() => {
           setIsFullscreen(false);
-          setFullscreenScale(1);
+          setCanvasWidth(CANVAS_WIDTH);
+          setCanvasHeight(CANVAS_HEIGHT);
         })
         .catch((err) => {
           console.error("Erreur sortie plein écran:", err);
         });
     }
-  }, [calculateFullscreenScale]);
+  }, [calculateFullscreenDimensions]);
 
   // Écouter les changements de plein écran (ex: touche Échap)
   useEffect(() => {
@@ -719,15 +726,20 @@ export const LayoutCanvas = ({
       const isNowFullscreen = !!document.fullscreenElement;
       setIsFullscreen(isNowFullscreen);
       if (isNowFullscreen) {
-        setFullscreenScale(calculateFullscreenScale());
+        const { width, height } = calculateFullscreenDimensions();
+        setCanvasWidth(width);
+        setCanvasHeight(height);
       } else {
-        setFullscreenScale(1);
+        setCanvasWidth(CANVAS_WIDTH);
+        setCanvasHeight(CANVAS_HEIGHT);
       }
     };
 
     const handleResize = () => {
       if (isFullscreen) {
-        setFullscreenScale(calculateFullscreenScale());
+        const { width, height } = calculateFullscreenDimensions();
+        setCanvasWidth(width);
+        setCanvasHeight(height);
       }
     };
 
@@ -737,7 +749,7 @@ export const LayoutCanvas = ({
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
       window.removeEventListener("resize", handleResize);
     };
-  }, [isFullscreen, calculateFullscreenScale]);
+  }, [isFullscreen, calculateFullscreenDimensions]);
 
   // Fonction pour appliquer la nouvelle distance de cotation
   const applyCotation = useCallback(() => {
@@ -773,7 +785,7 @@ export const LayoutCanvas = ({
     if (cotationTarget.type === "load_area") {
       const currentVehicleLength = vehicleLengthRef.current;
       const scaledVehicleLength = currentVehicleLength * currentScale;
-      const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
+      const vehicleLeft = (canvasWidthRef.current - scaledVehicleLength) / 2;
 
       // Calculer le nouvel offset (en mm)
       const newLoadAreaLeftPx = newX;
@@ -904,8 +916,8 @@ export const LayoutCanvas = ({
       const scaledVehicleWidth = currentVehicleWidth * currentScale;
 
       // Position du véhicule (centré dans le canvas)
-      const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
-      const vehicleTop = (CANVAS_HEIGHT - scaledVehicleWidth) / 2;
+      const vehicleLeft = (canvasWidthRef.current - scaledVehicleLength) / 2;
+      const vehicleTop = (canvasHeightRef.current - scaledVehicleWidth) / 2;
 
       // Position de la zone de chargement (avec offset depuis l'avant du véhicule)
       const loadAreaLeft = vehicleLeft + scaledOffsetX;
@@ -932,7 +944,7 @@ export const LayoutCanvas = ({
 
       // Label dimensions véhicule
       const vehicleLabelTop = new paper.PointText({
-        point: [CANVAS_WIDTH / 2, vehicleTop - 8],
+        point: [canvasWidthRef.current / 2, vehicleTop - 8],
         content: `Véhicule: ${currentVehicleLength} x ${currentVehicleWidth} mm`,
         fillColor: new paper.Color("#6b7280"),
         fontSize: 10,
@@ -968,7 +980,7 @@ export const LayoutCanvas = ({
       // Afficher l'échelle en bas à gauche
       const scaleRatio = Math.round(1 / currentScale);
       const scaleLabel = new paper.PointText({
-        point: [10, CANVAS_HEIGHT - 10],
+        point: [10, canvasHeightRef.current - 10],
         content: `Échelle : 1:${scaleRatio}`,
         fillColor: new paper.Color("#6b7280"),
         fontSize: 11,
@@ -995,8 +1007,8 @@ export const LayoutCanvas = ({
       const scaledVehicleWidth = currentVehicleWidth * currentScale;
 
       // Position du véhicule (centré dans le canvas)
-      const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
-      const vehicleTop = (CANVAS_HEIGHT - scaledVehicleWidth) / 2;
+      const vehicleLeft = (canvasWidthRef.current - scaledVehicleLength) / 2;
+      const vehicleTop = (canvasHeightRef.current - scaledVehicleWidth) / 2;
 
       // Utiliser les refs pour les valeurs COC
       const currentEmpattement = empattementRef.current;
@@ -1196,7 +1208,7 @@ export const LayoutCanvas = ({
       const currentScale = scaleRef.current;
       const currentVehicleLength = vehicleLengthRef.current;
       const scaledVehicleLength = currentVehicleLength * currentScale;
-      const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
+      const vehicleLeft = (canvasWidthRef.current - scaledVehicleLength) / 2;
       const calculatedPorteFauxAvant = currentPorteFauxAvant || Math.round(currentVehicleLength * 0.15);
       const scaledPorteFauxAvant = calculatedPorteFauxAvant * currentScale;
       const essieuAvX = vehicleLeft + scaledPorteFauxAvant;
@@ -1342,8 +1354,8 @@ export const LayoutCanvas = ({
         const currentVehicleWidth = vehicleWidthRef.current;
         const scaledVehicleLength = currentVehicleLength * currentScale;
         const scaledVehicleWidth = currentVehicleWidth * currentScale;
-        const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
-        const vehicleTop = (CANVAS_HEIGHT - scaledVehicleWidth) / 2;
+        const vehicleLeft = (canvasWidthRef.current - scaledVehicleLength) / 2;
+        const vehicleTop = (canvasHeightRef.current - scaledVehicleWidth) / 2;
 
         // Utiliser les refs pour les valeurs COC
         const currentEmpattement = empattementRef.current;
@@ -1620,9 +1632,9 @@ export const LayoutCanvas = ({
         const currentVehicleWidth = vehicleWidthRef.current;
         const scaledVehicleLength = currentVehicleLength * currentScale;
         const scaledVehicleWidth = currentVehicleWidth * currentScale;
-        const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
+        const vehicleLeft = (canvasWidthRef.current - scaledVehicleLength) / 2;
         const vehicleRight = vehicleLeft + scaledVehicleLength;
-        const vehicleTop = (CANVAS_HEIGHT - scaledVehicleWidth) / 2;
+        const vehicleTop = (canvasHeightRef.current - scaledVehicleWidth) / 2;
         const vehicleBottom = vehicleTop + scaledVehicleWidth;
 
         // Zone de chargement
@@ -2036,8 +2048,8 @@ export const LayoutCanvas = ({
           const scaledVehicleWidth = currentVehicleWidth * currentScale;
 
           // Position du véhicule et de la zone de chargement
-          const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
-          const vehicleTop = (CANVAS_HEIGHT - scaledVehicleWidth) / 2;
+          const vehicleLeft = (canvasWidthRef.current - scaledVehicleLength) / 2;
+          const vehicleTop = (canvasHeightRef.current - scaledVehicleWidth) / 2;
           const loadAreaLeft = vehicleLeft + scaledOffsetX;
           const loadAreaTop = vehicleTop + (scaledVehicleWidth - scaledWidth) / 2;
           const loadAreaRight = loadAreaLeft + scaledLength;
@@ -2157,8 +2169,8 @@ export const LayoutCanvas = ({
       const currentVehicleWidth = vehicleWidthRef.current;
       const scaledVehicleLength = currentVehicleLength * currentScale;
       const scaledVehicleWidth = currentVehicleWidth * currentScale;
-      const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
-      const vehicleTop = (CANVAS_HEIGHT - scaledVehicleWidth) / 2;
+      const vehicleLeft = (canvasWidthRef.current - scaledVehicleLength) / 2;
+      const vehicleTop = (canvasHeightRef.current - scaledVehicleWidth) / 2;
 
       // Extraire les IDs et positions des meubles présents sur le canvas
       const canvasFurniture = new Map<string, { x: number; y: number }>();
@@ -2308,8 +2320,8 @@ export const LayoutCanvas = ({
         const currentVehicleWidth = vehicleWidthRef.current;
         const scaledVehicleLength = currentVehicleLength * currentScale;
         const scaledVehicleWidth = currentVehicleWidth * currentScale;
-        const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
-        const vehicleTop = (CANVAS_HEIGHT - scaledVehicleWidth) / 2;
+        const vehicleLeft = (canvasWidthRef.current - scaledVehicleLength) / 2;
+        const vehicleTop = (canvasHeightRef.current - scaledVehicleWidth) / 2;
 
         // Charger les données des meubles
         const furnitureMap = new Map<string, FurnitureData>();
@@ -2462,6 +2474,8 @@ export const LayoutCanvas = ({
     porteFauxAvant,
     vehicleLength,
     vehicleWidth,
+    canvasWidth,
+    canvasHeight,
   ]);
 
   // useEffect séparé pour gérer le toggle VASP (afficher/masquer les éléments)
@@ -2567,8 +2581,8 @@ export const LayoutCanvas = ({
         const scaledLoadLength = loadAreaLengthRef.current * currentScale;
         const scaledLoadWidth = loadAreaWidthRef.current * currentScale;
 
-        const vehicleLeft = (CANVAS_WIDTH - scaledVehicleLength) / 2;
-        const vehicleTop = (CANVAS_HEIGHT - scaledVehicleWidth) / 2;
+        const vehicleLeft = (canvasWidthRef.current - scaledVehicleLength) / 2;
+        const vehicleTop = (canvasHeightRef.current - scaledVehicleWidth) / 2;
         const loadAreaLeft = vehicleLeft + scaledOffsetX;
         const loadAreaTop = vehicleTop + (scaledVehicleWidth - scaledLoadWidth) / 2;
 
@@ -2956,20 +2970,13 @@ export const LayoutCanvas = ({
               }`}
             >
               <canvas
+                key={`canvas-${canvasWidth}-${canvasHeight}`}
                 ref={canvasRef}
-                width={CANVAS_WIDTH}
-                height={CANVAS_HEIGHT}
+                width={canvasWidth}
+                height={canvasHeight}
                 className={`border rounded bg-white ${
                   isPanning ? "cursor-grabbing" : activeTool === "pan" ? "cursor-grab" : "cursor-crosshair"
                 }`}
-                style={
-                  isFullscreen
-                    ? {
-                        transform: `scale(${fullscreenScale})`,
-                        transformOrigin: "center center",
-                      }
-                    : undefined
-                }
                 onMouseDown={handleMouseDownForPan}
                 onMouseMove={handleMouseMoveForPan}
                 onMouseUp={handleMouseUpForPan}
