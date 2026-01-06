@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: LayoutCanvas
 // Canvas 2D pour aménagement de véhicule avec fonctionnalités VASP
-// VERSION: 5.2 - Ajout liste des meubles en mode plein écran
+// VERSION: 5.4 - Faux fullscreen CSS pour garder les modales accessibles
 // ============================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -692,45 +692,24 @@ export const LayoutCanvas = ({
   }, []);
 
   const toggleFullscreen = useCallback(() => {
-    if (!canvasContainerRef.current) return;
-
-    if (!document.fullscreenElement) {
-      canvasContainerRef.current
-        .requestFullscreen()
-        .then(() => {
-          setIsFullscreen(true);
-          const { width, height } = calculateFullscreenDimensions();
-          setCanvasWidth(width);
-          setCanvasHeight(height);
-        })
-        .catch((err) => {
-          console.error("Erreur plein écran:", err);
-          toast.error("Impossible de passer en plein écran");
-        });
+    // Utiliser un "faux fullscreen" CSS pour garder les modales accessibles
+    if (!isFullscreen) {
+      setIsFullscreen(true);
+      const { width, height } = calculateFullscreenDimensions();
+      setCanvasWidth(width);
+      setCanvasHeight(height);
     } else {
-      document
-        .exitFullscreen()
-        .then(() => {
-          setIsFullscreen(false);
-          setCanvasWidth(CANVAS_WIDTH);
-          setCanvasHeight(CANVAS_HEIGHT);
-        })
-        .catch((err) => {
-          console.error("Erreur sortie plein écran:", err);
-        });
+      setIsFullscreen(false);
+      setCanvasWidth(CANVAS_WIDTH);
+      setCanvasHeight(CANVAS_HEIGHT);
     }
-  }, [calculateFullscreenDimensions]);
+  }, [isFullscreen, calculateFullscreenDimensions]);
 
-  // Écouter les changements de plein écran (ex: touche Échap)
+  // Écouter la touche Échap pour quitter le mode plein écran
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      const isNowFullscreen = !!document.fullscreenElement;
-      setIsFullscreen(isNowFullscreen);
-      if (isNowFullscreen) {
-        const { width, height } = calculateFullscreenDimensions();
-        setCanvasWidth(width);
-        setCanvasHeight(height);
-      } else {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && isFullscreen) {
+        setIsFullscreen(false);
         setCanvasWidth(CANVAS_WIDTH);
         setCanvasHeight(CANVAS_HEIGHT);
       }
@@ -744,10 +723,10 @@ export const LayoutCanvas = ({
       }
     };
 
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("keydown", handleKeyDown);
     window.addEventListener("resize", handleResize);
     return () => {
-      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("resize", handleResize);
     };
   }, [isFullscreen, calculateFullscreenDimensions]);
@@ -3250,7 +3229,7 @@ export const LayoutCanvas = ({
 
         {/* Dialogues et menus contextuels */}
         <Dialog open={showFurnitureDialog} onOpenChange={setShowFurnitureDialog}>
-          <DialogContent>
+          <DialogContent className="z-[100]">
             <DialogHeader>
               <DialogTitle>{editingFurnitureId ? "Modifier le meuble" : "Propriétés du meuble"}</DialogTitle>
               <DialogDescription>Renseignez les dimensions et le poids du meuble</DialogDescription>
@@ -3552,7 +3531,7 @@ export const LayoutCanvas = ({
           if (!open) cancelCotation();
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md z-[100]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Crosshair className="h-5 w-5 text-purple-600" />
