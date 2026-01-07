@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 2.4 - UX améliorée (mesure persistante, input décimal)
+// VERSION: 2.5 - Estimation auto distance paires
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -676,11 +676,39 @@ export function CADGabaritCanvas({
             const p2 = closestPoint;
             if (p1 && p2) {
               const distPx = distance(p1, p2);
+
+              // Calculer la distance estimée en mm
+              let estimatedMm: number;
+              const userInput = parseFloat(newPairDistance.replace(",", "."));
+
+              if (!isNaN(userInput) && userInput > 0) {
+                // L'utilisateur a entré une valeur
+                estimatedMm = userInput;
+              } else if (calibrationData.pairs.size === 0) {
+                // Première paire : utiliser l'échelle du sketch
+                estimatedMm = Math.round(distPx * sketch.scaleFactor * 10) / 10;
+              } else {
+                // Paires suivantes : moyenne des échelles précédentes
+                let totalScale = 0;
+                let count = 0;
+                calibrationData.pairs.forEach((pair) => {
+                  const pp1 = calibrationData.points.get(pair.point1Id);
+                  const pp2 = calibrationData.points.get(pair.point2Id);
+                  if (pp1 && pp2 && pair.distanceMm > 0) {
+                    const pairDistPx = distance(pp1, pp2);
+                    totalScale += pair.distanceMm / pairDistPx;
+                    count++;
+                  }
+                });
+                const avgScale = count > 0 ? totalScale / count : sketch.scaleFactor;
+                estimatedMm = Math.round(distPx * avgScale * 10) / 10;
+              }
+
               const newPair: CalibrationPair = {
                 id: generateId(),
                 point1Id: p1.id,
                 point2Id: p2.id,
-                distanceMm: parseFloat(newPairDistance.replace(",", ".")) || 100,
+                distanceMm: estimatedMm,
                 distancePx: distPx,
                 color: newPairColor,
               };
@@ -689,7 +717,9 @@ export function CADGabaritCanvas({
                 newPairs.set(newPair.id, newPair);
                 return { ...prev, pairs: newPairs };
               });
-              toast.success(`Paire ${p1.label}-${p2.label} créée`);
+              toast.success(`Paire ${p1.label}-${p2.label} créée (${estimatedMm} mm estimé)`);
+              // Reset le champ pour la prochaine paire
+              setNewPairDistance("");
             }
             setCalibrationMode("idle");
             setSelectedCalibrationPoint(null);
@@ -2054,11 +2084,12 @@ export function CADGabaritCanvas({
                               setNewPairDistance("");
                             }
                           }}
-                          placeholder="100"
+                          placeholder="auto"
                           className="h-8 text-sm"
                         />
                         <span className="text-xs text-muted-foreground">mm</span>
                       </div>
+                      <p className="text-xs text-muted-foreground italic">Laissez vide pour estimation auto</p>
                       <div className="flex items-center gap-2">
                         <Label className="text-xs w-20">Couleur:</Label>
                         <div className="flex gap-1 flex-wrap">
