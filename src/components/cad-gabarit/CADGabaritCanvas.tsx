@@ -1429,98 +1429,6 @@ export function CADGabaritCanvas({
     };
   }, [handleWheel]);
 
-  // Gestion clavier
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Echap - annuler l'action en cours
-      if (e.key === "Escape") {
-        if (isFullscreen) {
-          setIsFullscreen(false);
-        } else {
-          setTempPoints([]);
-          setTempGeometry(null);
-          setActiveTool("select");
-        }
-      }
-
-      // Supprimer
-      if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedEntities.size > 0) {
-          deleteSelectedEntities();
-        }
-      }
-
-      // Raccourcis outils
-      if (!e.ctrlKey && !e.metaKey) {
-        switch (e.key.toLowerCase()) {
-          case "v":
-            setActiveTool("select");
-            break;
-          case "h":
-            setActiveTool("pan");
-            break;
-          case "l":
-            setActiveTool("line");
-            break;
-          case "c":
-            setActiveTool("circle");
-            break;
-          case "r":
-            setActiveTool("rectangle");
-            break;
-          case "b":
-            setActiveTool("bezier");
-            break;
-          case "d":
-            setActiveTool("dimension");
-            break;
-          case "m":
-            setActiveTool("measure");
-            break;
-        }
-      }
-
-      // Ctrl+Z - Undo
-      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
-        e.preventDefault();
-        undo();
-      }
-
-      // Ctrl+Y - Redo
-      if ((e.ctrlKey || e.metaKey) && e.key === "y") {
-        e.preventDefault();
-        redo();
-      }
-
-      // Ctrl+S - Save
-      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-        e.preventDefault();
-        saveSketch();
-      }
-
-      // Ctrl+C - Copier
-      if ((e.ctrlKey || e.metaKey) && e.key === "c") {
-        e.preventDefault();
-        copySelectedEntities();
-      }
-
-      // Ctrl+V - Coller
-      if ((e.ctrlKey || e.metaKey) && e.key === "v") {
-        e.preventDefault();
-        pasteEntities();
-      }
-
-      // Ctrl+D - Dupliquer
-      if ((e.ctrlKey || e.metaKey) && e.key === "d") {
-        e.preventDefault();
-        duplicateSelectedEntities();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isFullscreen, selectedEntities, saveSketch, copySelectedEntities, pasteEntities, duplicateSelectedEntities]);
-
   // Supprimer les entités sélectionnées
   const deleteSelectedEntities = useCallback(() => {
     const newSketch = { ...sketch };
@@ -1913,6 +1821,108 @@ export function CADGabaritCanvas({
     },
     [angleConstraintDialog, addConstraint],
   );
+
+  // Gestion clavier (DOIT être après les fonctions copySelectedEntities, pasteEntities, duplicateSelectedEntities)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Echap - annuler l'action en cours
+      if (e.key === "Escape") {
+        if (isFullscreen) {
+          setIsFullscreen(false);
+        } else {
+          setTempPoints([]);
+          setTempGeometry(null);
+          setActiveTool("select");
+        }
+      }
+
+      // Supprimer
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedEntities.size > 0) {
+          deleteSelectedEntities();
+        }
+      }
+
+      // Raccourcis outils
+      if (!e.ctrlKey && !e.metaKey) {
+        switch (e.key.toLowerCase()) {
+          case "v":
+            setActiveTool("select");
+            break;
+          case "h":
+            setActiveTool("pan");
+            break;
+          case "l":
+            setActiveTool("line");
+            break;
+          case "c":
+            setActiveTool("circle");
+            break;
+          case "r":
+            setActiveTool("rectangle");
+            break;
+          case "b":
+            setActiveTool("bezier");
+            break;
+          case "d":
+            setActiveTool("dimension");
+            break;
+          case "m":
+            setActiveTool("measure");
+            break;
+        }
+      }
+
+      // Ctrl+Z - Undo
+      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+        e.preventDefault();
+        undo();
+      }
+
+      // Ctrl+Y - Redo
+      if ((e.ctrlKey || e.metaKey) && e.key === "y") {
+        e.preventDefault();
+        redo();
+      }
+
+      // Ctrl+S - Save
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        saveSketch();
+      }
+
+      // Ctrl+C - Copier
+      if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+        e.preventDefault();
+        copySelectedEntities();
+      }
+
+      // Ctrl+V - Coller
+      if ((e.ctrlKey || e.metaKey) && e.key === "v") {
+        e.preventDefault();
+        pasteEntities();
+      }
+
+      // Ctrl+D - Dupliquer
+      if ((e.ctrlKey || e.metaKey) && e.key === "d") {
+        e.preventDefault();
+        duplicateSelectedEntities();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    isFullscreen,
+    selectedEntities,
+    saveSketch,
+    copySelectedEntities,
+    pasteEntities,
+    duplicateSelectedEntities,
+    deleteSelectedEntities,
+    undo,
+    redo,
+  ]);
 
   // === FONCTIONS DE CALIBRATION ===
 
