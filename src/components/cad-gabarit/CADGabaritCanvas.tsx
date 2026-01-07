@@ -1,13 +1,14 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 2.0 - Bézier, Image fond, Drag poignées
+// VERSION: 2.1 - Calibration multi-points
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
@@ -49,6 +51,12 @@ import {
   Spline,
   Move,
   Sliders,
+  Target,
+  Plus,
+  X,
+  Check,
+  ChevronRight,
+  ChevronLeft,
 } from "lucide-react";
 
 import {
@@ -66,6 +74,10 @@ import {
   SnapPoint,
   SnapType,
   ToolType,
+  CalibrationData,
+  CalibrationPoint,
+  CalibrationPair,
+  CALIBRATION_COLORS,
   generateId,
   distance,
   midpoint,
@@ -162,6 +174,19 @@ export function CADGabaritCanvas({
   const [history, setHistory] = useState<any[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
+  // Calibration
+  const [calibrationData, setCalibrationData] = useState<CalibrationData>({
+    points: new Map(),
+    pairs: new Map(),
+    applied: false,
+  });
+  const [showCalibration, setShowCalibration] = useState(true);
+  const [showCalibrationPanel, setShowCalibrationPanel] = useState(false);
+  const [calibrationMode, setCalibrationMode] = useState<"idle" | "addPoint" | "selectPair1" | "selectPair2">("idle");
+  const [selectedCalibrationPoint, setSelectedCalibrationPoint] = useState<string | null>(null);
+  const [newPairDistance, setNewPairDistance] = useState<string>("");
+  const [newPairColor, setNewPairColor] = useState<string>(CALIBRATION_COLORS[0]);
+
   // Initialisation
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -230,6 +255,8 @@ export function CADGabaritCanvas({
       showDimensions,
       backgroundImage: showBackgroundImage ? backgroundImageRef.current : null,
       imageOpacity,
+      calibrationData,
+      showCalibration,
     });
   }, [
     sketch,
@@ -243,6 +270,8 @@ export function CADGabaritCanvas({
     showDimensions,
     showBackgroundImage,
     imageOpacity,
+    calibrationData,
+    showCalibration,
   ]);
 
   useEffect(() => {
@@ -557,6 +586,79 @@ export function CADGabaritCanvas({
 
       // À partir d'ici, c'est un clic gauche (e.button === 0)
 
+      // Gestion des clics en mode calibration
+      if (calibrationMode === "addPoint") {
+        const newPoint: CalibrationPoint = {
+          id: generateId(),
+          x: worldPos.x,
+          y: worldPos.y,
+          label: String(calibrationData.points.size + 1),
+        };
+        setCalibrationData((prev) => {
+          const newPoints = new Map(prev.points);
+          newPoints.set(newPoint.id, newPoint);
+          return { ...prev, points: newPoints };
+        });
+        toast.success(`Point ${newPoint.label} ajouté`);
+        return;
+      }
+
+      if (calibrationMode === "selectPair1" || calibrationMode === "selectPair2") {
+        // Trouver le point de calibration le plus proche
+        const tolerance = 15 / viewport.scale;
+        let closestPoint: CalibrationPoint | null = null;
+        let closestDist = Infinity;
+
+        calibrationData.points.forEach((point) => {
+          const d = distance(worldPos, point);
+          if (d < tolerance && d < closestDist) {
+            closestDist = d;
+            closestPoint = point;
+          }
+        });
+
+        if (closestPoint) {
+          if (calibrationMode === "selectPair1") {
+            setSelectedCalibrationPoint(closestPoint.id);
+            setCalibrationMode("selectPair2");
+            toast.info(`Point ${closestPoint.label} sélectionné. Cliquez sur le 2ème point.`);
+          } else if (calibrationMode === "selectPair2" && selectedCalibrationPoint) {
+            if (closestPoint.id === selectedCalibrationPoint) {
+              toast.error("Sélectionnez un point différent");
+              return;
+            }
+            // Créer la paire
+            const p1 = calibrationData.points.get(selectedCalibrationPoint);
+            const p2 = closestPoint;
+            if (p1 && p2) {
+              const distPx = distance(p1, p2);
+              const newPair: CalibrationPair = {
+                id: generateId(),
+                point1Id: p1.id,
+                point2Id: p2.id,
+                distanceMm: parseFloat(newPairDistance) || 100,
+                distancePx: distPx,
+                color: newPairColor,
+              };
+              setCalibrationData((prev) => {
+                const newPairs = new Map(prev.pairs);
+                newPairs.set(newPair.id, newPair);
+                return { ...prev, pairs: newPairs };
+              });
+              toast.success(`Paire ${p1.label}-${p2.label} créée`);
+            }
+            setCalibrationMode("idle");
+            setSelectedCalibrationPoint(null);
+            // Passer à la couleur suivante
+            const currentIndex = CALIBRATION_COLORS.indexOf(newPairColor);
+            setNewPairColor(CALIBRATION_COLORS[(currentIndex + 1) % CALIBRATION_COLORS.length]);
+          }
+        } else {
+          toast.error("Cliquez sur un point de calibration");
+        }
+        return;
+      }
+
       // Pan avec outil main
       if (activeTool === "pan") {
         setIsPanning(true);
@@ -837,6 +939,11 @@ export function CADGabaritCanvas({
       solveSketch,
       addToHistory,
       getOrCreatePoint,
+      calibrationMode,
+      calibrationData,
+      selectedCalibrationPoint,
+      newPairDistance,
+      newPairColor,
     ],
   );
 
@@ -1101,6 +1208,155 @@ export function CADGabaritCanvas({
     }
   }, [history, historyIndex, loadSketchData]);
 
+  // === FONCTIONS DE CALIBRATION ===
+
+  // Supprimer un point de calibration
+  const deleteCalibrationPoint = useCallback((pointId: string) => {
+    setCalibrationData((prev) => {
+      const newPoints = new Map(prev.points);
+      const newPairs = new Map(prev.pairs);
+
+      // Supprimer les paires qui utilisent ce point
+      newPairs.forEach((pair, pairId) => {
+        if (pair.point1Id === pointId || pair.point2Id === pointId) {
+          newPairs.delete(pairId);
+        }
+      });
+
+      newPoints.delete(pointId);
+
+      // Réassigner les labels
+      let index = 1;
+      newPoints.forEach((point) => {
+        point.label = String(index++);
+      });
+
+      return { ...prev, points: newPoints, pairs: newPairs };
+    });
+    toast.success("Point supprimé");
+  }, []);
+
+  // Supprimer une paire
+  const deleteCalibrationPair = useCallback((pairId: string) => {
+    setCalibrationData((prev) => {
+      const newPairs = new Map(prev.pairs);
+      newPairs.delete(pairId);
+      return { ...prev, pairs: newPairs };
+    });
+    toast.success("Paire supprimée");
+  }, []);
+
+  // Mettre à jour la distance d'une paire
+  const updatePairDistance = useCallback((pairId: string, distanceMm: number) => {
+    setCalibrationData((prev) => {
+      const newPairs = new Map(prev.pairs);
+      const pair = newPairs.get(pairId);
+      if (pair) {
+        newPairs.set(pairId, { ...pair, distanceMm });
+      }
+      return { ...prev, pairs: newPairs };
+    });
+  }, []);
+
+  // Mettre à jour la couleur d'une paire
+  const updatePairColor = useCallback((pairId: string, color: string) => {
+    setCalibrationData((prev) => {
+      const newPairs = new Map(prev.pairs);
+      const pair = newPairs.get(pairId);
+      if (pair) {
+        newPairs.set(pairId, { ...pair, color });
+      }
+      return { ...prev, pairs: newPairs };
+    });
+  }, []);
+
+  // Calculer l'échelle à partir des paires
+  const calculateCalibration = useCallback(() => {
+    if (calibrationData.pairs.size === 0) {
+      toast.error("Ajoutez au moins une paire de calibration");
+      return;
+    }
+
+    let totalScale = 0;
+    let count = 0;
+
+    calibrationData.pairs.forEach((pair) => {
+      const p1 = calibrationData.points.get(pair.point1Id);
+      const p2 = calibrationData.points.get(pair.point2Id);
+      if (p1 && p2 && pair.distanceMm > 0) {
+        const distPx = distance(p1, p2);
+        const scale = pair.distanceMm / distPx;
+        totalScale += scale;
+        count++;
+
+        // Mettre à jour la distance en pixels
+        pair.distancePx = distPx;
+      }
+    });
+
+    if (count === 0) {
+      toast.error("Aucune paire valide");
+      return;
+    }
+
+    const avgScale = totalScale / count;
+
+    // Calculer l'erreur moyenne
+    let totalError = 0;
+    calibrationData.pairs.forEach((pair) => {
+      const p1 = calibrationData.points.get(pair.point1Id);
+      const p2 = calibrationData.points.get(pair.point2Id);
+      if (p1 && p2) {
+        const distPx = distance(p1, p2);
+        const calculatedMm = distPx * avgScale;
+        const error = (Math.abs(calculatedMm - pair.distanceMm) / pair.distanceMm) * 100;
+        totalError += error;
+      }
+    });
+    const avgError = totalError / count;
+
+    setCalibrationData((prev) => ({
+      ...prev,
+      scale: avgScale,
+      error: avgError,
+    }));
+
+    toast.success(`Échelle calculée : ${avgScale.toFixed(4)} mm/px (erreur : ${avgError.toFixed(1)}%)`);
+  }, [calibrationData]);
+
+  // Appliquer la calibration au sketch
+  const applyCalibration = useCallback(() => {
+    if (!calibrationData.scale) {
+      toast.error("Calculez d'abord la calibration");
+      return;
+    }
+
+    // Mettre à jour le scaleFactor du sketch
+    setSketch((prev) => ({
+      ...prev,
+      scaleFactor: calibrationData.scale!,
+    }));
+
+    setCalibrationData((prev) => ({
+      ...prev,
+      applied: true,
+    }));
+
+    toast.success(`Calibration appliquée ! Échelle : ${calibrationData.scale.toFixed(4)} mm/px`);
+  }, [calibrationData.scale]);
+
+  // Réinitialiser la calibration
+  const resetCalibration = useCallback(() => {
+    setCalibrationData({
+      points: new Map(),
+      pairs: new Map(),
+      applied: false,
+    });
+    setCalibrationMode("idle");
+    setSelectedCalibrationPoint(null);
+    toast.success("Calibration réinitialisée");
+  }, []);
+
   // Ajouter contrainte
   const addConstraint = useCallback(
     async (type: Constraint["type"], entities: string[], value?: number) => {
@@ -1305,6 +1561,28 @@ export function CADGabaritCanvas({
                   className="w-16 h-1"
                 />
               </div>
+
+              <Separator orientation="vertical" className="h-6 mx-1" />
+
+              {/* Bouton Calibration */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={showCalibrationPanel ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setShowCalibrationPanel(!showCalibrationPanel)}
+                      className="h-9 px-2"
+                    >
+                      <Target className="h-4 w-4 mr-1" />
+                      <span className="text-xs">Calibrer</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Calibration multi-points</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </>
           )}
         </div>
@@ -1505,21 +1783,266 @@ export function CADGabaritCanvas({
         </Button>
       </div>
 
-      {/* Canvas */}
-      <div className="flex-1 relative overflow-hidden">
-        <canvas
-          ref={canvasRef}
-          className="absolute inset-0 cursor-crosshair"
-          style={{
-            cursor: activeTool === "pan" || isPanning ? "grab" : "crosshair",
-          }}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          onWheel={handleWheel}
-          onContextMenu={(e) => e.preventDefault()}
-        />
+      {/* Zone principale avec Canvas + Panneau latéral */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Canvas */}
+        <div className="flex-1 relative overflow-hidden">
+          <canvas
+            ref={canvasRef}
+            className="absolute inset-0 cursor-crosshair"
+            style={{
+              cursor:
+                activeTool === "pan" || isPanning ? "grab" : calibrationMode !== "idle" ? "crosshair" : "crosshair",
+            }}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onWheel={handleWheel}
+            onContextMenu={(e) => e.preventDefault()}
+          />
+        </div>
+
+        {/* Panneau de calibration */}
+        {showCalibrationPanel && (
+          <div className="w-80 border-l bg-white flex flex-col">
+            {/* En-tête */}
+            <div className="p-3 border-b flex items-center justify-between bg-gray-50">
+              <div className="flex items-center gap-2">
+                <Target className="h-5 w-5 text-red-500" />
+                <span className="font-semibold">Calibration</span>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setShowCalibrationPanel(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Contenu */}
+            <ScrollArea className="flex-1">
+              <div className="p-3 space-y-4">
+                {/* Actions */}
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <Button
+                      variant={calibrationMode === "addPoint" ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setCalibrationMode(calibrationMode === "addPoint" ? "idle" : "addPoint")}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Ajouter point
+                    </Button>
+                    <Button
+                      variant={
+                        calibrationMode === "selectPair1" || calibrationMode === "selectPair2" ? "default" : "outline"
+                      }
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => {
+                        if (calibrationData.points.size < 2) {
+                          toast.error("Ajoutez au moins 2 points");
+                          return;
+                        }
+                        setCalibrationMode("selectPair1");
+                        setSelectedCalibrationPoint(null);
+                      }}
+                    >
+                      <Link className="h-4 w-4 mr-1" />
+                      Créer paire
+                    </Button>
+                  </div>
+
+                  {/* Mode actif */}
+                  {calibrationMode !== "idle" && (
+                    <div className="p-2 bg-blue-50 rounded text-sm text-blue-700">
+                      {calibrationMode === "addPoint" && "📍 Cliquez sur l'image pour placer un point"}
+                      {calibrationMode === "selectPair1" && "1️⃣ Cliquez sur le 1er point"}
+                      {calibrationMode === "selectPair2" && "2️⃣ Cliquez sur le 2ème point"}
+                    </div>
+                  )}
+
+                  {/* Configuration nouvelle paire */}
+                  {(calibrationMode === "selectPair1" || calibrationMode === "selectPair2") && (
+                    <div className="space-y-2 p-2 bg-gray-50 rounded">
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs w-20">Distance:</Label>
+                        <Input
+                          type="number"
+                          value={newPairDistance}
+                          onChange={(e) => setNewPairDistance(e.target.value)}
+                          placeholder="100"
+                          className="h-8 text-sm"
+                        />
+                        <span className="text-xs text-muted-foreground">mm</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs w-20">Couleur:</Label>
+                        <div className="flex gap-1 flex-wrap">
+                          {CALIBRATION_COLORS.map((color) => (
+                            <button
+                              key={color}
+                              className={`w-5 h-5 rounded-full border-2 ${newPairColor === color ? "border-gray-800" : "border-transparent"}`}
+                              style={{ backgroundColor: color }}
+                              onClick={() => setNewPairColor(color)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <Separator />
+
+                {/* Points de calibration */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium">Points ({calibrationData.points.size})</span>
+                    {calibrationData.points.size > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={resetCalibration}
+                        className="h-6 text-xs text-red-500 hover:text-red-700"
+                      >
+                        Tout supprimer
+                      </Button>
+                    )}
+                  </div>
+
+                  {calibrationData.points.size === 0 ? (
+                    <p className="text-xs text-muted-foreground italic">Aucun point</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {Array.from(calibrationData.points.values()).map((point) => (
+                        <div
+                          key={point.id}
+                          className="flex items-center justify-between p-1.5 bg-gray-50 rounded text-sm"
+                        >
+                          <span>
+                            <span className="font-medium text-red-500">Point {point.label}</span>
+                            <span className="text-xs text-muted-foreground ml-2">
+                              ({point.x.toFixed(0)}, {point.y.toFixed(0)})
+                            </span>
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => deleteCalibrationPoint(point.id)}
+                            className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <Separator />
+
+                {/* Paires de calibration */}
+                <div>
+                  <span className="text-sm font-medium">Paires ({calibrationData.pairs.size})</span>
+
+                  {calibrationData.pairs.size === 0 ? (
+                    <p className="text-xs text-muted-foreground italic mt-2">Aucune paire</p>
+                  ) : (
+                    <div className="space-y-2 mt-2">
+                      {Array.from(calibrationData.pairs.values()).map((pair) => {
+                        const p1 = calibrationData.points.get(pair.point1Id);
+                        const p2 = calibrationData.points.get(pair.point2Id);
+                        return (
+                          <div key={pair.id} className="p-2 bg-gray-50 rounded space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className="w-4 h-4 rounded-full" style={{ backgroundColor: pair.color }} />
+                                <span className="font-medium text-sm">
+                                  {p1?.label} ↔ {p2?.label}
+                                </span>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => deleteCalibrationPair(pair.id)}
+                                className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                value={pair.distanceMm}
+                                onChange={(e) => updatePairDistance(pair.id, parseFloat(e.target.value) || 0)}
+                                className="h-7 text-sm flex-1"
+                              />
+                              <span className="text-xs text-muted-foreground">mm</span>
+                            </div>
+                            {pair.distancePx && (
+                              <p className="text-xs text-muted-foreground">Mesuré: {pair.distancePx.toFixed(1)} px</p>
+                            )}
+                            <div className="flex gap-1">
+                              {CALIBRATION_COLORS.map((color) => (
+                                <button
+                                  key={color}
+                                  className={`w-4 h-4 rounded-full border ${pair.color === color ? "border-gray-800 border-2" : "border-gray-300"}`}
+                                  style={{ backgroundColor: color }}
+                                  onClick={() => updatePairColor(pair.id, color)}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <Separator />
+
+                {/* Résultats et actions */}
+                <div className="space-y-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={calculateCalibration}
+                    disabled={calibrationData.pairs.size === 0}
+                  >
+                    Calculer l'échelle
+                  </Button>
+
+                  {calibrationData.scale && (
+                    <div className="p-2 bg-green-50 rounded space-y-1">
+                      <p className="text-sm font-medium text-green-700">
+                        Échelle: {calibrationData.scale.toFixed(4)} mm/px
+                      </p>
+                      {calibrationData.error !== undefined && (
+                        <p className="text-xs text-green-600">Erreur moyenne: {calibrationData.error.toFixed(1)}%</p>
+                      )}
+                    </div>
+                  )}
+
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="w-full"
+                    onClick={applyCalibration}
+                    disabled={!calibrationData.scale}
+                  >
+                    <Check className="h-4 w-4 mr-1" />
+                    Appliquer la calibration
+                  </Button>
+
+                  {calibrationData.applied && (
+                    <p className="text-xs text-center text-green-600 font-medium">✓ Calibration appliquée</p>
+                  )}
+                </div>
+              </div>
+            </ScrollArea>
+          </div>
+        )}
       </div>
 
       {/* Dialog cotation */}
