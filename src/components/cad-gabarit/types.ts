@@ -1,7 +1,7 @@
 // ============================================
 // TYPES: CAD Gabarit Types
 // Types pour le système CAO
-// VERSION: 1.0
+// VERSION: 2.0 - Ajout Bezier, Handle
 // ============================================
 
 // === GÉOMÉTRIE DE BASE ===
@@ -15,21 +15,21 @@ export interface Point {
 
 export interface Line {
   id: string;
-  type: 'line';
+  type: "line";
   p1: string; // ID du point de départ
   p2: string; // ID du point d'arrivée
 }
 
 export interface Circle {
   id: string;
-  type: 'circle';
+  type: "circle";
   center: string; // ID du point central
   radius: number;
 }
 
 export interface Arc {
   id: string;
-  type: 'arc';
+  type: "arc";
   center: string;
   startPoint: string;
   endPoint: string;
@@ -38,47 +38,74 @@ export interface Arc {
 
 export interface Rectangle {
   id: string;
-  type: 'rectangle';
+  type: "rectangle";
   p1: string; // coin supérieur gauche
   p2: string; // coin supérieur droit
   p3: string; // coin inférieur droit
   p4: string; // coin inférieur gauche
 }
 
-export type Geometry = Line | Circle | Arc | Rectangle;
+export interface Bezier {
+  id: string;
+  type: "bezier";
+  p1: string; // Point de départ
+  p2: string; // Point d'arrivée
+  cp1: string; // Point de contrôle 1
+  cp2: string; // Point de contrôle 2
+}
+
+export type Geometry = Line | Circle | Arc | Rectangle | Bezier;
+
+// === HANDLES (Poignées de manipulation) ===
+
+export type HandleType =
+  | "move" // Déplacer
+  | "resize" // Redimensionner
+  | "rotate" // Pivoter
+  | "control"; // Point de contrôle (Bézier)
+
+export interface Handle {
+  id: string;
+  type: HandleType;
+  x: number;
+  y: number;
+  entityId: string;
+  pointId?: string; // Pour les handles liés à un point spécifique
+  cursor: string;
+}
 
 // === CONTRAINTES ===
 
-export type ConstraintType = 
-  | 'coincident'      // Points superposés
-  | 'horizontal'      // Ligne horizontale
-  | 'vertical'        // Ligne verticale
-  | 'parallel'        // Lignes parallèles
-  | 'perpendicular'   // Lignes perpendiculaires
-  | 'tangent'         // Tangence
-  | 'equal'           // Longueurs/rayons égaux
-  | 'concentric'      // Cercles concentriques
-  | 'distance'        // Distance fixe
-  | 'angle'           // Angle fixe
-  | 'radius'          // Rayon fixe
-  | 'diameter'        // Diamètre fixe
-  | 'midpoint'        // Point au milieu
-  | 'symmetric'       // Symétrie
-  | 'fixed';          // Point fixe
+export type ConstraintType =
+  | "coincident" // Points superposés
+  | "horizontal" // Ligne horizontale
+  | "vertical" // Ligne verticale
+  | "parallel" // Lignes parallèles
+  | "perpendicular" // Lignes perpendiculaires
+  | "tangent" // Tangence
+  | "equal" // Longueurs/rayons égaux
+  | "concentric" // Cercles concentriques
+  | "distance" // Distance fixe
+  | "angle" // Angle fixe
+  | "radius" // Rayon fixe
+  | "diameter" // Diamètre fixe
+  | "midpoint" // Point au milieu
+  | "symmetric" // Symétrie
+  | "fixed"; // Point fixe
 
 export interface Constraint {
   id: string;
   type: ConstraintType;
   entities: string[]; // IDs des entités concernées
-  value?: number;     // Valeur pour distance, angle, radius, etc.
-  driving?: boolean;  // Si false, c'est une contrainte de référence
+  value?: number; // Valeur pour distance, angle, radius, etc.
+  driving?: boolean; // Si false, c'est une contrainte de référence
 }
 
 // === COTATIONS ===
 
 export interface Dimension {
   id: string;
-  type: 'linear' | 'horizontal' | 'vertical' | 'radius' | 'diameter' | 'angle';
+  type: "linear" | "horizontal" | "vertical" | "radius" | "diameter" | "angle";
   entities: string[];
   value: number;
   position: { x: number; y: number }; // Position du texte
@@ -87,16 +114,16 @@ export interface Dimension {
 
 // === SNAP ===
 
-export type SnapType = 
-  | 'endpoint'
-  | 'midpoint'
-  | 'center'
-  | 'intersection'
-  | 'quadrant'
-  | 'tangent'
-  | 'perpendicular'
-  | 'nearest'
-  | 'grid';
+export type SnapType =
+  | "endpoint"
+  | "midpoint"
+  | "center"
+  | "intersection"
+  | "quadrant"
+  | "tangent"
+  | "perpendicular"
+  | "nearest"
+  | "grid";
 
 export interface SnapPoint {
   x: number;
@@ -110,23 +137,24 @@ export interface SnapSettings {
   enabled: boolean;
   types: Set<SnapType>;
   tolerance: number; // Distance en pixels
-  gridSize: number;  // Taille de la grille
+  gridSize: number; // Taille de la grille
   showGrid: boolean;
 }
 
 // === OUTILS ===
 
-export type ToolType = 
-  | 'select'
-  | 'pan'
-  | 'line'
-  | 'rectangle'
-  | 'circle'
-  | 'arc'
-  | 'dimension'
-  | 'constraint'
-  | 'trim'
-  | 'extend';
+export type ToolType =
+  | "select"
+  | "pan"
+  | "line"
+  | "rectangle"
+  | "circle"
+  | "arc"
+  | "bezier"
+  | "dimension"
+  | "constraint"
+  | "trim"
+  | "extend";
 
 export interface Tool {
   type: ToolType;
@@ -170,7 +198,7 @@ export interface Sketch {
   dimensions: Map<string, Dimension>;
   scaleFactor: number; // px to mm
   dof: number; // Degrees of Freedom
-  status: 'under-constrained' | 'fully-constrained' | 'over-constrained' | 'conflicting';
+  status: "under-constrained" | "fully-constrained" | "over-constrained" | "conflicting";
 }
 
 // === SOLVEUR ===
@@ -178,7 +206,7 @@ export interface Sketch {
 export interface SolverResult {
   success: boolean;
   dof: number;
-  status: Sketch['status'];
+  status: Sketch["status"];
   conflicting?: string[];
   redundant?: string[];
 }
@@ -195,7 +223,7 @@ export interface HistoryState {
 // === EXPORT ===
 
 export interface ExportOptions {
-  format: 'dxf' | 'svg';
+  format: "dxf" | "svg";
   scale: number;
   includeConstraints: boolean;
   includeDimensions: boolean;
@@ -216,63 +244,63 @@ export interface RenderStyles {
   selectedWidth: number;
   constructionColor: string;
   constructionStyle: number[]; // dash pattern
-  
+
   // Points
   pointColor: string;
   pointRadius: number;
   pointSelectedColor: string;
-  
+
   // Contraintes
   constraintColor: string;
   constraintFont: string;
-  
+
   // Cotations
   dimensionColor: string;
   dimensionFont: string;
   dimensionArrowSize: number;
-  
+
   // Snap
   snapColor: string;
   snapRadius: number;
-  
+
   // Grille
   gridColor: string;
   gridMajorColor: string;
   gridSpacing: number;
   gridMajorSpacing: number;
-  
+
   // Fond
   backgroundColor: string;
 }
 
 export const DEFAULT_STYLES: RenderStyles = {
-  lineColor: '#000000',
+  lineColor: "#000000",
   lineWidth: 1.5,
-  selectedColor: '#0066FF',
+  selectedColor: "#0066FF",
   selectedWidth: 2,
-  constructionColor: '#888888',
+  constructionColor: "#888888",
   constructionStyle: [5, 5],
-  
-  pointColor: '#0066FF',
+
+  pointColor: "#0066FF",
   pointRadius: 4,
-  pointSelectedColor: '#FF6600',
-  
-  constraintColor: '#00AA00',
-  constraintFont: '12px Arial',
-  
-  dimensionColor: '#CC0000',
-  dimensionFont: '11px Arial',
+  pointSelectedColor: "#FF6600",
+
+  constraintColor: "#00AA00",
+  constraintFont: "12px Arial",
+
+  dimensionColor: "#CC0000",
+  dimensionFont: "11px Arial",
   dimensionArrowSize: 8,
-  
-  snapColor: '#FF00FF',
+
+  snapColor: "#FF00FF",
   snapRadius: 6,
-  
-  gridColor: '#E8E8E8',
-  gridMajorColor: '#CCCCCC',
+
+  gridColor: "#E8E8E8",
+  gridMajorColor: "#CCCCCC",
   gridSpacing: 10,
   gridMajorSpacing: 50,
-  
-  backgroundColor: '#FFFFFF',
+
+  backgroundColor: "#FFFFFF",
 };
 
 // === UTILITAIRES ===
