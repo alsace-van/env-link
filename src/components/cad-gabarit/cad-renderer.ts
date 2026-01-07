@@ -608,31 +608,39 @@ export class CADRenderer {
 
     // Dessiner les points de calibration PAR-DESSUS
     calibration.points.forEach((point) => {
-      // Cercle extérieur
+      // Croix de visée fine
       this.ctx.strokeStyle = "#FF0000";
-      this.ctx.lineWidth = 2 / this.viewport.scale;
-      this.ctx.fillStyle = "#FFFFFF";
+      this.ctx.lineWidth = 1.5 / this.viewport.scale;
 
-      this.ctx.beginPath();
-      this.ctx.arc(point.x, point.y, pointSize, 0, Math.PI * 2);
-      this.ctx.fill();
-      this.ctx.stroke();
+      const crossSize = pointSize * 1.2;
+      const innerGap = pointSize * 0.3;
 
-      // Croix au centre
-      const crossSize = pointSize * 0.6;
+      // Lignes horizontales (avec gap au centre)
       this.ctx.beginPath();
       this.ctx.moveTo(point.x - crossSize, point.y);
+      this.ctx.lineTo(point.x - innerGap, point.y);
+      this.ctx.moveTo(point.x + innerGap, point.y);
       this.ctx.lineTo(point.x + crossSize, point.y);
+
+      // Lignes verticales (avec gap au centre)
       this.ctx.moveTo(point.x, point.y - crossSize);
+      this.ctx.lineTo(point.x, point.y - innerGap);
+      this.ctx.moveTo(point.x, point.y + innerGap);
       this.ctx.lineTo(point.x, point.y + crossSize);
       this.ctx.stroke();
+
+      // Petit point central
+      this.ctx.fillStyle = "#FF0000";
+      this.ctx.beginPath();
+      this.ctx.arc(point.x, point.y, 2 / this.viewport.scale, 0, Math.PI * 2);
+      this.ctx.fill();
 
       // Label (numéro du point)
       this.ctx.font = `bold ${fontSize}px Arial`;
       this.ctx.fillStyle = "#FF0000";
       this.ctx.textAlign = "left";
       this.ctx.textBaseline = "bottom";
-      this.ctx.fillText(point.label, point.x + pointSize + 2 / this.viewport.scale, point.y - 2 / this.viewport.scale);
+      this.ctx.fillText(point.label, point.x + crossSize + 2 / this.viewport.scale, point.y - 2 / this.viewport.scale);
     });
   }
 
@@ -1007,27 +1015,26 @@ export class CADRenderer {
     const radius = this.styles.snapRadius;
 
     this.ctx.strokeStyle = this.styles.snapColor;
-    this.ctx.lineWidth = 2;
+    this.ctx.lineWidth = 1.5;
 
     switch (snapPoint.type) {
       case "endpoint":
-        // Carré
-        this.ctx.strokeRect(screenPos.x - radius, screenPos.y - radius, radius * 2, radius * 2);
+        // Petit carré
+        const s = radius * 0.7;
+        this.ctx.strokeRect(screenPos.x - s, screenPos.y - s, s * 2, s * 2);
         break;
       case "midpoint":
-        // Triangle
+        // Petit triangle
+        const t = radius * 0.7;
         this.ctx.beginPath();
-        this.ctx.moveTo(screenPos.x, screenPos.y - radius);
-        this.ctx.lineTo(screenPos.x - radius, screenPos.y + radius);
-        this.ctx.lineTo(screenPos.x + radius, screenPos.y + radius);
+        this.ctx.moveTo(screenPos.x, screenPos.y - t);
+        this.ctx.lineTo(screenPos.x - t, screenPos.y + t);
+        this.ctx.lineTo(screenPos.x + t, screenPos.y + t);
         this.ctx.closePath();
         this.ctx.stroke();
         break;
       case "center":
-        // Cercle avec croix
-        this.ctx.beginPath();
-        this.ctx.arc(screenPos.x, screenPos.y, radius, 0, Math.PI * 2);
-        this.ctx.stroke();
+        // Croix simple
         this.ctx.beginPath();
         this.ctx.moveTo(screenPos.x - radius, screenPos.y);
         this.ctx.lineTo(screenPos.x + radius, screenPos.y);
@@ -1045,27 +1052,31 @@ export class CADRenderer {
         this.ctx.stroke();
         break;
       case "quadrant":
-        // Losange
+        // Petit losange
+        const q = radius * 0.7;
         this.ctx.beginPath();
-        this.ctx.moveTo(screenPos.x, screenPos.y - radius);
-        this.ctx.lineTo(screenPos.x + radius, screenPos.y);
-        this.ctx.lineTo(screenPos.x, screenPos.y + radius);
-        this.ctx.lineTo(screenPos.x - radius, screenPos.y);
+        this.ctx.moveTo(screenPos.x, screenPos.y - q);
+        this.ctx.lineTo(screenPos.x + q, screenPos.y);
+        this.ctx.lineTo(screenPos.x, screenPos.y + q);
+        this.ctx.lineTo(screenPos.x - q, screenPos.y);
         this.ctx.closePath();
         this.ctx.stroke();
         break;
       default:
-        // Cercle simple
+        // Croix fine (pas de cercle)
         this.ctx.beginPath();
-        this.ctx.arc(screenPos.x, screenPos.y, radius, 0, Math.PI * 2);
+        this.ctx.moveTo(screenPos.x - radius, screenPos.y);
+        this.ctx.lineTo(screenPos.x + radius, screenPos.y);
+        this.ctx.moveTo(screenPos.x, screenPos.y - radius);
+        this.ctx.lineTo(screenPos.x, screenPos.y + radius);
         this.ctx.stroke();
     }
 
-    // Label du type de snap
+    // Label du type de snap (petit texte)
     this.ctx.fillStyle = this.styles.snapColor;
-    this.ctx.font = "10px Arial";
+    this.ctx.font = "9px Arial";
     this.ctx.textAlign = "left";
-    this.ctx.fillText(SnapSystem.getSnapName(snapPoint.type), screenPos.x + radius + 5, screenPos.y + 4);
+    this.ctx.fillText(SnapSystem.getSnapName(snapPoint.type), screenPos.x + radius + 4, screenPos.y + 3);
   }
 
   /**
