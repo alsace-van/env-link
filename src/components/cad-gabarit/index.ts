@@ -1,7 +1,7 @@
 // ============================================
 // CAD GABARIT - Index
 // Export de tous les modules
-// VERSION: 2.4 - Ajout calibration damier
+// VERSION: 2.5 - Ajout système de calques
 // ============================================
 
 // Types
@@ -16,6 +16,7 @@ export type {
   Constraint,
   ConstraintType,
   Dimension,
+  Layer,
   Sketch,
   Viewport,
   SnapPoint,
@@ -34,7 +35,16 @@ export type {
   DistortionCoefficients,
 } from "./types";
 
-export { generateId, distance, midpoint, angle, normalizeAngle, DEFAULT_STYLES, CALIBRATION_COLORS } from "./types";
+export {
+  generateId,
+  distance,
+  midpoint,
+  angle,
+  normalizeAngle,
+  DEFAULT_STYLES,
+  CALIBRATION_COLORS,
+  DEFAULT_LAYERS,
+} from "./types";
 
 // Homography (correction de perspective et distorsion)
 export {
