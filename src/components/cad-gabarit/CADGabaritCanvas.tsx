@@ -457,9 +457,24 @@ export function CADGabaritCanvas({
 
   // Résoudre le sketch
   const solveSketch = useCallback(async (sketchToSolve: Sketch) => {
+    console.log("=== solveSketch called ===");
+    console.log("Points before:", Array.from(sketchToSolve.points.entries()).slice(0, 4));
+
     const result = await solverRef.current.solve(sketchToSolve);
+
+    console.log("Points after solve:", Array.from(sketchToSolve.points.entries()).slice(0, 4));
+    console.log("Solve result:", result);
+
+    // Le solveur modifie sketchToSolve en place, on doit propager ces modifications
+    // On crée une nouvelle Map pour déclencher le re-render
+    const updatedPoints = new Map(sketchToSolve.points);
+    const updatedGeometries = new Map(sketchToSolve.geometries);
+
     setSketch((s) => ({
       ...s,
+      points: updatedPoints,
+      geometries: updatedGeometries,
+      constraints: sketchToSolve.constraints,
       dof: result.dof,
       status: result.status,
     }));
@@ -2320,6 +2335,8 @@ export function CADGabaritCanvas({
   // Ajouter contrainte
   const addConstraint = useCallback(
     async (type: Constraint["type"], entities: string[], value?: number) => {
+      console.log("=== addConstraint called ===", { type, entities, value });
+
       const constraint: Constraint = {
         id: generateId(),
         type,
@@ -2331,6 +2348,9 @@ export function CADGabaritCanvas({
       const newSketch = { ...sketch };
       newSketch.constraints = new Map(sketch.constraints);
       newSketch.constraints.set(constraint.id, constraint);
+
+      console.log("Constraint added to sketch:", constraint);
+      console.log("Calling solveSketch...");
 
       setSketch(newSketch);
       await solveSketch(newSketch);
