@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 2.0 - Bézier, Handles, Opacité image
+// VERSION: 2.1 - Calibration multi-points
 // ============================================
 
 import {
@@ -19,6 +19,9 @@ import {
   SnapPoint,
   RenderStyles,
   DEFAULT_STYLES,
+  CalibrationData,
+  CalibrationPoint,
+  CalibrationPair,
   distance,
   midpoint,
   angle,
@@ -89,6 +92,8 @@ export class CADRenderer {
       showDimensions?: boolean;
       backgroundImage?: HTMLImageElement | null;
       imageOpacity?: number;
+      calibrationData?: CalibrationData | null;
+      showCalibration?: boolean;
     } = {},
   ): void {
     const {
@@ -101,6 +106,8 @@ export class CADRenderer {
       showDimensions = true,
       backgroundImage = null,
       imageOpacity = 0.5,
+      calibrationData = null,
+      showCalibration = true,
     } = options;
 
     // Clear
@@ -116,6 +123,11 @@ export class CADRenderer {
     // 1. Background image
     if (backgroundImage) {
       this.drawBackgroundImage(backgroundImage, imageOpacity);
+    }
+
+    // 1.5. Calibration (sous la grille et le dessin)
+    if (showCalibration && calibrationData) {
+      this.drawCalibration(calibrationData);
     }
 
     // 2. Grid
@@ -496,6 +508,87 @@ export class CADRenderer {
       this.ctx.fillRect(x - size, y - size, size * 2, size * 2);
       this.ctx.strokeRect(x - size, y - size, size * 2, size * 2);
     }
+  }
+
+  /**
+   * Dessine les éléments de calibration (points et paires)
+   */
+  private drawCalibration(calibration: CalibrationData): void {
+    const pointSize = 8 / this.viewport.scale;
+    const fontSize = 14 / this.viewport.scale;
+
+    // Dessiner les lignes de paires EN PREMIER (sous les points)
+    calibration.pairs.forEach((pair) => {
+      const p1 = calibration.points.get(pair.point1Id);
+      const p2 = calibration.points.get(pair.point2Id);
+
+      if (p1 && p2) {
+        // Ligne pointillée
+        this.ctx.strokeStyle = pair.color;
+        this.ctx.lineWidth = 2 / this.viewport.scale;
+        this.ctx.setLineDash([8 / this.viewport.scale, 4 / this.viewport.scale]);
+
+        this.ctx.beginPath();
+        this.ctx.moveTo(p1.x, p1.y);
+        this.ctx.lineTo(p2.x, p2.y);
+        this.ctx.stroke();
+
+        this.ctx.setLineDash([]);
+
+        // Afficher la distance au milieu
+        const mid = midpoint(p1, p2);
+        const distPx = distance(p1, p2);
+        const text = `${pair.distanceMm} mm`;
+
+        // Fond pour le texte
+        this.ctx.font = `bold ${fontSize}px Arial`;
+        const textWidth = this.ctx.measureText(text).width;
+        const padding = 4 / this.viewport.scale;
+
+        this.ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+        this.ctx.fillRect(
+          mid.x - textWidth / 2 - padding,
+          mid.y - fontSize / 2 - padding,
+          textWidth + padding * 2,
+          fontSize + padding * 2,
+        );
+
+        // Texte
+        this.ctx.fillStyle = pair.color;
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillText(text, mid.x, mid.y);
+      }
+    });
+
+    // Dessiner les points de calibration PAR-DESSUS
+    calibration.points.forEach((point) => {
+      // Cercle extérieur
+      this.ctx.strokeStyle = "#FF0000";
+      this.ctx.lineWidth = 2 / this.viewport.scale;
+      this.ctx.fillStyle = "#FFFFFF";
+
+      this.ctx.beginPath();
+      this.ctx.arc(point.x, point.y, pointSize, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.stroke();
+
+      // Croix au centre
+      const crossSize = pointSize * 0.6;
+      this.ctx.beginPath();
+      this.ctx.moveTo(point.x - crossSize, point.y);
+      this.ctx.lineTo(point.x + crossSize, point.y);
+      this.ctx.moveTo(point.x, point.y - crossSize);
+      this.ctx.lineTo(point.x, point.y + crossSize);
+      this.ctx.stroke();
+
+      // Label (numéro du point)
+      this.ctx.font = `bold ${fontSize}px Arial`;
+      this.ctx.fillStyle = "#FF0000";
+      this.ctx.textAlign = "left";
+      this.ctx.textBaseline = "bottom";
+      this.ctx.fillText(point.label, point.x + pointSize + 2 / this.viewport.scale, point.y - 2 / this.viewport.scale);
+    });
   }
 
   /**
