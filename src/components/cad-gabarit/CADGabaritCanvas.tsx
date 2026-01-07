@@ -181,7 +181,6 @@ export function CADGabaritCanvas({
     pairs: new Map(),
     applied: false,
   });
-  const [showCalibration, setShowCalibration] = useState(true);
   const [showCalibrationPanel, setShowCalibrationPanel] = useState(false);
   const [calibrationMode, setCalibrationMode] = useState<"idle" | "addPoint" | "selectPair1" | "selectPair2">("idle");
   const [selectedCalibrationPoint, setSelectedCalibrationPoint] = useState<string | null>(null);
@@ -290,7 +289,7 @@ export function CADGabaritCanvas({
       imageOpacity,
       imageScale,
       calibrationData,
-      showCalibration,
+      showCalibration: showCalibrationPanel, // Afficher uniquement si panneau ouvert
       // Mesure en cours (preview)
       measureData: measureStart
         ? {
@@ -317,7 +316,7 @@ export function CADGabaritCanvas({
     imageOpacity,
     imageScale,
     calibrationData,
-    showCalibration,
+    showCalibrationPanel,
     measureStart,
     measureEnd,
     measurePreviewEnd,
