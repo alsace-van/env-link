@@ -1,7 +1,7 @@
 // ============================================
 // TYPES: CAD Gabarit Types
 // Types pour le système CAO
-// VERSION: 2.2 - Ajout outil mesure
+// VERSION: 2.3 - Types homographie et perspective
 // ============================================
 
 // === GÉOMÉTRIE DE BASE ===
@@ -335,7 +335,7 @@ export function normalizeAngle(angle: number): number {
 
 export interface CalibrationPoint {
   id: string;
-  x: number;
+  x: number; // Position sur l'image (pixels)
   y: number;
   label: string; // "1", "2", "3", etc.
 }
@@ -349,12 +349,28 @@ export interface CalibrationPair {
   color: string; // Couleur de la ligne
 }
 
+// Matrice 3x3 pour transformation homographique
+export type HomographyMatrix = [[number, number, number], [number, number, number], [number, number, number]];
+
+// Rectangle de référence pour correction de perspective
+export interface ReferenceRectangle {
+  // 4 points dans l'ordre (sens horaire à partir du coin supérieur gauche)
+  pointIds: string[]; // IDs des 4 points dans l'ordre
+  widthMm: number; // Largeur réelle en mm
+  heightMm: number; // Hauteur réelle en mm
+}
+
 export interface CalibrationData {
   points: Map<string, CalibrationPoint>;
   pairs: Map<string, CalibrationPair>;
-  scale?: number; // mm par pixel (calculé)
+  scale?: number; // mm par pixel (calculé) - pour mode simple
   error?: number; // Erreur moyenne en %
   applied: boolean; // Si la calibration a été appliquée
+  // Mode perspective (correction de déformation)
+  mode: "simple" | "perspective";
+  referenceRect?: ReferenceRectangle;
+  homography?: HomographyMatrix;
+  transformedImageData?: ImageData; // Image déformée en cache
 }
 
 export const CALIBRATION_COLORS = [
