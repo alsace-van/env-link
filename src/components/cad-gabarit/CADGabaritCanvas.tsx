@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 2.6 - Mise à l'échelle image + export DXF corrigé
+// VERSION: 2.7 - Fix outil mesure (state unique)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -190,10 +190,24 @@ export function CADGabaritCanvas({
   const [draggingCalibrationPoint, setDraggingCalibrationPoint] = useState<string | null>(null);
   const [imageScale, setImageScale] = useState<number>(1);
 
-  // Mesure
-  const [measureStart, setMeasureStart] = useState<{ x: number; y: number } | null>(null);
-  const [measureEnd, setMeasureEnd] = useState<{ x: number; y: number } | null>(null);
-  const [measureResult, setMeasureResult] = useState<{ px: number; mm: number } | null>(null);
+  // Mesure - utiliser un seul état pour éviter les problèmes de synchronisation
+  const [measureState, setMeasureState] = useState<{
+    phase: "idle" | "waitingSecond" | "complete";
+    start: { x: number; y: number } | null;
+    end: { x: number; y: number } | null;
+    result: { px: number; mm: number } | null;
+  }>({
+    phase: "idle",
+    start: null,
+    end: null,
+    result: null,
+  });
+  const [measurePreviewEnd, setMeasurePreviewEnd] = useState<{ x: number; y: number } | null>(null);
+
+  // Aliases pour compatibilité avec le rendu
+  const measureStart = measureState.start;
+  const measureEnd = measureState.phase === "complete" ? measureState.end : measurePreviewEnd;
+  const measureResult = measureState.result;
 
   // Initialisation
   useEffect(() => {
@@ -291,6 +305,7 @@ export function CADGabaritCanvas({
     showCalibration,
     measureStart,
     measureEnd,
+    measurePreviewEnd,
   ]);
 
   useEffect(() => {
@@ -304,9 +319,13 @@ export function CADGabaritCanvas({
     }
     // Réinitialiser la mesure quand on change d'outil
     if (activeTool !== "measure") {
-      setMeasureStart(null);
-      setMeasureEnd(null);
-      setMeasureResult(null);
+      setMeasureState({
+        phase: "idle",
+        start: null,
+        end: null,
+        result: null,
+      });
+      setMeasurePreviewEnd(null);
     }
   }, [activeTool]);
 
@@ -606,9 +625,13 @@ export function CADGabaritCanvas({
         setTempPoints([]);
         setTempGeometry(null);
         // Reset de la mesure
-        setMeasureStart(null);
-        setMeasureEnd(null);
-        setMeasureResult(null);
+        setMeasureState({
+          phase: "idle",
+          start: null,
+          end: null,
+          result: null,
+        });
+        setMeasurePreviewEnd(null);
         setActiveTool("select");
         return;
       }
@@ -1024,25 +1047,28 @@ export function CADGabaritCanvas({
             }
           }
 
-          if (!measureStart) {
+          if (measureState.phase === "idle") {
             // Premier point - commence une nouvelle mesure
-            setMeasureStart(snapPos);
-            setMeasureEnd(null);
-            setMeasureResult(null);
-          } else if (!measureResult) {
-            // Deuxième point - calculer et afficher la mesure (persiste)
-            const distPx = distance(measureStart, snapPos);
+            setMeasureState({
+              phase: "waitingSecond",
+              start: snapPos,
+              end: null,
+              result: null,
+            });
+          } else if (measureState.phase === "waitingSecond" && measureState.start) {
+            // Deuxième point - calculer et afficher la mesure
+            const distPx = distance(measureState.start, snapPos);
             const distMm = calibrationData.scale ? distPx * calibrationData.scale : distPx * sketch.scaleFactor;
-            setMeasureEnd(snapPos);
-            setMeasureResult({ px: distPx, mm: distMm });
+            setMeasureState({
+              phase: "complete",
+              start: measureState.start,
+              end: snapPos,
+              result: { px: distPx, mm: distMm },
+            });
             toast.success(`Mesure: ${distPx.toFixed(1)} px = ${distMm.toFixed(1)} mm`);
-            // Ne pas reset - la mesure reste affichée jusqu'au clic droit
-          } else {
-            // Clic après mesure terminée - nouvelle mesure
-            setMeasureStart(snapPos);
-            setMeasureEnd(null);
-            setMeasureResult(null);
           }
+          // Si phase === 'complete', on ignore le clic
+          // La mesure reste affichée jusqu'au clic droit
           break;
         }
       }
@@ -1065,8 +1091,7 @@ export function CADGabaritCanvas({
       selectedCalibrationPoint,
       newPairDistance,
       newPairColor,
-      measureStart,
-      measureResult,
+      measureState,
       showCalibrationPanel,
     ],
   );
@@ -1180,9 +1205,9 @@ export function CADGabaritCanvas({
         }
       }
 
-      // Mise à jour mesure en cours
-      if (activeTool === "measure" && measureStart) {
-        setMeasureEnd(worldPos);
+      // Mise à jour mesure en cours (preview)
+      if (activeTool === "measure" && measureState.phase === "waitingSecond" && measureState.start) {
+        setMeasurePreviewEnd(worldPos);
       }
     },
     [
@@ -1199,7 +1224,7 @@ export function CADGabaritCanvas({
       findEntityAtPosition,
       screenToWorld,
       activeTool,
-      measureStart,
+      measureState,
       draggingCalibrationPoint,
     ],
   );
@@ -2047,8 +2072,7 @@ export function CADGabaritCanvas({
                 <div className="space-y-1">
                   <p className="text-lg font-bold text-green-700">{measureResult.px.toFixed(1)} px</p>
                   <p className="text-lg font-bold text-green-600">{measureResult.mm.toFixed(1)} mm</p>
-                  <p className="text-xs text-gray-500 mt-1">Clic = nouvelle mesure</p>
-                  <p className="text-xs text-gray-400">Clic droit = effacer</p>
+                  <p className="text-xs text-gray-400 mt-1">Clic droit = effacer</p>
                 </div>
               ) : null}
               {calibrationData.scale && (
