@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 2.3 - Image scale support
+// VERSION: 2.4 - Mesures multiples
 // ============================================
 
 import {
@@ -100,6 +100,14 @@ export class CADRenderer {
         end: { x: number; y: number } | null;
         scale?: number;
       } | null;
+      measurements?: Array<{
+        id: string;
+        start: { x: number; y: number };
+        end: { x: number; y: number };
+        px: number;
+        mm: number;
+      }>;
+      measureScale?: number;
     } = {},
   ): void {
     const {
@@ -116,6 +124,8 @@ export class CADRenderer {
       calibrationData = null,
       showCalibration = true,
       measureData = null,
+      measurements = [],
+      measureScale = 1,
     } = options;
 
     // Clear
@@ -181,7 +191,14 @@ export class CADRenderer {
       this.drawHandles(sketch, selectedEntities);
     }
 
-    // 8.5. Mesure en cours
+    // 8.5. Mesures persistantes
+    if (measurements.length > 0) {
+      measurements.forEach((m) => {
+        this.drawMeasure(m.start, m.end, measureScale, m.mm);
+      });
+    }
+
+    // 8.6. Mesure en cours (preview)
     if (measureData?.start) {
       this.drawMeasure(measureData.start, measureData.end, measureData.scale);
     }
@@ -651,11 +668,16 @@ export class CADRenderer {
   /**
    * Dessine la ligne de mesure avec les distances
    */
-  private drawMeasure(start: { x: number; y: number }, end: { x: number; y: number } | null, scale?: number): void {
+  private drawMeasure(
+    start: { x: number; y: number },
+    end: { x: number; y: number } | null,
+    scale?: number,
+    precomputedMm?: number,
+  ): void {
     if (!end) return;
 
     const distPx = distance(start, end);
-    const distMm = scale ? distPx * scale : distPx;
+    const distMm = precomputedMm !== undefined ? precomputedMm : scale ? distPx * scale : distPx;
 
     // Ligne de mesure
     this.ctx.strokeStyle = "#00AA00";
