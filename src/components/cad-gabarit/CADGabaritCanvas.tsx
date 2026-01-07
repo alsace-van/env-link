@@ -184,7 +184,7 @@ export function CADGabaritCanvas({
 
     // Charger l'image de fond
     if (imageUrl) {
-      const img = new Image();
+      const img = new window.Image();
       img.crossOrigin = "anonymous";
       img.onload = () => {
         backgroundImageRef.current = img;
@@ -230,7 +230,6 @@ export function CADGabaritCanvas({
       showDimensions,
       backgroundImage: showBackgroundImage ? backgroundImageRef.current : null,
       imageOpacity,
-      selectedEntities,
     });
 
     // Dessiner les poignées pour les entités sélectionnées
