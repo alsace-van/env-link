@@ -1,7 +1,7 @@
 // ============================================
 // CAD SOLVER: Interface avec planegcs
 // Solveur de contraintes géométriques
-// VERSION: 1.0
+// VERSION: 1.1 - Ajout contrainte d'angle
 // ============================================
 
 import { Point, Geometry, Line, Circle, Arc, Constraint, Sketch, SolverResult, generateId } from "./types";
@@ -513,6 +513,73 @@ class SimplifiedSolver {
         if (!p2.fixed) {
           p2.x = mx + dx;
           p2.y = my + dy;
+        }
+
+        return error;
+      }
+
+      case "l2l_angle": {
+        // Contrainte d'angle entre deux lignes
+        const line1 = this.primitives.find((p) => p.id === constraint.l1_id && p.type === "line") as
+          | GcsLine
+          | undefined;
+        const line2 = this.primitives.find((p) => p.id === constraint.l2_id && p.type === "line") as
+          | GcsLine
+          | undefined;
+        if (!line1 || !line2) return 0;
+
+        const l1p1 = this.points.get(line1.p1_id);
+        const l1p2 = this.points.get(line1.p2_id);
+        const l2p1 = this.points.get(line2.p1_id);
+        const l2p2 = this.points.get(line2.p2_id);
+        if (!l1p1 || !l1p2 || !l2p1 || !l2p2) return 0;
+
+        // Vecteurs directeurs
+        const v1 = { x: l1p2.x - l1p1.x, y: l1p2.y - l1p1.y };
+        const v2 = { x: l2p2.x - l2p1.x, y: l2p2.y - l2p1.y };
+
+        // Angle actuel entre les deux lignes (en radians)
+        const dot = v1.x * v2.x + v1.y * v2.y;
+        const cross = v1.x * v2.y - v1.y * v2.x;
+        const currentAngle = Math.abs(Math.atan2(Math.abs(cross), dot));
+
+        // Angle cible (en radians)
+        const targetAngle = constraint.angle || 0;
+
+        // Erreur
+        const error = Math.abs(currentAngle - targetAngle);
+        if (error < 0.001) return 0; // Déjà correct
+
+        // Calculer la rotation nécessaire
+        const deltaAngle = targetAngle - currentAngle;
+
+        // Faire pivoter la ligne 2 autour de son premier point
+        // On garde la ligne 1 fixe et on pivote la ligne 2
+        if (!l2p2.fixed) {
+          const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+          if (len2 < 0.001) return 0;
+
+          // Angle actuel de la ligne 2 par rapport à l'horizontale
+          const angle2 = Math.atan2(v2.y, v2.x);
+          // Angle de la ligne 1 par rapport à l'horizontale
+          const angle1 = Math.atan2(v1.y, v1.x);
+
+          // Nouvel angle pour la ligne 2 (même sens que ligne 1 + angle cible)
+          const newAngle2 = angle1 + (cross >= 0 ? targetAngle : -targetAngle);
+
+          // Nouvelles coordonnées de p2 de la ligne 2
+          l2p2.x = l2p1.x + len2 * Math.cos(newAngle2);
+          l2p2.y = l2p1.y + len2 * Math.sin(newAngle2);
+        } else if (!l2p1.fixed) {
+          // Si p2 est fixe, pivoter autour de p2
+          const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+          if (len2 < 0.001) return 0;
+
+          const angle1 = Math.atan2(v1.y, v1.x);
+          const newAngle2 = angle1 + (cross >= 0 ? targetAngle : -targetAngle);
+
+          l2p1.x = l2p2.x - len2 * Math.cos(newAngle2);
+          l2p1.y = l2p2.y - len2 * Math.sin(newAngle2);
         }
 
         return error;
