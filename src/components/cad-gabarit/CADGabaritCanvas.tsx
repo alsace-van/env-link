@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 3.0 - Calibration Rectangle + Damier
+// VERSION: 3.2 - Système de calques + Copier/Coller + Angle
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -75,6 +75,8 @@ import {
   SnapPoint,
   SnapType,
   ToolType,
+  Layer,
+  DEFAULT_LAYERS,
   CalibrationData,
   CalibrationPoint,
   CalibrationPair,
@@ -112,6 +114,12 @@ interface CADGabaritCanvasProps {
 
 // Créer un sketch vide
 function createEmptySketch(scaleFactor: number = 1): Sketch {
+  // Créer les calques par défaut
+  const layers = new Map<string, Layer>();
+  DEFAULT_LAYERS.forEach((layer) => {
+    layers.set(layer.id, { ...layer });
+  });
+
   return {
     id: generateId(),
     name: "Nouveau gabarit",
@@ -119,6 +127,8 @@ function createEmptySketch(scaleFactor: number = 1): Sketch {
     geometries: new Map(),
     constraints: new Map(),
     dimensions: new Map(),
+    layers,
+    activeLayerId: "default",
     scaleFactor,
     dof: 0,
     status: "fully-constrained",
@@ -184,6 +194,13 @@ export function CADGabaritCanvas({
     initialValue: number;
   } | null>(null);
 
+  // Dialog pour contrainte d'angle
+  const [angleConstraintDialog, setAngleConstraintDialog] = useState<{
+    open: boolean;
+    entities: string[]; // IDs des 2 lignes
+    currentAngle: number; // Angle actuel en degrés
+  } | null>(null);
+
   const [history, setHistory] = useState<any[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
@@ -240,6 +257,13 @@ export function CADGabaritCanvas({
       mm: number;
     }>
   >([]);
+
+  // Presse-papier pour copier/coller
+  const [clipboard, setClipboard] = useState<{
+    points: Map<string, Point>;
+    geometries: Map<string, Geometry>;
+    center: { x: number; y: number };
+  } | null>(null);
 
   // Aliases pour compatibilité avec le rendu
   const measureStart = measureState.start;
@@ -1473,11 +1497,29 @@ export function CADGabaritCanvas({
         e.preventDefault();
         saveSketch();
       }
+
+      // Ctrl+C - Copier
+      if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+        e.preventDefault();
+        copySelectedEntities();
+      }
+
+      // Ctrl+V - Coller
+      if ((e.ctrlKey || e.metaKey) && e.key === "v") {
+        e.preventDefault();
+        pasteEntities();
+      }
+
+      // Ctrl+D - Dupliquer
+      if ((e.ctrlKey || e.metaKey) && e.key === "d") {
+        e.preventDefault();
+        duplicateSelectedEntities();
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isFullscreen, selectedEntities, saveSketch]);
+  }, [isFullscreen, selectedEntities, saveSketch, copySelectedEntities, pasteEntities, duplicateSelectedEntities]);
 
   // Supprimer les entités sélectionnées
   const deleteSelectedEntities = useCallback(() => {
@@ -1514,6 +1556,363 @@ export function CADGabaritCanvas({
       setHistoryIndex((i) => i + 1);
     }
   }, [history, historyIndex, loadSketchData]);
+
+  // === COPIER / COLLER / DUPLIQUER ===
+
+  // Copier les entités sélectionnées
+  const copySelectedEntities = useCallback(() => {
+    if (selectedEntities.size === 0) {
+      toast.info("Aucune entité sélectionnée");
+      return;
+    }
+
+    const copiedPoints = new Map<string, Point>();
+    const copiedGeometries = new Map<string, Geometry>();
+    const pointsUsed = new Set<string>();
+
+    // Copier les géométries sélectionnées et identifier les points utilisés
+    selectedEntities.forEach((id) => {
+      const geo = sketch.geometries.get(id);
+      if (geo) {
+        copiedGeometries.set(id, { ...geo });
+        // Identifier les points utilisés par cette géométrie
+        if (geo.type === "line") {
+          const line = geo as Line;
+          pointsUsed.add(line.startId);
+          pointsUsed.add(line.endId);
+        } else if (geo.type === "circle") {
+          const circle = geo as CircleType;
+          pointsUsed.add(circle.centerId);
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          pointsUsed.add(arc.centerId);
+          pointsUsed.add(arc.startId);
+          pointsUsed.add(arc.endId);
+        } else if (geo.type === "rectangle") {
+          const rect = geo as Rectangle;
+          rect.cornerIds.forEach((cid) => pointsUsed.add(cid));
+        } else if (geo.type === "bezier") {
+          const bezier = geo as Bezier;
+          bezier.pointIds.forEach((pid) => pointsUsed.add(pid));
+        }
+      }
+      // Copier aussi les points sélectionnés directement
+      const point = sketch.points.get(id);
+      if (point) {
+        copiedPoints.set(id, { ...point });
+      }
+    });
+
+    // Copier les points utilisés par les géométries
+    pointsUsed.forEach((pointId) => {
+      const point = sketch.points.get(pointId);
+      if (point) {
+        copiedPoints.set(pointId, { ...point });
+      }
+    });
+
+    // Calculer le centre des entités copiées
+    let sumX = 0,
+      sumY = 0,
+      count = 0;
+    copiedPoints.forEach((point) => {
+      sumX += point.x;
+      sumY += point.y;
+      count++;
+    });
+    const center = count > 0 ? { x: sumX / count, y: sumY / count } : { x: 0, y: 0 };
+
+    setClipboard({
+      points: copiedPoints,
+      geometries: copiedGeometries,
+      center,
+    });
+
+    toast.success(`${copiedGeometries.size} géométrie(s) et ${copiedPoints.size} point(s) copiés`);
+  }, [selectedEntities, sketch]);
+
+  // Coller les entités du presse-papier
+  const pasteEntities = useCallback(
+    (offset = { x: 20, y: 20 }) => {
+      if (!clipboard) {
+        toast.info("Presse-papier vide");
+        return;
+      }
+
+      // Créer un mapping ancien ID -> nouveau ID
+      const pointIdMapping = new Map<string, string>();
+      const newSketch = { ...sketch };
+      newSketch.points = new Map(sketch.points);
+      newSketch.geometries = new Map(sketch.geometries);
+
+      // Coller les points avec nouveaux IDs et décalage
+      clipboard.points.forEach((point, oldId) => {
+        const newId = generateId();
+        pointIdMapping.set(oldId, newId);
+        newSketch.points.set(newId, {
+          ...point,
+          id: newId,
+          x: point.x + offset.x,
+          y: point.y + offset.y,
+        });
+      });
+
+      // Coller les géométries avec nouveaux IDs et références mises à jour
+      const newSelectedEntities = new Set<string>();
+      clipboard.geometries.forEach((geo) => {
+        const newId = generateId();
+        newSelectedEntities.add(newId);
+
+        if (geo.type === "line") {
+          const line = geo as Line;
+          newSketch.geometries.set(newId, {
+            ...line,
+            id: newId,
+            startId: pointIdMapping.get(line.startId) || line.startId,
+            endId: pointIdMapping.get(line.endId) || line.endId,
+          });
+        } else if (geo.type === "circle") {
+          const circle = geo as CircleType;
+          newSketch.geometries.set(newId, {
+            ...circle,
+            id: newId,
+            centerId: pointIdMapping.get(circle.centerId) || circle.centerId,
+          });
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          newSketch.geometries.set(newId, {
+            ...arc,
+            id: newId,
+            centerId: pointIdMapping.get(arc.centerId) || arc.centerId,
+            startId: pointIdMapping.get(arc.startId) || arc.startId,
+            endId: pointIdMapping.get(arc.endId) || arc.endId,
+          });
+        } else if (geo.type === "rectangle") {
+          const rect = geo as Rectangle;
+          newSketch.geometries.set(newId, {
+            ...rect,
+            id: newId,
+            cornerIds: rect.cornerIds.map((cid) => pointIdMapping.get(cid) || cid),
+          });
+        } else if (geo.type === "bezier") {
+          const bezier = geo as Bezier;
+          newSketch.geometries.set(newId, {
+            ...bezier,
+            id: newId,
+            pointIds: bezier.pointIds.map((pid) => pointIdMapping.get(pid) || pid),
+          });
+        }
+      });
+
+      setSketch(newSketch);
+      setSelectedEntities(newSelectedEntities);
+      addToHistory(newSketch);
+
+      toast.success(`${clipboard.geometries.size} géométrie(s) collées`);
+    },
+    [clipboard, sketch, addToHistory],
+  );
+
+  // Dupliquer les entités sélectionnées (copier + coller en une fois)
+  const duplicateSelectedEntities = useCallback(() => {
+    if (selectedEntities.size === 0) {
+      toast.info("Aucune entité sélectionnée");
+      return;
+    }
+
+    // Copier dans un presse-papier temporaire
+    const copiedPoints = new Map<string, Point>();
+    const copiedGeometries = new Map<string, Geometry>();
+    const pointsUsed = new Set<string>();
+
+    selectedEntities.forEach((id) => {
+      const geo = sketch.geometries.get(id);
+      if (geo) {
+        copiedGeometries.set(id, { ...geo });
+        if (geo.type === "line") {
+          const line = geo as Line;
+          pointsUsed.add(line.startId);
+          pointsUsed.add(line.endId);
+        } else if (geo.type === "circle") {
+          const circle = geo as CircleType;
+          pointsUsed.add(circle.centerId);
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          pointsUsed.add(arc.centerId);
+          pointsUsed.add(arc.startId);
+          pointsUsed.add(arc.endId);
+        } else if (geo.type === "rectangle") {
+          const rect = geo as Rectangle;
+          rect.cornerIds.forEach((cid) => pointsUsed.add(cid));
+        } else if (geo.type === "bezier") {
+          const bezier = geo as Bezier;
+          bezier.pointIds.forEach((pid) => pointsUsed.add(pid));
+        }
+      }
+    });
+
+    pointsUsed.forEach((pointId) => {
+      const point = sketch.points.get(pointId);
+      if (point) {
+        copiedPoints.set(pointId, { ...point });
+      }
+    });
+
+    // Coller directement avec décalage
+    const offset = { x: 20, y: 20 };
+    const pointIdMapping = new Map<string, string>();
+    const newSketch = { ...sketch };
+    newSketch.points = new Map(sketch.points);
+    newSketch.geometries = new Map(sketch.geometries);
+
+    copiedPoints.forEach((point, oldId) => {
+      const newId = generateId();
+      pointIdMapping.set(oldId, newId);
+      newSketch.points.set(newId, {
+        ...point,
+        id: newId,
+        x: point.x + offset.x,
+        y: point.y + offset.y,
+      });
+    });
+
+    const newSelectedEntities = new Set<string>();
+    copiedGeometries.forEach((geo) => {
+      const newId = generateId();
+      newSelectedEntities.add(newId);
+
+      if (geo.type === "line") {
+        const line = geo as Line;
+        newSketch.geometries.set(newId, {
+          ...line,
+          id: newId,
+          startId: pointIdMapping.get(line.startId) || line.startId,
+          endId: pointIdMapping.get(line.endId) || line.endId,
+        });
+      } else if (geo.type === "circle") {
+        const circle = geo as CircleType;
+        newSketch.geometries.set(newId, {
+          ...circle,
+          id: newId,
+          centerId: pointIdMapping.get(circle.centerId) || circle.centerId,
+        });
+      } else if (geo.type === "arc") {
+        const arc = geo as Arc;
+        newSketch.geometries.set(newId, {
+          ...arc,
+          id: newId,
+          centerId: pointIdMapping.get(arc.centerId) || arc.centerId,
+          startId: pointIdMapping.get(arc.startId) || arc.startId,
+          endId: pointIdMapping.get(arc.endId) || arc.endId,
+        });
+      } else if (geo.type === "rectangle") {
+        const rect = geo as Rectangle;
+        newSketch.geometries.set(newId, {
+          ...rect,
+          id: newId,
+          cornerIds: rect.cornerIds.map((cid) => pointIdMapping.get(cid) || cid),
+        });
+      } else if (geo.type === "bezier") {
+        const bezier = geo as Bezier;
+        newSketch.geometries.set(newId, {
+          ...bezier,
+          id: newId,
+          pointIds: bezier.pointIds.map((pid) => pointIdMapping.get(pid) || pid),
+        });
+      }
+    });
+
+    setSketch(newSketch);
+    setSelectedEntities(newSelectedEntities);
+    addToHistory(newSketch);
+
+    toast.success(`${copiedGeometries.size} géométrie(s) dupliquées`);
+  }, [selectedEntities, sketch, addToHistory]);
+
+  // === CONTRAINTE D'ANGLE ===
+
+  // Calculer l'angle entre 2 lignes (en degrés)
+  const calculateAngleBetweenLines = useCallback(
+    (line1Id: string, line2Id: string): number | null => {
+      const line1 = sketch.geometries.get(line1Id) as Line | undefined;
+      const line2 = sketch.geometries.get(line2Id) as Line | undefined;
+
+      if (!line1 || !line2 || line1.type !== "line" || line2.type !== "line") {
+        return null;
+      }
+
+      const p1Start = sketch.points.get(line1.startId);
+      const p1End = sketch.points.get(line1.endId);
+      const p2Start = sketch.points.get(line2.startId);
+      const p2End = sketch.points.get(line2.endId);
+
+      if (!p1Start || !p1End || !p2Start || !p2End) {
+        return null;
+      }
+
+      // Vecteurs directeurs
+      const v1 = { x: p1End.x - p1Start.x, y: p1End.y - p1Start.y };
+      const v2 = { x: p2End.x - p2Start.x, y: p2End.y - p2Start.y };
+
+      // Produit scalaire et normes
+      const dot = v1.x * v2.x + v1.y * v2.y;
+      const norm1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+      const norm2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+
+      if (norm1 === 0 || norm2 === 0) {
+        return null;
+      }
+
+      // Angle en radians puis degrés
+      const cosAngle = Math.max(-1, Math.min(1, dot / (norm1 * norm2)));
+      const angleRad = Math.acos(cosAngle);
+      const angleDeg = (angleRad * 180) / Math.PI;
+
+      return Math.round(angleDeg * 100) / 100; // Arrondi à 2 décimales
+    },
+    [sketch],
+  );
+
+  // Ouvrir le dialog de contrainte d'angle
+  const openAngleConstraintDialog = useCallback(() => {
+    if (selectedEntities.size !== 2) {
+      toast.error("Sélectionnez exactement 2 lignes");
+      return;
+    }
+
+    const ids = Array.from(selectedEntities);
+    const geo1 = sketch.geometries.get(ids[0]);
+    const geo2 = sketch.geometries.get(ids[1]);
+
+    if (!geo1 || !geo2 || geo1.type !== "line" || geo2.type !== "line") {
+      toast.error("Sélectionnez 2 lignes (pas des cercles ou autres)");
+      return;
+    }
+
+    const currentAngle = calculateAngleBetweenLines(ids[0], ids[1]);
+    if (currentAngle === null) {
+      toast.error("Impossible de calculer l'angle");
+      return;
+    }
+
+    setAngleConstraintDialog({
+      open: true,
+      entities: ids,
+      currentAngle,
+    });
+  }, [selectedEntities, sketch, calculateAngleBetweenLines]);
+
+  // Appliquer la contrainte d'angle
+  const applyAngleConstraint = useCallback(
+    (angleDeg: number) => {
+      if (!angleConstraintDialog) return;
+
+      addConstraint("angle", angleConstraintDialog.entities, angleDeg);
+      setAngleConstraintDialog(null);
+      toast.success(`Contrainte d'angle ${angleDeg}° ajoutée`);
+    },
+    [angleConstraintDialog, addConstraint],
+  );
 
   // === FONCTIONS DE CALIBRATION ===
 
@@ -2297,6 +2696,68 @@ export function CADGabaritCanvas({
               >
                 ⚓ Fixe
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={openAngleConstraintDialog} disabled={selectedEntities.size !== 2}>
+                ∠ Angle entre 2 lignes
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        <Separator orientation="vertical" className="h-6" />
+
+        {/* Calques */}
+        <div className="flex items-center gap-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-8 gap-1 px-2">
+                <div
+                  className="w-3 h-3 rounded-sm border"
+                  style={{ backgroundColor: sketch.layers.get(sketch.activeLayerId)?.color || "#3B82F6" }}
+                />
+                <span className="text-xs">{sketch.layers.get(sketch.activeLayerId)?.name || "Calque"}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Calque actif</div>
+              {Array.from(sketch.layers.values())
+                .sort((a, b) => a.order - b.order)
+                .map((layer) => (
+                  <DropdownMenuItem
+                    key={layer.id}
+                    onClick={() => setSketch((prev) => ({ ...prev, activeLayerId: layer.id }))}
+                    className="flex items-center gap-2"
+                  >
+                    <div className="w-3 h-3 rounded-sm border" style={{ backgroundColor: layer.color }} />
+                    <span className="flex-1">{layer.name}</span>
+                    {layer.id === sketch.activeLayerId && <Check className="h-4 w-4" />}
+                  </DropdownMenuItem>
+                ))}
+              <DropdownMenuSeparator />
+              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Visibilité</div>
+              {Array.from(sketch.layers.values())
+                .sort((a, b) => a.order - b.order)
+                .map((layer) => (
+                  <DropdownMenuCheckboxItem
+                    key={`vis-${layer.id}`}
+                    checked={layer.visible}
+                    onCheckedChange={(checked) => {
+                      setSketch((prev) => {
+                        const newLayers = new Map(prev.layers);
+                        const l = newLayers.get(layer.id);
+                        if (l) {
+                          newLayers.set(layer.id, { ...l, visible: checked });
+                        }
+                        return { ...prev, layers: newLayers };
+                      });
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-sm border" style={{ backgroundColor: layer.color }} />
+                      <span>{layer.name}</span>
+                    </div>
+                  </DropdownMenuCheckboxItem>
+                ))}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -3056,6 +3517,112 @@ export function CADGabaritCanvas({
                       value,
                     );
                     setDimensionDialog(null);
+                  }
+                }}
+              >
+                Appliquer
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Dialog contrainte d'angle */}
+      {angleConstraintDialog && (
+        <Dialog open={angleConstraintDialog.open} onOpenChange={() => setAngleConstraintDialog(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Contrainte d'angle entre 2 lignes</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="p-3 bg-gray-50 rounded text-sm">
+                <span className="text-muted-foreground">Angle actuel : </span>
+                <span className="font-mono font-bold">{angleConstraintDialog.currentAngle}°</span>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="angle-value" className="text-right">
+                  Angle désiré
+                </Label>
+                <Input
+                  id="angle-value"
+                  type="number"
+                  min="0"
+                  max="180"
+                  step="0.1"
+                  defaultValue={angleConstraintDialog.currentAngle}
+                  className="col-span-2"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const value = parseFloat((e.target as HTMLInputElement).value);
+                      if (!isNaN(value) && value >= 0 && value <= 180) {
+                        applyAngleConstraint(value);
+                      }
+                    }
+                  }}
+                />
+                <span className="text-sm text-muted-foreground">°</span>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    (document.getElementById("angle-value") as HTMLInputElement).value = "90";
+                  }}
+                >
+                  90°
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    (document.getElementById("angle-value") as HTMLInputElement).value = "45";
+                  }}
+                >
+                  45°
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    (document.getElementById("angle-value") as HTMLInputElement).value = "30";
+                  }}
+                >
+                  30°
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    (document.getElementById("angle-value") as HTMLInputElement).value = "60";
+                  }}
+                >
+                  60°
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    (document.getElementById("angle-value") as HTMLInputElement).value = "0";
+                  }}
+                >
+                  0° (parallèles)
+                </Button>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAngleConstraintDialog(null)}>
+                Annuler
+              </Button>
+              <Button
+                onClick={() => {
+                  const input = document.getElementById("angle-value") as HTMLInputElement;
+                  const value = parseFloat(input.value);
+                  if (!isNaN(value) && value >= 0 && value <= 180) {
+                    applyAngleConstraint(value);
+                  } else {
+                    toast.error("L'angle doit être entre 0° et 180°");
                   }
                 }}
               >
