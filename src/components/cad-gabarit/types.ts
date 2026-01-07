@@ -1,7 +1,7 @@
 // ============================================
 // TYPES: CAD Gabarit Types
 // Types pour le système CAO
-// VERSION: 2.1 - Ajout Calibration
+// VERSION: 2.2 - Ajout outil mesure
 // ============================================
 
 // === GÉOMÉTRIE DE BASE ===
@@ -153,6 +153,7 @@ export type ToolType =
   | "bezier"
   | "dimension"
   | "constraint"
+  | "measure"
   | "trim"
   | "extend";
 
