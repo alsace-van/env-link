@@ -156,14 +156,19 @@ export class CADRenderer {
       });
     }
 
+    // 8. Poignées des entités sélectionnées
+    if (selectedEntities.size > 0) {
+      this.drawHandles(sketch, selectedEntities);
+    }
+
     this.ctx.restore();
 
-    // 8. Snap indicator (in screen coords)
+    // 9. Snap indicator (in screen coords)
     if (currentSnapPoint) {
       this.drawSnapIndicator(currentSnapPoint);
     }
 
-    // 9. Status bar info
+    // 10. Status bar info
     this.drawStatusBar(sketch);
   }
 
