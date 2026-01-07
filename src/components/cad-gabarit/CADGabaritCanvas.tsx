@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 2.2 - Outil de mesure
+// VERSION: 2.6 - Mise à l'échelle image + export DXF corrigé
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -188,6 +188,7 @@ export function CADGabaritCanvas({
   const [newPairDistance, setNewPairDistance] = useState<string>("");
   const [newPairColor, setNewPairColor] = useState<string>(CALIBRATION_COLORS[0]);
   const [draggingCalibrationPoint, setDraggingCalibrationPoint] = useState<string | null>(null);
+  const [imageScale, setImageScale] = useState<number>(1);
 
   // Mesure
   const [measureStart, setMeasureStart] = useState<{ x: number; y: number } | null>(null);
@@ -262,6 +263,7 @@ export function CADGabaritCanvas({
       showDimensions,
       backgroundImage: showBackgroundImage ? backgroundImageRef.current : null,
       imageOpacity,
+      imageScale,
       calibrationData,
       showCalibration,
       measureData: measureStart
@@ -284,6 +286,7 @@ export function CADGabaritCanvas({
     showDimensions,
     showBackgroundImage,
     imageOpacity,
+    imageScale,
     calibrationData,
     showCalibration,
     measureStart,
@@ -602,6 +605,10 @@ export function CADGabaritCanvas({
       if (e.button === 2) {
         setTempPoints([]);
         setTempGeometry(null);
+        // Reset de la mesure
+        setMeasureStart(null);
+        setMeasureEnd(null);
+        setMeasureResult(null);
         setActiveTool("select");
         return;
       }
@@ -672,11 +679,39 @@ export function CADGabaritCanvas({
             const p2 = closestPoint;
             if (p1 && p2) {
               const distPx = distance(p1, p2);
+
+              // Calculer la distance estimée en mm
+              let estimatedMm: number;
+              const userInput = parseFloat(newPairDistance.replace(",", "."));
+
+              if (!isNaN(userInput) && userInput > 0) {
+                // L'utilisateur a entré une valeur
+                estimatedMm = userInput;
+              } else if (calibrationData.pairs.size === 0) {
+                // Première paire : utiliser l'échelle du sketch
+                estimatedMm = Math.round(distPx * sketch.scaleFactor * 10) / 10;
+              } else {
+                // Paires suivantes : moyenne des échelles précédentes
+                let totalScale = 0;
+                let count = 0;
+                calibrationData.pairs.forEach((pair) => {
+                  const pp1 = calibrationData.points.get(pair.point1Id);
+                  const pp2 = calibrationData.points.get(pair.point2Id);
+                  if (pp1 && pp2 && pair.distanceMm > 0) {
+                    const pairDistPx = distance(pp1, pp2);
+                    totalScale += pair.distanceMm / pairDistPx;
+                    count++;
+                  }
+                });
+                const avgScale = count > 0 ? totalScale / count : sketch.scaleFactor;
+                estimatedMm = Math.round(distPx * avgScale * 10) / 10;
+              }
+
               const newPair: CalibrationPair = {
                 id: generateId(),
                 point1Id: p1.id,
                 point2Id: p2.id,
-                distanceMm: parseFloat(newPairDistance) || 100,
+                distanceMm: estimatedMm,
                 distancePx: distPx,
                 color: newPairColor,
               };
@@ -685,7 +720,9 @@ export function CADGabaritCanvas({
                 newPairs.set(newPair.id, newPair);
                 return { ...prev, pairs: newPairs };
               });
-              toast.success(`Paire ${p1.label}-${p2.label} créée`);
+              toast.success(`Paire ${p1.label}-${p2.label} créée (${estimatedMm} mm estimé)`);
+              // Reset le champ pour la prochaine paire
+              setNewPairDistance("");
             }
             setCalibrationMode("idle");
             setSelectedCalibrationPoint(null);
@@ -966,20 +1003,45 @@ export function CADGabaritCanvas({
         }
 
         case "measure": {
+          // Chercher un point de calibration proche pour snap
+          let snapPos = worldPos;
+          const snapTolerance = 15 / viewport.scale;
+
+          if (showCalibrationPanel || calibrationData.points.size > 0) {
+            let closestCalibPoint: CalibrationPoint | null = null;
+            let closestDist = Infinity;
+
+            calibrationData.points.forEach((point) => {
+              const d = distance(worldPos, point);
+              if (d < snapTolerance && d < closestDist) {
+                closestDist = d;
+                closestCalibPoint = point;
+              }
+            });
+
+            if (closestCalibPoint) {
+              snapPos = { x: closestCalibPoint.x, y: closestCalibPoint.y };
+            }
+          }
+
           if (!measureStart) {
-            // Premier point
-            setMeasureStart(worldPos);
+            // Premier point - commence une nouvelle mesure
+            setMeasureStart(snapPos);
             setMeasureEnd(null);
             setMeasureResult(null);
-          } else {
-            // Deuxième point - calculer la mesure
-            const distPx = distance(measureStart, worldPos);
+          } else if (!measureResult) {
+            // Deuxième point - calculer et afficher la mesure (persiste)
+            const distPx = distance(measureStart, snapPos);
             const distMm = calibrationData.scale ? distPx * calibrationData.scale : distPx * sketch.scaleFactor;
-            setMeasureEnd(worldPos);
+            setMeasureEnd(snapPos);
             setMeasureResult({ px: distPx, mm: distMm });
             toast.success(`Mesure: ${distPx.toFixed(1)} px = ${distMm.toFixed(1)} mm`);
-            // Reset pour nouvelle mesure
-            setMeasureStart(null);
+            // Ne pas reset - la mesure reste affichée jusqu'au clic droit
+          } else {
+            // Clic après mesure terminée - nouvelle mesure
+            setMeasureStart(snapPos);
+            setMeasureEnd(null);
+            setMeasureResult(null);
           }
           break;
         }
@@ -1004,6 +1066,7 @@ export function CADGabaritCanvas({
       newPairDistance,
       newPairColor,
       measureStart,
+      measureResult,
       showCalibrationPanel,
     ],
   );
@@ -1451,31 +1514,79 @@ export function CADGabaritCanvas({
       return;
     }
 
-    // Mettre à jour le scaleFactor du sketch
-    setSketch((prev) => ({
-      ...prev,
-      scaleFactor: calibrationData.scale!,
-    }));
+    const scale = calibrationData.scale; // mm/px
 
+    // Convertir les points de calibration existants en mm
+    const newCalibPoints = new Map<string, CalibrationPoint>();
+    calibrationData.points.forEach((point, id) => {
+      newCalibPoints.set(id, {
+        ...point,
+        x: point.x * scale,
+        y: point.y * scale,
+      });
+    });
+
+    // Convertir les points du sketch en mm
+    const newSketchPoints = new Map(sketch.points);
+    newSketchPoints.forEach((point, id) => {
+      newSketchPoints.set(id, {
+        ...point,
+        x: point.x * scale,
+        y: point.y * scale,
+      });
+    });
+
+    // Convertir les géométries avec rayon (cercles)
+    const newGeometries = new Map(sketch.geometries);
+    newGeometries.forEach((geo, id) => {
+      if (geo.type === "circle") {
+        const circle = geo as any;
+        newGeometries.set(id, {
+          ...circle,
+          radius: circle.radius * scale,
+        });
+      }
+    });
+
+    // Mettre à jour l'échelle de l'image
+    setImageScale(scale);
+
+    // Mettre à jour les points de calibration convertis
     setCalibrationData((prev) => ({
       ...prev,
+      points: newCalibPoints,
       applied: true,
     }));
 
-    toast.success(`Calibration appliquée ! Échelle : ${calibrationData.scale.toFixed(4)} mm/px`);
-  }, [calibrationData.scale]);
+    // Mettre à jour le sketch avec scaleFactor = 1 (tout est en mm maintenant)
+    setSketch((prev) => ({
+      ...prev,
+      points: newSketchPoints,
+      geometries: newGeometries,
+      scaleFactor: 1, // Coordonnées maintenant en mm
+    }));
+
+    toast.success(`Calibration appliquée ! Image mise à l'échelle (${scale.toFixed(4)} mm/px)`);
+  }, [calibrationData, sketch]);
 
   // Réinitialiser la calibration
   const resetCalibration = useCallback(() => {
+    if (calibrationData.applied) {
+      toast.info("Les coordonnées ont été converties. Suppression des points de calibration uniquement.");
+    }
     setCalibrationData({
       points: new Map(),
       pairs: new Map(),
-      applied: false,
+      applied: calibrationData.applied, // Garder le flag applied si déjà appliqué
     });
     setCalibrationMode("idle");
     setSelectedCalibrationPoint(null);
-    toast.success("Calibration réinitialisée");
-  }, []);
+    // Ne pas reset imageScale si déjà appliqué pour ne pas casser l'échelle
+    if (!calibrationData.applied) {
+      setImageScale(1);
+    }
+    toast.success("Points de calibration supprimés");
+  }, [calibrationData.applied]);
 
   // Ajouter contrainte
   const addConstraint = useCallback(
@@ -1936,7 +2047,8 @@ export function CADGabaritCanvas({
                 <div className="space-y-1">
                   <p className="text-lg font-bold text-green-700">{measureResult.px.toFixed(1)} px</p>
                   <p className="text-lg font-bold text-green-600">{measureResult.mm.toFixed(1)} mm</p>
-                  <p className="text-xs text-gray-500 mt-1">Cliquez pour une nouvelle mesure</p>
+                  <p className="text-xs text-gray-500 mt-1">Clic = nouvelle mesure</p>
+                  <p className="text-xs text-gray-400">Clic droit = effacer</p>
                 </div>
               ) : null}
               {calibrationData.scale && (
@@ -2010,14 +2122,25 @@ export function CADGabaritCanvas({
                       <div className="flex items-center gap-2">
                         <Label className="text-xs w-20">Distance:</Label>
                         <Input
-                          type="number"
+                          type="text"
+                          inputMode="decimal"
                           value={newPairDistance}
-                          onChange={(e) => setNewPairDistance(e.target.value)}
-                          placeholder="100"
+                          onChange={(e) => {
+                            // Accepter chiffres, point et virgule
+                            const val = e.target.value.replace(/[^0-9.,]/g, "");
+                            setNewPairDistance(val);
+                          }}
+                          onFocus={(e) => {
+                            if (e.target.value === "0") {
+                              setNewPairDistance("");
+                            }
+                          }}
+                          placeholder="auto"
                           className="h-8 text-sm"
                         />
                         <span className="text-xs text-muted-foreground">mm</span>
                       </div>
+                      <p className="text-xs text-muted-foreground italic">Laissez vide pour estimation auto</p>
                       <div className="flex items-center gap-2">
                         <Label className="text-xs w-20">Couleur:</Label>
                         <div className="flex gap-1 flex-wrap">
@@ -2095,6 +2218,12 @@ export function CADGabaritCanvas({
                       {Array.from(calibrationData.pairs.values()).map((pair) => {
                         const p1 = calibrationData.points.get(pair.point1Id);
                         const p2 = calibrationData.points.get(pair.point2Id);
+                        const distPx = p1 && p2 ? distance(p1, p2) : 0;
+                        const pairScale = distPx > 0 ? pair.distanceMm / distPx : 0;
+                        const measuredWithAvgScale = calibrationData.scale ? distPx * calibrationData.scale : 0;
+                        const errorMm = measuredWithAvgScale - pair.distanceMm;
+                        const errorPercent = pair.distanceMm > 0 ? (errorMm / pair.distanceMm) * 100 : 0;
+
                         return (
                           <div key={pair.id} className="p-2 bg-gray-50 rounded space-y-2">
                             <div className="flex items-center justify-between">
@@ -2115,25 +2244,64 @@ export function CADGabaritCanvas({
                             </div>
                             <div className="flex items-center gap-2">
                               <Input
-                                type="number"
+                                type="text"
+                                inputMode="decimal"
                                 value={pair.distanceMm}
-                                onChange={(e) => updatePairDistance(pair.id, parseFloat(e.target.value) || 0)}
+                                onChange={(e) => {
+                                  const val = e.target.value.replace(",", ".").replace(/[^0-9.]/g, "");
+                                  updatePairDistance(pair.id, parseFloat(val) || 0);
+                                }}
+                                onFocus={(e) => {
+                                  if (e.target.value === "0") {
+                                    e.target.select();
+                                  }
+                                }}
                                 className="h-7 text-sm flex-1"
                               />
                               <span className="text-xs text-muted-foreground">mm</span>
                             </div>
-                            {pair.distancePx && (
-                              <p className="text-xs text-muted-foreground">Mesuré: {pair.distancePx.toFixed(1)} px</p>
-                            )}
-                            <div className="flex gap-1">
-                              {CALIBRATION_COLORS.map((color) => (
-                                <button
-                                  key={color}
-                                  className={`w-4 h-4 rounded-full border ${pair.color === color ? "border-gray-800 border-2" : "border-gray-300"}`}
-                                  style={{ backgroundColor: color }}
-                                  onClick={() => updatePairColor(pair.id, color)}
-                                />
-                              ))}
+                            <div className="text-xs space-y-0.5">
+                              <p className="text-muted-foreground">
+                                Mesuré: {distPx.toFixed(1)} px = {pair.distanceMm} mm
+                              </p>
+                              <p className="text-muted-foreground">Échelle: {pairScale.toFixed(4)} mm/px</p>
+                              {calibrationData.scale && (
+                                <p
+                                  className={`font-medium ${Math.abs(errorMm) < 0.5 ? "text-green-600" : Math.abs(errorMm) < 2 ? "text-orange-500" : "text-red-500"}`}
+                                >
+                                  → Estimé: {measuredWithAvgScale.toFixed(1)} mm ({errorMm >= 0 ? "+" : ""}
+                                  {errorMm.toFixed(1)} mm)
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <div className="flex gap-1">
+                                {CALIBRATION_COLORS.slice(0, 5).map((color) => (
+                                  <button
+                                    key={color}
+                                    className={`w-3 h-3 rounded-full border ${pair.color === color ? "border-gray-800 border-2" : "border-gray-300"}`}
+                                    style={{ backgroundColor: color }}
+                                    onClick={() => updatePairColor(pair.id, color)}
+                                  />
+                                ))}
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-6 text-xs px-2"
+                                onClick={() => {
+                                  setCalibrationData((prev) => ({
+                                    ...prev,
+                                    scale: pairScale,
+                                    error: 0,
+                                  }));
+                                  toast.success(
+                                    `Échelle définie: ${pairScale.toFixed(4)} mm/px (paire ${p1?.label}-${p2?.label})`,
+                                  );
+                                }}
+                              >
+                                Utiliser
+                              </Button>
                             </div>
                           </div>
                         );
