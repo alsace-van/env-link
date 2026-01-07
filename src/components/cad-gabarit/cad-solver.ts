@@ -67,9 +67,9 @@ export class CADSolver {
   async initSolver(): Promise<void> {
     try {
       // Charger planegcs (solveur FreeCAD)
-      const { GcsWrapper, init_planegcs_module } = await import("@salusoft89/planegcs");
-      await init_planegcs_module();
-      this.gcsWrapper = new GcsWrapper();
+      const planegcs = await import("@salusoft89/planegcs");
+      const module = await planegcs.init_planegcs_module();
+      this.gcsWrapper = new planegcs.GcsWrapper(module);
       this.initialized = true;
       console.log("CAD Solver initialized (planegcs mode)");
     } catch (error) {
