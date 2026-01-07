@@ -1123,8 +1123,9 @@ export function CADGabaritCanvas({
   );
 
   const handleWheel = useCallback(
-    (e: React.WheelEvent) => {
+    (e: WheelEvent) => {
       e.preventDefault();
+      e.stopPropagation();
 
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
@@ -1149,6 +1150,18 @@ export function CADGabaritCanvas({
     },
     [viewport.scale, screenToWorld],
   );
+
+  // Attacher l'événement wheel avec passive: false pour bloquer le scroll
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvas.addEventListener("wheel", handleWheel, { passive: false });
+
+    return () => {
+      canvas.removeEventListener("wheel", handleWheel);
+    };
+  }, [handleWheel]);
 
   // Gestion clavier
   useEffect(() => {
@@ -1851,7 +1864,6 @@ export function CADGabaritCanvas({
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
-            onWheel={handleWheel}
             onContextMenu={(e) => e.preventDefault()}
           />
 
