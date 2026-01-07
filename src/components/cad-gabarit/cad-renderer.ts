@@ -1076,5 +1076,3 @@ export class CADRenderer {
     );
   }
 }
-
-export default CADRenderer;
