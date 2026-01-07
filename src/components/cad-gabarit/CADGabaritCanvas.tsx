@@ -966,16 +966,37 @@ export function CADGabaritCanvas({
         }
 
         case "measure": {
+          // Chercher un point de calibration proche pour snap
+          let snapPos = worldPos;
+          const snapTolerance = 15 / viewport.scale;
+
+          if (showCalibrationPanel || calibrationData.points.size > 0) {
+            let closestCalibPoint: CalibrationPoint | null = null;
+            let closestDist = Infinity;
+
+            calibrationData.points.forEach((point) => {
+              const d = distance(worldPos, point);
+              if (d < snapTolerance && d < closestDist) {
+                closestDist = d;
+                closestCalibPoint = point;
+              }
+            });
+
+            if (closestCalibPoint) {
+              snapPos = { x: closestCalibPoint.x, y: closestCalibPoint.y };
+            }
+          }
+
           if (!measureStart) {
             // Premier point
-            setMeasureStart(worldPos);
+            setMeasureStart(snapPos);
             setMeasureEnd(null);
             setMeasureResult(null);
           } else {
             // Deuxième point - calculer la mesure
-            const distPx = distance(measureStart, worldPos);
+            const distPx = distance(measureStart, snapPos);
             const distMm = calibrationData.scale ? distPx * calibrationData.scale : distPx * sketch.scaleFactor;
-            setMeasureEnd(worldPos);
+            setMeasureEnd(snapPos);
             setMeasureResult({ px: distPx, mm: distMm });
             toast.success(`Mesure: ${distPx.toFixed(1)} px = ${distMm.toFixed(1)} mm`);
             // Reset pour nouvelle mesure
@@ -2095,6 +2116,12 @@ export function CADGabaritCanvas({
                       {Array.from(calibrationData.pairs.values()).map((pair) => {
                         const p1 = calibrationData.points.get(pair.point1Id);
                         const p2 = calibrationData.points.get(pair.point2Id);
+                        const distPx = p1 && p2 ? distance(p1, p2) : 0;
+                        const pairScale = distPx > 0 ? pair.distanceMm / distPx : 0;
+                        const measuredWithAvgScale = calibrationData.scale ? distPx * calibrationData.scale : 0;
+                        const errorMm = measuredWithAvgScale - pair.distanceMm;
+                        const errorPercent = pair.distanceMm > 0 ? (errorMm / pair.distanceMm) * 100 : 0;
+
                         return (
                           <div key={pair.id} className="p-2 bg-gray-50 rounded space-y-2">
                             <div className="flex items-center justify-between">
@@ -2122,9 +2149,20 @@ export function CADGabaritCanvas({
                               />
                               <span className="text-xs text-muted-foreground">mm</span>
                             </div>
-                            {pair.distancePx && (
-                              <p className="text-xs text-muted-foreground">Mesuré: {pair.distancePx.toFixed(1)} px</p>
-                            )}
+                            <div className="text-xs space-y-0.5">
+                              <p className="text-muted-foreground">
+                                Mesuré: {distPx.toFixed(1)} px | Échelle: {pairScale.toFixed(4)} mm/px
+                              </p>
+                              {calibrationData.scale && (
+                                <p
+                                  className={`font-medium ${Math.abs(errorMm) < 0.5 ? "text-green-600" : Math.abs(errorMm) < 2 ? "text-orange-500" : "text-red-500"}`}
+                                >
+                                  → Mesure estimée: {measuredWithAvgScale.toFixed(1)} mm ({errorMm >= 0 ? "+" : ""}
+                                  {errorMm.toFixed(1)} mm / {errorPercent >= 0 ? "+" : ""}
+                                  {errorPercent.toFixed(1)}%)
+                                </p>
+                              )}
+                            </div>
                             <div className="flex gap-1">
                               {CALIBRATION_COLORS.map((color) => (
                                 <button
