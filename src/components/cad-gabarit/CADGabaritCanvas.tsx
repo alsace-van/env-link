@@ -1486,22 +1486,22 @@ export function CADGabaritCanvas({
         // Identifier les points utilisés par cette géométrie
         if (geo.type === "line") {
           const line = geo as Line;
-          pointsUsed.add(line.startId);
-          pointsUsed.add(line.endId);
+          pointsUsed.add(line.p1);
+          pointsUsed.add(line.p2);
         } else if (geo.type === "circle") {
           const circle = geo as CircleType;
-          pointsUsed.add(circle.centerId);
+          pointsUsed.add(circle.center);
         } else if (geo.type === "arc") {
           const arc = geo as Arc;
-          pointsUsed.add(arc.centerId);
-          pointsUsed.add(arc.startId);
-          pointsUsed.add(arc.endId);
+          pointsUsed.add(arc.center);
+          pointsUsed.add(arc.startPoint);
+          pointsUsed.add(arc.endPoint);
         } else if (geo.type === "rectangle") {
           const rect = geo as Rectangle;
-          rect.cornerIds.forEach((cid) => pointsUsed.add(cid));
+          [rect.p1, rect.p2, rect.p3, rect.p4].forEach((pid) => pointsUsed.add(pid));
         } else if (geo.type === "bezier") {
           const bezier = geo as Bezier;
-          bezier.pointIds.forEach((pid) => pointsUsed.add(pid));
+          [bezier.p1, bezier.p2, bezier.cp1, bezier.cp2].forEach((pid) => pointsUsed.add(pid));
         }
       }
       // Copier aussi les points sélectionnés directement
@@ -1576,38 +1576,44 @@ export function CADGabaritCanvas({
           newSketch.geometries.set(newId, {
             ...line,
             id: newId,
-            startId: pointIdMapping.get(line.startId) || line.startId,
-            endId: pointIdMapping.get(line.endId) || line.endId,
+            p1: pointIdMapping.get(line.p1) || line.p1,
+            p2: pointIdMapping.get(line.p2) || line.p2,
           });
         } else if (geo.type === "circle") {
           const circle = geo as CircleType;
           newSketch.geometries.set(newId, {
             ...circle,
             id: newId,
-            centerId: pointIdMapping.get(circle.centerId) || circle.centerId,
+            center: pointIdMapping.get(circle.center) || circle.center,
           });
         } else if (geo.type === "arc") {
           const arc = geo as Arc;
           newSketch.geometries.set(newId, {
             ...arc,
             id: newId,
-            centerId: pointIdMapping.get(arc.centerId) || arc.centerId,
-            startId: pointIdMapping.get(arc.startId) || arc.startId,
-            endId: pointIdMapping.get(arc.endId) || arc.endId,
+            center: pointIdMapping.get(arc.center) || arc.center,
+            startPoint: pointIdMapping.get(arc.startPoint) || arc.startPoint,
+            endPoint: pointIdMapping.get(arc.endPoint) || arc.endPoint,
           });
         } else if (geo.type === "rectangle") {
           const rect = geo as Rectangle;
           newSketch.geometries.set(newId, {
             ...rect,
             id: newId,
-            cornerIds: rect.cornerIds.map((cid) => pointIdMapping.get(cid) || cid),
+            p1: pointIdMapping.get(rect.p1) || rect.p1,
+            p2: pointIdMapping.get(rect.p2) || rect.p2,
+            p3: pointIdMapping.get(rect.p3) || rect.p3,
+            p4: pointIdMapping.get(rect.p4) || rect.p4,
           });
         } else if (geo.type === "bezier") {
           const bezier = geo as Bezier;
           newSketch.geometries.set(newId, {
             ...bezier,
             id: newId,
-            pointIds: bezier.pointIds.map((pid) => pointIdMapping.get(pid) || pid),
+            p1: pointIdMapping.get(bezier.p1) || bezier.p1,
+            p2: pointIdMapping.get(bezier.p2) || bezier.p2,
+            cp1: pointIdMapping.get(bezier.cp1) || bezier.cp1,
+            cp2: pointIdMapping.get(bezier.cp2) || bezier.cp2,
           });
         }
       });
@@ -1639,22 +1645,22 @@ export function CADGabaritCanvas({
         copiedGeometries.set(id, { ...geo });
         if (geo.type === "line") {
           const line = geo as Line;
-          pointsUsed.add(line.startId);
-          pointsUsed.add(line.endId);
+          pointsUsed.add(line.p1);
+          pointsUsed.add(line.p2);
         } else if (geo.type === "circle") {
           const circle = geo as CircleType;
-          pointsUsed.add(circle.centerId);
+          pointsUsed.add(circle.center);
         } else if (geo.type === "arc") {
           const arc = geo as Arc;
-          pointsUsed.add(arc.centerId);
-          pointsUsed.add(arc.startId);
-          pointsUsed.add(arc.endId);
+          pointsUsed.add(arc.center);
+          pointsUsed.add(arc.startPoint);
+          pointsUsed.add(arc.endPoint);
         } else if (geo.type === "rectangle") {
           const rect = geo as Rectangle;
-          rect.cornerIds.forEach((cid) => pointsUsed.add(cid));
+          [rect.p1, rect.p2, rect.p3, rect.p4].forEach((pid) => pointsUsed.add(pid));
         } else if (geo.type === "bezier") {
           const bezier = geo as Bezier;
-          bezier.pointIds.forEach((pid) => pointsUsed.add(pid));
+          [bezier.p1, bezier.p2, bezier.cp1, bezier.cp2].forEach((pid) => pointsUsed.add(pid));
         }
       }
     });
@@ -1694,38 +1700,44 @@ export function CADGabaritCanvas({
         newSketch.geometries.set(newId, {
           ...line,
           id: newId,
-          startId: pointIdMapping.get(line.startId) || line.startId,
-          endId: pointIdMapping.get(line.endId) || line.endId,
+          p1: pointIdMapping.get(line.p1) || line.p1,
+          p2: pointIdMapping.get(line.p2) || line.p2,
         });
       } else if (geo.type === "circle") {
         const circle = geo as CircleType;
         newSketch.geometries.set(newId, {
           ...circle,
           id: newId,
-          centerId: pointIdMapping.get(circle.centerId) || circle.centerId,
+          center: pointIdMapping.get(circle.center) || circle.center,
         });
       } else if (geo.type === "arc") {
         const arc = geo as Arc;
         newSketch.geometries.set(newId, {
           ...arc,
           id: newId,
-          centerId: pointIdMapping.get(arc.centerId) || arc.centerId,
-          startId: pointIdMapping.get(arc.startId) || arc.startId,
-          endId: pointIdMapping.get(arc.endId) || arc.endId,
+          center: pointIdMapping.get(arc.center) || arc.center,
+          startPoint: pointIdMapping.get(arc.startPoint) || arc.startPoint,
+          endPoint: pointIdMapping.get(arc.endPoint) || arc.endPoint,
         });
       } else if (geo.type === "rectangle") {
         const rect = geo as Rectangle;
         newSketch.geometries.set(newId, {
           ...rect,
           id: newId,
-          cornerIds: rect.cornerIds.map((cid) => pointIdMapping.get(cid) || cid),
+          p1: pointIdMapping.get(rect.p1) || rect.p1,
+          p2: pointIdMapping.get(rect.p2) || rect.p2,
+          p3: pointIdMapping.get(rect.p3) || rect.p3,
+          p4: pointIdMapping.get(rect.p4) || rect.p4,
         });
       } else if (geo.type === "bezier") {
         const bezier = geo as Bezier;
         newSketch.geometries.set(newId, {
           ...bezier,
           id: newId,
-          pointIds: bezier.pointIds.map((pid) => pointIdMapping.get(pid) || pid),
+          p1: pointIdMapping.get(bezier.p1) || bezier.p1,
+          p2: pointIdMapping.get(bezier.p2) || bezier.p2,
+          cp1: pointIdMapping.get(bezier.cp1) || bezier.cp1,
+          cp2: pointIdMapping.get(bezier.cp2) || bezier.cp2,
         });
       }
     });
@@ -1736,91 +1748,6 @@ export function CADGabaritCanvas({
 
     toast.success(`${copiedGeometries.size} géométrie(s) dupliquées`);
   }, [selectedEntities, sketch, addToHistory]);
-
-  // === CONTRAINTE D'ANGLE ===
-
-  // Calculer l'angle entre 2 lignes (en degrés)
-  const calculateAngleBetweenLines = useCallback(
-    (line1Id: string, line2Id: string): number | null => {
-      const line1 = sketch.geometries.get(line1Id) as Line | undefined;
-      const line2 = sketch.geometries.get(line2Id) as Line | undefined;
-
-      if (!line1 || !line2 || line1.type !== "line" || line2.type !== "line") {
-        return null;
-      }
-
-      const p1Start = sketch.points.get(line1.startId);
-      const p1End = sketch.points.get(line1.endId);
-      const p2Start = sketch.points.get(line2.startId);
-      const p2End = sketch.points.get(line2.endId);
-
-      if (!p1Start || !p1End || !p2Start || !p2End) {
-        return null;
-      }
-
-      // Vecteurs directeurs
-      const v1 = { x: p1End.x - p1Start.x, y: p1End.y - p1Start.y };
-      const v2 = { x: p2End.x - p2Start.x, y: p2End.y - p2Start.y };
-
-      // Produit scalaire et normes
-      const dot = v1.x * v2.x + v1.y * v2.y;
-      const norm1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
-      const norm2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
-
-      if (norm1 === 0 || norm2 === 0) {
-        return null;
-      }
-
-      // Angle en radians puis degrés
-      const cosAngle = Math.max(-1, Math.min(1, dot / (norm1 * norm2)));
-      const angleRad = Math.acos(cosAngle);
-      const angleDeg = (angleRad * 180) / Math.PI;
-
-      return Math.round(angleDeg * 100) / 100; // Arrondi à 2 décimales
-    },
-    [sketch],
-  );
-
-  // Ouvrir le dialog de contrainte d'angle
-  const openAngleConstraintDialog = useCallback(() => {
-    if (selectedEntities.size !== 2) {
-      toast.error("Sélectionnez exactement 2 lignes");
-      return;
-    }
-
-    const ids = Array.from(selectedEntities);
-    const geo1 = sketch.geometries.get(ids[0]);
-    const geo2 = sketch.geometries.get(ids[1]);
-
-    if (!geo1 || !geo2 || geo1.type !== "line" || geo2.type !== "line") {
-      toast.error("Sélectionnez 2 lignes (pas des cercles ou autres)");
-      return;
-    }
-
-    const currentAngle = calculateAngleBetweenLines(ids[0], ids[1]);
-    if (currentAngle === null) {
-      toast.error("Impossible de calculer l'angle");
-      return;
-    }
-
-    setAngleConstraintDialog({
-      open: true,
-      entities: ids,
-      currentAngle,
-    });
-  }, [selectedEntities, sketch, calculateAngleBetweenLines]);
-
-  // Appliquer la contrainte d'angle
-  const applyAngleConstraint = useCallback(
-    (angleDeg: number) => {
-      if (!angleConstraintDialog) return;
-
-      addConstraint("angle", angleConstraintDialog.entities, angleDeg);
-      setAngleConstraintDialog(null);
-      toast.success(`Contrainte d'angle ${angleDeg}° ajoutée`);
-    },
-    [angleConstraintDialog, addConstraint],
-  );
 
   // Gestion clavier (DOIT être après les fonctions copySelectedEntities, pasteEntities, duplicateSelectedEntities)
   useEffect(() => {
@@ -2412,6 +2339,91 @@ export function CADGabaritCanvas({
       toast.success(`Contrainte "${type}" ajoutée`);
     },
     [sketch, solveSketch, addToHistory],
+  );
+
+  // === CONTRAINTE D'ANGLE ===
+
+  // Calculer l'angle entre 2 lignes (en degrés)
+  const calculateAngleBetweenLines = useCallback(
+    (line1Id: string, line2Id: string): number | null => {
+      const line1 = sketch.geometries.get(line1Id) as Line | undefined;
+      const line2 = sketch.geometries.get(line2Id) as Line | undefined;
+
+      if (!line1 || !line2 || line1.type !== "line" || line2.type !== "line") {
+        return null;
+      }
+
+      const p1Start = sketch.points.get(line1.p1);
+      const p1End = sketch.points.get(line1.p2);
+      const p2Start = sketch.points.get(line2.p1);
+      const p2End = sketch.points.get(line2.p2);
+
+      if (!p1Start || !p1End || !p2Start || !p2End) {
+        return null;
+      }
+
+      // Vecteurs directeurs
+      const v1 = { x: p1End.x - p1Start.x, y: p1End.y - p1Start.y };
+      const v2 = { x: p2End.x - p2Start.x, y: p2End.y - p2Start.y };
+
+      // Produit scalaire et normes
+      const dot = v1.x * v2.x + v1.y * v2.y;
+      const norm1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+      const norm2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+
+      if (norm1 === 0 || norm2 === 0) {
+        return null;
+      }
+
+      // Angle en radians puis degrés
+      const cosAngle = Math.max(-1, Math.min(1, dot / (norm1 * norm2)));
+      const angleRad = Math.acos(cosAngle);
+      const angleDeg = (angleRad * 180) / Math.PI;
+
+      return Math.round(angleDeg * 100) / 100; // Arrondi à 2 décimales
+    },
+    [sketch],
+  );
+
+  // Ouvrir le dialog de contrainte d'angle
+  const openAngleConstraintDialog = useCallback(() => {
+    if (selectedEntities.size !== 2) {
+      toast.error("Sélectionnez exactement 2 lignes");
+      return;
+    }
+
+    const ids = Array.from(selectedEntities);
+    const geo1 = sketch.geometries.get(ids[0]);
+    const geo2 = sketch.geometries.get(ids[1]);
+
+    if (!geo1 || !geo2 || geo1.type !== "line" || geo2.type !== "line") {
+      toast.error("Sélectionnez 2 lignes (pas des cercles ou autres)");
+      return;
+    }
+
+    const currentAngle = calculateAngleBetweenLines(ids[0], ids[1]);
+    if (currentAngle === null) {
+      toast.error("Impossible de calculer l'angle");
+      return;
+    }
+
+    setAngleConstraintDialog({
+      open: true,
+      entities: ids,
+      currentAngle,
+    });
+  }, [selectedEntities, sketch, calculateAngleBetweenLines]);
+
+  // Appliquer la contrainte d'angle
+  const applyAngleConstraint = useCallback(
+    (angleDeg: number) => {
+      if (!angleConstraintDialog) return;
+
+      addConstraint("angle", angleConstraintDialog.entities, angleDeg);
+      setAngleConstraintDialog(null);
+      toast.success(`Contrainte d'angle ${angleDeg}° ajoutée`);
+    },
+    [angleConstraintDialog, addConstraint],
   );
 
   // Ajouter cotation
