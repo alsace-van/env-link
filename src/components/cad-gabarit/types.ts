@@ -1,7 +1,7 @@
 // ============================================
 // TYPES: CAD Gabarit Types
 // Types pour le système CAO
-// VERSION: 2.0 - Ajout Bezier, Handle
+// VERSION: 2.1 - Ajout Calibration
 // ============================================
 
 // === GÉOMÉTRIE DE BASE ===
@@ -329,3 +329,42 @@ export function normalizeAngle(angle: number): number {
   while (angle >= Math.PI * 2) angle -= Math.PI * 2;
   return angle;
 }
+
+// === CALIBRATION ===
+
+export interface CalibrationPoint {
+  id: string;
+  x: number;
+  y: number;
+  label: string; // "1", "2", "3", etc.
+}
+
+export interface CalibrationPair {
+  id: string;
+  point1Id: string;
+  point2Id: string;
+  distanceMm: number; // Distance réelle en mm
+  distancePx?: number; // Distance mesurée en pixels (calculée)
+  color: string; // Couleur de la ligne
+}
+
+export interface CalibrationData {
+  points: Map<string, CalibrationPoint>;
+  pairs: Map<string, CalibrationPair>;
+  scale?: number; // mm par pixel (calculé)
+  error?: number; // Erreur moyenne en %
+  applied: boolean; // Si la calibration a été appliquée
+}
+
+export const CALIBRATION_COLORS = [
+  "#FF6B6B", // Rouge
+  "#4ECDC4", // Turquoise
+  "#45B7D1", // Bleu clair
+  "#96CEB4", // Vert menthe
+  "#FFEAA7", // Jaune
+  "#DDA0DD", // Violet clair
+  "#98D8C8", // Vert eau
+  "#F7DC6F", // Or
+  "#BB8FCE", // Mauve
+  "#85C1E9", // Bleu ciel
+];
