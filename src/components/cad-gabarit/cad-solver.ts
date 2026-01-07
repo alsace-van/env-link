@@ -83,21 +83,31 @@ export class CADSolver {
    * Résout le sketch avec les contraintes
    */
   async solve(sketch: Sketch): Promise<SolverResult> {
+    console.log("=== CADSolver.solve called ===");
+    console.log("Constraints:", Array.from(sketch.constraints.values()));
+
     if (!this.initialized) {
       await this.initSolver();
     }
 
     // Convertir le sketch en primitives GCS
     const primitives = this.sketchToGcs(sketch);
+    console.log(
+      "Primitives generated:",
+      primitives.length,
+      primitives.filter((p) => !["point", "line", "circle", "arc"].includes(p.type)),
+    );
 
     // Résoudre
     try {
       this.gcsWrapper.clear();
       this.gcsWrapper.push_primitives(primitives);
       const success = this.gcsWrapper.solve();
+      console.log("Solve success:", success);
 
       // Récupérer les résultats
       const solvedPrimitives = this.gcsWrapper.get_primitives();
+      console.log("Solved primitives (points):", solvedPrimitives.filter((p: any) => p.type === "point").slice(0, 4));
 
       // Mettre à jour le sketch avec les nouvelles positions
       this.updateSketchFromGcs(sketch, solvedPrimitives);
@@ -261,6 +271,7 @@ export class CADSolver {
         };
 
       case "angle":
+        console.log("Converting angle constraint:", constraint);
         return {
           id: constraint.id,
           type: "l2l_angle",
@@ -520,23 +531,33 @@ class SimplifiedSolver {
 
       case "l2l_angle": {
         // Contrainte d'angle entre deux lignes
+        console.log("=== L2L_ANGLE constraint ===", constraint);
         const line1 = this.primitives.find((p) => p.id === constraint.l1_id && p.type === "line") as
           | GcsLine
           | undefined;
         const line2 = this.primitives.find((p) => p.id === constraint.l2_id && p.type === "line") as
           | GcsLine
           | undefined;
-        if (!line1 || !line2) return 0;
+        console.log("line1:", line1, "line2:", line2);
+        if (!line1 || !line2) {
+          console.log("Lines not found!");
+          return 0;
+        }
 
         const l1p1 = this.points.get(line1.p1_id);
         const l1p2 = this.points.get(line1.p2_id);
         const l2p1 = this.points.get(line2.p1_id);
         const l2p2 = this.points.get(line2.p2_id);
-        if (!l1p1 || !l1p2 || !l2p1 || !l2p2) return 0;
+        console.log("Points:", { l1p1, l1p2, l2p1, l2p2 });
+        if (!l1p1 || !l1p2 || !l2p1 || !l2p2) {
+          console.log("Points not found!");
+          return 0;
+        }
 
         // Vecteurs directeurs
         const v1 = { x: l1p2.x - l1p1.x, y: l1p2.y - l1p1.y };
         const v2 = { x: l2p2.x - l2p1.x, y: l2p2.y - l2p1.y };
+        console.log("Vectors:", { v1, v2 });
 
         // Angle actuel entre les deux lignes (en radians)
         const dot = v1.x * v2.x + v1.y * v2.y;
@@ -545,10 +566,14 @@ class SimplifiedSolver {
 
         // Angle cible (en radians)
         const targetAngle = constraint.angle || 0;
+        console.log("Angles (rad):", { currentAngle, targetAngle, targetDeg: (targetAngle * 180) / Math.PI });
 
         // Erreur
         const error = Math.abs(currentAngle - targetAngle);
-        if (error < 0.001) return 0; // Déjà correct
+        if (error < 0.001) {
+          console.log("Already at target angle");
+          return 0;
+        }
 
         // Calculer la rotation nécessaire
         const deltaAngle = targetAngle - currentAngle;
@@ -567,9 +592,14 @@ class SimplifiedSolver {
           // Nouvel angle pour la ligne 2 (même sens que ligne 1 + angle cible)
           const newAngle2 = angle1 + (cross >= 0 ? targetAngle : -targetAngle);
 
+          console.log("Rotating l2p2:", { angle1, angle2, newAngle2, len2 });
+
           // Nouvelles coordonnées de p2 de la ligne 2
+          const oldX = l2p2.x,
+            oldY = l2p2.y;
           l2p2.x = l2p1.x + len2 * Math.cos(newAngle2);
           l2p2.y = l2p1.y + len2 * Math.sin(newAngle2);
+          console.log("l2p2 moved:", { from: { x: oldX, y: oldY }, to: { x: l2p2.x, y: l2p2.y } });
         } else if (!l2p1.fixed) {
           // Si p2 est fixe, pivoter autour de p2
           const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
@@ -580,6 +610,9 @@ class SimplifiedSolver {
 
           l2p1.x = l2p2.x - len2 * Math.cos(newAngle2);
           l2p1.y = l2p2.y - len2 * Math.sin(newAngle2);
+          console.log("l2p1 moved");
+        } else {
+          console.log("Both points fixed, cannot rotate");
         }
 
         return error;
