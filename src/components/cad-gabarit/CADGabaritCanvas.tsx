@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 2.1 - Calibration multi-points
+// VERSION: 2.2 - Outil de mesure
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -56,6 +56,8 @@ import {
   X,
   Check,
   ChevronRight,
+  ChevronLeft,
+  Scaling,
   ChevronLeft,
 } from "lucide-react";
 
@@ -187,6 +189,11 @@ export function CADGabaritCanvas({
   const [newPairDistance, setNewPairDistance] = useState<string>("");
   const [newPairColor, setNewPairColor] = useState<string>(CALIBRATION_COLORS[0]);
 
+  // Mesure
+  const [measureStart, setMeasureStart] = useState<{ x: number; y: number } | null>(null);
+  const [measureEnd, setMeasureEnd] = useState<{ x: number; y: number } | null>(null);
+  const [measureResult, setMeasureResult] = useState<{ px: number; mm: number } | null>(null);
+
   // Initialisation
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -257,6 +264,13 @@ export function CADGabaritCanvas({
       imageOpacity,
       calibrationData,
       showCalibration,
+      measureData: measureStart
+        ? {
+            start: measureStart,
+            end: measureEnd,
+            scale: calibrationData.scale || sketch.scaleFactor,
+          }
+        : null,
     });
   }, [
     sketch,
@@ -272,6 +286,8 @@ export function CADGabaritCanvas({
     imageOpacity,
     calibrationData,
     showCalibration,
+    measureStart,
+    measureEnd,
   ]);
 
   useEffect(() => {
@@ -282,6 +298,12 @@ export function CADGabaritCanvas({
   useEffect(() => {
     if (activeTool !== "select") {
       setSelectedEntities(new Set());
+    }
+    // Réinitialiser la mesure quand on change d'outil
+    if (activeTool !== "measure") {
+      setMeasureStart(null);
+      setMeasureEnd(null);
+      setMeasureResult(null);
     }
   }, [activeTool]);
 
@@ -924,6 +946,25 @@ export function CADGabaritCanvas({
           }
           break;
         }
+
+        case "measure": {
+          if (!measureStart) {
+            // Premier point
+            setMeasureStart(worldPos);
+            setMeasureEnd(null);
+            setMeasureResult(null);
+          } else {
+            // Deuxième point - calculer la mesure
+            const distPx = distance(measureStart, worldPos);
+            const distMm = calibrationData.scale ? distPx * calibrationData.scale : distPx * sketch.scaleFactor;
+            setMeasureEnd(worldPos);
+            setMeasureResult({ px: distPx, mm: distMm });
+            toast.success(`Mesure: ${distPx.toFixed(1)} px = ${distMm.toFixed(1)} mm`);
+            // Reset pour nouvelle mesure
+            setMeasureStart(null);
+          }
+          break;
+        }
       }
     },
     [
@@ -944,6 +985,7 @@ export function CADGabaritCanvas({
       selectedCalibrationPoint,
       newPairDistance,
       newPairColor,
+      measureStart,
     ],
   );
 
@@ -1038,6 +1080,11 @@ export function CADGabaritCanvas({
           });
         }
       }
+
+      // Mise à jour mesure en cours
+      if (activeTool === "measure" && measureStart) {
+        setMeasureEnd(worldPos);
+      }
     },
     [
       isPanning,
@@ -1052,6 +1099,8 @@ export function CADGabaritCanvas({
       currentSnapPoint,
       findEntityAtPosition,
       screenToWorld,
+      activeTool,
+      measureStart,
     ],
   );
 
@@ -1145,6 +1194,9 @@ export function CADGabaritCanvas({
             break;
           case "d":
             setActiveTool("dimension");
+            break;
+          case "m":
+            setActiveTool("measure");
             break;
         }
       }
@@ -1592,6 +1644,7 @@ export function CADGabaritCanvas({
         {/* Cotations et contraintes */}
         <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
           <ToolButton tool="dimension" icon={Ruler} label="Cotation" shortcut="D" />
+          <ToolButton tool="measure" icon={Scaling} label="Mesurer" shortcut="M" />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -1801,6 +1854,30 @@ export function CADGabaritCanvas({
             onWheel={handleWheel}
             onContextMenu={(e) => e.preventDefault()}
           />
+
+          {/* Overlay pour l'outil de mesure */}
+          {activeTool === "measure" && (
+            <div className="absolute bottom-4 left-4 bg-white/95 rounded-lg shadow-lg p-3 border border-green-300">
+              <div className="flex items-center gap-2 text-green-700 font-medium mb-2">
+                <Scaling className="h-5 w-5" />
+                <span>Outil de mesure</span>
+              </div>
+              {!measureStart ? (
+                <p className="text-sm text-gray-600">Cliquez sur le 1er point</p>
+              ) : !measureEnd ? (
+                <p className="text-sm text-gray-600">Cliquez sur le 2ème point</p>
+              ) : measureResult ? (
+                <div className="space-y-1">
+                  <p className="text-lg font-bold text-green-700">{measureResult.px.toFixed(1)} px</p>
+                  <p className="text-lg font-bold text-green-600">{measureResult.mm.toFixed(1)} mm</p>
+                  <p className="text-xs text-gray-500 mt-1">Cliquez pour une nouvelle mesure</p>
+                </div>
+              ) : null}
+              {calibrationData.scale && (
+                <p className="text-xs text-gray-400 mt-2">Échelle: {calibrationData.scale.toFixed(4)} mm/px</p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Panneau de calibration */}
