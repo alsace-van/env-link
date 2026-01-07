@@ -1,7 +1,7 @@
 // ============================================
 // CAD GABARIT - Index
 // Export de tous les modules
-// VERSION: 2.3 - Ajout homographie
+// VERSION: 2.4 - Ajout calibration damier
 // ============================================
 
 // Types
@@ -30,11 +30,13 @@ export type {
   CalibrationData,
   ReferenceRectangle,
   HomographyMatrix,
+  CheckerboardConfig,
+  DistortionCoefficients,
 } from "./types";
 
 export { generateId, distance, midpoint, angle, normalizeAngle, DEFAULT_STYLES, CALIBRATION_COLORS } from "./types";
 
-// Homography (correction de perspective)
+// Homography (correction de perspective et distorsion)
 export {
   computeHomography,
   invertHomography,
@@ -42,6 +44,13 @@ export {
   warpImage,
   computeTransformedBounds,
   createRectifyingHomography,
+  interpolateCheckerboardCorners,
+  generateIdealCheckerboardCorners,
+  computeDistortionCoefficients,
+  undistortPoint,
+  distortPoint,
+  undistortImage,
+  calibrateWithCheckerboard,
 } from "./homography";
 
 // Snap system
