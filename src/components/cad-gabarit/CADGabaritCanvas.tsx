@@ -2719,7 +2719,13 @@ export function CADGabaritCanvas({
                 ⚓ Fixe
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={openAngleConstraintDialog} disabled={selectedEntities.size !== 2}>
+              <DropdownMenuItem
+                onClick={() => {
+                  if (selectedEntities.size === 2) {
+                    openAngleConstraintDialog();
+                  }
+                }}
+              >
                 ∠ Angle entre 2 lignes
               </DropdownMenuItem>
             </DropdownMenuContent>
