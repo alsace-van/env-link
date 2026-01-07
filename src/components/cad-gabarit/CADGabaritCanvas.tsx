@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 2.9 - Correction de perspective (homographie)
+// VERSION: 3.0 - Calibration Rectangle + Damier
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -80,6 +80,7 @@ import {
   CalibrationPair,
   ReferenceRectangle,
   HomographyMatrix,
+  DistortionCoefficients,
   CALIBRATION_COLORS,
   generateId,
   distance,
@@ -88,7 +89,15 @@ import {
 import { CADRenderer } from "./cad-renderer";
 import { SnapSystem, DEFAULT_SNAP_SETTINGS } from "./snap-system";
 import { CADSolver } from "./cad-solver";
-import { createRectifyingHomography, transformPoint, warpImage, computeTransformedBounds } from "./homography";
+import {
+  createRectifyingHomography,
+  transformPoint,
+  warpImage,
+  computeTransformedBounds,
+  calibrateWithCheckerboard,
+  undistortImage,
+  undistortPoint,
+} from "./homography";
 
 // Export DXF
 import { exportToDXF } from "./export-dxf";
@@ -200,6 +209,12 @@ export function CADGabaritCanvas({
   const [rectWidth, setRectWidth] = useState<string>(""); // Largeur en mm
   const [rectHeight, setRectHeight] = useState<string>(""); // Hauteur en mm
   const [transformedImage, setTransformedImage] = useState<HTMLCanvasElement | null>(null);
+  const [perspectiveMethod, setPerspectiveMethod] = useState<"rectangle" | "checkerboard">("rectangle");
+
+  // Mode damier
+  const [checkerCornersX, setCheckerCornersX] = useState<string>("7"); // Coins intérieurs en X (8 cases = 7 coins)
+  const [checkerCornersY, setCheckerCornersY] = useState<string>("5"); // Coins intérieurs en Y (6 cases = 5 coins)
+  const [checkerSquareSize, setCheckerSquareSize] = useState<string>("30"); // Taille d'une case en mm
 
   // Mesure - utiliser un seul état pour éviter les problèmes de synchronisation
   const [measureState, setMeasureState] = useState<{
@@ -1683,17 +1698,9 @@ export function CADGabaritCanvas({
 
     // Mode perspective : correction de déformation
     if (calibrationData.mode === "perspective") {
-      // Vérifier qu'on a les 4 points du rectangle
+      // Vérifier qu'on a les 4 points
       if (rectPoints.length !== 4) {
-        toast.error("Sélectionnez 4 points pour le rectangle de référence");
-        return;
-      }
-
-      const widthMm = parseFloat(rectWidth.replace(",", "."));
-      const heightMm = parseFloat(rectHeight.replace(",", "."));
-
-      if (isNaN(widthMm) || widthMm <= 0 || isNaN(heightMm) || heightMm <= 0) {
-        toast.error("Entrez les dimensions du rectangle (largeur et hauteur en mm)");
+        toast.error("Sélectionnez 4 points pour la référence");
         return;
       }
 
@@ -1710,46 +1717,132 @@ export function CADGabaritCanvas({
       });
 
       try {
-        // Calculer l'homographie
-        const { H, scale } = createRectifyingHomography(
-          quadPoints,
-          widthMm,
-          heightMm,
-          backgroundImageRef.current.width,
-          backgroundImageRef.current.height,
-        );
+        let H: HomographyMatrix;
+        let mmPerPx: number;
+        let distortion: DistortionCoefficients | undefined;
+
+        if (perspectiveMethod === "rectangle") {
+          // Mode Rectangle
+          const widthMm = parseFloat(rectWidth.replace(",", "."));
+          const heightMm = parseFloat(rectHeight.replace(",", "."));
+
+          if (isNaN(widthMm) || widthMm <= 0 || isNaN(heightMm) || heightMm <= 0) {
+            toast.error("Entrez les dimensions du rectangle (largeur et hauteur en mm)");
+            return;
+          }
+
+          // Calculer l'homographie
+          const result = createRectifyingHomography(
+            quadPoints,
+            widthMm,
+            heightMm,
+            backgroundImageRef.current.width,
+            backgroundImageRef.current.height,
+          );
+          H = result.H;
+          mmPerPx = 1 / result.scale;
+        } else {
+          // Mode Damier
+          const cornersX = parseInt(checkerCornersX);
+          const cornersY = parseInt(checkerCornersY);
+          const squareSize = parseFloat(checkerSquareSize.replace(",", "."));
+
+          if (isNaN(cornersX) || cornersX < 2 || isNaN(cornersY) || cornersY < 2) {
+            toast.error("Configuration du damier invalide");
+            return;
+          }
+          if (isNaN(squareSize) || squareSize <= 0) {
+            toast.error("Entrez la taille d'une case en mm");
+            return;
+          }
+
+          // Calibration par damier (homographie + distorsion)
+          const result = calibrateWithCheckerboard(
+            quadPoints,
+            cornersX,
+            cornersY,
+            squareSize,
+            backgroundImageRef.current.width,
+            backgroundImageRef.current.height,
+          );
+          H = result.homography;
+          mmPerPx = result.scale;
+          distortion = result.distortion;
+
+          // Log pour debug
+          console.log("Distorsion calculée:", distortion);
+        }
 
         // Calculer les dimensions de l'image transformée
         const bounds = computeTransformedBounds(H, backgroundImageRef.current.width, backgroundImageRef.current.height);
 
-        // Créer l'image déformée
-        const warpedImageData = warpImage(
-          backgroundImageRef.current,
-          H,
-          Math.ceil(bounds.width),
-          Math.ceil(bounds.height),
-          Math.ceil(bounds.width / 2),
-          Math.ceil(bounds.height / 2),
-        );
+        // Créer l'image déformée (avec correction de distorsion si damier)
+        let finalImageData: ImageData;
+
+        if (distortion && (Math.abs(distortion.k1) > 0.001 || Math.abs(distortion.k2) > 0.001)) {
+          // D'abord corriger la distorsion radiale
+          const undistorted = undistortImage(backgroundImageRef.current, distortion);
+
+          // Créer un canvas temporaire
+          const tempCanvas = document.createElement("canvas");
+          tempCanvas.width = undistorted.width;
+          tempCanvas.height = undistorted.height;
+          const tempCtx = tempCanvas.getContext("2d")!;
+          tempCtx.putImageData(undistorted, 0, 0);
+
+          // Puis appliquer l'homographie
+          const tempImage = new Image();
+          tempImage.src = tempCanvas.toDataURL();
+          await new Promise((resolve) => (tempImage.onload = resolve));
+
+          finalImageData = warpImage(
+            tempImage,
+            H,
+            Math.ceil(bounds.width),
+            Math.ceil(bounds.height),
+            Math.ceil(bounds.width / 2),
+            Math.ceil(bounds.height / 2),
+          );
+        } else {
+          // Seulement l'homographie
+          finalImageData = warpImage(
+            backgroundImageRef.current,
+            H,
+            Math.ceil(bounds.width),
+            Math.ceil(bounds.height),
+            Math.ceil(bounds.width / 2),
+            Math.ceil(bounds.height / 2),
+          );
+        }
 
         // Créer un canvas pour l'image déformée
         const warpedCanvas = document.createElement("canvas");
-        warpedCanvas.width = warpedImageData.width;
-        warpedCanvas.height = warpedImageData.height;
+        warpedCanvas.width = finalImageData.width;
+        warpedCanvas.height = finalImageData.height;
         const ctx = warpedCanvas.getContext("2d")!;
-        ctx.putImageData(warpedImageData, 0, 0);
+        ctx.putImageData(finalImageData, 0, 0);
 
         setTransformedImage(warpedCanvas);
-
-        // L'échelle en mm/px pour l'image transformée
-        const mmPerPx = 1 / scale;
 
         // Transformer les points de calibration vers le nouveau système de coordonnées
         const newCalibPoints = new Map<string, CalibrationPoint>();
         calibrationData.points.forEach((point, id) => {
           // Convertir en coordonnées centrées
-          const srcX = point.x - backgroundImageRef.current!.width / 2;
-          const srcY = point.y - backgroundImageRef.current!.height / 2;
+          let srcX = point.x - backgroundImageRef.current!.width / 2;
+          let srcY = point.y - backgroundImageRef.current!.height / 2;
+
+          // Corriger la distorsion si nécessaire
+          if (distortion) {
+            const undist = undistortPoint(
+              { x: srcX, y: srcY },
+              distortion,
+              backgroundImageRef.current!.width,
+              backgroundImageRef.current!.height,
+            );
+            srcX = undist.x;
+            srcY = undist.y;
+          }
+
           // Appliquer la transformation
           const transformed = transformPoint(H, { x: srcX, y: srcY });
           // Convertir en mm
@@ -1763,8 +1856,20 @@ export function CADGabaritCanvas({
         // Transformer les points du sketch
         const newSketchPoints = new Map(sketch.points);
         newSketchPoints.forEach((point, id) => {
-          const srcX = point.x - backgroundImageRef.current!.width / 2;
-          const srcY = point.y - backgroundImageRef.current!.height / 2;
+          let srcX = point.x - backgroundImageRef.current!.width / 2;
+          let srcY = point.y - backgroundImageRef.current!.height / 2;
+
+          if (distortion) {
+            const undist = undistortPoint(
+              { x: srcX, y: srcY },
+              distortion,
+              backgroundImageRef.current!.width,
+              backgroundImageRef.current!.height,
+            );
+            srcX = undist.x;
+            srcY = undist.y;
+          }
+
           const transformed = transformPoint(H, { x: srcX, y: srcY });
           newSketchPoints.set(id, {
             ...point,
@@ -1773,12 +1878,11 @@ export function CADGabaritCanvas({
           });
         });
 
-        // Convertir les géométries avec rayon (cercles) - approximation car les cercles deviennent des ellipses
+        // Convertir les géométries avec rayon (cercles) - approximation
         const newGeometries = new Map(sketch.geometries);
         newGeometries.forEach((geo, id) => {
           if (geo.type === "circle") {
             const circle = geo as any;
-            // Approximation: utiliser l'échelle moyenne
             newGeometries.set(id, {
               ...circle,
               radius: circle.radius * mmPerPx,
@@ -1794,12 +1898,26 @@ export function CADGabaritCanvas({
           ...prev,
           points: newCalibPoints,
           applied: true,
+          perspectiveMethod,
           homography: H,
-          referenceRect: {
-            pointIds: rectPoints,
-            widthMm,
-            heightMm,
-          },
+          distortion,
+          referenceRect:
+            perspectiveMethod === "rectangle"
+              ? {
+                  pointIds: rectPoints,
+                  widthMm: parseFloat(rectWidth.replace(",", ".")),
+                  heightMm: parseFloat(rectHeight.replace(",", ".")),
+                }
+              : undefined,
+          checkerboard:
+            perspectiveMethod === "checkerboard"
+              ? {
+                  cornersX: parseInt(checkerCornersX),
+                  cornersY: parseInt(checkerCornersY),
+                  squareSizeMm: parseFloat(checkerSquareSize.replace(",", ".")),
+                  cornerPointIds: rectPoints,
+                }
+              : undefined,
         }));
 
         // Mettre à jour le sketch
@@ -1810,13 +1928,31 @@ export function CADGabaritCanvas({
           scaleFactor: 1,
         }));
 
-        toast.success(`Correction de perspective appliquée ! Rectangle ${widthMm}×${heightMm} mm`);
+        const methodLabel =
+          perspectiveMethod === "rectangle"
+            ? `Rectangle ${rectWidth}×${rectHeight} mm`
+            : `Damier ${parseInt(checkerCornersX) + 1}×${parseInt(checkerCornersY) + 1} cases`;
+        toast.success(`Correction de perspective appliquée ! ${methodLabel}`);
+
+        if (distortion && (Math.abs(distortion.k1) > 0.01 || Math.abs(distortion.k2) > 0.01)) {
+          toast.info(`Distorsion radiale corrigée (k1=${distortion.k1.toFixed(4)}, k2=${distortion.k2.toFixed(4)})`);
+        }
       } catch (error) {
-        console.error("Erreur homographie:", error);
+        console.error("Erreur calibration:", error);
         toast.error(`Erreur: ${error instanceof Error ? error.message : "Calcul impossible"}`);
       }
     }
-  }, [calibrationData, sketch, rectPoints, rectWidth, rectHeight]);
+  }, [
+    calibrationData,
+    sketch,
+    rectPoints,
+    rectWidth,
+    rectHeight,
+    perspectiveMethod,
+    checkerCornersX,
+    checkerCornersY,
+    checkerSquareSize,
+  ]);
 
   // Réinitialiser la calibration
   const resetCalibration = useCallback(() => {
@@ -2598,89 +2734,223 @@ export function CADGabaritCanvas({
                   </p>
                 </div>
 
-                {/* Mode Perspective - Sélection rectangle */}
+                {/* Mode Perspective - Choix méthode */}
                 {calibrationData.mode === "perspective" && (
                   <>
                     <Separator />
                     <div className="space-y-3">
-                      <span className="text-sm font-medium">Rectangle de référence</span>
-                      <p className="text-xs text-muted-foreground">
-                        Sélectionnez 4 points formant un rectangle réel (sens horaire à partir du coin supérieur gauche)
-                      </p>
-
-                      {/* Points sélectionnés */}
-                      <div className="flex gap-1 flex-wrap">
-                        {[0, 1, 2, 3].map((idx) => {
-                          const pointId = rectPoints[idx];
-                          const point = pointId ? calibrationData.points.get(pointId) : null;
-                          return (
-                            <div
-                              key={idx}
-                              className={`w-8 h-8 rounded border-2 flex items-center justify-center text-xs font-bold ${
-                                point
-                                  ? "bg-blue-100 border-blue-500 text-blue-700"
-                                  : "bg-gray-100 border-gray-300 text-gray-400"
-                              }`}
-                            >
-                              {point ? point.label : idx + 1}
-                            </div>
-                          );
-                        })}
+                      <span className="text-sm font-medium">Méthode de correction</span>
+                      <div className="flex gap-2">
                         <Button
-                          variant={calibrationMode === "selectRect" ? "default" : "outline"}
+                          variant={perspectiveMethod === "rectangle" ? "default" : "outline"}
                           size="sm"
-                          className="ml-2"
-                          onClick={() => {
-                            if (calibrationData.points.size < 4) {
-                              toast.error("Ajoutez au moins 4 points");
-                              return;
-                            }
-                            setCalibrationMode("selectRect");
-                            setRectPoints([]);
-                          }}
+                          className="flex-1"
+                          onClick={() => setPerspectiveMethod("rectangle")}
                         >
-                          {rectPoints.length === 4 ? "Modifier" : "Sélectionner"}
+                          Rectangle
+                        </Button>
+                        <Button
+                          variant={perspectiveMethod === "checkerboard" ? "default" : "outline"}
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => setPerspectiveMethod("checkerboard")}
+                        >
+                          Damier
                         </Button>
                       </div>
+                      <p className="text-xs text-muted-foreground">
+                        {perspectiveMethod === "rectangle"
+                          ? "Corrige la perspective (pas la distorsion de l'objectif)"
+                          : "Corrige perspective + distorsion radiale (barrel)"}
+                      </p>
+                    </div>
 
-                      {calibrationMode === "selectRect" && (
-                        <div className="p-2 bg-blue-50 rounded text-sm text-blue-700">
-                          {rectPoints.length < 4
-                            ? `Point ${rectPoints.length + 1}/4 - Cliquez sur un point`
-                            : "4 points sélectionnés ✓"}
+                    <Separator />
+
+                    {/* Mode Rectangle */}
+                    {perspectiveMethod === "rectangle" && (
+                      <div className="space-y-3">
+                        <span className="text-sm font-medium">Rectangle de référence</span>
+                        <p className="text-xs text-muted-foreground">
+                          Sélectionnez 4 points formant un rectangle réel (sens horaire à partir du coin supérieur
+                          gauche)
+                        </p>
+
+                        {/* Points sélectionnés */}
+                        <div className="flex gap-1 flex-wrap">
+                          {[0, 1, 2, 3].map((idx) => {
+                            const pointId = rectPoints[idx];
+                            const point = pointId ? calibrationData.points.get(pointId) : null;
+                            return (
+                              <div
+                                key={idx}
+                                className={`w-8 h-8 rounded border-2 flex items-center justify-center text-xs font-bold ${
+                                  point
+                                    ? "bg-blue-100 border-blue-500 text-blue-700"
+                                    : "bg-gray-100 border-gray-300 text-gray-400"
+                                }`}
+                              >
+                                {point ? point.label : idx + 1}
+                              </div>
+                            );
+                          })}
+                          <Button
+                            variant={calibrationMode === "selectRect" ? "default" : "outline"}
+                            size="sm"
+                            className="ml-2"
+                            onClick={() => {
+                              if (calibrationData.points.size < 4) {
+                                toast.error("Ajoutez au moins 4 points");
+                                return;
+                              }
+                              setCalibrationMode("selectRect");
+                              setRectPoints([]);
+                            }}
+                          >
+                            {rectPoints.length === 4 ? "Modifier" : "Sélectionner"}
+                          </Button>
                         </div>
-                      )}
 
-                      {/* Dimensions du rectangle */}
-                      {rectPoints.length === 4 && (
+                        {calibrationMode === "selectRect" && (
+                          <div className="p-2 bg-blue-50 rounded text-sm text-blue-700">
+                            {rectPoints.length < 4
+                              ? `Point ${rectPoints.length + 1}/4 - Cliquez sur un point`
+                              : "4 points sélectionnés ✓"}
+                          </div>
+                        )}
+
+                        {/* Dimensions du rectangle */}
+                        {rectPoints.length === 4 && (
+                          <div className="space-y-2 p-2 bg-gray-50 rounded">
+                            <div className="flex items-center gap-2">
+                              <Label className="text-xs w-16">Largeur:</Label>
+                              <Input
+                                type="text"
+                                inputMode="decimal"
+                                value={rectWidth}
+                                onChange={(e) => setRectWidth(e.target.value.replace(/[^0-9.,]/g, ""))}
+                                placeholder="ex: 500"
+                                className="h-8 text-sm flex-1"
+                              />
+                              <span className="text-xs text-muted-foreground">mm</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Label className="text-xs w-16">Hauteur:</Label>
+                              <Input
+                                type="text"
+                                inputMode="decimal"
+                                value={rectHeight}
+                                onChange={(e) => setRectHeight(e.target.value.replace(/[^0-9.,]/g, ""))}
+                                placeholder="ex: 300"
+                                className="h-8 text-sm flex-1"
+                              />
+                              <span className="text-xs text-muted-foreground">mm</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Mode Damier */}
+                    {perspectiveMethod === "checkerboard" && (
+                      <div className="space-y-3">
+                        <span className="text-sm font-medium">Damier de calibration</span>
+                        <p className="text-xs text-muted-foreground">
+                          Placez les 4 coins extérieurs du damier (sens horaire à partir du coin supérieur gauche)
+                        </p>
+
+                        {/* Configuration du damier */}
                         <div className="space-y-2 p-2 bg-gray-50 rounded">
                           <div className="flex items-center gap-2">
-                            <Label className="text-xs w-16">Largeur:</Label>
+                            <Label className="text-xs w-20">Cases X:</Label>
                             <Input
-                              type="text"
-                              inputMode="decimal"
-                              value={rectWidth}
-                              onChange={(e) => setRectWidth(e.target.value.replace(/[^0-9.,]/g, ""))}
-                              placeholder="ex: 500"
-                              className="h-8 text-sm flex-1"
+                              type="number"
+                              min="2"
+                              max="20"
+                              value={checkerCornersX}
+                              onChange={(e) => setCheckerCornersX(e.target.value)}
+                              className="h-8 text-sm w-16"
                             />
-                            <span className="text-xs text-muted-foreground">mm</span>
+                            <Label className="text-xs w-20 ml-2">Cases Y:</Label>
+                            <Input
+                              type="number"
+                              min="2"
+                              max="20"
+                              value={checkerCornersY}
+                              onChange={(e) => setCheckerCornersY(e.target.value)}
+                              className="h-8 text-sm w-16"
+                            />
                           </div>
                           <div className="flex items-center gap-2">
-                            <Label className="text-xs w-16">Hauteur:</Label>
+                            <Label className="text-xs w-20">Taille case:</Label>
                             <Input
                               type="text"
                               inputMode="decimal"
-                              value={rectHeight}
-                              onChange={(e) => setRectHeight(e.target.value.replace(/[^0-9.,]/g, ""))}
-                              placeholder="ex: 300"
+                              value={checkerSquareSize}
+                              onChange={(e) => setCheckerSquareSize(e.target.value.replace(/[^0-9.,]/g, ""))}
+                              placeholder="30"
                               className="h-8 text-sm flex-1"
                             />
                             <span className="text-xs text-muted-foreground">mm</span>
                           </div>
+                          <p className="text-xs text-muted-foreground italic">
+                            Damier {parseInt(checkerCornersX) + 1}×{parseInt(checkerCornersY) + 1} cases ={" "}
+                            {(
+                              (parseInt(checkerCornersX) + 1) * parseFloat(checkerSquareSize.replace(",", ".")) || 0
+                            ).toFixed(0)}
+                            ×
+                            {(
+                              (parseInt(checkerCornersY) + 1) * parseFloat(checkerSquareSize.replace(",", ".")) || 0
+                            ).toFixed(0)}{" "}
+                            mm
+                          </p>
                         </div>
-                      )}
-                    </div>
+
+                        {/* Points sélectionnés */}
+                        <div className="flex gap-1 flex-wrap items-center">
+                          {["TL", "TR", "BR", "BL"].map((label, idx) => {
+                            const pointId = rectPoints[idx];
+                            const point = pointId ? calibrationData.points.get(pointId) : null;
+                            return (
+                              <div
+                                key={idx}
+                                className={`w-10 h-8 rounded border-2 flex items-center justify-center text-xs font-bold ${
+                                  point
+                                    ? "bg-purple-100 border-purple-500 text-purple-700"
+                                    : "bg-gray-100 border-gray-300 text-gray-400"
+                                }`}
+                                title={["Haut-Gauche", "Haut-Droit", "Bas-Droit", "Bas-Gauche"][idx]}
+                              >
+                                {point ? point.label : label}
+                              </div>
+                            );
+                          })}
+                          <Button
+                            variant={calibrationMode === "selectRect" ? "default" : "outline"}
+                            size="sm"
+                            className="ml-2"
+                            onClick={() => {
+                              if (calibrationData.points.size < 4) {
+                                toast.error("Ajoutez au moins 4 points");
+                                return;
+                              }
+                              setCalibrationMode("selectRect");
+                              setRectPoints([]);
+                            }}
+                          >
+                            {rectPoints.length === 4 ? "Modifier" : "Sélectionner"}
+                          </Button>
+                        </div>
+
+                        {calibrationMode === "selectRect" && (
+                          <div className="p-2 bg-purple-50 rounded text-sm text-purple-700">
+                            {rectPoints.length < 4
+                              ? `Coin ${["Haut-Gauche", "Haut-Droit", "Bas-Droit", "Bas-Gauche"][rectPoints.length]} (${rectPoints.length + 1}/4)`
+                              : "4 coins sélectionnés ✓"}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
 
