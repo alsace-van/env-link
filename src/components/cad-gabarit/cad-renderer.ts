@@ -198,14 +198,48 @@ export class CADRenderer {
    * Dessine la grille
    */
   private drawGrid(scaleFactor: number): void {
-    const gridSize = this.styles.gridSpacing * scaleFactor;
-    const majorGridSize = this.styles.gridMajorSpacing * scaleFactor;
+    // Adapter la grille au niveau de zoom pour éviter trop de lignes
+    let gridSize = this.styles.gridSpacing;
+    let majorGridSize = this.styles.gridMajorSpacing;
+
+    // Calculer la taille de grille visible en pixels
+    const gridSizeOnScreen = gridSize * this.viewport.scale;
+
+    // Si la grille est trop fine (< 10px), on augmente l'espacement
+    if (gridSizeOnScreen < 10) {
+      const factor = Math.ceil(10 / gridSizeOnScreen);
+      gridSize *= factor;
+      majorGridSize *= factor;
+    }
+
+    // Si la grille est trop large (> 100px), on réduit l'espacement
+    if (gridSizeOnScreen > 100) {
+      const factor = Math.floor(gridSizeOnScreen / 50);
+      gridSize /= factor;
+      majorGridSize /= factor;
+    }
 
     // Calculer les limites visibles
     const left = -this.viewport.offsetX / this.viewport.scale;
     const right = (this.viewport.width - this.viewport.offsetX) / this.viewport.scale;
     const top = -this.viewport.offsetY / this.viewport.scale;
     const bottom = (this.viewport.height - this.viewport.offsetY) / this.viewport.scale;
+
+    // Limiter le nombre de lignes (max 200 dans chaque direction)
+    const maxLines = 200;
+    const horizontalLines = (right - left) / gridSize;
+    const verticalLines = (bottom - top) / gridSize;
+
+    if (horizontalLines > maxLines || verticalLines > maxLines) {
+      // Grille trop dense, on n'affiche que la grille majeure
+      gridSize = majorGridSize;
+    }
+
+    // Vérifier que gridSize est valide
+    if (gridSize <= 0 || !isFinite(gridSize)) {
+      gridSize = 10;
+      majorGridSize = 50;
+    }
 
     // Grille mineure
     this.ctx.strokeStyle = this.styles.gridColor;
