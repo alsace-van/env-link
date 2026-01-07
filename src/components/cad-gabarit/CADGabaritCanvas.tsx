@@ -1632,7 +1632,7 @@ export function CADGabaritCanvas({
   }, [calibrationData]);
 
   // Appliquer la calibration au sketch
-  const applyCalibration = useCallback(() => {
+  const applyCalibration = useCallback(async () => {
     // Mode simple : échelle uniforme
     if (calibrationData.mode === "simple" || !calibrationData.mode) {
       if (!calibrationData.scale) {
@@ -1791,9 +1791,11 @@ export function CADGabaritCanvas({
           tempCtx.putImageData(undistorted, 0, 0);
 
           // Puis appliquer l'homographie
-          const tempImage = new Image();
+          const tempImage = document.createElement("img") as HTMLImageElement;
           tempImage.src = tempCanvas.toDataURL();
-          await new Promise((resolve) => (tempImage.onload = resolve));
+          await new Promise<void>((resolve) => {
+            tempImage.onload = () => resolve();
+          });
 
           finalImageData = warpImage(
             tempImage,
