@@ -1012,71 +1012,11 @@ export class CADRenderer {
       y: snapPoint.y * this.viewport.scale + this.viewport.offsetY,
     };
 
-    const radius = this.styles.snapRadius;
-
-    this.ctx.strokeStyle = this.styles.snapColor;
-    this.ctx.lineWidth = 1.5;
-
-    switch (snapPoint.type) {
-      case "endpoint":
-        // Petit carré
-        const s = radius * 0.7;
-        this.ctx.strokeRect(screenPos.x - s, screenPos.y - s, s * 2, s * 2);
-        break;
-      case "midpoint":
-        // Petit triangle
-        const t = radius * 0.7;
-        this.ctx.beginPath();
-        this.ctx.moveTo(screenPos.x, screenPos.y - t);
-        this.ctx.lineTo(screenPos.x - t, screenPos.y + t);
-        this.ctx.lineTo(screenPos.x + t, screenPos.y + t);
-        this.ctx.closePath();
-        this.ctx.stroke();
-        break;
-      case "center":
-        // Croix simple
-        this.ctx.beginPath();
-        this.ctx.moveTo(screenPos.x - radius, screenPos.y);
-        this.ctx.lineTo(screenPos.x + radius, screenPos.y);
-        this.ctx.moveTo(screenPos.x, screenPos.y - radius);
-        this.ctx.lineTo(screenPos.x, screenPos.y + radius);
-        this.ctx.stroke();
-        break;
-      case "intersection":
-        // X
-        this.ctx.beginPath();
-        this.ctx.moveTo(screenPos.x - radius, screenPos.y - radius);
-        this.ctx.lineTo(screenPos.x + radius, screenPos.y + radius);
-        this.ctx.moveTo(screenPos.x + radius, screenPos.y - radius);
-        this.ctx.lineTo(screenPos.x - radius, screenPos.y + radius);
-        this.ctx.stroke();
-        break;
-      case "quadrant":
-        // Petit losange
-        const q = radius * 0.7;
-        this.ctx.beginPath();
-        this.ctx.moveTo(screenPos.x, screenPos.y - q);
-        this.ctx.lineTo(screenPos.x + q, screenPos.y);
-        this.ctx.lineTo(screenPos.x, screenPos.y + q);
-        this.ctx.lineTo(screenPos.x - q, screenPos.y);
-        this.ctx.closePath();
-        this.ctx.stroke();
-        break;
-      default:
-        // Croix fine (pas de cercle)
-        this.ctx.beginPath();
-        this.ctx.moveTo(screenPos.x - radius, screenPos.y);
-        this.ctx.lineTo(screenPos.x + radius, screenPos.y);
-        this.ctx.moveTo(screenPos.x, screenPos.y - radius);
-        this.ctx.lineTo(screenPos.x, screenPos.y + radius);
-        this.ctx.stroke();
-    }
-
-    // Label du type de snap (petit texte)
+    // Juste le label du type de snap, pas de forme (le curseur fait déjà croix)
     this.ctx.fillStyle = this.styles.snapColor;
     this.ctx.font = "9px Arial";
     this.ctx.textAlign = "left";
-    this.ctx.fillText(SnapSystem.getSnapName(snapPoint.type), screenPos.x + radius + 4, screenPos.y + 3);
+    this.ctx.fillText(SnapSystem.getSnapName(snapPoint.type), screenPos.x + 12, screenPos.y + 3);
   }
 
   /**
