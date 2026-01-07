@@ -1,7 +1,7 @@
 // ============================================
 // TYPES: CAD Gabarit Types
 // Types pour le système CAO
-// VERSION: 2.3 - Types homographie et perspective
+// VERSION: 2.4 - Types damier et distorsion
 // ============================================
 
 // === GÉOMÉTRIE DE BASE ===
@@ -360,6 +360,26 @@ export interface ReferenceRectangle {
   heightMm: number; // Hauteur réelle en mm
 }
 
+// Damier pour correction de distorsion
+export interface CheckerboardConfig {
+  cornersX: number; // Nombre de coins intérieurs en X (cases - 1)
+  cornersY: number; // Nombre de coins intérieurs en Y (cases - 1)
+  squareSizeMm: number; // Taille d'une case en mm
+  // 4 coins extérieurs du damier (TL, TR, BR, BL)
+  cornerPointIds: string[];
+}
+
+// Coefficients de distorsion radiale et tangentielle
+export interface DistortionCoefficients {
+  k1: number; // Distorsion radiale
+  k2: number;
+  k3: number;
+  p1: number; // Distorsion tangentielle
+  p2: number;
+  cx: number; // Centre optique X
+  cy: number; // Centre optique Y
+}
+
 export interface CalibrationData {
   points: Map<string, CalibrationPoint>;
   pairs: Map<string, CalibrationPair>;
@@ -367,9 +387,12 @@ export interface CalibrationData {
   error?: number; // Erreur moyenne en %
   applied: boolean; // Si la calibration a été appliquée
   // Mode perspective (correction de déformation)
-  mode: "simple" | "perspective";
+  mode: "simple" | "perspective" | "checkerboard";
+  perspectiveMethod?: "rectangle" | "checkerboard";
   referenceRect?: ReferenceRectangle;
+  checkerboard?: CheckerboardConfig;
   homography?: HomographyMatrix;
+  distortion?: DistortionCoefficients;
   transformedImageData?: ImageData; // Image déformée en cache
 }
 
