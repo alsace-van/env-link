@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 2.2 - Outil de mesure
+// VERSION: 2.4 - UX améliorée (mesure persistante, input décimal)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -602,6 +602,10 @@ export function CADGabaritCanvas({
       if (e.button === 2) {
         setTempPoints([]);
         setTempGeometry(null);
+        // Reset de la mesure
+        setMeasureStart(null);
+        setMeasureEnd(null);
+        setMeasureResult(null);
         setActiveTool("select");
         return;
       }
@@ -676,7 +680,7 @@ export function CADGabaritCanvas({
                 id: generateId(),
                 point1Id: p1.id,
                 point2Id: p2.id,
-                distanceMm: parseFloat(newPairDistance) || 100,
+                distanceMm: parseFloat(newPairDistance.replace(",", ".")) || 100,
                 distancePx: distPx,
                 color: newPairColor,
               };
@@ -988,19 +992,23 @@ export function CADGabaritCanvas({
           }
 
           if (!measureStart) {
-            // Premier point
+            // Premier point - commence une nouvelle mesure
             setMeasureStart(snapPos);
             setMeasureEnd(null);
             setMeasureResult(null);
-          } else {
-            // Deuxième point - calculer la mesure
+          } else if (!measureResult) {
+            // Deuxième point - calculer et afficher la mesure (persiste)
             const distPx = distance(measureStart, snapPos);
             const distMm = calibrationData.scale ? distPx * calibrationData.scale : distPx * sketch.scaleFactor;
             setMeasureEnd(snapPos);
             setMeasureResult({ px: distPx, mm: distMm });
             toast.success(`Mesure: ${distPx.toFixed(1)} px = ${distMm.toFixed(1)} mm`);
-            // Reset pour nouvelle mesure
-            setMeasureStart(null);
+            // Ne pas reset - la mesure reste affichée jusqu'au clic droit
+          } else {
+            // Clic après mesure terminée - nouvelle mesure
+            setMeasureStart(snapPos);
+            setMeasureEnd(null);
+            setMeasureResult(null);
           }
           break;
         }
@@ -1025,6 +1033,7 @@ export function CADGabaritCanvas({
       newPairDistance,
       newPairColor,
       measureStart,
+      measureResult,
       showCalibrationPanel,
     ],
   );
@@ -1957,7 +1966,8 @@ export function CADGabaritCanvas({
                 <div className="space-y-1">
                   <p className="text-lg font-bold text-green-700">{measureResult.px.toFixed(1)} px</p>
                   <p className="text-lg font-bold text-green-600">{measureResult.mm.toFixed(1)} mm</p>
-                  <p className="text-xs text-gray-500 mt-1">Cliquez pour une nouvelle mesure</p>
+                  <p className="text-xs text-gray-500 mt-1">Clic = nouvelle mesure</p>
+                  <p className="text-xs text-gray-400">Clic droit = effacer</p>
                 </div>
               ) : null}
               {calibrationData.scale && (
@@ -2031,9 +2041,19 @@ export function CADGabaritCanvas({
                       <div className="flex items-center gap-2">
                         <Label className="text-xs w-20">Distance:</Label>
                         <Input
-                          type="number"
+                          type="text"
+                          inputMode="decimal"
                           value={newPairDistance}
-                          onChange={(e) => setNewPairDistance(e.target.value)}
+                          onChange={(e) => {
+                            // Accepter chiffres, point et virgule
+                            const val = e.target.value.replace(/[^0-9.,]/g, "");
+                            setNewPairDistance(val);
+                          }}
+                          onFocus={(e) => {
+                            if (e.target.value === "0") {
+                              setNewPairDistance("");
+                            }
+                          }}
                           placeholder="100"
                           className="h-8 text-sm"
                         />
@@ -2142,9 +2162,18 @@ export function CADGabaritCanvas({
                             </div>
                             <div className="flex items-center gap-2">
                               <Input
-                                type="number"
+                                type="text"
+                                inputMode="decimal"
                                 value={pair.distanceMm}
-                                onChange={(e) => updatePairDistance(pair.id, parseFloat(e.target.value) || 0)}
+                                onChange={(e) => {
+                                  const val = e.target.value.replace(",", ".").replace(/[^0-9.]/g, "");
+                                  updatePairDistance(pair.id, parseFloat(val) || 0);
+                                }}
+                                onFocus={(e) => {
+                                  if (e.target.value === "0") {
+                                    e.target.select();
+                                  }
+                                }}
                                 className="h-7 text-sm flex-1"
                               />
                               <span className="text-xs text-muted-foreground">mm</span>
@@ -2157,21 +2186,39 @@ export function CADGabaritCanvas({
                                 <p
                                   className={`font-medium ${Math.abs(errorMm) < 0.5 ? "text-green-600" : Math.abs(errorMm) < 2 ? "text-orange-500" : "text-red-500"}`}
                                 >
-                                  → Mesure estimée: {measuredWithAvgScale.toFixed(1)} mm ({errorMm >= 0 ? "+" : ""}
-                                  {errorMm.toFixed(1)} mm / {errorPercent >= 0 ? "+" : ""}
-                                  {errorPercent.toFixed(1)}%)
+                                  → Estimé: {measuredWithAvgScale.toFixed(1)} mm ({errorMm >= 0 ? "+" : ""}
+                                  {errorMm.toFixed(1)} mm)
                                 </p>
                               )}
                             </div>
-                            <div className="flex gap-1">
-                              {CALIBRATION_COLORS.map((color) => (
-                                <button
-                                  key={color}
-                                  className={`w-4 h-4 rounded-full border ${pair.color === color ? "border-gray-800 border-2" : "border-gray-300"}`}
-                                  style={{ backgroundColor: color }}
-                                  onClick={() => updatePairColor(pair.id, color)}
-                                />
-                              ))}
+                            <div className="flex items-center justify-between">
+                              <div className="flex gap-1">
+                                {CALIBRATION_COLORS.slice(0, 5).map((color) => (
+                                  <button
+                                    key={color}
+                                    className={`w-3 h-3 rounded-full border ${pair.color === color ? "border-gray-800 border-2" : "border-gray-300"}`}
+                                    style={{ backgroundColor: color }}
+                                    onClick={() => updatePairColor(pair.id, color)}
+                                  />
+                                ))}
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-6 text-xs px-2"
+                                onClick={() => {
+                                  setCalibrationData((prev) => ({
+                                    ...prev,
+                                    scale: pairScale,
+                                    error: 0,
+                                  }));
+                                  toast.success(
+                                    `Échelle définie: ${pairScale.toFixed(4)} mm/px (paire ${p1?.label}-${p2?.label})`,
+                                  );
+                                }}
+                              >
+                                Utiliser
+                              </Button>
                             </div>
                           </div>
                         );
