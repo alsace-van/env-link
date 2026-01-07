@@ -1,7 +1,7 @@
 // ============================================
 // CAD SOLVER: Interface avec planegcs
 // Solveur de contraintes géométriques
-// VERSION: 1.1 - Ajout contrainte d'angle
+// VERSION: 1.2 - Contrainte d'angle corrigée
 // ============================================
 
 import { Point, Geometry, Line, Circle, Arc, Constraint, Sketch, SolverResult, generateId } from "./types";
@@ -83,31 +83,21 @@ export class CADSolver {
    * Résout le sketch avec les contraintes
    */
   async solve(sketch: Sketch): Promise<SolverResult> {
-    console.log("=== CADSolver.solve called ===");
-    console.log("Constraints:", Array.from(sketch.constraints.values()));
-
     if (!this.initialized) {
       await this.initSolver();
     }
 
     // Convertir le sketch en primitives GCS
     const primitives = this.sketchToGcs(sketch);
-    console.log(
-      "Primitives generated:",
-      primitives.length,
-      primitives.filter((p) => !["point", "line", "circle", "arc"].includes(p.type)),
-    );
 
     // Résoudre
     try {
       this.gcsWrapper.clear();
       this.gcsWrapper.push_primitives(primitives);
       const success = this.gcsWrapper.solve();
-      console.log("Solve success:", success);
 
       // Récupérer les résultats
       const solvedPrimitives = this.gcsWrapper.get_primitives();
-      console.log("Solved primitives (points):", solvedPrimitives.filter((p: any) => p.type === "point").slice(0, 4));
 
       // Mettre à jour le sketch avec les nouvelles positions
       this.updateSketchFromGcs(sketch, solvedPrimitives);
@@ -271,7 +261,6 @@ export class CADSolver {
         };
 
       case "angle":
-        console.log("Converting angle constraint:", constraint);
         return {
           id: constraint.id,
           type: "l2l_angle",
@@ -531,88 +520,65 @@ class SimplifiedSolver {
 
       case "l2l_angle": {
         // Contrainte d'angle entre deux lignes
-        console.log("=== L2L_ANGLE constraint ===", constraint);
         const line1 = this.primitives.find((p) => p.id === constraint.l1_id && p.type === "line") as
           | GcsLine
           | undefined;
         const line2 = this.primitives.find((p) => p.id === constraint.l2_id && p.type === "line") as
           | GcsLine
           | undefined;
-        console.log("line1:", line1, "line2:", line2);
-        if (!line1 || !line2) {
-          console.log("Lines not found!");
-          return 0;
-        }
+        if (!line1 || !line2) return 0;
 
         const l1p1 = this.points.get(line1.p1_id);
         const l1p2 = this.points.get(line1.p2_id);
         const l2p1 = this.points.get(line2.p1_id);
         const l2p2 = this.points.get(line2.p2_id);
-        console.log("Points:", { l1p1, l1p2, l2p1, l2p2 });
-        if (!l1p1 || !l1p2 || !l2p1 || !l2p2) {
-          console.log("Points not found!");
-          return 0;
-        }
+        if (!l1p1 || !l1p2 || !l2p1 || !l2p2) return 0;
 
         // Vecteurs directeurs
         const v1 = { x: l1p2.x - l1p1.x, y: l1p2.y - l1p1.y };
         const v2 = { x: l2p2.x - l2p1.x, y: l2p2.y - l2p1.y };
-        console.log("Vectors:", { v1, v2 });
 
-        // Angle actuel entre les deux lignes (en radians)
-        const dot = v1.x * v2.x + v1.y * v2.y;
-        const cross = v1.x * v2.y - v1.y * v2.x;
-        const currentAngle = Math.abs(Math.atan2(Math.abs(cross), dot));
+        const len1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+        const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+        if (len1 < 0.001 || len2 < 0.001) return 0;
+
+        // Angles par rapport à l'horizontale
+        const angle1 = Math.atan2(v1.y, v1.x);
+        const angle2 = Math.atan2(v2.y, v2.x);
 
         // Angle cible (en radians)
         const targetAngle = constraint.angle || 0;
-        console.log("Angles (rad):", { currentAngle, targetAngle, targetDeg: (targetAngle * 180) / Math.PI });
 
-        // Erreur
-        const error = Math.abs(currentAngle - targetAngle);
-        if (error < 0.001) {
-          console.log("Already at target angle");
-          return 0;
-        }
+        // Deux possibilités pour le nouvel angle de la ligne 2 :
+        // angle2_new = angle1 + targetAngle  ou  angle2_new = angle1 - targetAngle
+        const option1 = angle1 + targetAngle;
+        const option2 = angle1 - targetAngle;
 
-        // Calculer la rotation nécessaire
-        const deltaAngle = targetAngle - currentAngle;
+        // Fonction pour normaliser un angle entre -PI et PI
+        const normalizeAngle = (a: number) => {
+          while (a > Math.PI) a -= 2 * Math.PI;
+          while (a < -Math.PI) a += 2 * Math.PI;
+          return a;
+        };
 
-        // Faire pivoter la ligne 2 autour de son premier point
-        // On garde la ligne 1 fixe et on pivote la ligne 2
+        // Choisir l'option la plus proche de l'angle actuel (rotation minimale)
+        const diff1 = Math.abs(normalizeAngle(option1 - angle2));
+        const diff2 = Math.abs(normalizeAngle(option2 - angle2));
+
+        const newAngle2 = diff1 <= diff2 ? option1 : option2;
+
+        // Calculer l'erreur (la plus petite des deux différences)
+        const error = Math.min(diff1, diff2);
+        if (error < 0.001) return 0; // Déjà correct
+
+        // Appliquer la rotation à la ligne 2, en préservant sa longueur
         if (!l2p2.fixed) {
-          const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
-          if (len2 < 0.001) return 0;
-
-          // Angle actuel de la ligne 2 par rapport à l'horizontale
-          const angle2 = Math.atan2(v2.y, v2.x);
-          // Angle de la ligne 1 par rapport à l'horizontale
-          const angle1 = Math.atan2(v1.y, v1.x);
-
-          // Nouvel angle pour la ligne 2 (même sens que ligne 1 + angle cible)
-          const newAngle2 = angle1 + (cross >= 0 ? targetAngle : -targetAngle);
-
-          console.log("Rotating l2p2:", { angle1, angle2, newAngle2, len2 });
-
-          // Nouvelles coordonnées de p2 de la ligne 2
-          const oldX = l2p2.x,
-            oldY = l2p2.y;
           l2p2.x = l2p1.x + len2 * Math.cos(newAngle2);
           l2p2.y = l2p1.y + len2 * Math.sin(newAngle2);
-          console.log("l2p2 moved:", { from: { x: oldX, y: oldY }, to: { x: l2p2.x, y: l2p2.y } });
         } else if (!l2p1.fixed) {
           // Si p2 est fixe, pivoter autour de p2
-          const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
-          if (len2 < 0.001) return 0;
-
-          const angle1 = Math.atan2(v1.y, v1.x);
-          const newAngle2 = angle1 + (cross >= 0 ? targetAngle : -targetAngle);
-
           l2p1.x = l2p2.x - len2 * Math.cos(newAngle2);
           l2p1.y = l2p2.y - len2 * Math.sin(newAngle2);
-          console.log("l2p1 moved");
-        } else {
-          console.log("Both points fixed, cannot rotate");
         }
 
         return error;
