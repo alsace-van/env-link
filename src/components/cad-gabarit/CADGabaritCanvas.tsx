@@ -495,6 +495,22 @@ export function CADGabaritCanvas({
     [render],
   );
 
+  // Helper: récupère un point existant si snap endpoint, sinon crée un nouveau point
+  const getOrCreatePoint = useCallback(
+    (targetPos: { x: number; y: number }, snapPoint: SnapPoint | null): Point => {
+      // Si on snappe sur un endpoint existant, réutiliser ce point
+      if (snapPoint && snapPoint.type === "endpoint" && snapPoint.entityId) {
+        const existingPoint = sketch.points.get(snapPoint.entityId);
+        if (existingPoint) {
+          return existingPoint;
+        }
+      }
+      // Sinon créer un nouveau point
+      return { id: generateId(), x: targetPos.x, y: targetPos.y };
+    },
+    [sketch.points],
+  );
+
   // Gestion de la souris
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -574,22 +590,27 @@ export function CADGabaritCanvas({
 
         case "line": {
           if (tempPoints.length === 0) {
-            // Premier point
-            const p: Point = { id: generateId(), x: targetPos.x, y: targetPos.y };
+            // Premier point - réutiliser si snap sur endpoint existant
+            const p = getOrCreatePoint(targetPos, currentSnapPoint);
             setTempPoints([p]);
             setTempGeometry({ type: "line", points: [p] });
           } else {
             // Deuxième point - créer la ligne
             const p1 = tempPoints[0];
-            const p2: Point = { id: generateId(), x: targetPos.x, y: targetPos.y };
+            const p2 = getOrCreatePoint(targetPos, currentSnapPoint);
 
             // Ajouter les points
             const newSketch = { ...sketch };
             newSketch.points = new Map(sketch.points);
             newSketch.geometries = new Map(sketch.geometries);
 
-            newSketch.points.set(p1.id, p1);
-            newSketch.points.set(p2.id, p2);
+            // N'ajouter que si c'est un nouveau point (pas déjà dans le sketch)
+            if (!sketch.points.has(p1.id)) {
+              newSketch.points.set(p1.id, p1);
+            }
+            if (!sketch.points.has(p2.id)) {
+              newSketch.points.set(p2.id, p2);
+            }
 
             // Ajouter la ligne
             const line: Line = {
@@ -604,7 +625,7 @@ export function CADGabaritCanvas({
             solveSketch(newSketch);
             addToHistory(newSketch);
 
-            // Reset pour une nouvelle ligne
+            // Reset pour une nouvelle ligne (continuer depuis p2)
             setTempPoints([p2]);
             setTempGeometry({ type: "line", points: [p2] });
           }
@@ -698,17 +719,17 @@ export function CADGabaritCanvas({
 
         case "bezier": {
           if (tempPoints.length === 0) {
-            // Point de départ
-            const p1: Point = { id: generateId(), x: targetPos.x, y: targetPos.y };
+            // Point de départ - réutiliser si snap sur endpoint existant
+            const p1 = getOrCreatePoint(targetPos, currentSnapPoint);
             setTempPoints([p1]);
             setTempGeometry({ type: "bezier", points: [p1] });
           } else if (tempPoints.length === 1) {
-            // Point d'arrivée
-            const p2: Point = { id: generateId(), x: targetPos.x, y: targetPos.y };
+            // Point d'arrivée - réutiliser si snap sur endpoint existant
+            const p2 = getOrCreatePoint(targetPos, currentSnapPoint);
             setTempPoints([...tempPoints, p2]);
             setTempGeometry({ type: "bezier", points: [...tempPoints, p2] });
           } else if (tempPoints.length === 2) {
-            // Point de contrôle 1
+            // Point de contrôle 1 - toujours nouveau
             const cp1: Point = { id: generateId(), x: targetPos.x, y: targetPos.y };
             setTempPoints([...tempPoints, cp1]);
             setTempGeometry({ type: "bezier", points: [...tempPoints, cp1] });
@@ -721,8 +742,13 @@ export function CADGabaritCanvas({
             newSketch.points = new Map(sketch.points);
             newSketch.geometries = new Map(sketch.geometries);
 
-            newSketch.points.set(p1.id, p1);
-            newSketch.points.set(p2.id, p2);
+            // N'ajouter que les points qui n'existent pas déjà
+            if (!sketch.points.has(p1.id)) {
+              newSketch.points.set(p1.id, p1);
+            }
+            if (!sketch.points.has(p2.id)) {
+              newSketch.points.set(p2.id, p2);
+            }
             newSketch.points.set(cp1.id, cp1);
             newSketch.points.set(cp2.id, cp2);
 
@@ -791,6 +817,7 @@ export function CADGabaritCanvas({
       screenToWorld,
       solveSketch,
       addToHistory,
+      getOrCreatePoint,
     ],
   );
 
