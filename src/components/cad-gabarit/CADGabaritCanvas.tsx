@@ -505,8 +505,25 @@ export function CADGabaritCanvas({
       const screenY = e.clientY - rect.top;
       const worldPos = screenToWorld(screenX, screenY);
 
-      // Pan avec clic milieu ou espace
-      if (e.button === 1 || (e.button === 0 && activeTool === "pan")) {
+      // Pan avec clic milieu
+      if (e.button === 1) {
+        setIsPanning(true);
+        setPanStart({ x: e.clientX, y: e.clientY });
+        return;
+      }
+
+      // Clic droit = annuler le tracé en cours et passer en sélection
+      if (e.button === 2) {
+        setTempPoints([]);
+        setTempGeometry(null);
+        setActiveTool("select");
+        return;
+      }
+
+      // À partir d'ici, c'est un clic gauche (e.button === 0)
+
+      // Pan avec outil main
+      if (activeTool === "pan") {
         setIsPanning(true);
         setPanStart({ x: e.clientX, y: e.clientY });
         return;
