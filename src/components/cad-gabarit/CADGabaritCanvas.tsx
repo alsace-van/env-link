@@ -231,11 +231,6 @@ export function CADGabaritCanvas({
       backgroundImage: showBackgroundImage ? backgroundImageRef.current : null,
       imageOpacity,
     });
-
-    // Dessiner les poignées pour les entités sélectionnées
-    if (selectedEntities.size > 0 && rendererRef.current) {
-      rendererRef.current.drawHandles(sketch, selectedEntities);
-    }
   }, [
     sketch,
     viewport,
@@ -253,6 +248,13 @@ export function CADGabaritCanvas({
   useEffect(() => {
     render();
   }, [render]);
+
+  // Vider la sélection quand on change d'outil (sauf pour select)
+  useEffect(() => {
+    if (activeTool !== "select") {
+      setSelectedEntities(new Set());
+    }
+  }, [activeTool]);
 
   // Charger les données
   const loadSketchData = useCallback(
