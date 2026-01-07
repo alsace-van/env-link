@@ -58,7 +58,6 @@ import {
   ChevronRight,
   ChevronLeft,
   Scaling,
-  ChevronLeft,
 } from "lucide-react";
 
 import {
