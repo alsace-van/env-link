@@ -2180,8 +2180,9 @@ export function CADGabaritCanvas({
                             </div>
                             <div className="text-xs space-y-0.5">
                               <p className="text-muted-foreground">
-                                Mesuré: {distPx.toFixed(1)} px | Échelle: {pairScale.toFixed(4)} mm/px
+                                Mesuré: {distPx.toFixed(1)} px = {pair.distanceMm} mm
                               </p>
+                              <p className="text-muted-foreground">Échelle: {pairScale.toFixed(4)} mm/px</p>
                               {calibrationData.scale && (
                                 <p
                                   className={`font-medium ${Math.abs(errorMm) < 0.5 ? "text-green-600" : Math.abs(errorMm) < 2 ? "text-orange-500" : "text-red-500"}`}
