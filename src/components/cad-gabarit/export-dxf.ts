@@ -1,46 +1,41 @@
 // ============================================
 // EXPORT DXF: Export au format AutoCAD
 // Compatible Fusion 360 et autres logiciels CAO
-// VERSION: 1.0
+// VERSION: 1.1 - Correction scale factor
 // ============================================
 
-import {
-  Sketch,
-  Line,
-  Circle as CircleType,
-  Arc,
-  Rectangle,
-} from './types';
+import { Sketch, Line, Circle as CircleType, Arc, Rectangle } from "./types";
 
 /**
  * Exporte un sketch au format DXF (AutoCAD 2000)
  */
 export function exportToDXF(sketch: Sketch): string {
-  const scale = 1 / sketch.scaleFactor; // Convertir px en mm
-  
+  // scaleFactor = mm/px, donc pour convertir px en mm on multiplie par scaleFactor
+  const scale = sketch.scaleFactor;
+
   let dxf = generateHeader();
   dxf += generateTables();
   dxf += generateBlocks();
   dxf += generateEntitiesStart();
-  
+
   // Exporter les géométries
   sketch.geometries.forEach((geo, id) => {
     switch (geo.type) {
-      case 'line':
+      case "line":
         dxf += exportLine(geo as Line, sketch, scale);
         break;
-      case 'circle':
+      case "circle":
         dxf += exportCircle(geo as CircleType, sketch, scale);
         break;
-      case 'arc':
+      case "arc":
         dxf += exportArc(geo as Arc, sketch, scale);
         break;
     }
   });
-  
+
   dxf += generateEntitiesEnd();
   dxf += generateFooter();
-  
+
   return dxf;
 }
 
@@ -531,15 +526,15 @@ EOF
 function exportLine(line: Line, sketch: Sketch, scale: number): string {
   const p1 = sketch.points.get(line.p1);
   const p2 = sketch.points.get(line.p2);
-  
-  if (!p1 || !p2) return '';
-  
+
+  if (!p1 || !p2) return "";
+
   // Inverser Y pour DXF (système de coordonnées différent)
   const x1 = p1.x * scale;
   const y1 = -p1.y * scale;
   const x2 = p2.x * scale;
   const y2 = -p2.y * scale;
-  
+
   return `0
 LINE
 5
@@ -567,13 +562,13 @@ ${y2.toFixed(6)}
 
 function exportCircle(circle: CircleType, sketch: Sketch, scale: number): string {
   const center = sketch.points.get(circle.center);
-  
-  if (!center) return '';
-  
+
+  if (!center) return "";
+
   const cx = center.x * scale;
   const cy = -center.y * scale;
   const r = circle.radius * scale;
-  
+
   return `0
 CIRCLE
 5
@@ -599,22 +594,22 @@ function exportArc(arc: Arc, sketch: Sketch, scale: number): string {
   const center = sketch.points.get(arc.center);
   const startPt = sketch.points.get(arc.startPoint);
   const endPt = sketch.points.get(arc.endPoint);
-  
-  if (!center || !startPt || !endPt) return '';
-  
+
+  if (!center || !startPt || !endPt) return "";
+
   const cx = center.x * scale;
   const cy = -center.y * scale;
   const r = arc.radius * scale;
-  
+
   // Calculer les angles (en degrés pour DXF)
   // Note: Y est inversé, donc les angles aussi
-  let startAngle = Math.atan2(-(startPt.y - center.y), startPt.x - center.x) * 180 / Math.PI;
-  let endAngle = Math.atan2(-(endPt.y - center.y), endPt.x - center.x) * 180 / Math.PI;
-  
+  let startAngle = (Math.atan2(-(startPt.y - center.y), startPt.x - center.x) * 180) / Math.PI;
+  let endAngle = (Math.atan2(-(endPt.y - center.y), endPt.x - center.x) * 180) / Math.PI;
+
   // Normaliser les angles
   while (startAngle < 0) startAngle += 360;
   while (endAngle < 0) endAngle += 360;
-  
+
   return `0
 ARC
 5
@@ -652,8 +647,8 @@ function generateHandle(): string {
  * Export LWPOLYLINE pour les rectangles et polygones
  */
 export function exportPolyline(points: { x: number; y: number }[], closed: boolean, scale: number): string {
-  if (points.length < 2) return '';
-  
+  if (points.length < 2) return "";
+
   let dxf = `0
 LWPOLYLINE
 5
@@ -671,7 +666,7 @@ ${closed ? 1 : 0}
 43
 0.0
 `;
-  
+
   for (const p of points) {
     dxf += `10
 ${(p.x * scale).toFixed(6)}
@@ -679,7 +674,7 @@ ${(p.x * scale).toFixed(6)}
 ${(-p.y * scale).toFixed(6)}
 `;
   }
-  
+
   return dxf;
 }
 
@@ -690,16 +685,16 @@ export function exportDimension(
   p1: { x: number; y: number },
   p2: { x: number; y: number },
   value: number,
-  scale: number
+  scale: number,
 ): string {
   const x1 = p1.x * scale;
   const y1 = -p1.y * scale;
   const x2 = p2.x * scale;
   const y2 = -p2.y * scale;
-  
+
   const mx = (x1 + x2) / 2;
   const my = (y1 + y2) / 2;
-  
+
   return `0
 DIMENSION
 5
