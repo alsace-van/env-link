@@ -1,7 +1,7 @@
 // ============================================
 // TYPES: CAD Gabarit Types
 // Types pour le système CAO
-// VERSION: 2.4 - Types damier et distorsion
+// VERSION: 2.5 - Ajout système de calques
 // ============================================
 
 // === GÉOMÉTRIE DE BASE ===
@@ -18,6 +18,7 @@ export interface Line {
   type: "line";
   p1: string; // ID du point de départ
   p2: string; // ID du point d'arrivée
+  layerId?: string; // Calque (défaut: 'default')
 }
 
 export interface Circle {
@@ -25,6 +26,7 @@ export interface Circle {
   type: "circle";
   center: string; // ID du point central
   radius: number;
+  layerId?: string;
 }
 
 export interface Arc {
@@ -34,6 +36,7 @@ export interface Arc {
   startPoint: string;
   endPoint: string;
   radius: number;
+  layerId?: string;
 }
 
 export interface Rectangle {
@@ -43,6 +46,7 @@ export interface Rectangle {
   p2: string; // coin supérieur droit
   p3: string; // coin inférieur droit
   p4: string; // coin inférieur gauche
+  layerId?: string;
 }
 
 export interface Bezier {
@@ -52,6 +56,7 @@ export interface Bezier {
   p2: string; // Point d'arrivée
   cp1: string; // Point de contrôle 1
   cp2: string; // Point de contrôle 2
+  layerId?: string;
 }
 
 export type Geometry = Line | Circle | Arc | Rectangle | Bezier;
@@ -188,6 +193,24 @@ export interface Viewport {
   height: number;
 }
 
+// === CALQUES ===
+
+export interface Layer {
+  id: string;
+  name: string;
+  color: string; // Couleur des entités du calque
+  visible: boolean;
+  locked: boolean; // Si verrouillé, pas de modification
+  order: number; // Ordre d'affichage (0 = fond)
+}
+
+export const DEFAULT_LAYERS: Layer[] = [
+  { id: "default", name: "Défaut", color: "#3B82F6", visible: true, locked: false, order: 0 },
+  { id: "construction", name: "Construction", color: "#9CA3AF", visible: true, locked: false, order: 1 },
+  { id: "contour", name: "Contour découpe", color: "#EF4444", visible: true, locked: false, order: 2 },
+  { id: "gravure", name: "Gravure", color: "#10B981", visible: true, locked: false, order: 3 },
+];
+
 // === SKETCH (Document) ===
 
 export interface Sketch {
@@ -197,6 +220,8 @@ export interface Sketch {
   geometries: Map<string, Geometry>;
   constraints: Map<string, Constraint>;
   dimensions: Map<string, Dimension>;
+  layers: Map<string, Layer>;
+  activeLayerId: string; // Calque actif pour les nouvelles entités
   scaleFactor: number; // px to mm
   dof: number; // Degrees of Freedom
   status: "under-constrained" | "fully-constrained" | "over-constrained" | "conflicting";
