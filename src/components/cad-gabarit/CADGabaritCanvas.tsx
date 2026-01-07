@@ -357,14 +357,7 @@ export function CADGabaritCanvas({
     (worldX: number, worldY: number): string | null => {
       const tolerance = 10 / viewport.scale;
 
-      // Vérifier les points
-      for (const [id, point] of sketch.points) {
-        if (distance({ x: worldX, y: worldY }, point) < tolerance) {
-          return id;
-        }
-      }
-
-      // Vérifier les géométries
+      // Vérifier les géométries EN PREMIER (pour pouvoir sélectionner les lignes/courbes)
       for (const [id, geo] of sketch.geometries) {
         if (geo.type === "line") {
           const line = geo as Line;
@@ -385,19 +378,45 @@ export function CADGabaritCanvas({
           const bezier = geo as Bezier;
           const p1 = sketch.points.get(bezier.p1);
           const p2 = sketch.points.get(bezier.p2);
-          if (p1 && p2) {
-            // Approximation: check proximity to control points or endpoints
-            const cp1 = sketch.points.get(bezier.cp1);
-            const cp2 = sketch.points.get(bezier.cp2);
-            if (
-              distance({ x: worldX, y: worldY }, p1) < tolerance ||
-              distance({ x: worldX, y: worldY }, p2) < tolerance ||
-              (cp1 && distance({ x: worldX, y: worldY }, cp1) < tolerance) ||
-              (cp2 && distance({ x: worldX, y: worldY }, cp2) < tolerance)
-            ) {
-              return id;
+          const cp1 = sketch.points.get(bezier.cp1);
+          const cp2 = sketch.points.get(bezier.cp2);
+          if (p1 && p2 && cp1 && cp2) {
+            // Vérifier la proximité à la courbe en échantillonnant des points
+            const d = distanceToBezier({ x: worldX, y: worldY }, p1, p2, cp1, cp2);
+            if (d < tolerance) return id;
+          }
+        }
+      }
+
+      // Vérifier les points isolés (pas liés à une géométrie)
+      for (const [id, point] of sketch.points) {
+        // Vérifier si ce point est utilisé par une géométrie
+        let isUsedByGeometry = false;
+        for (const geo of sketch.geometries.values()) {
+          if (geo.type === "line") {
+            const line = geo as Line;
+            if (line.p1 === id || line.p2 === id) {
+              isUsedByGeometry = true;
+              break;
+            }
+          } else if (geo.type === "circle") {
+            const circle = geo as CircleType;
+            if (circle.center === id) {
+              isUsedByGeometry = true;
+              break;
+            }
+          } else if (geo.type === "bezier") {
+            const bezier = geo as Bezier;
+            if (bezier.p1 === id || bezier.p2 === id || bezier.cp1 === id || bezier.cp2 === id) {
+              isUsedByGeometry = true;
+              break;
             }
           }
+        }
+
+        // Ne sélectionner le point que s'il n'est pas utilisé par une géométrie
+        if (!isUsedByGeometry && distance({ x: worldX, y: worldY }, point) < tolerance) {
+          return id;
         }
       }
 
@@ -1586,6 +1605,39 @@ function distanceToLine(
   t = Math.max(0, Math.min(1, t));
 
   return distance(p, { x: p1.x + t * dx, y: p1.y + t * dy });
+}
+
+// Calcul de la distance à une courbe de Bézier cubique
+function distanceToBezier(
+  p: { x: number; y: number },
+  p1: { x: number; y: number },
+  p2: { x: number; y: number },
+  cp1: { x: number; y: number },
+  cp2: { x: number; y: number },
+): number {
+  // Échantillonner la courbe et trouver la distance minimale
+  const samples = 20;
+  let minDist = Infinity;
+
+  for (let i = 0; i <= samples; i++) {
+    const t = i / samples;
+    const t2 = t * t;
+    const t3 = t2 * t;
+    const mt = 1 - t;
+    const mt2 = mt * mt;
+    const mt3 = mt2 * mt;
+
+    // Formule de Bézier cubique
+    const x = mt3 * p1.x + 3 * mt2 * t * cp1.x + 3 * mt * t2 * cp2.x + t3 * p2.x;
+    const y = mt3 * p1.y + 3 * mt2 * t * cp1.y + 3 * mt * t2 * cp2.y + t3 * p2.y;
+
+    const d = distance(p, { x, y });
+    if (d < minDist) {
+      minDist = d;
+    }
+  }
+
+  return minDist;
 }
 
 function serializeSketch(sketch: Sketch): any {
