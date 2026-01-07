@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 2.2 - Outil de mesure
+// VERSION: 2.3 - Image scale support
 // ============================================
 
 import {
@@ -92,6 +92,7 @@ export class CADRenderer {
       showDimensions?: boolean;
       backgroundImage?: HTMLImageElement | null;
       imageOpacity?: number;
+      imageScale?: number;
       calibrationData?: CalibrationData | null;
       showCalibration?: boolean;
       measureData?: {
@@ -111,6 +112,7 @@ export class CADRenderer {
       showDimensions = true,
       backgroundImage = null,
       imageOpacity = 0.5,
+      imageScale = 1,
       calibrationData = null,
       showCalibration = true,
       measureData = null,
@@ -128,7 +130,7 @@ export class CADRenderer {
 
     // 1. Background image
     if (backgroundImage) {
-      this.drawBackgroundImage(backgroundImage, imageOpacity);
+      this.drawBackgroundImage(backgroundImage, imageOpacity, imageScale);
     }
 
     // 1.5. Calibration (sous la grille et le dessin)
@@ -198,10 +200,12 @@ export class CADRenderer {
   /**
    * Dessine l'image de fond
    */
-  private drawBackgroundImage(image: HTMLImageElement, opacity: number = 0.5): void {
+  private drawBackgroundImage(image: HTMLImageElement, opacity: number = 0.5, imageScale: number = 1): void {
     this.ctx.globalAlpha = opacity;
-    // Centrer l'image sur l'origine
-    this.ctx.drawImage(image, -image.width / 2, -image.height / 2);
+    // Centrer l'image sur l'origine, mise à l'échelle
+    const scaledWidth = image.width * imageScale;
+    const scaledHeight = image.height * imageScale;
+    this.ctx.drawImage(image, -scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
     this.ctx.globalAlpha = 1;
   }
 
