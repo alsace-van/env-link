@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 2.1 - Calibration multi-points
+// VERSION: 2.2 - Outil de mesure
 // ============================================
 
 import {
@@ -94,6 +94,11 @@ export class CADRenderer {
       imageOpacity?: number;
       calibrationData?: CalibrationData | null;
       showCalibration?: boolean;
+      measureData?: {
+        start: { x: number; y: number } | null;
+        end: { x: number; y: number } | null;
+        scale?: number;
+      } | null;
     } = {},
   ): void {
     const {
@@ -108,6 +113,7 @@ export class CADRenderer {
       imageOpacity = 0.5,
       calibrationData = null,
       showCalibration = true,
+      measureData = null,
     } = options;
 
     // Clear
@@ -171,6 +177,11 @@ export class CADRenderer {
     // 8. Poignées des entités sélectionnées
     if (selectedEntities.size > 0) {
       this.drawHandles(sketch, selectedEntities);
+    }
+
+    // 8.5. Mesure en cours
+    if (measureData?.start) {
+      this.drawMeasure(measureData.start, measureData.end, measureData.scale);
     }
 
     this.ctx.restore();
@@ -623,6 +634,84 @@ export class CADRenderer {
       this.ctx.textBaseline = "bottom";
       this.ctx.fillText(point.label, point.x + pointSize + 2 / this.viewport.scale, point.y - 2 / this.viewport.scale);
     });
+  }
+
+  /**
+   * Dessine la ligne de mesure avec les distances
+   */
+  private drawMeasure(start: { x: number; y: number }, end: { x: number; y: number } | null, scale?: number): void {
+    if (!end) return;
+
+    const distPx = distance(start, end);
+    const distMm = scale ? distPx * scale : distPx;
+
+    // Ligne de mesure
+    this.ctx.strokeStyle = "#00AA00";
+    this.ctx.lineWidth = 2 / this.viewport.scale;
+    this.ctx.setLineDash([6 / this.viewport.scale, 3 / this.viewport.scale]);
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(start.x, start.y);
+    this.ctx.lineTo(end.x, end.y);
+    this.ctx.stroke();
+    this.ctx.setLineDash([]);
+
+    // Points aux extrémités
+    const pointSize = 6 / this.viewport.scale;
+    this.ctx.fillStyle = "#00AA00";
+
+    this.ctx.beginPath();
+    this.ctx.arc(start.x, start.y, pointSize, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    this.ctx.beginPath();
+    this.ctx.arc(end.x, end.y, pointSize, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    // Texte avec les distances
+    const mid = midpoint(start, end);
+    const fontSize = 14 / this.viewport.scale;
+    const textPx = `${distPx.toFixed(1)} px`;
+    const textMm = `${distMm.toFixed(1)} mm`;
+
+    // Fond pour le texte
+    this.ctx.font = `bold ${fontSize}px Arial`;
+    const textWidth = Math.max(this.ctx.measureText(textPx).width, this.ctx.measureText(textMm).width);
+    const padding = 4 / this.viewport.scale;
+    const lineHeight = fontSize * 1.2;
+
+    // Calculer l'angle de la ligne pour orienter le texte
+    const ang = Math.atan2(end.y - start.y, end.x - start.x);
+    const offset = 15 / this.viewport.scale;
+    const textX = mid.x + Math.cos(ang + Math.PI / 2) * offset;
+    const textY = mid.y + Math.sin(ang + Math.PI / 2) * offset;
+
+    // Fond blanc
+    this.ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+    this.ctx.fillRect(
+      textX - textWidth / 2 - padding,
+      textY - lineHeight - padding,
+      textWidth + padding * 2,
+      lineHeight * 2 + padding * 2,
+    );
+
+    // Bordure
+    this.ctx.strokeStyle = "#00AA00";
+    this.ctx.lineWidth = 1 / this.viewport.scale;
+    this.ctx.strokeRect(
+      textX - textWidth / 2 - padding,
+      textY - lineHeight - padding,
+      textWidth + padding * 2,
+      lineHeight * 2 + padding * 2,
+    );
+
+    // Texte
+    this.ctx.fillStyle = "#00AA00";
+    this.ctx.textAlign = "center";
+    this.ctx.textBaseline = "middle";
+    this.ctx.fillText(textPx, textX, textY - lineHeight / 2);
+    this.ctx.fillStyle = "#006600";
+    this.ctx.fillText(textMm, textX, textY + lineHeight / 2);
   }
 
   /**
