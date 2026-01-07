@@ -321,6 +321,15 @@ export function CADGabaritCanvas({
     }));
   }, []);
 
+  // Historique - défini tôt car utilisé par plusieurs callbacks
+  const addToHistory = useCallback(
+    (newSketch: Sketch) => {
+      setHistory((h) => [...h.slice(0, historyIndex + 1), serializeSketch(newSketch)]);
+      setHistoryIndex((i) => i + 1);
+    },
+    [historyIndex],
+  );
+
   // Conversion coordonnées
   const screenToWorld = useCallback(
     (screenX: number, screenY: number) => {
@@ -763,6 +772,7 @@ export function CADGabaritCanvas({
       findEntityAtPosition,
       screenToWorld,
       solveSketch,
+      addToHistory,
     ],
   );
 
@@ -1008,17 +1018,9 @@ export function CADGabaritCanvas({
     setSelectedEntities(new Set());
     addToHistory(newSketch);
     solveSketch(newSketch);
-  }, [sketch, selectedEntities, solveSketch]);
+  }, [sketch, selectedEntities, solveSketch, addToHistory]);
 
-  // Historique
-  const addToHistory = useCallback(
-    (newSketch: Sketch) => {
-      setHistory((h) => [...h.slice(0, historyIndex + 1), serializeSketch(newSketch)]);
-      setHistoryIndex((i) => i + 1);
-    },
-    [historyIndex],
-  );
-
+  // Undo/Redo
   const undo = useCallback(() => {
     if (historyIndex > 0) {
       const prevState = history[historyIndex - 1];
