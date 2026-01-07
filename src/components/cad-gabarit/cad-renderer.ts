@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 2.4 - Mesures multiples
+// VERSION: 2.5 - Support image transformée (perspective)
 // ============================================
 
 import {
@@ -91,6 +91,7 @@ export class CADRenderer {
       showConstraints?: boolean;
       showDimensions?: boolean;
       backgroundImage?: HTMLImageElement | null;
+      transformedImage?: HTMLCanvasElement | null;
       imageOpacity?: number;
       imageScale?: number;
       calibrationData?: CalibrationData | null;
@@ -119,6 +120,7 @@ export class CADRenderer {
       showConstraints = true,
       showDimensions = true,
       backgroundImage = null,
+      transformedImage = null,
       imageOpacity = 0.5,
       imageScale = 1,
       calibrationData = null,
@@ -138,8 +140,10 @@ export class CADRenderer {
     this.ctx.translate(this.viewport.offsetX, this.viewport.offsetY);
     this.ctx.scale(this.viewport.scale, this.viewport.scale);
 
-    // 1. Background image
-    if (backgroundImage) {
+    // 1. Background image (utiliser l'image transformée si disponible)
+    if (transformedImage) {
+      this.drawTransformedImage(transformedImage, imageOpacity, imageScale);
+    } else if (backgroundImage) {
       this.drawBackgroundImage(backgroundImage, imageOpacity, imageScale);
     }
 
@@ -223,6 +227,19 @@ export class CADRenderer {
     const scaledWidth = image.width * imageScale;
     const scaledHeight = image.height * imageScale;
     this.ctx.drawImage(image, -scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
+    this.ctx.globalAlpha = 1;
+  }
+
+  /**
+   * Dessine l'image transformée (après correction de perspective)
+   */
+  private drawTransformedImage(canvas: HTMLCanvasElement, opacity: number = 0.5, imageScale: number = 1): void {
+    this.ctx.globalAlpha = opacity;
+    // L'image transformée est déjà centrée sur l'origine dans son canvas
+    // On applique l'échelle mm/px
+    const scaledWidth = canvas.width * imageScale;
+    const scaledHeight = canvas.height * imageScale;
+    this.ctx.drawImage(canvas, -scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
     this.ctx.globalAlpha = 1;
   }
 
