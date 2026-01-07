@@ -30,16 +30,7 @@ export type {
   CalibrationData,
 } from "./types";
 
-export {
-  generateId,
-  distance,
-  midpoint,
-  angle,
-  normalizeAngle,
-  DEFAULT_STYLES,
-  CALIBRATION_COLORS,
-  createEmptySketch,
-} from "./types";
+export { generateId, distance, midpoint, angle, normalizeAngle, DEFAULT_STYLES, CALIBRATION_COLORS } from "./types";
 
 // Snap system
 export { SnapSystem, DEFAULT_SNAP_SETTINGS } from "./snap-system";
