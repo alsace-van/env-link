@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 2.8 - Mesures multiples persistantes
+// VERSION: 2.9 - Correction de perspective (homographie)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -78,6 +78,8 @@ import {
   CalibrationData,
   CalibrationPoint,
   CalibrationPair,
+  ReferenceRectangle,
+  HomographyMatrix,
   CALIBRATION_COLORS,
   generateId,
   distance,
@@ -86,6 +88,7 @@ import {
 import { CADRenderer } from "./cad-renderer";
 import { SnapSystem, DEFAULT_SNAP_SETTINGS } from "./snap-system";
 import { CADSolver } from "./cad-solver";
+import { createRectifyingHomography, transformPoint, warpImage, computeTransformedBounds } from "./homography";
 
 // Export DXF
 import { exportToDXF } from "./export-dxf";
@@ -180,14 +183,23 @@ export function CADGabaritCanvas({
     points: new Map(),
     pairs: new Map(),
     applied: false,
+    mode: "simple",
   });
   const [showCalibrationPanel, setShowCalibrationPanel] = useState(false);
-  const [calibrationMode, setCalibrationMode] = useState<"idle" | "addPoint" | "selectPair1" | "selectPair2">("idle");
+  const [calibrationMode, setCalibrationMode] = useState<
+    "idle" | "addPoint" | "selectPair1" | "selectPair2" | "selectRect"
+  >("idle");
   const [selectedCalibrationPoint, setSelectedCalibrationPoint] = useState<string | null>(null);
   const [newPairDistance, setNewPairDistance] = useState<string>("");
   const [newPairColor, setNewPairColor] = useState<string>(CALIBRATION_COLORS[0]);
   const [draggingCalibrationPoint, setDraggingCalibrationPoint] = useState<string | null>(null);
   const [imageScale, setImageScale] = useState<number>(1);
+
+  // Mode perspective
+  const [rectPoints, setRectPoints] = useState<string[]>([]); // IDs des 4 points du rectangle
+  const [rectWidth, setRectWidth] = useState<string>(""); // Largeur en mm
+  const [rectHeight, setRectHeight] = useState<string>(""); // Hauteur en mm
+  const [transformedImage, setTransformedImage] = useState<HTMLCanvasElement | null>(null);
 
   // Mesure - utiliser un seul état pour éviter les problèmes de synchronisation
   const [measureState, setMeasureState] = useState<{
@@ -286,6 +298,7 @@ export function CADGabaritCanvas({
       showConstraints,
       showDimensions,
       backgroundImage: showBackgroundImage ? backgroundImageRef.current : null,
+      transformedImage: showBackgroundImage ? transformedImage : null,
       imageOpacity,
       imageScale,
       calibrationData,
@@ -320,6 +333,7 @@ export function CADGabaritCanvas({
     measureStart,
     measureEnd,
     measurePreviewEnd,
+    transformedImage,
     measurements,
   ]);
 
@@ -771,6 +785,42 @@ export function CADGabaritCanvas({
             // Passer à la couleur suivante
             const currentIndex = CALIBRATION_COLORS.indexOf(newPairColor);
             setNewPairColor(CALIBRATION_COLORS[(currentIndex + 1) % CALIBRATION_COLORS.length]);
+          }
+        } else {
+          toast.error("Cliquez sur un point de calibration");
+        }
+        return;
+      }
+
+      // Mode sélection rectangle pour perspective
+      if (calibrationMode === "selectRect") {
+        const tolerance = 15 / viewport.scale;
+        let closestPoint: CalibrationPoint | null = null;
+        let closestDist = Infinity;
+
+        calibrationData.points.forEach((point) => {
+          const d = distance(worldPos, point);
+          if (d < tolerance && d < closestDist) {
+            closestDist = d;
+            closestPoint = point;
+          }
+        });
+
+        if (closestPoint) {
+          // Vérifier que le point n'est pas déjà sélectionné
+          if (rectPoints.includes(closestPoint.id)) {
+            toast.error("Point déjà sélectionné");
+            return;
+          }
+
+          const newRectPoints = [...rectPoints, closestPoint.id];
+          setRectPoints(newRectPoints);
+
+          if (newRectPoints.length < 4) {
+            toast.info(`Point ${closestPoint.label} sélectionné (${newRectPoints.length}/4)`);
+          } else {
+            toast.success("4 points sélectionnés ! Entrez les dimensions du rectangle.");
+            setCalibrationMode("idle");
           }
         } else {
           toast.error("Cliquez sur un point de calibration");
@@ -1568,65 +1618,205 @@ export function CADGabaritCanvas({
 
   // Appliquer la calibration au sketch
   const applyCalibration = useCallback(() => {
-    if (!calibrationData.scale) {
-      toast.error("Calculez d'abord la calibration");
+    // Mode simple : échelle uniforme
+    if (calibrationData.mode === "simple" || !calibrationData.mode) {
+      if (!calibrationData.scale) {
+        toast.error("Calculez d'abord la calibration");
+        return;
+      }
+
+      const scale = calibrationData.scale; // mm/px
+
+      // Convertir les points de calibration existants en mm
+      const newCalibPoints = new Map<string, CalibrationPoint>();
+      calibrationData.points.forEach((point, id) => {
+        newCalibPoints.set(id, {
+          ...point,
+          x: point.x * scale,
+          y: point.y * scale,
+        });
+      });
+
+      // Convertir les points du sketch en mm
+      const newSketchPoints = new Map(sketch.points);
+      newSketchPoints.forEach((point, id) => {
+        newSketchPoints.set(id, {
+          ...point,
+          x: point.x * scale,
+          y: point.y * scale,
+        });
+      });
+
+      // Convertir les géométries avec rayon (cercles)
+      const newGeometries = new Map(sketch.geometries);
+      newGeometries.forEach((geo, id) => {
+        if (geo.type === "circle") {
+          const circle = geo as any;
+          newGeometries.set(id, {
+            ...circle,
+            radius: circle.radius * scale,
+          });
+        }
+      });
+
+      // Mettre à jour l'échelle de l'image
+      setImageScale(scale);
+
+      // Mettre à jour les points de calibration convertis
+      setCalibrationData((prev) => ({
+        ...prev,
+        points: newCalibPoints,
+        applied: true,
+      }));
+
+      // Mettre à jour le sketch avec scaleFactor = 1 (tout est en mm maintenant)
+      setSketch((prev) => ({
+        ...prev,
+        points: newSketchPoints,
+        geometries: newGeometries,
+        scaleFactor: 1, // Coordonnées maintenant en mm
+      }));
+
+      toast.success(`Calibration appliquée ! Image mise à l'échelle (${scale.toFixed(4)} mm/px)`);
       return;
     }
 
-    const scale = calibrationData.scale; // mm/px
-
-    // Convertir les points de calibration existants en mm
-    const newCalibPoints = new Map<string, CalibrationPoint>();
-    calibrationData.points.forEach((point, id) => {
-      newCalibPoints.set(id, {
-        ...point,
-        x: point.x * scale,
-        y: point.y * scale,
-      });
-    });
-
-    // Convertir les points du sketch en mm
-    const newSketchPoints = new Map(sketch.points);
-    newSketchPoints.forEach((point, id) => {
-      newSketchPoints.set(id, {
-        ...point,
-        x: point.x * scale,
-        y: point.y * scale,
-      });
-    });
-
-    // Convertir les géométries avec rayon (cercles)
-    const newGeometries = new Map(sketch.geometries);
-    newGeometries.forEach((geo, id) => {
-      if (geo.type === "circle") {
-        const circle = geo as any;
-        newGeometries.set(id, {
-          ...circle,
-          radius: circle.radius * scale,
-        });
+    // Mode perspective : correction de déformation
+    if (calibrationData.mode === "perspective") {
+      // Vérifier qu'on a les 4 points du rectangle
+      if (rectPoints.length !== 4) {
+        toast.error("Sélectionnez 4 points pour le rectangle de référence");
+        return;
       }
-    });
 
-    // Mettre à jour l'échelle de l'image
-    setImageScale(scale);
+      const widthMm = parseFloat(rectWidth.replace(",", "."));
+      const heightMm = parseFloat(rectHeight.replace(",", "."));
 
-    // Mettre à jour les points de calibration convertis
-    setCalibrationData((prev) => ({
-      ...prev,
-      points: newCalibPoints,
-      applied: true,
-    }));
+      if (isNaN(widthMm) || widthMm <= 0 || isNaN(heightMm) || heightMm <= 0) {
+        toast.error("Entrez les dimensions du rectangle (largeur et hauteur en mm)");
+        return;
+      }
 
-    // Mettre à jour le sketch avec scaleFactor = 1 (tout est en mm maintenant)
-    setSketch((prev) => ({
-      ...prev,
-      points: newSketchPoints,
-      geometries: newGeometries,
-      scaleFactor: 1, // Coordonnées maintenant en mm
-    }));
+      if (!backgroundImageRef.current) {
+        toast.error("Aucune image de fond chargée");
+        return;
+      }
 
-    toast.success(`Calibration appliquée ! Image mise à l'échelle (${scale.toFixed(4)} mm/px)`);
-  }, [calibrationData, sketch]);
+      // Récupérer les coordonnées des 4 points
+      const quadPoints = rectPoints.map((id) => {
+        const point = calibrationData.points.get(id);
+        if (!point) throw new Error(`Point ${id} non trouvé`);
+        return { x: point.x, y: point.y };
+      });
+
+      try {
+        // Calculer l'homographie
+        const { H, scale } = createRectifyingHomography(
+          quadPoints,
+          widthMm,
+          heightMm,
+          backgroundImageRef.current.width,
+          backgroundImageRef.current.height,
+        );
+
+        // Calculer les dimensions de l'image transformée
+        const bounds = computeTransformedBounds(H, backgroundImageRef.current.width, backgroundImageRef.current.height);
+
+        // Créer l'image déformée
+        const warpedImageData = warpImage(
+          backgroundImageRef.current,
+          H,
+          Math.ceil(bounds.width),
+          Math.ceil(bounds.height),
+          Math.ceil(bounds.width / 2),
+          Math.ceil(bounds.height / 2),
+        );
+
+        // Créer un canvas pour l'image déformée
+        const warpedCanvas = document.createElement("canvas");
+        warpedCanvas.width = warpedImageData.width;
+        warpedCanvas.height = warpedImageData.height;
+        const ctx = warpedCanvas.getContext("2d")!;
+        ctx.putImageData(warpedImageData, 0, 0);
+
+        setTransformedImage(warpedCanvas);
+
+        // L'échelle en mm/px pour l'image transformée
+        const mmPerPx = 1 / scale;
+
+        // Transformer les points de calibration vers le nouveau système de coordonnées
+        const newCalibPoints = new Map<string, CalibrationPoint>();
+        calibrationData.points.forEach((point, id) => {
+          // Convertir en coordonnées centrées
+          const srcX = point.x - backgroundImageRef.current!.width / 2;
+          const srcY = point.y - backgroundImageRef.current!.height / 2;
+          // Appliquer la transformation
+          const transformed = transformPoint(H, { x: srcX, y: srcY });
+          // Convertir en mm
+          newCalibPoints.set(id, {
+            ...point,
+            x: transformed.x * mmPerPx,
+            y: transformed.y * mmPerPx,
+          });
+        });
+
+        // Transformer les points du sketch
+        const newSketchPoints = new Map(sketch.points);
+        newSketchPoints.forEach((point, id) => {
+          const srcX = point.x - backgroundImageRef.current!.width / 2;
+          const srcY = point.y - backgroundImageRef.current!.height / 2;
+          const transformed = transformPoint(H, { x: srcX, y: srcY });
+          newSketchPoints.set(id, {
+            ...point,
+            x: transformed.x * mmPerPx,
+            y: transformed.y * mmPerPx,
+          });
+        });
+
+        // Convertir les géométries avec rayon (cercles) - approximation car les cercles deviennent des ellipses
+        const newGeometries = new Map(sketch.geometries);
+        newGeometries.forEach((geo, id) => {
+          if (geo.type === "circle") {
+            const circle = geo as any;
+            // Approximation: utiliser l'échelle moyenne
+            newGeometries.set(id, {
+              ...circle,
+              radius: circle.radius * mmPerPx,
+            });
+          }
+        });
+
+        // Mettre à jour l'échelle pour le rendu
+        setImageScale(mmPerPx);
+
+        // Mettre à jour les données de calibration
+        setCalibrationData((prev) => ({
+          ...prev,
+          points: newCalibPoints,
+          applied: true,
+          homography: H,
+          referenceRect: {
+            pointIds: rectPoints,
+            widthMm,
+            heightMm,
+          },
+        }));
+
+        // Mettre à jour le sketch
+        setSketch((prev) => ({
+          ...prev,
+          points: newSketchPoints,
+          geometries: newGeometries,
+          scaleFactor: 1,
+        }));
+
+        toast.success(`Correction de perspective appliquée ! Rectangle ${widthMm}×${heightMm} mm`);
+      } catch (error) {
+        console.error("Erreur homographie:", error);
+        toast.error(`Erreur: ${error instanceof Error ? error.message : "Calcul impossible"}`);
+      }
+    }
+  }, [calibrationData, sketch, rectPoints, rectWidth, rectHeight]);
 
   // Réinitialiser la calibration
   const resetCalibration = useCallback(() => {
@@ -1637,12 +1827,18 @@ export function CADGabaritCanvas({
       points: new Map(),
       pairs: new Map(),
       applied: calibrationData.applied, // Garder le flag applied si déjà appliqué
+      mode: "simple",
     });
     setCalibrationMode("idle");
     setSelectedCalibrationPoint(null);
+    // Reset du mode perspective
+    setRectPoints([]);
+    setRectWidth("");
+    setRectHeight("");
     // Ne pas reset imageScale si déjà appliqué pour ne pas casser l'échelle
     if (!calibrationData.applied) {
       setImageScale(1);
+      setTransformedImage(null);
     }
     toast.success("Points de calibration supprimés");
   }, [calibrationData.applied]);
@@ -2170,7 +2366,7 @@ export function CADGabaritCanvas({
                   </div>
 
                   {/* Mode actif */}
-                  {calibrationMode !== "idle" && (
+                  {calibrationMode !== "idle" && calibrationMode !== "selectRect" && (
                     <div className="p-2 bg-blue-50 rounded text-sm text-blue-700">
                       {calibrationMode === "addPoint" && "📍 Cliquez sur l'image pour placer un point"}
                       {calibrationMode === "selectPair1" && "1️⃣ Cliquez sur le 1er point"}
@@ -2371,6 +2567,122 @@ export function CADGabaritCanvas({
                     </div>
                   )}
                 </div>
+
+                <Separator />
+
+                {/* Mode de calibration */}
+                <div className="space-y-2">
+                  <span className="text-sm font-medium">Mode</span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant={calibrationData.mode === "simple" ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setCalibrationData((prev) => ({ ...prev, mode: "simple" }))}
+                    >
+                      Échelle
+                    </Button>
+                    <Button
+                      variant={calibrationData.mode === "perspective" ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setCalibrationData((prev) => ({ ...prev, mode: "perspective" }))}
+                    >
+                      Perspective
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {calibrationData.mode === "simple"
+                      ? "Zoom uniforme basé sur les distances"
+                      : "Déforme l'image pour corriger la perspective"}
+                  </p>
+                </div>
+
+                {/* Mode Perspective - Sélection rectangle */}
+                {calibrationData.mode === "perspective" && (
+                  <>
+                    <Separator />
+                    <div className="space-y-3">
+                      <span className="text-sm font-medium">Rectangle de référence</span>
+                      <p className="text-xs text-muted-foreground">
+                        Sélectionnez 4 points formant un rectangle réel (sens horaire à partir du coin supérieur gauche)
+                      </p>
+
+                      {/* Points sélectionnés */}
+                      <div className="flex gap-1 flex-wrap">
+                        {[0, 1, 2, 3].map((idx) => {
+                          const pointId = rectPoints[idx];
+                          const point = pointId ? calibrationData.points.get(pointId) : null;
+                          return (
+                            <div
+                              key={idx}
+                              className={`w-8 h-8 rounded border-2 flex items-center justify-center text-xs font-bold ${
+                                point
+                                  ? "bg-blue-100 border-blue-500 text-blue-700"
+                                  : "bg-gray-100 border-gray-300 text-gray-400"
+                              }`}
+                            >
+                              {point ? point.label : idx + 1}
+                            </div>
+                          );
+                        })}
+                        <Button
+                          variant={calibrationMode === "selectRect" ? "default" : "outline"}
+                          size="sm"
+                          className="ml-2"
+                          onClick={() => {
+                            if (calibrationData.points.size < 4) {
+                              toast.error("Ajoutez au moins 4 points");
+                              return;
+                            }
+                            setCalibrationMode("selectRect");
+                            setRectPoints([]);
+                          }}
+                        >
+                          {rectPoints.length === 4 ? "Modifier" : "Sélectionner"}
+                        </Button>
+                      </div>
+
+                      {calibrationMode === "selectRect" && (
+                        <div className="p-2 bg-blue-50 rounded text-sm text-blue-700">
+                          {rectPoints.length < 4
+                            ? `Point ${rectPoints.length + 1}/4 - Cliquez sur un point`
+                            : "4 points sélectionnés ✓"}
+                        </div>
+                      )}
+
+                      {/* Dimensions du rectangle */}
+                      {rectPoints.length === 4 && (
+                        <div className="space-y-2 p-2 bg-gray-50 rounded">
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs w-16">Largeur:</Label>
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              value={rectWidth}
+                              onChange={(e) => setRectWidth(e.target.value.replace(/[^0-9.,]/g, ""))}
+                              placeholder="ex: 500"
+                              className="h-8 text-sm flex-1"
+                            />
+                            <span className="text-xs text-muted-foreground">mm</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Label className="text-xs w-16">Hauteur:</Label>
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              value={rectHeight}
+                              onChange={(e) => setRectHeight(e.target.value.replace(/[^0-9.,]/g, ""))}
+                              placeholder="ex: 300"
+                              className="h-8 text-sm flex-1"
+                            />
+                            <span className="text-xs text-muted-foreground">mm</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
 
                 <Separator />
 
