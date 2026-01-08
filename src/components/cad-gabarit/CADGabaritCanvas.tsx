@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 3.8 - Bouton supprimer calque (X)
+// VERSION: 3.9 - Poignées modernes + symboles milieux/angles
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
