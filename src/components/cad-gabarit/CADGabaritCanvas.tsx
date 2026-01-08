@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 3.5 - Onglets calques EN HAUT (style Excel)
+// VERSION: 3.6 - Onglets calques EN HAUT avec arrondis en haut
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -2853,18 +2853,18 @@ export function CADGabaritCanvas({
         {/* Canvas + Onglets calques */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Barre d'onglets des calques EN HAUT (style Excel) */}
-          <div className="h-8 border-b bg-gray-100 flex items-center px-1 gap-0.5 overflow-x-auto">
+          <div className="h-8 border-b bg-gray-100 flex items-end px-1 gap-0.5 overflow-x-auto">
             {Array.from(sketch.layers.values())
               .sort((a, b) => a.order - b.order)
               .map((layer) => (
                 <div
                   key={layer.id}
                   className={`
-                    flex items-center gap-1.5 px-3 h-7 rounded-b-md cursor-pointer select-none
-                    transition-all duration-150 text-xs font-medium border border-t-0
+                    flex items-center gap-1.5 px-3 h-7 rounded-t-md cursor-pointer select-none
+                    transition-all duration-150 text-xs font-medium border border-b-0
                     ${
                       layer.id === sketch.activeLayerId
-                        ? "bg-white border-blue-400 text-blue-700 -mt-px z-10 shadow-sm"
+                        ? "bg-white border-blue-400 text-blue-700 mb-[-1px] z-10 shadow-sm"
                         : "bg-gray-200 border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
                     }
                   `}
