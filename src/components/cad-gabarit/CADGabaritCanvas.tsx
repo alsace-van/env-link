@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.23 - Multi-sélection coins pour congés/chanfreins en batch
+// VERSION: 5.24 - Multi-congés/chanfreins: accumulation des changements dans un seul sketch
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -309,7 +309,7 @@ export function CADGabaritCanvas({
   // Modale pour congé
   const [filletDialog, setFilletDialog] = useState<{
     open: boolean;
-    corners: Array<{ line1Id: string; line2Id: string; maxRadius: number; angleDeg: number }>;
+    corners: Array<{ pointId: string; maxRadius: number; angleDeg: number }>;
     radius: number;
     minMaxRadius: number; // Le plus petit maxRadius parmi tous les coins
   } | null>(null);
@@ -317,7 +317,7 @@ export function CADGabaritCanvas({
   // Modale pour chanfrein
   const [chamferDialog, setChamferDialog] = useState<{
     open: boolean;
-    corners: Array<{ line1Id: string; line2Id: string; maxDistance: number; angleDeg: number }>;
+    corners: Array<{ pointId: string; maxDistance: number; angleDeg: number }>;
     distance: number;
     minMaxDistance: number; // Le plus petit maxDistance parmi tous les coins
   } | null>(null);
@@ -1133,29 +1133,32 @@ export function CADGabaritCanvas({
     [sketch.points],
   );
 
-  // Applique un congé (fillet) entre deux lignes
-  const applyFillet = useCallback(
-    (line1Id: string, line2Id: string, radius: number) => {
-      let currentLine1 = sketch.geometries.get(line1Id) as Line | undefined;
-      let currentLine2 = sketch.geometries.get(line2Id) as Line | undefined;
+  // Fonction interne pour appliquer un congé sur un sketch donné (retourne le nouveau sketch ou null si erreur)
+  const applyFilletToSketch = useCallback(
+    (inputSketch: Sketch, line1Id: string, line2Id: string, radius: number, silent: boolean = false): Sketch | null => {
+      let currentLine1 = inputSketch.geometries.get(line1Id) as Line | undefined;
+      let currentLine2 = inputSketch.geometries.get(line2Id) as Line | undefined;
 
       if (!currentLine1 || !currentLine2 || currentLine1.type !== "line" || currentLine2.type !== "line") {
-        toast.error("Sélectionnez deux lignes");
-        return;
+        if (!silent) toast.error("Sélectionnez deux lignes");
+        return null;
       }
 
       const shared = findSharedPoint(currentLine1, currentLine2);
       if (!shared) {
-        toast.error("Les lignes doivent partager un point commun");
-        return;
+        if (!silent) toast.error("Les lignes doivent partager un point commun");
+        return null;
       }
 
-      const newSketch = { ...sketch, points: new Map(sketch.points), geometries: new Map(sketch.geometries) };
+      const newSketch = {
+        ...inputSketch,
+        points: new Map(inputSketch.points),
+        geometries: new Map(inputSketch.geometries),
+      };
 
       // Si les points sont proches mais pas le même, fusionner
       if (shared.needsMerge) {
         const { point1Id, point2Id } = shared.needsMerge;
-        // On garde point1, on supprime point2 et on met à jour line2
         const line2Geo = newSketch.geometries.get(line2Id) as Line;
         if (line2Geo) {
           if (line2Geo.p1 === point2Id) {
@@ -1165,8 +1168,6 @@ export function CADGabaritCanvas({
           }
         }
         newSketch.points.delete(point2Id);
-
-        // Recharger les lignes après fusion
         currentLine1 = newSketch.geometries.get(line1Id) as Line;
         currentLine2 = newSketch.geometries.get(line2Id) as Line;
       }
@@ -1175,9 +1176,8 @@ export function CADGabaritCanvas({
       const endPt1 = newSketch.points.get(shared.line1OtherId);
       const endPt2 = newSketch.points.get(shared.line2OtherId);
 
-      if (!cornerPt || !endPt1 || !endPt2) return;
+      if (!cornerPt || !endPt1 || !endPt2) return null;
 
-      // Vecteurs des lignes PARTANT du coin vers les extrémités
       const vec1 = { x: endPt1.x - cornerPt.x, y: endPt1.y - cornerPt.y };
       const vec2 = { x: endPt2.x - cornerPt.x, y: endPt2.y - cornerPt.y };
 
@@ -1185,57 +1185,40 @@ export function CADGabaritCanvas({
       const len2 = Math.sqrt(vec2.x * vec2.x + vec2.y * vec2.y);
 
       if (len1 < 0.001 || len2 < 0.001) {
-        toast.error(`Lignes trop courtes (L1=${len1.toFixed(1)}mm, L2=${len2.toFixed(1)}mm)`);
-        return;
+        if (!silent) toast.error(`Lignes trop courtes`);
+        return null;
       }
 
-      // Vecteurs unitaires
       const u1 = { x: vec1.x / len1, y: vec1.y / len1 };
       const u2 = { x: vec2.x / len2, y: vec2.y / len2 };
 
-      // Angle entre les deux lignes
       const dot = u1.x * u2.x + u1.y * u2.y;
       const angleRad = Math.acos(Math.max(-1, Math.min(1, dot)));
-      const angleDeg = (angleRad * 180) / Math.PI;
 
       if (angleRad < 0.05 || angleRad > Math.PI - 0.05) {
-        toast.error(`Angle trop faible pour un congé (${angleDeg.toFixed(1)}°)`);
-        return;
+        if (!silent) toast.error(`Angle trop faible pour un congé`);
+        return null;
       }
 
-      // Distance du coin aux points de tangence
       const halfAngle = angleRad / 2;
       const tangentDist = radius / Math.tan(halfAngle);
 
-      // Vérifier que le rayon n'est pas trop grand
-      const maxRadius1 = len1 * Math.tan(halfAngle) * 0.95;
-      const maxRadius2 = len2 * Math.tan(halfAngle) * 0.95;
-      const maxRadius = Math.min(maxRadius1, maxRadius2);
-
       if (tangentDist > len1 * 0.95 || tangentDist > len2 * 0.95) {
-        toast.error(`Rayon trop grand. Max: ${maxRadius.toFixed(1)}mm pour cet angle`);
-        return;
+        if (!silent) toast.error(`Rayon trop grand`);
+        return null;
       }
 
-      // Points de tangence (sur chaque ligne, à distance tangentDist du coin)
       const tan1 = { x: cornerPt.x + u1.x * tangentDist, y: cornerPt.y + u1.y * tangentDist };
       const tan2 = { x: cornerPt.x + u2.x * tangentDist, y: cornerPt.y + u2.y * tangentDist };
 
-      // Centre de l'arc : sur la bissectrice de l'angle
       const bisector = { x: u1.x + u2.x, y: u1.y + u2.y };
       const bisLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
 
-      if (bisLen < 0.001) {
-        toast.error("Impossible de calculer le congé");
-        return;
-      }
+      if (bisLen < 0.001) return null;
 
       const bisUnit = { x: bisector.x / bisLen, y: bisector.y / bisLen };
-
-      // Distance du coin au centre = R / sin(angle/2)
       const centerDist = radius / Math.sin(halfAngle);
 
-      // Deux centres possibles sur la bissectrice
       const center1 = {
         x: cornerPt.x + bisUnit.x * centerDist,
         y: cornerPt.y + bisUnit.y * centerDist,
@@ -1245,20 +1228,15 @@ export function CADGabaritCanvas({
         y: cornerPt.y - bisUnit.y * centerDist,
       };
 
-      // Choisir le centre qui est du côté OPPOSÉ au coin par rapport à la ligne tan1-tan2
-      // Le congé doit "couper" le coin, donc le centre est de l'autre côté
       const t1t2 = { x: tan2.x - tan1.x, y: tan2.y - tan1.y };
       const t1Corner = { x: cornerPt.x - tan1.x, y: cornerPt.y - tan1.y };
       const t1Center1 = { x: center1.x - tan1.x, y: center1.y - tan1.y };
 
-      // Produit vectoriel 2D pour déterminer le côté
       const crossCorner = t1t2.x * t1Corner.y - t1t2.y * t1Corner.x;
       const crossCenter1 = t1t2.x * t1Center1.y - t1t2.y * t1Center1.x;
 
-      // Si les signes sont opposés, center1 est du bon côté, sinon center2
       const arcCenter = crossCorner * crossCenter1 < 0 ? center1 : center2;
 
-      // Créer les nouveaux points
       const tan1Id = generateId();
       const tan2Id = generateId();
       const centerId = generateId();
@@ -1267,7 +1245,6 @@ export function CADGabaritCanvas({
       newSketch.points.set(tan2Id, { id: tan2Id, x: tan2.x, y: tan2.y });
       newSketch.points.set(centerId, { id: centerId, x: arcCenter.x, y: arcCenter.y });
 
-      // Modifier les lignes : raccourcir jusqu'aux points de tangence
       const updatedLine1: Line = {
         ...currentLine1,
         p1: currentLine1.p1 === shared.sharedPointId ? tan1Id : currentLine1.p1,
@@ -1283,7 +1260,6 @@ export function CADGabaritCanvas({
       newSketch.geometries.set(line1Id, updatedLine1);
       newSketch.geometries.set(line2Id, updatedLine2);
 
-      // Créer l'arc
       const arcId = generateId();
       const arc: Arc = {
         id: arcId,
@@ -1296,7 +1272,6 @@ export function CADGabaritCanvas({
       };
       newSketch.geometries.set(arcId, arc);
 
-      // Supprimer le point du coin s'il n'est plus utilisé
       let cornerStillUsed = false;
       newSketch.geometries.forEach((geo) => {
         if (geo.type === "line") {
@@ -1310,36 +1285,49 @@ export function CADGabaritCanvas({
         newSketch.points.delete(shared.sharedPointId);
       }
 
-      setSketch(newSketch);
-      addToHistory(newSketch);
-      toast.success(`Congé R${radius}mm appliqué`);
+      return newSketch;
     },
-    [sketch, findSharedPoint, addToHistory],
+    [findSharedPoint],
   );
 
-  // Applique un chanfrein entre deux lignes
-  const applyChamfer = useCallback(
-    (line1Id: string, line2Id: string, dist: number) => {
-      let currentLine1 = sketch.geometries.get(line1Id) as Line | undefined;
-      let currentLine2 = sketch.geometries.get(line2Id) as Line | undefined;
+  // Applique un congé (fillet) entre deux lignes
+  const applyFillet = useCallback(
+    (line1Id: string, line2Id: string, radius: number) => {
+      const newSketch = applyFilletToSketch(sketch, line1Id, line2Id, radius, false);
+      if (newSketch) {
+        setSketch(newSketch);
+        addToHistory(newSketch);
+        toast.success(`Congé R${radius}mm appliqué`);
+      }
+    },
+    [sketch, applyFilletToSketch, addToHistory],
+  );
+
+  // Fonction interne pour appliquer un chanfrein sur un sketch donné
+  const applyChamferToSketch = useCallback(
+    (inputSketch: Sketch, line1Id: string, line2Id: string, dist: number, silent: boolean = false): Sketch | null => {
+      let currentLine1 = inputSketch.geometries.get(line1Id) as Line | undefined;
+      let currentLine2 = inputSketch.geometries.get(line2Id) as Line | undefined;
 
       if (!currentLine1 || !currentLine2 || currentLine1.type !== "line" || currentLine2.type !== "line") {
-        toast.error("Sélectionnez deux lignes");
-        return;
+        if (!silent) toast.error("Sélectionnez deux lignes");
+        return null;
       }
 
       const shared = findSharedPoint(currentLine1, currentLine2);
       if (!shared) {
-        toast.error("Les lignes doivent partager un point commun");
-        return;
+        if (!silent) toast.error("Les lignes doivent partager un point commun");
+        return null;
       }
 
-      const newSketch = { ...sketch, points: new Map(sketch.points), geometries: new Map(sketch.geometries) };
+      const newSketch = {
+        ...inputSketch,
+        points: new Map(inputSketch.points),
+        geometries: new Map(inputSketch.geometries),
+      };
 
-      // Si les points sont proches mais pas le même, fusionner
       if (shared.needsMerge) {
         const { point1Id, point2Id } = shared.needsMerge;
-        // On garde point1, on supprime point2 et on met à jour line2
         const line2Geo = newSketch.geometries.get(line2Id) as Line;
         if (line2Geo) {
           if (line2Geo.p1 === point2Id) {
@@ -1349,8 +1337,6 @@ export function CADGabaritCanvas({
           }
         }
         newSketch.points.delete(point2Id);
-
-        // Recharger les lignes après fusion
         currentLine1 = newSketch.geometries.get(line1Id) as Line;
         currentLine2 = newSketch.geometries.get(line2Id) as Line;
       }
@@ -1359,32 +1345,28 @@ export function CADGabaritCanvas({
       const other1 = newSketch.points.get(shared.line1OtherId);
       const other2 = newSketch.points.get(shared.line2OtherId);
 
-      if (!sharedPt || !other1 || !other2) return;
+      if (!sharedPt || !other1 || !other2) return null;
 
-      // Vecteurs unitaires des lignes
       const len1 = distance(sharedPt, other1);
       const len2 = distance(sharedPt, other2);
 
       if (len1 < dist || len2 < dist) {
-        toast.error("Distance trop grande pour ces lignes");
-        return;
+        if (!silent) toast.error("Distance trop grande pour ces lignes");
+        return null;
       }
 
       const dir1 = { x: (other1.x - sharedPt.x) / len1, y: (other1.y - sharedPt.y) / len1 };
       const dir2 = { x: (other2.x - sharedPt.x) / len2, y: (other2.y - sharedPt.y) / len2 };
 
-      // Points de chanfrein à distance D du coin
       const cham1 = { x: sharedPt.x + dir1.x * dist, y: sharedPt.y + dir1.y * dist };
       const cham2 = { x: sharedPt.x + dir2.x * dist, y: sharedPt.y + dir2.y * dist };
 
-      // Créer les nouveaux points
       const cham1Id = generateId();
       const cham2Id = generateId();
 
       newSketch.points.set(cham1Id, { id: cham1Id, x: cham1.x, y: cham1.y });
       newSketch.points.set(cham2Id, { id: cham2Id, x: cham2.x, y: cham2.y });
 
-      // Modifier les lignes - utiliser currentLine1/currentLine2 mis à jour
       const newLine1: Line = { ...currentLine1 };
       const newLine2: Line = { ...currentLine2 };
 
@@ -1403,7 +1385,6 @@ export function CADGabaritCanvas({
       newSketch.geometries.set(line1Id, newLine1);
       newSketch.geometries.set(line2Id, newLine2);
 
-      // Créer la ligne de chanfrein
       const chamferLineId = generateId();
       const chamferLine: Line = {
         id: chamferLineId,
@@ -1414,7 +1395,6 @@ export function CADGabaritCanvas({
       };
       newSketch.geometries.set(chamferLineId, chamferLine);
 
-      // Supprimer le point commun s'il n'est plus utilisé
       let pointStillUsed = false;
       newSketch.geometries.forEach((geo) => {
         if (geo.type === "line") {
@@ -1426,11 +1406,22 @@ export function CADGabaritCanvas({
         newSketch.points.delete(shared.sharedPointId);
       }
 
-      setSketch(newSketch);
-      addToHistory(newSketch);
-      toast.success(`Chanfrein ${dist}mm appliqué`);
+      return newSketch;
     },
-    [sketch, findSharedPoint, addToHistory],
+    [findSharedPoint],
+  );
+
+  // Applique un chanfrein entre deux lignes
+  const applyChamfer = useCallback(
+    (line1Id: string, line2Id: string, dist: number) => {
+      const newSketch = applyChamferToSketch(sketch, line1Id, line2Id, dist, false);
+      if (newSketch) {
+        setSketch(newSketch);
+        addToHistory(newSketch);
+        toast.success(`Chanfrein ${dist}mm appliqué`);
+      }
+    },
+    [sketch, applyChamferToSketch, addToHistory],
   );
 
   // Trouver les lignes connectées à un point
@@ -1582,7 +1573,7 @@ export function CADGabaritCanvas({
 
   // Ouvrir le dialogue de congé si 2 lignes OU 1+ points (coins) sont sélectionnés
   const openFilletDialog = useCallback(() => {
-    const corners: Array<{ line1Id: string; line2Id: string; maxRadius: number; angleDeg: number }> = [];
+    const corners: Array<{ pointId: string; maxRadius: number; angleDeg: number }> = [];
 
     // Collecter tous les coins valides
     const selectedIds = Array.from(selectedEntities);
@@ -1608,8 +1599,7 @@ export function CADGabaritCanvas({
         const params = calculateCornerParams(connectedLines[0].id, connectedLines[1].id);
         if (params) {
           corners.push({
-            line1Id: connectedLines[0].id,
-            line2Id: connectedLines[1].id,
+            pointId,
             maxRadius: params.maxRadius,
             angleDeg: params.angleDeg,
           });
@@ -1629,8 +1619,7 @@ export function CADGabaritCanvas({
           const params = calculateCornerParams(selectedIds[0], selectedIds[1]);
           if (params) {
             corners.push({
-              line1Id: selectedIds[0],
-              line2Id: selectedIds[1],
+              pointId: shared.sharedPointId,
               maxRadius: params.maxRadius,
               angleDeg: params.angleDeg,
             });
@@ -1675,7 +1664,7 @@ export function CADGabaritCanvas({
 
   // Ouvrir le dialogue de chanfrein si 2 lignes OU 1+ points (coins) sont sélectionnés
   const openChamferDialog = useCallback(() => {
-    const corners: Array<{ line1Id: string; line2Id: string; maxDistance: number; angleDeg: number }> = [];
+    const corners: Array<{ pointId: string; maxDistance: number; angleDeg: number }> = [];
 
     // Collecter tous les coins valides
     const selectedIds = Array.from(selectedEntities);
@@ -1701,8 +1690,7 @@ export function CADGabaritCanvas({
         const params = calculateCornerParams(connectedLines[0].id, connectedLines[1].id);
         if (params) {
           corners.push({
-            line1Id: connectedLines[0].id,
-            line2Id: connectedLines[1].id,
+            pointId,
             maxDistance: params.maxDistance,
             angleDeg: params.angleDeg,
           });
@@ -1722,8 +1710,7 @@ export function CADGabaritCanvas({
           const params = calculateCornerParams(selectedIds[0], selectedIds[1]);
           if (params) {
             corners.push({
-              line1Id: selectedIds[0],
-              line2Id: selectedIds[1],
+              pointId: shared.sharedPointId,
               maxDistance: params.maxDistance,
               angleDeg: params.angleDeg,
             });
@@ -1770,45 +1757,125 @@ export function CADGabaritCanvas({
   const applyFilletFromDialog = useCallback(() => {
     if (!filletDialog) return;
 
+    // Accumuler les changements dans un seul sketch
+    let currentSketch: Sketch = {
+      ...sketch,
+      points: new Map(sketch.points),
+      geometries: new Map(sketch.geometries),
+      layers: new Map(sketch.layers),
+      constraints: [...sketch.constraints],
+    };
     let successCount = 0;
+
     for (const corner of filletDialog.corners) {
+      // Retrouver les lignes connectées à ce point dans le sketch COURANT
+      const connectedLines: Line[] = [];
+      currentSketch.geometries.forEach((geo) => {
+        if (geo.type === "line") {
+          const line = geo as Line;
+          if (line.p1 === corner.pointId || line.p2 === corner.pointId) {
+            connectedLines.push(line);
+          }
+        }
+      });
+
+      if (connectedLines.length !== 2) {
+        console.log(`Point ${corner.pointId} n'a plus exactement 2 lignes connectées (${connectedLines.length})`);
+        continue;
+      }
+
       // Vérifier que le rayon ne dépasse pas le max de ce coin
       if (filletDialog.radius <= corner.maxRadius) {
-        applyFillet(corner.line1Id, corner.line2Id, filletDialog.radius);
-        successCount++;
+        const newSketch = applyFilletToSketch(
+          currentSketch,
+          connectedLines[0].id,
+          connectedLines[1].id,
+          filletDialog.radius,
+          true,
+        );
+        if (newSketch) {
+          currentSketch = newSketch;
+          successCount++;
+        }
       }
     }
 
-    setFilletRadius(filletDialog.radius); // Mémoriser pour la prochaine fois
+    if (successCount > 0) {
+      setSketch(currentSketch);
+      addToHistory(currentSketch);
+      if (successCount === 1) {
+        toast.success(`Congé R${filletDialog.radius}mm appliqué`);
+      } else {
+        toast.success(`${successCount} congés R${filletDialog.radius}mm appliqués`);
+      }
+    }
+
+    setFilletRadius(filletDialog.radius);
     setFilletDialog(null);
     setSelectedEntities(new Set());
-
-    if (successCount > 1) {
-      toast.success(`${successCount} congés appliqués`);
-    }
-  }, [filletDialog, applyFillet]);
+  }, [filletDialog, sketch, applyFilletToSketch, addToHistory]);
 
   // Appliquer le chanfrein depuis la modale (sur tous les coins)
   const applyChamferFromDialog = useCallback(() => {
     if (!chamferDialog) return;
 
+    // Accumuler les changements dans un seul sketch
+    let currentSketch: Sketch = {
+      ...sketch,
+      points: new Map(sketch.points),
+      geometries: new Map(sketch.geometries),
+      layers: new Map(sketch.layers),
+      constraints: [...sketch.constraints],
+    };
     let successCount = 0;
+
     for (const corner of chamferDialog.corners) {
+      // Retrouver les lignes connectées à ce point dans le sketch COURANT
+      const connectedLines: Line[] = [];
+      currentSketch.geometries.forEach((geo) => {
+        if (geo.type === "line") {
+          const line = geo as Line;
+          if (line.p1 === corner.pointId || line.p2 === corner.pointId) {
+            connectedLines.push(line);
+          }
+        }
+      });
+
+      if (connectedLines.length !== 2) {
+        console.log(`Point ${corner.pointId} n'a plus exactement 2 lignes connectées (${connectedLines.length})`);
+        continue;
+      }
+
       // Vérifier que la distance ne dépasse pas le max de ce coin
       if (chamferDialog.distance <= corner.maxDistance) {
-        applyChamfer(corner.line1Id, corner.line2Id, chamferDialog.distance);
-        successCount++;
+        const newSketch = applyChamferToSketch(
+          currentSketch,
+          connectedLines[0].id,
+          connectedLines[1].id,
+          chamferDialog.distance,
+          true,
+        );
+        if (newSketch) {
+          currentSketch = newSketch;
+          successCount++;
+        }
       }
     }
 
-    setChamferDistance(chamferDialog.distance); // Mémoriser pour la prochaine fois
+    if (successCount > 0) {
+      setSketch(currentSketch);
+      addToHistory(currentSketch);
+      if (successCount === 1) {
+        toast.success(`Chanfrein ${chamferDialog.distance}mm appliqué`);
+      } else {
+        toast.success(`${successCount} chanfreins ${chamferDialog.distance}mm appliqués`);
+      }
+    }
+
+    setChamferDistance(chamferDialog.distance);
     setChamferDialog(null);
     setSelectedEntities(new Set());
-
-    if (successCount > 1) {
-      toast.success(`${successCount} chanfreins appliqués`);
-    }
-  }, [chamferDialog, applyChamfer]);
+  }, [chamferDialog, sketch, applyChamferToSketch, addToHistory]);
 
   // Calculer l'intersection de deux lignes (prolongées)
   const lineIntersection = useCallback(
@@ -2753,14 +2820,22 @@ export function CADGabaritCanvas({
                   setFilletFirstLine(null);
                   return;
                 }
+                // Trouver le point partagé
+                const line1 = sketch.geometries.get(filletFirstLine) as Line;
+                const line2 = sketch.geometries.get(entityId) as Line;
+                const shared = findSharedPoint(line1, line2);
+                if (!shared) {
+                  toast.error("Les lignes doivent partager un point commun");
+                  setFilletFirstLine(null);
+                  return;
+                }
                 const suggestedRadius = Math.min(filletRadius, Math.floor(params.maxRadius));
                 // Ouvrir la modale
                 setFilletDialog({
                   open: true,
                   corners: [
                     {
-                      line1Id: filletFirstLine,
-                      line2Id: entityId,
+                      pointId: shared.sharedPointId,
                       maxRadius: params.maxRadius,
                       angleDeg: params.angleDeg,
                     },
@@ -2793,14 +2868,22 @@ export function CADGabaritCanvas({
                   setFilletFirstLine(null);
                   return;
                 }
+                // Trouver le point partagé
+                const line1 = sketch.geometries.get(filletFirstLine) as Line;
+                const line2 = sketch.geometries.get(entityId) as Line;
+                const shared = findSharedPoint(line1, line2);
+                if (!shared) {
+                  toast.error("Les lignes doivent partager un point commun");
+                  setFilletFirstLine(null);
+                  return;
+                }
                 const suggestedDistance = Math.min(chamferDistance, Math.floor(params.maxDistance));
                 // Ouvrir la modale
                 setChamferDialog({
                   open: true,
                   corners: [
                     {
-                      line1Id: filletFirstLine,
-                      line2Id: entityId,
+                      pointId: shared.sharedPointId,
                       maxDistance: params.maxDistance,
                       angleDeg: params.angleDeg,
                     },
