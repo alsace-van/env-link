@@ -1,7 +1,7 @@
 // ============================================
 // EnergyBalance.tsx
 // Bilan énergétique du projet
-// VERSION: 2.7 - Import catalogue avec capacite_ah pour batteries
+// VERSION: 2.8 - Ajout export PDF
 // ============================================
 
 import { useEffect, useState, useRef } from "react";
@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Battery, Zap, TrendingUp, AlertCircle, Plus, ShoppingCart, ArrowRight, Trash2 } from "lucide-react";
+import { Battery, Zap, TrendingUp, AlertCircle, Plus, ShoppingCart, ArrowRight, Trash2, Download } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { exportEnergyBalancePdf } from "@/utils/exportEnergyBalancePdf";
 
 interface ElectricalItem {
   id: string;
@@ -59,10 +60,11 @@ interface Category {
 
 interface EnergyBalanceProps {
   projectId: string;
+  projectName?: string;
   refreshTrigger?: number;
 }
 
-export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps) => {
+export const EnergyBalance = ({ projectId, projectName, refreshTrigger }: EnergyBalanceProps) => {
   const [items, setItems] = useState<ElectricalItem[]>([]);
   const [draftItems, setDraftItems] = useState<DraftItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -788,9 +790,31 @@ export const EnergyBalance = ({ projectId, refreshTrigger }: EnergyBalanceProps)
   return (
     <>
       <Card>
-        <CardHeader>
-          <CardTitle>Bilan Énergétique</CardTitle>
-          <CardDescription>Analyse de votre installation électrique 12V</CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <div>
+            <CardTitle>Bilan Énergétique</CardTitle>
+            <CardDescription>Analyse de votre installation électrique 12V</CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const itemsToExport = activeTab === "real" ? items : (draftItems as ElectricalItem[]);
+              if (itemsToExport.length === 0) {
+                toast.warning("Aucun équipement à exporter");
+                return;
+              }
+              exportEnergyBalancePdf({
+                items: itemsToExport,
+                projectName: projectName,
+              });
+              toast.success("PDF exporté avec succès");
+            }}
+            disabled={activeTab === "real" ? items.length === 0 : draftItems.length === 0}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Exporter PDF
+          </Button>
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
