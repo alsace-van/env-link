@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 3.4 - Onglets calques style Excel
+// VERSION: 3.5 - Onglets calques EN HAUT (style Excel)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -2852,6 +2852,53 @@ export function CADGabaritCanvas({
       <div className="flex-1 flex overflow-hidden">
         {/* Canvas + Onglets calques */}
         <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Barre d'onglets des calques EN HAUT (style Excel) */}
+          <div className="h-8 border-b bg-gray-100 flex items-center px-1 gap-0.5 overflow-x-auto">
+            {Array.from(sketch.layers.values())
+              .sort((a, b) => a.order - b.order)
+              .map((layer) => (
+                <div
+                  key={layer.id}
+                  className={`
+                    flex items-center gap-1.5 px-3 h-7 rounded-b-md cursor-pointer select-none
+                    transition-all duration-150 text-xs font-medium border border-t-0
+                    ${
+                      layer.id === sketch.activeLayerId
+                        ? "bg-white border-blue-400 text-blue-700 -mt-px z-10 shadow-sm"
+                        : "bg-gray-200 border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
+                    }
+                  `}
+                  onClick={() => setSketch((prev) => ({ ...prev, activeLayerId: layer.id }))}
+                >
+                  {/* Indicateur de couleur */}
+                  <div
+                    className="w-2.5 h-2.5 rounded-sm border border-gray-400/50"
+                    style={{ backgroundColor: layer.color }}
+                  />
+                  {/* Nom du calque */}
+                  <span className="whitespace-nowrap">{layer.name}</span>
+                  {/* Bouton visibilité */}
+                  <button
+                    className={`ml-1 p-0.5 rounded hover:bg-blue-100 ${!layer.visible ? "opacity-40" : ""}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSketch((prev) => {
+                        const newLayers = new Map(prev.layers);
+                        const l = newLayers.get(layer.id);
+                        if (l) {
+                          newLayers.set(layer.id, { ...l, visible: !l.visible });
+                        }
+                        return { ...prev, layers: newLayers };
+                      });
+                    }}
+                    title={layer.visible ? "Masquer le calque" : "Afficher le calque"}
+                  >
+                    {layer.visible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                  </button>
+                </div>
+              ))}
+          </div>
+
           {/* Canvas */}
           <div className="flex-1 relative overflow-hidden">
             <canvas
@@ -2894,53 +2941,6 @@ export function CADGabaritCanvas({
                 )}
               </div>
             )}
-          </div>
-
-          {/* Barre d'onglets des calques (style Excel) */}
-          <div className="h-8 border-t bg-gray-100 flex items-center px-1 gap-0.5 overflow-x-auto">
-            {Array.from(sketch.layers.values())
-              .sort((a, b) => a.order - b.order)
-              .map((layer) => (
-                <div
-                  key={layer.id}
-                  className={`
-                    flex items-center gap-1.5 px-3 h-7 rounded-t-md cursor-pointer select-none
-                    transition-all duration-150 text-xs font-medium border border-b-0
-                    ${
-                      layer.id === sketch.activeLayerId
-                        ? "bg-white border-blue-400 text-blue-700 -mb-px z-10 shadow-sm"
-                        : "bg-gray-200 border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
-                    }
-                  `}
-                  onClick={() => setSketch((prev) => ({ ...prev, activeLayerId: layer.id }))}
-                >
-                  {/* Indicateur de couleur */}
-                  <div
-                    className="w-2.5 h-2.5 rounded-sm border border-gray-400/50"
-                    style={{ backgroundColor: layer.color }}
-                  />
-                  {/* Nom du calque */}
-                  <span className="whitespace-nowrap">{layer.name}</span>
-                  {/* Bouton visibilité */}
-                  <button
-                    className={`ml-1 p-0.5 rounded hover:bg-blue-100 ${!layer.visible ? "opacity-40" : ""}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSketch((prev) => {
-                        const newLayers = new Map(prev.layers);
-                        const l = newLayers.get(layer.id);
-                        if (l) {
-                          newLayers.set(layer.id, { ...l, visible: !l.visible });
-                        }
-                        return { ...prev, layers: newLayers };
-                      });
-                    }}
-                    title={layer.visible ? "Masquer le calque" : "Afficher le calque"}
-                  >
-                    {layer.visible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-                  </button>
-                </div>
-              ))}
           </div>
         </div>
 
