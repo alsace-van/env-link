@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.29 - Test géométrique (v5.24) + option "Inverser le sens" manuelle
+// VERSION: 5.30 - Bissectrice inversée -(u1+u2) pour placer le congé du bon côté
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -312,7 +312,6 @@ export function CADGabaritCanvas({
     corners: Array<{ pointId: string; maxRadius: number; angleDeg: number }>;
     radius: number;
     minMaxRadius: number; // Le plus petit maxRadius parmi tous les coins
-    invert: boolean; // Inverser le sens du congé
   } | null>(null);
 
   // Modale pour chanfrein
@@ -328,7 +327,6 @@ export function CADGabaritCanvas({
     open: boolean;
     arcId: string;
     currentRadius: number;
-    invert: boolean;
   } | null>(null);
 
   // Aliases pour compatibilité avec le rendu
@@ -1137,14 +1135,7 @@ export function CADGabaritCanvas({
 
   // Fonction interne pour appliquer un congé sur un sketch donné (retourne le nouveau sketch ou null si erreur)
   const applyFilletToSketch = useCallback(
-    (
-      inputSketch: Sketch,
-      line1Id: string,
-      line2Id: string,
-      radius: number,
-      silent: boolean = false,
-      invert: boolean = false,
-    ): Sketch | null => {
+    (inputSketch: Sketch, line1Id: string, line2Id: string, radius: number, silent: boolean = false): Sketch | null => {
       let currentLine1 = inputSketch.geometries.get(line1Id) as Line | undefined;
       let currentLine2 = inputSketch.geometries.get(line2Id) as Line | undefined;
 
@@ -1220,8 +1211,8 @@ export function CADGabaritCanvas({
       const tan1 = { x: cornerPt.x + u1.x * tangentDist, y: cornerPt.y + u1.y * tangentDist };
       const tan2 = { x: cornerPt.x + u2.x * tangentDist, y: cornerPt.y + u2.y * tangentDist };
 
-      // Calculer les deux centres possibles sur la bissectrice
-      const bisector = { x: u1.x + u2.x, y: u1.y + u2.y };
+      // La bissectrice -(u1 + u2) pointe vers l'extérieur de l'angle (là où le congé doit couper)
+      const bisector = { x: -(u1.x + u2.x), y: -(u1.y + u2.y) };
       const bisLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
 
       if (bisLen < 0.001) return null;
@@ -1229,30 +1220,11 @@ export function CADGabaritCanvas({
       const bisUnit = { x: bisector.x / bisLen, y: bisector.y / bisLen };
       const centerDist = radius / Math.sin(halfAngle);
 
-      const center1 = {
+      // Le centre est sur la bissectrice, du côté où le congé doit couper le coin
+      const arcCenter = {
         x: cornerPt.x + bisUnit.x * centerDist,
         y: cornerPt.y + bisUnit.y * centerDist,
       };
-      const center2 = {
-        x: cornerPt.x - bisUnit.x * centerDist,
-        y: cornerPt.y - bisUnit.y * centerDist,
-      };
-
-      // Test géométrique: choisir le centre du côté OPPOSÉ au coin par rapport à la ligne tan1-tan2
-      const t1t2 = { x: tan2.x - tan1.x, y: tan2.y - tan1.y };
-      const t1Corner = { x: cornerPt.x - tan1.x, y: cornerPt.y - tan1.y };
-      const t1Center1 = { x: center1.x - tan1.x, y: center1.y - tan1.y };
-
-      const crossCorner = t1t2.x * t1Corner.y - t1t2.y * t1Corner.x;
-      const crossCenter1 = t1t2.x * t1Center1.y - t1t2.y * t1Center1.x;
-
-      // Si invert est true, on inverse le choix
-      let arcCenter: { x: number; y: number };
-      if (invert) {
-        arcCenter = crossCorner * crossCenter1 < 0 ? center2 : center1;
-      } else {
-        arcCenter = crossCorner * crossCenter1 < 0 ? center1 : center2;
-      }
 
       const tan1Id = generateId();
       const tan2Id = generateId();
@@ -1668,7 +1640,6 @@ export function CADGabaritCanvas({
       corners,
       radius: suggestedRadius > 0 ? suggestedRadius : 1,
       minMaxRadius,
-      invert: false,
     });
   }, [
     selectedEntities,
@@ -1810,7 +1781,6 @@ export function CADGabaritCanvas({
           connectedLines[1].id,
           filletDialog.radius,
           true,
-          filletDialog.invert,
         );
         if (newSketch) {
           currentSketch = newSketch;
@@ -2039,7 +2009,7 @@ export function CADGabaritCanvas({
 
   // Modifier le rayon d'un arc existant (recalcul complet du congé)
   const updateArcRadius = useCallback(
-    (arcId: string, newRadius: number, invert: boolean = false) => {
+    (arcId: string, newRadius: number) => {
       const arc = sketch.geometries.get(arcId) as Arc | undefined;
       if (!arc || arc.type !== "arc") return;
 
@@ -2109,7 +2079,7 @@ export function CADGabaritCanvas({
       const newTan2 = { x: corner.x + u2.x * tangentDist, y: corner.y + u2.y * tangentDist };
 
       // La bissectrice pointe toujours vers l'intérieur de l'angle
-      const bisector = { x: u1.x + u2.x, y: u1.y + u2.y };
+      const bisector = { x: -(u1.x + u2.x), y: -(u1.y + u2.y) };
       const bisLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
 
       if (bisLen < 0.001) {
@@ -2120,30 +2090,10 @@ export function CADGabaritCanvas({
       const bisUnit = { x: bisector.x / bisLen, y: bisector.y / bisLen };
       const centerDist = newRadius / Math.sin(halfAngle);
 
-      const center1 = {
+      const newCenter = {
         x: corner.x + bisUnit.x * centerDist,
         y: corner.y + bisUnit.y * centerDist,
       };
-      const center2 = {
-        x: corner.x - bisUnit.x * centerDist,
-        y: corner.y - bisUnit.y * centerDist,
-      };
-
-      // Test géométrique: choisir le centre du côté OPPOSÉ au coin
-      const t1t2 = { x: newTan2.x - newTan1.x, y: newTan2.y - newTan1.y };
-      const t1Corner = { x: corner.x - newTan1.x, y: corner.y - newTan1.y };
-      const t1Center1 = { x: center1.x - newTan1.x, y: center1.y - newTan1.y };
-
-      const crossCorner = t1t2.x * t1Corner.y - t1t2.y * t1Corner.x;
-      const crossCenter1 = t1t2.x * t1Center1.y - t1t2.y * t1Center1.x;
-
-      // Si invert est true, on inverse le choix
-      let newCenter: { x: number; y: number };
-      if (invert) {
-        newCenter = crossCorner * crossCenter1 < 0 ? center2 : center1;
-      } else {
-        newCenter = crossCorner * crossCenter1 < 0 ? center1 : center2;
-      }
 
       // Mettre à jour le sketch
       const newSketch = { ...sketch };
@@ -2866,7 +2816,6 @@ export function CADGabaritCanvas({
                   ],
                   radius: suggestedRadius > 0 ? suggestedRadius : 1,
                   minMaxRadius: params.maxRadius,
-                  invert: false,
                 });
                 setFilletFirstLine(null);
               }
@@ -3268,7 +3217,6 @@ export function CADGabaritCanvas({
               open: true,
               arcId: entityId,
               currentRadius: arc.radius,
-              invert: false,
             });
           } else if (geo.type === "line" || geo.type === "bezier") {
             // Double-clic sur ligne/bezier → sélectionner toute la figure connectée
@@ -5192,7 +5140,6 @@ export function CADGabaritCanvas({
                           open: true,
                           arcId: entityId,
                           currentRadius: arc.radius,
-                          invert: false,
                         });
                       }}
                     >
@@ -5974,23 +5921,6 @@ export function CADGabaritCanvas({
                       Rayon trop grand (max: {filletDialog.minMaxRadius.toFixed(1)}mm)
                     </p>
                   )}
-                  <div className="flex items-center gap-2 mt-3">
-                    <input
-                      type="checkbox"
-                      id="fillet-invert"
-                      checked={filletDialog.invert}
-                      onChange={(e) =>
-                        setFilletDialog({
-                          ...filletDialog,
-                          invert: e.target.checked,
-                        })
-                      }
-                      className="w-4 h-4"
-                    />
-                    <Label htmlFor="fillet-invert" className="text-sm cursor-pointer">
-                      Inverser le sens
-                    </Label>
-                  </div>
                 </div>
                 <DialogFooter>
                   <Button onClick={applyFilletFromDialog} className="w-full" disabled={!isValid}>
@@ -6082,29 +6012,12 @@ export function CADGabaritCanvas({
                     const input = document.getElementById("arc-radius") as HTMLInputElement;
                     const value = parseFloat(input.value);
                     if (!isNaN(value) && value > 0) {
-                      updateArcRadius(arcEditDialog.arcId, value, arcEditDialog.invert);
+                      updateArcRadius(arcEditDialog.arcId, value);
                       setArcEditDialog(null);
                     }
                   }
                 }}
               />
-              <div className="flex items-center gap-2 mt-3">
-                <input
-                  type="checkbox"
-                  id="arc-invert"
-                  checked={arcEditDialog.invert}
-                  onChange={(e) =>
-                    setArcEditDialog({
-                      ...arcEditDialog,
-                      invert: e.target.checked,
-                    })
-                  }
-                  className="w-4 h-4"
-                />
-                <Label htmlFor="arc-invert" className="text-sm cursor-pointer">
-                  Inverser le sens
-                </Label>
-              </div>
             </div>
             <DialogFooter>
               <Button
@@ -6112,7 +6025,7 @@ export function CADGabaritCanvas({
                   const input = document.getElementById("arc-radius") as HTMLInputElement;
                   const value = parseFloat(input.value);
                   if (!isNaN(value) && value > 0) {
-                    updateArcRadius(arcEditDialog.arcId, value, arcEditDialog.invert);
+                    updateArcRadius(arcEditDialog.arcId, value);
                     setArcEditDialog(null);
                   }
                 }}
