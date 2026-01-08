@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.0 - Correction complète masquage calques + poignées
+// VERSION: 3.1 - Ne pas dessiner les points orphelins
 // ============================================
 
 import {
@@ -192,12 +192,17 @@ export class CADRenderer {
         visiblePointIds.add((geo as Bezier).p2);
         visiblePointIds.add((geo as Bezier).cp1);
         visiblePointIds.add((geo as Bezier).cp2);
+      } else if (geo.type === "arc") {
+        visiblePointIds.add((geo as Arc).center);
+        visiblePointIds.add((geo as Arc).startPoint);
+        visiblePointIds.add((geo as Arc).endPoint);
       }
     });
 
     sketch.points.forEach((point, id) => {
       // Ne dessiner que les points liés à des géométries visibles
-      if (visiblePointIds.size > 0 && !visiblePointIds.has(id)) return;
+      // Si aucune géométrie n'existe ou le point n'appartient à aucune géométrie visible, ne pas le dessiner
+      if (!visiblePointIds.has(id)) return;
 
       const isSelected = selectedEntities.has(id);
       const isHovered = hoveredEntity === id;
