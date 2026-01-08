@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 2.8 - Symbole milieu en croix X diagonale
+// VERSION: 2.9 - Correction masquage calques + support visibilité
 // ============================================
 
 import {
@@ -157,19 +157,47 @@ export class CADRenderer {
       this.drawGrid(sketch.scaleFactor);
     }
 
-    // 3. Geometries
+    // 3. Geometries (filtrer par visibilité du calque)
     sketch.geometries.forEach((geo, id) => {
+      // Vérifier si le calque est visible
+      const layerId = geo.layerId || "trace";
+      const layer = sketch.layers.get(layerId);
+      if (layer && !layer.visible) return; // Ne pas dessiner si calque masqué
+
       const isSelected = selectedEntities.has(id);
       const isHovered = hoveredEntity === id;
       this.drawGeometry(geo, sketch, isSelected, isHovered);
     });
 
-    // 3.5 Marqueurs géométriques (milieux et angles droits)
+    // 3.5 Marqueurs géométriques (milieux et angles droits) - seulement pour calques visibles
     this.drawMidpointMarkers(sketch);
     this.drawRightAngleMarkers(sketch);
 
-    // 4. Points
+    // 4. Points (filtrer par calques visibles - un point est visible si au moins une de ses géométries l'est)
+    const visiblePointIds = new Set<string>();
+    sketch.geometries.forEach((geo) => {
+      const layerId = geo.layerId || "trace";
+      const layer = sketch.layers.get(layerId);
+      if (layer && !layer.visible) return;
+
+      // Collecter les points de cette géométrie
+      if (geo.type === "line") {
+        visiblePointIds.add((geo as Line).p1);
+        visiblePointIds.add((geo as Line).p2);
+      } else if (geo.type === "circle") {
+        visiblePointIds.add((geo as Circle).center);
+      } else if (geo.type === "bezier") {
+        visiblePointIds.add((geo as Bezier).p1);
+        visiblePointIds.add((geo as Bezier).p2);
+        visiblePointIds.add((geo as Bezier).cp1);
+        visiblePointIds.add((geo as Bezier).cp2);
+      }
+    });
+
     sketch.points.forEach((point, id) => {
+      // Ne dessiner que les points liés à des géométries visibles
+      if (visiblePointIds.size > 0 && !visiblePointIds.has(id)) return;
+
       const isSelected = selectedEntities.has(id);
       const isHovered = hoveredEntity === id;
       this.drawPoint(point, isSelected, isHovered);
@@ -617,6 +645,11 @@ export class CADRenderer {
     const markerSize = 4 / this.viewport.scale;
 
     sketch.geometries.forEach((geo) => {
+      // Vérifier la visibilité du calque
+      const layerId = geo.layerId || "trace";
+      const layer = sketch.layers.get(layerId);
+      if (layer && !layer.visible) return;
+
       if (geo.type === "line") {
         const line = geo as Line;
         const p1 = sketch.points.get(line.p1);
@@ -648,8 +681,13 @@ export class CADRenderer {
     const markerSize = 8 / this.viewport.scale;
     const lines: Array<{ p1: Point; p2: Point }> = [];
 
-    // Collecter toutes les lignes
+    // Collecter toutes les lignes visibles
     sketch.geometries.forEach((geo) => {
+      // Vérifier la visibilité du calque
+      const layerId = geo.layerId || "trace";
+      const layer = sketch.layers.get(layerId);
+      if (layer && !layer.visible) return;
+
       if (geo.type === "line") {
         const line = geo as Line;
         const p1 = sketch.points.get(line.p1);
