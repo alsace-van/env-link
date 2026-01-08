@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.8 - Fix bissectrice: utiliser +(u1+u2) pas -(u1+u2)
+// VERSION: 5.9 - Chanfrein avec modale, sélection point (coin) pour congé/chanfrein
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -294,6 +294,14 @@ export function CADGabaritCanvas({
     line1Id: string;
     line2Id: string;
     radius: number;
+  } | null>(null);
+
+  // Modale pour chanfrein
+  const [chamferDialog, setChamferDialog] = useState<{
+    open: boolean;
+    line1Id: string;
+    line2Id: string;
+    distance: number;
   } | null>(null);
 
   // Modale pour modifier le rayon d'un arc existant
@@ -767,9 +775,25 @@ export function CADGabaritCanvas({
           }
         }
 
-        // Ne sélectionner le point que s'il n'est pas utilisé par une géométrie
-        if (!isUsedByGeometry && distance({ x: worldX, y: worldY }, point) < tolerance) {
-          return id;
+        // Sélectionner le point s'il n'est pas utilisé par une géométrie
+        // OU s'il est un "coin" (connecté à exactement 2 lignes)
+        if (distance({ x: worldX, y: worldY }, point) < tolerance) {
+          if (!isUsedByGeometry) {
+            return id;
+          }
+          // Vérifier si c'est un coin (connecté à exactement 2 lignes)
+          let connectedLines = 0;
+          for (const geo of sketch.geometries.values()) {
+            if (geo.type === "line") {
+              const line = geo as Line;
+              if (line.p1 === id || line.p2 === id) {
+                connectedLines++;
+              }
+            }
+          }
+          if (connectedLines === 2) {
+            return id; // C'est un coin, on peut le sélectionner
+          }
         }
       }
 
@@ -1228,50 +1252,6 @@ export function CADGabaritCanvas({
     [sketch, findSharedPoint],
   );
 
-  // Ouvrir le dialogue de congé si 2 lignes sont sélectionnées
-  const openFilletDialog = useCallback(() => {
-    if (selectedEntities.size !== 2) {
-      toast.warning("Sélectionnez exactement 2 lignes");
-      return;
-    }
-
-    const ids = Array.from(selectedEntities);
-    const geo1 = sketch.geometries.get(ids[0]);
-    const geo2 = sketch.geometries.get(ids[1]);
-
-    if (!geo1 || !geo2 || geo1.type !== "line" || geo2.type !== "line") {
-      toast.warning("Sélectionnez 2 lignes (pas d'autres formes)");
-      return;
-    }
-
-    // Vérifier qu'elles partagent un point
-    const line1 = geo1 as Line;
-    const line2 = geo2 as Line;
-    const shared = findSharedPoint(line1, line2);
-
-    if (!shared) {
-      toast.warning("Les lignes doivent partager un point commun (un coin)");
-      return;
-    }
-
-    setFilletDialog({
-      open: true,
-      line1Id: ids[0],
-      line2Id: ids[1],
-      radius: filletRadius,
-    });
-  }, [selectedEntities, sketch.geometries, findSharedPoint, filletRadius]);
-
-  // Appliquer le congé depuis la modale
-  const applyFilletFromDialog = useCallback(() => {
-    if (!filletDialog) return;
-
-    applyFillet(filletDialog.line1Id, filletDialog.line2Id, filletDialog.radius);
-    setFilletRadius(filletDialog.radius); // Mémoriser pour la prochaine fois
-    setFilletDialog(null);
-    setSelectedEntities(new Set());
-  }, [filletDialog, applyFillet]);
-
   // Trouver les lignes connectées à un point
   const findLinesConnectedToPoint = useCallback(
     (pointId: string): Line[] => {
@@ -1288,6 +1268,152 @@ export function CADGabaritCanvas({
     },
     [sketch.geometries],
   );
+
+  // Ouvrir le dialogue de congé si 2 lignes OU 1 point (coin) sont sélectionnées
+  const openFilletDialog = useCallback(() => {
+    let line1Id: string | null = null;
+    let line2Id: string | null = null;
+
+    if (selectedEntities.size === 1) {
+      // Un seul élément sélectionné - vérifier si c'est un point (coin)
+      const id = Array.from(selectedEntities)[0];
+      const point = sketch.points.get(id);
+
+      if (point) {
+        // C'est un point - trouver les lignes connectées
+        const connectedLines = findLinesConnectedToPoint(id);
+
+        if (connectedLines.length !== 2) {
+          toast.warning("Le point doit être un coin (connecté à exactement 2 lignes)");
+          return;
+        }
+
+        line1Id = connectedLines[0].id;
+        line2Id = connectedLines[1].id;
+      } else {
+        toast.warning("Sélectionnez 2 lignes ou 1 point (coin)");
+        return;
+      }
+    } else if (selectedEntities.size === 2) {
+      // Deux éléments - vérifier que ce sont des lignes
+      const ids = Array.from(selectedEntities);
+      const geo1 = sketch.geometries.get(ids[0]);
+      const geo2 = sketch.geometries.get(ids[1]);
+
+      if (!geo1 || !geo2 || geo1.type !== "line" || geo2.type !== "line") {
+        toast.warning("Sélectionnez 2 lignes (pas d'autres formes)");
+        return;
+      }
+
+      // Vérifier qu'elles partagent un point
+      const line1 = geo1 as Line;
+      const line2 = geo2 as Line;
+      const shared = findSharedPoint(line1, line2);
+
+      if (!shared) {
+        toast.warning("Les lignes doivent partager un point commun (un coin)");
+        return;
+      }
+
+      line1Id = ids[0];
+      line2Id = ids[1];
+    } else {
+      toast.warning("Sélectionnez 2 lignes ou 1 point (coin)");
+      return;
+    }
+
+    if (line1Id && line2Id) {
+      setFilletDialog({
+        open: true,
+        line1Id,
+        line2Id,
+        radius: filletRadius,
+      });
+    }
+  }, [selectedEntities, sketch.geometries, sketch.points, findSharedPoint, findLinesConnectedToPoint, filletRadius]);
+
+  // Ouvrir le dialogue de chanfrein si 2 lignes OU 1 point (coin) sont sélectionnées
+  const openChamferDialog = useCallback(() => {
+    let line1Id: string | null = null;
+    let line2Id: string | null = null;
+
+    if (selectedEntities.size === 1) {
+      // Un seul élément sélectionné - vérifier si c'est un point (coin)
+      const id = Array.from(selectedEntities)[0];
+      const point = sketch.points.get(id);
+
+      if (point) {
+        // C'est un point - trouver les lignes connectées
+        const connectedLines = findLinesConnectedToPoint(id);
+
+        if (connectedLines.length !== 2) {
+          toast.warning("Le point doit être un coin (connecté à exactement 2 lignes)");
+          return;
+        }
+
+        line1Id = connectedLines[0].id;
+        line2Id = connectedLines[1].id;
+      } else {
+        toast.warning("Sélectionnez 2 lignes ou 1 point (coin)");
+        return;
+      }
+    } else if (selectedEntities.size === 2) {
+      // Deux éléments - vérifier que ce sont des lignes
+      const ids = Array.from(selectedEntities);
+      const geo1 = sketch.geometries.get(ids[0]);
+      const geo2 = sketch.geometries.get(ids[1]);
+
+      if (!geo1 || !geo2 || geo1.type !== "line" || geo2.type !== "line") {
+        toast.warning("Sélectionnez 2 lignes (pas d'autres formes)");
+        return;
+      }
+
+      // Vérifier qu'elles partagent un point
+      const line1 = geo1 as Line;
+      const line2 = geo2 as Line;
+      const shared = findSharedPoint(line1, line2);
+
+      if (!shared) {
+        toast.warning("Les lignes doivent partager un point commun (un coin)");
+        return;
+      }
+
+      line1Id = ids[0];
+      line2Id = ids[1];
+    } else {
+      toast.warning("Sélectionnez 2 lignes ou 1 point (coin)");
+      return;
+    }
+
+    if (line1Id && line2Id) {
+      setChamferDialog({
+        open: true,
+        line1Id,
+        line2Id,
+        distance: chamferDistance,
+      });
+    }
+  }, [selectedEntities, sketch.geometries, sketch.points, findSharedPoint, findLinesConnectedToPoint, chamferDistance]);
+
+  // Appliquer le congé depuis la modale
+  const applyFilletFromDialog = useCallback(() => {
+    if (!filletDialog) return;
+
+    applyFillet(filletDialog.line1Id, filletDialog.line2Id, filletDialog.radius);
+    setFilletRadius(filletDialog.radius); // Mémoriser pour la prochaine fois
+    setFilletDialog(null);
+    setSelectedEntities(new Set());
+  }, [filletDialog, applyFillet]);
+
+  // Appliquer le chanfrein depuis la modale
+  const applyChamferFromDialog = useCallback(() => {
+    if (!chamferDialog) return;
+
+    applyChamfer(chamferDialog.line1Id, chamferDialog.line2Id, chamferDialog.distance);
+    setChamferDistance(chamferDialog.distance); // Mémoriser pour la prochaine fois
+    setChamferDialog(null);
+    setSelectedEntities(new Set());
+  }, [chamferDialog, applyChamfer]);
 
   // Calculer l'intersection de deux lignes (prolongées)
   const lineIntersection = useCallback(
@@ -3971,7 +4097,7 @@ export function CADGabaritCanvas({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Congé - Sélectionnez 2 lignes puis cliquez</p>
+                <p>Congé - Sélectionnez 2 lignes ou 1 coin</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -4004,26 +4130,7 @@ export function CADGabaritCanvas({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 px-2"
-                  onClick={() => {
-                    if (selectedEntities.size !== 2) {
-                      toast.warning("Sélectionnez exactement 2 lignes");
-                      return;
-                    }
-                    const ids = Array.from(selectedEntities);
-                    const geo1 = sketch.geometries.get(ids[0]);
-                    const geo2 = sketch.geometries.get(ids[1]);
-                    if (!geo1 || !geo2 || geo1.type !== "line" || geo2.type !== "line") {
-                      toast.warning("Sélectionnez 2 lignes");
-                      return;
-                    }
-                    applyChamfer(ids[0], ids[1], chamferDistance);
-                    setSelectedEntities(new Set());
-                  }}
-                >
+                <Button variant="outline" size="sm" className="h-9 px-2" onClick={openChamferDialog}>
                   {/* Icône chanfrein: angle coupé */}
                   <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M4 20 L4 10 L10 4 L20 4" strokeLinecap="round" strokeLinejoin="round" />
@@ -4032,7 +4139,7 @@ export function CADGabaritCanvas({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Chanfrein - Sélectionnez 2 lignes puis cliquez</p>
+                <p>Chanfrein - Sélectionnez 2 lignes ou 1 coin</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -5105,6 +5212,47 @@ export function CADGabaritCanvas({
             </div>
             <DialogFooter>
               <Button onClick={applyFilletFromDialog} className="w-full">
+                <Check className="h-4 w-4" />
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Dialogue Chanfrein */}
+      {chamferDialog && (
+        <Dialog open={chamferDialog.open} onOpenChange={() => setChamferDialog(null)}>
+          <DialogContent className="sm:max-w-[280px]">
+            <DialogHeader>
+              <DialogTitle>Chanfrein</DialogTitle>
+              <DialogDescription>Définir la distance du chanfrein</DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <Label htmlFor="chamfer-distance">Distance (mm)</Label>
+              <Input
+                id="chamfer-distance"
+                type="number"
+                value={chamferDialog.distance}
+                onChange={(e) =>
+                  setChamferDialog({
+                    ...chamferDialog,
+                    distance: Math.max(1, parseFloat(e.target.value) || 1),
+                  })
+                }
+                className="mt-2"
+                min="1"
+                step="1"
+                autoFocus
+                onKeyDown={(e) => {
+                  e.stopPropagation(); // Empêcher Delete de supprimer les entités
+                  if (e.key === "Enter") {
+                    applyChamferFromDialog();
+                  }
+                }}
+              />
+            </div>
+            <DialogFooter>
+              <Button onClick={applyChamferFromDialog} className="w-full">
                 <Check className="h-4 w-4" />
               </Button>
             </DialogFooter>
