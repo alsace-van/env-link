@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.6 - Fix calcul centre congé: utilise bissectrice intérieure
+// VERSION: 5.7 - Fix modales: step=1 pour chiffres ronds, stopPropagation pour bloquer Delete
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -3990,10 +3990,11 @@ export function CADGabaritCanvas({
                 <Input
                   type="number"
                   value={filletRadius}
-                  onChange={(e) => setFilletRadius(Math.max(0.1, parseFloat(e.target.value) || 1))}
+                  onChange={(e) => setFilletRadius(Math.max(1, parseFloat(e.target.value) || 1))}
+                  onKeyDown={(e) => e.stopPropagation()}
                   className="w-20 h-7 mt-1"
-                  min="0.1"
-                  step="0.5"
+                  min="1"
+                  step="1"
                 />
               </div>
             </DropdownMenuContent>
@@ -4050,10 +4051,11 @@ export function CADGabaritCanvas({
                 <Input
                   type="number"
                   value={chamferDistance}
-                  onChange={(e) => setChamferDistance(Math.max(0.1, parseFloat(e.target.value) || 1))}
+                  onChange={(e) => setChamferDistance(Math.max(1, parseFloat(e.target.value) || 1))}
+                  onKeyDown={(e) => e.stopPropagation()}
                   className="w-20 h-7 mt-1"
-                  min="0.1"
-                  step="0.5"
+                  min="1"
+                  step="1"
                 />
               </div>
             </DropdownMenuContent>
@@ -5087,14 +5089,15 @@ export function CADGabaritCanvas({
                 onChange={(e) =>
                   setFilletDialog({
                     ...filletDialog,
-                    radius: Math.max(0.1, parseFloat(e.target.value) || 1),
+                    radius: Math.max(1, parseFloat(e.target.value) || 1),
                   })
                 }
                 className="mt-2"
-                min="0.1"
-                step="0.5"
+                min="1"
+                step="1"
                 autoFocus
                 onKeyDown={(e) => {
+                  e.stopPropagation(); // Empêcher Delete de supprimer les entités
                   if (e.key === "Enter") {
                     applyFilletFromDialog();
                   }
@@ -5125,10 +5128,11 @@ export function CADGabaritCanvas({
                 type="number"
                 defaultValue={arcEditDialog.currentRadius}
                 className="mt-2"
-                min="0.1"
-                step="0.5"
+                min="1"
+                step="1"
                 autoFocus
                 onKeyDown={(e) => {
+                  e.stopPropagation(); // Empêcher Delete de supprimer les entités
                   if (e.key === "Enter") {
                     const input = document.getElementById("arc-radius") as HTMLInputElement;
                     const value = parseFloat(input.value);
