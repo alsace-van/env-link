@@ -1,7 +1,7 @@
 // ============================================
 // CAD GABARIT - Index
 // Export de tous les modules
-// VERSION: 2.5 - Ajout système de calques
+// VERSION: 2.6 - Ajout import DXF
 // ============================================
 
 // Types
@@ -74,6 +74,10 @@ export { CADRenderer } from "./cad-renderer";
 
 // Export DXF
 export { exportToDXF } from "./export-dxf";
+
+// Import DXF
+export { parseDXF, loadDXFFile } from "./dxf-parser";
+export type { DXFParseResult } from "./dxf-parser";
 
 // Composant principal
 export { default as CADGabaritCanvas } from "./CADGabaritCanvas";
