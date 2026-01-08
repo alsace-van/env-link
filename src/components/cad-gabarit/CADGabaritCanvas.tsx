@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.7 - Fix modales: step=1 pour chiffres ronds, stopPropagation pour bloquer Delete
+// VERSION: 5.8 - Fix bissectrice: utiliser +(u1+u2) pas -(u1+u2)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1045,9 +1045,8 @@ export function CADGabaritCanvas({
       const tan1 = { x: cornerPt.x + u1.x * tangentDist, y: cornerPt.y + u1.y * tangentDist };
       const tan2 = { x: cornerPt.x + u2.x * tangentDist, y: cornerPt.y + u2.y * tangentDist };
 
-      // Centre de l'arc : sur la bissectrice INTÉRIEURE de l'angle
-      // La bissectrice extérieure est u1 + u2 (normalisé)
-      // La bissectrice intérieure est l'OPPOSÉ : -(u1 + u2)
+      // Centre de l'arc : sur la bissectrice de l'angle
+      // La bissectrice est (u1 + u2) normalisé - le centre est de ce côté
       const bisector = { x: u1.x + u2.x, y: u1.y + u2.y };
       const bisLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
 
@@ -1056,8 +1055,8 @@ export function CADGabaritCanvas({
         return;
       }
 
-      // Bissectrice intérieure (opposée à l'extérieure)
-      const bisUnit = { x: -bisector.x / bisLen, y: -bisector.y / bisLen };
+      // Direction de la bissectrice (vers l'extérieur de l'angle = où va l'arc)
+      const bisUnit = { x: bisector.x / bisLen, y: bisector.y / bisLen };
 
       // Distance du coin au centre = R / sin(angle/2)
       const centerDist = radius / Math.sin(halfAngle);
@@ -1387,7 +1386,7 @@ export function CADGabaritCanvas({
       const newTan1 = { x: corner.x + u1.x * tangentDist, y: corner.y + u1.y * tangentDist };
       const newTan2 = { x: corner.x + u2.x * tangentDist, y: corner.y + u2.y * tangentDist };
 
-      // Nouveau centre: sur la bissectrice INTÉRIEURE
+      // Nouveau centre: sur la bissectrice de l'angle
       const bisector = { x: u1.x + u2.x, y: u1.y + u2.y };
       const bisLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
 
@@ -1396,8 +1395,8 @@ export function CADGabaritCanvas({
         return;
       }
 
-      // Bissectrice intérieure (opposée à l'extérieure)
-      const bisUnit = { x: -bisector.x / bisLen, y: -bisector.y / bisLen };
+      // Direction de la bissectrice (vers où va l'arc)
+      const bisUnit = { x: bisector.x / bisLen, y: bisector.y / bisLen };
       const centerDist = newRadius / Math.sin(halfAngle);
 
       const newCenter = {
