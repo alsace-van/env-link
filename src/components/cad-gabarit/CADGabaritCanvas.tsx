@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.9 - Chanfrein avec modale, sélection point (coin) pour congé/chanfrein
+// VERSION: 5.10 - Fusion automatique des points proches pour congé/chanfrein
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -996,38 +996,115 @@ export function CADGabaritCanvas({
 
   // === FILLET ET CHAMFER ===
 
-  // Trouve le point commun entre deux lignes
+  // Trouve le point commun entre deux lignes (même ID ou mêmes coordonnées)
   const findSharedPoint = useCallback(
-    (line1: Line, line2: Line): { sharedPointId: string; line1OtherId: string; line2OtherId: string } | null => {
+    (
+      line1: Line,
+      line2: Line,
+    ): {
+      sharedPointId: string;
+      line1OtherId: string;
+      line2OtherId: string;
+      needsMerge?: { point1Id: string; point2Id: string };
+    } | null => {
+      // D'abord vérifier si les lignes partagent le même point (ID identique)
       if (line1.p1 === line2.p1) return { sharedPointId: line1.p1, line1OtherId: line1.p2, line2OtherId: line2.p2 };
       if (line1.p1 === line2.p2) return { sharedPointId: line1.p1, line1OtherId: line1.p2, line2OtherId: line2.p1 };
       if (line1.p2 === line2.p1) return { sharedPointId: line1.p2, line1OtherId: line1.p1, line2OtherId: line2.p2 };
       if (line1.p2 === line2.p2) return { sharedPointId: line1.p2, line1OtherId: line1.p1, line2OtherId: line2.p1 };
+
+      // Sinon, vérifier si des extrémités sont aux mêmes coordonnées
+      const tolerance = 0.5; // 0.5mm de tolérance
+      const p1_1 = sketch.points.get(line1.p1);
+      const p1_2 = sketch.points.get(line1.p2);
+      const p2_1 = sketch.points.get(line2.p1);
+      const p2_2 = sketch.points.get(line2.p2);
+
+      if (!p1_1 || !p1_2 || !p2_1 || !p2_2) return null;
+
+      const dist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+        Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+
+      // Vérifier toutes les combinaisons de points
+      if (dist(p1_1, p2_1) < tolerance) {
+        return {
+          sharedPointId: line1.p1,
+          line1OtherId: line1.p2,
+          line2OtherId: line2.p2,
+          needsMerge: { point1Id: line1.p1, point2Id: line2.p1 },
+        };
+      }
+      if (dist(p1_1, p2_2) < tolerance) {
+        return {
+          sharedPointId: line1.p1,
+          line1OtherId: line1.p2,
+          line2OtherId: line2.p1,
+          needsMerge: { point1Id: line1.p1, point2Id: line2.p2 },
+        };
+      }
+      if (dist(p1_2, p2_1) < tolerance) {
+        return {
+          sharedPointId: line1.p2,
+          line1OtherId: line1.p1,
+          line2OtherId: line2.p2,
+          needsMerge: { point1Id: line1.p2, point2Id: line2.p1 },
+        };
+      }
+      if (dist(p1_2, p2_2) < tolerance) {
+        return {
+          sharedPointId: line1.p2,
+          line1OtherId: line1.p1,
+          line2OtherId: line2.p1,
+          needsMerge: { point1Id: line1.p2, point2Id: line2.p2 },
+        };
+      }
+
       return null;
     },
-    [],
+    [sketch.points],
   );
 
   // Applique un congé (fillet) entre deux lignes
   const applyFillet = useCallback(
     (line1Id: string, line2Id: string, radius: number) => {
-      const line1 = sketch.geometries.get(line1Id) as Line | undefined;
-      const line2 = sketch.geometries.get(line2Id) as Line | undefined;
+      let currentLine1 = sketch.geometries.get(line1Id) as Line | undefined;
+      let currentLine2 = sketch.geometries.get(line2Id) as Line | undefined;
 
-      if (!line1 || !line2 || line1.type !== "line" || line2.type !== "line") {
+      if (!currentLine1 || !currentLine2 || currentLine1.type !== "line" || currentLine2.type !== "line") {
         toast.error("Sélectionnez deux lignes");
         return;
       }
 
-      const shared = findSharedPoint(line1, line2);
+      const shared = findSharedPoint(currentLine1, currentLine2);
       if (!shared) {
         toast.error("Les lignes doivent partager un point commun");
         return;
       }
 
-      const cornerPt = sketch.points.get(shared.sharedPointId);
-      const endPt1 = sketch.points.get(shared.line1OtherId);
-      const endPt2 = sketch.points.get(shared.line2OtherId);
+      const newSketch = { ...sketch, points: new Map(sketch.points), geometries: new Map(sketch.geometries) };
+
+      // Si les points sont proches mais pas le même, fusionner
+      if (shared.needsMerge) {
+        const { point1Id, point2Id } = shared.needsMerge;
+        // On garde point1, on supprime point2 et on met à jour line2
+        const line2Geo = newSketch.geometries.get(line2Id) as Line;
+        if (line2Geo) {
+          if (line2Geo.p1 === point2Id) {
+            newSketch.geometries.set(line2Id, { ...line2Geo, p1: point1Id });
+          } else if (line2Geo.p2 === point2Id) {
+            newSketch.geometries.set(line2Id, { ...line2Geo, p2: point1Id });
+          }
+        }
+        newSketch.points.delete(point2Id);
+
+        // Recharger les lignes après fusion
+        currentLine1 = newSketch.geometries.get(line1Id) as Line;
+        currentLine2 = newSketch.geometries.get(line2Id) as Line;
+      }
+
+      const cornerPt = newSketch.points.get(shared.sharedPointId);
+      const endPt1 = newSketch.points.get(shared.line1OtherId);
+      const endPt2 = newSketch.points.get(shared.line2OtherId);
 
       if (!cornerPt || !endPt1 || !endPt2) return;
 
@@ -1090,11 +1167,6 @@ export function CADGabaritCanvas({
         y: cornerPt.y + bisUnit.y * centerDist,
       };
 
-      // Créer le nouveau sketch
-      const newSketch = { ...sketch };
-      newSketch.points = new Map(sketch.points);
-      newSketch.geometries = new Map(sketch.geometries);
-
       // Créer les nouveaux points
       const tan1Id = generateId();
       const tan2Id = generateId();
@@ -1156,23 +1228,44 @@ export function CADGabaritCanvas({
   // Applique un chanfrein entre deux lignes
   const applyChamfer = useCallback(
     (line1Id: string, line2Id: string, dist: number) => {
-      const line1 = sketch.geometries.get(line1Id) as Line | undefined;
-      const line2 = sketch.geometries.get(line2Id) as Line | undefined;
+      let currentLine1 = sketch.geometries.get(line1Id) as Line | undefined;
+      let currentLine2 = sketch.geometries.get(line2Id) as Line | undefined;
 
-      if (!line1 || !line2 || line1.type !== "line" || line2.type !== "line") {
+      if (!currentLine1 || !currentLine2 || currentLine1.type !== "line" || currentLine2.type !== "line") {
         toast.error("Sélectionnez deux lignes");
         return;
       }
 
-      const shared = findSharedPoint(line1, line2);
+      const shared = findSharedPoint(currentLine1, currentLine2);
       if (!shared) {
         toast.error("Les lignes doivent partager un point commun");
         return;
       }
 
-      const sharedPt = sketch.points.get(shared.sharedPointId);
-      const other1 = sketch.points.get(shared.line1OtherId);
-      const other2 = sketch.points.get(shared.line2OtherId);
+      const newSketch = { ...sketch, points: new Map(sketch.points), geometries: new Map(sketch.geometries) };
+
+      // Si les points sont proches mais pas le même, fusionner
+      if (shared.needsMerge) {
+        const { point1Id, point2Id } = shared.needsMerge;
+        // On garde point1, on supprime point2 et on met à jour line2
+        const line2Geo = newSketch.geometries.get(line2Id) as Line;
+        if (line2Geo) {
+          if (line2Geo.p1 === point2Id) {
+            newSketch.geometries.set(line2Id, { ...line2Geo, p1: point1Id });
+          } else if (line2Geo.p2 === point2Id) {
+            newSketch.geometries.set(line2Id, { ...line2Geo, p2: point1Id });
+          }
+        }
+        newSketch.points.delete(point2Id);
+
+        // Recharger les lignes après fusion
+        currentLine1 = newSketch.geometries.get(line1Id) as Line;
+        currentLine2 = newSketch.geometries.get(line2Id) as Line;
+      }
+
+      const sharedPt = newSketch.points.get(shared.sharedPointId);
+      const other1 = newSketch.points.get(shared.line1OtherId);
+      const other2 = newSketch.points.get(shared.line2OtherId);
 
       if (!sharedPt || !other1 || !other2) return;
 
@@ -1192,11 +1285,6 @@ export function CADGabaritCanvas({
       const cham1 = { x: sharedPt.x + dir1.x * dist, y: sharedPt.y + dir1.y * dist };
       const cham2 = { x: sharedPt.x + dir2.x * dist, y: sharedPt.y + dir2.y * dist };
 
-      // Créer le nouveau sketch
-      const newSketch = { ...sketch };
-      newSketch.points = new Map(sketch.points);
-      newSketch.geometries = new Map(sketch.geometries);
-
       // Créer les nouveaux points
       const cham1Id = generateId();
       const cham2Id = generateId();
@@ -1204,17 +1292,17 @@ export function CADGabaritCanvas({
       newSketch.points.set(cham1Id, { id: cham1Id, x: cham1.x, y: cham1.y });
       newSketch.points.set(cham2Id, { id: cham2Id, x: cham2.x, y: cham2.y });
 
-      // Modifier les lignes
-      const newLine1: Line = { ...line1 };
-      const newLine2: Line = { ...line2 };
+      // Modifier les lignes - utiliser currentLine1/currentLine2 mis à jour
+      const newLine1: Line = { ...currentLine1 };
+      const newLine2: Line = { ...currentLine2 };
 
-      if (line1.p1 === shared.sharedPointId) {
+      if (currentLine1.p1 === shared.sharedPointId) {
         newLine1.p1 = cham1Id;
       } else {
         newLine1.p2 = cham1Id;
       }
 
-      if (line2.p1 === shared.sharedPointId) {
+      if (currentLine2.p1 === shared.sharedPointId) {
         newLine2.p1 = cham2Id;
       } else {
         newLine2.p2 = cham2Id;
