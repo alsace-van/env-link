@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.16 - Fix sélection point coin: priorité détection coins, drag différé
+// VERSION: 5.17 - Double-clic sur segment = sélection figure entière (BFS)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1398,6 +1398,81 @@ export function CADGabaritCanvas({
     [sketch.geometries],
   );
 
+  // Trouver toutes les géométries connectées à une géométrie (pour sélection de figure)
+  const findConnectedGeometries = useCallback(
+    (startGeoId: string): Set<string> => {
+      const visited = new Set<string>();
+      const queue: string[] = [startGeoId];
+
+      // Fonction helper pour obtenir les points d'une géométrie
+      const getPointsOfGeometry = (geoId: string): string[] => {
+        const geo = sketch.geometries.get(geoId);
+        if (!geo) return [];
+
+        if (geo.type === "line") {
+          const line = geo as Line;
+          return [line.p1, line.p2];
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          return [arc.startPoint, arc.endPoint]; // Ne pas inclure le centre
+        } else if (geo.type === "circle") {
+          return []; // Les cercles ne sont pas connectés
+        } else if (geo.type === "bezier") {
+          const bezier = geo as Bezier;
+          return [bezier.p1, bezier.p2]; // Points d'ancrage uniquement
+        }
+        return [];
+      };
+
+      // Fonction helper pour trouver les géométries connectées à un point
+      const getGeometriesAtPoint = (pointId: string): string[] => {
+        const result: string[] = [];
+        sketch.geometries.forEach((geo, id) => {
+          if (geo.type === "line") {
+            const line = geo as Line;
+            if (line.p1 === pointId || line.p2 === pointId) {
+              result.push(id);
+            }
+          } else if (geo.type === "arc") {
+            const arc = geo as Arc;
+            if (arc.startPoint === pointId || arc.endPoint === pointId) {
+              result.push(id);
+            }
+          } else if (geo.type === "bezier") {
+            const bezier = geo as Bezier;
+            if (bezier.p1 === pointId || bezier.p2 === pointId) {
+              result.push(id);
+            }
+          }
+        });
+        return result;
+      };
+
+      // BFS pour trouver toutes les géométries connectées
+      while (queue.length > 0) {
+        const currentGeoId = queue.shift()!;
+        if (visited.has(currentGeoId)) continue;
+        visited.add(currentGeoId);
+
+        // Obtenir les points de cette géométrie
+        const points = getPointsOfGeometry(currentGeoId);
+
+        // Pour chaque point, trouver les géométries connectées
+        for (const pointId of points) {
+          const connectedGeos = getGeometriesAtPoint(pointId);
+          for (const geoId of connectedGeos) {
+            if (!visited.has(geoId)) {
+              queue.push(geoId);
+            }
+          }
+        }
+      }
+
+      return visited;
+    },
+    [sketch.geometries],
+  );
+
   // Calculer les paramètres géométriques d'un coin (angle, longueurs, rayon max)
   const calculateCornerParams = useCallback(
     (
@@ -2772,7 +2847,7 @@ export function CADGabaritCanvas({
     ],
   );
 
-  // Double-clic pour éditer un arc
+  // Double-clic pour éditer un arc OU sélectionner une figure entière
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
       const rect = canvasRef.current?.getBoundingClientRect();
@@ -2785,17 +2860,25 @@ export function CADGabaritCanvas({
       const entityId = findEntityAtPosition(worldPos.x, worldPos.y);
       if (entityId) {
         const geo = sketch.geometries.get(entityId);
-        if (geo && geo.type === "arc") {
-          const arc = geo as Arc;
-          setArcEditDialog({
-            open: true,
-            arcId: entityId,
-            currentRadius: arc.radius,
-          });
+        if (geo) {
+          if (geo.type === "arc") {
+            // Double-clic sur arc → ouvrir le dialogue d'édition du rayon
+            const arc = geo as Arc;
+            setArcEditDialog({
+              open: true,
+              arcId: entityId,
+              currentRadius: arc.radius,
+            });
+          } else if (geo.type === "line" || geo.type === "bezier") {
+            // Double-clic sur ligne/bezier → sélectionner toute la figure connectée
+            const connectedGeos = findConnectedGeometries(entityId);
+            setSelectedEntities(connectedGeos);
+            toast.success(`${connectedGeos.size} élément(s) sélectionné(s)`);
+          }
         }
       }
     },
-    [screenToWorld, findEntityAtPosition, sketch.geometries],
+    [screenToWorld, findEntityAtPosition, sketch.geometries, findConnectedGeometries],
   );
 
   const handleWheel = useCallback(
