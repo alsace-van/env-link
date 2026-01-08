@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 3.7 - 2 calques par défaut + bouton ajouter
+// VERSION: 3.8 - Bouton supprimer calque (X)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -2879,7 +2879,7 @@ export function CADGabaritCanvas({
                   <span className="whitespace-nowrap">{layer.name}</span>
                   {/* Bouton visibilité */}
                   <button
-                    className={`ml-1 p-0.5 rounded hover:bg-blue-100 ${!layer.visible ? "opacity-40" : ""}`}
+                    className={`p-0.5 rounded hover:bg-blue-100 ${!layer.visible ? "opacity-40" : ""}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       setSketch((prev) => {
@@ -2895,6 +2895,29 @@ export function CADGabaritCanvas({
                   >
                     {layer.visible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
                   </button>
+                  {/* Bouton supprimer (seulement si plus d'un calque) */}
+                  {sketch.layers.size > 1 && (
+                    <button
+                      className="p-0.5 rounded hover:bg-red-100 hover:text-red-600"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSketch((prev) => {
+                          const newLayers = new Map(prev.layers);
+                          newLayers.delete(layer.id);
+                          // Si on supprime le calque actif, sélectionner le premier restant
+                          let newActiveLayerId = prev.activeLayerId;
+                          if (prev.activeLayerId === layer.id) {
+                            newActiveLayerId = Array.from(newLayers.keys())[0];
+                          }
+                          return { ...prev, layers: newLayers, activeLayerId: newActiveLayerId };
+                        });
+                        toast.success(`Calque "${layer.name}" supprimé`);
+                      }}
+                      title="Supprimer le calque"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
                 </div>
               ))}
 
