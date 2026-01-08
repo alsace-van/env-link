@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 3.3 - Contrainte d'angle corrigée
+// VERSION: 3.4 - Onglets calques style Excel
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -2743,64 +2743,6 @@ export function CADGabaritCanvas({
 
         <Separator orientation="vertical" className="h-6" />
 
-        {/* Calques */}
-        <div className="flex items-center gap-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 gap-1 px-2">
-                <div
-                  className="w-3 h-3 rounded-sm border"
-                  style={{ backgroundColor: sketch.layers.get(sketch.activeLayerId)?.color || "#3B82F6" }}
-                />
-                <span className="text-xs">{sketch.layers.get(sketch.activeLayerId)?.name || "Calque"}</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
-              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Calque actif</div>
-              {Array.from(sketch.layers.values())
-                .sort((a, b) => a.order - b.order)
-                .map((layer) => (
-                  <DropdownMenuItem
-                    key={layer.id}
-                    onClick={() => setSketch((prev) => ({ ...prev, activeLayerId: layer.id }))}
-                    className="flex items-center gap-2"
-                  >
-                    <div className="w-3 h-3 rounded-sm border" style={{ backgroundColor: layer.color }} />
-                    <span className="flex-1">{layer.name}</span>
-                    {layer.id === sketch.activeLayerId && <Check className="h-4 w-4" />}
-                  </DropdownMenuItem>
-                ))}
-              <DropdownMenuSeparator />
-              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Visibilité</div>
-              {Array.from(sketch.layers.values())
-                .sort((a, b) => a.order - b.order)
-                .map((layer) => (
-                  <DropdownMenuCheckboxItem
-                    key={`vis-${layer.id}`}
-                    checked={layer.visible}
-                    onCheckedChange={(checked) => {
-                      setSketch((prev) => {
-                        const newLayers = new Map(prev.layers);
-                        const l = newLayers.get(layer.id);
-                        if (l) {
-                          newLayers.set(layer.id, { ...l, visible: checked });
-                        }
-                        return { ...prev, layers: newLayers };
-                      });
-                    }}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-sm border" style={{ backgroundColor: layer.color }} />
-                      <span>{layer.name}</span>
-                    </div>
-                  </DropdownMenuCheckboxItem>
-                ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        <Separator orientation="vertical" className="h-6" />
-
         {/* Zoom */}
         <div className="flex items-center gap-1">
           <Button
@@ -2908,48 +2850,98 @@ export function CADGabaritCanvas({
 
       {/* Zone principale avec Canvas + Panneau latéral */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Canvas */}
-        <div className="flex-1 relative overflow-hidden">
-          <canvas
-            ref={canvasRef}
-            className="absolute inset-0 cursor-crosshair"
-            style={{
-              cursor: draggingCalibrationPoint ? "move" : activeTool === "pan" || isPanning ? "grab" : "crosshair",
-            }}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            onContextMenu={(e) => e.preventDefault()}
-          />
+        {/* Canvas + Onglets calques */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Canvas */}
+          <div className="flex-1 relative overflow-hidden">
+            <canvas
+              ref={canvasRef}
+              className="absolute inset-0 cursor-crosshair"
+              style={{
+                cursor: draggingCalibrationPoint ? "move" : activeTool === "pan" || isPanning ? "grab" : "crosshair",
+              }}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              onContextMenu={(e) => e.preventDefault()}
+            />
 
-          {/* Overlay pour l'outil de mesure */}
-          {activeTool === "measure" && (
-            <div className="absolute bottom-4 left-4 bg-white/95 rounded-lg shadow-lg p-3 border border-green-300">
-              <div className="flex items-center gap-2 text-green-700 font-medium mb-2">
-                <Scaling className="h-5 w-5" />
-                <span>Outil de mesure</span>
-              </div>
-              {measureState.phase === "idle" ? (
-                <p className="text-sm text-gray-600">Cliquez sur le 1er point</p>
-              ) : measureState.phase === "waitingSecond" ? (
-                <p className="text-sm text-gray-600">Cliquez sur le 2ème point</p>
-              ) : null}
-
-              {measurements.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-gray-200">
-                  <p className="text-sm font-medium text-green-700">
-                    {measurements.length} mesure{measurements.length > 1 ? "s" : ""}
-                  </p>
-                  <p className="text-xs text-gray-400">Clic droit = tout effacer</p>
+            {/* Overlay pour l'outil de mesure */}
+            {activeTool === "measure" && (
+              <div className="absolute bottom-4 left-4 bg-white/95 rounded-lg shadow-lg p-3 border border-green-300">
+                <div className="flex items-center gap-2 text-green-700 font-medium mb-2">
+                  <Scaling className="h-5 w-5" />
+                  <span>Outil de mesure</span>
                 </div>
-              )}
+                {measureState.phase === "idle" ? (
+                  <p className="text-sm text-gray-600">Cliquez sur le 1er point</p>
+                ) : measureState.phase === "waitingSecond" ? (
+                  <p className="text-sm text-gray-600">Cliquez sur le 2ème point</p>
+                ) : null}
 
-              {calibrationData.scale && (
-                <p className="text-xs text-gray-400 mt-2">Échelle: {calibrationData.scale.toFixed(4)} mm/px</p>
-              )}
-            </div>
-          )}
+                {measurements.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-gray-200">
+                    <p className="text-sm font-medium text-green-700">
+                      {measurements.length} mesure{measurements.length > 1 ? "s" : ""}
+                    </p>
+                    <p className="text-xs text-gray-400">Clic droit = tout effacer</p>
+                  </div>
+                )}
+
+                {calibrationData.scale && (
+                  <p className="text-xs text-gray-400 mt-2">Échelle: {calibrationData.scale.toFixed(4)} mm/px</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Barre d'onglets des calques (style Excel) */}
+          <div className="h-8 border-t bg-gray-100 flex items-center px-1 gap-0.5 overflow-x-auto">
+            {Array.from(sketch.layers.values())
+              .sort((a, b) => a.order - b.order)
+              .map((layer) => (
+                <div
+                  key={layer.id}
+                  className={`
+                    flex items-center gap-1.5 px-3 h-7 rounded-t-md cursor-pointer select-none
+                    transition-all duration-150 text-xs font-medium border border-b-0
+                    ${
+                      layer.id === sketch.activeLayerId
+                        ? "bg-white border-blue-400 text-blue-700 -mb-px z-10 shadow-sm"
+                        : "bg-gray-200 border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
+                    }
+                  `}
+                  onClick={() => setSketch((prev) => ({ ...prev, activeLayerId: layer.id }))}
+                >
+                  {/* Indicateur de couleur */}
+                  <div
+                    className="w-2.5 h-2.5 rounded-sm border border-gray-400/50"
+                    style={{ backgroundColor: layer.color }}
+                  />
+                  {/* Nom du calque */}
+                  <span className="whitespace-nowrap">{layer.name}</span>
+                  {/* Bouton visibilité */}
+                  <button
+                    className={`ml-1 p-0.5 rounded hover:bg-blue-100 ${!layer.visible ? "opacity-40" : ""}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSketch((prev) => {
+                        const newLayers = new Map(prev.layers);
+                        const l = newLayers.get(layer.id);
+                        if (l) {
+                          newLayers.set(layer.id, { ...l, visible: !l.visible });
+                        }
+                        return { ...prev, layers: newLayers };
+                      });
+                    }}
+                    title={layer.visible ? "Masquer le calque" : "Afficher le calque"}
+                  >
+                    {layer.visible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                  </button>
+                </div>
+              ))}
+          </div>
         </div>
 
         {/* Panneau de calibration */}
