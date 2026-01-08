@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.3 - Réécriture complète du calcul de congé (fillet)
+// VERSION: 5.4 - Nouveau workflow congé: sélection 2 lignes → modale → validation. Arcs sélectionnables avec affichage rayon.
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -59,8 +59,6 @@ import {
   ChevronRight,
   ChevronLeft,
   Scaling,
-  CircleDot,
-  CornerRightDown,
 } from "lucide-react";
 
 import {
@@ -282,6 +280,21 @@ export function CADGabaritCanvas({
   const [filletRadius, setFilletRadius] = useState<number>(5); // Rayon en mm
   const [chamferDistance, setChamferDistance] = useState<number>(5); // Distance en mm
   const [filletFirstLine, setFilletFirstLine] = useState<string | null>(null); // ID de la première ligne sélectionnée
+
+  // Modale pour congé
+  const [filletDialog, setFilletDialog] = useState<{
+    open: boolean;
+    line1Id: string;
+    line2Id: string;
+    radius: number;
+  } | null>(null);
+
+  // Modale pour modifier le rayon d'un arc existant
+  const [arcEditDialog, setArcEditDialog] = useState<{
+    open: boolean;
+    arcId: string;
+    currentRadius: number;
+  } | null>(null);
 
   // Aliases pour compatibilité avec le rendu
   const measureStart = measureState.start;
@@ -686,6 +699,32 @@ export function CADGabaritCanvas({
             const d = distanceToBezier({ x: worldX, y: worldY }, p1, p2, cp1, cp2);
             if (d < tolerance) return id;
           }
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          const center = sketch.points.get(arc.center);
+          const startPt = sketch.points.get(arc.startPoint);
+          const endPt = sketch.points.get(arc.endPoint);
+          if (center && startPt && endPt) {
+            // Vérifier si le point est proche du cercle à distance arc.radius
+            const distToCenter = distance({ x: worldX, y: worldY }, center);
+            if (Math.abs(distToCenter - arc.radius) < tolerance) {
+              // Vérifier si le point est dans la plage angulaire de l'arc
+              const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
+              const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
+              const pointAngle = Math.atan2(worldY - center.y, worldX - center.x);
+
+              // Normaliser les angles
+              const normalizeAngle = (a: number) => (a + 2 * Math.PI) % (2 * Math.PI);
+              const sa = normalizeAngle(startAngle);
+              const ea = normalizeAngle(endAngle);
+              const pa = normalizeAngle(pointAngle);
+
+              // Vérifier si l'angle est dans la plage (gérer le cas où l'arc traverse 0)
+              const inRange = sa <= ea ? pa >= sa && pa <= ea : pa >= sa || pa <= ea;
+
+              if (inRange) return id;
+            }
+          }
         }
       }
 
@@ -709,6 +748,12 @@ export function CADGabaritCanvas({
           } else if (geo.type === "bezier") {
             const bezier = geo as Bezier;
             if (bezier.p1 === id || bezier.p2 === id || bezier.cp1 === id || bezier.cp2 === id) {
+              isUsedByGeometry = true;
+              break;
+            }
+          } else if (geo.type === "arc") {
+            const arc = geo as Arc;
+            if (arc.center === id || arc.startPoint === id || arc.endPoint === id) {
               isUsedByGeometry = true;
               break;
             }
@@ -1172,6 +1217,98 @@ export function CADGabaritCanvas({
       toast.success(`Chanfrein ${dist}mm appliqué`);
     },
     [sketch, findSharedPoint],
+  );
+
+  // Ouvrir le dialogue de congé si 2 lignes sont sélectionnées
+  const openFilletDialog = useCallback(() => {
+    if (selectedEntities.size !== 2) {
+      toast.warning("Sélectionnez exactement 2 lignes");
+      return;
+    }
+
+    const ids = Array.from(selectedEntities);
+    const geo1 = sketch.geometries.get(ids[0]);
+    const geo2 = sketch.geometries.get(ids[1]);
+
+    if (!geo1 || !geo2 || geo1.type !== "line" || geo2.type !== "line") {
+      toast.warning("Sélectionnez 2 lignes (pas d'autres formes)");
+      return;
+    }
+
+    // Vérifier qu'elles partagent un point
+    const line1 = geo1 as Line;
+    const line2 = geo2 as Line;
+    const shared = findSharedPoint(line1, line2);
+
+    if (!shared) {
+      toast.warning("Les lignes doivent partager un point commun (un coin)");
+      return;
+    }
+
+    setFilletDialog({
+      open: true,
+      line1Id: ids[0],
+      line2Id: ids[1],
+      radius: filletRadius,
+    });
+  }, [selectedEntities, sketch.geometries, findSharedPoint, filletRadius]);
+
+  // Appliquer le congé depuis la modale
+  const applyFilletFromDialog = useCallback(() => {
+    if (!filletDialog) return;
+
+    applyFillet(filletDialog.line1Id, filletDialog.line2Id, filletDialog.radius);
+    setFilletRadius(filletDialog.radius); // Mémoriser pour la prochaine fois
+    setFilletDialog(null);
+    setSelectedEntities(new Set());
+  }, [filletDialog, applyFillet]);
+
+  // Modifier le rayon d'un arc existant
+  const updateArcRadius = useCallback(
+    (arcId: string, newRadius: number) => {
+      const arc = sketch.geometries.get(arcId) as Arc | undefined;
+      if (!arc || arc.type !== "arc") return;
+
+      const center = sketch.points.get(arc.center);
+      const startPt = sketch.points.get(arc.startPoint);
+      const endPt = sketch.points.get(arc.endPoint);
+
+      if (!center || !startPt || !endPt) return;
+
+      // Calculer les nouveaux points de tangence (même direction, nouvelle distance)
+      const startDir = {
+        x: (startPt.x - center.x) / arc.radius,
+        y: (startPt.y - center.y) / arc.radius,
+      };
+      const endDir = {
+        x: (endPt.x - center.x) / arc.radius,
+        y: (endPt.y - center.y) / arc.radius,
+      };
+
+      const newStart = {
+        x: center.x + startDir.x * newRadius,
+        y: center.y + startDir.y * newRadius,
+      };
+      const newEnd = {
+        x: center.x + endDir.x * newRadius,
+        y: center.y + endDir.y * newRadius,
+      };
+
+      const newSketch = { ...sketch };
+      newSketch.points = new Map(sketch.points);
+      newSketch.geometries = new Map(sketch.geometries);
+
+      // Mettre à jour les points
+      newSketch.points.set(arc.startPoint, { ...startPt, x: newStart.x, y: newStart.y });
+      newSketch.points.set(arc.endPoint, { ...endPt, x: newEnd.x, y: newEnd.y });
+
+      // Mettre à jour l'arc
+      newSketch.geometries.set(arcId, { ...arc, radius: newRadius });
+
+      setSketch(newSketch);
+      toast.success(`Rayon modifié: R${newRadius}mm`);
+    },
+    [sketch],
   );
 
   // Gestion de la souris
@@ -1704,48 +1841,45 @@ export function CADGabaritCanvas({
         }
 
         case "fillet": {
-          // Clic sur une ligne pour le congé
+          // Mode outil: clic sur lignes pour sélectionner puis ouvrir modale
           const entityId = findEntityAtPosition(worldPos.x, worldPos.y);
           if (entityId) {
             const geo = sketch.geometries.get(entityId);
             if (geo && geo.type === "line") {
               if (!filletFirstLine) {
-                // Première ligne sélectionnée
                 setFilletFirstLine(entityId);
                 setSelectedEntities(new Set([entityId]));
-                toast.info("Sélectionnez la deuxième ligne pour le congé");
+                toast.info("Sélectionnez la deuxième ligne");
               } else if (entityId !== filletFirstLine) {
-                // Deuxième ligne - appliquer le congé
-                applyFillet(filletFirstLine, entityId, filletRadius);
+                // Ouvrir la modale
+                setFilletDialog({
+                  open: true,
+                  line1Id: filletFirstLine,
+                  line2Id: entityId,
+                  radius: filletRadius,
+                });
                 setFilletFirstLine(null);
-                setSelectedEntities(new Set());
               }
-            } else {
-              toast.warning("Sélectionnez une ligne");
             }
           }
           break;
         }
 
         case "chamfer": {
-          // Clic sur une ligne pour le chanfrein
+          // Mode outil: clic sur lignes pour sélectionner puis appliquer
           const entityId = findEntityAtPosition(worldPos.x, worldPos.y);
           if (entityId) {
             const geo = sketch.geometries.get(entityId);
             if (geo && geo.type === "line") {
               if (!filletFirstLine) {
-                // Première ligne sélectionnée (réutilise le même state)
                 setFilletFirstLine(entityId);
                 setSelectedEntities(new Set([entityId]));
-                toast.info("Sélectionnez la deuxième ligne pour le chanfrein");
+                toast.info("Sélectionnez la deuxième ligne");
               } else if (entityId !== filletFirstLine) {
-                // Deuxième ligne - appliquer le chanfrein
                 applyChamfer(filletFirstLine, entityId, chamferDistance);
                 setFilletFirstLine(null);
                 setSelectedEntities(new Set());
               }
-            } else {
-              toast.warning("Sélectionnez une ligne");
             }
           }
           break;
@@ -1775,7 +1909,6 @@ export function CADGabaritCanvas({
       filletFirstLine,
       filletRadius,
       chamferDistance,
-      applyFillet,
       applyChamfer,
     ],
   );
@@ -2058,6 +2191,32 @@ export function CADGabaritCanvas({
       selectedEntities,
       screenToWorld,
     ],
+  );
+
+  // Double-clic pour éditer un arc
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      const worldPos = screenToWorld(screenX, screenY);
+
+      const entityId = findEntityAtPosition(worldPos.x, worldPos.y);
+      if (entityId) {
+        const geo = sketch.geometries.get(entityId);
+        if (geo && geo.type === "arc") {
+          const arc = geo as Arc;
+          setArcEditDialog({
+            open: true,
+            arcId: entityId,
+            currentRadius: arc.radius,
+          });
+        }
+      }
+    },
+    [screenToWorld, findEntityAtPosition, sketch.geometries],
   );
 
   const handleWheel = useCallback(
@@ -3536,65 +3695,91 @@ export function CADGabaritCanvas({
 
         {/* Modifications: Fillet et Chamfer */}
         <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant={activeTool === "fillet" ? "default" : "outline"} size="sm" className="h-9 px-2">
-                <CircleDot className="h-4 w-4 mr-1" />
-                <span className="text-xs">Congé R{filletRadius}</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <div className="p-2">
-                <Label className="text-xs">Rayon (mm)</Label>
-                <Input
-                  type="number"
-                  value={filletRadius}
-                  onChange={(e) => setFilletRadius(Math.max(0.1, parseFloat(e.target.value) || 1))}
-                  className="w-20 h-7 mt-1"
-                  min="0.1"
-                  step="0.5"
-                />
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => {
-                  setActiveTool("fillet");
-                  setFilletFirstLine(null);
-                }}
-              >
-                ✓ Activer l'outil Congé
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 px-2" onClick={openFilletDialog}>
+                  {/* Icône congé: angle arrondi */}
+                  <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
+                  </svg>
+                  <span className="text-xs">R{filletRadius}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Congé - Sélectionnez 2 lignes puis cliquez</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 px-2"
+                  onClick={() => {
+                    if (selectedEntities.size !== 2) {
+                      toast.warning("Sélectionnez exactement 2 lignes");
+                      return;
+                    }
+                    const ids = Array.from(selectedEntities);
+                    const geo1 = sketch.geometries.get(ids[0]);
+                    const geo2 = sketch.geometries.get(ids[1]);
+                    if (!geo1 || !geo2 || geo1.type !== "line" || geo2.type !== "line") {
+                      toast.warning("Sélectionnez 2 lignes");
+                      return;
+                    }
+                    applyChamfer(ids[0], ids[1], chamferDistance);
+                    setSelectedEntities(new Set());
+                  }}
+                >
+                  {/* Icône chanfrein: angle coupé */}
+                  <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M4 20 L4 10 L10 4 L20 4" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <span className="text-xs">{chamferDistance}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Chanfrein - Sélectionnez 2 lignes puis cliquez</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Dropdown pour modifier les valeurs par défaut */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant={activeTool === "chamfer" ? "default" : "outline"} size="sm" className="h-9 px-2">
-                <CornerRightDown className="h-4 w-4 mr-1" />
-                <span className="text-xs">Chanfrein {chamferDistance}</span>
+              <Button variant="ghost" size="sm" className="h-9 w-6 p-0">
+                <Settings className="h-3 w-3" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              <div className="p-2">
-                <Label className="text-xs">Distance (mm)</Label>
-                <Input
-                  type="number"
-                  value={chamferDistance}
-                  onChange={(e) => setChamferDistance(Math.max(0.1, parseFloat(e.target.value) || 1))}
-                  className="w-20 h-7 mt-1"
-                  min="0.1"
-                  step="0.5"
-                />
+              <div className="p-2 space-y-2">
+                <div>
+                  <Label className="text-xs">Rayon congé (mm)</Label>
+                  <Input
+                    type="number"
+                    value={filletRadius}
+                    onChange={(e) => setFilletRadius(Math.max(0.1, parseFloat(e.target.value) || 1))}
+                    className="w-20 h-7 mt-1"
+                    min="0.1"
+                    step="0.5"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Distance chanfrein (mm)</Label>
+                  <Input
+                    type="number"
+                    value={chamferDistance}
+                    onChange={(e) => setChamferDistance(Math.max(0.1, parseFloat(e.target.value) || 1))}
+                    className="w-20 h-7 mt-1"
+                    min="0.1"
+                    step="0.5"
+                  />
+                </div>
               </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => {
-                  setActiveTool("chamfer");
-                  setFilletFirstLine(null);
-                }}
-              >
-                ✓ Activer l'outil Chanfrein
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -3825,6 +4010,7 @@ export function CADGabaritCanvas({
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
+              onDoubleClick={handleDoubleClick}
               onContextMenu={(e) => e.preventDefault()}
             />
 
@@ -3855,6 +4041,38 @@ export function CADGabaritCanvas({
                 )}
               </div>
             )}
+
+            {/* Overlay pour arc sélectionné */}
+            {selectedEntities.size === 1 &&
+              (() => {
+                const entityId = Array.from(selectedEntities)[0];
+                const geo = sketch.geometries.get(entityId);
+                if (geo && geo.type === "arc") {
+                  const arc = geo as Arc;
+                  return (
+                    <div
+                      className="absolute bottom-4 right-4 bg-white/95 rounded-lg shadow-lg p-3 border border-blue-300 cursor-pointer hover:bg-blue-50"
+                      onDoubleClick={() => {
+                        setArcEditDialog({
+                          open: true,
+                          arcId: entityId,
+                          currentRadius: arc.radius,
+                        });
+                      }}
+                    >
+                      <div className="flex items-center gap-2 text-blue-700 font-medium">
+                        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
+                        </svg>
+                        <span>Arc</span>
+                      </div>
+                      <p className="text-lg font-bold text-blue-800 mt-1">R{arc.radius.toFixed(1)} mm</p>
+                      <p className="text-xs text-gray-400">Double-clic pour modifier</p>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
           </div>
         </div>
 
@@ -4570,6 +4788,95 @@ export function CADGabaritCanvas({
                 }}
               >
                 Appliquer
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Dialogue Congé */}
+      {filletDialog && (
+        <Dialog open={filletDialog.open} onOpenChange={() => setFilletDialog(null)}>
+          <DialogContent className="sm:max-w-[280px]">
+            <DialogHeader>
+              <DialogTitle>Congé</DialogTitle>
+              <DialogDescription>Définir le rayon du congé</DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <Label htmlFor="fillet-radius">Rayon (mm)</Label>
+              <Input
+                id="fillet-radius"
+                type="number"
+                value={filletDialog.radius}
+                onChange={(e) =>
+                  setFilletDialog({
+                    ...filletDialog,
+                    radius: Math.max(0.1, parseFloat(e.target.value) || 1),
+                  })
+                }
+                className="mt-2"
+                min="0.1"
+                step="0.5"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    applyFilletFromDialog();
+                  }
+                }}
+              />
+            </div>
+            <DialogFooter>
+              <Button onClick={applyFilletFromDialog} className="w-full">
+                <Check className="h-4 w-4" />
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Dialogue modification arc */}
+      {arcEditDialog && (
+        <Dialog open={arcEditDialog.open} onOpenChange={() => setArcEditDialog(null)}>
+          <DialogContent className="sm:max-w-[280px]">
+            <DialogHeader>
+              <DialogTitle>Modifier l'arc</DialogTitle>
+              <DialogDescription>Changer le rayon de l'arc</DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <Label htmlFor="arc-radius">Rayon (mm)</Label>
+              <Input
+                id="arc-radius"
+                type="number"
+                defaultValue={arcEditDialog.currentRadius}
+                className="mt-2"
+                min="0.1"
+                step="0.5"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    const input = document.getElementById("arc-radius") as HTMLInputElement;
+                    const value = parseFloat(input.value);
+                    if (!isNaN(value) && value > 0) {
+                      updateArcRadius(arcEditDialog.arcId, value);
+                      setArcEditDialog(null);
+                    }
+                  }
+                }}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={() => {
+                  const input = document.getElementById("arc-radius") as HTMLInputElement;
+                  const value = parseFloat(input.value);
+                  if (!isNaN(value) && value > 0) {
+                    updateArcRadius(arcEditDialog.arcId, value);
+                    setArcEditDialog(null);
+                  }
+                }}
+                className="w-full"
+              >
+                <Check className="h-4 w-4" />
               </Button>
             </DialogFooter>
           </DialogContent>
