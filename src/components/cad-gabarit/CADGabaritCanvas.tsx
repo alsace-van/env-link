@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.28 - Option "Inverser le sens" dans les modales congé et arc
+// VERSION: 5.29 - Test géométrique (v5.24) + option "Inverser le sens" manuelle
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1220,22 +1220,39 @@ export function CADGabaritCanvas({
       const tan1 = { x: cornerPt.x + u1.x * tangentDist, y: cornerPt.y + u1.y * tangentDist };
       const tan2 = { x: cornerPt.x + u2.x * tangentDist, y: cornerPt.y + u2.y * tangentDist };
 
-      // La bissectrice (u1 + u2) pointe vers l'intérieur ou l'extérieur selon la géométrie
-      // Si invert est true, on inverse le sens
+      // Calculer les deux centres possibles sur la bissectrice
       const bisector = { x: u1.x + u2.x, y: u1.y + u2.y };
       const bisLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
 
       if (bisLen < 0.001) return null;
 
-      const sign = invert ? -1 : 1;
-      const bisUnit = { x: (sign * bisector.x) / bisLen, y: (sign * bisector.y) / bisLen };
+      const bisUnit = { x: bisector.x / bisLen, y: bisector.y / bisLen };
       const centerDist = radius / Math.sin(halfAngle);
 
-      // Le centre est sur la bissectrice
-      const arcCenter = {
+      const center1 = {
         x: cornerPt.x + bisUnit.x * centerDist,
         y: cornerPt.y + bisUnit.y * centerDist,
       };
+      const center2 = {
+        x: cornerPt.x - bisUnit.x * centerDist,
+        y: cornerPt.y - bisUnit.y * centerDist,
+      };
+
+      // Test géométrique: choisir le centre du côté OPPOSÉ au coin par rapport à la ligne tan1-tan2
+      const t1t2 = { x: tan2.x - tan1.x, y: tan2.y - tan1.y };
+      const t1Corner = { x: cornerPt.x - tan1.x, y: cornerPt.y - tan1.y };
+      const t1Center1 = { x: center1.x - tan1.x, y: center1.y - tan1.y };
+
+      const crossCorner = t1t2.x * t1Corner.y - t1t2.y * t1Corner.x;
+      const crossCenter1 = t1t2.x * t1Center1.y - t1t2.y * t1Center1.x;
+
+      // Si invert est true, on inverse le choix
+      let arcCenter: { x: number; y: number };
+      if (invert) {
+        arcCenter = crossCorner * crossCenter1 < 0 ? center2 : center1;
+      } else {
+        arcCenter = crossCorner * crossCenter1 < 0 ? center1 : center2;
+      }
 
       const tan1Id = generateId();
       const tan2Id = generateId();
@@ -2100,14 +2117,33 @@ export function CADGabaritCanvas({
         return;
       }
 
-      const sign = invert ? -1 : 1;
-      const bisUnit = { x: (sign * bisector.x) / bisLen, y: (sign * bisector.y) / bisLen };
+      const bisUnit = { x: bisector.x / bisLen, y: bisector.y / bisLen };
       const centerDist = newRadius / Math.sin(halfAngle);
 
-      const newCenter = {
+      const center1 = {
         x: corner.x + bisUnit.x * centerDist,
         y: corner.y + bisUnit.y * centerDist,
       };
+      const center2 = {
+        x: corner.x - bisUnit.x * centerDist,
+        y: corner.y - bisUnit.y * centerDist,
+      };
+
+      // Test géométrique: choisir le centre du côté OPPOSÉ au coin
+      const t1t2 = { x: newTan2.x - newTan1.x, y: newTan2.y - newTan1.y };
+      const t1Corner = { x: corner.x - newTan1.x, y: corner.y - newTan1.y };
+      const t1Center1 = { x: center1.x - newTan1.x, y: center1.y - newTan1.y };
+
+      const crossCorner = t1t2.x * t1Corner.y - t1t2.y * t1Corner.x;
+      const crossCenter1 = t1t2.x * t1Center1.y - t1t2.y * t1Center1.x;
+
+      // Si invert est true, on inverse le choix
+      let newCenter: { x: number; y: number };
+      if (invert) {
+        newCenter = crossCorner * crossCenter1 < 0 ? center2 : center1;
+      } else {
+        newCenter = crossCorner * crossCenter1 < 0 ? center1 : center2;
+      }
 
       // Mettre à jour le sketch
       const newSketch = { ...sketch };
