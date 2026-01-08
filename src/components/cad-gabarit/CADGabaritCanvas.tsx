@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.25 - Fix congé: calcul du centre via perpendiculaire pointant vers l'intérieur
+// VERSION: 5.25.1 - Fix constraints: new Map() au lieu de spread array
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1751,7 +1751,7 @@ export function CADGabaritCanvas({
       points: new Map(sketch.points),
       geometries: new Map(sketch.geometries),
       layers: new Map(sketch.layers),
-      constraints: [...sketch.constraints],
+      constraints: new Map(sketch.constraints),
     };
     let successCount = 0;
 
@@ -1813,7 +1813,7 @@ export function CADGabaritCanvas({
       points: new Map(sketch.points),
       geometries: new Map(sketch.geometries),
       layers: new Map(sketch.layers),
-      constraints: [...sketch.constraints],
+      constraints: new Map(sketch.constraints),
     };
     let successCount = 0;
 
