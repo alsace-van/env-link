@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 3.6 - Onglets calques EN HAUT avec arrondis en haut
+// VERSION: 3.7 - 2 calques par défaut + bouton ajouter
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -128,7 +128,7 @@ function createEmptySketch(scaleFactor: number = 1): Sketch {
     constraints: new Map(),
     dimensions: new Map(),
     layers,
-    activeLayerId: "default",
+    activeLayerId: "trace",
     scaleFactor,
     dof: 0,
     status: "fully-constrained",
@@ -2897,6 +2897,34 @@ export function CADGabaritCanvas({
                   </button>
                 </div>
               ))}
+
+            {/* Bouton + pour ajouter un calque */}
+            <button
+              className="flex items-center justify-center w-7 h-7 rounded-t-md border border-b-0 border-dashed border-gray-300 
+                         text-gray-400 hover:text-blue-600 hover:border-blue-400 hover:bg-blue-50 transition-all"
+              onClick={() => {
+                const layerColors = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4", "#84CC16"];
+                const newLayerId = generateId();
+                const layerCount = sketch.layers.size;
+                const newLayer: Layer = {
+                  id: newLayerId,
+                  name: `Calque ${layerCount + 1}`,
+                  color: layerColors[layerCount % layerColors.length],
+                  visible: true,
+                  locked: false,
+                  order: layerCount,
+                };
+                setSketch((prev) => {
+                  const newLayers = new Map(prev.layers);
+                  newLayers.set(newLayerId, newLayer);
+                  return { ...prev, layers: newLayers, activeLayerId: newLayerId };
+                });
+                toast.success(`Calque "${newLayer.name}" créé`);
+              }}
+              title="Ajouter un calque"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
           </div>
 
           {/* Canvas */}
