@@ -1,7 +1,7 @@
 // ============================================
 // TYPES: CAD Gabarit Types
 // Types pour le système CAO
-// VERSION: 2.6 - 2 calques par défaut (Modèle + Tracé)
+// VERSION: 2.7 - Ajout outils fillet, chamfer, offset
 // ============================================
 
 // === GÉOMÉTRIE DE BASE ===
@@ -160,7 +160,10 @@ export type ToolType =
   | "constraint"
   | "measure"
   | "trim"
-  | "extend";
+  | "extend"
+  | "fillet"
+  | "chamfer"
+  | "offset";
 
 export interface Tool {
   type: ToolType;
