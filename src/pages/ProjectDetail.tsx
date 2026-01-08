@@ -1865,7 +1865,7 @@ const ProjectDetail = () => {
                   </TabsContent>
 
                   <TabsContent value="energy" className="mt-6">
-                    <EnergyBalance projectId={project.id} />
+                    <EnergyBalance projectId={project.id} projectName={project.nom_projet} />
                   </TabsContent>
 
                   <TabsContent value="layout" className="mt-6">
