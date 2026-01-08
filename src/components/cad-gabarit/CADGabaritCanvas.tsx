@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 4.4 - Correction sélection rectangulaire + mode intersection
+// VERSION: 4.5 - Sélection box 2 modes (fenêtre/capture comme AutoCAD)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -385,18 +385,31 @@ export function CADGabaritCanvas({
         const width = Math.abs(endScreen.x - startScreen.x);
         const height = Math.abs(endScreen.y - startScreen.y);
 
+        // Détecter le mode de sélection
+        // Gauche → Droite = mode "fenêtre" (bleu, contenu uniquement)
+        // Droite → Gauche = mode "capture" (vert, intersection)
+        const isWindowMode = endScreen.x >= startScreen.x;
+
         // Ne dessiner que si la zone est significative (> 5px)
         if (width > 5 || height > 5) {
-          // Fond semi-transparent bleu
-          ctx.fillStyle = "rgba(59, 130, 246, 0.15)";
-          ctx.fillRect(x, y, width, height);
-
-          // Bordure bleue pointillée
-          ctx.strokeStyle = "#3B82F6";
-          ctx.lineWidth = 1;
-          ctx.setLineDash([5, 3]);
-          ctx.strokeRect(x, y, width, height);
-          ctx.setLineDash([]);
+          if (isWindowMode) {
+            // Mode Fenêtre : fond bleu, bordure bleue continue
+            ctx.fillStyle = "rgba(59, 130, 246, 0.15)";
+            ctx.fillRect(x, y, width, height);
+            ctx.strokeStyle = "#3B82F6";
+            ctx.lineWidth = 1;
+            ctx.setLineDash([]);
+            ctx.strokeRect(x, y, width, height);
+          } else {
+            // Mode Capture : fond vert, bordure verte pointillée
+            ctx.fillStyle = "rgba(34, 197, 94, 0.15)";
+            ctx.fillRect(x, y, width, height);
+            ctx.strokeStyle = "#22C55E";
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 3]);
+            ctx.strokeRect(x, y, width, height);
+            ctx.setLineDash([]);
+          }
         }
       }
     }
@@ -549,6 +562,88 @@ export function CADGabaritCanvas({
       };
     },
     [viewport],
+  );
+
+  // Helper: vérifie si une ligne intersecte une boîte
+  const lineIntersectsBox = useCallback(
+    (p1: Point, p2: Point, minX: number, minY: number, maxX: number, maxY: number): boolean => {
+      // Algorithme de Cohen-Sutherland simplifié
+      // Vérifie si le segment [p1, p2] traverse le rectangle [minX, minY, maxX, maxY]
+
+      const INSIDE = 0,
+        LEFT = 1,
+        RIGHT = 2,
+        BOTTOM = 4,
+        TOP = 8;
+
+      const computeCode = (x: number, y: number): number => {
+        let code = INSIDE;
+        if (x < minX) code |= LEFT;
+        else if (x > maxX) code |= RIGHT;
+        if (y < minY) code |= BOTTOM;
+        else if (y > maxY) code |= TOP;
+        return code;
+      };
+
+      let x1 = p1.x,
+        y1 = p1.y,
+        x2 = p2.x,
+        y2 = p2.y;
+      let code1 = computeCode(x1, y1);
+      let code2 = computeCode(x2, y2);
+
+      while (true) {
+        if ((code1 | code2) === 0) return true; // Complètement à l'intérieur
+        if ((code1 & code2) !== 0) return false; // Complètement à l'extérieur
+
+        // La ligne traverse potentiellement, on calcule l'intersection
+        const codeOut = code1 !== 0 ? code1 : code2;
+        let x = 0,
+          y = 0;
+
+        if (codeOut & TOP) {
+          x = x1 + ((x2 - x1) * (maxY - y1)) / (y2 - y1);
+          y = maxY;
+        } else if (codeOut & BOTTOM) {
+          x = x1 + ((x2 - x1) * (minY - y1)) / (y2 - y1);
+          y = minY;
+        } else if (codeOut & RIGHT) {
+          y = y1 + ((y2 - y1) * (maxX - x1)) / (x2 - x1);
+          x = maxX;
+        } else if (codeOut & LEFT) {
+          y = y1 + ((y2 - y1) * (minX - x1)) / (x2 - x1);
+          x = minX;
+        }
+
+        if (codeOut === code1) {
+          x1 = x;
+          y1 = y;
+          code1 = computeCode(x1, y1);
+        } else {
+          x2 = x;
+          y2 = y;
+          code2 = computeCode(x2, y2);
+        }
+      }
+    },
+    [],
+  );
+
+  // Helper: vérifie si un cercle intersecte une boîte
+  const circleIntersectsBox = useCallback(
+    (center: Point, radius: number, minX: number, minY: number, maxX: number, maxY: number): boolean => {
+      // Trouver le point le plus proche du centre sur le rectangle
+      const closestX = Math.max(minX, Math.min(center.x, maxX));
+      const closestY = Math.max(minY, Math.min(center.y, maxY));
+
+      // Calculer la distance entre le centre et ce point
+      const dx = center.x - closestX;
+      const dy = center.y - closestY;
+      const distanceSquared = dx * dx + dy * dy;
+
+      return distanceSquared <= radius * radius;
+    },
+    [],
   );
 
   // Trouver l'entité sous le curseur
@@ -1510,28 +1605,55 @@ export function CADGabaritCanvas({
         const minY = Math.min(box.start.y, box.end.y);
         const maxY = Math.max(box.start.y, box.end.y);
 
-        // Sélectionner toutes les géométries qui sont dans la zone
+        // Détecter le mode de sélection
+        // Gauche → Droite = mode "fenêtre" (éléments entièrement contenus)
+        // Droite → Gauche = mode "capture" (éléments qui touchent)
+        const isWindowMode = box.end.x >= box.start.x;
+
+        // Sélectionner toutes les géométries selon le mode
         const newSelection = e.shiftKey ? new Set(selectedEntities) : new Set<string>();
 
         sketch.geometries.forEach((geo, id) => {
-          let isInBox = false;
+          // Vérifier la visibilité du calque
+          const layerId = geo.layerId || "trace";
+          const layer = sketch.layers.get(layerId);
+          if (layer?.visible === false) return;
+
+          let isSelected = false;
 
           if (geo.type === "line") {
             const line = geo as Line;
             const p1 = sketch.points.get(line.p1);
             const p2 = sketch.points.get(line.p2);
             if (p1 && p2) {
-              // Mode intersection : au moins un point dans la zone OU la ligne traverse la zone
               const p1InBox = p1.x >= minX && p1.x <= maxX && p1.y >= minY && p1.y <= maxY;
               const p2InBox = p2.x >= minX && p2.x <= maxX && p2.y >= minY && p2.y <= maxY;
-              isInBox = p1InBox || p2InBox;
+
+              if (isWindowMode) {
+                // Mode Fenêtre : les DEUX points doivent être dans la zone
+                isSelected = p1InBox && p2InBox;
+              } else {
+                // Mode Capture : AU MOINS UN point dans la zone OU la ligne traverse la zone
+                isSelected = p1InBox || p2InBox || lineIntersectsBox(p1, p2, minX, minY, maxX, maxY);
+              }
             }
           } else if (geo.type === "circle") {
             const circle = geo as CircleType;
             const center = sketch.points.get(circle.center);
             if (center) {
-              // Le cercle est sélectionné si son centre est dans la zone
-              isInBox = center.x >= minX && center.x <= maxX && center.y >= minY && center.y <= maxY;
+              if (isWindowMode) {
+                // Mode Fenêtre : le cercle entier doit être dans la zone
+                isSelected =
+                  center.x - circle.radius >= minX &&
+                  center.x + circle.radius <= maxX &&
+                  center.y - circle.radius >= minY &&
+                  center.y + circle.radius <= maxY;
+              } else {
+                // Mode Capture : le cercle touche la zone
+                const centerInBox = center.x >= minX && center.x <= maxX && center.y >= minY && center.y <= maxY;
+                const circleIntersects = circleIntersectsBox(center, circle.radius, minX, minY, maxX, maxY);
+                isSelected = centerInBox || circleIntersects;
+              }
             }
           } else if (geo.type === "bezier") {
             const bezier = geo as Bezier;
@@ -1540,18 +1662,24 @@ export function CADGabaritCanvas({
             if (p1 && p2) {
               const p1InBox = p1.x >= minX && p1.x <= maxX && p1.y >= minY && p1.y <= maxY;
               const p2InBox = p2.x >= minX && p2.x <= maxX && p2.y >= minY && p2.y <= maxY;
-              isInBox = p1InBox || p2InBox;
+
+              if (isWindowMode) {
+                isSelected = p1InBox && p2InBox;
+              } else {
+                isSelected = p1InBox || p2InBox;
+              }
             }
           }
 
-          if (isInBox) {
+          if (isSelected) {
             newSelection.add(id);
           }
         });
 
         if (newSelection.size > 0) {
           setSelectedEntities(newSelection);
-          toast.success(`${newSelection.size} élément(s) sélectionné(s)`);
+          const modeText = isWindowMode ? "fenêtre" : "capture";
+          toast.success(`${newSelection.size} élément(s) sélectionné(s) (mode ${modeText})`);
         }
 
         setSelectionBox(null);
