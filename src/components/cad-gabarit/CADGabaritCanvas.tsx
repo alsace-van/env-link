@@ -918,6 +918,250 @@ export function CADGabaritCanvas({
     [sketch.points],
   );
 
+  // === FILLET ET CHAMFER ===
+
+  // Trouve le point commun entre deux lignes
+  const findSharedPoint = useCallback(
+    (line1: Line, line2: Line): { sharedPointId: string; line1OtherId: string; line2OtherId: string } | null => {
+      if (line1.p1 === line2.p1) return { sharedPointId: line1.p1, line1OtherId: line1.p2, line2OtherId: line2.p2 };
+      if (line1.p1 === line2.p2) return { sharedPointId: line1.p1, line1OtherId: line1.p2, line2OtherId: line2.p1 };
+      if (line1.p2 === line2.p1) return { sharedPointId: line1.p2, line1OtherId: line1.p1, line2OtherId: line2.p2 };
+      if (line1.p2 === line2.p2) return { sharedPointId: line1.p2, line1OtherId: line1.p1, line2OtherId: line2.p1 };
+      return null;
+    },
+    [],
+  );
+
+  // Applique un congé (fillet) entre deux lignes
+  const applyFillet = useCallback(
+    (line1Id: string, line2Id: string, radius: number) => {
+      const line1 = sketch.geometries.get(line1Id) as Line | undefined;
+      const line2 = sketch.geometries.get(line2Id) as Line | undefined;
+
+      if (!line1 || !line2 || line1.type !== "line" || line2.type !== "line") {
+        toast.error("Sélectionnez deux lignes");
+        return;
+      }
+
+      const shared = findSharedPoint(line1, line2);
+      if (!shared) {
+        toast.error("Les lignes doivent partager un point commun");
+        return;
+      }
+
+      const sharedPt = sketch.points.get(shared.sharedPointId);
+      const other1 = sketch.points.get(shared.line1OtherId);
+      const other2 = sketch.points.get(shared.line2OtherId);
+
+      if (!sharedPt || !other1 || !other2) return;
+
+      // Vecteurs unitaires des lignes (partant du point commun)
+      const len1 = distance(sharedPt, other1);
+      const len2 = distance(sharedPt, other2);
+
+      if (len1 < radius || len2 < radius) {
+        toast.error("Rayon trop grand pour ces lignes");
+        return;
+      }
+
+      const dir1 = { x: (other1.x - sharedPt.x) / len1, y: (other1.y - sharedPt.y) / len1 };
+      const dir2 = { x: (other2.x - sharedPt.x) / len2, y: (other2.y - sharedPt.y) / len2 };
+
+      // Angle entre les deux lignes
+      const dot = dir1.x * dir2.x + dir1.y * dir2.y;
+      const angleRad = Math.acos(Math.max(-1, Math.min(1, dot)));
+
+      if (angleRad < 0.01 || angleRad > Math.PI - 0.01) {
+        toast.error("Lignes trop parallèles pour un congé");
+        return;
+      }
+
+      // Distance du point commun aux points de tangence
+      const tangentDist = radius / Math.tan(angleRad / 2);
+
+      if (tangentDist > len1 || tangentDist > len2) {
+        toast.error("Rayon trop grand pour ces lignes");
+        return;
+      }
+
+      // Points de tangence
+      const tan1 = { x: sharedPt.x + dir1.x * tangentDist, y: sharedPt.y + dir1.y * tangentDist };
+      const tan2 = { x: sharedPt.x + dir2.x * tangentDist, y: sharedPt.y + dir2.y * tangentDist };
+
+      // Centre de l'arc (sur la bissectrice, à distance radius/sin(angle/2))
+      const bisector = { x: dir1.x + dir2.x, y: dir1.y + dir2.y };
+      const bisLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
+      if (bisLen < 0.001) {
+        toast.error("Impossible de calculer le centre de l'arc");
+        return;
+      }
+      const bisUnit = { x: bisector.x / bisLen, y: bisector.y / bisLen };
+      const centerDist = radius / Math.sin(angleRad / 2);
+      const arcCenter = { x: sharedPt.x + bisUnit.x * centerDist, y: sharedPt.y + bisUnit.y * centerDist };
+
+      // Créer le nouveau sketch
+      const newSketch = { ...sketch };
+      newSketch.points = new Map(sketch.points);
+      newSketch.geometries = new Map(sketch.geometries);
+
+      // Créer les nouveaux points
+      const tan1Id = generateId();
+      const tan2Id = generateId();
+      const centerId = generateId();
+
+      newSketch.points.set(tan1Id, { id: tan1Id, x: tan1.x, y: tan1.y });
+      newSketch.points.set(tan2Id, { id: tan2Id, x: tan2.x, y: tan2.y });
+      newSketch.points.set(centerId, { id: centerId, x: arcCenter.x, y: arcCenter.y });
+
+      // Modifier les lignes pour qu'elles se terminent aux points de tangence
+      const newLine1: Line = { ...line1 };
+      const newLine2: Line = { ...line2 };
+
+      if (line1.p1 === shared.sharedPointId) {
+        newLine1.p1 = tan1Id;
+      } else {
+        newLine1.p2 = tan1Id;
+      }
+
+      if (line2.p1 === shared.sharedPointId) {
+        newLine2.p1 = tan2Id;
+      } else {
+        newLine2.p2 = tan2Id;
+      }
+
+      newSketch.geometries.set(line1Id, newLine1);
+      newSketch.geometries.set(line2Id, newLine2);
+
+      // Créer l'arc
+      const arcId = generateId();
+      const arc: Arc = {
+        id: arcId,
+        type: "arc",
+        center: centerId,
+        startPoint: tan1Id,
+        endPoint: tan2Id,
+        radius: radius,
+        layerId: line1.layerId || "trace",
+      };
+      newSketch.geometries.set(arcId, arc);
+
+      // Supprimer le point commun s'il n'est plus utilisé
+      let pointStillUsed = false;
+      newSketch.geometries.forEach((geo) => {
+        if (geo.type === "line") {
+          const l = geo as Line;
+          if (l.p1 === shared.sharedPointId || l.p2 === shared.sharedPointId) pointStillUsed = true;
+        }
+      });
+      if (!pointStillUsed) {
+        newSketch.points.delete(shared.sharedPointId);
+      }
+
+      setSketch(newSketch);
+      toast.success(`Congé R${radius}mm appliqué`);
+    },
+    [sketch, findSharedPoint],
+  );
+
+  // Applique un chanfrein entre deux lignes
+  const applyChamfer = useCallback(
+    (line1Id: string, line2Id: string, dist: number) => {
+      const line1 = sketch.geometries.get(line1Id) as Line | undefined;
+      const line2 = sketch.geometries.get(line2Id) as Line | undefined;
+
+      if (!line1 || !line2 || line1.type !== "line" || line2.type !== "line") {
+        toast.error("Sélectionnez deux lignes");
+        return;
+      }
+
+      const shared = findSharedPoint(line1, line2);
+      if (!shared) {
+        toast.error("Les lignes doivent partager un point commun");
+        return;
+      }
+
+      const sharedPt = sketch.points.get(shared.sharedPointId);
+      const other1 = sketch.points.get(shared.line1OtherId);
+      const other2 = sketch.points.get(shared.line2OtherId);
+
+      if (!sharedPt || !other1 || !other2) return;
+
+      // Vecteurs unitaires des lignes
+      const len1 = distance(sharedPt, other1);
+      const len2 = distance(sharedPt, other2);
+
+      if (len1 < dist || len2 < dist) {
+        toast.error("Distance trop grande pour ces lignes");
+        return;
+      }
+
+      const dir1 = { x: (other1.x - sharedPt.x) / len1, y: (other1.y - sharedPt.y) / len1 };
+      const dir2 = { x: (other2.x - sharedPt.x) / len2, y: (other2.y - sharedPt.y) / len2 };
+
+      // Points de chanfrein à distance D du coin
+      const cham1 = { x: sharedPt.x + dir1.x * dist, y: sharedPt.y + dir1.y * dist };
+      const cham2 = { x: sharedPt.x + dir2.x * dist, y: sharedPt.y + dir2.y * dist };
+
+      // Créer le nouveau sketch
+      const newSketch = { ...sketch };
+      newSketch.points = new Map(sketch.points);
+      newSketch.geometries = new Map(sketch.geometries);
+
+      // Créer les nouveaux points
+      const cham1Id = generateId();
+      const cham2Id = generateId();
+
+      newSketch.points.set(cham1Id, { id: cham1Id, x: cham1.x, y: cham1.y });
+      newSketch.points.set(cham2Id, { id: cham2Id, x: cham2.x, y: cham2.y });
+
+      // Modifier les lignes
+      const newLine1: Line = { ...line1 };
+      const newLine2: Line = { ...line2 };
+
+      if (line1.p1 === shared.sharedPointId) {
+        newLine1.p1 = cham1Id;
+      } else {
+        newLine1.p2 = cham1Id;
+      }
+
+      if (line2.p1 === shared.sharedPointId) {
+        newLine2.p1 = cham2Id;
+      } else {
+        newLine2.p2 = cham2Id;
+      }
+
+      newSketch.geometries.set(line1Id, newLine1);
+      newSketch.geometries.set(line2Id, newLine2);
+
+      // Créer la ligne de chanfrein
+      const chamferLineId = generateId();
+      const chamferLine: Line = {
+        id: chamferLineId,
+        type: "line",
+        p1: cham1Id,
+        p2: cham2Id,
+        layerId: line1.layerId || "trace",
+      };
+      newSketch.geometries.set(chamferLineId, chamferLine);
+
+      // Supprimer le point commun s'il n'est plus utilisé
+      let pointStillUsed = false;
+      newSketch.geometries.forEach((geo) => {
+        if (geo.type === "line") {
+          const l = geo as Line;
+          if (l.p1 === shared.sharedPointId || l.p2 === shared.sharedPointId) pointStillUsed = true;
+        }
+      });
+      if (!pointStillUsed) {
+        newSketch.points.delete(shared.sharedPointId);
+      }
+
+      setSketch(newSketch);
+      toast.success(`Chanfrein ${dist}mm appliqué`);
+    },
+    [sketch, findSharedPoint],
+  );
+
   // Gestion de la souris
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -1844,250 +2088,6 @@ export function CADGabaritCanvas({
       canvas.removeEventListener("wheel", handleWheel);
     };
   }, [handleWheel]);
-
-  // === FILLET ET CHAMFER ===
-
-  // Trouve le point commun entre deux lignes
-  const findSharedPoint = useCallback(
-    (line1: Line, line2: Line): { sharedPointId: string; line1OtherId: string; line2OtherId: string } | null => {
-      if (line1.p1 === line2.p1) return { sharedPointId: line1.p1, line1OtherId: line1.p2, line2OtherId: line2.p2 };
-      if (line1.p1 === line2.p2) return { sharedPointId: line1.p1, line1OtherId: line1.p2, line2OtherId: line2.p1 };
-      if (line1.p2 === line2.p1) return { sharedPointId: line1.p2, line1OtherId: line1.p1, line2OtherId: line2.p2 };
-      if (line1.p2 === line2.p2) return { sharedPointId: line1.p2, line1OtherId: line1.p1, line2OtherId: line2.p1 };
-      return null;
-    },
-    [],
-  );
-
-  // Applique un congé (fillet) entre deux lignes
-  const applyFillet = useCallback(
-    (line1Id: string, line2Id: string, radius: number) => {
-      const line1 = sketch.geometries.get(line1Id) as Line | undefined;
-      const line2 = sketch.geometries.get(line2Id) as Line | undefined;
-
-      if (!line1 || !line2 || line1.type !== "line" || line2.type !== "line") {
-        toast.error("Sélectionnez deux lignes");
-        return;
-      }
-
-      const shared = findSharedPoint(line1, line2);
-      if (!shared) {
-        toast.error("Les lignes doivent partager un point commun");
-        return;
-      }
-
-      const sharedPt = sketch.points.get(shared.sharedPointId);
-      const other1 = sketch.points.get(shared.line1OtherId);
-      const other2 = sketch.points.get(shared.line2OtherId);
-
-      if (!sharedPt || !other1 || !other2) return;
-
-      // Vecteurs unitaires des lignes (partant du point commun)
-      const len1 = distance(sharedPt, other1);
-      const len2 = distance(sharedPt, other2);
-
-      if (len1 < radius || len2 < radius) {
-        toast.error("Rayon trop grand pour ces lignes");
-        return;
-      }
-
-      const dir1 = { x: (other1.x - sharedPt.x) / len1, y: (other1.y - sharedPt.y) / len1 };
-      const dir2 = { x: (other2.x - sharedPt.x) / len2, y: (other2.y - sharedPt.y) / len2 };
-
-      // Angle entre les deux lignes
-      const dot = dir1.x * dir2.x + dir1.y * dir2.y;
-      const angleRad = Math.acos(Math.max(-1, Math.min(1, dot)));
-
-      if (angleRad < 0.01 || angleRad > Math.PI - 0.01) {
-        toast.error("Lignes trop parallèles pour un congé");
-        return;
-      }
-
-      // Distance du point commun aux points de tangence
-      const tangentDist = radius / Math.tan(angleRad / 2);
-
-      if (tangentDist > len1 || tangentDist > len2) {
-        toast.error("Rayon trop grand pour ces lignes");
-        return;
-      }
-
-      // Points de tangence
-      const tan1 = { x: sharedPt.x + dir1.x * tangentDist, y: sharedPt.y + dir1.y * tangentDist };
-      const tan2 = { x: sharedPt.x + dir2.x * tangentDist, y: sharedPt.y + dir2.y * tangentDist };
-
-      // Centre de l'arc (sur la bissectrice, à distance radius/sin(angle/2))
-      const bisector = { x: dir1.x + dir2.x, y: dir1.y + dir2.y };
-      const bisLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
-      if (bisLen < 0.001) {
-        toast.error("Impossible de calculer le centre de l'arc");
-        return;
-      }
-      const bisUnit = { x: bisector.x / bisLen, y: bisector.y / bisLen };
-      const centerDist = radius / Math.sin(angleRad / 2);
-      const arcCenter = { x: sharedPt.x + bisUnit.x * centerDist, y: sharedPt.y + bisUnit.y * centerDist };
-
-      // Créer le nouveau sketch
-      const newSketch = { ...sketch };
-      newSketch.points = new Map(sketch.points);
-      newSketch.geometries = new Map(sketch.geometries);
-
-      // Créer les nouveaux points
-      const tan1Id = generateId();
-      const tan2Id = generateId();
-      const centerId = generateId();
-
-      newSketch.points.set(tan1Id, { id: tan1Id, x: tan1.x, y: tan1.y });
-      newSketch.points.set(tan2Id, { id: tan2Id, x: tan2.x, y: tan2.y });
-      newSketch.points.set(centerId, { id: centerId, x: arcCenter.x, y: arcCenter.y });
-
-      // Modifier les lignes pour qu'elles se terminent aux points de tangence
-      const newLine1: Line = { ...line1 };
-      const newLine2: Line = { ...line2 };
-
-      if (line1.p1 === shared.sharedPointId) {
-        newLine1.p1 = tan1Id;
-      } else {
-        newLine1.p2 = tan1Id;
-      }
-
-      if (line2.p1 === shared.sharedPointId) {
-        newLine2.p1 = tan2Id;
-      } else {
-        newLine2.p2 = tan2Id;
-      }
-
-      newSketch.geometries.set(line1Id, newLine1);
-      newSketch.geometries.set(line2Id, newLine2);
-
-      // Créer l'arc
-      const arcId = generateId();
-      const arc: Arc = {
-        id: arcId,
-        type: "arc",
-        center: centerId,
-        startPoint: tan1Id,
-        endPoint: tan2Id,
-        radius: radius,
-        layerId: line1.layerId || "trace",
-      };
-      newSketch.geometries.set(arcId, arc);
-
-      // Supprimer le point commun s'il n'est plus utilisé
-      let pointStillUsed = false;
-      newSketch.geometries.forEach((geo) => {
-        if (geo.type === "line") {
-          const l = geo as Line;
-          if (l.p1 === shared.sharedPointId || l.p2 === shared.sharedPointId) pointStillUsed = true;
-        }
-      });
-      if (!pointStillUsed) {
-        newSketch.points.delete(shared.sharedPointId);
-      }
-
-      setSketch(newSketch);
-      toast.success(`Congé R${radius}mm appliqué`);
-    },
-    [sketch, findSharedPoint],
-  );
-
-  // Applique un chanfrein entre deux lignes
-  const applyChamfer = useCallback(
-    (line1Id: string, line2Id: string, dist: number) => {
-      const line1 = sketch.geometries.get(line1Id) as Line | undefined;
-      const line2 = sketch.geometries.get(line2Id) as Line | undefined;
-
-      if (!line1 || !line2 || line1.type !== "line" || line2.type !== "line") {
-        toast.error("Sélectionnez deux lignes");
-        return;
-      }
-
-      const shared = findSharedPoint(line1, line2);
-      if (!shared) {
-        toast.error("Les lignes doivent partager un point commun");
-        return;
-      }
-
-      const sharedPt = sketch.points.get(shared.sharedPointId);
-      const other1 = sketch.points.get(shared.line1OtherId);
-      const other2 = sketch.points.get(shared.line2OtherId);
-
-      if (!sharedPt || !other1 || !other2) return;
-
-      // Vecteurs unitaires des lignes
-      const len1 = distance(sharedPt, other1);
-      const len2 = distance(sharedPt, other2);
-
-      if (len1 < dist || len2 < dist) {
-        toast.error("Distance trop grande pour ces lignes");
-        return;
-      }
-
-      const dir1 = { x: (other1.x - sharedPt.x) / len1, y: (other1.y - sharedPt.y) / len1 };
-      const dir2 = { x: (other2.x - sharedPt.x) / len2, y: (other2.y - sharedPt.y) / len2 };
-
-      // Points de chanfrein à distance D du coin
-      const cham1 = { x: sharedPt.x + dir1.x * dist, y: sharedPt.y + dir1.y * dist };
-      const cham2 = { x: sharedPt.x + dir2.x * dist, y: sharedPt.y + dir2.y * dist };
-
-      // Créer le nouveau sketch
-      const newSketch = { ...sketch };
-      newSketch.points = new Map(sketch.points);
-      newSketch.geometries = new Map(sketch.geometries);
-
-      // Créer les nouveaux points
-      const cham1Id = generateId();
-      const cham2Id = generateId();
-
-      newSketch.points.set(cham1Id, { id: cham1Id, x: cham1.x, y: cham1.y });
-      newSketch.points.set(cham2Id, { id: cham2Id, x: cham2.x, y: cham2.y });
-
-      // Modifier les lignes
-      const newLine1: Line = { ...line1 };
-      const newLine2: Line = { ...line2 };
-
-      if (line1.p1 === shared.sharedPointId) {
-        newLine1.p1 = cham1Id;
-      } else {
-        newLine1.p2 = cham1Id;
-      }
-
-      if (line2.p1 === shared.sharedPointId) {
-        newLine2.p1 = cham2Id;
-      } else {
-        newLine2.p2 = cham2Id;
-      }
-
-      newSketch.geometries.set(line1Id, newLine1);
-      newSketch.geometries.set(line2Id, newLine2);
-
-      // Créer la ligne de chanfrein
-      const chamferLineId = generateId();
-      const chamferLine: Line = {
-        id: chamferLineId,
-        type: "line",
-        p1: cham1Id,
-        p2: cham2Id,
-        layerId: line1.layerId || "trace",
-      };
-      newSketch.geometries.set(chamferLineId, chamferLine);
-
-      // Supprimer le point commun s'il n'est plus utilisé
-      let pointStillUsed = false;
-      newSketch.geometries.forEach((geo) => {
-        if (geo.type === "line") {
-          const l = geo as Line;
-          if (l.p1 === shared.sharedPointId || l.p2 === shared.sharedPointId) pointStillUsed = true;
-        }
-      });
-      if (!pointStillUsed) {
-        newSketch.points.delete(shared.sharedPointId);
-      }
-
-      setSketch(newSketch);
-      toast.success(`Chanfrein ${dist}mm appliqué`);
-    },
-    [sketch, findSharedPoint],
-  );
 
   // Supprimer les entités sélectionnées
   const deleteSelectedEntities = useCallback(() => {
