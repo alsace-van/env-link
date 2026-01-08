@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 4.7 - Auto-fit zoom + bouton Fit + raccourci F
+// VERSION: 4.8 - Fix ordre définition fitToContent
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -2138,6 +2138,69 @@ export function CADGabaritCanvas({
     toast.success(`${copiedGeometries.size} géométrie(s) dupliquées`);
   }, [selectedEntities, sketch, addToHistory]);
 
+  // Ajuster la vue pour voir tout le contenu
+  const fitToContent = useCallback(() => {
+    if (sketch.geometries.size === 0) {
+      toast.info("Aucun contenu à afficher");
+      return;
+    }
+
+    // Calculer les bounds de tout le contenu
+    let minX = Infinity,
+      minY = Infinity;
+    let maxX = -Infinity,
+      maxY = -Infinity;
+
+    sketch.points.forEach((point) => {
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+    });
+
+    // Prendre en compte les cercles
+    sketch.geometries.forEach((geo) => {
+      if (geo.type === "circle") {
+        const circle = geo as CircleType;
+        const center = sketch.points.get(circle.center);
+        if (center) {
+          minX = Math.min(minX, center.x - circle.radius);
+          minY = Math.min(minY, center.y - circle.radius);
+          maxX = Math.max(maxX, center.x + circle.radius);
+          maxY = Math.max(maxY, center.y + circle.radius);
+        }
+      }
+    });
+
+    if (minX === Infinity) {
+      toast.info("Aucun contenu à afficher");
+      return;
+    }
+
+    const contentWidth = maxX - minX;
+    const contentHeight = maxY - minY;
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+
+    setViewport((prev) => {
+      // Calculer le scale optimal avec une marge de 20%
+      const margin = 0.8;
+      const scaleX = (prev.width * margin) / contentWidth;
+      const scaleY = (prev.height * margin) / contentHeight;
+      const optimalScale = Math.min(scaleX, scaleY);
+
+      // Limiter le scale entre 0.01 et 100
+      const newScale = Math.max(0.01, Math.min(100, optimalScale));
+
+      return {
+        ...prev,
+        scale: newScale,
+        offsetX: prev.width / 2 - centerX * newScale,
+        offsetY: prev.height / 2 - centerY * newScale,
+      };
+    });
+  }, [sketch]);
+
   // Gestion clavier (DOIT être après les fonctions copySelectedEntities, pasteEntities, duplicateSelectedEntities)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -2900,69 +2963,6 @@ export function CADGabaritCanvas({
       scale: 1,
     }));
   }, []);
-
-  // Ajuster la vue pour voir tout le contenu
-  const fitToContent = useCallback(() => {
-    if (sketch.geometries.size === 0) {
-      toast.info("Aucun contenu à afficher");
-      return;
-    }
-
-    // Calculer les bounds de tout le contenu
-    let minX = Infinity,
-      minY = Infinity;
-    let maxX = -Infinity,
-      maxY = -Infinity;
-
-    sketch.points.forEach((point) => {
-      minX = Math.min(minX, point.x);
-      minY = Math.min(minY, point.y);
-      maxX = Math.max(maxX, point.x);
-      maxY = Math.max(maxY, point.y);
-    });
-
-    // Prendre en compte les cercles
-    sketch.geometries.forEach((geo) => {
-      if (geo.type === "circle") {
-        const circle = geo as CircleType;
-        const center = sketch.points.get(circle.center);
-        if (center) {
-          minX = Math.min(minX, center.x - circle.radius);
-          minY = Math.min(minY, center.y - circle.radius);
-          maxX = Math.max(maxX, center.x + circle.radius);
-          maxY = Math.max(maxY, center.y + circle.radius);
-        }
-      }
-    });
-
-    if (minX === Infinity) {
-      toast.info("Aucun contenu à afficher");
-      return;
-    }
-
-    const contentWidth = maxX - minX;
-    const contentHeight = maxY - minY;
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-
-    setViewport((prev) => {
-      // Calculer le scale optimal avec une marge de 20%
-      const margin = 0.8;
-      const scaleX = (prev.width * margin) / contentWidth;
-      const scaleY = (prev.height * margin) / contentHeight;
-      const optimalScale = Math.min(scaleX, scaleY);
-
-      // Limiter le scale entre 0.01 et 100
-      const newScale = Math.max(0.01, Math.min(100, optimalScale));
-
-      return {
-        ...prev,
-        scale: newScale,
-        offsetX: prev.width / 2 - centerX * newScale,
-        offsetY: prev.height / 2 - centerY * newScale,
-      };
-    });
-  }, [sketch]);
 
   // Bouton outil
   const ToolButton = ({
