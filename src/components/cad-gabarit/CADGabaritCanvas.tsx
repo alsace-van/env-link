@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.4 - Nouveau workflow congé: sélection 2 lignes → modale → validation. Arcs sélectionnables avec affichage rayon.
+// VERSION: 5.5 - Fix modification rayon congé (recalcul complet) + suppression congé restaure le coin
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1270,44 +1270,139 @@ export function CADGabaritCanvas({
     setSelectedEntities(new Set());
   }, [filletDialog, applyFillet]);
 
-  // Modifier le rayon d'un arc existant
+  // Trouver les lignes connectées à un point
+  const findLinesConnectedToPoint = useCallback(
+    (pointId: string): Line[] => {
+      const lines: Line[] = [];
+      sketch.geometries.forEach((geo) => {
+        if (geo.type === "line") {
+          const line = geo as Line;
+          if (line.p1 === pointId || line.p2 === pointId) {
+            lines.push(line);
+          }
+        }
+      });
+      return lines;
+    },
+    [sketch.geometries],
+  );
+
+  // Calculer l'intersection de deux lignes (prolongées)
+  const lineIntersection = useCallback(
+    (
+      p1: { x: number; y: number },
+      p2: { x: number; y: number },
+      p3: { x: number; y: number },
+      p4: { x: number; y: number },
+    ): { x: number; y: number } | null => {
+      const d1x = p2.x - p1.x;
+      const d1y = p2.y - p1.y;
+      const d2x = p4.x - p3.x;
+      const d2y = p4.y - p3.y;
+
+      const cross = d1x * d2y - d1y * d2x;
+      if (Math.abs(cross) < 0.0001) return null; // Lignes parallèles
+
+      const t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / cross;
+
+      return {
+        x: p1.x + t * d1x,
+        y: p1.y + t * d1y,
+      };
+    },
+    [],
+  );
+
+  // Modifier le rayon d'un arc existant (recalcul complet du congé)
   const updateArcRadius = useCallback(
     (arcId: string, newRadius: number) => {
       const arc = sketch.geometries.get(arcId) as Arc | undefined;
       if (!arc || arc.type !== "arc") return;
 
-      const center = sketch.points.get(arc.center);
+      const centerPt = sketch.points.get(arc.center);
       const startPt = sketch.points.get(arc.startPoint);
       const endPt = sketch.points.get(arc.endPoint);
 
-      if (!center || !startPt || !endPt) return;
+      if (!centerPt || !startPt || !endPt) return;
 
-      // Calculer les nouveaux points de tangence (même direction, nouvelle distance)
-      const startDir = {
-        x: (startPt.x - center.x) / arc.radius,
-        y: (startPt.y - center.y) / arc.radius,
-      };
-      const endDir = {
-        x: (endPt.x - center.x) / arc.radius,
-        y: (endPt.y - center.y) / arc.radius,
-      };
+      // Trouver les lignes connectées aux points de tangence
+      const linesAtStart = findLinesConnectedToPoint(arc.startPoint);
+      const linesAtEnd = findLinesConnectedToPoint(arc.endPoint);
 
-      const newStart = {
-        x: center.x + startDir.x * newRadius,
-        y: center.y + startDir.y * newRadius,
-      };
-      const newEnd = {
-        x: center.x + endDir.x * newRadius,
-        y: center.y + endDir.y * newRadius,
-      };
+      if (linesAtStart.length !== 1 || linesAtEnd.length !== 1) {
+        toast.error("Impossible de modifier: structure de congé invalide");
+        return;
+      }
 
+      const line1 = linesAtStart[0];
+      const line2 = linesAtEnd[0];
+
+      // Trouver les autres extrémités des lignes
+      const other1Id = line1.p1 === arc.startPoint ? line1.p2 : line1.p1;
+      const other2Id = line2.p1 === arc.endPoint ? line2.p2 : line2.p1;
+
+      const other1 = sketch.points.get(other1Id);
+      const other2 = sketch.points.get(other2Id);
+
+      if (!other1 || !other2) return;
+
+      // Calculer le coin original (intersection des lignes prolongées)
+      const corner = lineIntersection(startPt, other1, endPt, other2);
+      if (!corner) {
+        toast.error("Lignes parallèles, impossible de recalculer");
+        return;
+      }
+
+      // Recalculer le congé avec le nouveau rayon
+      const vec1 = { x: other1.x - corner.x, y: other1.y - corner.y };
+      const vec2 = { x: other2.x - corner.x, y: other2.y - corner.y };
+
+      const len1 = Math.sqrt(vec1.x * vec1.x + vec1.y * vec1.y);
+      const len2 = Math.sqrt(vec2.x * vec2.x + vec2.y * vec2.y);
+
+      const u1 = { x: vec1.x / len1, y: vec1.y / len1 };
+      const u2 = { x: vec2.x / len2, y: vec2.y / len2 };
+
+      // Angle entre les lignes
+      const dot = u1.x * u2.x + u1.y * u2.y;
+      const angleRad = Math.acos(Math.max(-1, Math.min(1, dot)));
+      const halfAngle = angleRad / 2;
+
+      // Distance du coin aux nouveaux points de tangence
+      const tangentDist = newRadius / Math.tan(halfAngle);
+
+      // Vérifier que le rayon n'est pas trop grand
+      const distToOther1 = distance(corner, other1);
+      const distToOther2 = distance(corner, other2);
+
+      if (tangentDist > distToOther1 * 0.9 || tangentDist > distToOther2 * 0.9) {
+        toast.error("Rayon trop grand pour ces lignes");
+        return;
+      }
+
+      // Nouveaux points de tangence
+      const newTan1 = { x: corner.x + u1.x * tangentDist, y: corner.y + u1.y * tangentDist };
+      const newTan2 = { x: corner.x + u2.x * tangentDist, y: corner.y + u2.y * tangentDist };
+
+      // Nouveau centre (perpendiculaire depuis tan1)
+      const n1 = { x: -u1.y, y: u1.x };
+      const center1a = { x: newTan1.x + n1.x * newRadius, y: newTan1.y + n1.y * newRadius };
+      const center1b = { x: newTan1.x - n1.x * newRadius, y: newTan1.y - n1.y * newRadius };
+
+      const dist1aToTan2 = Math.sqrt((center1a.x - newTan2.x) ** 2 + (center1a.y - newTan2.y) ** 2);
+      const dist1bToTan2 = Math.sqrt((center1b.x - newTan2.x) ** 2 + (center1b.y - newTan2.y) ** 2);
+
+      const newCenter = Math.abs(dist1aToTan2 - newRadius) < Math.abs(dist1bToTan2 - newRadius) ? center1a : center1b;
+
+      // Mettre à jour le sketch
       const newSketch = { ...sketch };
       newSketch.points = new Map(sketch.points);
       newSketch.geometries = new Map(sketch.geometries);
 
       // Mettre à jour les points
-      newSketch.points.set(arc.startPoint, { ...startPt, x: newStart.x, y: newStart.y });
-      newSketch.points.set(arc.endPoint, { ...endPt, x: newEnd.x, y: newEnd.y });
+      newSketch.points.set(arc.startPoint, { ...startPt, x: newTan1.x, y: newTan1.y });
+      newSketch.points.set(arc.endPoint, { ...endPt, x: newTan2.x, y: newTan2.y });
+      newSketch.points.set(arc.center, { ...centerPt, x: newCenter.x, y: newCenter.y });
 
       // Mettre à jour l'arc
       newSketch.geometries.set(arcId, { ...arc, radius: newRadius });
@@ -1315,7 +1410,85 @@ export function CADGabaritCanvas({
       setSketch(newSketch);
       toast.success(`Rayon modifié: R${newRadius}mm`);
     },
-    [sketch],
+    [sketch, findLinesConnectedToPoint, lineIntersection],
+  );
+
+  // Supprimer un congé et restaurer le coin
+  const removeFilletAndRestoreCorner = useCallback(
+    (arcId: string) => {
+      const arc = sketch.geometries.get(arcId) as Arc | undefined;
+      if (!arc || arc.type !== "arc") return;
+
+      const startPt = sketch.points.get(arc.startPoint);
+      const endPt = sketch.points.get(arc.endPoint);
+
+      if (!startPt || !endPt) return;
+
+      // Trouver les lignes connectées
+      const linesAtStart = findLinesConnectedToPoint(arc.startPoint);
+      const linesAtEnd = findLinesConnectedToPoint(arc.endPoint);
+
+      if (linesAtStart.length !== 1 || linesAtEnd.length !== 1) {
+        // Pas un congé standard, supprimer simplement l'arc
+        const newSketch = { ...sketch };
+        newSketch.geometries = new Map(sketch.geometries);
+        newSketch.geometries.delete(arcId);
+        setSketch(newSketch);
+        return;
+      }
+
+      const line1 = linesAtStart[0];
+      const line2 = linesAtEnd[0];
+
+      // Trouver les autres extrémités
+      const other1Id = line1.p1 === arc.startPoint ? line1.p2 : line1.p1;
+      const other2Id = line2.p1 === arc.endPoint ? line2.p2 : line2.p1;
+
+      const other1 = sketch.points.get(other1Id);
+      const other2 = sketch.points.get(other2Id);
+
+      if (!other1 || !other2) return;
+
+      // Calculer le coin (intersection des lignes prolongées)
+      const corner = lineIntersection(startPt, other1, endPt, other2);
+      if (!corner) {
+        toast.error("Impossible de restaurer le coin");
+        return;
+      }
+
+      const newSketch = { ...sketch };
+      newSketch.points = new Map(sketch.points);
+      newSketch.geometries = new Map(sketch.geometries);
+
+      // Créer le point de coin
+      const cornerId = generateId();
+      newSketch.points.set(cornerId, { id: cornerId, x: corner.x, y: corner.y });
+
+      // Modifier les lignes pour pointer vers le coin
+      const updatedLine1: Line = {
+        ...line1,
+        p1: line1.p1 === arc.startPoint ? cornerId : line1.p1,
+        p2: line1.p2 === arc.startPoint ? cornerId : line1.p2,
+      };
+      const updatedLine2: Line = {
+        ...line2,
+        p1: line2.p1 === arc.endPoint ? cornerId : line2.p1,
+        p2: line2.p2 === arc.endPoint ? cornerId : line2.p2,
+      };
+
+      newSketch.geometries.set(line1.id, updatedLine1);
+      newSketch.geometries.set(line2.id, updatedLine2);
+
+      // Supprimer l'arc et ses points
+      newSketch.geometries.delete(arcId);
+      newSketch.points.delete(arc.startPoint);
+      newSketch.points.delete(arc.endPoint);
+      newSketch.points.delete(arc.center);
+
+      setSketch(newSketch);
+      toast.success("Congé supprimé, coin restauré");
+    },
+    [sketch, findLinesConnectedToPoint, lineIntersection],
   );
 
   // Gestion de la souris
@@ -2274,14 +2447,88 @@ export function CADGabaritCanvas({
     newSketch.geometries = new Map(sketch.geometries);
     newSketch.constraints = new Map(sketch.constraints);
 
-    // D'abord supprimer les entités sélectionnées
+    // Traiter chaque entité sélectionnée
     selectedEntities.forEach((id) => {
-      newSketch.points.delete(id);
-      newSketch.geometries.delete(id);
-      newSketch.constraints.delete(id);
+      const geo = newSketch.geometries.get(id);
+
+      // Si c'est un arc (potentiellement un congé), restaurer le coin
+      if (geo && geo.type === "arc") {
+        const arc = geo as Arc;
+        const startPt = newSketch.points.get(arc.startPoint);
+        const endPt = newSketch.points.get(arc.endPoint);
+
+        if (startPt && endPt) {
+          // Trouver les lignes connectées aux points de tangence
+          const linesAtStart: Line[] = [];
+          const linesAtEnd: Line[] = [];
+
+          newSketch.geometries.forEach((g) => {
+            if (g.type === "line") {
+              const line = g as Line;
+              if (line.p1 === arc.startPoint || line.p2 === arc.startPoint) {
+                linesAtStart.push(line);
+              }
+              if (line.p1 === arc.endPoint || line.p2 === arc.endPoint) {
+                linesAtEnd.push(line);
+              }
+            }
+          });
+
+          // Si c'est un congé valide (une ligne à chaque extrémité)
+          if (linesAtStart.length === 1 && linesAtEnd.length === 1) {
+            const line1 = linesAtStart[0];
+            const line2 = linesAtEnd[0];
+
+            const other1Id = line1.p1 === arc.startPoint ? line1.p2 : line1.p1;
+            const other2Id = line2.p1 === arc.endPoint ? line2.p2 : line2.p1;
+
+            const other1 = newSketch.points.get(other1Id);
+            const other2 = newSketch.points.get(other2Id);
+
+            if (other1 && other2) {
+              // Calculer l'intersection (le coin)
+              const corner = lineIntersection(startPt, other1, endPt, other2);
+
+              if (corner) {
+                // Créer le point de coin
+                const cornerId = generateId();
+                newSketch.points.set(cornerId, { id: cornerId, x: corner.x, y: corner.y });
+
+                // Modifier les lignes pour pointer vers le coin
+                const updatedLine1: Line = {
+                  ...line1,
+                  p1: line1.p1 === arc.startPoint ? cornerId : line1.p1,
+                  p2: line1.p2 === arc.startPoint ? cornerId : line1.p2,
+                };
+                const updatedLine2: Line = {
+                  ...line2,
+                  p1: line2.p1 === arc.endPoint ? cornerId : line2.p1,
+                  p2: line2.p2 === arc.endPoint ? cornerId : line2.p2,
+                };
+
+                newSketch.geometries.set(line1.id, updatedLine1);
+                newSketch.geometries.set(line2.id, updatedLine2);
+
+                // Supprimer les points de l'arc
+                newSketch.points.delete(arc.startPoint);
+                newSketch.points.delete(arc.endPoint);
+                newSketch.points.delete(arc.center);
+              }
+            }
+          }
+        }
+
+        // Supprimer l'arc
+        newSketch.geometries.delete(id);
+      } else {
+        // Supprimer normalement les autres entités
+        newSketch.points.delete(id);
+        newSketch.geometries.delete(id);
+        newSketch.constraints.delete(id);
+      }
     });
 
-    // Ensuite, nettoyer les points orphelins (non utilisés par aucune géométrie)
+    // Nettoyer les points orphelins (non utilisés par aucune géométrie)
     const usedPointIds = new Set<string>();
     newSketch.geometries.forEach((geo) => {
       if (geo.type === "line") {
@@ -2323,7 +2570,7 @@ export function CADGabaritCanvas({
     setSelectedEntities(new Set());
     addToHistory(newSketch);
     solveSketch(newSketch);
-  }, [sketch, selectedEntities, solveSketch, addToHistory]);
+  }, [sketch, selectedEntities, solveSketch, addToHistory, lineIntersection]);
 
   // Undo/Redo
   const undo = useCallback(() => {
@@ -3719,6 +3966,30 @@ export function CADGabaritCanvas({
             </Tooltip>
           </TooltipProvider>
 
+          {/* Réglage rayon congé */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-9 w-5 p-0">
+                <Settings className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <div className="p-2">
+                <Label className="text-xs">Rayon congé (mm)</Label>
+                <Input
+                  type="number"
+                  value={filletRadius}
+                  onChange={(e) => setFilletRadius(Math.max(0.1, parseFloat(e.target.value) || 1))}
+                  className="w-20 h-7 mt-1"
+                  min="0.1"
+                  step="0.5"
+                />
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Separator orientation="vertical" className="h-6 mx-1" />
+
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -3755,37 +4026,24 @@ export function CADGabaritCanvas({
             </Tooltip>
           </TooltipProvider>
 
-          {/* Dropdown pour modifier les valeurs par défaut */}
+          {/* Réglage distance chanfrein */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-9 w-6 p-0">
+              <Button variant="ghost" size="sm" className="h-9 w-5 p-0">
                 <Settings className="h-3 w-3" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              <div className="p-2 space-y-2">
-                <div>
-                  <Label className="text-xs">Rayon congé (mm)</Label>
-                  <Input
-                    type="number"
-                    value={filletRadius}
-                    onChange={(e) => setFilletRadius(Math.max(0.1, parseFloat(e.target.value) || 1))}
-                    className="w-20 h-7 mt-1"
-                    min="0.1"
-                    step="0.5"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">Distance chanfrein (mm)</Label>
-                  <Input
-                    type="number"
-                    value={chamferDistance}
-                    onChange={(e) => setChamferDistance(Math.max(0.1, parseFloat(e.target.value) || 1))}
-                    className="w-20 h-7 mt-1"
-                    min="0.1"
-                    step="0.5"
-                  />
-                </div>
+              <div className="p-2">
+                <Label className="text-xs">Distance chanfrein (mm)</Label>
+                <Input
+                  type="number"
+                  value={chamferDistance}
+                  onChange={(e) => setChamferDistance(Math.max(0.1, parseFloat(e.target.value) || 1))}
+                  className="w-20 h-7 mt-1"
+                  min="0.1"
+                  step="0.5"
+                />
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
