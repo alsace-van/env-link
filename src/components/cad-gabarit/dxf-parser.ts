@@ -1,7 +1,7 @@
 // ============================================
 // DXF PARSER: Import de fichiers DXF
 // Parse les fichiers DXF et convertit en format interne
-// VERSION: 3.3 - Résolution dynamique selon taille spline (4-8 segments)
+// VERSION: 3.4 - Résolution dynamique améliorée (4-16 segments selon taille)
 // ============================================
 
 import { Point, Line, Circle, Geometry, generateId } from "./types";
@@ -29,9 +29,10 @@ interface DXFParseResult {
 }
 
 // Nombre de segments pour approximer les courbes
-// Compromis qualité/performance - réduit pour fichiers lourds
-const SPLINE_RESOLUTION = 8; // Réduit de 16 à 8 pour performance
-const ARC_SEGMENTS = 8; // Réduit de 12 à 8
+// Résolution dynamique selon la taille
+const SPLINE_RESOLUTION_MIN = 4; // Petites splines (texte)
+const SPLINE_RESOLUTION_MAX = 16; // Grandes splines (contours)
+const ARC_SEGMENTS = 12;
 
 /**
  * Parse un fichier DXF et retourne les entités géométriques
@@ -504,10 +505,16 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
           const splineMaxY = Math.max(...ctrlYs);
           const splineSize = Math.max(splineMaxX - splineMinX, splineMaxY - splineMinY);
 
-          // Petites splines (< 5mm) = 4 segments, moyennes = 6, grandes = 8
-          let resolution = SPLINE_RESOLUTION;
-          if (splineSize < 5) resolution = 4;
-          else if (splineSize < 20) resolution = 6;
+          // Résolution proportionnelle à la taille:
+          // < 3mm = 4 segments (petits détails, texte cursif)
+          // 3-10mm = 6 segments
+          // 10-30mm = 10 segments
+          // > 30mm = 16 segments (grandes courbes comme contour van)
+          let resolution: number;
+          if (splineSize < 3) resolution = SPLINE_RESOLUTION_MIN;
+          else if (splineSize < 10) resolution = 6;
+          else if (splineSize < 30) resolution = 10;
+          else resolution = SPLINE_RESOLUTION_MAX;
 
           // Évaluer la B-spline
           const curvePoints = evaluateBSpline(degree, knots, controlPoints, resolution);
