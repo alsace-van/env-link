@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.19 - Auto-création point de connexion quand 2 segments se croisent
+// VERSION: 5.20 - Fix congé: centre de l'arc à l'intérieur de l'angle (signe corrigé)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1225,8 +1225,9 @@ export function CADGabaritCanvas({
       const tan1 = { x: cornerPt.x + u1.x * tangentDist, y: cornerPt.y + u1.y * tangentDist };
       const tan2 = { x: cornerPt.x + u2.x * tangentDist, y: cornerPt.y + u2.y * tangentDist };
 
-      // Centre de l'arc : sur la bissectrice de l'angle
-      // La bissectrice est (u1 + u2) normalisé - le centre est de ce côté
+      // Centre de l'arc : sur la bissectrice de l'angle, CÔTÉ INTÉRIEUR
+      // La bissectrice (u1 + u2) pointe vers l'extérieur, donc on utilise le signe MOINS
+      // pour placer le centre à l'intérieur de l'angle (où l'arc doit être)
       const bisector = { x: u1.x + u2.x, y: u1.y + u2.y };
       const bisLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
 
@@ -1235,15 +1236,15 @@ export function CADGabaritCanvas({
         return;
       }
 
-      // Direction de la bissectrice (vers l'extérieur de l'angle = où va l'arc)
       const bisUnit = { x: bisector.x / bisLen, y: bisector.y / bisLen };
 
       // Distance du coin au centre = R / sin(angle/2)
       const centerDist = radius / Math.sin(halfAngle);
 
+      // Centre à l'INTÉRIEUR de l'angle (opposé à la bissectrice externe)
       const arcCenter = {
-        x: cornerPt.x + bisUnit.x * centerDist,
-        y: cornerPt.y + bisUnit.y * centerDist,
+        x: cornerPt.x - bisUnit.x * centerDist,
+        y: cornerPt.y - bisUnit.y * centerDist,
       };
 
       // Créer les nouveaux points
