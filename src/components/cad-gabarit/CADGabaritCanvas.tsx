@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.22 - Fix congé: choisir le centre opposé au coin par rapport à tan1-tan2
+// VERSION: 5.23 - Multi-sélection coins pour congés/chanfreins en batch
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -309,21 +309,17 @@ export function CADGabaritCanvas({
   // Modale pour congé
   const [filletDialog, setFilletDialog] = useState<{
     open: boolean;
-    line1Id: string;
-    line2Id: string;
+    corners: Array<{ line1Id: string; line2Id: string; maxRadius: number; angleDeg: number }>;
     radius: number;
-    maxRadius: number;
-    angleDeg: number;
+    minMaxRadius: number; // Le plus petit maxRadius parmi tous les coins
   } | null>(null);
 
   // Modale pour chanfrein
   const [chamferDialog, setChamferDialog] = useState<{
     open: boolean;
-    line1Id: string;
-    line2Id: string;
+    corners: Array<{ line1Id: string; line2Id: string; maxDistance: number; angleDeg: number }>;
     distance: number;
-    maxDistance: number;
-    angleDeg: number;
+    minMaxDistance: number; // Le plus petit maxDistance parmi tous les coins
   } | null>(null);
 
   // Modale pour modifier le rayon d'un arc existant
@@ -1584,78 +1580,89 @@ export function CADGabaritCanvas({
     [sketch.geometries, sketch.points, findSharedPoint],
   );
 
-  // Ouvrir le dialogue de congé si 2 lignes OU 1 point (coin) sont sélectionnées
+  // Ouvrir le dialogue de congé si 2 lignes OU 1+ points (coins) sont sélectionnés
   const openFilletDialog = useCallback(() => {
-    let line1Id: string | null = null;
-    let line2Id: string | null = null;
+    const corners: Array<{ line1Id: string; line2Id: string; maxRadius: number; angleDeg: number }> = [];
 
-    if (selectedEntities.size === 1) {
-      // Un seul élément sélectionné - vérifier si c'est un point (coin)
-      const id = Array.from(selectedEntities)[0];
-      const point = sketch.points.get(id);
+    // Collecter tous les coins valides
+    const selectedIds = Array.from(selectedEntities);
 
-      if (point) {
-        // C'est un point - trouver les lignes connectées
-        const connectedLines = findLinesConnectedToPoint(id);
+    // Vérifier si ce sont des points (coins)
+    let allAreCornerPoints = true;
+    for (const id of selectedIds) {
+      if (!sketch.points.has(id)) {
+        allAreCornerPoints = false;
+        break;
+      }
+      const connectedLines = findLinesConnectedToPoint(id);
+      if (connectedLines.length !== 2) {
+        allAreCornerPoints = false;
+        break;
+      }
+    }
 
-        if (connectedLines.length !== 2) {
-          toast.warning("Le point doit être un coin (connecté à exactement 2 lignes)");
-          return;
+    if (allAreCornerPoints && selectedIds.length >= 1) {
+      // Tous sont des points de coin valides
+      for (const pointId of selectedIds) {
+        const connectedLines = findLinesConnectedToPoint(pointId);
+        const params = calculateCornerParams(connectedLines[0].id, connectedLines[1].id);
+        if (params) {
+          corners.push({
+            line1Id: connectedLines[0].id,
+            line2Id: connectedLines[1].id,
+            maxRadius: params.maxRadius,
+            angleDeg: params.angleDeg,
+          });
         }
-
-        line1Id = connectedLines[0].id;
-        line2Id = connectedLines[1].id;
-      } else {
-        toast.warning("Sélectionnez 2 lignes ou 1 point (coin)");
-        return;
       }
     } else if (selectedEntities.size === 2) {
       // Deux éléments - vérifier que ce sont des lignes
-      const ids = Array.from(selectedEntities);
-      const geo1 = sketch.geometries.get(ids[0]);
-      const geo2 = sketch.geometries.get(ids[1]);
+      const geo1 = sketch.geometries.get(selectedIds[0]);
+      const geo2 = sketch.geometries.get(selectedIds[1]);
 
-      if (!geo1 || !geo2 || geo1.type !== "line" || geo2.type !== "line") {
-        toast.warning("Sélectionnez 2 lignes (pas d'autres formes)");
+      if (geo1 && geo2 && geo1.type === "line" && geo2.type === "line") {
+        const line1 = geo1 as Line;
+        const line2 = geo2 as Line;
+        const shared = findSharedPoint(line1, line2);
+
+        if (shared) {
+          const params = calculateCornerParams(selectedIds[0], selectedIds[1]);
+          if (params) {
+            corners.push({
+              line1Id: selectedIds[0],
+              line2Id: selectedIds[1],
+              maxRadius: params.maxRadius,
+              angleDeg: params.angleDeg,
+            });
+          }
+        } else {
+          toast.warning("Les lignes doivent partager un point commun (un coin)");
+          return;
+        }
+      } else {
+        toast.warning("Sélectionnez 2 lignes ou des points (coins)");
         return;
       }
-
-      // Vérifier qu'elles partagent un point
-      const line1 = geo1 as Line;
-      const line2 = geo2 as Line;
-      const shared = findSharedPoint(line1, line2);
-
-      if (!shared) {
-        toast.warning("Les lignes doivent partager un point commun (un coin)");
-        return;
-      }
-
-      line1Id = ids[0];
-      line2Id = ids[1];
     } else {
-      toast.warning("Sélectionnez 2 lignes ou 1 point (coin)");
+      toast.warning("Sélectionnez 2 lignes ou des points (coins)");
       return;
     }
 
-    if (line1Id && line2Id) {
-      const params = calculateCornerParams(line1Id, line2Id);
-      if (!params) {
-        toast.error("Impossible de calculer les paramètres du coin");
-        return;
-      }
-
-      // Proposer le rayon le plus approprié: min entre rayon demandé et max possible
-      const suggestedRadius = Math.min(filletRadius, Math.floor(params.maxRadius));
-
-      setFilletDialog({
-        open: true,
-        line1Id,
-        line2Id,
-        radius: suggestedRadius > 0 ? suggestedRadius : 1,
-        maxRadius: params.maxRadius,
-        angleDeg: params.angleDeg,
-      });
+    if (corners.length === 0) {
+      toast.error("Aucun coin valide trouvé");
+      return;
     }
+
+    // Trouver le plus petit maxRadius parmi tous les coins
+    const minMaxRadius = Math.min(...corners.map((c) => c.maxRadius));
+    const suggestedRadius = Math.min(filletRadius, Math.floor(minMaxRadius));
+
+    setFilletDialog({
+      open: true,
+      corners,
+      radius: suggestedRadius > 0 ? suggestedRadius : 1,
+      minMaxRadius,
+    });
   }, [
     selectedEntities,
     sketch.geometries,
@@ -1666,78 +1673,89 @@ export function CADGabaritCanvas({
     calculateCornerParams,
   ]);
 
-  // Ouvrir le dialogue de chanfrein si 2 lignes OU 1 point (coin) sont sélectionnées
+  // Ouvrir le dialogue de chanfrein si 2 lignes OU 1+ points (coins) sont sélectionnés
   const openChamferDialog = useCallback(() => {
-    let line1Id: string | null = null;
-    let line2Id: string | null = null;
+    const corners: Array<{ line1Id: string; line2Id: string; maxDistance: number; angleDeg: number }> = [];
 
-    if (selectedEntities.size === 1) {
-      // Un seul élément sélectionné - vérifier si c'est un point (coin)
-      const id = Array.from(selectedEntities)[0];
-      const point = sketch.points.get(id);
+    // Collecter tous les coins valides
+    const selectedIds = Array.from(selectedEntities);
 
-      if (point) {
-        // C'est un point - trouver les lignes connectées
-        const connectedLines = findLinesConnectedToPoint(id);
+    // Vérifier si ce sont des points (coins)
+    let allAreCornerPoints = true;
+    for (const id of selectedIds) {
+      if (!sketch.points.has(id)) {
+        allAreCornerPoints = false;
+        break;
+      }
+      const connectedLines = findLinesConnectedToPoint(id);
+      if (connectedLines.length !== 2) {
+        allAreCornerPoints = false;
+        break;
+      }
+    }
 
-        if (connectedLines.length !== 2) {
-          toast.warning("Le point doit être un coin (connecté à exactement 2 lignes)");
-          return;
+    if (allAreCornerPoints && selectedIds.length >= 1) {
+      // Tous sont des points de coin valides
+      for (const pointId of selectedIds) {
+        const connectedLines = findLinesConnectedToPoint(pointId);
+        const params = calculateCornerParams(connectedLines[0].id, connectedLines[1].id);
+        if (params) {
+          corners.push({
+            line1Id: connectedLines[0].id,
+            line2Id: connectedLines[1].id,
+            maxDistance: params.maxDistance,
+            angleDeg: params.angleDeg,
+          });
         }
-
-        line1Id = connectedLines[0].id;
-        line2Id = connectedLines[1].id;
-      } else {
-        toast.warning("Sélectionnez 2 lignes ou 1 point (coin)");
-        return;
       }
     } else if (selectedEntities.size === 2) {
       // Deux éléments - vérifier que ce sont des lignes
-      const ids = Array.from(selectedEntities);
-      const geo1 = sketch.geometries.get(ids[0]);
-      const geo2 = sketch.geometries.get(ids[1]);
+      const geo1 = sketch.geometries.get(selectedIds[0]);
+      const geo2 = sketch.geometries.get(selectedIds[1]);
 
-      if (!geo1 || !geo2 || geo1.type !== "line" || geo2.type !== "line") {
-        toast.warning("Sélectionnez 2 lignes (pas d'autres formes)");
+      if (geo1 && geo2 && geo1.type === "line" && geo2.type === "line") {
+        const line1 = geo1 as Line;
+        const line2 = geo2 as Line;
+        const shared = findSharedPoint(line1, line2);
+
+        if (shared) {
+          const params = calculateCornerParams(selectedIds[0], selectedIds[1]);
+          if (params) {
+            corners.push({
+              line1Id: selectedIds[0],
+              line2Id: selectedIds[1],
+              maxDistance: params.maxDistance,
+              angleDeg: params.angleDeg,
+            });
+          }
+        } else {
+          toast.warning("Les lignes doivent partager un point commun (un coin)");
+          return;
+        }
+      } else {
+        toast.warning("Sélectionnez 2 lignes ou des points (coins)");
         return;
       }
-
-      // Vérifier qu'elles partagent un point
-      const line1 = geo1 as Line;
-      const line2 = geo2 as Line;
-      const shared = findSharedPoint(line1, line2);
-
-      if (!shared) {
-        toast.warning("Les lignes doivent partager un point commun (un coin)");
-        return;
-      }
-
-      line1Id = ids[0];
-      line2Id = ids[1];
     } else {
-      toast.warning("Sélectionnez 2 lignes ou 1 point (coin)");
+      toast.warning("Sélectionnez 2 lignes ou des points (coins)");
       return;
     }
 
-    if (line1Id && line2Id) {
-      const params = calculateCornerParams(line1Id, line2Id);
-      if (!params) {
-        toast.error("Impossible de calculer les paramètres du coin");
-        return;
-      }
-
-      // Proposer la distance la plus appropriée
-      const suggestedDistance = Math.min(chamferDistance, Math.floor(params.maxDistance));
-
-      setChamferDialog({
-        open: true,
-        line1Id,
-        line2Id,
-        distance: suggestedDistance > 0 ? suggestedDistance : 1,
-        maxDistance: params.maxDistance,
-        angleDeg: params.angleDeg,
-      });
+    if (corners.length === 0) {
+      toast.error("Aucun coin valide trouvé");
+      return;
     }
+
+    // Trouver le plus petit maxDistance parmi tous les coins
+    const minMaxDistance = Math.min(...corners.map((c) => c.maxDistance));
+    const suggestedDistance = Math.min(chamferDistance, Math.floor(minMaxDistance));
+
+    setChamferDialog({
+      open: true,
+      corners,
+      distance: suggestedDistance > 0 ? suggestedDistance : 1,
+      minMaxDistance,
+    });
   }, [
     selectedEntities,
     sketch.geometries,
@@ -1748,24 +1766,48 @@ export function CADGabaritCanvas({
     calculateCornerParams,
   ]);
 
-  // Appliquer le congé depuis la modale
+  // Appliquer le congé depuis la modale (sur tous les coins)
   const applyFilletFromDialog = useCallback(() => {
     if (!filletDialog) return;
 
-    applyFillet(filletDialog.line1Id, filletDialog.line2Id, filletDialog.radius);
+    let successCount = 0;
+    for (const corner of filletDialog.corners) {
+      // Vérifier que le rayon ne dépasse pas le max de ce coin
+      if (filletDialog.radius <= corner.maxRadius) {
+        applyFillet(corner.line1Id, corner.line2Id, filletDialog.radius);
+        successCount++;
+      }
+    }
+
     setFilletRadius(filletDialog.radius); // Mémoriser pour la prochaine fois
     setFilletDialog(null);
     setSelectedEntities(new Set());
+
+    if (successCount > 1) {
+      toast.success(`${successCount} congés appliqués`);
+    }
   }, [filletDialog, applyFillet]);
 
-  // Appliquer le chanfrein depuis la modale
+  // Appliquer le chanfrein depuis la modale (sur tous les coins)
   const applyChamferFromDialog = useCallback(() => {
     if (!chamferDialog) return;
 
-    applyChamfer(chamferDialog.line1Id, chamferDialog.line2Id, chamferDialog.distance);
+    let successCount = 0;
+    for (const corner of chamferDialog.corners) {
+      // Vérifier que la distance ne dépasse pas le max de ce coin
+      if (chamferDialog.distance <= corner.maxDistance) {
+        applyChamfer(corner.line1Id, corner.line2Id, chamferDialog.distance);
+        successCount++;
+      }
+    }
+
     setChamferDistance(chamferDialog.distance); // Mémoriser pour la prochaine fois
     setChamferDialog(null);
     setSelectedEntities(new Set());
+
+    if (successCount > 1) {
+      toast.success(`${successCount} chanfreins appliqués`);
+    }
   }, [chamferDialog, applyChamfer]);
 
   // Calculer l'intersection de deux lignes (prolongées)
@@ -2715,11 +2757,16 @@ export function CADGabaritCanvas({
                 // Ouvrir la modale
                 setFilletDialog({
                   open: true,
-                  line1Id: filletFirstLine,
-                  line2Id: entityId,
+                  corners: [
+                    {
+                      line1Id: filletFirstLine,
+                      line2Id: entityId,
+                      maxRadius: params.maxRadius,
+                      angleDeg: params.angleDeg,
+                    },
+                  ],
                   radius: suggestedRadius > 0 ? suggestedRadius : 1,
-                  maxRadius: params.maxRadius,
-                  angleDeg: params.angleDeg,
+                  minMaxRadius: params.maxRadius,
                 });
                 setFilletFirstLine(null);
               }
@@ -2750,11 +2797,16 @@ export function CADGabaritCanvas({
                 // Ouvrir la modale
                 setChamferDialog({
                   open: true,
-                  line1Id: filletFirstLine,
-                  line2Id: entityId,
+                  corners: [
+                    {
+                      line1Id: filletFirstLine,
+                      line2Id: entityId,
+                      maxDistance: params.maxDistance,
+                      angleDeg: params.angleDeg,
+                    },
+                  ],
                   distance: suggestedDistance > 0 ? suggestedDistance : 1,
-                  maxDistance: params.maxDistance,
-                  angleDeg: params.angleDeg,
+                  minMaxDistance: params.maxDistance,
                 });
                 setFilletFirstLine(null);
                 setSelectedEntities(new Set());
@@ -5771,14 +5823,17 @@ export function CADGabaritCanvas({
       {/* Dialogue Congé */}
       {filletDialog &&
         (() => {
-          const isValid = filletDialog.radius > 0 && filletDialog.radius <= filletDialog.maxRadius;
+          const isValid = filletDialog.radius > 0 && filletDialog.radius <= filletDialog.minMaxRadius;
+          const cornerCount = filletDialog.corners.length;
           return (
             <Dialog open={filletDialog.open} onOpenChange={() => setFilletDialog(null)}>
               <DialogContent className="sm:max-w-[300px]">
                 <DialogHeader>
-                  <DialogTitle>Congé</DialogTitle>
+                  <DialogTitle>Congé {cornerCount > 1 ? `(${cornerCount} coins)` : ""}</DialogTitle>
                   <DialogDescription>
-                    Angle: {filletDialog.angleDeg.toFixed(1)}° • Max: {filletDialog.maxRadius.toFixed(1)}mm
+                    {cornerCount === 1
+                      ? `Angle: ${filletDialog.corners[0].angleDeg.toFixed(1)}° • Max: ${filletDialog.minMaxRadius.toFixed(1)}mm`
+                      : `Max commun: ${filletDialog.minMaxRadius.toFixed(1)}mm`}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
@@ -5806,7 +5861,7 @@ export function CADGabaritCanvas({
                   />
                   {!isValid && (
                     <p className="text-xs text-red-500 mt-1">
-                      Rayon trop grand (max: {filletDialog.maxRadius.toFixed(1)}mm)
+                      Rayon trop grand (max: {filletDialog.minMaxRadius.toFixed(1)}mm)
                     </p>
                   )}
                 </div>
@@ -5821,16 +5876,20 @@ export function CADGabaritCanvas({
         })()}
 
       {/* Dialogue Chanfrein */}
+      {/* Dialogue Chanfrein */}
       {chamferDialog &&
         (() => {
-          const isValid = chamferDialog.distance > 0 && chamferDialog.distance <= chamferDialog.maxDistance;
+          const isValid = chamferDialog.distance > 0 && chamferDialog.distance <= chamferDialog.minMaxDistance;
+          const cornerCount = chamferDialog.corners.length;
           return (
             <Dialog open={chamferDialog.open} onOpenChange={() => setChamferDialog(null)}>
               <DialogContent className="sm:max-w-[300px]">
                 <DialogHeader>
-                  <DialogTitle>Chanfrein</DialogTitle>
+                  <DialogTitle>Chanfrein {cornerCount > 1 ? `(${cornerCount} coins)` : ""}</DialogTitle>
                   <DialogDescription>
-                    Angle: {chamferDialog.angleDeg.toFixed(1)}° • Max: {chamferDialog.maxDistance.toFixed(1)}mm
+                    {cornerCount === 1
+                      ? `Angle: ${chamferDialog.corners[0].angleDeg.toFixed(1)}° • Max: ${chamferDialog.minMaxDistance.toFixed(1)}mm`
+                      : `Max commun: ${chamferDialog.minMaxDistance.toFixed(1)}mm`}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
@@ -5858,7 +5917,7 @@ export function CADGabaritCanvas({
                   />
                   {!isValid && (
                     <p className="text-xs text-red-500 mt-1">
-                      Distance trop grande (max: {chamferDialog.maxDistance.toFixed(1)}mm)
+                      Distance trop grande (max: {chamferDialog.minMaxDistance.toFixed(1)}mm)
                     </p>
                   )}
                 </div>
