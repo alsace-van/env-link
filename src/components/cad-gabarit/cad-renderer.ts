@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 2.9 - Correction masquage calques + support visibilité
+// VERSION: 3.0 - Correction complète masquage calques + poignées
 // ============================================
 
 import {
@@ -162,7 +162,8 @@ export class CADRenderer {
       // Vérifier si le calque est visible
       const layerId = geo.layerId || "trace";
       const layer = sketch.layers.get(layerId);
-      if (layer && !layer.visible) return; // Ne pas dessiner si calque masqué
+      // Si le calque existe et n'est pas visible, ne pas dessiner
+      if (layer?.visible === false) return;
 
       const isSelected = selectedEntities.has(id);
       const isHovered = hoveredEntity === id;
@@ -178,7 +179,7 @@ export class CADRenderer {
     sketch.geometries.forEach((geo) => {
       const layerId = geo.layerId || "trace";
       const layer = sketch.layers.get(layerId);
-      if (layer && !layer.visible) return;
+      if (layer?.visible === false) return;
 
       // Collecter les points de cette géométrie
       if (geo.type === "line") {
@@ -544,6 +545,26 @@ export class CADRenderer {
       // Vérifier si c'est un point
       const point = sketch.points.get(entityId);
       if (point) {
+        // Vérifier si ce point appartient à une géométrie visible
+        let pointVisible = false;
+        sketch.geometries.forEach((geo) => {
+          const layerId = geo.layerId || "trace";
+          const layer = sketch.layers.get(layerId);
+          if (layer?.visible === false) return;
+
+          if (geo.type === "line") {
+            const line = geo as Line;
+            if (line.p1 === entityId || line.p2 === entityId) pointVisible = true;
+          } else if (geo.type === "circle") {
+            if ((geo as Circle).center === entityId) pointVisible = true;
+          } else if (geo.type === "bezier") {
+            const b = geo as Bezier;
+            if (b.p1 === entityId || b.p2 === entityId || b.cp1 === entityId || b.cp2 === entityId) pointVisible = true;
+          }
+        });
+
+        if (!pointVisible && sketch.geometries.size > 0) return;
+
         this.drawHandle(point.x, point.y, handleSize, "move");
         return;
       }
@@ -551,6 +572,11 @@ export class CADRenderer {
       // Vérifier si c'est une géométrie
       const geo = sketch.geometries.get(entityId);
       if (geo) {
+        // Vérifier la visibilité du calque
+        const layerId = geo.layerId || "trace";
+        const layer = sketch.layers.get(layerId);
+        if (layer?.visible === false) return;
+
         switch (geo.type) {
           case "line": {
             const line = geo as Line;
@@ -648,7 +674,7 @@ export class CADRenderer {
       // Vérifier la visibilité du calque
       const layerId = geo.layerId || "trace";
       const layer = sketch.layers.get(layerId);
-      if (layer && !layer.visible) return;
+      if (layer?.visible === false) return;
 
       if (geo.type === "line") {
         const line = geo as Line;
@@ -686,7 +712,7 @@ export class CADRenderer {
       // Vérifier la visibilité du calque
       const layerId = geo.layerId || "trace";
       const layer = sketch.layers.get(layerId);
-      if (layer && !layer.visible) return;
+      if (layer?.visible === false) return;
 
       if (geo.type === "line") {
         const line = geo as Line;
