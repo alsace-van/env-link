@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.2 - Fix congé: centre de l'arc côté intérieur
+// VERSION: 5.3 - Réécriture complète du calcul de congé (fillet)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -949,57 +949,68 @@ export function CADGabaritCanvas({
         return;
       }
 
-      const sharedPt = sketch.points.get(shared.sharedPointId);
-      const other1 = sketch.points.get(shared.line1OtherId);
-      const other2 = sketch.points.get(shared.line2OtherId);
+      const cornerPt = sketch.points.get(shared.sharedPointId);
+      const endPt1 = sketch.points.get(shared.line1OtherId);
+      const endPt2 = sketch.points.get(shared.line2OtherId);
 
-      if (!sharedPt || !other1 || !other2) return;
+      if (!cornerPt || !endPt1 || !endPt2) return;
 
-      // Vecteurs unitaires des lignes (partant du point commun)
-      const len1 = distance(sharedPt, other1);
-      const len2 = distance(sharedPt, other2);
+      // Vecteurs des lignes PARTANT du coin vers les extrémités
+      const vec1 = { x: endPt1.x - cornerPt.x, y: endPt1.y - cornerPt.y };
+      const vec2 = { x: endPt2.x - cornerPt.x, y: endPt2.y - cornerPt.y };
 
-      if (len1 < radius || len2 < radius) {
-        toast.error("Rayon trop grand pour ces lignes");
+      const len1 = Math.sqrt(vec1.x * vec1.x + vec1.y * vec1.y);
+      const len2 = Math.sqrt(vec2.x * vec2.x + vec2.y * vec2.y);
+
+      if (len1 < 0.001 || len2 < 0.001) {
+        toast.error("Lignes trop courtes");
         return;
       }
 
-      const dir1 = { x: (other1.x - sharedPt.x) / len1, y: (other1.y - sharedPt.y) / len1 };
-      const dir2 = { x: (other2.x - sharedPt.x) / len2, y: (other2.y - sharedPt.y) / len2 };
+      // Vecteurs unitaires
+      const u1 = { x: vec1.x / len1, y: vec1.y / len1 };
+      const u2 = { x: vec2.x / len2, y: vec2.y / len2 };
 
       // Angle entre les deux lignes
-      const dot = dir1.x * dir2.x + dir1.y * dir2.y;
+      const dot = u1.x * u2.x + u1.y * u2.y;
       const angleRad = Math.acos(Math.max(-1, Math.min(1, dot)));
 
-      if (angleRad < 0.01 || angleRad > Math.PI - 0.01) {
+      if (angleRad < 0.1 || angleRad > Math.PI - 0.1) {
         toast.error("Lignes trop parallèles pour un congé");
         return;
       }
 
-      // Distance du point commun aux points de tangence
-      const tangentDist = radius / Math.tan(angleRad / 2);
+      // Distance du coin aux points de tangence
+      const halfAngle = angleRad / 2;
+      const tangentDist = radius / Math.tan(halfAngle);
 
-      if (tangentDist > len1 || tangentDist > len2) {
+      if (tangentDist > len1 * 0.9 || tangentDist > len2 * 0.9) {
         toast.error("Rayon trop grand pour ces lignes");
         return;
       }
 
-      // Points de tangence
-      const tan1 = { x: sharedPt.x + dir1.x * tangentDist, y: sharedPt.y + dir1.y * tangentDist };
-      const tan2 = { x: sharedPt.x + dir2.x * tangentDist, y: sharedPt.y + dir2.y * tangentDist };
+      // Points de tangence (sur chaque ligne, à distance tangentDist du coin)
+      const tan1 = { x: cornerPt.x + u1.x * tangentDist, y: cornerPt.y + u1.y * tangentDist };
+      const tan2 = { x: cornerPt.x + u2.x * tangentDist, y: cornerPt.y + u2.y * tangentDist };
 
-      // Centre de l'arc (sur la bissectrice OPPOSÉE, à distance radius/sin(angle/2))
-      // Le centre doit être du côté INTÉRIEUR du coin
-      const bisector = { x: dir1.x + dir2.x, y: dir1.y + dir2.y };
-      const bisLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
-      if (bisLen < 0.001) {
-        toast.error("Impossible de calculer le centre de l'arc");
-        return;
-      }
-      const bisUnit = { x: bisector.x / bisLen, y: bisector.y / bisLen };
-      const centerDist = radius / Math.sin(angleRad / 2);
-      // INVERSER la direction : le centre est à l'opposé de la bissectrice (côté intérieur)
-      const arcCenter = { x: sharedPt.x - bisUnit.x * centerDist, y: sharedPt.y - bisUnit.y * centerDist };
+      // Centre de l'arc : perpendiculaire à chaque ligne, à distance radius
+      // Normales (perpendiculaires) aux lignes - tourner de 90°
+      const n1 = { x: -u1.y, y: u1.x };
+      const n2 = { x: -u2.y, y: u2.x };
+
+      // Déterminer de quel côté est le centre (côté intérieur du coin)
+      // Le centre est du côté où les deux normales "convergent"
+      // On teste les deux possibilités et on garde celle qui donne le bon rayon
+
+      // Candidat 1: tan1 + n1 * radius
+      const center1a = { x: tan1.x + n1.x * radius, y: tan1.y + n1.y * radius };
+      const center1b = { x: tan1.x - n1.x * radius, y: tan1.y - n1.y * radius };
+
+      // Le bon centre est celui qui est aussi à distance radius de tan2
+      const dist1aToTan2 = Math.sqrt((center1a.x - tan2.x) ** 2 + (center1a.y - tan2.y) ** 2);
+      const dist1bToTan2 = Math.sqrt((center1b.x - tan2.x) ** 2 + (center1b.y - tan2.y) ** 2);
+
+      const arcCenter = Math.abs(dist1aToTan2 - radius) < Math.abs(dist1bToTan2 - radius) ? center1a : center1b;
 
       // Créer le nouveau sketch
       const newSketch = { ...sketch };
@@ -1015,24 +1026,21 @@ export function CADGabaritCanvas({
       newSketch.points.set(tan2Id, { id: tan2Id, x: tan2.x, y: tan2.y });
       newSketch.points.set(centerId, { id: centerId, x: arcCenter.x, y: arcCenter.y });
 
-      // Modifier les lignes pour qu'elles se terminent aux points de tangence
-      const newLine1: Line = { ...line1 };
-      const newLine2: Line = { ...line2 };
+      // Modifier les lignes : raccourcir jusqu'aux points de tangence
+      const updatedLine1: Line = {
+        ...line1,
+        p1: line1.p1 === shared.sharedPointId ? tan1Id : line1.p1,
+        p2: line1.p2 === shared.sharedPointId ? tan1Id : line1.p2,
+      };
 
-      if (line1.p1 === shared.sharedPointId) {
-        newLine1.p1 = tan1Id;
-      } else {
-        newLine1.p2 = tan1Id;
-      }
+      const updatedLine2: Line = {
+        ...line2,
+        p1: line2.p1 === shared.sharedPointId ? tan2Id : line2.p1,
+        p2: line2.p2 === shared.sharedPointId ? tan2Id : line2.p2,
+      };
 
-      if (line2.p1 === shared.sharedPointId) {
-        newLine2.p1 = tan2Id;
-      } else {
-        newLine2.p2 = tan2Id;
-      }
-
-      newSketch.geometries.set(line1Id, newLine1);
-      newSketch.geometries.set(line2Id, newLine2);
+      newSketch.geometries.set(line1Id, updatedLine1);
+      newSketch.geometries.set(line2Id, updatedLine2);
 
       // Créer l'arc
       const arcId = generateId();
@@ -1047,15 +1055,17 @@ export function CADGabaritCanvas({
       };
       newSketch.geometries.set(arcId, arc);
 
-      // Supprimer le point commun s'il n'est plus utilisé
-      let pointStillUsed = false;
+      // Supprimer le point du coin s'il n'est plus utilisé
+      let cornerStillUsed = false;
       newSketch.geometries.forEach((geo) => {
         if (geo.type === "line") {
           const l = geo as Line;
-          if (l.p1 === shared.sharedPointId || l.p2 === shared.sharedPointId) pointStillUsed = true;
+          if (l.p1 === shared.sharedPointId || l.p2 === shared.sharedPointId) {
+            cornerStillUsed = true;
+          }
         }
       });
-      if (!pointStillUsed) {
+      if (!cornerStillUsed) {
         newSketch.points.delete(shared.sharedPointId);
       }
 
