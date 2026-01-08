@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.21 - Fix congé: détection automatique du bon côté avec produit vectoriel
+// VERSION: 5.22 - Fix congé: choisir le centre opposé au coin par rapport à tan1-tan2
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1239,19 +1239,28 @@ export function CADGabaritCanvas({
       // Distance du coin au centre = R / sin(angle/2)
       const centerDist = radius / Math.sin(halfAngle);
 
-      // Déterminer le bon côté de la bissectrice avec le produit vectoriel
-      // Si bisUnit est "entre" u1 et u2, il pointe vers l'extérieur, sinon vers l'intérieur
-      const cross1 = u1.x * bisUnit.y - u1.y * bisUnit.x;
-      const cross2 = u2.x * bisUnit.y - u2.y * bisUnit.x;
-
-      // Si les produits vectoriels ont des signes opposés, bisUnit est entre u1 et u2 (extérieur)
-      // Donc on doit aller dans la direction OPPOSÉE pour l'intérieur
-      const sign = cross1 * cross2 < 0 ? -1 : 1;
-
-      const arcCenter = {
-        x: cornerPt.x + sign * bisUnit.x * centerDist,
-        y: cornerPt.y + sign * bisUnit.y * centerDist,
+      // Deux centres possibles sur la bissectrice
+      const center1 = {
+        x: cornerPt.x + bisUnit.x * centerDist,
+        y: cornerPt.y + bisUnit.y * centerDist,
       };
+      const center2 = {
+        x: cornerPt.x - bisUnit.x * centerDist,
+        y: cornerPt.y - bisUnit.y * centerDist,
+      };
+
+      // Choisir le centre qui est du côté OPPOSÉ au coin par rapport à la ligne tan1-tan2
+      // Le congé doit "couper" le coin, donc le centre est de l'autre côté
+      const t1t2 = { x: tan2.x - tan1.x, y: tan2.y - tan1.y };
+      const t1Corner = { x: cornerPt.x - tan1.x, y: cornerPt.y - tan1.y };
+      const t1Center1 = { x: center1.x - tan1.x, y: center1.y - tan1.y };
+
+      // Produit vectoriel 2D pour déterminer le côté
+      const crossCorner = t1t2.x * t1Corner.y - t1t2.y * t1Corner.x;
+      const crossCenter1 = t1t2.x * t1Center1.y - t1t2.y * t1Center1.x;
+
+      // Si les signes sont opposés, center1 est du bon côté, sinon center2
+      const arcCenter = crossCorner * crossCenter1 < 0 ? center1 : center2;
 
       // Créer les nouveaux points
       const tan1Id = generateId();
@@ -1983,15 +1992,25 @@ export function CADGabaritCanvas({
       const bisUnit = { x: bisector.x / bisLen, y: bisector.y / bisLen };
       const centerDist = newRadius / Math.sin(halfAngle);
 
-      // Déterminer le bon côté de la bissectrice avec le produit vectoriel
-      const cross1 = u1.x * bisUnit.y - u1.y * bisUnit.x;
-      const cross2 = u2.x * bisUnit.y - u2.y * bisUnit.x;
-      const sign = cross1 * cross2 < 0 ? -1 : 1;
-
-      const newCenter = {
-        x: corner.x + sign * bisUnit.x * centerDist,
-        y: corner.y + sign * bisUnit.y * centerDist,
+      // Deux centres possibles
+      const center1 = {
+        x: corner.x + bisUnit.x * centerDist,
+        y: corner.y + bisUnit.y * centerDist,
       };
+      const center2 = {
+        x: corner.x - bisUnit.x * centerDist,
+        y: corner.y - bisUnit.y * centerDist,
+      };
+
+      // Choisir le centre opposé au coin par rapport à la ligne tan1-tan2
+      const t1t2 = { x: newTan2.x - newTan1.x, y: newTan2.y - newTan1.y };
+      const t1Corner = { x: corner.x - newTan1.x, y: corner.y - newTan1.y };
+      const t1Center1 = { x: center1.x - newTan1.x, y: center1.y - newTan1.y };
+
+      const crossCorner = t1t2.x * t1Corner.y - t1t2.y * t1Corner.x;
+      const crossCenter1 = t1t2.x * t1Center1.y - t1t2.y * t1Center1.x;
+
+      const newCenter = crossCorner * crossCenter1 < 0 ? center1 : center2;
 
       // Mettre à jour le sketch
       const newSketch = { ...sketch };
