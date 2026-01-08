@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 4.0 - Import DXF + correction masquage calques
+// VERSION: 4.1 - Correction assignation layerId aux géométries
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1024,12 +1024,13 @@ export function CADGabaritCanvas({
               newSketch.points.set(p2.id, p2);
             }
 
-            // Ajouter la ligne
+            // Ajouter la ligne avec le calque actif
             const line: Line = {
               id: generateId(),
               type: "line",
               p1: p1.id,
               p2: p2.id,
+              layerId: sketch.activeLayerId,
             };
             newSketch.geometries.set(line.id, line);
 
@@ -1066,6 +1067,7 @@ export function CADGabaritCanvas({
               type: "circle",
               center: center.id,
               radius,
+              layerId: sketch.activeLayerId,
             };
             newSketch.geometries.set(circle.id, circle);
 
@@ -1103,12 +1105,12 @@ export function CADGabaritCanvas({
             newSketch.points.set(p3Pt.id, p3Pt);
             newSketch.points.set(p4.id, p4);
 
-            // Créer les 4 lignes
+            // Créer les 4 lignes avec le calque actif
             const lines = [
-              { id: generateId(), type: "line" as const, p1: p1.id, p2: p2.id },
-              { id: generateId(), type: "line" as const, p1: p2.id, p2: p3Pt.id },
-              { id: generateId(), type: "line" as const, p1: p3Pt.id, p2: p4.id },
-              { id: generateId(), type: "line" as const, p1: p4.id, p2: p1.id },
+              { id: generateId(), type: "line" as const, p1: p1.id, p2: p2.id, layerId: sketch.activeLayerId },
+              { id: generateId(), type: "line" as const, p1: p2.id, p2: p3Pt.id, layerId: sketch.activeLayerId },
+              { id: generateId(), type: "line" as const, p1: p3Pt.id, p2: p4.id, layerId: sketch.activeLayerId },
+              { id: generateId(), type: "line" as const, p1: p4.id, p2: p1.id, layerId: sketch.activeLayerId },
             ];
 
             lines.forEach((l) => newSketch.geometries.set(l.id, l));
@@ -1171,6 +1173,7 @@ export function CADGabaritCanvas({
               p2: p2.id,
               cp1: cp1.id,
               cp2: cp2.id,
+              layerId: sketch.activeLayerId,
             };
             newSketch.geometries.set(bezier.id, bezier);
 
