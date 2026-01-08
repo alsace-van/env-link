@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.1 - Ne pas dessiner les points orphelins
+// VERSION: 3.2 - Masquer points/marqueurs sauf sélection
 // ============================================
 
 import {
@@ -170,9 +170,9 @@ export class CADRenderer {
       this.drawGeometry(geo, sketch, isSelected, isHovered);
     });
 
-    // 3.5 Marqueurs géométriques (milieux et angles droits) - seulement pour calques visibles
-    this.drawMidpointMarkers(sketch);
-    this.drawRightAngleMarkers(sketch);
+    // 3.5 Marqueurs géométriques (milieux et angles droits) - seulement pour éléments sélectionnés
+    this.drawMidpointMarkers(sketch, selectedEntities);
+    this.drawRightAngleMarkers(sketch, selectedEntities);
 
     // 4. Points (filtrer par calques visibles - un point est visible si au moins une de ses géométries l'est)
     const visiblePointIds = new Set<string>();
@@ -199,10 +199,68 @@ export class CADRenderer {
       }
     });
 
+    // Ne dessiner les points QUE pour les géométries sélectionnées ou survolées
+    // Cela évite de polluer l'affichage avec tous les points
+    const pointsToShow = new Set<string>();
+
+    // Ajouter les points des géométries sélectionnées
+    selectedEntities.forEach((entityId) => {
+      const geo = sketch.geometries.get(entityId);
+      if (geo) {
+        if (geo.type === "line") {
+          pointsToShow.add((geo as Line).p1);
+          pointsToShow.add((geo as Line).p2);
+        } else if (geo.type === "circle") {
+          pointsToShow.add((geo as Circle).center);
+        } else if (geo.type === "bezier") {
+          pointsToShow.add((geo as Bezier).p1);
+          pointsToShow.add((geo as Bezier).p2);
+          pointsToShow.add((geo as Bezier).cp1);
+          pointsToShow.add((geo as Bezier).cp2);
+        } else if (geo.type === "arc") {
+          pointsToShow.add((geo as Arc).center);
+          pointsToShow.add((geo as Arc).startPoint);
+          pointsToShow.add((geo as Arc).endPoint);
+        }
+      }
+      // Si c'est un point lui-même qui est sélectionné
+      if (sketch.points.has(entityId)) {
+        pointsToShow.add(entityId);
+      }
+    });
+
+    // Ajouter les points de la géométrie survolée
+    if (hoveredEntity) {
+      const geo = sketch.geometries.get(hoveredEntity);
+      if (geo) {
+        if (geo.type === "line") {
+          pointsToShow.add((geo as Line).p1);
+          pointsToShow.add((geo as Line).p2);
+        } else if (geo.type === "circle") {
+          pointsToShow.add((geo as Circle).center);
+        } else if (geo.type === "bezier") {
+          pointsToShow.add((geo as Bezier).p1);
+          pointsToShow.add((geo as Bezier).p2);
+          pointsToShow.add((geo as Bezier).cp1);
+          pointsToShow.add((geo as Bezier).cp2);
+        } else if (geo.type === "arc") {
+          pointsToShow.add((geo as Arc).center);
+          pointsToShow.add((geo as Arc).startPoint);
+          pointsToShow.add((geo as Arc).endPoint);
+        }
+      }
+      // Si c'est un point lui-même qui est survolé
+      if (sketch.points.has(hoveredEntity)) {
+        pointsToShow.add(hoveredEntity);
+      }
+    }
+
+    // Ne dessiner que les points qui doivent être visibles
     sketch.points.forEach((point, id) => {
-      // Ne dessiner que les points liés à des géométries visibles
-      // Si aucune géométrie n'existe ou le point n'appartient à aucune géométrie visible, ne pas le dessiner
+      // Vérifier que le point appartient à une géométrie visible
       if (!visiblePointIds.has(id)) return;
+      // Ne dessiner que les points sélectionnés/survolés
+      if (!pointsToShow.has(id)) return;
 
       const isSelected = selectedEntities.has(id);
       const isHovered = hoveredEntity === id;
@@ -672,10 +730,16 @@ export class CADRenderer {
   /**
    * Dessine les marqueurs de milieu de segment (petite croix X)
    */
-  drawMidpointMarkers(sketch: Sketch): void {
+  drawMidpointMarkers(sketch: Sketch, selectedEntities: Set<string>): void {
+    // Ne rien dessiner si aucune sélection
+    if (selectedEntities.size === 0) return;
+
     const markerSize = 4 / this.viewport.scale;
 
-    sketch.geometries.forEach((geo) => {
+    sketch.geometries.forEach((geo, geoId) => {
+      // Ne dessiner que pour les éléments sélectionnés
+      if (!selectedEntities.has(geoId)) return;
+
       // Vérifier la visibilité du calque
       const layerId = geo.layerId || "trace";
       const layer = sketch.layers.get(layerId);
@@ -708,12 +772,18 @@ export class CADRenderer {
   /**
    * Dessine les marqueurs d'angle droit (petit carré dans le coin)
    */
-  drawRightAngleMarkers(sketch: Sketch): void {
-    const markerSize = 8 / this.viewport.scale;
-    const lines: Array<{ p1: Point; p2: Point }> = [];
+  drawRightAngleMarkers(sketch: Sketch, selectedEntities: Set<string>): void {
+    // Ne rien dessiner si aucune sélection
+    if (selectedEntities.size === 0) return;
 
-    // Collecter toutes les lignes visibles
-    sketch.geometries.forEach((geo) => {
+    const markerSize = 8 / this.viewport.scale;
+    const lines: Array<{ p1: Point; p2: Point; geoId: string }> = [];
+
+    // Collecter les lignes SELECTIONNÉES et visibles
+    sketch.geometries.forEach((geo, geoId) => {
+      // Ne considérer que les éléments sélectionnés
+      if (!selectedEntities.has(geoId)) return;
+
       // Vérifier la visibilité du calque
       const layerId = geo.layerId || "trace";
       const layer = sketch.layers.get(layerId);
@@ -724,7 +794,7 @@ export class CADRenderer {
         const p1 = sketch.points.get(line.p1);
         const p2 = sketch.points.get(line.p2);
         if (p1 && p2) {
-          lines.push({ p1, p2 });
+          lines.push({ p1, p2, geoId });
         }
       }
     });
