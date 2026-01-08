@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.18 - Auto-split segment quand on connecte au milieu d'un autre segment
+// VERSION: 5.19 - Auto-création point de connexion quand 2 segments se croisent
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1778,6 +1778,121 @@ export function CADGabaritCanvas({
     [],
   );
 
+  // Intersection de deux segments (retourne le point si les segments se croisent vraiment)
+  const segmentIntersection = useCallback(
+    (
+      p1: { x: number; y: number },
+      p2: { x: number; y: number },
+      p3: { x: number; y: number },
+      p4: { x: number; y: number },
+    ): { x: number; y: number } | null => {
+      const d1x = p2.x - p1.x;
+      const d1y = p2.y - p1.y;
+      const d2x = p4.x - p3.x;
+      const d2y = p4.y - p3.y;
+
+      const cross = d1x * d2y - d1y * d2x;
+      if (Math.abs(cross) < 0.0001) return null; // Segments parallèles
+
+      const t1 = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / cross;
+      const t2 = ((p3.x - p1.x) * d1y - (p3.y - p1.y) * d1x) / cross;
+
+      // Vérifier que l'intersection est dans les deux segments (pas aux extrémités)
+      const epsilon = 0.01; // Marge pour éviter les extrémités
+      if (t1 > epsilon && t1 < 1 - epsilon && t2 > epsilon && t2 < 1 - epsilon) {
+        return {
+          x: p1.x + t1 * d1x,
+          y: p1.y + t1 * d1y,
+        };
+      }
+      return null;
+    },
+    [],
+  );
+
+  // Trouver et créer les intersections entre un nouveau segment et tous les segments existants
+  const createIntersectionPoints = useCallback(
+    (newLineId: string, sketchToModify: { points: Map<string, Point>; geometries: Map<string, Geometry> }): void => {
+      const newLine = sketchToModify.geometries.get(newLineId) as Line | undefined;
+      if (!newLine || newLine.type !== "line") return;
+
+      const newP1 = sketchToModify.points.get(newLine.p1);
+      const newP2 = sketchToModify.points.get(newLine.p2);
+      if (!newP1 || !newP2) return;
+
+      // Collecter les intersections avec tous les autres segments
+      const intersections: { lineId: string; point: { x: number; y: number } }[] = [];
+
+      sketchToModify.geometries.forEach((geo, lineId) => {
+        if (lineId === newLineId) return; // Ne pas tester avec soi-même
+        if (geo.type !== "line") return;
+
+        const line = geo as Line;
+        const p1 = sketchToModify.points.get(line.p1);
+        const p2 = sketchToModify.points.get(line.p2);
+        if (!p1 || !p2) return;
+
+        // Vérifier si les segments partagent déjà un point
+        if (newLine.p1 === line.p1 || newLine.p1 === line.p2 || newLine.p2 === line.p1 || newLine.p2 === line.p2) {
+          return; // Déjà connectés
+        }
+
+        const intersection = segmentIntersection(newP1, newP2, p1, p2);
+        if (intersection) {
+          intersections.push({ lineId, point: intersection });
+        }
+      });
+
+      // Pour chaque intersection, couper les deux segments
+      for (const { lineId, point } of intersections) {
+        // Créer le point d'intersection
+        const intersectPoint: Point = { id: generateId(), x: point.x, y: point.y };
+        sketchToModify.points.set(intersectPoint.id, intersectPoint);
+
+        // Couper le segment existant
+        const existingLine = sketchToModify.geometries.get(lineId) as Line;
+        if (existingLine) {
+          // Créer la deuxième partie du segment existant
+          const newExistingLine: Line = {
+            id: generateId(),
+            type: "line",
+            p1: intersectPoint.id,
+            p2: existingLine.p2,
+            layerId: existingLine.layerId,
+          };
+          sketchToModify.geometries.set(newExistingLine.id, newExistingLine);
+
+          // Modifier le segment existant pour finir au point d'intersection
+          sketchToModify.geometries.set(lineId, {
+            ...existingLine,
+            p2: intersectPoint.id,
+          });
+        }
+
+        // Couper le nouveau segment
+        const currentNewLine = sketchToModify.geometries.get(newLineId) as Line;
+        if (currentNewLine) {
+          // Créer la deuxième partie du nouveau segment
+          const newNewLine: Line = {
+            id: generateId(),
+            type: "line",
+            p1: intersectPoint.id,
+            p2: currentNewLine.p2,
+            layerId: currentNewLine.layerId,
+          };
+          sketchToModify.geometries.set(newNewLine.id, newNewLine);
+
+          // Modifier le nouveau segment pour finir au point d'intersection
+          sketchToModify.geometries.set(newLineId, {
+            ...currentNewLine,
+            p2: intersectPoint.id,
+          });
+        }
+      }
+    },
+    [segmentIntersection],
+  );
+
   // Modifier le rayon d'un arc existant (recalcul complet du congé)
   const updateArcRadius = useCallback(
     (arcId: string, newRadius: number) => {
@@ -2298,6 +2413,9 @@ export function CADGabaritCanvas({
             };
             newSketch.geometries.set(line.id, line);
 
+            // Détecter et créer les points d'intersection avec les segments existants
+            createIntersectionPoints(line.id, newSketch);
+
             setSketch(newSketch);
             solveSketch(newSketch);
             addToHistory(newSketch);
@@ -2632,6 +2750,7 @@ export function CADGabaritCanvas({
       getOrCreatePoint,
       splitLineAtPoint,
       calculateCornerParams,
+      createIntersectionPoints,
       calibrationMode,
       calibrationData,
       selectedCalibrationPoint,
