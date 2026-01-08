@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.1 - Congés (fillet) et chanfreins (chamfer)
+// VERSION: 5.2 - Fix congé: centre de l'arc côté intérieur
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -988,7 +988,8 @@ export function CADGabaritCanvas({
       const tan1 = { x: sharedPt.x + dir1.x * tangentDist, y: sharedPt.y + dir1.y * tangentDist };
       const tan2 = { x: sharedPt.x + dir2.x * tangentDist, y: sharedPt.y + dir2.y * tangentDist };
 
-      // Centre de l'arc (sur la bissectrice, à distance radius/sin(angle/2))
+      // Centre de l'arc (sur la bissectrice OPPOSÉE, à distance radius/sin(angle/2))
+      // Le centre doit être du côté INTÉRIEUR du coin
       const bisector = { x: dir1.x + dir2.x, y: dir1.y + dir2.y };
       const bisLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
       if (bisLen < 0.001) {
@@ -997,7 +998,8 @@ export function CADGabaritCanvas({
       }
       const bisUnit = { x: bisector.x / bisLen, y: bisector.y / bisLen };
       const centerDist = radius / Math.sin(angleRad / 2);
-      const arcCenter = { x: sharedPt.x + bisUnit.x * centerDist, y: sharedPt.y + bisUnit.y * centerDist };
+      // INVERSER la direction : le centre est à l'opposé de la bissectrice (côté intérieur)
+      const arcCenter = { x: sharedPt.x - bisUnit.x * centerDist, y: sharedPt.y - bisUnit.y * centerDist };
 
       // Créer le nouveau sketch
       const newSketch = { ...sketch };
