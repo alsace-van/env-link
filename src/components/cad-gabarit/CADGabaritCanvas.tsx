@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.25.1 - Fix constraints: new Map() au lieu de spread array
+// VERSION: 5.26 - Fix congé: perpendiculaire vers l'intérieur (dot < 0)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1213,11 +1213,11 @@ export function CADGabaritCanvas({
 
       // Calculer le centre en utilisant la perpendiculaire à la ligne 1 qui pointe vers l'intérieur
       // La perpendiculaire à u1 peut être (-u1.y, u1.x) ou (u1.y, -u1.x)
-      // On choisit celle qui a un produit scalaire positif avec u2 (pointe vers l'autre ligne)
+      // On choisit celle qui a un produit scalaire NÉGATIF avec u2 (pointe vers l'intérieur de l'angle)
       const perp1a = { x: -u1.y, y: u1.x };
       const perp1b = { x: u1.y, y: -u1.x };
       const dot1a = perp1a.x * u2.x + perp1a.y * u2.y;
-      const n1 = dot1a > 0 ? perp1a : perp1b;
+      const n1 = dot1a < 0 ? perp1a : perp1b;
 
       // Le centre est à distance R du point de tangence, dans la direction de la perpendiculaire
       const arcCenter = {
@@ -2081,7 +2081,7 @@ export function CADGabaritCanvas({
       const perp1a = { x: -u1.y, y: u1.x };
       const perp1b = { x: u1.y, y: -u1.x };
       const dot1a = perp1a.x * u2.x + perp1a.y * u2.y;
-      const n1 = dot1a > 0 ? perp1a : perp1b;
+      const n1 = dot1a < 0 ? perp1a : perp1b;
 
       const newCenter = {
         x: newTan1.x + n1.x * newRadius,
