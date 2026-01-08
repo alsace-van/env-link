@@ -1,7 +1,7 @@
 // ============================================
 // DXF PARSER: Import de fichiers DXF
 // Parse les fichiers DXF et convertit en format interne
-// VERSION: 3.1 - Optimisation performance (index spatial, résolution réduite)
+// VERSION: 3.3 - Résolution dynamique selon taille spline (4-8 segments)
 // ============================================
 
 import { Point, Line, Circle, Geometry, generateId } from "./types";
@@ -29,9 +29,9 @@ interface DXFParseResult {
 }
 
 // Nombre de segments pour approximer les courbes
-// Compromis qualité/performance
-const SPLINE_RESOLUTION = 16; // Réduit de 50 à 16
-const ARC_SEGMENTS = 12; // Réduit de 24 à 12
+// Compromis qualité/performance - réduit pour fichiers lourds
+const SPLINE_RESOLUTION = 8; // Réduit de 16 à 8 pour performance
+const ARC_SEGMENTS = 8; // Réduit de 12 à 8
 
 /**
  * Parse un fichier DXF et retourne les entités géométriques
@@ -497,8 +497,20 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
         else if (ctrlXs.length >= 2 && ctrlXs.length === ctrlYs.length) {
           const controlPoints = ctrlXs.map((x, i) => ({ x, y: ctrlYs[i] }));
 
+          // Calcul dynamique de la résolution basé sur la taille de la spline
+          const splineMinX = Math.min(...ctrlXs);
+          const splineMaxX = Math.max(...ctrlXs);
+          const splineMinY = Math.min(...ctrlYs);
+          const splineMaxY = Math.max(...ctrlYs);
+          const splineSize = Math.max(splineMaxX - splineMinX, splineMaxY - splineMinY);
+
+          // Petites splines (< 5mm) = 4 segments, moyennes = 6, grandes = 8
+          let resolution = SPLINE_RESOLUTION;
+          if (splineSize < 5) resolution = 4;
+          else if (splineSize < 20) resolution = 6;
+
           // Évaluer la B-spline
-          const curvePoints = evaluateBSpline(degree, knots, controlPoints, SPLINE_RESOLUTION);
+          const curvePoints = evaluateBSpline(degree, knots, controlPoints, resolution);
 
           // Créer les segments
           for (let i = 0; i < curvePoints.length - 1; i++) {
