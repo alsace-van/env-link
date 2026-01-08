@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.11 - Modale congé/chanfrein: rayon suggéré, validation visuelle en rouge
+// VERSION: 5.12 - Fix références line1/line2 -> currentLine1/currentLine2, fix modes outils
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1188,15 +1188,15 @@ export function CADGabaritCanvas({
 
       // Modifier les lignes : raccourcir jusqu'aux points de tangence
       const updatedLine1: Line = {
-        ...line1,
-        p1: line1.p1 === shared.sharedPointId ? tan1Id : line1.p1,
-        p2: line1.p2 === shared.sharedPointId ? tan1Id : line1.p2,
+        ...currentLine1,
+        p1: currentLine1.p1 === shared.sharedPointId ? tan1Id : currentLine1.p1,
+        p2: currentLine1.p2 === shared.sharedPointId ? tan1Id : currentLine1.p2,
       };
 
       const updatedLine2: Line = {
-        ...line2,
-        p1: line2.p1 === shared.sharedPointId ? tan2Id : line2.p1,
-        p2: line2.p2 === shared.sharedPointId ? tan2Id : line2.p2,
+        ...currentLine2,
+        p1: currentLine2.p1 === shared.sharedPointId ? tan2Id : currentLine2.p1,
+        p2: currentLine2.p2 === shared.sharedPointId ? tan2Id : currentLine2.p2,
       };
 
       newSketch.geometries.set(line1Id, updatedLine1);
@@ -1211,7 +1211,7 @@ export function CADGabaritCanvas({
         startPoint: tan1Id,
         endPoint: tan2Id,
         radius: radius,
-        layerId: line1.layerId || "trace",
+        layerId: currentLine1.layerId || "trace",
       };
       newSketch.geometries.set(arcId, arc);
 
@@ -2358,12 +2358,22 @@ export function CADGabaritCanvas({
                 setSelectedEntities(new Set([entityId]));
                 toast.info("Sélectionnez la deuxième ligne");
               } else if (entityId !== filletFirstLine) {
+                // Calculer les paramètres du coin
+                const params = calculateCornerParams(filletFirstLine, entityId);
+                if (!params) {
+                  toast.error("Les lignes doivent partager un point commun");
+                  setFilletFirstLine(null);
+                  return;
+                }
+                const suggestedRadius = Math.min(filletRadius, Math.floor(params.maxRadius));
                 // Ouvrir la modale
                 setFilletDialog({
                   open: true,
                   line1Id: filletFirstLine,
                   line2Id: entityId,
-                  radius: filletRadius,
+                  radius: suggestedRadius > 0 ? suggestedRadius : 1,
+                  maxRadius: params.maxRadius,
+                  angleDeg: params.angleDeg,
                 });
                 setFilletFirstLine(null);
               }
@@ -2383,7 +2393,23 @@ export function CADGabaritCanvas({
                 setSelectedEntities(new Set([entityId]));
                 toast.info("Sélectionnez la deuxième ligne");
               } else if (entityId !== filletFirstLine) {
-                applyChamfer(filletFirstLine, entityId, chamferDistance);
+                // Calculer les paramètres du coin
+                const params = calculateCornerParams(filletFirstLine, entityId);
+                if (!params) {
+                  toast.error("Les lignes doivent partager un point commun");
+                  setFilletFirstLine(null);
+                  return;
+                }
+                const suggestedDistance = Math.min(chamferDistance, Math.floor(params.maxDistance));
+                // Ouvrir la modale
+                setChamferDialog({
+                  open: true,
+                  line1Id: filletFirstLine,
+                  line2Id: entityId,
+                  distance: suggestedDistance > 0 ? suggestedDistance : 1,
+                  maxDistance: params.maxDistance,
+                  angleDeg: params.angleDeg,
+                });
                 setFilletFirstLine(null);
                 setSelectedEntities(new Set());
               }
