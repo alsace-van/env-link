@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 2.5 - Support image transformée (perspective)
+// VERSION: 2.6 - Poignées modernes + marqueurs milieux/angles droits
 // ============================================
 
 import {
@@ -163,6 +163,10 @@ export class CADRenderer {
       const isHovered = hoveredEntity === id;
       this.drawGeometry(geo, sketch, isSelected, isHovered);
     });
+
+    // 3.5 Marqueurs géométriques (milieux et angles droits)
+    this.drawMidpointMarkers(sketch);
+    this.drawRightAngleMarkers(sketch);
 
     // 4. Points
     sketch.points.forEach((point, id) => {
@@ -568,28 +572,172 @@ export class CADRenderer {
   }
 
   private drawHandle(x: number, y: number, size: number, type: "move" | "resize" | "control" | "rotate"): void {
-    this.ctx.strokeStyle = "#0066FF";
-    this.ctx.fillStyle = "#FFFFFF";
+    // Style moderne avec des ronds et des couleurs douces
     this.ctx.lineWidth = 1.5 / this.viewport.scale;
 
     if (type === "control") {
-      // Cercle pour points de contrôle
-      this.ctx.fillStyle = "#FF6600";
+      // Cercle orange pour points de contrôle Bézier
+      this.ctx.fillStyle = "#FF9500";
+      this.ctx.strokeStyle = "#CC7700";
       this.ctx.beginPath();
       this.ctx.arc(x, y, size, 0, Math.PI * 2);
       this.ctx.fill();
       this.ctx.stroke();
     } else if (type === "rotate") {
-      // Cercle pour rotation
-      this.ctx.fillStyle = "#00AA00";
+      // Cercle vert pour rotation
+      this.ctx.fillStyle = "#34C759";
+      this.ctx.strokeStyle = "#248A3D";
+      this.ctx.beginPath();
+      this.ctx.arc(x, y, size, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.stroke();
+    } else if (type === "move") {
+      // Cercle bleu pour déplacement
+      this.ctx.fillStyle = "#007AFF";
+      this.ctx.strokeStyle = "#0055CC";
       this.ctx.beginPath();
       this.ctx.arc(x, y, size, 0, Math.PI * 2);
       this.ctx.fill();
       this.ctx.stroke();
     } else {
-      // Carré pour move/resize
-      this.ctx.fillRect(x - size, y - size, size * 2, size * 2);
-      this.ctx.strokeRect(x - size, y - size, size * 2, size * 2);
+      // Cercle blanc avec bordure bleue pour resize (extrémités)
+      this.ctx.fillStyle = "#FFFFFF";
+      this.ctx.strokeStyle = "#007AFF";
+      this.ctx.beginPath();
+      this.ctx.arc(x, y, size, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.stroke();
+    }
+  }
+
+  /**
+   * Dessine les marqueurs de milieu de segment (petit triangle)
+   */
+  drawMidpointMarkers(sketch: Sketch): void {
+    const markerSize = 5 / this.viewport.scale;
+
+    sketch.geometries.forEach((geo) => {
+      if (geo.type === "line") {
+        const line = geo as Line;
+        const p1 = sketch.points.get(line.p1);
+        const p2 = sketch.points.get(line.p2);
+        if (!p1 || !p2) return;
+
+        const mid = midpoint(p1, p2);
+        const ang = angle(p1, p2);
+
+        // Dessiner un petit triangle perpendiculaire au segment
+        this.ctx.fillStyle = "#10B981"; // Vert émeraude
+        this.ctx.strokeStyle = "#059669";
+        this.ctx.lineWidth = 1 / this.viewport.scale;
+
+        this.ctx.save();
+        this.ctx.translate(mid.x, mid.y);
+        this.ctx.rotate(ang + Math.PI / 2);
+
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, -markerSize);
+        this.ctx.lineTo(-markerSize * 0.6, markerSize * 0.5);
+        this.ctx.lineTo(markerSize * 0.6, markerSize * 0.5);
+        this.ctx.closePath();
+        this.ctx.fill();
+        this.ctx.stroke();
+
+        this.ctx.restore();
+      }
+    });
+  }
+
+  /**
+   * Dessine les marqueurs d'angle droit (petit carré dans le coin)
+   */
+  drawRightAngleMarkers(sketch: Sketch): void {
+    const markerSize = 8 / this.viewport.scale;
+    const lines: Array<{ p1: Point; p2: Point }> = [];
+
+    // Collecter toutes les lignes
+    sketch.geometries.forEach((geo) => {
+      if (geo.type === "line") {
+        const line = geo as Line;
+        const p1 = sketch.points.get(line.p1);
+        const p2 = sketch.points.get(line.p2);
+        if (p1 && p2) {
+          lines.push({ p1, p2 });
+        }
+      }
+    });
+
+    // Chercher les angles droits entre segments qui partagent un point
+    for (let i = 0; i < lines.length; i++) {
+      for (let j = i + 1; j < lines.length; j++) {
+        const l1 = lines[i];
+        const l2 = lines[j];
+
+        // Trouver le point commun
+        let sharedPoint: Point | null = null;
+        let other1: Point | null = null;
+        let other2: Point | null = null;
+
+        if (l1.p1.id === l2.p1.id) {
+          sharedPoint = l1.p1;
+          other1 = l1.p2;
+          other2 = l2.p2;
+        } else if (l1.p1.id === l2.p2.id) {
+          sharedPoint = l1.p1;
+          other1 = l1.p2;
+          other2 = l2.p1;
+        } else if (l1.p2.id === l2.p1.id) {
+          sharedPoint = l1.p2;
+          other1 = l1.p1;
+          other2 = l2.p2;
+        } else if (l1.p2.id === l2.p2.id) {
+          sharedPoint = l1.p2;
+          other1 = l1.p1;
+          other2 = l2.p1;
+        }
+
+        if (sharedPoint && other1 && other2) {
+          // Calculer l'angle entre les deux segments
+          const ang1 = angle(sharedPoint, other1);
+          const ang2 = angle(sharedPoint, other2);
+          let angleDiff = Math.abs(ang1 - ang2);
+
+          // Normaliser l'angle
+          if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+
+          // Vérifier si c'est un angle droit (90° ± 2°)
+          const tolerance = (2 * Math.PI) / 180; // 2 degrés
+          if (Math.abs(angleDiff - Math.PI / 2) < tolerance) {
+            // Dessiner le symbole d'angle droit
+            this.ctx.strokeStyle = "#6366F1"; // Indigo
+            this.ctx.lineWidth = 1.5 / this.viewport.scale;
+
+            // Direction vers chaque segment
+            const dir1 = { x: Math.cos(ang1), y: Math.sin(ang1) };
+            const dir2 = { x: Math.cos(ang2), y: Math.sin(ang2) };
+
+            // Points du carré d'angle droit
+            const corner1 = {
+              x: sharedPoint.x + dir1.x * markerSize,
+              y: sharedPoint.y + dir1.y * markerSize,
+            };
+            const corner2 = {
+              x: sharedPoint.x + dir2.x * markerSize,
+              y: sharedPoint.y + dir2.y * markerSize,
+            };
+            const corner3 = {
+              x: sharedPoint.x + dir1.x * markerSize + dir2.x * markerSize,
+              y: sharedPoint.y + dir1.y * markerSize + dir2.y * markerSize,
+            };
+
+            this.ctx.beginPath();
+            this.ctx.moveTo(corner1.x, corner1.y);
+            this.ctx.lineTo(corner3.x, corner3.y);
+            this.ctx.lineTo(corner2.x, corner2.y);
+            this.ctx.stroke();
+          }
+        }
+      }
     }
   }
 
