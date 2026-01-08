@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.2 - Masquer points/marqueurs sauf sélection
+// VERSION: 3.3 - Optimisation: batching + viewport culling
 // ============================================
 
 import {
@@ -158,6 +158,16 @@ export class CADRenderer {
     }
 
     // 3. Geometries (filtrer par visibilité du calque)
+    // OPTIMISATION: Batch des lignes non-sélectionnées pour réduire les appels draw
+    const normalLines: { p1: Point; p2: Point }[] = [];
+    const selectedLines: { p1: Point; p2: Point }[] = [];
+
+    // Viewport bounds pour culling
+    const cullLeft = -this.viewport.offsetX / this.viewport.scale;
+    const cullTop = -this.viewport.offsetY / this.viewport.scale;
+    const cullRight = cullLeft + this.viewport.width / this.viewport.scale;
+    const cullBottom = cullTop + this.viewport.height / this.viewport.scale;
+
     sketch.geometries.forEach((geo, id) => {
       // Vérifier si le calque est visible
       const layerId = geo.layerId || "trace";
@@ -167,8 +177,58 @@ export class CADRenderer {
 
       const isSelected = selectedEntities.has(id);
       const isHovered = hoveredEntity === id;
-      this.drawGeometry(geo, sketch, isSelected, isHovered);
+
+      // Pour les lignes, utiliser le batching
+      if (geo.type === "line") {
+        const line = geo as Line;
+        const p1 = sketch.points.get(line.p1);
+        const p2 = sketch.points.get(line.p2);
+        if (p1 && p2) {
+          // Viewport culling
+          const minX = Math.min(p1.x, p2.x);
+          const maxX = Math.max(p1.x, p2.x);
+          const minY = Math.min(p1.y, p2.y);
+          const maxY = Math.max(p1.y, p2.y);
+
+          if (maxX >= cullLeft && minX <= cullRight && maxY >= cullTop && minY <= cullBottom) {
+            if (isSelected || isHovered) {
+              selectedLines.push({ p1, p2 });
+            } else {
+              normalLines.push({ p1, p2 });
+            }
+          }
+        }
+      } else {
+        // Autres géométries: dessin individuel
+        this.drawGeometry(geo, sketch, isSelected, isHovered);
+      }
     });
+
+    // Dessiner les lignes normales en batch
+    if (normalLines.length > 0) {
+      this.ctx.strokeStyle = this.styles.lineColor;
+      this.ctx.lineWidth = this.styles.lineWidth / this.viewport.scale;
+      this.ctx.lineCap = "round";
+      this.ctx.beginPath();
+      for (const { p1, p2 } of normalLines) {
+        this.ctx.moveTo(p1.x, p1.y);
+        this.ctx.lineTo(p2.x, p2.y);
+      }
+      this.ctx.stroke();
+    }
+
+    // Dessiner les lignes sélectionnées en batch
+    if (selectedLines.length > 0) {
+      this.ctx.strokeStyle = this.styles.selectedColor;
+      this.ctx.lineWidth = this.styles.selectedWidth / this.viewport.scale;
+      this.ctx.lineCap = "round";
+      this.ctx.beginPath();
+      for (const { p1, p2 } of selectedLines) {
+        this.ctx.moveTo(p1.x, p1.y);
+        this.ctx.lineTo(p2.x, p2.y);
+      }
+      this.ctx.stroke();
+    }
 
     // 3.5 Marqueurs géométriques (milieux et angles droits) - seulement pour éléments sélectionnés
     this.drawMidpointMarkers(sketch, selectedEntities);
@@ -502,6 +562,22 @@ export class CADRenderer {
     const p1 = sketch.points.get(line.p1);
     const p2 = sketch.points.get(line.p2);
     if (!p1 || !p2) return;
+
+    // Viewport culling - ne pas dessiner les lignes hors écran
+    const left = -this.viewport.offsetX / this.viewport.scale;
+    const top = -this.viewport.offsetY / this.viewport.scale;
+    const right = left + this.viewport.width / this.viewport.scale;
+    const bottom = top + this.viewport.height / this.viewport.scale;
+
+    // Vérifier si la ligne est complètement hors écran
+    const minX = Math.min(p1.x, p2.x);
+    const maxX = Math.max(p1.x, p2.x);
+    const minY = Math.min(p1.y, p2.y);
+    const maxY = Math.max(p1.y, p2.y);
+
+    if (maxX < left || minX > right || maxY < top || minY > bottom) {
+      return; // Ligne hors écran, ne pas dessiner
+    }
 
     this.ctx.beginPath();
     this.ctx.moveTo(p1.x, p1.y);
