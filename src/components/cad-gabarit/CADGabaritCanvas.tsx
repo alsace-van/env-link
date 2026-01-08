@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 3.9 - Poignées modernes + symboles milieux/angles
+// VERSION: 4.0 - Import DXF + correction masquage calques
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -37,6 +37,7 @@ import {
   Save,
   Download,
   FileDown,
+  FileUp,
   Maximize,
   Minimize,
   Grid3X3,
@@ -104,6 +105,9 @@ import {
 // Export DXF
 import { exportToDXF } from "./export-dxf";
 
+// Import DXF
+import { loadDXFFile, DXFParseResult } from "./dxf-parser";
+
 interface CADGabaritCanvasProps {
   imageUrl?: string;
   scaleFactor?: number;
@@ -150,6 +154,7 @@ export function CADGabaritCanvas({
   const solverRef = useRef<CADSolver>(new CADSolver());
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dxfInputRef = useRef<HTMLInputElement>(null);
 
   // State
   const [sketch, setSketch] = useState<Sketch>(() => createEmptySketch(scaleFactor));
@@ -662,6 +667,75 @@ export function CADGabaritCanvas({
         img.src = event.target?.result as string;
       };
       reader.readAsDataURL(file);
+    },
+    [render],
+  );
+
+  // Import DXF
+  const handleDXFImport = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      try {
+        toast.loading("Import DXF en cours...", { id: "dxf-import" });
+
+        const result = await loadDXFFile(file);
+
+        if (result.entityCount === 0) {
+          toast.error("Aucune entité trouvée dans le fichier DXF", { id: "dxf-import" });
+          return;
+        }
+
+        // Fusionner les entités importées avec le sketch actuel
+        setSketch((prev) => {
+          const newPoints = new Map(prev.points);
+          const newGeometries = new Map(prev.geometries);
+
+          // Ajouter les points
+          result.points.forEach((point, id) => {
+            newPoints.set(id, point);
+          });
+
+          // Ajouter les géométries (avec le calque actif)
+          result.geometries.forEach((geo, id) => {
+            // Assigner au calque actif si le calque DXF n'existe pas
+            const geoWithLayer = { ...geo, layerId: prev.activeLayerId };
+            newGeometries.set(id, geoWithLayer);
+          });
+
+          return {
+            ...prev,
+            points: newPoints,
+            geometries: newGeometries,
+          };
+        });
+
+        // Centrer la vue sur les entités importées
+        if (rendererRef.current) {
+          const bounds = result.bounds;
+          const centerX = (bounds.minX + bounds.maxX) / 2;
+          const centerY = (bounds.minY + bounds.maxY) / 2;
+
+          setViewport((prev) => ({
+            ...prev,
+            offsetX: prev.width / 2 - centerX * prev.scale,
+            offsetY: prev.height / 2 - centerY * prev.scale,
+          }));
+        }
+
+        toast.success(`Import réussi : ${result.entityCount} entités, ${result.points.size} points`, {
+          id: "dxf-import",
+        });
+
+        // Reset l'input pour permettre de réimporter le même fichier
+        if (dxfInputRef.current) {
+          dxfInputRef.current.value = "";
+        }
+      } catch (error) {
+        console.error("Erreur import DXF:", error);
+        toast.error(`Erreur: ${error instanceof Error ? error.message : "Erreur inconnue"}`, { id: "dxf-import" });
+      }
     },
     [render],
   );
@@ -2572,6 +2646,26 @@ export function CADGabaritCanvas({
           <ToolButton tool="circle" icon={Circle} label="Cercle" shortcut="C" />
           <ToolButton tool="rectangle" icon={Square} label="Rectangle" shortcut="R" />
           <ToolButton tool="bezier" icon={Spline} label="Courbe Bézier" shortcut="B" />
+        </div>
+
+        <Separator orientation="vertical" className="h-6" />
+
+        {/* Import DXF */}
+        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+          <input ref={dxfInputRef} type="file" accept=".dxf" onChange={handleDXFImport} className="hidden" />
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="sm" onClick={() => dxfInputRef.current?.click()} className="h-9 px-2">
+                  <FileUp className="h-4 w-4 mr-1" />
+                  <span className="text-xs">Import DXF</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Importer un fichier DXF</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
 
         <Separator orientation="vertical" className="h-6" />
