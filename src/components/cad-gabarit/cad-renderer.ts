@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 2.6 - Poignées modernes + marqueurs milieux/angles droits
+// VERSION: 2.8 - Symbole milieu en croix X diagonale
 // ============================================
 
 import {
@@ -611,10 +611,10 @@ export class CADRenderer {
   }
 
   /**
-   * Dessine les marqueurs de milieu de segment (petit triangle)
+   * Dessine les marqueurs de milieu de segment (petite croix X)
    */
   drawMidpointMarkers(sketch: Sketch): void {
-    const markerSize = 5 / this.viewport.scale;
+    const markerSize = 4 / this.viewport.scale;
 
     sketch.geometries.forEach((geo) => {
       if (geo.type === "line") {
@@ -624,26 +624,19 @@ export class CADRenderer {
         if (!p1 || !p2) return;
 
         const mid = midpoint(p1, p2);
-        const ang = angle(p1, p2);
 
-        // Dessiner un petit triangle perpendiculaire au segment
-        this.ctx.fillStyle = "#10B981"; // Vert émeraude
-        this.ctx.strokeStyle = "#059669";
-        this.ctx.lineWidth = 1 / this.viewport.scale;
-
-        this.ctx.save();
-        this.ctx.translate(mid.x, mid.y);
-        this.ctx.rotate(ang + Math.PI / 2);
+        // Dessiner une petite croix X (diagonale)
+        this.ctx.strokeStyle = "#10B981"; // Vert émeraude
+        this.ctx.lineWidth = 1.5 / this.viewport.scale;
 
         this.ctx.beginPath();
-        this.ctx.moveTo(0, -markerSize);
-        this.ctx.lineTo(-markerSize * 0.6, markerSize * 0.5);
-        this.ctx.lineTo(markerSize * 0.6, markerSize * 0.5);
-        this.ctx.closePath();
-        this.ctx.fill();
+        // Diagonale \
+        this.ctx.moveTo(mid.x - markerSize, mid.y - markerSize);
+        this.ctx.lineTo(mid.x + markerSize, mid.y + markerSize);
+        // Diagonale /
+        this.ctx.moveTo(mid.x + markerSize, mid.y - markerSize);
+        this.ctx.lineTo(mid.x - markerSize, mid.y + markerSize);
         this.ctx.stroke();
-
-        this.ctx.restore();
       }
     });
   }
