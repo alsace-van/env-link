@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.17 - Double-clic sur segment = sélection figure entière (BFS)
+// VERSION: 5.18 - Auto-split segment quand on connecte au milieu d'un autre segment
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1025,6 +1025,46 @@ export function CADGabaritCanvas({
       return { id: generateId(), x: targetPos.x, y: targetPos.y };
     },
     [sketch.points],
+  );
+
+  // Helper: coupe une ligne en deux à une position donnée et retourne le point de coupure
+  const splitLineAtPoint = useCallback(
+    (
+      lineId: string,
+      position: { x: number; y: number },
+      sketchToModify: { points: Map<string, Point>; geometries: Map<string, Geometry> },
+    ): Point | null => {
+      const line = sketchToModify.geometries.get(lineId) as Line | undefined;
+      if (!line || line.type !== "line") return null;
+
+      const p1 = sketchToModify.points.get(line.p1);
+      const p2 = sketchToModify.points.get(line.p2);
+      if (!p1 || !p2) return null;
+
+      // Créer le nouveau point au milieu
+      const newPoint: Point = { id: generateId(), x: position.x, y: position.y };
+      sketchToModify.points.set(newPoint.id, newPoint);
+
+      // Créer la deuxième ligne (du nouveau point vers p2)
+      const newLine: Line = {
+        id: generateId(),
+        type: "line",
+        p1: newPoint.id,
+        p2: line.p2,
+        layerId: line.layerId,
+      };
+      sketchToModify.geometries.set(newLine.id, newLine);
+
+      // Modifier la ligne originale (p1 vers le nouveau point)
+      const updatedLine: Line = {
+        ...line,
+        p2: newPoint.id,
+      };
+      sketchToModify.geometries.set(lineId, updatedLine);
+
+      return newPoint;
+    },
+    [],
   );
 
   // === FILLET ET CHAMFER ===
@@ -2177,25 +2217,74 @@ export function CADGabaritCanvas({
 
         case "line": {
           if (tempPoints.length === 0) {
-            // Premier point - réutiliser si snap sur endpoint existant
-            const p = getOrCreatePoint(targetPos, currentSnapPoint);
+            // Premier point
+            const newSketch = { ...sketch };
+            newSketch.points = new Map(sketch.points);
+            newSketch.geometries = new Map(sketch.geometries);
+
+            let p: Point;
+
+            // Si on snap sur un segment (pas une extrémité), le couper
+            if (
+              currentSnapPoint &&
+              (currentSnapPoint.type === "nearest" || currentSnapPoint.type === "perpendicular") &&
+              currentSnapPoint.entityId
+            ) {
+              const geo = sketch.geometries.get(currentSnapPoint.entityId);
+              if (geo && geo.type === "line") {
+                const splitPoint = splitLineAtPoint(currentSnapPoint.entityId, targetPos, newSketch);
+                if (splitPoint) {
+                  p = splitPoint;
+                  setSketch(newSketch);
+                } else {
+                  p = getOrCreatePoint(targetPos, currentSnapPoint);
+                }
+              } else {
+                p = getOrCreatePoint(targetPos, currentSnapPoint);
+              }
+            } else {
+              p = getOrCreatePoint(targetPos, currentSnapPoint);
+            }
+
             setTempPoints([p]);
             setTempGeometry({ type: "line", points: [p] });
           } else {
             // Deuxième point - créer la ligne
             const p1 = tempPoints[0];
-            const p2 = getOrCreatePoint(targetPos, currentSnapPoint);
 
             // Ajouter les points
             const newSketch = { ...sketch };
             newSketch.points = new Map(sketch.points);
             newSketch.geometries = new Map(sketch.geometries);
 
+            let p2: Point;
+
+            // Si on snap sur un segment (pas une extrémité), le couper
+            if (
+              currentSnapPoint &&
+              (currentSnapPoint.type === "nearest" || currentSnapPoint.type === "perpendicular") &&
+              currentSnapPoint.entityId
+            ) {
+              const geo = sketch.geometries.get(currentSnapPoint.entityId);
+              if (geo && geo.type === "line") {
+                const splitPoint = splitLineAtPoint(currentSnapPoint.entityId, targetPos, newSketch);
+                if (splitPoint) {
+                  p2 = splitPoint;
+                } else {
+                  p2 = getOrCreatePoint(targetPos, currentSnapPoint);
+                }
+              } else {
+                p2 = getOrCreatePoint(targetPos, currentSnapPoint);
+              }
+            } else {
+              p2 = getOrCreatePoint(targetPos, currentSnapPoint);
+            }
+
             // N'ajouter que si c'est un nouveau point (pas déjà dans le sketch)
-            if (!sketch.points.has(p1.id)) {
+            if (!newSketch.points.has(p1.id)) {
               newSketch.points.set(p1.id, p1);
             }
-            if (!sketch.points.has(p2.id)) {
+            if (!newSketch.points.has(p2.id)) {
               newSketch.points.set(p2.id, p2);
             }
 
@@ -2541,6 +2630,8 @@ export function CADGabaritCanvas({
       solveSketch,
       addToHistory,
       getOrCreatePoint,
+      splitLineAtPoint,
+      calculateCornerParams,
       calibrationMode,
       calibrationData,
       selectedCalibrationPoint,
