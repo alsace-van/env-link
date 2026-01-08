@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 4.2 - Nettoyage points orphelins à la suppression
+// VERSION: 4.4 - Correction sélection rectangulaire + mode intersection
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -192,6 +192,12 @@ export function CADGabaritCanvas({
   );
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
+  // Sélection rectangulaire (box selection)
+  const [selectionBox, setSelectionBox] = useState<{
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+  } | null>(null);
+
   const [dimensionDialog, setDimensionDialog] = useState<{
     open: boolean;
     type: "distance" | "radius" | "angle";
@@ -359,6 +365,41 @@ export function CADGabaritCanvas({
       measurements: measurements,
       measureScale: calibrationData.scale || sketch.scaleFactor,
     });
+
+    // Dessiner le rectangle de sélection (après le render du sketch)
+    if (selectionBox && canvasRef.current) {
+      const ctx = canvasRef.current.getContext("2d");
+      if (ctx) {
+        // Convertir les coordonnées monde en coordonnées écran
+        const startScreen = {
+          x: selectionBox.start.x * viewport.scale + viewport.offsetX,
+          y: selectionBox.start.y * viewport.scale + viewport.offsetY,
+        };
+        const endScreen = {
+          x: selectionBox.end.x * viewport.scale + viewport.offsetX,
+          y: selectionBox.end.y * viewport.scale + viewport.offsetY,
+        };
+
+        const x = Math.min(startScreen.x, endScreen.x);
+        const y = Math.min(startScreen.y, endScreen.y);
+        const width = Math.abs(endScreen.x - startScreen.x);
+        const height = Math.abs(endScreen.y - startScreen.y);
+
+        // Ne dessiner que si la zone est significative (> 5px)
+        if (width > 5 || height > 5) {
+          // Fond semi-transparent bleu
+          ctx.fillStyle = "rgba(59, 130, 246, 0.15)";
+          ctx.fillRect(x, y, width, height);
+
+          // Bordure bleue pointillée
+          ctx.strokeStyle = "#3B82F6";
+          ctx.lineWidth = 1;
+          ctx.setLineDash([5, 3]);
+          ctx.strokeRect(x, y, width, height);
+          ctx.setLineDash([]);
+        }
+      }
+    }
   }, [
     sketch,
     viewport,
@@ -379,6 +420,7 @@ export function CADGabaritCanvas({
     measurePreviewEnd,
     transformedImage,
     measurements,
+    selectionBox,
   ]);
 
   useEffect(() => {
@@ -995,7 +1037,11 @@ export function CADGabaritCanvas({
               }
             }
           } else {
-            setSelectedEntities(new Set());
+            // Clic dans le vide : commencer une sélection rectangulaire
+            if (!e.shiftKey) {
+              setSelectedEntities(new Set());
+            }
+            setSelectionBox({ start: worldPos, end: worldPos });
           }
           break;
         }
@@ -1418,6 +1464,11 @@ export function CADGabaritCanvas({
       if (activeTool === "measure" && measureState.phase === "waitingSecond" && measureState.start) {
         setMeasurePreviewEnd(worldPos);
       }
+
+      // Mise à jour de la sélection rectangulaire
+      if (selectionBox) {
+        setSelectionBox((prev) => (prev ? { ...prev, end: worldPos } : null));
+      }
     },
     [
       isPanning,
@@ -1435,14 +1486,76 @@ export function CADGabaritCanvas({
       activeTool,
       measureState,
       draggingCalibrationPoint,
+      selectionBox,
     ],
   );
 
   const handleMouseUp = useCallback(
     (e: React.MouseEvent) => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      const screenX = rect ? e.clientX - rect.left : 0;
+      const screenY = rect ? e.clientY - rect.top : 0;
+      const worldPos = screenToWorld(screenX, screenY);
+
       // Fin du pan
       if (isPanning) {
         setIsPanning(false);
+      }
+
+      // Fin de la sélection rectangulaire
+      if (selectionBox) {
+        const box = selectionBox;
+        const minX = Math.min(box.start.x, box.end.x);
+        const maxX = Math.max(box.start.x, box.end.x);
+        const minY = Math.min(box.start.y, box.end.y);
+        const maxY = Math.max(box.start.y, box.end.y);
+
+        // Sélectionner toutes les géométries qui sont dans la zone
+        const newSelection = e.shiftKey ? new Set(selectedEntities) : new Set<string>();
+
+        sketch.geometries.forEach((geo, id) => {
+          let isInBox = false;
+
+          if (geo.type === "line") {
+            const line = geo as Line;
+            const p1 = sketch.points.get(line.p1);
+            const p2 = sketch.points.get(line.p2);
+            if (p1 && p2) {
+              // Mode intersection : au moins un point dans la zone OU la ligne traverse la zone
+              const p1InBox = p1.x >= minX && p1.x <= maxX && p1.y >= minY && p1.y <= maxY;
+              const p2InBox = p2.x >= minX && p2.x <= maxX && p2.y >= minY && p2.y <= maxY;
+              isInBox = p1InBox || p2InBox;
+            }
+          } else if (geo.type === "circle") {
+            const circle = geo as CircleType;
+            const center = sketch.points.get(circle.center);
+            if (center) {
+              // Le cercle est sélectionné si son centre est dans la zone
+              isInBox = center.x >= minX && center.x <= maxX && center.y >= minY && center.y <= maxY;
+            }
+          } else if (geo.type === "bezier") {
+            const bezier = geo as Bezier;
+            const p1 = sketch.points.get(bezier.p1);
+            const p2 = sketch.points.get(bezier.p2);
+            if (p1 && p2) {
+              const p1InBox = p1.x >= minX && p1.x <= maxX && p1.y >= minY && p1.y <= maxY;
+              const p2InBox = p2.x >= minX && p2.x <= maxX && p2.y >= minY && p2.y <= maxY;
+              isInBox = p1InBox || p2InBox;
+            }
+          }
+
+          if (isInBox) {
+            newSelection.add(id);
+          }
+        });
+
+        if (newSelection.size > 0) {
+          setSelectedEntities(newSelection);
+          toast.success(`${newSelection.size} élément(s) sélectionné(s)`);
+        }
+
+        setSelectionBox(null);
+        return;
       }
 
       // Fin du drag d'un point de calibration
@@ -1471,7 +1584,18 @@ export function CADGabaritCanvas({
         setDragTarget(null);
       }
     },
-    [isPanning, isDragging, dragTarget, sketch, addToHistory, solveSketch, draggingCalibrationPoint],
+    [
+      isPanning,
+      isDragging,
+      dragTarget,
+      sketch,
+      addToHistory,
+      solveSketch,
+      draggingCalibrationPoint,
+      selectionBox,
+      selectedEntities,
+      screenToWorld,
+    ],
   );
 
   const handleWheel = useCallback(
