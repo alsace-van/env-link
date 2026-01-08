@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.13 - Fix line1.layerId -> currentLine1.layerId dans applyChamfer
+// VERSION: 5.15 - Fix Ctrl+Z: sauvegarder état initial, corriger gestion historique avec ref
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -221,6 +221,24 @@ export function CADGabaritCanvas({
 
   const [history, setHistory] = useState<any[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const historyRef = useRef<{ history: any[]; index: number }>({ history: [], index: -1 });
+
+  // Synchroniser la ref avec l'état
+  useEffect(() => {
+    historyRef.current = { history, index: historyIndex };
+  }, [history, historyIndex]);
+
+  // Sauvegarder l'état initial au montage
+  const historyInitializedRef = useRef(false);
+  useEffect(() => {
+    if (!historyInitializedRef.current) {
+      historyInitializedRef.current = true;
+      const initialState = serializeSketch(sketch);
+      setHistory([initialState]);
+      setHistoryIndex(0);
+      historyRef.current = { history: [initialState], index: 0 };
+    }
+  }, []);
 
   // Calibration
   const [calibrationData, setCalibrationData] = useState<CalibrationData>({
@@ -574,13 +592,17 @@ export function CADGabaritCanvas({
   }, []);
 
   // Historique - défini tôt car utilisé par plusieurs callbacks
-  const addToHistory = useCallback(
-    (newSketch: Sketch) => {
-      setHistory((h) => [...h.slice(0, historyIndex + 1), serializeSketch(newSketch)]);
-      setHistoryIndex((i) => i + 1);
-    },
-    [historyIndex],
-  );
+  const addToHistory = useCallback((newSketch: Sketch) => {
+    const { history: currentHistory, index: currentIndex } = historyRef.current;
+    const serialized = serializeSketch(newSketch);
+    // Couper l'historique au point actuel et ajouter le nouvel état
+    const newHistory = [...currentHistory.slice(0, currentIndex + 1), serialized];
+    const newIndex = currentIndex + 1;
+
+    setHistory(newHistory);
+    setHistoryIndex(newIndex);
+    historyRef.current = { history: newHistory, index: newIndex };
+  }, []);
 
   // Conversion coordonnées
   const screenToWorld = useCallback(
@@ -1230,9 +1252,10 @@ export function CADGabaritCanvas({
       }
 
       setSketch(newSketch);
+      addToHistory(newSketch);
       toast.success(`Congé R${radius}mm appliqué`);
     },
-    [sketch, findSharedPoint],
+    [sketch, findSharedPoint, addToHistory],
   );
 
   // Applique un chanfrein entre deux lignes
@@ -1345,9 +1368,10 @@ export function CADGabaritCanvas({
       }
 
       setSketch(newSketch);
+      addToHistory(newSketch);
       toast.success(`Chanfrein ${dist}mm appliqué`);
     },
-    [sketch, findSharedPoint],
+    [sketch, findSharedPoint, addToHistory],
   );
 
   // Trouver les lignes connectées à un point
@@ -1735,9 +1759,10 @@ export function CADGabaritCanvas({
       newSketch.geometries.set(arcId, { ...arc, radius: newRadius });
 
       setSketch(newSketch);
+      addToHistory(newSketch);
       toast.success(`Rayon modifié: R${newRadius}mm`);
     },
-    [sketch, findLinesConnectedToPoint, lineIntersection],
+    [sketch, findLinesConnectedToPoint, lineIntersection, addToHistory],
   );
 
   // Supprimer un congé et restaurer le coin
@@ -1761,6 +1786,7 @@ export function CADGabaritCanvas({
         newSketch.geometries = new Map(sketch.geometries);
         newSketch.geometries.delete(arcId);
         setSketch(newSketch);
+        addToHistory(newSketch);
         return;
       }
 
@@ -1813,9 +1839,10 @@ export function CADGabaritCanvas({
       newSketch.points.delete(arc.center);
 
       setSketch(newSketch);
+      addToHistory(newSketch);
       toast.success("Congé supprimé, coin restauré");
     },
-    [sketch, findLinesConnectedToPoint, lineIntersection],
+    [sketch, findLinesConnectedToPoint, lineIntersection, addToHistory],
   );
 
   // Gestion de la souris
@@ -2929,16 +2956,20 @@ export function CADGabaritCanvas({
   const undo = useCallback(() => {
     if (historyIndex > 0) {
       const prevState = history[historyIndex - 1];
+      const newIndex = historyIndex - 1;
       loadSketchData(prevState);
-      setHistoryIndex((i) => i - 1);
+      setHistoryIndex(newIndex);
+      historyRef.current = { ...historyRef.current, index: newIndex };
     }
   }, [history, historyIndex, loadSketchData]);
 
   const redo = useCallback(() => {
     if (historyIndex < history.length - 1) {
       const nextState = history[historyIndex + 1];
+      const newIndex = historyIndex + 1;
       loadSketchData(nextState);
-      setHistoryIndex((i) => i + 1);
+      setHistoryIndex(newIndex);
+      historyRef.current = { ...historyRef.current, index: newIndex };
     }
   }, [history, historyIndex, loadSketchData]);
 
