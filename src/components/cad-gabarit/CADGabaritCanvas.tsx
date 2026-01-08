@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.12 - Fix références line1/line2 -> currentLine1/currentLine2, fix modes outils
+// VERSION: 5.13 - Fix line1.layerId -> currentLine1.layerId dans applyChamfer
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1328,7 +1328,7 @@ export function CADGabaritCanvas({
         type: "line",
         p1: cham1Id,
         p2: cham2Id,
-        layerId: line1.layerId || "trace",
+        layerId: currentLine1.layerId || "trace",
       };
       newSketch.geometries.set(chamferLineId, chamferLine);
 
