@@ -1,7 +1,7 @@
 // ============================================
 // DXF PARSER: Import de fichiers DXF
 // Parse les fichiers DXF et convertit en format interne
-// VERSION: 1.2 - Typage TypeScript correct
+// VERSION: 1.3 - Inversion axe Y pour orientation correcte
 // ============================================
 
 import { Point, Line, Circle, Arc, Geometry, generateId } from "./types";
@@ -124,6 +124,8 @@ export function parseDXF(content: string): DXFParseResult {
 
 /**
  * Convertit les entités DXF en format interne
+ * Note: L'axe Y est inversé car DXF utilise Y vers le haut,
+ * alors que le canvas utilise Y vers le bas
  */
 function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseResult {
   const points = new Map<string, Point>();
@@ -135,10 +137,12 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
     maxY = -Infinity;
 
   // Fonction helper pour créer ou récupérer un point
+  // Inverse Y pour corriger l'orientation (DXF: Y vers haut, Canvas: Y vers bas)
   const getOrCreatePoint = (x: number, y: number): string => {
     // Arrondir pour éviter les doublons dus aux erreurs de précision
+    // Inverser Y pour corriger l'orientation
     const rx = Math.round(x * 1000) / 1000;
-    const ry = Math.round(y * 1000) / 1000;
+    const ry = Math.round(-y * 1000) / 1000; // Y inversé
 
     // Chercher un point existant
     for (const [id, pt] of points) {
@@ -195,11 +199,12 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
         if (cx !== undefined && cy !== undefined && radius !== undefined) {
           const centerId = getOrCreatePoint(cx, cy);
 
-          // Mettre à jour bounds avec le cercle complet
+          // Mettre à jour bounds avec le cercle complet (Y inversé)
+          const cyInverted = -cy;
           minX = Math.min(minX, cx - radius);
-          minY = Math.min(minY, cy - radius);
+          minY = Math.min(minY, cyInverted - radius);
           maxX = Math.max(maxX, cx + radius);
-          maxY = Math.max(maxY, cy + radius);
+          maxY = Math.max(maxY, cyInverted + radius);
 
           const circleId = generateId();
           const circle: Circle = {
