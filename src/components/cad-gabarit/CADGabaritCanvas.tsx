@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.15 - Fix Ctrl+Z: sauvegarder état initial, corriger gestion historique avec ref
+// VERSION: 5.16 - Fix sélection point coin: priorité détection coins, drag différé
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -711,8 +711,30 @@ export function CADGabaritCanvas({
   const findEntityAtPosition = useCallback(
     (worldX: number, worldY: number): string | null => {
       const tolerance = 10 / viewport.scale;
+      const pointTolerance = 8 / viewport.scale; // Tolérance plus stricte pour les points
 
-      // Vérifier les géométries EN PREMIER (pour pouvoir sélectionner les lignes/courbes)
+      // PRIORITÉ 1: Vérifier les points de COIN en premier (pour congé/chanfrein)
+      // Un coin est un point connecté à exactement 2 lignes
+      for (const [id, point] of sketch.points) {
+        if (distance({ x: worldX, y: worldY }, point) < pointTolerance) {
+          // Compter les lignes connectées à ce point
+          let connectedLines = 0;
+          for (const geo of sketch.geometries.values()) {
+            if (geo.type === "line") {
+              const line = geo as Line;
+              if (line.p1 === id || line.p2 === id) {
+                connectedLines++;
+              }
+            }
+          }
+          // Si c'est un coin (2 lignes connectées), le retourner en priorité
+          if (connectedLines === 2) {
+            return id;
+          }
+        }
+      }
+
+      // PRIORITÉ 2: Vérifier les géométries (lignes, cercles, etc.)
       for (const [id, geo] of sketch.geometries) {
         if (geo.type === "line") {
           const line = geo as Line;
@@ -769,56 +791,41 @@ export function CADGabaritCanvas({
         }
       }
 
-      // Vérifier les points isolés (pas liés à une géométrie)
+      // PRIORITÉ 3: Vérifier les points isolés (pas liés à une géométrie)
       for (const [id, point] of sketch.points) {
-        // Vérifier si ce point est utilisé par une géométrie
-        let isUsedByGeometry = false;
-        for (const geo of sketch.geometries.values()) {
-          if (geo.type === "line") {
-            const line = geo as Line;
-            if (line.p1 === id || line.p2 === id) {
-              isUsedByGeometry = true;
-              break;
-            }
-          } else if (geo.type === "circle") {
-            const circle = geo as CircleType;
-            if (circle.center === id) {
-              isUsedByGeometry = true;
-              break;
-            }
-          } else if (geo.type === "bezier") {
-            const bezier = geo as Bezier;
-            if (bezier.p1 === id || bezier.p2 === id || bezier.cp1 === id || bezier.cp2 === id) {
-              isUsedByGeometry = true;
-              break;
-            }
-          } else if (geo.type === "arc") {
-            const arc = geo as Arc;
-            if (arc.center === id || arc.startPoint === id || arc.endPoint === id) {
-              isUsedByGeometry = true;
-              break;
-            }
-          }
-        }
-
-        // Sélectionner le point s'il n'est pas utilisé par une géométrie
-        // OU s'il est un "coin" (connecté à exactement 2 lignes)
         if (distance({ x: worldX, y: worldY }, point) < tolerance) {
-          if (!isUsedByGeometry) {
-            return id;
-          }
-          // Vérifier si c'est un coin (connecté à exactement 2 lignes)
-          let connectedLines = 0;
+          // Vérifier si ce point est utilisé par une géométrie
+          let isUsedByGeometry = false;
           for (const geo of sketch.geometries.values()) {
             if (geo.type === "line") {
               const line = geo as Line;
               if (line.p1 === id || line.p2 === id) {
-                connectedLines++;
+                isUsedByGeometry = true;
+                break;
+              }
+            } else if (geo.type === "circle") {
+              const circle = geo as CircleType;
+              if (circle.center === id) {
+                isUsedByGeometry = true;
+                break;
+              }
+            } else if (geo.type === "bezier") {
+              const bezier = geo as Bezier;
+              if (bezier.p1 === id || bezier.p2 === id || bezier.cp1 === id || bezier.cp2 === id) {
+                isUsedByGeometry = true;
+                break;
+              }
+            } else if (geo.type === "arc") {
+              const arc = geo as Arc;
+              if (arc.center === id || arc.startPoint === id || arc.endPoint === id) {
+                isUsedByGeometry = true;
+                break;
               }
             }
           }
-          if (connectedLines === 2) {
-            return id; // C'est un coin, on peut le sélectionner
+          // Sélectionner le point s'il n'est pas utilisé par une géométrie
+          if (!isUsedByGeometry) {
+            return id;
           }
         }
       }
@@ -2076,11 +2083,11 @@ export function CADGabaritCanvas({
               setSelectedEntities(newSelection);
             } else {
               setSelectedEntities(new Set([entityId]));
-              // Commencer le drag si c'est un point
+              // Préparer le drag pour les points (commencera quand la souris bouge)
               if (sketch.points.has(entityId)) {
-                setIsDragging(true);
                 setDragTarget({ type: "point", id: entityId });
                 setDragStart(worldPos);
+                // Note: isDragging reste false jusqu'à ce qu'on bouge la souris
               }
             }
           } else {
@@ -2512,6 +2519,14 @@ export function CADGabaritCanvas({
         return;
       }
 
+      // Démarrer le drag si on a un target et qu'on a bougé d'au moins 3 pixels
+      if (!isDragging && dragTarget && e.buttons === 1) {
+        const dist = Math.sqrt((worldPos.x - dragStart.x) ** 2 + (worldPos.y - dragStart.y) ** 2);
+        if (dist > 3 / viewport.scale) {
+          setIsDragging(true);
+        }
+      }
+
       // Drag de point/poignée
       if (isDragging && dragTarget) {
         let targetPos = worldPos;
@@ -2597,6 +2612,7 @@ export function CADGabaritCanvas({
       isDragging,
       panStart,
       dragTarget,
+      dragStart,
       sketch,
       viewport,
       snapEnabled,
@@ -2736,6 +2752,9 @@ export function CADGabaritCanvas({
         addToHistory(sketch);
         solveSketch(sketch);
         setIsDragging(false);
+        setDragTarget(null);
+      } else if (dragTarget) {
+        // Clic simple sur un point sans bouger - juste nettoyer
         setDragTarget(null);
       }
     },
