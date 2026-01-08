@@ -1,7 +1,7 @@
 // ============================================
 // DXF PARSER: Import de fichiers DXF
 // Parse les fichiers DXF et convertit en format interne
-// VERSION: 3.0 - Vrai support B-spline avec algorithme de De Boor
+// VERSION: 3.1 - Optimisation performance (index spatial, résolution réduite)
 // ============================================
 
 import { Point, Line, Circle, Geometry, generateId } from "./types";
@@ -29,8 +29,9 @@ interface DXFParseResult {
 }
 
 // Nombre de segments pour approximer les courbes
-const SPLINE_RESOLUTION = 50; // Plus de points = courbes plus lisses
-const ARC_SEGMENTS = 24;
+// Compromis qualité/performance
+const SPLINE_RESOLUTION = 16; // Réduit de 50 à 16
+const ARC_SEGMENTS = 12; // Réduit de 24 à 12
 
 /**
  * Parse un fichier DXF et retourne les entités géométriques
@@ -280,24 +281,30 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
   const points = new Map<string, Point>();
   const geometries = new Map<string, Geometry>();
 
+  // Index spatial pour recherche rapide O(1) au lieu de O(n)
+  const pointIndex = new Map<string, string>();
+
   let minX = Infinity,
     minY = Infinity;
   let maxX = -Infinity,
     maxY = -Infinity;
 
   // Helper pour créer ou récupérer un point (Y inversé)
+  // Optimisé avec index spatial
   const getOrCreatePoint = (x: number, y: number): string => {
-    const rx = Math.round(x * 1000) / 1000;
-    const ry = Math.round(-y * 1000) / 1000; // Y inversé
+    const rx = Math.round(x * 100) / 100; // Réduit précision pour moins de points
+    const ry = Math.round(-y * 100) / 100; // Y inversé
 
-    for (const [id, pt] of points) {
-      if (Math.abs(pt.x - rx) < 0.001 && Math.abs(pt.y - ry) < 0.001) {
-        return id;
-      }
+    // Clé spatiale pour recherche O(1)
+    const key = `${rx},${ry}`;
+    const existingId = pointIndex.get(key);
+    if (existingId) {
+      return existingId;
     }
 
     const id = generateId();
     points.set(id, { id, x: rx, y: ry });
+    pointIndex.set(key, id);
 
     minX = Math.min(minX, rx);
     minY = Math.min(minY, ry);
@@ -515,7 +522,7 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
           const minorRadius = majorRadius * ratio;
           const rotation = Math.atan2(majorY, majorX);
 
-          const numSegments = 48;
+          const numSegments = 24; // Réduit de 48
           let angle = endParam - startParam;
           if (angle < 0) angle += 2 * Math.PI;
 
