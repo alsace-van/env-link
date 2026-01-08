@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.24 - Multi-congés/chanfreins: accumulation des changements dans un seul sketch
+// VERSION: 5.25 - Fix congé: calcul du centre via perpendiculaire pointant vers l'intérieur
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1211,31 +1211,19 @@ export function CADGabaritCanvas({
       const tan1 = { x: cornerPt.x + u1.x * tangentDist, y: cornerPt.y + u1.y * tangentDist };
       const tan2 = { x: cornerPt.x + u2.x * tangentDist, y: cornerPt.y + u2.y * tangentDist };
 
-      const bisector = { x: u1.x + u2.x, y: u1.y + u2.y };
-      const bisLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
+      // Calculer le centre en utilisant la perpendiculaire à la ligne 1 qui pointe vers l'intérieur
+      // La perpendiculaire à u1 peut être (-u1.y, u1.x) ou (u1.y, -u1.x)
+      // On choisit celle qui a un produit scalaire positif avec u2 (pointe vers l'autre ligne)
+      const perp1a = { x: -u1.y, y: u1.x };
+      const perp1b = { x: u1.y, y: -u1.x };
+      const dot1a = perp1a.x * u2.x + perp1a.y * u2.y;
+      const n1 = dot1a > 0 ? perp1a : perp1b;
 
-      if (bisLen < 0.001) return null;
-
-      const bisUnit = { x: bisector.x / bisLen, y: bisector.y / bisLen };
-      const centerDist = radius / Math.sin(halfAngle);
-
-      const center1 = {
-        x: cornerPt.x + bisUnit.x * centerDist,
-        y: cornerPt.y + bisUnit.y * centerDist,
+      // Le centre est à distance R du point de tangence, dans la direction de la perpendiculaire
+      const arcCenter = {
+        x: tan1.x + n1.x * radius,
+        y: tan1.y + n1.y * radius,
       };
-      const center2 = {
-        x: cornerPt.x - bisUnit.x * centerDist,
-        y: cornerPt.y - bisUnit.y * centerDist,
-      };
-
-      const t1t2 = { x: tan2.x - tan1.x, y: tan2.y - tan1.y };
-      const t1Corner = { x: cornerPt.x - tan1.x, y: cornerPt.y - tan1.y };
-      const t1Center1 = { x: center1.x - tan1.x, y: center1.y - tan1.y };
-
-      const crossCorner = t1t2.x * t1Corner.y - t1t2.y * t1Corner.x;
-      const crossCenter1 = t1t2.x * t1Center1.y - t1t2.y * t1Center1.x;
-
-      const arcCenter = crossCorner * crossCenter1 < 0 ? center1 : center2;
 
       const tan1Id = generateId();
       const tan2Id = generateId();
@@ -2089,37 +2077,16 @@ export function CADGabaritCanvas({
       const newTan1 = { x: corner.x + u1.x * tangentDist, y: corner.y + u1.y * tangentDist };
       const newTan2 = { x: corner.x + u2.x * tangentDist, y: corner.y + u2.y * tangentDist };
 
-      // Nouveau centre: sur la bissectrice de l'angle
-      const bisector = { x: u1.x + u2.x, y: u1.y + u2.y };
-      const bisLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
+      // Calculer le centre en utilisant la perpendiculaire à la ligne 1 qui pointe vers l'intérieur
+      const perp1a = { x: -u1.y, y: u1.x };
+      const perp1b = { x: u1.y, y: -u1.x };
+      const dot1a = perp1a.x * u2.x + perp1a.y * u2.y;
+      const n1 = dot1a > 0 ? perp1a : perp1b;
 
-      if (bisLen < 0.001) {
-        toast.error("Impossible de recalculer le congé");
-        return;
-      }
-
-      const bisUnit = { x: bisector.x / bisLen, y: bisector.y / bisLen };
-      const centerDist = newRadius / Math.sin(halfAngle);
-
-      // Deux centres possibles
-      const center1 = {
-        x: corner.x + bisUnit.x * centerDist,
-        y: corner.y + bisUnit.y * centerDist,
+      const newCenter = {
+        x: newTan1.x + n1.x * newRadius,
+        y: newTan1.y + n1.y * newRadius,
       };
-      const center2 = {
-        x: corner.x - bisUnit.x * centerDist,
-        y: corner.y - bisUnit.y * centerDist,
-      };
-
-      // Choisir le centre opposé au coin par rapport à la ligne tan1-tan2
-      const t1t2 = { x: newTan2.x - newTan1.x, y: newTan2.y - newTan1.y };
-      const t1Corner = { x: corner.x - newTan1.x, y: corner.y - newTan1.y };
-      const t1Center1 = { x: center1.x - newTan1.x, y: center1.y - newTan1.y };
-
-      const crossCorner = t1t2.x * t1Corner.y - t1t2.y * t1Corner.x;
-      const crossCenter1 = t1t2.x * t1Center1.y - t1t2.y * t1Center1.x;
-
-      const newCenter = crossCorner * crossCenter1 < 0 ? center1 : center2;
 
       // Mettre à jour le sketch
       const newSketch = { ...sketch };
