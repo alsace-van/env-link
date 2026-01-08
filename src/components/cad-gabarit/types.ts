@@ -1,7 +1,7 @@
 // ============================================
 // TYPES: CAD Gabarit Types
 // Types pour le système CAO
-// VERSION: 2.5 - Ajout système de calques
+// VERSION: 2.6 - 2 calques par défaut (Modèle + Tracé)
 // ============================================
 
 // === GÉOMÉTRIE DE BASE ===
@@ -205,10 +205,8 @@ export interface Layer {
 }
 
 export const DEFAULT_LAYERS: Layer[] = [
-  { id: "default", name: "Défaut", color: "#3B82F6", visible: true, locked: false, order: 0 },
-  { id: "construction", name: "Construction", color: "#9CA3AF", visible: true, locked: false, order: 1 },
-  { id: "contour", name: "Contour découpe", color: "#EF4444", visible: true, locked: false, order: 2 },
-  { id: "gravure", name: "Gravure", color: "#10B981", visible: true, locked: false, order: 3 },
+  { id: "modele", name: "Modèle", color: "#9CA3AF", visible: true, locked: false, order: 0 },
+  { id: "trace", name: "Tracé", color: "#EF4444", visible: true, locked: false, order: 1 },
 ];
 
 // === SKETCH (Document) ===
