@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.5 - Fix modification rayon congé (recalcul complet) + suppression congé restaure le coin
+// VERSION: 5.6 - Fix calcul centre congé: utilise bissectrice intérieure
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1045,24 +1045,27 @@ export function CADGabaritCanvas({
       const tan1 = { x: cornerPt.x + u1.x * tangentDist, y: cornerPt.y + u1.y * tangentDist };
       const tan2 = { x: cornerPt.x + u2.x * tangentDist, y: cornerPt.y + u2.y * tangentDist };
 
-      // Centre de l'arc : perpendiculaire à chaque ligne, à distance radius
-      // Normales (perpendiculaires) aux lignes - tourner de 90°
-      const n1 = { x: -u1.y, y: u1.x };
-      const n2 = { x: -u2.y, y: u2.x };
+      // Centre de l'arc : sur la bissectrice INTÉRIEURE de l'angle
+      // La bissectrice extérieure est u1 + u2 (normalisé)
+      // La bissectrice intérieure est l'OPPOSÉ : -(u1 + u2)
+      const bisector = { x: u1.x + u2.x, y: u1.y + u2.y };
+      const bisLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
 
-      // Déterminer de quel côté est le centre (côté intérieur du coin)
-      // Le centre est du côté où les deux normales "convergent"
-      // On teste les deux possibilités et on garde celle qui donne le bon rayon
+      if (bisLen < 0.001) {
+        toast.error("Impossible de calculer le congé");
+        return;
+      }
 
-      // Candidat 1: tan1 + n1 * radius
-      const center1a = { x: tan1.x + n1.x * radius, y: tan1.y + n1.y * radius };
-      const center1b = { x: tan1.x - n1.x * radius, y: tan1.y - n1.y * radius };
+      // Bissectrice intérieure (opposée à l'extérieure)
+      const bisUnit = { x: -bisector.x / bisLen, y: -bisector.y / bisLen };
 
-      // Le bon centre est celui qui est aussi à distance radius de tan2
-      const dist1aToTan2 = Math.sqrt((center1a.x - tan2.x) ** 2 + (center1a.y - tan2.y) ** 2);
-      const dist1bToTan2 = Math.sqrt((center1b.x - tan2.x) ** 2 + (center1b.y - tan2.y) ** 2);
+      // Distance du coin au centre = R / sin(angle/2)
+      const centerDist = radius / Math.sin(halfAngle);
 
-      const arcCenter = Math.abs(dist1aToTan2 - radius) < Math.abs(dist1bToTan2 - radius) ? center1a : center1b;
+      const arcCenter = {
+        x: cornerPt.x + bisUnit.x * centerDist,
+        y: cornerPt.y + bisUnit.y * centerDist,
+      };
 
       // Créer le nouveau sketch
       const newSketch = { ...sketch };
@@ -1384,15 +1387,23 @@ export function CADGabaritCanvas({
       const newTan1 = { x: corner.x + u1.x * tangentDist, y: corner.y + u1.y * tangentDist };
       const newTan2 = { x: corner.x + u2.x * tangentDist, y: corner.y + u2.y * tangentDist };
 
-      // Nouveau centre (perpendiculaire depuis tan1)
-      const n1 = { x: -u1.y, y: u1.x };
-      const center1a = { x: newTan1.x + n1.x * newRadius, y: newTan1.y + n1.y * newRadius };
-      const center1b = { x: newTan1.x - n1.x * newRadius, y: newTan1.y - n1.y * newRadius };
+      // Nouveau centre: sur la bissectrice INTÉRIEURE
+      const bisector = { x: u1.x + u2.x, y: u1.y + u2.y };
+      const bisLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
 
-      const dist1aToTan2 = Math.sqrt((center1a.x - newTan2.x) ** 2 + (center1a.y - newTan2.y) ** 2);
-      const dist1bToTan2 = Math.sqrt((center1b.x - newTan2.x) ** 2 + (center1b.y - newTan2.y) ** 2);
+      if (bisLen < 0.001) {
+        toast.error("Impossible de recalculer le congé");
+        return;
+      }
 
-      const newCenter = Math.abs(dist1aToTan2 - newRadius) < Math.abs(dist1bToTan2 - newRadius) ? center1a : center1b;
+      // Bissectrice intérieure (opposée à l'extérieure)
+      const bisUnit = { x: -bisector.x / bisLen, y: -bisector.y / bisLen };
+      const centerDist = newRadius / Math.sin(halfAngle);
+
+      const newCenter = {
+        x: corner.x + bisUnit.x * centerDist,
+        y: corner.y + bisUnit.y * centerDist,
+      };
 
       // Mettre à jour le sketch
       const newSketch = { ...sketch };
