@@ -1,18 +1,18 @@
 // ============================================
 // DXF PARSER: Import de fichiers DXF
 // Parse les fichiers DXF et convertit en format interne
-// VERSION: 2.0 - Support amélioré des courbes (SPLINE, ARC, LWPOLYLINE avec bulge)
+// VERSION: 3.0 - Vrai support B-spline avec algorithme de De Boor
 // ============================================
 
-import { Point, Line, Circle, Arc, Geometry, generateId } from "./types";
+import { Point, Line, Circle, Geometry, generateId } from "./types";
 
 // Types DXF internes
 interface DXFEntity {
   type: string;
   layer?: string;
-  numericData: Map<number, number>;
-  stringData: Map<number, string>;
-  arrayData: Map<number, number[]>;
+  // Stocker TOUTES les valeurs pour chaque code (pas juste la dernière)
+  values: Map<number, number[]>;
+  strings: Map<number, string[]>;
 }
 
 interface DXFParseResult {
@@ -29,8 +29,8 @@ interface DXFParseResult {
 }
 
 // Nombre de segments pour approximer les courbes
-const SPLINE_SEGMENTS = 20;
-const ARC_SEGMENTS = 16;
+const SPLINE_RESOLUTION = 50; // Plus de points = courbes plus lisses
+const ARC_SEGMENTS = 24;
 
 /**
  * Parse un fichier DXF et retourne les entités géométriques
@@ -69,9 +69,8 @@ export function parseDXF(content: string): DXFParseResult {
       if (["LINE", "CIRCLE", "ARC", "LWPOLYLINE", "POLYLINE", "SPLINE", "ELLIPSE"].includes(entityType)) {
         const entity: DXFEntity = {
           type: entityType,
-          numericData: new Map(),
-          stringData: new Map(),
-          arrayData: new Map(),
+          values: new Map(),
+          strings: new Map(),
         };
 
         i += 2;
@@ -92,23 +91,16 @@ export function parseDXF(content: string): DXFParseResult {
             layersSet.add(attrValue);
           }
 
-          // Stocker les données
+          // Stocker les données - TOUJOURS ajouter au tableau
           const numValue = parseFloat(attrValue);
           if (!isNaN(numValue)) {
-            // Pour les polylignes et splines, gérer les valeurs multiples
-            if (entity.numericData.has(attrCode)) {
-              // Ajouter au tableau
-              const existingArray = entity.arrayData.get(attrCode);
-              if (existingArray) {
-                existingArray.push(numValue);
-              } else {
-                const prevValue = entity.numericData.get(attrCode)!;
-                entity.arrayData.set(attrCode, [prevValue, numValue]);
-              }
-            }
-            entity.numericData.set(attrCode, numValue);
+            const existing = entity.values.get(attrCode) || [];
+            existing.push(numValue);
+            entity.values.set(attrCode, existing);
           } else {
-            entity.stringData.set(attrCode, attrValue);
+            const existing = entity.strings.get(attrCode) || [];
+            existing.push(attrValue);
+            entity.strings.set(attrCode, existing);
           }
 
           i += 2;
@@ -127,37 +119,94 @@ export function parseDXF(content: string): DXFParseResult {
 }
 
 /**
- * Interpolation de Catmull-Rom spline
+ * Algorithme de De Boor pour évaluer une B-spline
+ * @param t - Paramètre (0 à 1 normalisé)
+ * @param degree - Degré de la spline
+ * @param knots - Vecteur de noeuds
+ * @param controlPoints - Points de contrôle
  */
-function catmullRomPoint(
-  p0: { x: number; y: number },
-  p1: { x: number; y: number },
-  p2: { x: number; y: number },
-  p3: { x: number; y: number },
+function deBoor(
   t: number,
+  degree: number,
+  knots: number[],
+  controlPoints: { x: number; y: number }[],
 ): { x: number; y: number } {
-  const t2 = t * t;
-  const t3 = t2 * t;
+  const n = controlPoints.length - 1;
 
-  return {
-    x:
-      0.5 *
-      (2 * p1.x +
-        (-p0.x + p2.x) * t +
-        (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 +
-        (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
-    y:
-      0.5 *
-      (2 * p1.y +
-        (-p0.y + p2.y) * t +
-        (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
-        (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3),
-  };
+  // Trouver l'intervalle de knot
+  let k = degree;
+  while (k < n && knots[k + 1] <= t) {
+    k++;
+  }
+
+  // Copier les points de contrôle pertinents
+  const d: { x: number; y: number }[] = [];
+  for (let j = 0; j <= degree; j++) {
+    const idx = Math.max(0, Math.min(n, k - degree + j));
+    d.push({ x: controlPoints[idx].x, y: controlPoints[idx].y });
+  }
+
+  // Algorithme de De Boor
+  for (let r = 1; r <= degree; r++) {
+    for (let j = degree; j >= r; j--) {
+      const i = k - degree + j;
+      const knotLeft = knots[i] || 0;
+      const knotRight = knots[i + degree - r + 1] || 1;
+
+      let alpha = 0;
+      if (Math.abs(knotRight - knotLeft) > 1e-10) {
+        alpha = (t - knotLeft) / (knotRight - knotLeft);
+      }
+
+      d[j] = {
+        x: (1 - alpha) * d[j - 1].x + alpha * d[j].x,
+        y: (1 - alpha) * d[j - 1].y + alpha * d[j].y,
+      };
+    }
+  }
+
+  return d[degree];
+}
+
+/**
+ * Génère des points uniformes sur une B-spline
+ */
+function evaluateBSpline(
+  degree: number,
+  knots: number[],
+  controlPoints: { x: number; y: number }[],
+  numPoints: number,
+): { x: number; y: number }[] {
+  if (controlPoints.length < 2) return controlPoints;
+  if (knots.length === 0) {
+    // Générer des knots uniformes si absents
+    const n = controlPoints.length;
+    const numKnots = n + degree + 1;
+    knots = [];
+    for (let i = 0; i < numKnots; i++) {
+      if (i <= degree) knots.push(0);
+      else if (i >= numKnots - degree - 1) knots.push(1);
+      else knots.push((i - degree) / (numKnots - 2 * degree - 1));
+    }
+  }
+
+  const result: { x: number; y: number }[] = [];
+  const tMin = knots[degree] || 0;
+  const tMax = knots[knots.length - degree - 1] || 1;
+
+  for (let i = 0; i <= numPoints; i++) {
+    const t = tMin + (tMax - tMin) * (i / numPoints);
+    // Éviter les valeurs exactement sur les knots de fin
+    const tClamped = Math.min(t, tMax - 1e-10);
+    result.push(deBoor(tClamped, degree, knots, controlPoints));
+  }
+
+  return result;
 }
 
 /**
  * Calcule les points d'un arc à partir du bulge (polyline)
- * bulge = tan(angle/4), où angle est l'angle de l'arc
+ * bulge = tan(angle/4)
  */
 function arcFromBulge(
   p1: { x: number; y: number },
@@ -166,59 +215,53 @@ function arcFromBulge(
   numSegments: number,
 ): { x: number; y: number }[] {
   if (Math.abs(bulge) < 0.0001) {
-    return []; // Pas d'arc, juste une ligne droite
+    return [];
   }
 
   const points: { x: number; y: number }[] = [];
 
-  // Calculer l'angle de l'arc
-  const angle = 4 * Math.atan(bulge);
-
-  // Distance entre les deux points
   const dx = p2.x - p1.x;
   const dy = p2.y - p1.y;
   const dist = Math.sqrt(dx * dx + dy * dy);
 
   if (dist < 0.0001) return [];
 
-  // Rayon de l'arc
-  const radius = Math.abs(dist / (2 * Math.sin(angle / 2)));
+  // Angle de l'arc
+  const angle = 4 * Math.atan(Math.abs(bulge));
 
-  // Milieu du segment
+  // Rayon
+  const radius = dist / (2 * Math.sin(angle / 2));
+
+  // Centre de l'arc
   const mx = (p1.x + p2.x) / 2;
   const my = (p1.y + p2.y) / 2;
 
-  // Direction perpendiculaire (normalisée)
   const perpX = -dy / dist;
   const perpY = dx / dist;
 
-  // Distance du centre au milieu du segment
-  const h = radius * Math.cos(angle / 2);
+  const h = Math.sqrt(Math.max(0, radius * radius - (dist / 2) * (dist / 2)));
 
-  // Centre de l'arc (côté dépend du signe du bulge)
   const sign = bulge > 0 ? 1 : -1;
   const cx = mx + sign * h * perpX;
   const cy = my + sign * h * perpY;
 
-  // Angles de départ et d'arrivée
+  // Angles
   const startAngle = Math.atan2(p1.y - cy, p1.x - cx);
   const endAngle = Math.atan2(p2.y - cy, p2.x - cx);
 
-  // Générer les points intermédiaires
+  // Générer les points
   for (let i = 1; i < numSegments; i++) {
     const t = i / numSegments;
     let currentAngle;
 
     if (bulge > 0) {
-      // Arc anti-horaire
-      let deltaAngle = endAngle - startAngle;
-      if (deltaAngle < 0) deltaAngle += 2 * Math.PI;
-      currentAngle = startAngle + deltaAngle * t;
+      let delta = endAngle - startAngle;
+      if (delta < 0) delta += 2 * Math.PI;
+      currentAngle = startAngle + delta * t;
     } else {
-      // Arc horaire
-      let deltaAngle = startAngle - endAngle;
-      if (deltaAngle < 0) deltaAngle += 2 * Math.PI;
-      currentAngle = startAngle - deltaAngle * t;
+      let delta = startAngle - endAngle;
+      if (delta < 0) delta += 2 * Math.PI;
+      currentAngle = startAngle - delta * t;
     }
 
     points.push({
@@ -232,8 +275,6 @@ function arcFromBulge(
 
 /**
  * Convertit les entités DXF en format interne
- * Note: L'axe Y est inversé car DXF utilise Y vers le haut,
- * alors que le canvas utilise Y vers le bas
  */
 function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseResult {
   const points = new Map<string, Point>();
@@ -244,26 +285,20 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
   let maxX = -Infinity,
     maxY = -Infinity;
 
-  // Fonction helper pour créer ou récupérer un point
-  // Inverse Y pour corriger l'orientation (DXF: Y vers haut, Canvas: Y vers bas)
+  // Helper pour créer ou récupérer un point (Y inversé)
   const getOrCreatePoint = (x: number, y: number): string => {
-    // Arrondir pour éviter les doublons dus aux erreurs de précision
-    // Inverser Y pour corriger l'orientation
     const rx = Math.round(x * 1000) / 1000;
     const ry = Math.round(-y * 1000) / 1000; // Y inversé
 
-    // Chercher un point existant
     for (const [id, pt] of points) {
       if (Math.abs(pt.x - rx) < 0.001 && Math.abs(pt.y - ry) < 0.001) {
         return id;
       }
     }
 
-    // Créer un nouveau point
     const id = generateId();
     points.set(id, { id, x: rx, y: ry });
 
-    // Mettre à jour les bounds
     minX = Math.min(minX, rx);
     minY = Math.min(minY, ry);
     maxX = Math.max(maxX, rx);
@@ -274,6 +309,9 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
 
   // Helper pour créer une ligne
   const createLine = (x1: number, y1: number, x2: number, y2: number, layer: string): void => {
+    // Éviter les lignes de longueur nulle
+    if (Math.abs(x1 - x2) < 0.0001 && Math.abs(y1 - y2) < 0.0001) return;
+
     const p1Id = getOrCreatePoint(x1, y1);
     const p2Id = getOrCreatePoint(x2, y2);
 
@@ -288,16 +326,26 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
     geometries.set(lineId, line);
   };
 
+  // Helper pour obtenir la première valeur d'un code
+  const getVal = (entity: DXFEntity, code: number): number | undefined => {
+    const arr = entity.values.get(code);
+    return arr && arr.length > 0 ? arr[0] : undefined;
+  };
+
+  // Helper pour obtenir toutes les valeurs d'un code
+  const getAllVals = (entity: DXFEntity, code: number): number[] => {
+    return entity.values.get(code) || [];
+  };
+
   for (const entity of entities) {
     const layerId = entity.layer || "trace";
 
     switch (entity.type) {
       case "LINE": {
-        // Codes DXF: 10,20 = start point, 11,21 = end point
-        const x1 = entity.numericData.get(10);
-        const y1 = entity.numericData.get(20);
-        const x2 = entity.numericData.get(11);
-        const y2 = entity.numericData.get(21);
+        const x1 = getVal(entity, 10);
+        const y1 = getVal(entity, 20);
+        const x2 = getVal(entity, 11);
+        const y2 = getVal(entity, 21);
 
         if (x1 !== undefined && y1 !== undefined && x2 !== undefined && y2 !== undefined) {
           createLine(x1, y1, x2, y2, layerId);
@@ -306,15 +354,13 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
       }
 
       case "CIRCLE": {
-        // Codes DXF: 10,20 = center, 40 = radius
-        const cx = entity.numericData.get(10);
-        const cy = entity.numericData.get(20);
-        const radius = entity.numericData.get(40);
+        const cx = getVal(entity, 10);
+        const cy = getVal(entity, 20);
+        const radius = getVal(entity, 40);
 
         if (cx !== undefined && cy !== undefined && radius !== undefined) {
           const centerId = getOrCreatePoint(cx, cy);
 
-          // Mettre à jour bounds avec le cercle complet (Y inversé)
           const cyInverted = -cy;
           minX = Math.min(minX, cx - radius);
           minY = Math.min(minY, cyInverted - radius);
@@ -335,23 +381,20 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
       }
 
       case "ARC": {
-        // Codes DXF: 10,20 = center, 40 = radius, 50 = start angle, 51 = end angle
-        const cx = entity.numericData.get(10);
-        const cy = entity.numericData.get(20);
-        const radius = entity.numericData.get(40);
-        const startAngleDeg = entity.numericData.get(50) || 0;
-        const endAngleDeg = entity.numericData.get(51) || 360;
+        const cx = getVal(entity, 10);
+        const cy = getVal(entity, 20);
+        const radius = getVal(entity, 40);
+        const startAngleDeg = getVal(entity, 50) || 0;
+        const endAngleDeg = getVal(entity, 51) || 360;
 
         if (cx !== undefined && cy !== undefined && radius !== undefined) {
-          // Convertir en radians
           const startAngle = (startAngleDeg * Math.PI) / 180;
           const endAngle = (endAngleDeg * Math.PI) / 180;
 
-          // Approximer l'arc avec des segments
           let angle = endAngle - startAngle;
           if (angle < 0) angle += 2 * Math.PI;
 
-          const numSegments = Math.max(8, Math.ceil(angle / (Math.PI / 8)));
+          const numSegments = Math.max(8, Math.ceil(angle / (Math.PI / 12)));
 
           let prevX = cx + radius * Math.cos(startAngle);
           let prevY = cy + radius * Math.sin(startAngle);
@@ -372,39 +415,11 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
       }
 
       case "LWPOLYLINE": {
-        // Les polylignes légères avec support du bulge (arcs)
-        const xArray = entity.arrayData.get(10);
-        const yArray = entity.arrayData.get(20);
-        const bulgeArray = entity.arrayData.get(42);
-        const lastX = entity.numericData.get(10);
-        const lastY = entity.numericData.get(20);
-        const lastBulge = entity.numericData.get(42);
+        const xs = getAllVals(entity, 10);
+        const ys = getAllVals(entity, 20);
+        const bulges = getAllVals(entity, 42);
+        const flags = getVal(entity, 70) || 0;
 
-        // Construire la liste des coordonnées
-        let xs: number[] = [];
-        let ys: number[] = [];
-        let bulges: number[] = [];
-
-        if (xArray && xArray.length > 0) {
-          xs = [...xArray];
-        } else if (lastX !== undefined) {
-          xs = [lastX];
-        }
-
-        if (yArray && yArray.length > 0) {
-          ys = [...yArray];
-        } else if (lastY !== undefined) {
-          ys = [lastY];
-        }
-
-        // Bulges (peut être undefined pour certains vertices)
-        if (bulgeArray && bulgeArray.length > 0) {
-          bulges = [...bulgeArray];
-        } else if (lastBulge !== undefined) {
-          bulges = [lastBulge];
-        }
-
-        // Créer les segments/arcs entre les points successifs
         if (xs.length >= 2 && xs.length === ys.length) {
           for (let j = 0; j < xs.length - 1; j++) {
             const p1 = { x: xs[j], y: ys[j] };
@@ -412,7 +427,6 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
             const bulge = bulges[j] || 0;
 
             if (Math.abs(bulge) > 0.0001) {
-              // Arc - générer des points intermédiaires
               const arcPoints = arcFromBulge(p1, p2, bulge, ARC_SEGMENTS);
 
               let prevPoint = p1;
@@ -422,14 +436,12 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
               }
               createLine(prevPoint.x, prevPoint.y, p2.x, p2.y, layerId);
             } else {
-              // Ligne droite
               createLine(p1.x, p1.y, p2.x, p2.y, layerId);
             }
           }
 
-          // Si fermé (code 70 & 1), connecter le dernier au premier
-          const flags = entity.numericData.get(70);
-          if (flags !== undefined && flags & 1 && xs.length > 2) {
+          // Fermer si flag 1
+          if (flags & 1 && xs.length > 2) {
             const p1 = { x: xs[xs.length - 1], y: ys[ys.length - 1] };
             const p2 = { x: xs[0], y: ys[0] };
             const bulge = bulges[xs.length - 1] || 0;
@@ -451,79 +463,35 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
       }
 
       case "SPLINE": {
-        // Les splines DXF utilisent des points de contrôle et des knots
-        // Code 10,20 = points de contrôle, Code 11,21 = fit points (optionnel)
-        const ctrlXArray = entity.arrayData.get(10);
-        const ctrlYArray = entity.arrayData.get(20);
-        const fitXArray = entity.arrayData.get(11);
-        const fitYArray = entity.arrayData.get(21);
-        const lastCtrlX = entity.numericData.get(10);
-        const lastCtrlY = entity.numericData.get(20);
-        const lastFitX = entity.numericData.get(11);
-        const lastFitY = entity.numericData.get(21);
+        // Codes DXF pour SPLINE:
+        // 71 = degré
+        // 72 = nombre de knots
+        // 73 = nombre de points de contrôle
+        // 74 = nombre de fit points
+        // 40 = valeurs des knots (multiples)
+        // 10, 20 = points de contrôle (multiples)
+        // 11, 21 = fit points (multiples, optionnel)
 
-        // Préférer les fit points s'ils existent (plus précis)
-        let xs: number[] = [];
-        let ys: number[] = [];
+        const degree = getVal(entity, 71) || 3;
+        const knots = getAllVals(entity, 40);
+        const ctrlXs = getAllVals(entity, 10);
+        const ctrlYs = getAllVals(entity, 20);
+        const fitXs = getAllVals(entity, 11);
+        const fitYs = getAllVals(entity, 21);
 
-        // Essayer d'abord les fit points
-        if (fitXArray && fitXArray.length > 0) {
-          xs = [...fitXArray];
-          if (lastFitX !== undefined) xs.push(lastFitX);
-        }
-        if (fitYArray && fitYArray.length > 0) {
-          ys = [...fitYArray];
-          if (lastFitY !== undefined) ys.push(lastFitY);
-        }
-
-        // Sinon utiliser les points de contrôle
-        if (xs.length === 0) {
-          if (ctrlXArray && ctrlXArray.length > 0) {
-            xs = [...ctrlXArray];
-          } else if (lastCtrlX !== undefined) {
-            xs = [lastCtrlX];
+        // Utiliser les fit points s'ils existent (ils sont SUR la courbe)
+        if (fitXs.length >= 2 && fitXs.length === fitYs.length) {
+          // Les fit points sont directement sur la courbe
+          for (let i = 0; i < fitXs.length - 1; i++) {
+            createLine(fitXs[i], fitYs[i], fitXs[i + 1], fitYs[i + 1], layerId);
           }
         }
+        // Sinon utiliser l'algorithme B-spline avec les points de contrôle
+        else if (ctrlXs.length >= 2 && ctrlXs.length === ctrlYs.length) {
+          const controlPoints = ctrlXs.map((x, i) => ({ x, y: ctrlYs[i] }));
 
-        if (ys.length === 0) {
-          if (ctrlYArray && ctrlYArray.length > 0) {
-            ys = [...ctrlYArray];
-          } else if (lastCtrlY !== undefined) {
-            ys = [lastCtrlY];
-          }
-        }
-
-        // Interpoler avec Catmull-Rom pour des courbes lisses
-        if (xs.length >= 2 && xs.length === ys.length) {
-          const controlPoints = xs.map((x, i) => ({ x, y: ys[i] }));
-
-          // Ajouter des points fantômes pour le début et la fin
-          const extendedPoints = [
-            { x: 2 * controlPoints[0].x - controlPoints[1].x, y: 2 * controlPoints[0].y - controlPoints[1].y },
-            ...controlPoints,
-            {
-              x: 2 * controlPoints[controlPoints.length - 1].x - controlPoints[controlPoints.length - 2].x,
-              y: 2 * controlPoints[controlPoints.length - 1].y - controlPoints[controlPoints.length - 2].y,
-            },
-          ];
-
-          // Générer les points de la courbe
-          const curvePoints: { x: number; y: number }[] = [];
-
-          for (let i = 1; i < extendedPoints.length - 2; i++) {
-            const p0 = extendedPoints[i - 1];
-            const p1 = extendedPoints[i];
-            const p2 = extendedPoints[i + 1];
-            const p3 = extendedPoints[i + 2];
-
-            for (let j = 0; j < SPLINE_SEGMENTS; j++) {
-              const t = j / SPLINE_SEGMENTS;
-              curvePoints.push(catmullRomPoint(p0, p1, p2, p3, t));
-            }
-          }
-
-          // Ajouter le dernier point
-          curvePoints.push(controlPoints[controlPoints.length - 1]);
+          // Évaluer la B-spline
+          const curvePoints = evaluateBSpline(degree, knots, controlPoints, SPLINE_RESOLUTION);
 
           // Créer les segments
           for (let i = 0; i < curvePoints.length - 1; i++) {
@@ -534,23 +502,20 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
       }
 
       case "ELLIPSE": {
-        // Codes DXF: 10,20 = center, 11,21 = endpoint of major axis (relative to center)
-        // 40 = ratio of minor to major axis, 41 = start param, 42 = end param
-        const cx = entity.numericData.get(10);
-        const cy = entity.numericData.get(20);
-        const majorX = entity.numericData.get(11);
-        const majorY = entity.numericData.get(21);
-        const ratio = entity.numericData.get(40) || 1;
-        const startParam = entity.numericData.get(41) || 0;
-        const endParam = entity.numericData.get(42) || 2 * Math.PI;
+        const cx = getVal(entity, 10);
+        const cy = getVal(entity, 20);
+        const majorX = getVal(entity, 11);
+        const majorY = getVal(entity, 21);
+        const ratio = getVal(entity, 40) || 1;
+        const startParam = getVal(entity, 41) || 0;
+        const endParam = getVal(entity, 42) || 2 * Math.PI;
 
         if (cx !== undefined && cy !== undefined && majorX !== undefined && majorY !== undefined) {
           const majorRadius = Math.sqrt(majorX * majorX + majorY * majorY);
           const minorRadius = majorRadius * ratio;
           const rotation = Math.atan2(majorY, majorX);
 
-          // Approximer l'ellipse avec des segments
-          const numSegments = 32;
+          const numSegments = 48;
           let angle = endParam - startParam;
           if (angle < 0) angle += 2 * Math.PI;
 
@@ -625,7 +590,4 @@ export async function loadDXFFile(file: File): Promise<DXFParseResult> {
   });
 }
 
-/**
- * Exporte pour utilisation dans le module
- */
 export type { DXFParseResult };
