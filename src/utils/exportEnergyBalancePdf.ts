@@ -1,7 +1,7 @@
 // ============================================
 // exportEnergyBalancePdf.ts
 // Export PDF du bilan énergétique
-// VERSION: 1.0
+// VERSION: 1.1 - Affiche capacité Ah/Wh pour batteries
 // ============================================
 
 import jsPDF from "jspdf";
@@ -29,14 +29,12 @@ interface EnergyBalanceData {
 const categorizeItems = (itemsList: ElectricalItem[]) => {
   const producers = itemsList.filter(
     (item) =>
-      item.type_electrique === "producteur" ||
-      item.type_electrique === "chargeur" ||
-      item.type_electrique === "combi"
+      item.type_electrique === "producteur" || item.type_electrique === "chargeur" || item.type_electrique === "combi",
   );
   const consumers = itemsList.filter((item) => item.type_electrique === "consommateur");
   const storage = itemsList.filter((item) => item.type_electrique === "stockage");
   const converters = itemsList.filter(
-    (item) => item.type_electrique === "convertisseur" || item.type_electrique === "combi"
+    (item) => item.type_electrique === "convertisseur" || item.type_electrique === "combi",
   );
   return { producers, consumers, storage, converters };
 };
@@ -56,9 +54,7 @@ const calculateTotalConsumption = (itemsList: ElectricalItem[]) => {
 const calculateTotalProduction = (itemsList: ElectricalItem[]) => {
   const producers = itemsList.filter(
     (item) =>
-      item.type_electrique === "producteur" ||
-      item.type_electrique === "chargeur" ||
-      item.type_electrique === "combi"
+      item.type_electrique === "producteur" || item.type_electrique === "chargeur" || item.type_electrique === "combi",
   );
   return producers.reduce((total, item) => {
     const power = item.puissance_watts || item.puissance_charge_watts || 0;
@@ -116,7 +112,11 @@ export const exportEnergyBalancePdf = (data: EnergyBalanceData) => {
     doc.text(`Projet: ${projectName}`, marginLeft, y);
     y += 5;
   }
-  doc.text(`Généré le ${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR")}`, marginLeft, y);
+  doc.text(
+    `Généré le ${new Date().toLocaleDateString("fr-FR")} à ${new Date().toLocaleTimeString("fr-FR")}`,
+    marginLeft,
+    y,
+  );
   y += 15;
 
   // Résumé
@@ -132,10 +132,30 @@ export const exportEnergyBalancePdf = (data: EnergyBalanceData) => {
 
   const cardWidth = 40;
   const cards = [
-    { label: "Producteurs", value: producers.reduce((sum, item) => sum + item.quantite, 0), types: producers.length, color: [34, 197, 94] },
-    { label: "Consommateurs", value: consumers.reduce((sum, item) => sum + item.quantite, 0), types: consumers.length, color: [239, 68, 68] },
-    { label: "Stockage", value: storage.reduce((sum, item) => sum + item.quantite, 0), types: storage.length, color: [59, 130, 246] },
-    { label: "Convertisseurs", value: converters.reduce((sum, item) => sum + item.quantite, 0), types: converters.length, color: [168, 85, 247] },
+    {
+      label: "Producteurs",
+      value: producers.reduce((sum, item) => sum + item.quantite, 0),
+      types: producers.length,
+      color: [34, 197, 94],
+    },
+    {
+      label: "Consommateurs",
+      value: consumers.reduce((sum, item) => sum + item.quantite, 0),
+      types: consumers.length,
+      color: [239, 68, 68],
+    },
+    {
+      label: "Stockage",
+      value: storage.reduce((sum, item) => sum + item.quantite, 0),
+      types: storage.length,
+      color: [59, 130, 246],
+    },
+    {
+      label: "Convertisseurs",
+      value: converters.reduce((sum, item) => sum + item.quantite, 0),
+      types: converters.length,
+      color: [168, 85, 247],
+    },
   ];
 
   cards.forEach((card, i) => {
@@ -207,7 +227,8 @@ export const exportEnergyBalancePdf = (data: EnergyBalanceData) => {
     title: string,
     tableItems: ElectricalItem[],
     timeField: "temps_production_heures" | "temps_utilisation_heures" | null,
-    startY: number
+    startY: number,
+    isStorage: boolean = false,
   ): number => {
     if (tableItems.length === 0) return startY;
 
@@ -231,10 +252,16 @@ export const exportEnergyBalancePdf = (data: EnergyBalanceData) => {
     const cols = [marginLeft, 90, 115, 145, 175];
     doc.text("Nom", cols[0], startY);
     doc.text("Qté", cols[1], startY);
-    doc.text("Puissance", cols[2], startY);
-    if (timeField) {
-      doc.text("Temps (h/24h)", cols[3], startY);
-      doc.text("Total", cols[4], startY);
+
+    if (isStorage) {
+      doc.text("Capacité", cols[2], startY);
+      doc.text("Total", cols[3], startY);
+    } else {
+      doc.text("Puissance", cols[2], startY);
+      if (timeField) {
+        doc.text("Temps (h/24h)", cols[3], startY);
+        doc.text("Total", cols[4], startY);
+      }
     }
     startY += 5;
 
@@ -254,10 +281,6 @@ export const exportEnergyBalancePdf = (data: EnergyBalanceData) => {
         startY = 20;
       }
 
-      const power = item.puissance_watts || item.puissance_charge_watts || 0;
-      const time = timeField ? (item[timeField] || 0) : 0;
-      const total = power * time * item.quantite;
-
       // Tronquer le nom si trop long
       let nom = item.nom_accessoire;
       if (nom.length > 45) {
@@ -267,12 +290,33 @@ export const exportEnergyBalancePdf = (data: EnergyBalanceData) => {
       doc.setFontSize(8);
       doc.text(nom, cols[0], startY);
       doc.text(String(item.quantite), cols[1], startY);
-      doc.text(`${power} W`, cols[2], startY);
-      if (timeField) {
-        doc.text(String(time), cols[3], startY);
-        doc.setTextColor(timeField === "temps_production_heures" ? 34 : 239, timeField === "temps_production_heures" ? 197 : 68, timeField === "temps_production_heures" ? 94 : 68);
-        doc.text(`${total.toFixed(1)} Wh/j`, cols[4], startY);
+
+      if (isStorage) {
+        // Pour les batteries : afficher capacité
+        const capacityAh = item.capacite_ah || 0;
+        const capacityWh = capacityAh * 12.8;
+        const totalCapacity = capacityWh * item.quantite;
+
+        doc.text(`${capacityAh} Ah`, cols[2], startY);
+        doc.setTextColor(59, 130, 246); // Bleu
+        doc.text(`${totalCapacity.toFixed(0)} Wh`, cols[3], startY);
         doc.setTextColor(0);
+      } else {
+        const power = item.puissance_watts || item.puissance_charge_watts || 0;
+        doc.text(`${power} W`, cols[2], startY);
+
+        if (timeField) {
+          const time = item[timeField] || 0;
+          const total = power * time * item.quantite;
+          doc.text(String(time), cols[3], startY);
+          doc.setTextColor(
+            timeField === "temps_production_heures" ? 34 : 239,
+            timeField === "temps_production_heures" ? 197 : 68,
+            timeField === "temps_production_heures" ? 94 : 68,
+          );
+          doc.text(`${total.toFixed(1)} Wh/j`, cols[4], startY);
+          doc.setTextColor(0);
+        }
       }
       startY += 5;
     });
@@ -282,10 +326,10 @@ export const exportEnergyBalancePdf = (data: EnergyBalanceData) => {
   };
 
   // Dessiner les tableaux
-  y = drawTable("Sources d'énergie (producteurs + chargeurs + combis)", producers, "temps_production_heures", y);
-  y = drawTable("Consommateurs d'énergie", consumers, "temps_utilisation_heures", y);
-  y = drawTable("Systèmes de stockage", storage, null, y);
-  y = drawTable("Convertisseurs", converters, null, y);
+  y = drawTable("Sources d'énergie (producteurs + chargeurs + combis)", producers, "temps_production_heures", y, false);
+  y = drawTable("Consommateurs d'énergie", consumers, "temps_utilisation_heures", y, false);
+  y = drawTable("Systèmes de stockage", storage, null, y, true); // isStorage = true
+  y = drawTable("Convertisseurs", converters, null, y, false);
 
   // Footer
   const pageCount = doc.getNumberOfPages();
@@ -298,9 +342,9 @@ export const exportEnergyBalancePdf = (data: EnergyBalanceData) => {
   }
 
   // Télécharger
-  const filename = projectName 
+  const filename = projectName
     ? `bilan-energetique-${projectName.replace(/\s+/g, "-").toLowerCase()}.pdf`
     : `bilan-energetique-${new Date().toISOString().split("T")[0]}.pdf`;
-  
+
   doc.save(filename);
 };
