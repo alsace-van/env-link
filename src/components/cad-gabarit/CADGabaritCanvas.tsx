@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 4.8 - Fix ordre définition fitToContent
+// VERSION: 4.9 - Zoom max 5000x + masquage points/marqueurs
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -863,7 +863,7 @@ export function CADGabaritCanvas({
           const optimalScale = Math.min(scaleX, scaleY);
 
           // Limiter le scale entre 0.01 et 100
-          const newScale = Math.max(0.01, Math.min(100, optimalScale));
+          const newScale = Math.max(0.001, Math.min(5000, optimalScale));
 
           return {
             ...prev,
@@ -1750,7 +1750,7 @@ export function CADGabaritCanvas({
       const mouseY = e.clientY - rect.top;
 
       const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-      const newScale = Math.min(Math.max(viewport.scale * zoomFactor, 0.1), 10);
+      const newScale = Math.min(Math.max(viewport.scale * zoomFactor, 0.001), 5000);
 
       // Zoom vers la position de la souris
       const worldPos = screenToWorld(mouseX, mouseY);
@@ -2190,7 +2190,7 @@ export function CADGabaritCanvas({
       const optimalScale = Math.min(scaleX, scaleY);
 
       // Limiter le scale entre 0.01 et 100
-      const newScale = Math.max(0.01, Math.min(100, optimalScale));
+      const newScale = Math.max(0.001, Math.min(5000, optimalScale));
 
       return {
         ...prev,
