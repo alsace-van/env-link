@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 4.1 - Correction assignation layerId aux géométries
+// VERSION: 4.2 - Nettoyage points orphelins à la suppression
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1522,11 +1522,50 @@ export function CADGabaritCanvas({
     newSketch.geometries = new Map(sketch.geometries);
     newSketch.constraints = new Map(sketch.constraints);
 
+    // D'abord supprimer les entités sélectionnées
     selectedEntities.forEach((id) => {
       newSketch.points.delete(id);
       newSketch.geometries.delete(id);
       newSketch.constraints.delete(id);
     });
+
+    // Ensuite, nettoyer les points orphelins (non utilisés par aucune géométrie)
+    const usedPointIds = new Set<string>();
+    newSketch.geometries.forEach((geo) => {
+      if (geo.type === "line") {
+        const line = geo as Line;
+        usedPointIds.add(line.p1);
+        usedPointIds.add(line.p2);
+      } else if (geo.type === "circle") {
+        usedPointIds.add((geo as CircleType).center);
+      } else if (geo.type === "arc") {
+        const arc = geo as Arc;
+        usedPointIds.add(arc.center);
+        usedPointIds.add(arc.startPoint);
+        usedPointIds.add(arc.endPoint);
+      } else if (geo.type === "rectangle") {
+        const rect = geo as Rectangle;
+        usedPointIds.add(rect.p1);
+        usedPointIds.add(rect.p2);
+        usedPointIds.add(rect.p3);
+        usedPointIds.add(rect.p4);
+      } else if (geo.type === "bezier") {
+        const bezier = geo as Bezier;
+        usedPointIds.add(bezier.p1);
+        usedPointIds.add(bezier.p2);
+        usedPointIds.add(bezier.cp1);
+        usedPointIds.add(bezier.cp2);
+      }
+    });
+
+    // Supprimer les points orphelins
+    const orphanPoints: string[] = [];
+    newSketch.points.forEach((_, id) => {
+      if (!usedPointIds.has(id)) {
+        orphanPoints.push(id);
+      }
+    });
+    orphanPoints.forEach((id) => newSketch.points.delete(id));
 
     setSketch(newSketch);
     setSelectedEntities(new Set());
