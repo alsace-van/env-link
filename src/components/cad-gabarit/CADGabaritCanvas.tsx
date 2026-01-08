@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.10 - Fusion automatique des points proches pour congé/chanfrein
+// VERSION: 5.11 - Modale congé/chanfrein: rayon suggéré, validation visuelle en rouge
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -294,6 +294,8 @@ export function CADGabaritCanvas({
     line1Id: string;
     line2Id: string;
     radius: number;
+    maxRadius: number;
+    angleDeg: number;
   } | null>(null);
 
   // Modale pour chanfrein
@@ -302,6 +304,8 @@ export function CADGabaritCanvas({
     line1Id: string;
     line2Id: string;
     distance: number;
+    maxDistance: number;
+    angleDeg: number;
   } | null>(null);
 
   // Modale pour modifier le rayon d'un arc existant
@@ -1116,7 +1120,7 @@ export function CADGabaritCanvas({
       const len2 = Math.sqrt(vec2.x * vec2.x + vec2.y * vec2.y);
 
       if (len1 < 0.001 || len2 < 0.001) {
-        toast.error("Lignes trop courtes");
+        toast.error(`Lignes trop courtes (L1=${len1.toFixed(1)}mm, L2=${len2.toFixed(1)}mm)`);
         return;
       }
 
@@ -1127,9 +1131,10 @@ export function CADGabaritCanvas({
       // Angle entre les deux lignes
       const dot = u1.x * u2.x + u1.y * u2.y;
       const angleRad = Math.acos(Math.max(-1, Math.min(1, dot)));
+      const angleDeg = (angleRad * 180) / Math.PI;
 
-      if (angleRad < 0.1 || angleRad > Math.PI - 0.1) {
-        toast.error("Lignes trop parallèles pour un congé");
+      if (angleRad < 0.05 || angleRad > Math.PI - 0.05) {
+        toast.error(`Angle trop faible pour un congé (${angleDeg.toFixed(1)}°)`);
         return;
       }
 
@@ -1137,8 +1142,13 @@ export function CADGabaritCanvas({
       const halfAngle = angleRad / 2;
       const tangentDist = radius / Math.tan(halfAngle);
 
-      if (tangentDist > len1 * 0.9 || tangentDist > len2 * 0.9) {
-        toast.error("Rayon trop grand pour ces lignes");
+      // Vérifier que le rayon n'est pas trop grand
+      const maxRadius1 = len1 * Math.tan(halfAngle) * 0.95;
+      const maxRadius2 = len2 * Math.tan(halfAngle) * 0.95;
+      const maxRadius = Math.min(maxRadius1, maxRadius2);
+
+      if (tangentDist > len1 * 0.95 || tangentDist > len2 * 0.95) {
+        toast.error(`Rayon trop grand. Max: ${maxRadius.toFixed(1)}mm pour cet angle`);
         return;
       }
 
@@ -1357,6 +1367,61 @@ export function CADGabaritCanvas({
     [sketch.geometries],
   );
 
+  // Calculer les paramètres géométriques d'un coin (angle, longueurs, rayon max)
+  const calculateCornerParams = useCallback(
+    (
+      line1Id: string,
+      line2Id: string,
+    ): {
+      angleDeg: number;
+      maxRadius: number;
+      maxDistance: number;
+      len1: number;
+      len2: number;
+    } | null => {
+      const line1 = sketch.geometries.get(line1Id) as Line | undefined;
+      const line2 = sketch.geometries.get(line2Id) as Line | undefined;
+
+      if (!line1 || !line2) return null;
+
+      const shared = findSharedPoint(line1, line2);
+      if (!shared) return null;
+
+      const cornerPt = sketch.points.get(shared.sharedPointId);
+      const endPt1 = sketch.points.get(shared.line1OtherId);
+      const endPt2 = sketch.points.get(shared.line2OtherId);
+
+      if (!cornerPt || !endPt1 || !endPt2) return null;
+
+      const vec1 = { x: endPt1.x - cornerPt.x, y: endPt1.y - cornerPt.y };
+      const vec2 = { x: endPt2.x - cornerPt.x, y: endPt2.y - cornerPt.y };
+
+      const len1 = Math.sqrt(vec1.x * vec1.x + vec1.y * vec1.y);
+      const len2 = Math.sqrt(vec2.x * vec2.x + vec2.y * vec2.y);
+
+      if (len1 < 0.001 || len2 < 0.001) return null;
+
+      const u1 = { x: vec1.x / len1, y: vec1.y / len1 };
+      const u2 = { x: vec2.x / len2, y: vec2.y / len2 };
+
+      const dot = u1.x * u2.x + u1.y * u2.y;
+      const angleRad = Math.acos(Math.max(-1, Math.min(1, dot)));
+      const angleDeg = (angleRad * 180) / Math.PI;
+
+      const halfAngle = angleRad / 2;
+      const minLen = Math.min(len1, len2);
+
+      // Rayon max: tangentDist <= minLen * 0.9, donc R <= minLen * 0.9 * tan(halfAngle)
+      const maxRadius = minLen * 0.9 * Math.tan(halfAngle);
+
+      // Distance max chanfrein: simplement la longueur min * 0.9
+      const maxDistance = minLen * 0.9;
+
+      return { angleDeg, maxRadius, maxDistance, len1, len2 };
+    },
+    [sketch.geometries, sketch.points, findSharedPoint],
+  );
+
   // Ouvrir le dialogue de congé si 2 lignes OU 1 point (coin) sont sélectionnées
   const openFilletDialog = useCallback(() => {
     let line1Id: string | null = null;
@@ -1411,14 +1476,33 @@ export function CADGabaritCanvas({
     }
 
     if (line1Id && line2Id) {
+      const params = calculateCornerParams(line1Id, line2Id);
+      if (!params) {
+        toast.error("Impossible de calculer les paramètres du coin");
+        return;
+      }
+
+      // Proposer le rayon le plus approprié: min entre rayon demandé et max possible
+      const suggestedRadius = Math.min(filletRadius, Math.floor(params.maxRadius));
+
       setFilletDialog({
         open: true,
         line1Id,
         line2Id,
-        radius: filletRadius,
+        radius: suggestedRadius > 0 ? suggestedRadius : 1,
+        maxRadius: params.maxRadius,
+        angleDeg: params.angleDeg,
       });
     }
-  }, [selectedEntities, sketch.geometries, sketch.points, findSharedPoint, findLinesConnectedToPoint, filletRadius]);
+  }, [
+    selectedEntities,
+    sketch.geometries,
+    sketch.points,
+    findSharedPoint,
+    findLinesConnectedToPoint,
+    filletRadius,
+    calculateCornerParams,
+  ]);
 
   // Ouvrir le dialogue de chanfrein si 2 lignes OU 1 point (coin) sont sélectionnées
   const openChamferDialog = useCallback(() => {
@@ -1474,14 +1558,33 @@ export function CADGabaritCanvas({
     }
 
     if (line1Id && line2Id) {
+      const params = calculateCornerParams(line1Id, line2Id);
+      if (!params) {
+        toast.error("Impossible de calculer les paramètres du coin");
+        return;
+      }
+
+      // Proposer la distance la plus appropriée
+      const suggestedDistance = Math.min(chamferDistance, Math.floor(params.maxDistance));
+
       setChamferDialog({
         open: true,
         line1Id,
         line2Id,
-        distance: chamferDistance,
+        distance: suggestedDistance > 0 ? suggestedDistance : 1,
+        maxDistance: params.maxDistance,
+        angleDeg: params.angleDeg,
       });
     }
-  }, [selectedEntities, sketch.geometries, sketch.points, findSharedPoint, findLinesConnectedToPoint, chamferDistance]);
+  }, [
+    selectedEntities,
+    sketch.geometries,
+    sketch.points,
+    findSharedPoint,
+    findLinesConnectedToPoint,
+    chamferDistance,
+    calculateCornerParams,
+  ]);
 
   // Appliquer le congé depuis la modale
   const applyFilletFromDialog = useCallback(() => {
@@ -5267,86 +5370,108 @@ export function CADGabaritCanvas({
       )}
 
       {/* Dialogue Congé */}
-      {filletDialog && (
-        <Dialog open={filletDialog.open} onOpenChange={() => setFilletDialog(null)}>
-          <DialogContent className="sm:max-w-[280px]">
-            <DialogHeader>
-              <DialogTitle>Congé</DialogTitle>
-              <DialogDescription>Définir le rayon du congé</DialogDescription>
-            </DialogHeader>
-            <div className="py-4">
-              <Label htmlFor="fillet-radius">Rayon (mm)</Label>
-              <Input
-                id="fillet-radius"
-                type="number"
-                value={filletDialog.radius}
-                onChange={(e) =>
-                  setFilletDialog({
-                    ...filletDialog,
-                    radius: Math.max(1, parseFloat(e.target.value) || 1),
-                  })
-                }
-                className="mt-2"
-                min="1"
-                step="1"
-                autoFocus
-                onKeyDown={(e) => {
-                  e.stopPropagation(); // Empêcher Delete de supprimer les entités
-                  if (e.key === "Enter") {
-                    applyFilletFromDialog();
-                  }
-                }}
-              />
-            </div>
-            <DialogFooter>
-              <Button onClick={applyFilletFromDialog} className="w-full">
-                <Check className="h-4 w-4" />
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
+      {filletDialog &&
+        (() => {
+          const isValid = filletDialog.radius > 0 && filletDialog.radius <= filletDialog.maxRadius;
+          return (
+            <Dialog open={filletDialog.open} onOpenChange={() => setFilletDialog(null)}>
+              <DialogContent className="sm:max-w-[300px]">
+                <DialogHeader>
+                  <DialogTitle>Congé</DialogTitle>
+                  <DialogDescription>
+                    Angle: {filletDialog.angleDeg.toFixed(1)}° • Max: {filletDialog.maxRadius.toFixed(1)}mm
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                  <Label htmlFor="fillet-radius">Rayon (mm)</Label>
+                  <Input
+                    id="fillet-radius"
+                    type="number"
+                    value={filletDialog.radius}
+                    onChange={(e) =>
+                      setFilletDialog({
+                        ...filletDialog,
+                        radius: Math.max(0.1, parseFloat(e.target.value) || 0.1),
+                      })
+                    }
+                    className={`mt-2 ${!isValid ? "border-red-500 text-red-600 focus-visible:ring-red-500" : ""}`}
+                    min="0.1"
+                    step="1"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === "Enter" && isValid) {
+                        applyFilletFromDialog();
+                      }
+                    }}
+                  />
+                  {!isValid && (
+                    <p className="text-xs text-red-500 mt-1">
+                      Rayon trop grand (max: {filletDialog.maxRadius.toFixed(1)}mm)
+                    </p>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button onClick={applyFilletFromDialog} className="w-full" disabled={!isValid}>
+                    <Check className="h-4 w-4" />
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          );
+        })()}
 
       {/* Dialogue Chanfrein */}
-      {chamferDialog && (
-        <Dialog open={chamferDialog.open} onOpenChange={() => setChamferDialog(null)}>
-          <DialogContent className="sm:max-w-[280px]">
-            <DialogHeader>
-              <DialogTitle>Chanfrein</DialogTitle>
-              <DialogDescription>Définir la distance du chanfrein</DialogDescription>
-            </DialogHeader>
-            <div className="py-4">
-              <Label htmlFor="chamfer-distance">Distance (mm)</Label>
-              <Input
-                id="chamfer-distance"
-                type="number"
-                value={chamferDialog.distance}
-                onChange={(e) =>
-                  setChamferDialog({
-                    ...chamferDialog,
-                    distance: Math.max(1, parseFloat(e.target.value) || 1),
-                  })
-                }
-                className="mt-2"
-                min="1"
-                step="1"
-                autoFocus
-                onKeyDown={(e) => {
-                  e.stopPropagation(); // Empêcher Delete de supprimer les entités
-                  if (e.key === "Enter") {
-                    applyChamferFromDialog();
-                  }
-                }}
-              />
-            </div>
-            <DialogFooter>
-              <Button onClick={applyChamferFromDialog} className="w-full">
-                <Check className="h-4 w-4" />
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
+      {chamferDialog &&
+        (() => {
+          const isValid = chamferDialog.distance > 0 && chamferDialog.distance <= chamferDialog.maxDistance;
+          return (
+            <Dialog open={chamferDialog.open} onOpenChange={() => setChamferDialog(null)}>
+              <DialogContent className="sm:max-w-[300px]">
+                <DialogHeader>
+                  <DialogTitle>Chanfrein</DialogTitle>
+                  <DialogDescription>
+                    Angle: {chamferDialog.angleDeg.toFixed(1)}° • Max: {chamferDialog.maxDistance.toFixed(1)}mm
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                  <Label htmlFor="chamfer-distance">Distance (mm)</Label>
+                  <Input
+                    id="chamfer-distance"
+                    type="number"
+                    value={chamferDialog.distance}
+                    onChange={(e) =>
+                      setChamferDialog({
+                        ...chamferDialog,
+                        distance: Math.max(0.1, parseFloat(e.target.value) || 0.1),
+                      })
+                    }
+                    className={`mt-2 ${!isValid ? "border-red-500 text-red-600 focus-visible:ring-red-500" : ""}`}
+                    min="0.1"
+                    step="1"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === "Enter" && isValid) {
+                        applyChamferFromDialog();
+                      }
+                    }}
+                  />
+                  {!isValid && (
+                    <p className="text-xs text-red-500 mt-1">
+                      Distance trop grande (max: {chamferDialog.maxDistance.toFixed(1)}mm)
+                    </p>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button onClick={applyChamferFromDialog} className="w-full" disabled={!isValid}>
+                    <Check className="h-4 w-4" />
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          );
+        })()}
 
       {/* Dialogue modification arc */}
       {arcEditDialog && (
