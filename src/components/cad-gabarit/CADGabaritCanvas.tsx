@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.30 - Bissectrice inversée -(u1+u2) pour placer le congé du bon côté
+// VERSION: 5.31 - Calcul centre via perpendiculaire + produit vectoriel pour le sens
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1211,19 +1211,21 @@ export function CADGabaritCanvas({
       const tan1 = { x: cornerPt.x + u1.x * tangentDist, y: cornerPt.y + u1.y * tangentDist };
       const tan2 = { x: cornerPt.x + u2.x * tangentDist, y: cornerPt.y + u2.y * tangentDist };
 
-      // La bissectrice -(u1 + u2) pointe vers l'extérieur de l'angle (là où le congé doit couper)
-      const bisector = { x: -(u1.x + u2.x), y: -(u1.y + u2.y) };
-      const bisLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
+      // Perpendiculaire à u1 : rotation de 90°
+      // On utilise le produit vectoriel pour déterminer le sens
+      // cross(u1, u2) = u1.x * u2.y - u1.y * u2.x
+      // Si > 0 : u2 est "à gauche" de u1, donc la perpendiculaire (-u1.y, u1.x) pointe vers l'intérieur
+      // Si < 0 : u2 est "à droite" de u1, donc la perpendiculaire (u1.y, -u1.x) pointe vers l'intérieur
+      const cross = u1.x * u2.y - u1.y * u2.x;
+      const n1 =
+        cross > 0
+          ? { x: -u1.y, y: u1.x } // rotation +90°
+          : { x: u1.y, y: -u1.x }; // rotation -90°
 
-      if (bisLen < 0.001) return null;
-
-      const bisUnit = { x: bisector.x / bisLen, y: bisector.y / bisLen };
-      const centerDist = radius / Math.sin(halfAngle);
-
-      // Le centre est sur la bissectrice, du côté où le congé doit couper le coin
+      // Le centre est à distance R du point de tangence, dans la direction perpendiculaire
       const arcCenter = {
-        x: cornerPt.x + bisUnit.x * centerDist,
-        y: cornerPt.y + bisUnit.y * centerDist,
+        x: tan1.x + n1.x * radius,
+        y: tan1.y + n1.y * radius,
       };
 
       const tan1Id = generateId();
@@ -2079,20 +2081,13 @@ export function CADGabaritCanvas({
       const newTan2 = { x: corner.x + u2.x * tangentDist, y: corner.y + u2.y * tangentDist };
 
       // La bissectrice pointe toujours vers l'intérieur de l'angle
-      const bisector = { x: -(u1.x + u2.x), y: -(u1.y + u2.y) };
-      const bisLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
-
-      if (bisLen < 0.001) {
-        toast.error("Impossible de recalculer le congé");
-        return;
-      }
-
-      const bisUnit = { x: bisector.x / bisLen, y: bisector.y / bisLen };
-      const centerDist = newRadius / Math.sin(halfAngle);
+      // Perpendiculaire à u1 avec produit vectoriel pour le sens
+      const cross = u1.x * u2.y - u1.y * u2.x;
+      const n1 = cross > 0 ? { x: -u1.y, y: u1.x } : { x: u1.y, y: -u1.x };
 
       const newCenter = {
-        x: corner.x + bisUnit.x * centerDist,
-        y: corner.y + bisUnit.y * centerDist,
+        x: newTan1.x + n1.x * newRadius,
+        y: newTan1.y + n1.y * newRadius,
       };
 
       // Mettre à jour le sketch
