@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.3 - Optimisation: batching + viewport culling
+// VERSION: 3.4 - Règles graduées en mm, suppression axes rouge/vert
 // ============================================
 
 import {
@@ -484,19 +484,134 @@ export class CADRenderer {
 
     this.ctx.stroke();
 
-    // Axes (origine)
-    this.ctx.strokeStyle = "#FF0000";
-    this.ctx.lineWidth = 1.5 / this.viewport.scale;
+    // Dessiner les règles graduées (en coordonnées écran)
+    this.drawRulers();
+  }
+
+  /**
+   * Dessine les règles graduées en mm sur les bords gauche et bas
+   */
+  private drawRulers(): void {
+    // Sauvegarder le contexte et revenir aux coordonnées écran
+    this.ctx.save();
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    const rulerSize = 25; // Largeur/hauteur des règles en pixels
+    const tickSmall = 5;
+    const tickMedium = 10;
+    const tickLarge = 15;
+
+    // Calculer l'espacement des graduations en fonction du zoom
+    let spacing = 10; // mm par défaut
+    const spacingPx = spacing * this.viewport.scale;
+
+    // Adapter l'espacement au zoom
+    if (spacingPx < 20) {
+      spacing = 50;
+    } else if (spacingPx < 40) {
+      spacing = 20;
+    } else if (spacingPx > 200) {
+      spacing = 5;
+    } else if (spacingPx > 400) {
+      spacing = 1;
+    }
+
+    const spacingOnScreen = spacing * this.viewport.scale;
+
+    // Fond des règles
+    this.ctx.fillStyle = "#f8f8f8";
+    // Règle du bas
+    this.ctx.fillRect(rulerSize, this.viewport.height - rulerSize, this.viewport.width - rulerSize, rulerSize);
+    // Règle de gauche
+    this.ctx.fillRect(0, 0, rulerSize, this.viewport.height - rulerSize);
+    // Coin
+    this.ctx.fillRect(0, this.viewport.height - rulerSize, rulerSize, rulerSize);
+
+    // Bordures des règles
+    this.ctx.strokeStyle = "#ccc";
+    this.ctx.lineWidth = 1;
     this.ctx.beginPath();
-    this.ctx.moveTo(left, 0);
-    this.ctx.lineTo(right, 0);
+    // Bordure règle du bas
+    this.ctx.moveTo(rulerSize, this.viewport.height - rulerSize);
+    this.ctx.lineTo(this.viewport.width, this.viewport.height - rulerSize);
+    // Bordure règle de gauche
+    this.ctx.moveTo(rulerSize, 0);
+    this.ctx.lineTo(rulerSize, this.viewport.height - rulerSize);
     this.ctx.stroke();
 
-    this.ctx.strokeStyle = "#00AA00";
+    // Configuration du texte
+    this.ctx.fillStyle = "#333";
+    this.ctx.font = "10px sans-serif";
+    this.ctx.textAlign = "center";
+    this.ctx.textBaseline = "top";
+
+    // Règle horizontale (bas) - valeurs en mm
+    const leftWorld = -this.viewport.offsetX / this.viewport.scale;
+    const rightWorld = (this.viewport.width - this.viewport.offsetX) / this.viewport.scale;
+
+    const startX = Math.floor(leftWorld / spacing) * spacing;
+    const endX = Math.ceil(rightWorld / spacing) * spacing;
+
+    this.ctx.strokeStyle = "#666";
     this.ctx.beginPath();
-    this.ctx.moveTo(0, top);
-    this.ctx.lineTo(0, bottom);
+
+    for (let worldX = startX; worldX <= endX; worldX += spacing) {
+      const screenX = worldX * this.viewport.scale + this.viewport.offsetX;
+
+      if (screenX < rulerSize || screenX > this.viewport.width) continue;
+
+      // Graduation
+      const isMajor = worldX % (spacing * 5) === 0 || spacing >= 20;
+      const tickHeight = isMajor ? tickLarge : worldX % (spacing * 2) === 0 ? tickMedium : tickSmall;
+
+      this.ctx.moveTo(screenX, this.viewport.height - rulerSize);
+      this.ctx.lineTo(screenX, this.viewport.height - rulerSize + tickHeight);
+
+      // Label pour les graduations majeures
+      if (isMajor) {
+        this.ctx.fillText(`${worldX}`, screenX, this.viewport.height - rulerSize + tickLarge + 2);
+      }
+    }
     this.ctx.stroke();
+
+    // Règle verticale (gauche) - valeurs en mm
+    const topWorld = -this.viewport.offsetY / this.viewport.scale;
+    const bottomWorld = (this.viewport.height - this.viewport.offsetY) / this.viewport.scale;
+
+    const startY = Math.floor(topWorld / spacing) * spacing;
+    const endY = Math.ceil(bottomWorld / spacing) * spacing;
+
+    this.ctx.textAlign = "right";
+    this.ctx.textBaseline = "middle";
+    this.ctx.beginPath();
+
+    for (let worldY = startY; worldY <= endY; worldY += spacing) {
+      const screenY = worldY * this.viewport.scale + this.viewport.offsetY;
+
+      if (screenY < 0 || screenY > this.viewport.height - rulerSize) continue;
+
+      // Graduation
+      const isMajor = worldY % (spacing * 5) === 0 || spacing >= 20;
+      const tickWidth = isMajor ? tickLarge : worldY % (spacing * 2) === 0 ? tickMedium : tickSmall;
+
+      this.ctx.moveTo(rulerSize - tickWidth, screenY);
+      this.ctx.lineTo(rulerSize, screenY);
+
+      // Label pour les graduations majeures
+      if (isMajor) {
+        this.ctx.fillText(`${worldY}`, rulerSize - tickWidth - 2, screenY);
+      }
+    }
+    this.ctx.stroke();
+
+    // Unité dans le coin
+    this.ctx.textAlign = "center";
+    this.ctx.textBaseline = "middle";
+    this.ctx.font = "9px sans-serif";
+    this.ctx.fillStyle = "#666";
+    this.ctx.fillText("mm", rulerSize / 2, this.viewport.height - rulerSize / 2);
+
+    this.ctx.restore();
   }
 
   /**
