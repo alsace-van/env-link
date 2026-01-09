@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.50 - Points de mesure précis (croix) et repositionnables
+// VERSION: 5.51 - Fix dépendances useCallback pour drag mesure
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -3132,6 +3132,7 @@ export function CADGabaritCanvas({
       newPairDistance,
       newPairColor,
       measureState,
+      measurements,
       showCalibrationPanel,
       filletFirstLine,
       filletRadius,
@@ -3319,6 +3320,8 @@ export function CADGabaritCanvas({
       activeTool,
       measureState,
       draggingCalibrationPoint,
+      draggingMeasurePoint,
+      calibrationData,
       selectionBox,
     ],
   );
@@ -3491,6 +3494,7 @@ export function CADGabaritCanvas({
       addToHistory,
       solveSketch,
       draggingCalibrationPoint,
+      draggingMeasurePoint,
       selectionBox,
       selectedEntities,
       screenToWorld,
