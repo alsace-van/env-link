@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.46 - Double-clic molette recentre la vue
+// VERSION: 5.47 - Fix conversion px/mm dans outil mesure et calibration
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -421,12 +421,14 @@ export function CADGabaritCanvas({
         ? {
             start: measureStart,
             end: measureEnd,
-            scale: calibrationData.scale || sketch.scaleFactor,
+            // calibrationData.scale est en mm/px, sketch.scaleFactor est en px/mm (inverser)
+            scale: calibrationData.scale || 1 / sketch.scaleFactor,
           }
         : null,
       // Tableau des mesures terminées
       measurements: measurements,
-      measureScale: calibrationData.scale || sketch.scaleFactor,
+      // measureScale en mm/px pour le renderer
+      measureScale: calibrationData.scale || 1 / sketch.scaleFactor,
     });
 
     // Dessiner le rectangle de sélection (après le render du sketch)
@@ -2511,10 +2513,10 @@ export function CADGabaritCanvas({
                 // L'utilisateur a entré une valeur
                 estimatedMm = userInput;
               } else if (calibrationData.pairs.size === 0) {
-                // Première paire : utiliser l'échelle du sketch
-                estimatedMm = Math.round(distPx * sketch.scaleFactor * 10) / 10;
+                // Première paire : utiliser l'échelle du sketch (scaleFactor est en px/mm)
+                estimatedMm = Math.round((distPx / sketch.scaleFactor) * 10) / 10;
               } else {
-                // Paires suivantes : moyenne des échelles précédentes
+                // Paires suivantes : moyenne des échelles précédentes (en mm/px)
                 let totalScale = 0;
                 let count = 0;
                 calibrationData.pairs.forEach((pair) => {
@@ -2522,11 +2524,12 @@ export function CADGabaritCanvas({
                   const pp2 = calibrationData.points.get(pair.point2Id);
                   if (pp1 && pp2 && pair.distanceMm > 0) {
                     const pairDistPx = distance(pp1, pp2);
-                    totalScale += pair.distanceMm / pairDistPx;
+                    totalScale += pair.distanceMm / pairDistPx; // mm/px
                     count++;
                   }
                 });
-                const avgScale = count > 0 ? totalScale / count : sketch.scaleFactor;
+                // avgScale est en mm/px, fallback: inverser scaleFactor (px/mm → mm/px)
+                const avgScale = count > 0 ? totalScale / count : 1 / sketch.scaleFactor;
                 estimatedMm = Math.round(distPx * avgScale * 10) / 10;
               }
 
@@ -2954,7 +2957,8 @@ export function CADGabaritCanvas({
           } else if (measureState.phase === "waitingSecond" && measureState.start) {
             // Deuxième point - calculer, ajouter au tableau et permettre nouvelle mesure
             const distPx = distance(measureState.start, snapPos);
-            const distMm = calibrationData.scale ? distPx * calibrationData.scale : distPx * sketch.scaleFactor;
+            // calibrationData.scale est en mm/px, sketch.scaleFactor est en px/mm
+            const distMm = calibrationData.scale ? distPx * calibrationData.scale : distPx / sketch.scaleFactor;
 
             // Ajouter la mesure au tableau
             setMeasurements((prev) => [
