@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.31 - Calcul centre via perpendiculaire + produit vectoriel pour le sens
+// VERSION: 5.32 - Fix congé: inversion cross pour compenser Y inversé du canvas
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1212,13 +1212,12 @@ export function CADGabaritCanvas({
       const tan2 = { x: cornerPt.x + u2.x * tangentDist, y: cornerPt.y + u2.y * tangentDist };
 
       // Perpendiculaire à u1 : rotation de 90°
-      // On utilise le produit vectoriel pour déterminer le sens
       // cross(u1, u2) = u1.x * u2.y - u1.y * u2.x
-      // Si > 0 : u2 est "à gauche" de u1, donc la perpendiculaire (-u1.y, u1.x) pointe vers l'intérieur
-      // Si < 0 : u2 est "à droite" de u1, donc la perpendiculaire (u1.y, -u1.x) pointe vers l'intérieur
+      // ATTENTION: Dans le canvas, Y est inversé (vers le bas), donc le signe du cross est inversé
+      // On utilise cross < 0 au lieu de cross > 0
       const cross = u1.x * u2.y - u1.y * u2.x;
       const n1 =
-        cross > 0
+        cross < 0
           ? { x: -u1.y, y: u1.x } // rotation +90°
           : { x: u1.y, y: -u1.x }; // rotation -90°
 
@@ -2081,9 +2080,9 @@ export function CADGabaritCanvas({
       const newTan2 = { x: corner.x + u2.x * tangentDist, y: corner.y + u2.y * tangentDist };
 
       // La bissectrice pointe toujours vers l'intérieur de l'angle
-      // Perpendiculaire à u1 avec produit vectoriel pour le sens
+      // Perpendiculaire à u1 avec produit vectoriel pour le sens (Y inversé dans canvas)
       const cross = u1.x * u2.y - u1.y * u2.x;
-      const n1 = cross > 0 ? { x: -u1.y, y: u1.x } : { x: u1.y, y: -u1.x };
+      const n1 = cross < 0 ? { x: -u1.y, y: u1.x } : { x: u1.y, y: -u1.x };
 
       const newCenter = {
         x: newTan1.x + n1.x * newRadius,
