@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.41 - Fix screenToWorld/worldToScreen avec Y inversé
+// VERSION: 5.42 - Retour au système Y standard, rectangle suit la souris
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -432,14 +432,14 @@ export function CADGabaritCanvas({
     if (selectionBox && canvasRef.current) {
       const ctx = canvasRef.current.getContext("2d");
       if (ctx) {
-        // Convertir les coordonnées monde en coordonnées écran (Y inversé)
+        // Convertir les coordonnées monde en coordonnées écran
         const startScreen = {
           x: selectionBox.start.x * viewport.scale + viewport.offsetX,
-          y: viewport.offsetY - selectionBox.start.y * viewport.scale,
+          y: selectionBox.start.y * viewport.scale + viewport.offsetY,
         };
         const endScreen = {
           x: selectionBox.end.x * viewport.scale + viewport.offsetX,
-          y: viewport.offsetY - selectionBox.end.y * viewport.scale,
+          y: selectionBox.end.y * viewport.scale + viewport.offsetY,
         };
 
         const x = Math.min(startScreen.x, endScreen.x);
@@ -609,13 +609,12 @@ export function CADGabaritCanvas({
     historyRef.current = { history: newHistory, index: newIndex };
   }, []);
 
-  // Conversion coordonnées (Y inversé: Y monde croît vers le haut)
+  // Conversion coordonnées (système standard: Y vers le bas)
   const screenToWorld = useCallback(
     (screenX: number, screenY: number) => {
       return {
         x: (screenX - viewport.offsetX) / viewport.scale,
-        // Y inversé: screenY = offsetY - worldY * scale => worldY = (offsetY - screenY) / scale
-        y: (viewport.offsetY - screenY) / viewport.scale,
+        y: (screenY - viewport.offsetY) / viewport.scale,
       };
     },
     [viewport],
@@ -625,8 +624,7 @@ export function CADGabaritCanvas({
     (worldX: number, worldY: number) => {
       return {
         x: worldX * viewport.scale + viewport.offsetX,
-        // Y inversé: screenY = offsetY - worldY * scale
-        y: viewport.offsetY - worldY * viewport.scale,
+        y: worldY * viewport.scale + viewport.offsetY,
       };
     },
     [viewport],
