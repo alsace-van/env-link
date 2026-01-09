@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.16 - Fix congé inversé via bissectrice
+// VERSION: 3.17 - Règles en mm avec scaleFactor
 // ============================================
 
 import {
@@ -34,6 +34,7 @@ export class CADRenderer {
   private styles: RenderStyles;
   private viewport: Viewport;
   private dpr: number; // Device pixel ratio
+  private currentScaleFactor: number = 1; // px/mm pour les règles
 
   constructor(canvas: HTMLCanvasElement, styles: Partial<RenderStyles> = {}) {
     this.canvas = canvas;
@@ -109,6 +110,7 @@ export class CADRenderer {
         mm: number;
       }>;
       measureScale?: number;
+      scaleFactor?: number; // px/mm pour convertir les coordonnées en mm sur les règles
     } = {},
   ): void {
     const {
@@ -128,7 +130,11 @@ export class CADRenderer {
       measureData = null,
       measurements = [],
       measureScale = 1,
+      scaleFactor = 1, // Par défaut 1 (coordonnées = mm)
     } = options;
+
+    // Stocker scaleFactor pour drawRulers
+    this.currentScaleFactor = scaleFactor;
 
     const rulerSize = 25;
 
@@ -511,13 +517,13 @@ export class CADRenderer {
   }
 
   /**
-   * Dessine les règles graduées en mm sur les bords gauche et bas
-   * L'origine (0,0) est dans le coin inférieur gauche
+   * Dessine les règles graduées en mm sur les bords haut et gauche
    */
   private drawRulers(): void {
     const ctx = this.ctx;
     const w = this.viewport.width;
     const h = this.viewport.height;
+    const sf = this.currentScaleFactor; // px/mm
 
     // Vérifier que les dimensions sont valides
     if (!w || !h || w <= 0 || h <= 0) {
@@ -532,23 +538,27 @@ export class CADRenderer {
     const tickSmall = 4;
     const tickLarge = 10;
 
-    // Espacement adaptatif
-    const spacings = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
-    let spacing = 50;
-    for (const s of spacings) {
-      if (s * this.viewport.scale >= 35) {
-        spacing = s;
+    // Échelle effective en mm: combien de mm par pixel écran
+    // viewport.scale = zoom (px écran par px monde)
+    // sf = px monde par mm
+    // => mm par px écran = 1 / (viewport.scale * sf)
+    const mmPerScreenPx = 1 / (this.viewport.scale * sf);
+
+    // Espacement adaptatif en mm (viser ~35-50 px entre graduations)
+    const spacingsMm = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
+    let spacingMm = 50;
+    for (const s of spacingsMm) {
+      // s mm * sf px/mm * scale = pixels écran
+      if (s * sf * this.viewport.scale >= 35) {
+        spacingMm = s;
         break;
       }
     }
 
     // ===== FOND DES RÈGLES =====
-    // Règle du HAUT (horizontale) - Axe X
     ctx.fillStyle = "#f0f0f0";
     ctx.fillRect(rulerSize, 0, w - rulerSize, rulerSize);
-    // Règle de GAUCHE (verticale) - Axe Y
     ctx.fillRect(0, rulerSize, rulerSize, h - rulerSize);
-    // Coin supérieur gauche (origine)
     ctx.fillStyle = "#e8e8e8";
     ctx.fillRect(0, 0, rulerSize, rulerSize);
 
@@ -568,57 +578,66 @@ export class CADRenderer {
     ctx.strokeStyle = "#666";
     ctx.lineWidth = 1;
 
-    // ===== RÈGLE HORIZONTALE (HAUT) - Axe X =====
-    const leftWorld = (rulerSize - this.viewport.offsetX) / this.viewport.scale;
-    const rightWorld = (w - this.viewport.offsetX) / this.viewport.scale;
-    const startX = Math.floor(leftWorld / spacing) * spacing;
-    const endX = Math.ceil(rightWorld / spacing) * spacing;
+    // ===== RÈGLE HORIZONTALE (HAUT) - Axe X en mm =====
+    // Position monde (px) du bord gauche et droit de la règle
+    const leftWorldPx = (rulerSize - this.viewport.offsetX) / this.viewport.scale;
+    const rightWorldPx = (w - this.viewport.offsetX) / this.viewport.scale;
+    // Convertir en mm
+    const leftMm = leftWorldPx / sf;
+    const rightMm = rightWorldPx / sf;
+    const startXmm = Math.floor(leftMm / spacingMm) * spacingMm;
+    const endXmm = Math.ceil(rightMm / spacingMm) * spacingMm;
 
     ctx.textAlign = "center";
     ctx.textBaseline = "bottom";
 
-    for (let wx = startX; wx <= endX; wx += spacing) {
-      const sx = wx * this.viewport.scale + this.viewport.offsetX;
-      if (sx < rulerSize || sx > w) continue;
+    for (let xMm = startXmm; xMm <= endXmm; xMm += spacingMm) {
+      // Convertir mm en position écran
+      const worldPx = xMm * sf; // mm -> px monde
+      const screenX = worldPx * this.viewport.scale + this.viewport.offsetX;
+      if (screenX < rulerSize || screenX > w) continue;
 
-      const idx = Math.round(Math.abs(wx) / spacing);
-      const isMajor = idx % 5 === 0 || spacing >= 50;
+      const idx = Math.round(Math.abs(xMm) / spacingMm);
+      const isMajor = idx % 5 === 0 || spacingMm >= 50;
       const tickH = isMajor ? tickLarge : tickSmall;
 
       ctx.beginPath();
-      ctx.moveTo(sx, rulerSize);
-      ctx.lineTo(sx, rulerSize - tickH);
+      ctx.moveTo(screenX, rulerSize);
+      ctx.lineTo(screenX, rulerSize - tickH);
       ctx.stroke();
 
       if (isMajor) {
-        ctx.fillText(`${wx}`, sx, rulerSize - tickLarge - 1);
+        ctx.fillText(`${xMm}`, screenX, rulerSize - tickLarge - 1);
       }
     }
 
-    // ===== RÈGLE VERTICALE (GAUCHE) - Axe Y =====
-    const topWorld = (rulerSize - this.viewport.offsetY) / this.viewport.scale;
-    const bottomWorld = (h - this.viewport.offsetY) / this.viewport.scale;
-    const startY = Math.floor(topWorld / spacing) * spacing;
-    const endY = Math.ceil(bottomWorld / spacing) * spacing;
+    // ===== RÈGLE VERTICALE (GAUCHE) - Axe Y en mm =====
+    const topWorldPx = (rulerSize - this.viewport.offsetY) / this.viewport.scale;
+    const bottomWorldPx = (h - this.viewport.offsetY) / this.viewport.scale;
+    const topMm = topWorldPx / sf;
+    const bottomMm = bottomWorldPx / sf;
+    const startYmm = Math.floor(topMm / spacingMm) * spacingMm;
+    const endYmm = Math.ceil(bottomMm / spacingMm) * spacingMm;
 
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
 
-    for (let wy = startY; wy <= endY; wy += spacing) {
-      const sy = wy * this.viewport.scale + this.viewport.offsetY;
-      if (sy < rulerSize || sy > h) continue;
+    for (let yMm = startYmm; yMm <= endYmm; yMm += spacingMm) {
+      const worldPx = yMm * sf;
+      const screenY = worldPx * this.viewport.scale + this.viewport.offsetY;
+      if (screenY < rulerSize || screenY > h) continue;
 
-      const idx = Math.round(Math.abs(wy) / spacing);
-      const isMajor = idx % 5 === 0 || spacing >= 50;
+      const idx = Math.round(Math.abs(yMm) / spacingMm);
+      const isMajor = idx % 5 === 0 || spacingMm >= 50;
       const tickW = isMajor ? tickLarge : tickSmall;
 
       ctx.beginPath();
-      ctx.moveTo(rulerSize, sy);
-      ctx.lineTo(rulerSize - tickW, sy);
+      ctx.moveTo(rulerSize, screenY);
+      ctx.lineTo(rulerSize - tickW, screenY);
       ctx.stroke();
 
       if (isMajor) {
-        ctx.fillText(`${wy}`, rulerSize - tickW - 2, sy);
+        ctx.fillText(`${yMm}`, rulerSize - tickW - 2, screenY);
       }
     }
 
