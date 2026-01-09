@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.56 - Fix cercle coupé en arcs avec direction correcte
+// VERSION: 5.57 - Drag de sélection (déplacement de formes entières)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -198,6 +198,10 @@ export function CADGabaritCanvas({
     null,
   );
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  // Drag de sélection (déplacement de formes entières)
+  const [isDraggingSelection, setIsDraggingSelection] = useState(false);
+  const [selectionDragStart, setSelectionDragStart] = useState({ x: 0, y: 0 });
 
   // Sélection rectangulaire (box selection)
   const [selectionBox, setSelectionBox] = useState<{
@@ -2884,6 +2888,14 @@ export function CADGabaritCanvas({
 
           const entityId = findEntityAtPosition(worldPos.x, worldPos.y);
           if (entityId) {
+            // Si on clique sur une entité déjà sélectionnée, préparer le drag de la sélection
+            if (selectedEntities.has(entityId) && selectedEntities.size > 0) {
+              // Préparer le drag de toute la sélection
+              setSelectionDragStart(worldPos);
+              // Le drag commencera vraiment quand on bougera la souris
+              return;
+            }
+
             if (e.shiftKey) {
               // Toggle selection
               const newSelection = new Set(selectedEntities);
@@ -2895,12 +2907,8 @@ export function CADGabaritCanvas({
               setSelectedEntities(newSelection);
             } else {
               setSelectedEntities(new Set([entityId]));
-              // Préparer le drag pour les points (commencera quand la souris bouge)
-              if (sketch.points.has(entityId)) {
-                setDragTarget({ type: "point", id: entityId });
-                setDragStart(worldPos);
-                // Note: isDragging reste false jusqu'à ce qu'on bouge la souris
-              }
+              // Préparer le drag de cette entité
+              setSelectionDragStart(worldPos);
             }
           } else {
             // Clic dans le vide : commencer une sélection rectangulaire
@@ -3459,6 +3467,68 @@ export function CADGabaritCanvas({
         return;
       }
 
+      // Drag de sélection (déplacement de formes entières)
+      if (activeTool === "select" && selectedEntities.size > 0 && e.buttons === 1 && !selectionBox) {
+        const dist = Math.sqrt((worldPos.x - selectionDragStart.x) ** 2 + (worldPos.y - selectionDragStart.y) ** 2);
+
+        // Démarrer le drag si on a bougé suffisamment
+        if (dist > 3 / viewport.scale || isDraggingSelection) {
+          if (!isDraggingSelection) {
+            setIsDraggingSelection(true);
+          }
+
+          // Calculer le déplacement
+          const dx = worldPos.x - selectionDragStart.x;
+          const dy = worldPos.y - selectionDragStart.y;
+
+          // Collecter tous les points des géométries sélectionnées
+          const pointsToMove = new Set<string>();
+          selectedEntities.forEach((geoId) => {
+            const geo = sketch.geometries.get(geoId);
+            if (geo) {
+              if (geo.type === "line") {
+                const line = geo as Line;
+                pointsToMove.add(line.p1);
+                pointsToMove.add(line.p2);
+              } else if (geo.type === "circle") {
+                const circle = geo as CircleType;
+                pointsToMove.add(circle.center);
+              } else if (geo.type === "arc") {
+                const arc = geo as Arc;
+                pointsToMove.add(arc.center);
+                pointsToMove.add(arc.startPoint);
+                pointsToMove.add(arc.endPoint);
+              } else if (geo.type === "bezier") {
+                const bezier = geo as Bezier;
+                pointsToMove.add(bezier.p1);
+                pointsToMove.add(bezier.p2);
+                pointsToMove.add(bezier.cp1);
+                pointsToMove.add(bezier.cp2);
+              }
+            }
+          });
+
+          // Déplacer tous les points
+          const newSketch = { ...sketch };
+          newSketch.points = new Map(sketch.points);
+
+          pointsToMove.forEach((pointId) => {
+            const point = newSketch.points.get(pointId);
+            if (point) {
+              newSketch.points.set(pointId, {
+                ...point,
+                x: point.x + dx,
+                y: point.y + dy,
+              });
+            }
+          });
+
+          setSketch(newSketch);
+          setSelectionDragStart(worldPos);
+          return;
+        }
+      }
+
       // Démarrer le drag si on a un target et qu'on a bougé d'au moins 3 pixels
       if (!isDragging && dragTarget && e.buttons === 1) {
         const dist = Math.sqrt((worldPos.x - dragStart.x) ** 2 + (worldPos.y - dragStart.y) ** 2);
@@ -3550,9 +3620,11 @@ export function CADGabaritCanvas({
     [
       isPanning,
       isDragging,
+      isDraggingSelection,
       panStart,
       dragTarget,
       dragStart,
+      selectionDragStart,
       sketch,
       viewport,
       snapEnabled,
@@ -3567,6 +3639,7 @@ export function CADGabaritCanvas({
       draggingMeasurePoint,
       calibrationData,
       selectionBox,
+      selectedEntities,
     ],
   );
 
@@ -3719,6 +3792,14 @@ export function CADGabaritCanvas({
         return;
       }
 
+      // Fin du drag de sélection
+      if (isDraggingSelection) {
+        addToHistory(sketch);
+        solveSketch(sketch);
+        setIsDraggingSelection(false);
+        return;
+      }
+
       // Fin du drag - sauvegarder dans l'historique
       if (isDragging && dragTarget) {
         addToHistory(sketch);
@@ -3733,6 +3814,7 @@ export function CADGabaritCanvas({
     [
       isPanning,
       isDragging,
+      isDraggingSelection,
       dragTarget,
       sketch,
       addToHistory,
@@ -5671,8 +5753,9 @@ export function CADGabaritCanvas({
               ref={canvasRef}
               className="absolute inset-0 cursor-crosshair"
               style={{
-                cursor:
-                  draggingMeasurePoint || draggingCalibrationPoint
+                cursor: isDraggingSelection
+                  ? "move"
+                  : draggingMeasurePoint || draggingCalibrationPoint
                     ? "move"
                     : activeTool === "pan" || isPanning
                       ? "grab"
