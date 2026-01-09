@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.32 - Fix congé: inversion cross pour compenser Y inversé du canvas
+// VERSION: 5.33 - Congé: choix du centre par distance à tan2 (robuste, indépendant du repère)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1211,21 +1211,21 @@ export function CADGabaritCanvas({
       const tan1 = { x: cornerPt.x + u1.x * tangentDist, y: cornerPt.y + u1.y * tangentDist };
       const tan2 = { x: cornerPt.x + u2.x * tangentDist, y: cornerPt.y + u2.y * tangentDist };
 
-      // Perpendiculaire à u1 : rotation de 90°
-      // cross(u1, u2) = u1.x * u2.y - u1.y * u2.x
-      // ATTENTION: Dans le canvas, Y est inversé (vers le bas), donc le signe du cross est inversé
-      // On utilise cross < 0 au lieu de cross > 0
-      const cross = u1.x * u2.y - u1.y * u2.x;
-      const n1 =
-        cross < 0
-          ? { x: -u1.y, y: u1.x } // rotation +90°
-          : { x: u1.y, y: -u1.x }; // rotation -90°
+      // Calculer les deux centres possibles (perpendiculaires aux lignes)
+      // Perpendiculaire à u1 : rotation +90° ou -90°
+      const perp1 = { x: -u1.y, y: u1.x }; // rotation +90°
+      const perp2 = { x: u1.y, y: -u1.x }; // rotation -90°
 
-      // Le centre est à distance R du point de tangence, dans la direction perpendiculaire
-      const arcCenter = {
-        x: tan1.x + n1.x * radius,
-        y: tan1.y + n1.y * radius,
-      };
+      const center1 = { x: tan1.x + perp1.x * radius, y: tan1.y + perp1.y * radius };
+      const center2 = { x: tan1.x + perp2.x * radius, y: tan1.y + perp2.y * radius };
+
+      // Le bon centre est celui qui est à distance R de tan2 aussi
+      // (car un congé doit être tangent aux deux lignes)
+      const dist1ToTan2 = Math.sqrt((center1.x - tan2.x) ** 2 + (center1.y - tan2.y) ** 2);
+      const dist2ToTan2 = Math.sqrt((center2.x - tan2.x) ** 2 + (center2.y - tan2.y) ** 2);
+
+      // Choisir le centre qui est le plus proche de la distance R par rapport à tan2
+      const arcCenter = Math.abs(dist1ToTan2 - radius) < Math.abs(dist2ToTan2 - radius) ? center1 : center2;
 
       const tan1Id = generateId();
       const tan2Id = generateId();
@@ -2080,14 +2080,18 @@ export function CADGabaritCanvas({
       const newTan2 = { x: corner.x + u2.x * tangentDist, y: corner.y + u2.y * tangentDist };
 
       // La bissectrice pointe toujours vers l'intérieur de l'angle
-      // Perpendiculaire à u1 avec produit vectoriel pour le sens (Y inversé dans canvas)
-      const cross = u1.x * u2.y - u1.y * u2.x;
-      const n1 = cross < 0 ? { x: -u1.y, y: u1.x } : { x: u1.y, y: -u1.x };
+      // Calculer les deux centres possibles
+      const perp1 = { x: -u1.y, y: u1.x };
+      const perp2 = { x: u1.y, y: -u1.x };
 
-      const newCenter = {
-        x: newTan1.x + n1.x * newRadius,
-        y: newTan1.y + n1.y * newRadius,
-      };
+      const center1 = { x: newTan1.x + perp1.x * newRadius, y: newTan1.y + perp1.y * newRadius };
+      const center2 = { x: newTan1.x + perp2.x * newRadius, y: newTan1.y + perp2.y * newRadius };
+
+      // Choisir le centre qui est à distance R de tan2
+      const dist1ToTan2 = Math.sqrt((center1.x - newTan2.x) ** 2 + (center1.y - newTan2.y) ** 2);
+      const dist2ToTan2 = Math.sqrt((center2.x - newTan2.x) ** 2 + (center2.y - newTan2.y) ** 2);
+
+      const newCenter = Math.abs(dist1ToTan2 - newRadius) < Math.abs(dist2ToTan2 - newRadius) ? center1 : center2;
 
       // Mettre à jour le sketch
       const newSketch = { ...sketch };
