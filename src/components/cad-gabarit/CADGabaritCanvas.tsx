@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.45 - Sélection par boîte inclut les arcs (congés)
+// VERSION: 5.46 - Double-clic molette recentre la vue
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -162,6 +162,7 @@ export function CADGabaritCanvas({
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dxfInputRef = useRef<HTMLInputElement>(null);
+  const lastMiddleClickRef = useRef<number>(0); // Pour détecter le double-clic molette
 
   // State
   const [sketch, setSketch] = useState<Sketch>(() => createEmptySketch(scaleFactor));
@@ -2323,8 +2324,95 @@ export function CADGabaritCanvas({
       const screenY = e.clientY - rect.top;
       const worldPos = screenToWorld(screenX, screenY);
 
-      // Pan avec clic milieu
+      // Pan avec clic milieu / Double-clic molette = recentrer
       if (e.button === 1) {
+        const now = Date.now();
+        const timeSinceLastClick = now - lastMiddleClickRef.current;
+        lastMiddleClickRef.current = now;
+
+        // Double-clic molette (< 400ms) = ajuster au contenu
+        if (timeSinceLastClick < 400) {
+          // Calculer les limites du contenu
+          let minX = Infinity,
+            maxX = -Infinity,
+            minY = Infinity,
+            maxY = -Infinity;
+          let hasContent = false;
+
+          sketch.geometries.forEach((geo) => {
+            if (geo.type === "line") {
+              const line = geo as Line;
+              const p1 = sketch.points.get(line.p1);
+              const p2 = sketch.points.get(line.p2);
+              if (p1 && p2) {
+                minX = Math.min(minX, p1.x, p2.x);
+                maxX = Math.max(maxX, p1.x, p2.x);
+                minY = Math.min(minY, p1.y, p2.y);
+                maxY = Math.max(maxY, p1.y, p2.y);
+                hasContent = true;
+              }
+            } else if (geo.type === "circle") {
+              const circle = geo as CircleType;
+              const center = sketch.points.get(circle.center);
+              if (center) {
+                minX = Math.min(minX, center.x - circle.radius);
+                maxX = Math.max(maxX, center.x + circle.radius);
+                minY = Math.min(minY, center.y - circle.radius);
+                maxY = Math.max(maxY, center.y + circle.radius);
+                hasContent = true;
+              }
+            } else if (geo.type === "arc") {
+              const arc = geo as Arc;
+              const center = sketch.points.get(arc.center);
+              const startPt = sketch.points.get(arc.startPoint);
+              const endPt = sketch.points.get(arc.endPoint);
+              if (center && startPt && endPt) {
+                minX = Math.min(minX, startPt.x, endPt.x, center.x - arc.radius);
+                maxX = Math.max(maxX, startPt.x, endPt.x, center.x + arc.radius);
+                minY = Math.min(minY, startPt.y, endPt.y, center.y - arc.radius);
+                maxY = Math.max(maxY, startPt.y, endPt.y, center.y + arc.radius);
+                hasContent = true;
+              }
+            }
+          });
+
+          if (hasContent && isFinite(minX) && isFinite(maxX) && isFinite(minY) && isFinite(maxY)) {
+            const rulerSize = 25;
+            const contentWidth = maxX - minX;
+            const contentHeight = maxY - minY;
+            const centerX = (minX + maxX) / 2;
+            const centerY = (minY + maxY) / 2;
+
+            const availableWidth = viewport.width - rulerSize - 40;
+            const availableHeight = viewport.height - rulerSize - 40;
+
+            const scaleX = availableWidth / Math.max(contentWidth, 1);
+            const scaleY = availableHeight / Math.max(contentHeight, 1);
+            const newScale = Math.min(scaleX, scaleY, 10); // Max zoom = 10
+
+            setViewport((prev) => ({
+              ...prev,
+              scale: newScale,
+              offsetX: (prev.width + rulerSize) / 2 - centerX * newScale,
+              offsetY: (prev.height + rulerSize) / 2 - centerY * newScale,
+            }));
+
+            toast.success("Vue ajustée au contenu");
+          } else {
+            // Pas de contenu, reset à la vue par défaut
+            const rulerSize = 25;
+            setViewport((v) => ({
+              ...v,
+              offsetX: rulerSize,
+              offsetY: rulerSize,
+              scale: 4,
+            }));
+            toast.info("Vue réinitialisée");
+          }
+          return;
+        }
+
+        // Simple clic = pan
         setIsPanning(true);
         setPanStart({ x: e.clientX, y: e.clientY });
         return;
