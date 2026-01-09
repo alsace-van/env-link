@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.69 - Congé/Chanfrein: mode répétition, double-clic coin, switch, cotation auto, supprimer congé, asymétrique
+// VERSION: 5.70 - Fix inputs asymétriques trop étroits
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -8140,7 +8140,7 @@ export function CADGabaritCanvas({
               style={{
                 left: filletPanelPos.x,
                 top: filletPanelPos.y,
-                width: filletDialog.asymmetric ? 280 : 240,
+                width: filletDialog.asymmetric ? 320 : 240,
               }}
               onMouseDown={(e) => {
                 if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "BUTTON")
@@ -8275,7 +8275,7 @@ export function CADGabaritCanvas({
                                 newCorners[idx] = { ...corner, dist1: newDist };
                                 setFilletDialog({ ...filletDialog, corners: newCorners });
                               }}
-                              className={`h-6 w-12 text-xs ${corner.dist1 > corner.maxDist1 ? "border-red-500" : ""}`}
+                              className={`h-6 w-16 text-xs ${corner.dist1 > corner.maxDist1 ? "border-red-500" : ""}`}
                               min="0.1"
                               step="1"
                               onKeyDown={(e) => e.stopPropagation()}
@@ -8291,7 +8291,7 @@ export function CADGabaritCanvas({
                                 newCorners[idx] = { ...corner, dist2: newDist };
                                 setFilletDialog({ ...filletDialog, corners: newCorners });
                               }}
-                              className={`h-6 w-12 text-xs ${corner.dist2 > corner.maxDist2 ? "border-red-500" : ""}`}
+                              className={`h-6 w-16 text-xs ${corner.dist2 > corner.maxDist2 ? "border-red-500" : ""}`}
                               min="0.1"
                               step="1"
                               onKeyDown={(e) => e.stopPropagation()}
@@ -8354,7 +8354,7 @@ export function CADGabaritCanvas({
               style={{
                 left: chamferPanelPos.x,
                 top: chamferPanelPos.y,
-                width: chamferDialog.asymmetric ? 280 : 240,
+                width: chamferDialog.asymmetric ? 320 : 240,
               }}
               onMouseDown={(e) => {
                 if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "BUTTON")
@@ -8480,7 +8480,7 @@ export function CADGabaritCanvas({
                                 newCorners[idx] = { ...corner, dist1: newDist };
                                 setChamferDialog({ ...chamferDialog, corners: newCorners });
                               }}
-                              className={`h-6 w-12 text-xs ${corner.dist1 > corner.maxDist1 ? "border-red-500" : ""}`}
+                              className={`h-6 w-16 text-xs ${corner.dist1 > corner.maxDist1 ? "border-red-500" : ""}`}
                               min="0.1"
                               step="1"
                               onKeyDown={(e) => e.stopPropagation()}
@@ -8496,7 +8496,7 @@ export function CADGabaritCanvas({
                                 newCorners[idx] = { ...corner, dist2: newDist };
                                 setChamferDialog({ ...chamferDialog, corners: newCorners });
                               }}
-                              className={`h-6 w-12 text-xs ${corner.dist2 > corner.maxDist2 ? "border-red-500" : ""}`}
+                              className={`h-6 w-16 text-xs ${corner.dist2 > corner.maxDist2 ? "border-red-500" : ""}`}
                               min="0.1"
                               step="1"
                               onKeyDown={(e) => e.stopPropagation()}
