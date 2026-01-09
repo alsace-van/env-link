@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.53 - Intersection automatique pour rectangles
+// VERSION: 5.54 - Intersection automatique cercle-segments
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2047,6 +2047,136 @@ export function CADGabaritCanvas({
     [],
   );
 
+  // Intersection cercle-segment (peut retourner 0, 1 ou 2 points)
+  const circleSegmentIntersection = useCallback(
+    (
+      center: { x: number; y: number },
+      radius: number,
+      p1: { x: number; y: number },
+      p2: { x: number; y: number },
+    ): Array<{ x: number; y: number }> => {
+      const results: Array<{ x: number; y: number }> = [];
+
+      // Direction du segment
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+
+      // Vecteur du centre vers p1
+      const fx = p1.x - center.x;
+      const fy = p1.y - center.y;
+
+      // Coefficients de l'équation quadratique at² + bt + c = 0
+      const a = dx * dx + dy * dy;
+      const b = 2 * (fx * dx + fy * dy);
+      const c = fx * fx + fy * fy - radius * radius;
+
+      const discriminant = b * b - 4 * a * c;
+
+      if (discriminant < 0 || a < 0.0001) {
+        return results; // Pas d'intersection
+      }
+
+      const sqrtDisc = Math.sqrt(discriminant);
+      const epsilon = 0.01; // Marge pour éviter les extrémités
+
+      // Première solution
+      const t1 = (-b - sqrtDisc) / (2 * a);
+      if (t1 > epsilon && t1 < 1 - epsilon) {
+        results.push({
+          x: p1.x + t1 * dx,
+          y: p1.y + t1 * dy,
+        });
+      }
+
+      // Deuxième solution (si discriminant > 0)
+      if (discriminant > 0.0001) {
+        const t2 = (-b + sqrtDisc) / (2 * a);
+        if (t2 > epsilon && t2 < 1 - epsilon) {
+          results.push({
+            x: p1.x + t2 * dx,
+            y: p1.y + t2 * dy,
+          });
+        }
+      }
+
+      return results;
+    },
+    [],
+  );
+
+  // Créer les intersections entre un cercle et tous les segments existants
+  const createCircleIntersections = useCallback(
+    (
+      circleCenter: { x: number; y: number },
+      circleRadius: number,
+      sketchToModify: { points: Map<string, Point>; geometries: Map<string, Geometry> },
+    ): void => {
+      // Collecter toutes les intersections
+      const intersections: Array<{ lineId: string; points: Array<{ x: number; y: number }> }> = [];
+
+      sketchToModify.geometries.forEach((geo, lineId) => {
+        if (geo.type !== "line") return;
+
+        const line = geo as Line;
+        const p1 = sketchToModify.points.get(line.p1);
+        const p2 = sketchToModify.points.get(line.p2);
+        if (!p1 || !p2) return;
+
+        const pts = circleSegmentIntersection(circleCenter, circleRadius, p1, p2);
+        if (pts.length > 0) {
+          intersections.push({ lineId, points: pts });
+        }
+      });
+
+      // Pour chaque intersection, couper le segment
+      for (const { lineId, points } of intersections) {
+        // Trier les points par distance depuis p1 du segment
+        const line = sketchToModify.geometries.get(lineId) as Line;
+        if (!line) continue;
+
+        const p1 = sketchToModify.points.get(line.p1);
+        if (!p1) continue;
+
+        const sortedPoints = points.sort((a, b) => {
+          const distA = (a.x - p1.x) ** 2 + (a.y - p1.y) ** 2;
+          const distB = (b.x - p1.x) ** 2 + (b.y - p1.y) ** 2;
+          return distA - distB;
+        });
+
+        // Créer les points d'intersection et couper le segment
+        let currentLineId = lineId;
+        for (const pt of sortedPoints) {
+          const currentLine = sketchToModify.geometries.get(currentLineId) as Line;
+          if (!currentLine) continue;
+
+          // Créer le point d'intersection
+          const intersectPoint: Point = { id: generateId(), x: pt.x, y: pt.y };
+          sketchToModify.points.set(intersectPoint.id, intersectPoint);
+
+          // Créer la deuxième partie du segment
+          const newLine: Line = {
+            id: generateId(),
+            type: "line",
+            p1: intersectPoint.id,
+            p2: currentLine.p2,
+            layerId: currentLine.layerId,
+          };
+          sketchToModify.geometries.set(newLine.id, newLine);
+
+          // Modifier le segment existant pour finir au point d'intersection
+          sketchToModify.geometries.set(currentLineId, {
+            ...currentLine,
+            p2: intersectPoint.id,
+          });
+
+          // Le prochain point devra couper le nouveau segment
+          currentLineId = newLine.id;
+        }
+      }
+    },
+    [circleSegmentIntersection],
+  );
+
   // Intersection de deux segments (retourne le point si les segments se croisent vraiment)
   const segmentIntersection = useCallback(
     (
@@ -2844,6 +2974,9 @@ export function CADGabaritCanvas({
             };
             newSketch.geometries.set(circle.id, circle);
 
+            // Créer les intersections avec les segments existants
+            createCircleIntersections(center, radius, newSketch);
+
             setSketch(newSketch);
             solveSketch(newSketch);
             addToHistory(newSketch);
@@ -3175,6 +3308,7 @@ export function CADGabaritCanvas({
       splitLineAtPoint,
       calculateCornerParams,
       createIntersectionPoints,
+      createCircleIntersections,
       calibrationMode,
       calibrationData,
       selectedCalibrationPoint,
