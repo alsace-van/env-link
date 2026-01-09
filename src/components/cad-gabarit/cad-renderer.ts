@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.12 - Fix grille avec Y inversé
+// VERSION: 3.13 - Fix doublon rulerSize
 // ============================================
 
 import {
@@ -183,7 +183,6 @@ export class CADRenderer {
 
     // Viewport bounds pour culling (avec Y inversé par scale(-scale))
     // Point écran (sx, sy) -> monde ((sx - offsetX)/scale, (offsetY - sy)/scale)
-    const rulerSize = 25;
     const cullLeft = (rulerSize - this.viewport.offsetX) / this.viewport.scale;
     const cullRight = (this.viewport.width - this.viewport.offsetX) / this.viewport.scale;
     const cullMinY = (this.viewport.offsetY - this.viewport.height) / this.viewport.scale;
