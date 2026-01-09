@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.11 - Règles en HAUT et GAUCHE (plus visible)
+// VERSION: 3.12 - Fix grille avec Y inversé
 // ============================================
 
 import {
@@ -181,11 +181,13 @@ export class CADRenderer {
     const normalLines: { p1: Point; p2: Point }[] = [];
     const selectedLines: { p1: Point; p2: Point }[] = [];
 
-    // Viewport bounds pour culling
-    const cullLeft = -this.viewport.offsetX / this.viewport.scale;
-    const cullTop = -this.viewport.offsetY / this.viewport.scale;
-    const cullRight = cullLeft + this.viewport.width / this.viewport.scale;
-    const cullBottom = cullTop + this.viewport.height / this.viewport.scale;
+    // Viewport bounds pour culling (avec Y inversé par scale(-scale))
+    // Point écran (sx, sy) -> monde ((sx - offsetX)/scale, (offsetY - sy)/scale)
+    const rulerSize = 25;
+    const cullLeft = (rulerSize - this.viewport.offsetX) / this.viewport.scale;
+    const cullRight = (this.viewport.width - this.viewport.offsetX) / this.viewport.scale;
+    const cullMinY = (this.viewport.offsetY - this.viewport.height) / this.viewport.scale;
+    const cullMaxY = (this.viewport.offsetY - rulerSize) / this.viewport.scale;
 
     sketch.geometries.forEach((geo, id) => {
       // Vérifier si le calque est visible
@@ -209,7 +211,7 @@ export class CADRenderer {
           const minY = Math.min(p1.y, p2.y);
           const maxY = Math.max(p1.y, p2.y);
 
-          if (maxX >= cullLeft && minX <= cullRight && maxY >= cullTop && minY <= cullBottom) {
+          if (maxX >= cullLeft && minX <= cullRight && maxY >= cullMinY && minY <= cullMaxY) {
             if (isSelected || isHovered) {
               selectedLines.push({ p1, p2 });
             } else {
@@ -423,6 +425,7 @@ export class CADRenderer {
 
   /**
    * Dessine la grille
+   * Note: Le contexte a scale(scale, -scale) donc Y est inversé
    */
   private drawGrid(scaleFactor: number): void {
     // Adapter la grille au niveau de zoom pour éviter trop de lignes
@@ -442,20 +445,25 @@ export class CADRenderer {
     // Si la grille est trop large (> 100px), on réduit l'espacement
     if (gridSizeOnScreen > 100) {
       const factor = Math.floor(gridSizeOnScreen / 50);
-      gridSize /= factor;
-      majorGridSize /= factor;
+      if (factor > 0) {
+        gridSize /= factor;
+        majorGridSize /= factor;
+      }
     }
 
-    // Calculer les limites visibles
-    const left = -this.viewport.offsetX / this.viewport.scale;
+    // Calculer les limites visibles en coordonnées monde
+    // Avec scale(scale, -scale): point écran (sx, sy) -> monde ((sx-offsetX)/scale, (offsetY-sy)/scale)
+    const rulerSize = 25;
+    const left = (rulerSize - this.viewport.offsetX) / this.viewport.scale;
     const right = (this.viewport.width - this.viewport.offsetX) / this.viewport.scale;
-    const top = -this.viewport.offsetY / this.viewport.scale;
-    const bottom = (this.viewport.height - this.viewport.offsetY) / this.viewport.scale;
+    // Y est inversé: haut de l'écran = Y monde max, bas de l'écran = Y monde min
+    const minY = (this.viewport.offsetY - this.viewport.height) / this.viewport.scale;
+    const maxY = (this.viewport.offsetY - rulerSize) / this.viewport.scale;
 
     // Limiter le nombre de lignes (max 200 dans chaque direction)
     const maxLines = 200;
-    const horizontalLines = (right - left) / gridSize;
-    const verticalLines = (bottom - top) / gridSize;
+    const horizontalLines = Math.abs(right - left) / gridSize;
+    const verticalLines = Math.abs(maxY - minY) / gridSize;
 
     if (horizontalLines > maxLines || verticalLines > maxLines) {
       // Grille trop dense, on n'affiche que la grille majeure
@@ -475,12 +483,12 @@ export class CADRenderer {
 
     for (let x = Math.floor(left / gridSize) * gridSize; x <= right; x += gridSize) {
       if (Math.abs(x % majorGridSize) > 0.001) {
-        this.ctx.moveTo(x, top);
-        this.ctx.lineTo(x, bottom);
+        this.ctx.moveTo(x, minY);
+        this.ctx.lineTo(x, maxY);
       }
     }
 
-    for (let y = Math.floor(top / gridSize) * gridSize; y <= bottom; y += gridSize) {
+    for (let y = Math.floor(minY / gridSize) * gridSize; y <= maxY; y += gridSize) {
       if (Math.abs(y % majorGridSize) > 0.001) {
         this.ctx.moveTo(left, y);
         this.ctx.lineTo(right, y);
@@ -495,11 +503,11 @@ export class CADRenderer {
     this.ctx.beginPath();
 
     for (let x = Math.floor(left / majorGridSize) * majorGridSize; x <= right; x += majorGridSize) {
-      this.ctx.moveTo(x, top);
-      this.ctx.lineTo(x, bottom);
+      this.ctx.moveTo(x, minY);
+      this.ctx.lineTo(x, maxY);
     }
 
-    for (let y = Math.floor(top / majorGridSize) * majorGridSize; y <= bottom; y += majorGridSize) {
+    for (let y = Math.floor(minY / majorGridSize) * majorGridSize; y <= maxY; y += majorGridSize) {
       this.ctx.moveTo(left, y);
       this.ctx.lineTo(right, y);
     }
