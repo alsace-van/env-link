@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.49 - Icônes outils révisées, indicateur mesure discret
+// VERSION: 5.50 - Points de mesure précis (croix) et repositionnables
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -293,6 +293,12 @@ export function CADGabaritCanvas({
       mm: number;
     }>
   >([]);
+
+  // État pour le déplacement d'un point de mesure
+  const [draggingMeasurePoint, setDraggingMeasurePoint] = useState<{
+    measureId: string;
+    pointType: "start" | "end";
+  } | null>(null);
 
   // Presse-papier pour copier/coller
   const [clipboard, setClipboard] = useState<{
@@ -2441,6 +2447,25 @@ export function CADGabaritCanvas({
 
       // À partir d'ici, c'est un clic gauche (e.button === 0)
 
+      // Vérifier si on clique sur un point de mesure pour le déplacer (outil mesure actif)
+      if (activeTool === "measure" && measurements.length > 0) {
+        const tolerance = 12 / viewport.scale;
+
+        for (const m of measurements) {
+          const distToStart = distance(worldPos, m.start);
+          const distToEnd = distance(worldPos, m.end);
+
+          if (distToStart < tolerance) {
+            setDraggingMeasurePoint({ measureId: m.id, pointType: "start" });
+            return;
+          }
+          if (distToEnd < tolerance) {
+            setDraggingMeasurePoint({ measureId: m.id, pointType: "end" });
+            return;
+          }
+        }
+      }
+
       // Vérifier si on clique sur un point de calibration pour le déplacer
       if (showCalibrationPanel && calibrationMode === "idle") {
         const tolerance = 15 / viewport.scale;
@@ -3154,6 +3179,41 @@ export function CADGabaritCanvas({
         return;
       }
 
+      // Drag d'un point de mesure
+      if (draggingMeasurePoint) {
+        // Utiliser le snap si activé
+        let targetPos = worldPos;
+        if (snapEnabled) {
+          const snap = snapSystemRef.current.findSnapPoint(screenX, screenY, sketch, viewport, []);
+          if (snap) {
+            targetPos = { x: snap.x, y: snap.y };
+            setCurrentSnapPoint(snap);
+          } else {
+            setCurrentSnapPoint(null);
+          }
+        }
+
+        setMeasurements((prev) =>
+          prev.map((m) => {
+            if (m.id === draggingMeasurePoint.measureId) {
+              const newStart = draggingMeasurePoint.pointType === "start" ? targetPos : m.start;
+              const newEnd = draggingMeasurePoint.pointType === "end" ? targetPos : m.end;
+              const distPx = distance(newStart, newEnd);
+              const distMm = calibrationData.scale ? distPx * calibrationData.scale : distPx / sketch.scaleFactor;
+              return {
+                ...m,
+                start: newStart,
+                end: newEnd,
+                px: distPx,
+                mm: distMm,
+              };
+            }
+            return m;
+          }),
+        );
+        return;
+      }
+
       // Démarrer le drag si on a un target et qu'on a bougé d'au moins 3 pixels
       if (!isDragging && dragTarget && e.buttons === 1) {
         const dist = Math.sqrt((worldPos.x - dragStart.x) ** 2 + (worldPos.y - dragStart.y) ** 2);
@@ -3273,6 +3333,13 @@ export function CADGabaritCanvas({
       // Fin du pan
       if (isPanning) {
         setIsPanning(false);
+      }
+
+      // Fin du drag d'un point de mesure
+      if (draggingMeasurePoint) {
+        setDraggingMeasurePoint(null);
+        setCurrentSnapPoint(null);
+        return;
       }
 
       // Fin de la sélection rectangulaire
@@ -5356,7 +5423,12 @@ export function CADGabaritCanvas({
               ref={canvasRef}
               className="absolute inset-0 cursor-crosshair"
               style={{
-                cursor: draggingCalibrationPoint ? "move" : activeTool === "pan" || isPanning ? "grab" : "crosshair",
+                cursor:
+                  draggingMeasurePoint || draggingCalibrationPoint
+                    ? "move"
+                    : activeTool === "pan" || isPanning
+                      ? "grab"
+                      : "crosshair",
               }}
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}

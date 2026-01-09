@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.17 - Règles en mm avec scaleFactor
+// VERSION: 3.18 - Points de mesure avec croix de visée
 // ============================================
 
 import {
@@ -1218,7 +1218,7 @@ export class CADRenderer {
 
     // Ligne de mesure
     this.ctx.strokeStyle = "#00AA00";
-    this.ctx.lineWidth = 2 / this.viewport.scale;
+    this.ctx.lineWidth = 1.5 / this.viewport.scale;
     this.ctx.setLineDash([6 / this.viewport.scale, 3 / this.viewport.scale]);
 
     this.ctx.beginPath();
@@ -1227,17 +1227,35 @@ export class CADRenderer {
     this.ctx.stroke();
     this.ctx.setLineDash([]);
 
-    // Points aux extrémités
-    const pointSize = 6 / this.viewport.scale;
-    this.ctx.fillStyle = "#00AA00";
+    // Croix de visée aux extrémités (plus précis que des cercles)
+    const crossSize = 8 / this.viewport.scale;
+    const innerCircle = 2 / this.viewport.scale;
 
-    this.ctx.beginPath();
-    this.ctx.arc(start.x, start.y, pointSize, 0, Math.PI * 2);
-    this.ctx.fill();
+    // Fonction pour dessiner une croix de visée
+    const drawCrosshair = (x: number, y: number) => {
+      this.ctx.strokeStyle = "#00AA00";
+      this.ctx.lineWidth = 1.5 / this.viewport.scale;
 
-    this.ctx.beginPath();
-    this.ctx.arc(end.x, end.y, pointSize, 0, Math.PI * 2);
-    this.ctx.fill();
+      // Croix
+      this.ctx.beginPath();
+      this.ctx.moveTo(x - crossSize, y);
+      this.ctx.lineTo(x - innerCircle, y);
+      this.ctx.moveTo(x + innerCircle, y);
+      this.ctx.lineTo(x + crossSize, y);
+      this.ctx.moveTo(x, y - crossSize);
+      this.ctx.lineTo(x, y - innerCircle);
+      this.ctx.moveTo(x, y + innerCircle);
+      this.ctx.lineTo(x, y + crossSize);
+      this.ctx.stroke();
+
+      // Petit cercle central
+      this.ctx.beginPath();
+      this.ctx.arc(x, y, innerCircle, 0, Math.PI * 2);
+      this.ctx.stroke();
+    };
+
+    drawCrosshair(start.x, start.y);
+    drawCrosshair(end.x, end.y);
 
     // Texte avec les distances
     const mid = midpoint(start, end);
