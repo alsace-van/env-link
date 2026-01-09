@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.14 - Retour au système Y standard (sans inversion)
+// VERSION: 3.16 - Fix congé inversé via bissectrice
 // ============================================
 
 import {
@@ -743,10 +743,22 @@ export class CADRenderer {
     if (!center || !startPt || !endPt) return;
 
     const startAngle = angle(center, startPt);
-    const endAngle = angle(center, endPt);
+    let endAngle = angle(center, endPt);
+
+    // Déterminer si on doit dessiner dans le sens horaire ou antihoraire
+    // On veut toujours dessiner le petit arc (< 180°)
+    let deltaAngle = endAngle - startAngle;
+
+    // Normaliser deltaAngle entre -PI et PI
+    while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
+    while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
+
+    // Si deltaAngle > 0, on dessine dans le sens antihoraire (par défaut)
+    // Si deltaAngle < 0, on dessine dans le sens horaire
+    const counterClockwise = deltaAngle < 0;
 
     this.ctx.beginPath();
-    this.ctx.arc(center.x, center.y, arc.radius, startAngle, endAngle);
+    this.ctx.arc(center.x, center.y, arc.radius, startAngle, endAngle, counterClockwise);
     this.ctx.stroke();
   }
 

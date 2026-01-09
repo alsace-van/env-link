@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.42 - Retour au système Y standard, rectangle suit la souris
+// VERSION: 5.44 - Fix calcul centre congé: choix via distance aux tangentes
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -1220,21 +1220,41 @@ export function CADGabaritCanvas({
       const tan1 = { x: cornerPt.x + u1.x * tangentDist, y: cornerPt.y + u1.y * tangentDist };
       const tan2 = { x: cornerPt.x + u2.x * tangentDist, y: cornerPt.y + u2.y * tangentDist };
 
-      // Calculer les deux centres possibles (perpendiculaires aux lignes)
-      // Perpendiculaire à u1 : rotation +90° ou -90°
-      const perp1 = { x: -u1.y, y: u1.x }; // rotation +90°
-      const perp2 = { x: u1.y, y: -u1.x }; // rotation -90°
+      // Calculer le centre du congé sur la bissectrice
+      // La bissectrice de l'angle est u1 + u2 normalisé
+      const bisector = { x: u1.x + u2.x, y: u1.y + u2.y };
+      const bisectorLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
 
-      const center1 = { x: tan1.x + perp1.x * radius, y: tan1.y + perp1.y * radius };
-      const center2 = { x: tan1.x + perp2.x * radius, y: tan1.y + perp2.y * radius };
+      if (bisectorLen < 0.001) {
+        if (!silent) toast.error("Lignes parallèles");
+        return null;
+      }
 
-      // Le bon centre est celui qui est à distance R de tan2 aussi
-      // (car un congé doit être tangent aux deux lignes)
-      const dist1ToTan2 = Math.sqrt((center1.x - tan2.x) ** 2 + (center1.y - tan2.y) ** 2);
-      const dist2ToTan2 = Math.sqrt((center2.x - tan2.x) ** 2 + (center2.y - tan2.y) ** 2);
+      const bisectorNorm = { x: bisector.x / bisectorLen, y: bisector.y / bisectorLen };
 
-      // Choisir le centre qui est le plus proche de la distance R par rapport à tan2
-      const arcCenter = Math.abs(dist1ToTan2 - radius) < Math.abs(dist2ToTan2 - radius) ? center1 : center2;
+      // Distance du coin au centre = radius / sin(halfAngle)
+      const centerDist = radius / Math.sin(halfAngle);
+
+      // Deux centres possibles sur la bissectrice (de part et d'autre du coin)
+      const centerA = {
+        x: cornerPt.x + bisectorNorm.x * centerDist,
+        y: cornerPt.y + bisectorNorm.y * centerDist,
+      };
+      const centerB = {
+        x: cornerPt.x - bisectorNorm.x * centerDist,
+        y: cornerPt.y - bisectorNorm.y * centerDist,
+      };
+
+      // Le bon centre est celui qui est à distance R des deux points de tangence
+      const distAToTan1 = Math.sqrt((centerA.x - tan1.x) ** 2 + (centerA.y - tan1.y) ** 2);
+      const distAToTan2 = Math.sqrt((centerA.x - tan2.x) ** 2 + (centerA.y - tan2.y) ** 2);
+      const distBToTan1 = Math.sqrt((centerB.x - tan1.x) ** 2 + (centerB.y - tan1.y) ** 2);
+      const distBToTan2 = Math.sqrt((centerB.x - tan2.x) ** 2 + (centerB.y - tan2.y) ** 2);
+
+      const errorA = Math.abs(distAToTan1 - radius) + Math.abs(distAToTan2 - radius);
+      const errorB = Math.abs(distBToTan1 - radius) + Math.abs(distBToTan2 - radius);
+
+      const arcCenter = errorA < errorB ? centerA : centerB;
 
       const tan1Id = generateId();
       const tan2Id = generateId();
@@ -2088,19 +2108,38 @@ export function CADGabaritCanvas({
       const newTan1 = { x: corner.x + u1.x * tangentDist, y: corner.y + u1.y * tangentDist };
       const newTan2 = { x: corner.x + u2.x * tangentDist, y: corner.y + u2.y * tangentDist };
 
-      // La bissectrice pointe toujours vers l'intérieur de l'angle
-      // Calculer les deux centres possibles
-      const perp1 = { x: -u1.y, y: u1.x };
-      const perp2 = { x: u1.y, y: -u1.x };
+      // Calculer le centre sur la bissectrice
+      const bisector = { x: u1.x + u2.x, y: u1.y + u2.y };
+      const bisectorLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
 
-      const center1 = { x: newTan1.x + perp1.x * newRadius, y: newTan1.y + perp1.y * newRadius };
-      const center2 = { x: newTan1.x + perp2.x * newRadius, y: newTan1.y + perp2.y * newRadius };
+      if (bisectorLen < 0.001) {
+        toast.error("Lignes parallèles");
+        return;
+      }
 
-      // Choisir le centre qui est à distance R de tan2
-      const dist1ToTan2 = Math.sqrt((center1.x - newTan2.x) ** 2 + (center1.y - newTan2.y) ** 2);
-      const dist2ToTan2 = Math.sqrt((center2.x - newTan2.x) ** 2 + (center2.y - newTan2.y) ** 2);
+      const bisectorNorm = { x: bisector.x / bisectorLen, y: bisector.y / bisectorLen };
+      const centerDist = newRadius / Math.sin(halfAngle);
 
-      const newCenter = Math.abs(dist1ToTan2 - newRadius) < Math.abs(dist2ToTan2 - newRadius) ? center1 : center2;
+      // Deux centres possibles
+      const centerA = {
+        x: corner.x + bisectorNorm.x * centerDist,
+        y: corner.y + bisectorNorm.y * centerDist,
+      };
+      const centerB = {
+        x: corner.x - bisectorNorm.x * centerDist,
+        y: corner.y - bisectorNorm.y * centerDist,
+      };
+
+      // Choisir le centre qui est à distance R des deux tangentes
+      const distAToTan1 = Math.sqrt((centerA.x - newTan1.x) ** 2 + (centerA.y - newTan1.y) ** 2);
+      const distAToTan2 = Math.sqrt((centerA.x - newTan2.x) ** 2 + (centerA.y - newTan2.y) ** 2);
+      const distBToTan1 = Math.sqrt((centerB.x - newTan1.x) ** 2 + (centerB.y - newTan1.y) ** 2);
+      const distBToTan2 = Math.sqrt((centerB.x - newTan2.x) ** 2 + (centerB.y - newTan2.y) ** 2);
+
+      const errorA = Math.abs(distAToTan1 - newRadius) + Math.abs(distAToTan2 - newRadius);
+      const errorB = Math.abs(distBToTan1 - newRadius) + Math.abs(distBToTan2 - newRadius);
+
+      const newCenter = errorA < errorB ? centerA : centerB;
 
       // Mettre à jour le sketch
       const newSketch = { ...sketch };
