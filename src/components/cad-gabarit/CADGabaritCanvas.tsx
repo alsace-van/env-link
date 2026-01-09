@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.48 - Règles affichent en mm (pas en px)
+// VERSION: 5.49 - Icônes outils révisées, indicateur mesure discret
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -65,7 +65,6 @@ import {
   Check,
   ChevronRight,
   ChevronLeft,
-  Scaling,
 } from "lucide-react";
 
 import {
@@ -4920,8 +4919,42 @@ export function CADGabaritCanvas({
 
         {/* Cotations et contraintes */}
         <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
-          <ToolButton tool="dimension" icon={Ruler} label="Cotation" shortcut="D" />
-          <ToolButton tool="measure" icon={Scaling} label="Mesurer" shortcut="M" />
+          {/* Cotation avec icône personnalisée */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={activeTool === "dimension" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setActiveTool("dimension");
+                    setTempPoints([]);
+                    setTempGeometry(null);
+                    setFilletFirstLine(null);
+                  }}
+                  className="h-9 w-9 p-0"
+                >
+                  {/* Icône cotation: trait horizontal avec traits verticaux aux extrémités */}
+                  <svg
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  >
+                    <line x1="4" y1="8" x2="4" y2="16" />
+                    <line x1="4" y1="12" x2="20" y2="12" />
+                    <line x1="20" y1="8" x2="20" y2="16" />
+                  </svg>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Cotation (D)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <ToolButton tool="measure" icon={Ruler} label="Mesurer" shortcut="M" />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -5333,30 +5366,19 @@ export function CADGabaritCanvas({
               onContextMenu={(e) => e.preventDefault()}
             />
 
-            {/* Overlay pour l'outil de mesure */}
+            {/* Indicateur discret pour l'outil de mesure - sous la toolbar */}
             {activeTool === "measure" && (
-              <div className="absolute bottom-4 left-4 bg-white/95 rounded-lg shadow-lg p-3 border border-green-300">
-                <div className="flex items-center gap-2 text-green-700 font-medium mb-2">
-                  <Scaling className="h-5 w-5" />
-                  <span>Outil de mesure</span>
-                </div>
-                {measureState.phase === "idle" ? (
-                  <p className="text-sm text-gray-600">Cliquez sur le 1er point</p>
-                ) : measureState.phase === "waitingSecond" ? (
-                  <p className="text-sm text-gray-600">Cliquez sur le 2ème point</p>
-                ) : null}
-
+              <div className="absolute top-2 left-1/2 transform -translate-x-1/2 bg-green-50 border border-green-200 rounded px-3 py-1 flex items-center gap-2 text-sm shadow-sm z-10">
+                <Ruler className="h-4 w-4 text-green-600" />
+                <span className="text-green-700">
+                  {measureState.phase === "idle"
+                    ? "1er point"
+                    : measureState.phase === "waitingSecond"
+                      ? "2ème point"
+                      : ""}
+                </span>
                 {measurements.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-gray-200">
-                    <p className="text-sm font-medium text-green-700">
-                      {measurements.length} mesure{measurements.length > 1 ? "s" : ""}
-                    </p>
-                    <p className="text-xs text-gray-400">Clic droit = tout effacer</p>
-                  </div>
-                )}
-
-                {calibrationData.scale && (
-                  <p className="text-xs text-gray-400 mt-2">Échelle: {calibrationData.scale.toFixed(4)} mm/px</p>
+                  <span className="text-green-600 font-medium ml-1">({measurements.length})</span>
                 )}
               </div>
             )}
