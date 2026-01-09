@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.70 - Fix inputs asymétriques trop étroits
+// VERSION: 5.71 - Fix preview temps réel en mode asymétrique
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2115,10 +2115,13 @@ export function CADGabaritCanvas({
   );
 
   // Calculer la géométrie d'un chanfrein sans l'appliquer (pour preview)
+  // Supporte le mode asymétrique avec dist1Mm et dist2Mm différents
   const calculateChamferGeometry = useCallback(
     (
       pointId: string,
       distanceMm: number,
+      dist1Mm?: number,
+      dist2Mm?: number,
     ): {
       p1: { x: number; y: number };
       p2: { x: number; y: number };
@@ -2143,16 +2146,21 @@ export function CADGabaritCanvas({
 
       if (len1 < 0.001 || len2 < 0.001) return null;
 
-      // Convertir distance mm en px
-      const distPx = distanceMm * sketch.scaleFactor;
+      // Utiliser les distances asymétriques si fournies, sinon la distance symétrique
+      const d1Mm = dist1Mm !== undefined ? dist1Mm : distanceMm;
+      const d2Mm = dist2Mm !== undefined ? dist2Mm : distanceMm;
 
-      if (distPx > len1 * 0.95 || distPx > len2 * 0.95) return null;
+      // Convertir distances mm en px
+      const dist1Px = d1Mm * sketch.scaleFactor;
+      const dist2Px = d2Mm * sketch.scaleFactor;
+
+      if (dist1Px > len1 * 0.95 || dist2Px > len2 * 0.95) return null;
 
       const u1 = { x: vec1.x / len1, y: vec1.y / len1 };
       const u2 = { x: vec2.x / len2, y: vec2.y / len2 };
 
-      const p1 = { x: cornerPt.x + u1.x * distPx, y: cornerPt.y + u1.y * distPx };
-      const p2 = { x: cornerPt.x + u2.x * distPx, y: cornerPt.y + u2.y * distPx };
+      const p1 = { x: cornerPt.x + u1.x * dist1Px, y: cornerPt.y + u1.y * dist1Px };
+      const p2 = { x: cornerPt.x + u2.x * dist2Px, y: cornerPt.y + u2.y * dist2Px };
 
       return { p1, p2 };
     },
@@ -2168,8 +2176,12 @@ export function CADGabaritCanvas({
 
     const previews: typeof filletPreview = [];
     for (const corner of filletDialog.corners) {
-      if (corner.radius > 0 && corner.radius <= corner.maxRadius) {
-        const geom = calculateFilletGeometry(corner.pointId, corner.radius);
+      // En mode asymétrique, utiliser la moyenne de dist1 et dist2 comme rayon approximatif
+      const effectiveRadius = filletDialog.asymmetric ? (corner.dist1 + corner.dist2) / 2 : corner.radius;
+      const maxRadius = filletDialog.asymmetric ? Math.min(corner.maxDist1, corner.maxDist2) : corner.maxRadius;
+
+      if (effectiveRadius > 0 && effectiveRadius <= maxRadius) {
+        const geom = calculateFilletGeometry(corner.pointId, effectiveRadius);
         if (geom) {
           previews.push({
             type: "arc",
@@ -2190,13 +2202,28 @@ export function CADGabaritCanvas({
 
     const previews: typeof chamferPreview = [];
     for (const corner of chamferDialog.corners) {
-      if (corner.distance > 0 && corner.distance <= corner.maxDistance) {
-        const geom = calculateChamferGeometry(corner.pointId, corner.distance);
-        if (geom) {
-          previews.push({
-            type: "line",
-            ...geom,
-          });
+      // En mode asymétrique, utiliser dist1 et dist2
+      if (chamferDialog.asymmetric) {
+        const valid =
+          corner.dist1 > 0 && corner.dist1 <= corner.maxDist1 && corner.dist2 > 0 && corner.dist2 <= corner.maxDist2;
+        if (valid) {
+          const geom = calculateChamferGeometry(corner.pointId, corner.distance, corner.dist1, corner.dist2);
+          if (geom) {
+            previews.push({
+              type: "line",
+              ...geom,
+            });
+          }
+        }
+      } else {
+        if (corner.distance > 0 && corner.distance <= corner.maxDistance) {
+          const geom = calculateChamferGeometry(corner.pointId, corner.distance);
+          if (geom) {
+            previews.push({
+              type: "line",
+              ...geom,
+            });
+          }
         }
       }
     }
