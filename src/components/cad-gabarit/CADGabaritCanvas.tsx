@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.65 - Congé/Chanfrein sur tous les coins d'une figure sélectionnée
+// VERSION: 5.66 - Modale Congé/Chanfrein améliorée (liste coins, rayons individuels, surbrillance)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -342,17 +342,19 @@ export function CADGabaritCanvas({
   // Modale pour congé
   const [filletDialog, setFilletDialog] = useState<{
     open: boolean;
-    corners: Array<{ pointId: string; maxRadius: number; angleDeg: number }>;
-    radius: number;
+    corners: Array<{ pointId: string; maxRadius: number; angleDeg: number; radius: number }>;
+    globalRadius: number; // Rayon global par défaut
     minMaxRadius: number; // Le plus petit maxRadius parmi tous les coins
+    hoveredCornerIdx: number | null; // Index du coin survolé dans la liste
   } | null>(null);
 
   // Modale pour chanfrein
   const [chamferDialog, setChamferDialog] = useState<{
     open: boolean;
-    corners: Array<{ pointId: string; maxDistance: number; angleDeg: number }>;
-    distance: number;
+    corners: Array<{ pointId: string; maxDistance: number; angleDeg: number; distance: number }>;
+    globalDistance: number; // Distance globale par défaut
     minMaxDistance: number; // Le plus petit maxDistance parmi tous les coins
+    hoveredCornerIdx: number | null; // Index du coin survolé dans la liste
   } | null>(null);
 
   // Modale pour modifier le rayon d'un arc existant
@@ -611,6 +613,62 @@ export function CADGabaritCanvas({
         ctx.restore();
       }
     }
+
+    // Dessiner la surbrillance des points pour congé/chanfrein
+    if (canvasRef.current) {
+      const ctx = canvasRef.current.getContext("2d");
+      if (ctx) {
+        // Points survolés dans la modale congé
+        if (filletDialog?.hoveredCornerIdx !== null && filletDialog?.hoveredCornerIdx !== undefined) {
+          const corner = filletDialog.corners[filletDialog.hoveredCornerIdx];
+          const pt = sketch.points.get(corner?.pointId);
+          if (pt) {
+            const screenX = pt.x * viewport.scale + viewport.offsetX;
+            const screenY = pt.y * viewport.scale + viewport.offsetY;
+
+            // Cercle extérieur pulsant
+            ctx.save();
+            ctx.strokeStyle = "#3B82F6";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, 12, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Cercle intérieur plein
+            ctx.fillStyle = "rgba(59, 130, 246, 0.3)";
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+        }
+
+        // Points survolés dans la modale chanfrein
+        if (chamferDialog?.hoveredCornerIdx !== null && chamferDialog?.hoveredCornerIdx !== undefined) {
+          const corner = chamferDialog.corners[chamferDialog.hoveredCornerIdx];
+          const pt = sketch.points.get(corner?.pointId);
+          if (pt) {
+            const screenX = pt.x * viewport.scale + viewport.offsetX;
+            const screenY = pt.y * viewport.scale + viewport.offsetY;
+
+            // Cercle extérieur pulsant
+            ctx.save();
+            ctx.strokeStyle = "#F97316"; // Orange pour chanfrein
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, 12, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Cercle intérieur plein
+            ctx.fillStyle = "rgba(249, 115, 22, 0.3)";
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+        }
+      }
+    }
   }, [
     sketch,
     viewport,
@@ -633,6 +691,8 @@ export function CADGabaritCanvas({
     measurements,
     selectionBox,
     offsetPreview,
+    filletDialog,
+    chamferDialog,
   ]);
 
   useEffect(() => {
@@ -1806,7 +1866,7 @@ export function CADGabaritCanvas({
 
   // Ouvrir le dialogue de congé si 2 lignes OU 1+ points (coins) sont sélectionnés
   const openFilletDialog = useCallback(() => {
-    const corners: Array<{ pointId: string; maxRadius: number; angleDeg: number }> = [];
+    const corners: Array<{ pointId: string; maxRadius: number; angleDeg: number; radius: number }> = [];
 
     // Collecter tous les coins valides
     const selectedIds = Array.from(selectedEntities);
@@ -1825,6 +1885,11 @@ export function CADGabaritCanvas({
       }
     }
 
+    // Calculer le rayon suggéré
+    const getSuggestedRadius = (maxRadius: number) => {
+      return Math.min(filletRadius, Math.floor(maxRadius));
+    };
+
     if (allAreCornerPoints && selectedIds.length >= 1) {
       // Tous sont des points de coin valides
       for (const pointId of selectedIds) {
@@ -1835,6 +1900,7 @@ export function CADGabaritCanvas({
             pointId,
             maxRadius: params.maxRadius,
             angleDeg: params.angleDeg,
+            radius: getSuggestedRadius(params.maxRadius),
           });
         }
       }
@@ -1855,6 +1921,7 @@ export function CADGabaritCanvas({
               pointId: shared.sharedPointId,
               maxRadius: params.maxRadius,
               angleDeg: params.angleDeg,
+              radius: getSuggestedRadius(params.maxRadius),
             });
           }
         } else {
@@ -1912,6 +1979,7 @@ export function CADGabaritCanvas({
             pointId,
             maxRadius: params.maxRadius,
             angleDeg: params.angleDeg,
+            radius: getSuggestedRadius(params.maxRadius),
           });
         }
       }
@@ -1932,8 +2000,9 @@ export function CADGabaritCanvas({
     setFilletDialog({
       open: true,
       corners,
-      radius: suggestedRadius > 0 ? suggestedRadius : 1,
+      globalRadius: suggestedRadius > 0 ? suggestedRadius : 1,
       minMaxRadius,
+      hoveredCornerIdx: null,
     });
   }, [
     selectedEntities,
@@ -1947,10 +2016,15 @@ export function CADGabaritCanvas({
 
   // Ouvrir le dialogue de chanfrein si 2 lignes OU 1+ points (coins) sont sélectionnés
   const openChamferDialog = useCallback(() => {
-    const corners: Array<{ pointId: string; maxDistance: number; angleDeg: number }> = [];
+    const corners: Array<{ pointId: string; maxDistance: number; angleDeg: number; distance: number }> = [];
 
     // Collecter tous les coins valides
     const selectedIds = Array.from(selectedEntities);
+
+    // Calculer la distance suggérée
+    const getSuggestedDistance = (maxDistance: number) => {
+      return Math.min(chamferDistance, Math.floor(maxDistance));
+    };
 
     // Vérifier si ce sont des points (coins)
     let allAreCornerPoints = true;
@@ -1976,6 +2050,7 @@ export function CADGabaritCanvas({
             pointId,
             maxDistance: params.maxDistance,
             angleDeg: params.angleDeg,
+            distance: getSuggestedDistance(params.maxDistance),
           });
         }
       }
@@ -1996,6 +2071,7 @@ export function CADGabaritCanvas({
               pointId: shared.sharedPointId,
               maxDistance: params.maxDistance,
               angleDeg: params.angleDeg,
+              distance: getSuggestedDistance(params.maxDistance),
             });
           }
         } else {
@@ -2053,6 +2129,7 @@ export function CADGabaritCanvas({
             pointId,
             maxDistance: params.maxDistance,
             angleDeg: params.angleDeg,
+            distance: getSuggestedDistance(params.maxDistance),
           });
         }
       }
@@ -2073,8 +2150,9 @@ export function CADGabaritCanvas({
     setChamferDialog({
       open: true,
       corners,
-      distance: suggestedDistance > 0 ? suggestedDistance : 1,
+      globalDistance: suggestedDistance > 0 ? suggestedDistance : 1,
       minMaxDistance,
+      hoveredCornerIdx: null,
     });
   }, [
     selectedEntities,
@@ -2118,12 +2196,12 @@ export function CADGabaritCanvas({
       }
 
       // Vérifier que le rayon ne dépasse pas le max de ce coin
-      if (filletDialog.radius <= corner.maxRadius) {
+      if (corner.radius <= corner.maxRadius) {
         const newSketch = applyFilletToSketch(
           currentSketch,
           connectedLines[0].id,
           connectedLines[1].id,
-          filletDialog.radius,
+          corner.radius,
           true,
         );
         if (newSketch) {
@@ -2137,13 +2215,13 @@ export function CADGabaritCanvas({
       setSketch(currentSketch);
       addToHistory(currentSketch);
       if (successCount === 1) {
-        toast.success(`Congé R${filletDialog.radius}mm appliqué`);
+        toast.success(`Congé R${filletDialog.corners[0].radius}mm appliqué`);
       } else {
-        toast.success(`${successCount} congés R${filletDialog.radius}mm appliqués`);
+        toast.success(`${successCount} congés appliqués`);
       }
     }
 
-    setFilletRadius(filletDialog.radius);
+    setFilletRadius(filletDialog.globalRadius);
     setFilletDialog(null);
     setSelectedEntities(new Set());
   }, [filletDialog, sketch, applyFilletToSketch, addToHistory]);
@@ -2180,12 +2258,12 @@ export function CADGabaritCanvas({
       }
 
       // Vérifier que la distance ne dépasse pas le max de ce coin
-      if (chamferDialog.distance <= corner.maxDistance) {
+      if (corner.distance <= corner.maxDistance) {
         const newSketch = applyChamferToSketch(
           currentSketch,
           connectedLines[0].id,
           connectedLines[1].id,
-          chamferDialog.distance,
+          corner.distance,
           true,
         );
         if (newSketch) {
@@ -2199,13 +2277,13 @@ export function CADGabaritCanvas({
       setSketch(currentSketch);
       addToHistory(currentSketch);
       if (successCount === 1) {
-        toast.success(`Chanfrein ${chamferDialog.distance}mm appliqué`);
+        toast.success(`Chanfrein ${chamferDialog.corners[0].distance}mm appliqué`);
       } else {
-        toast.success(`${successCount} chanfreins ${chamferDialog.distance}mm appliqués`);
+        toast.success(`${successCount} chanfreins appliqués`);
       }
     }
 
-    setChamferDistance(chamferDialog.distance);
+    setChamferDistance(chamferDialog.globalDistance);
     setChamferDialog(null);
     setSelectedEntities(new Set());
   }, [chamferDialog, sketch, applyChamferToSketch, addToHistory]);
@@ -7256,51 +7334,122 @@ export function CADGabaritCanvas({
       {/* Dialogue Congé */}
       {filletDialog &&
         (() => {
-          const isValid = filletDialog.radius > 0 && filletDialog.radius <= filletDialog.minMaxRadius;
           const cornerCount = filletDialog.corners.length;
+          const allValid = filletDialog.corners.every((c) => c.radius > 0 && c.radius <= c.maxRadius);
           return (
             <Dialog open={filletDialog.open} onOpenChange={() => setFilletDialog(null)}>
-              <DialogContent className="sm:max-w-[300px]">
+              <DialogContent className="sm:max-w-[380px]">
                 <DialogHeader>
                   <DialogTitle>Congé {cornerCount > 1 ? `(${cornerCount} coins)` : ""}</DialogTitle>
                   <DialogDescription>
                     {cornerCount === 1
-                      ? `Angle: ${filletDialog.corners[0].angleDeg.toFixed(1)}° • Max: ${filletDialog.minMaxRadius.toFixed(1)}mm`
-                      : `Max commun: ${filletDialog.minMaxRadius.toFixed(1)}mm`}
+                      ? `Angle: ${filletDialog.corners[0].angleDeg.toFixed(1)}° • Max: ${filletDialog.corners[0].maxRadius.toFixed(1)}mm`
+                      : "Définir le rayon pour chaque coin"}
                   </DialogDescription>
                 </DialogHeader>
-                <div className="py-4">
-                  <Label htmlFor="fillet-radius">Rayon (mm)</Label>
-                  <Input
-                    id="fillet-radius"
-                    type="number"
-                    value={filletDialog.radius}
-                    onChange={(e) =>
-                      setFilletDialog({
-                        ...filletDialog,
-                        radius: Math.max(0.1, parseFloat(e.target.value) || 0.1),
-                      })
-                    }
-                    className={`mt-2 ${!isValid ? "border-red-500 text-red-600 focus-visible:ring-red-500" : ""}`}
-                    min="0.1"
-                    step="1"
-                    autoFocus
-                    onKeyDown={(e) => {
-                      e.stopPropagation();
-                      if (e.key === "Enter" && isValid) {
-                        applyFilletFromDialog();
-                      }
-                    }}
-                  />
-                  {!isValid && (
-                    <p className="text-xs text-red-500 mt-1">
-                      Rayon trop grand (max: {filletDialog.minMaxRadius.toFixed(1)}mm)
-                    </p>
+                <div className="py-2 space-y-3">
+                  {/* Rayon global si plusieurs coins */}
+                  {cornerCount > 1 && (
+                    <div className="flex items-center gap-2 pb-2 border-b">
+                      <Label className="text-xs whitespace-nowrap">Tous:</Label>
+                      <Input
+                        type="number"
+                        value={filletDialog.globalRadius}
+                        onChange={(e) => {
+                          const newRadius = Math.max(0.1, parseFloat(e.target.value) || 0.1);
+                          setFilletDialog({
+                            ...filletDialog,
+                            globalRadius: newRadius,
+                            corners: filletDialog.corners.map((c) => ({
+                              ...c,
+                              radius: Math.min(newRadius, c.maxRadius),
+                            })),
+                          });
+                        }}
+                        className="h-8 w-20 text-sm"
+                        min="0.1"
+                        step="1"
+                        onKeyDown={(e) => e.stopPropagation()}
+                      />
+                      <span className="text-xs text-muted-foreground">mm</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 ml-auto text-xs"
+                        onClick={() => {
+                          setFilletDialog({
+                            ...filletDialog,
+                            corners: filletDialog.corners.map((c) => ({
+                              ...c,
+                              radius: Math.min(filletDialog.globalRadius, c.maxRadius),
+                            })),
+                          });
+                        }}
+                      >
+                        Appliquer à tous
+                      </Button>
+                    </div>
                   )}
+
+                  {/* Liste des coins */}
+                  <div className="max-h-[200px] overflow-y-auto space-y-2">
+                    {filletDialog.corners.map((corner, idx) => {
+                      const pt = sketch.points.get(corner.pointId);
+                      const isValid = corner.radius > 0 && corner.radius <= corner.maxRadius;
+                      const isHovered = filletDialog.hoveredCornerIdx === idx;
+                      return (
+                        <div
+                          key={corner.pointId}
+                          className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
+                            isHovered ? "bg-blue-100 border border-blue-400" : "bg-gray-50 hover:bg-gray-100"
+                          }`}
+                          onMouseEnter={() => setFilletDialog({ ...filletDialog, hoveredCornerIdx: idx })}
+                          onMouseLeave={() => setFilletDialog({ ...filletDialog, hoveredCornerIdx: null })}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-medium">
+                              Coin {idx + 1}
+                              <span className="text-muted-foreground ml-1">({corner.angleDeg.toFixed(0)}°)</span>
+                            </div>
+                            {pt && (
+                              <div className="text-[10px] text-muted-foreground truncate">
+                                ({(pt.x / sketch.scaleFactor).toFixed(1)}, {(pt.y / sketch.scaleFactor).toFixed(1)})
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number"
+                              value={corner.radius}
+                              onChange={(e) => {
+                                const newRadius = Math.max(0.1, parseFloat(e.target.value) || 0.1);
+                                const newCorners = [...filletDialog.corners];
+                                newCorners[idx] = { ...corner, radius: newRadius };
+                                setFilletDialog({ ...filletDialog, corners: newCorners });
+                              }}
+                              className={`h-7 w-16 text-xs ${!isValid ? "border-red-500" : ""}`}
+                              min="0.1"
+                              max={corner.maxRadius}
+                              step="1"
+                              onKeyDown={(e) => {
+                                e.stopPropagation();
+                                if (e.key === "Enter" && allValid) {
+                                  applyFilletFromDialog();
+                                }
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <span className="text-[10px] text-muted-foreground">/{corner.maxRadius.toFixed(0)}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
                 <DialogFooter>
-                  <Button onClick={applyFilletFromDialog} className="w-full" disabled={!isValid}>
-                    <Check className="h-4 w-4" />
+                  <Button onClick={applyFilletFromDialog} className="w-full" disabled={!allValid}>
+                    <Check className="h-4 w-4 mr-1" />
+                    Appliquer
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -7309,54 +7458,124 @@ export function CADGabaritCanvas({
         })()}
 
       {/* Dialogue Chanfrein */}
-      {/* Dialogue Chanfrein */}
       {chamferDialog &&
         (() => {
-          const isValid = chamferDialog.distance > 0 && chamferDialog.distance <= chamferDialog.minMaxDistance;
           const cornerCount = chamferDialog.corners.length;
+          const allValid = chamferDialog.corners.every((c) => c.distance > 0 && c.distance <= c.maxDistance);
           return (
             <Dialog open={chamferDialog.open} onOpenChange={() => setChamferDialog(null)}>
-              <DialogContent className="sm:max-w-[300px]">
+              <DialogContent className="sm:max-w-[380px]">
                 <DialogHeader>
                   <DialogTitle>Chanfrein {cornerCount > 1 ? `(${cornerCount} coins)` : ""}</DialogTitle>
                   <DialogDescription>
                     {cornerCount === 1
-                      ? `Angle: ${chamferDialog.corners[0].angleDeg.toFixed(1)}° • Max: ${chamferDialog.minMaxDistance.toFixed(1)}mm`
-                      : `Max commun: ${chamferDialog.minMaxDistance.toFixed(1)}mm`}
+                      ? `Angle: ${chamferDialog.corners[0].angleDeg.toFixed(1)}° • Max: ${chamferDialog.corners[0].maxDistance.toFixed(1)}mm`
+                      : "Définir la distance pour chaque coin"}
                   </DialogDescription>
                 </DialogHeader>
-                <div className="py-4">
-                  <Label htmlFor="chamfer-distance">Distance (mm)</Label>
-                  <Input
-                    id="chamfer-distance"
-                    type="number"
-                    value={chamferDialog.distance}
-                    onChange={(e) =>
-                      setChamferDialog({
-                        ...chamferDialog,
-                        distance: Math.max(0.1, parseFloat(e.target.value) || 0.1),
-                      })
-                    }
-                    className={`mt-2 ${!isValid ? "border-red-500 text-red-600 focus-visible:ring-red-500" : ""}`}
-                    min="0.1"
-                    step="1"
-                    autoFocus
-                    onKeyDown={(e) => {
-                      e.stopPropagation();
-                      if (e.key === "Enter" && isValid) {
-                        applyChamferFromDialog();
-                      }
-                    }}
-                  />
-                  {!isValid && (
-                    <p className="text-xs text-red-500 mt-1">
-                      Distance trop grande (max: {chamferDialog.minMaxDistance.toFixed(1)}mm)
-                    </p>
+                <div className="py-2 space-y-3">
+                  {/* Distance globale si plusieurs coins */}
+                  {cornerCount > 1 && (
+                    <div className="flex items-center gap-2 pb-2 border-b">
+                      <Label className="text-xs whitespace-nowrap">Tous:</Label>
+                      <Input
+                        type="number"
+                        value={chamferDialog.globalDistance}
+                        onChange={(e) => {
+                          const newDistance = Math.max(0.1, parseFloat(e.target.value) || 0.1);
+                          setChamferDialog({
+                            ...chamferDialog,
+                            globalDistance: newDistance,
+                            corners: chamferDialog.corners.map((c) => ({
+                              ...c,
+                              distance: Math.min(newDistance, c.maxDistance),
+                            })),
+                          });
+                        }}
+                        className="h-8 w-20 text-sm"
+                        min="0.1"
+                        step="1"
+                        onKeyDown={(e) => e.stopPropagation()}
+                      />
+                      <span className="text-xs text-muted-foreground">mm</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 ml-auto text-xs"
+                        onClick={() => {
+                          setChamferDialog({
+                            ...chamferDialog,
+                            corners: chamferDialog.corners.map((c) => ({
+                              ...c,
+                              distance: Math.min(chamferDialog.globalDistance, c.maxDistance),
+                            })),
+                          });
+                        }}
+                      >
+                        Appliquer à tous
+                      </Button>
+                    </div>
                   )}
+
+                  {/* Liste des coins */}
+                  <div className="max-h-[200px] overflow-y-auto space-y-2">
+                    {chamferDialog.corners.map((corner, idx) => {
+                      const pt = sketch.points.get(corner.pointId);
+                      const isValid = corner.distance > 0 && corner.distance <= corner.maxDistance;
+                      const isHovered = chamferDialog.hoveredCornerIdx === idx;
+                      return (
+                        <div
+                          key={corner.pointId}
+                          className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
+                            isHovered ? "bg-orange-100 border border-orange-400" : "bg-gray-50 hover:bg-gray-100"
+                          }`}
+                          onMouseEnter={() => setChamferDialog({ ...chamferDialog, hoveredCornerIdx: idx })}
+                          onMouseLeave={() => setChamferDialog({ ...chamferDialog, hoveredCornerIdx: null })}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-medium">
+                              Coin {idx + 1}
+                              <span className="text-muted-foreground ml-1">({corner.angleDeg.toFixed(0)}°)</span>
+                            </div>
+                            {pt && (
+                              <div className="text-[10px] text-muted-foreground truncate">
+                                ({(pt.x / sketch.scaleFactor).toFixed(1)}, {(pt.y / sketch.scaleFactor).toFixed(1)})
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number"
+                              value={corner.distance}
+                              onChange={(e) => {
+                                const newDistance = Math.max(0.1, parseFloat(e.target.value) || 0.1);
+                                const newCorners = [...chamferDialog.corners];
+                                newCorners[idx] = { ...corner, distance: newDistance };
+                                setChamferDialog({ ...chamferDialog, corners: newCorners });
+                              }}
+                              className={`h-7 w-16 text-xs ${!isValid ? "border-red-500" : ""}`}
+                              min="0.1"
+                              max={corner.maxDistance}
+                              step="1"
+                              onKeyDown={(e) => {
+                                e.stopPropagation();
+                                if (e.key === "Enter" && allValid) {
+                                  applyChamferFromDialog();
+                                }
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <span className="text-[10px] text-muted-foreground">/{corner.maxDistance.toFixed(0)}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
                 <DialogFooter>
-                  <Button onClick={applyChamferFromDialog} className="w-full" disabled={!isValid}>
-                    <Check className="h-4 w-4" />
+                  <Button onClick={applyChamferFromDialog} className="w-full" disabled={!allValid}>
+                    <Check className="h-4 w-4 mr-1" />
+                    Appliquer
                   </Button>
                 </DialogFooter>
               </DialogContent>
