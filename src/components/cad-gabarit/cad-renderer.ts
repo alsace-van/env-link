@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.8 - Utilise canvas.width/height pour les règles
+// VERSION: 3.9 - Fix règles avec dpr correct
 // ============================================
 
 import {
@@ -493,120 +493,114 @@ export class CADRenderer {
    * L'origine (0,0) est dans le coin inférieur gauche
    */
   private drawRulers(): void {
-    // Sauvegarder le contexte et revenir aux coordonnées écran
+    // Sauvegarder le contexte et revenir aux coordonnées écran (avec dpr)
     this.ctx.save();
-    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
 
-    // Utiliser les dimensions réelles du canvas
-    const canvasWidth = this.ctx.canvas.width;
-    const canvasHeight = this.ctx.canvas.height;
+    // Dimensions du viewport (en pixels CSS)
+    const w = this.viewport.width;
+    const h = this.viewport.height;
 
-    const rulerSize = 30; // Largeur/hauteur des règles en pixels
+    const rulerSize = 30;
     const tickSmall = 5;
     const tickLarge = 12;
 
-    // Calculer l'espacement optimal des graduations en fonction du zoom
+    // Espacement adaptatif
     const spacings = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
-    let spacing = 10;
-
+    let spacing = 50;
     for (const s of spacings) {
-      const pxPerSpacing = s * this.viewport.scale;
-      if (pxPerSpacing >= 40) {
+      if (s * this.viewport.scale >= 40) {
         spacing = s;
         break;
       }
     }
 
     // ===== FOND DES RÈGLES =====
-    // Règle du bas (horizontale)
     this.ctx.fillStyle = "#f0f0f0";
-    this.ctx.fillRect(rulerSize, canvasHeight - rulerSize, canvasWidth - rulerSize, rulerSize);
-    // Règle de gauche (verticale)
-    this.ctx.fillRect(0, 0, rulerSize, canvasHeight - rulerSize);
-    // Coin inférieur gauche
+    // Règle du bas
+    this.ctx.fillRect(rulerSize, h - rulerSize, w - rulerSize, rulerSize);
+    // Règle de gauche
+    this.ctx.fillRect(0, 0, rulerSize, h - rulerSize);
+    // Coin
     this.ctx.fillStyle = "#e0e0e0";
-    this.ctx.fillRect(0, canvasHeight - rulerSize, rulerSize, rulerSize);
+    this.ctx.fillRect(0, h - rulerSize, rulerSize, rulerSize);
 
-    // Bordures intérieures
+    // Bordures
     this.ctx.strokeStyle = "#ccc";
     this.ctx.lineWidth = 1;
     this.ctx.beginPath();
-    this.ctx.moveTo(rulerSize, canvasHeight - rulerSize);
-    this.ctx.lineTo(canvasWidth, canvasHeight - rulerSize);
+    this.ctx.moveTo(rulerSize, h - rulerSize);
+    this.ctx.lineTo(w, h - rulerSize);
     this.ctx.moveTo(rulerSize, 0);
-    this.ctx.lineTo(rulerSize, canvasHeight - rulerSize);
+    this.ctx.lineTo(rulerSize, h - rulerSize);
     this.ctx.stroke();
 
-    // Configuration texte
+    // Config texte
     this.ctx.fillStyle = "#333";
-    this.ctx.font = "10px Arial, sans-serif";
+    this.ctx.font = "10px Arial";
     this.ctx.strokeStyle = "#666";
     this.ctx.lineWidth = 1;
 
-    // ===== RÈGLE HORIZONTALE (BAS) - Axe X =====
+    // ===== RÈGLE HORIZONTALE (BAS) =====
     const leftWorld = -this.viewport.offsetX / this.viewport.scale;
-    const rightWorld = (canvasWidth - this.viewport.offsetX) / this.viewport.scale;
-
+    const rightWorld = (w - this.viewport.offsetX) / this.viewport.scale;
     const startX = Math.floor(leftWorld / spacing) * spacing;
     const endX = Math.ceil(rightWorld / spacing) * spacing;
 
     this.ctx.textAlign = "center";
     this.ctx.textBaseline = "top";
 
-    for (let worldX = startX; worldX <= endX; worldX += spacing) {
-      const screenX = worldX * this.viewport.scale + this.viewport.offsetX;
+    for (let wx = startX; wx <= endX; wx += spacing) {
+      const sx = wx * this.viewport.scale + this.viewport.offsetX;
+      if (sx < rulerSize || sx > w) continue;
 
-      if (screenX < rulerSize || screenX > canvasWidth) continue;
-
-      const isMajor = Math.round(worldX / spacing) % 5 === 0 || spacing >= 50;
+      const isMajor = Math.round(wx / spacing) % 5 === 0 || spacing >= 50;
       const tickH = isMajor ? tickLarge : tickSmall;
 
       this.ctx.beginPath();
-      this.ctx.moveTo(screenX, canvasHeight - rulerSize);
-      this.ctx.lineTo(screenX, canvasHeight - rulerSize + tickH);
+      this.ctx.moveTo(sx, h - rulerSize);
+      this.ctx.lineTo(sx, h - rulerSize + tickH);
       this.ctx.stroke();
 
       if (isMajor) {
-        this.ctx.fillText(`${worldX}`, screenX, canvasHeight - rulerSize + tickLarge + 1);
+        this.ctx.fillText(`${wx}`, sx, h - rulerSize + tickLarge + 1);
       }
     }
 
-    // ===== RÈGLE VERTICALE (GAUCHE) - Axe Y =====
+    // ===== RÈGLE VERTICALE (GAUCHE) =====
     const topWorld = -this.viewport.offsetY / this.viewport.scale;
-    const bottomWorld = (canvasHeight - this.viewport.offsetY) / this.viewport.scale;
-
+    const bottomWorld = (h - this.viewport.offsetY) / this.viewport.scale;
     const startY = Math.floor(topWorld / spacing) * spacing;
     const endY = Math.ceil(bottomWorld / spacing) * spacing;
 
     this.ctx.textAlign = "right";
     this.ctx.textBaseline = "middle";
 
-    for (let worldY = startY; worldY <= endY; worldY += spacing) {
-      const screenY = worldY * this.viewport.scale + this.viewport.offsetY;
+    for (let wy = startY; wy <= endY; wy += spacing) {
+      const sy = wy * this.viewport.scale + this.viewport.offsetY;
+      if (sy < 0 || sy > h - rulerSize) continue;
 
-      if (screenY < 0 || screenY > canvasHeight - rulerSize) continue;
-
-      // Afficher -worldY pour que Y augmente vers le haut
-      const displayY = -worldY;
+      // Afficher -wy pour que Y augmente vers le haut
+      const displayY = -wy;
       const isMajor = Math.round(Math.abs(displayY) / spacing) % 5 === 0 || spacing >= 50;
       const tickW = isMajor ? tickLarge : tickSmall;
 
       this.ctx.beginPath();
-      this.ctx.moveTo(rulerSize - tickW, screenY);
-      this.ctx.lineTo(rulerSize, screenY);
+      this.ctx.moveTo(rulerSize - tickW, sy);
+      this.ctx.lineTo(rulerSize, sy);
       this.ctx.stroke();
 
       if (isMajor) {
-        this.ctx.fillText(`${displayY}`, rulerSize - tickW - 2, screenY);
+        this.ctx.fillText(`${displayY}`, rulerSize - tickW - 2, sy);
       }
     }
 
-    // ===== UNITÉ DANS LE COIN =====
+    // ===== UNITÉ =====
     this.ctx.textAlign = "center";
     this.ctx.textBaseline = "middle";
     this.ctx.font = "bold 9px Arial";
     this.ctx.fillStyle = "#888";
-    this.ctx.fillText("mm", rulerSize / 2, canvasHeight - rulerSize / 2);
+    this.ctx.fillText("mm", rulerSize / 2, h - rulerSize / 2);
 
     this.ctx.restore();
   }
