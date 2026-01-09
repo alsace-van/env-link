@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.18 - Points de mesure avec croix de visée
+// VERSION: 3.19 - Plus de graduations intermédiaires sur les règles
 // ============================================
 
 import {
@@ -536,6 +536,7 @@ export class CADRenderer {
 
     const rulerSize = 25;
     const tickSmall = 4;
+    const tickMedium = 7;
     const tickLarge = 10;
 
     // Échelle effective en mm: combien de mm par pixel écran
@@ -574,7 +575,6 @@ export class CADRenderer {
 
     // Config pour les graduations
     ctx.fillStyle = "#333";
-    ctx.font = "9px Arial, sans-serif";
     ctx.strokeStyle = "#666";
     ctx.lineWidth = 1;
 
@@ -598,16 +598,33 @@ export class CADRenderer {
       if (screenX < rulerSize || screenX > w) continue;
 
       const idx = Math.round(Math.abs(xMm) / spacingMm);
+      // Major = tous les 5, ou si spacing >= 50
       const isMajor = idx % 5 === 0 || spacingMm >= 50;
-      const tickH = isMajor ? tickLarge : tickSmall;
+      // Semi-major = tous les autres pairs
+      const isSemiMajor = idx % 2 === 0 && !isMajor;
+      // Minor avec chiffre = tous les impairs si spacing <= 10
+      const isMinorWithLabel = spacingMm <= 10 && idx % 2 !== 0;
+
+      const tickH = isMajor ? tickLarge : isSemiMajor ? tickMedium : tickSmall;
 
       ctx.beginPath();
       ctx.moveTo(screenX, rulerSize);
       ctx.lineTo(screenX, rulerSize - tickH);
       ctx.stroke();
 
+      // Afficher les chiffres
       if (isMajor) {
+        ctx.font = "9px Arial, sans-serif";
+        ctx.fillStyle = "#333";
         ctx.fillText(`${xMm}`, screenX, rulerSize - tickLarge - 1);
+      } else if (isSemiMajor && spacingMm <= 20) {
+        ctx.font = "7px Arial, sans-serif";
+        ctx.fillStyle = "#888";
+        ctx.fillText(`${xMm}`, screenX, rulerSize - tickMedium - 1);
+      } else if (isMinorWithLabel) {
+        ctx.font = "6px Arial, sans-serif";
+        ctx.fillStyle = "#aaa";
+        ctx.fillText(`${xMm}`, screenX, rulerSize - tickSmall - 1);
       }
     }
 
@@ -629,7 +646,10 @@ export class CADRenderer {
 
       const idx = Math.round(Math.abs(yMm) / spacingMm);
       const isMajor = idx % 5 === 0 || spacingMm >= 50;
-      const tickW = isMajor ? tickLarge : tickSmall;
+      const isSemiMajor = idx % 2 === 0 && !isMajor;
+      const isMinorWithLabel = spacingMm <= 10 && idx % 2 !== 0;
+
+      const tickW = isMajor ? tickLarge : isSemiMajor ? tickMedium : tickSmall;
 
       ctx.beginPath();
       ctx.moveTo(rulerSize, screenY);
@@ -637,6 +657,16 @@ export class CADRenderer {
       ctx.stroke();
 
       if (isMajor) {
+        ctx.font = "9px Arial, sans-serif";
+        ctx.fillStyle = "#333";
+        ctx.fillText(`${yMm}`, rulerSize - tickW - 2, screenY);
+      } else if (isSemiMajor && spacingMm <= 20) {
+        ctx.font = "7px Arial, sans-serif";
+        ctx.fillStyle = "#888";
+        ctx.fillText(`${yMm}`, rulerSize - tickW - 2, screenY);
+      } else if (isMinorWithLabel) {
+        ctx.font = "6px Arial, sans-serif";
+        ctx.fillStyle = "#aaa";
         ctx.fillText(`${yMm}`, rulerSize - tickW - 2, screenY);
       }
     }
