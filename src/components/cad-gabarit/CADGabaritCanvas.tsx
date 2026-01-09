@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.72 - Asymétrique uniquement pour chanfrein (congé = arc de cercle)
+// VERSION: 5.73 - Fix détection des arcs (congés) + counterClockwise
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1198,21 +1198,43 @@ export function CADGabaritCanvas({
             // Vérifier si le point est proche du cercle à distance arc.radius
             const distToCenter = distance({ x: worldX, y: worldY }, center);
             if (Math.abs(distToCenter - arc.radius) < tolerance) {
-              // Vérifier si le point est dans la plage angulaire de l'arc
               const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
               const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
-              const pointAngle = Math.atan2(worldY - center.y, worldX - center.x);
 
-              // Normaliser les angles
-              const normalizeAngle = (a: number) => (a + 2 * Math.PI) % (2 * Math.PI);
-              const sa = normalizeAngle(startAngle);
-              const ea = normalizeAngle(endAngle);
-              const pa = normalizeAngle(pointAngle);
+              // Calculer l'angle balayé
+              // Utiliser counterClockwise si défini, sinon choisir le petit arc
+              let sweepAngle: number;
+              if (arc.counterClockwise !== undefined) {
+                sweepAngle = endAngle - startAngle;
+                if (arc.counterClockwise) {
+                  if (sweepAngle < 0) sweepAngle += 2 * Math.PI;
+                } else {
+                  if (sweepAngle > 0) sweepAngle -= 2 * Math.PI;
+                }
+              } else {
+                // Pas de counterClockwise défini: utiliser le petit arc (< 180°)
+                sweepAngle = endAngle - startAngle;
+                // Normaliser entre -π et π
+                while (sweepAngle > Math.PI) sweepAngle -= 2 * Math.PI;
+                while (sweepAngle < -Math.PI) sweepAngle += 2 * Math.PI;
+              }
 
-              // Vérifier si l'angle est dans la plage (gérer le cas où l'arc traverse 0)
-              const inRange = sa <= ea ? pa >= sa && pa <= ea : pa >= sa || pa <= ea;
+              // Échantillonner l'arc
+              const numSamples = 20;
+              let onArc = false;
+              for (let i = 0; i <= numSamples; i++) {
+                const t = i / numSamples;
+                const angle = startAngle + sweepAngle * t;
+                const sampleX = center.x + arc.radius * Math.cos(angle);
+                const sampleY = center.y + arc.radius * Math.sin(angle);
+                const dist = Math.sqrt((worldX - sampleX) ** 2 + (worldY - sampleY) ** 2);
+                if (dist < tolerance) {
+                  onArc = true;
+                  break;
+                }
+              }
 
-              if (inRange) return id;
+              if (onArc) return id;
             }
           }
         }
@@ -1716,6 +1738,10 @@ export function CADGabaritCanvas({
       newSketch.geometries.set(line1Id, updatedLine1);
       newSketch.geometries.set(line2Id, updatedLine2);
 
+      // Déterminer le sens de l'arc (counterClockwise)
+      const cross = u1.x * u2.y - u1.y * u2.x;
+      const counterClockwise = cross > 0;
+
       const arcId = generateId();
       const arc: Arc = {
         id: arcId,
@@ -1725,6 +1751,7 @@ export function CADGabaritCanvas({
         endPoint: tan2Id,
         radius: radius,
         layerId: currentLine1.layerId || "trace",
+        counterClockwise: counterClockwise,
       };
       newSketch.geometries.set(arcId, arc);
 
