@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.63 - Offset avec calcul des intersections aux coins
+// VERSION: 5.64 - Offset direction inversée (preview = résultat)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2256,7 +2256,7 @@ export function CADGabaritCanvas({
       if (!center) return;
 
       const newRadius =
-        offsetDirection === "outside" ? circle.radius + distancePx : Math.max(1, circle.radius - distancePx);
+        offsetDirection === "outside" ? Math.max(1, circle.radius - distancePx) : circle.radius + distancePx;
 
       const newCircle: CircleType = {
         id: generateId(),
@@ -2277,7 +2277,7 @@ export function CADGabaritCanvas({
       const endPt = sketch.points.get(arc.endPoint);
       if (!center || !startPt || !endPt) return;
 
-      const newRadius = offsetDirection === "outside" ? arc.radius + distancePx : Math.max(1, arc.radius - distancePx);
+      const newRadius = offsetDirection === "outside" ? Math.max(1, arc.radius - distancePx) : arc.radius + distancePx;
 
       const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
       const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
@@ -2411,7 +2411,7 @@ export function CADGabaritCanvas({
       orderedSegs.forEach(({ seg, reversed }) => {
         const start = reversed ? seg.p2 : seg.p1;
         const end = reversed ? seg.p1 : seg.p2;
-        const off = offsetLine(start, end, distancePx, offsetDirection);
+        const off = offsetLine(start, end, distancePx, offsetDirection === "outside" ? "inside" : "outside");
         offsetLines.push({ p1: off.p1, p2: off.p2, layerId: seg.layerId });
       });
 
