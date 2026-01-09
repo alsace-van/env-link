@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.64 - Offset direction inversée (preview = résultat)
+// VERSION: 5.65 - Congé/Chanfrein sur tous les coins d'une figure sélectionnée
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1865,8 +1865,58 @@ export function CADGabaritCanvas({
         toast.warning("Sélectionnez 2 lignes ou des points (coins)");
         return;
       }
+    } else if (selectedEntities.size > 2) {
+      // Plus de 2 éléments - chercher tous les coins partagés entre les lignes sélectionnées
+      const selectedLines: Line[] = [];
+      for (const id of selectedIds) {
+        const geo = sketch.geometries.get(id);
+        if (geo && geo.type === "line") {
+          selectedLines.push(geo as Line);
+        }
+      }
+
+      if (selectedLines.length < 2) {
+        toast.warning("Sélectionnez au moins 2 lignes pour créer des congés");
+        return;
+      }
+
+      // Trouver tous les points partagés entre les lignes sélectionnées
+      const pointUsage = new Map<string, string[]>(); // pointId -> [lineIds]
+
+      selectedLines.forEach((line) => {
+        [line.p1, line.p2].forEach((ptId) => {
+          if (!pointUsage.has(ptId)) pointUsage.set(ptId, []);
+          pointUsage.get(ptId)!.push(line.id);
+        });
+      });
+
+      // Les coins sont les points utilisés par exactement 2 lignes sélectionnées
+      const cornerPointIds: string[] = [];
+      pointUsage.forEach((lineIds, pointId) => {
+        if (lineIds.length === 2) {
+          cornerPointIds.push(pointId);
+        }
+      });
+
+      if (cornerPointIds.length === 0) {
+        toast.warning("Aucun coin trouvé entre les lignes sélectionnées");
+        return;
+      }
+
+      // Calculer les paramètres pour chaque coin
+      for (const pointId of cornerPointIds) {
+        const lineIds = pointUsage.get(pointId)!;
+        const params = calculateCornerParams(lineIds[0], lineIds[1]);
+        if (params) {
+          corners.push({
+            pointId,
+            maxRadius: params.maxRadius,
+            angleDeg: params.angleDeg,
+          });
+        }
+      }
     } else {
-      toast.warning("Sélectionnez 2 lignes ou des points (coins)");
+      toast.warning("Sélectionnez 2 lignes, des points (coins), ou une figure complète");
       return;
     }
 
@@ -1956,8 +2006,58 @@ export function CADGabaritCanvas({
         toast.warning("Sélectionnez 2 lignes ou des points (coins)");
         return;
       }
+    } else if (selectedEntities.size > 2) {
+      // Plus de 2 éléments - chercher tous les coins partagés entre les lignes sélectionnées
+      const selectedLines: Line[] = [];
+      for (const id of selectedIds) {
+        const geo = sketch.geometries.get(id);
+        if (geo && geo.type === "line") {
+          selectedLines.push(geo as Line);
+        }
+      }
+
+      if (selectedLines.length < 2) {
+        toast.warning("Sélectionnez au moins 2 lignes pour créer des chanfreins");
+        return;
+      }
+
+      // Trouver tous les points partagés entre les lignes sélectionnées
+      const pointUsage = new Map<string, string[]>(); // pointId -> [lineIds]
+
+      selectedLines.forEach((line) => {
+        [line.p1, line.p2].forEach((ptId) => {
+          if (!pointUsage.has(ptId)) pointUsage.set(ptId, []);
+          pointUsage.get(ptId)!.push(line.id);
+        });
+      });
+
+      // Les coins sont les points utilisés par exactement 2 lignes sélectionnées
+      const cornerPointIds: string[] = [];
+      pointUsage.forEach((lineIds, pointId) => {
+        if (lineIds.length === 2) {
+          cornerPointIds.push(pointId);
+        }
+      });
+
+      if (cornerPointIds.length === 0) {
+        toast.warning("Aucun coin trouvé entre les lignes sélectionnées");
+        return;
+      }
+
+      // Calculer les paramètres pour chaque coin
+      for (const pointId of cornerPointIds) {
+        const lineIds = pointUsage.get(pointId)!;
+        const params = calculateCornerParams(lineIds[0], lineIds[1]);
+        if (params) {
+          corners.push({
+            pointId,
+            maxDistance: params.maxDistance,
+            angleDeg: params.angleDeg,
+          });
+        }
+      }
     } else {
-      toast.warning("Sélectionnez 2 lignes ou des points (coins)");
+      toast.warning("Sélectionnez 2 lignes, des points (coins), ou une figure complète");
       return;
     }
 
@@ -6043,7 +6143,7 @@ export function CADGabaritCanvas({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Congé - Sélectionnez 2 lignes ou 1 coin</p>
+                <p>Congé - Sélectionnez 2 lignes, 1 coin, ou une figure entière</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -6085,7 +6185,7 @@ export function CADGabaritCanvas({
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Chanfrein - Sélectionnez 2 lignes ou 1 coin</p>
+                <p>Chanfrein - Sélectionnez 2 lignes, 1 coin, ou une figure entière</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
