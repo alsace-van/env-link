@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.57 - Drag de sélection (déplacement de formes entières)
+// VERSION: 5.58 - Fix drag sélection (flag potentialSelectionDrag)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -202,6 +202,7 @@ export function CADGabaritCanvas({
   // Drag de sélection (déplacement de formes entières)
   const [isDraggingSelection, setIsDraggingSelection] = useState(false);
   const [selectionDragStart, setSelectionDragStart] = useState({ x: 0, y: 0 });
+  const [potentialSelectionDrag, setPotentialSelectionDrag] = useState(false);
 
   // Sélection rectangulaire (box selection)
   const [selectionBox, setSelectionBox] = useState<{
@@ -2892,6 +2893,7 @@ export function CADGabaritCanvas({
             if (selectedEntities.has(entityId) && selectedEntities.size > 0) {
               // Préparer le drag de toute la sélection
               setSelectionDragStart(worldPos);
+              setPotentialSelectionDrag(true);
               // Le drag commencera vraiment quand on bougera la souris
               return;
             }
@@ -2906,15 +2908,16 @@ export function CADGabaritCanvas({
               }
               setSelectedEntities(newSelection);
             } else {
+              // Nouvelle sélection - pas de drag immédiat
               setSelectedEntities(new Set([entityId]));
-              // Préparer le drag de cette entité
-              setSelectionDragStart(worldPos);
+              setPotentialSelectionDrag(false);
             }
           } else {
             // Clic dans le vide : commencer une sélection rectangulaire
             if (!e.shiftKey) {
               setSelectedEntities(new Set());
             }
+            setPotentialSelectionDrag(false);
             setSelectionBox({ start: worldPos, end: worldPos });
           }
           break;
@@ -3468,7 +3471,14 @@ export function CADGabaritCanvas({
       }
 
       // Drag de sélection (déplacement de formes entières)
-      if (activeTool === "select" && selectedEntities.size > 0 && e.buttons === 1 && !selectionBox) {
+      // Ne démarre que si on a cliqué sur une entité déjà sélectionnée (potentialSelectionDrag)
+      if (
+        activeTool === "select" &&
+        selectedEntities.size > 0 &&
+        e.buttons === 1 &&
+        !selectionBox &&
+        (potentialSelectionDrag || isDraggingSelection)
+      ) {
         const dist = Math.sqrt((worldPos.x - selectionDragStart.x) ** 2 + (worldPos.y - selectionDragStart.y) ** 2);
 
         // Démarrer le drag si on a bougé suffisamment
@@ -3621,6 +3631,7 @@ export function CADGabaritCanvas({
       isPanning,
       isDragging,
       isDraggingSelection,
+      potentialSelectionDrag,
       panStart,
       dragTarget,
       dragStart,
@@ -3797,7 +3808,13 @@ export function CADGabaritCanvas({
         addToHistory(sketch);
         solveSketch(sketch);
         setIsDraggingSelection(false);
+        setPotentialSelectionDrag(false);
         return;
+      }
+
+      // Reset du flag potentiel drag même si on n'a pas bougé
+      if (potentialSelectionDrag) {
+        setPotentialSelectionDrag(false);
       }
 
       // Fin du drag - sauvegarder dans l'historique
@@ -3815,6 +3832,7 @@ export function CADGabaritCanvas({
       isPanning,
       isDragging,
       isDraggingSelection,
+      potentialSelectionDrag,
       dragTarget,
       sketch,
       addToHistory,
