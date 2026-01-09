@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.21 - Fix surbrillance formes fermées (pas de chevauchement)
+// VERSION: 3.22 - Support direction d'arc (counterClockwise)
 // ============================================
 
 import {
@@ -797,17 +797,17 @@ export class CADRenderer {
     const startAngle = angle(center, startPt);
     let endAngle = angle(center, endPt);
 
-    // Déterminer si on doit dessiner dans le sens horaire ou antihoraire
-    // On veut toujours dessiner le petit arc (< 180°)
-    let deltaAngle = endAngle - startAngle;
-
-    // Normaliser deltaAngle entre -PI et PI
-    while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
-    while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
-
-    // Si deltaAngle > 0, on dessine dans le sens antihoraire (par défaut)
-    // Si deltaAngle < 0, on dessine dans le sens horaire
-    const counterClockwise = deltaAngle < 0;
+    // Utiliser la direction stockée si elle est définie
+    let counterClockwise: boolean;
+    if (arc.counterClockwise !== undefined) {
+      counterClockwise = arc.counterClockwise;
+    } else {
+      // Comportement par défaut : dessiner le petit arc (< 180°)
+      let deltaAngle = endAngle - startAngle;
+      while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
+      while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
+      counterClockwise = deltaAngle < 0;
+    }
 
     this.ctx.beginPath();
     this.ctx.arc(center.x, center.y, arc.radius, startAngle, endAngle, counterClockwise);
@@ -1908,11 +1908,19 @@ export class CADRenderer {
             const startAngle = Math.atan2(segment.startPt.y - segment.center.y, segment.startPt.x - segment.center.x);
             const endAngle = Math.atan2(segment.endPt.y - segment.center.y, segment.endPt.x - segment.center.x);
 
-            // Déterminer le sens (toujours le petit arc)
-            let deltaAngle = endAngle - startAngle;
-            while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
-            while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
-            const counterClockwise = deltaAngle < 0;
+            // Utiliser la direction stockée si elle est définie
+            let counterClockwise: boolean;
+            if (segment.arc.counterClockwise !== undefined) {
+              // Si on a inversé les points (parcours inverse), inverser aussi la direction
+              const isReversed = segment.startPt !== sketch.points.get(segment.arc.startPoint);
+              counterClockwise = isReversed ? !segment.arc.counterClockwise : segment.arc.counterClockwise;
+            } else {
+              // Comportement par défaut : dessiner le petit arc
+              let deltaAngle = endAngle - startAngle;
+              while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
+              while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
+              counterClockwise = deltaAngle < 0;
+            }
 
             this.ctx.arc(
               segment.center.x,

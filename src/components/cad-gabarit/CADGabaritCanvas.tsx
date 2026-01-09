@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.55 - Cercle coupé en arcs aux intersections
+// VERSION: 5.56 - Fix cercle coupé en arcs avec direction correcte
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2215,6 +2215,7 @@ export function CADGabaritCanvas({
       sketchToModify.geometries.delete(circleId);
 
       // Créer des arcs entre chaque paire de points consécutifs
+      // Les arcs vont dans le sens des angles croissants (sens horaire dans canvas = counterClockwise: false)
       for (let i = 0; i < allIntersectionPoints.length; i++) {
         const startPt = allIntersectionPoints[i];
         const endPt = allIntersectionPoints[(i + 1) % allIntersectionPoints.length];
@@ -2229,6 +2230,7 @@ export function CADGabaritCanvas({
           endPoint: endPt.pointId,
           radius: circleRadius,
           layerId: layerId,
+          counterClockwise: false, // Sens horaire = angles croissants
         };
         sketchToModify.geometries.set(arc.id, arc);
       }

@@ -37,6 +37,7 @@ export interface Arc {
   endPoint: string;
   radius: number;
   layerId?: string;
+  counterClockwise?: boolean; // Si true, dessiner dans le sens anti-horaire (grand arc si nécessaire)
 }
 
 export interface Rectangle {
