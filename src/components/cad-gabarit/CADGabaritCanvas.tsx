@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.47 - Fix conversion px/mm dans outil mesure et calibration
+// VERSION: 5.48 - Règles affichent en mm (pas en px)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -429,6 +429,8 @@ export function CADGabaritCanvas({
       measurements: measurements,
       // measureScale en mm/px pour le renderer
       measureScale: calibrationData.scale || 1 / sketch.scaleFactor,
+      // scaleFactor en px/mm pour les règles
+      scaleFactor: sketch.scaleFactor,
     });
 
     // Dessiner le rectangle de sélection (après le render du sketch)
