@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.54 - Intersection automatique cercle-segments
+// VERSION: 5.55 - Cercle coupé en arcs aux intersections
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2107,12 +2107,16 @@ export function CADGabaritCanvas({
   // Créer les intersections entre un cercle et tous les segments existants
   const createCircleIntersections = useCallback(
     (
+      circleId: string,
       circleCenter: { x: number; y: number },
+      circleCenterId: string,
       circleRadius: number,
+      layerId: string | undefined,
       sketchToModify: { points: Map<string, Point>; geometries: Map<string, Geometry> },
     ): void => {
-      // Collecter toutes les intersections
-      const intersections: Array<{ lineId: string; points: Array<{ x: number; y: number }> }> = [];
+      // Collecter toutes les intersections avec les segments
+      const allIntersectionPoints: Array<{ x: number; y: number; angle: number; pointId?: string }> = [];
+      const lineIntersections: Array<{ lineId: string; points: Array<{ x: number; y: number }> }> = [];
 
       sketchToModify.geometries.forEach((geo, lineId) => {
         if (geo.type !== "line") return;
@@ -2124,13 +2128,20 @@ export function CADGabaritCanvas({
 
         const pts = circleSegmentIntersection(circleCenter, circleRadius, p1, p2);
         if (pts.length > 0) {
-          intersections.push({ lineId, points: pts });
+          lineIntersections.push({ lineId, points: pts });
+          // Ajouter à la liste globale pour couper le cercle
+          for (const pt of pts) {
+            const angle = Math.atan2(pt.y - circleCenter.y, pt.x - circleCenter.x);
+            allIntersectionPoints.push({ ...pt, angle });
+          }
         }
       });
 
-      // Pour chaque intersection, couper le segment
-      for (const { lineId, points } of intersections) {
-        // Trier les points par distance depuis p1 du segment
+      // Si pas d'intersection, ne rien faire
+      if (allIntersectionPoints.length === 0) return;
+
+      // 1. Couper les segments
+      for (const { lineId, points } of lineIntersections) {
         const line = sketchToModify.geometries.get(lineId) as Line;
         if (!line) continue;
 
@@ -2143,17 +2154,32 @@ export function CADGabaritCanvas({
           return distA - distB;
         });
 
-        // Créer les points d'intersection et couper le segment
         let currentLineId = lineId;
         for (const pt of sortedPoints) {
           const currentLine = sketchToModify.geometries.get(currentLineId) as Line;
           if (!currentLine) continue;
 
-          // Créer le point d'intersection
-          const intersectPoint: Point = { id: generateId(), x: pt.x, y: pt.y };
-          sketchToModify.points.set(intersectPoint.id, intersectPoint);
+          // Chercher si ce point existe déjà
+          let intersectPoint: Point | undefined;
+          for (const ip of allIntersectionPoints) {
+            if (Math.abs(ip.x - pt.x) < 0.01 && Math.abs(ip.y - pt.y) < 0.01 && ip.pointId) {
+              intersectPoint = sketchToModify.points.get(ip.pointId);
+              break;
+            }
+          }
 
-          // Créer la deuxième partie du segment
+          if (!intersectPoint) {
+            intersectPoint = { id: generateId(), x: pt.x, y: pt.y };
+            sketchToModify.points.set(intersectPoint.id, intersectPoint);
+            // Mettre à jour le pointId dans allIntersectionPoints
+            for (const ip of allIntersectionPoints) {
+              if (Math.abs(ip.x - pt.x) < 0.01 && Math.abs(ip.y - pt.y) < 0.01) {
+                ip.pointId = intersectPoint.id;
+                break;
+              }
+            }
+          }
+
           const newLine: Line = {
             id: generateId(),
             type: "line",
@@ -2163,15 +2189,48 @@ export function CADGabaritCanvas({
           };
           sketchToModify.geometries.set(newLine.id, newLine);
 
-          // Modifier le segment existant pour finir au point d'intersection
           sketchToModify.geometries.set(currentLineId, {
             ...currentLine,
             p2: intersectPoint.id,
           });
 
-          // Le prochain point devra couper le nouveau segment
           currentLineId = newLine.id;
         }
+      }
+
+      // 2. Couper le cercle en arcs
+      // S'assurer que tous les points d'intersection ont un pointId
+      for (const ip of allIntersectionPoints) {
+        if (!ip.pointId) {
+          const pt: Point = { id: generateId(), x: ip.x, y: ip.y };
+          sketchToModify.points.set(pt.id, pt);
+          ip.pointId = pt.id;
+        }
+      }
+
+      // Trier les points par angle
+      allIntersectionPoints.sort((a, b) => a.angle - b.angle);
+
+      // Supprimer le cercle original
+      sketchToModify.geometries.delete(circleId);
+
+      // Créer des arcs entre chaque paire de points consécutifs
+      for (let i = 0; i < allIntersectionPoints.length; i++) {
+        const startPt = allIntersectionPoints[i];
+        const endPt = allIntersectionPoints[(i + 1) % allIntersectionPoints.length];
+
+        if (!startPt.pointId || !endPt.pointId) continue;
+
+        const arc: Arc = {
+          id: generateId(),
+          type: "arc",
+          center: circleCenterId,
+          startPoint: startPt.pointId,
+          endPoint: endPt.pointId,
+          radius: circleRadius,
+          layerId: layerId,
+        };
+        sketchToModify.geometries.set(arc.id, arc);
       }
     },
     [circleSegmentIntersection],
@@ -2974,8 +3033,8 @@ export function CADGabaritCanvas({
             };
             newSketch.geometries.set(circle.id, circle);
 
-            // Créer les intersections avec les segments existants
-            createCircleIntersections(center, radius, newSketch);
+            // Créer les intersections avec les segments existants (coupe le cercle en arcs si nécessaire)
+            createCircleIntersections(circle.id, center, center.id, radius, sketch.activeLayerId, newSketch);
 
             setSketch(newSketch);
             solveSketch(newSketch);
