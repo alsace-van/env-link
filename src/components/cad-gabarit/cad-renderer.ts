@@ -130,11 +130,20 @@ export class CADRenderer {
       measureScale = 1,
     } = options;
 
-    // Clear
+    const rulerSize = 30;
+    
+    // Clear - fond complet
     this.ctx.fillStyle = this.styles.backgroundColor;
     this.ctx.fillRect(0, 0, this.viewport.width, this.viewport.height);
 
     this.ctx.save();
+    
+    // Clip: zone de dessin (hors règles)
+    // Règle gauche: 0 à rulerSize en X
+    // Règle bas: (h - rulerSize) à h en Y
+    this.ctx.beginPath();
+    this.ctx.rect(rulerSize, 0, this.viewport.width - rulerSize, this.viewport.height - rulerSize);
+    this.ctx.clip();
 
     // Apply viewport transform
     // offsetX, offsetY = position écran de l'origine monde (0,0)
@@ -524,24 +533,24 @@ export class CADRenderer {
 
     // ===== FOND DES RÈGLES =====
     ctx.fillStyle = "#f0f0f0";
-    // Règle du haut (horizontale) - car Y=0 est en bas, on affiche en haut
-    ctx.fillRect(rulerSize, 0, w - rulerSize, rulerSize);
-    // Règle de gauche (verticale)
-    ctx.fillRect(0, rulerSize, rulerSize, h - rulerSize);
-    // Coin supérieur gauche
+    // Règle du bas (horizontale) - X
+    ctx.fillRect(rulerSize, h - rulerSize, w - rulerSize, rulerSize);
+    // Règle de gauche (verticale) - Y
+    ctx.fillRect(0, 0, rulerSize, h - rulerSize);
+    // Coin inférieur gauche (origine)
     ctx.fillStyle = "#e0e0e0";
-    ctx.fillRect(0, 0, rulerSize, rulerSize);
+    ctx.fillRect(0, h - rulerSize, rulerSize, rulerSize);
 
     // Bordures
     ctx.strokeStyle = "#bbb";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    // Bordure sous la règle horizontale (haut)
-    ctx.moveTo(rulerSize, rulerSize);
-    ctx.lineTo(w, rulerSize);
+    // Bordure au-dessus de la règle horizontale (bas)
+    ctx.moveTo(rulerSize, h - rulerSize);
+    ctx.lineTo(w, h - rulerSize);
     // Bordure à droite de la règle verticale (gauche)
-    ctx.moveTo(rulerSize, rulerSize);
-    ctx.lineTo(rulerSize, h);
+    ctx.moveTo(rulerSize, 0);
+    ctx.lineTo(rulerSize, h - rulerSize);
     ctx.stroke();
 
     // Config pour les graduations
@@ -550,15 +559,14 @@ export class CADRenderer {
     ctx.strokeStyle = "#666";
     ctx.lineWidth = 1;
 
-    // ===== RÈGLE HORIZONTALE (HAUT) - Axe X =====
-    // Avec le système Y inversé (Y croissant vers le haut), la règle X est en haut
+    // ===== RÈGLE HORIZONTALE (BAS) - Axe X =====
     const leftWorld = -this.viewport.offsetX / this.viewport.scale;
     const rightWorld = (w - this.viewport.offsetX) / this.viewport.scale;
     const startX = Math.floor(leftWorld / spacing) * spacing;
     const endX = Math.ceil(rightWorld / spacing) * spacing;
 
     ctx.textAlign = "center";
-    ctx.textBaseline = "bottom";
+    ctx.textBaseline = "top";
 
     for (let wx = startX; wx <= endX; wx += spacing) {
       const sx = wx * this.viewport.scale + this.viewport.offsetX;
@@ -569,12 +577,12 @@ export class CADRenderer {
       const tickH = isMajor ? tickLarge : tickSmall;
 
       ctx.beginPath();
-      ctx.moveTo(sx, rulerSize);
-      ctx.lineTo(sx, rulerSize - tickH);
+      ctx.moveTo(sx, h - rulerSize);
+      ctx.lineTo(sx, h - rulerSize + tickH);
       ctx.stroke();
 
       if (isMajor) {
-        ctx.fillText(`${wx}`, sx, rulerSize - tickLarge - 1);
+        ctx.fillText(`${wx}`, sx, h - rulerSize + tickLarge + 2);
       }
     }
 
@@ -582,9 +590,9 @@ export class CADRenderer {
     // offsetY est la position Y écran de l'origine monde (0,0)
     // Un point monde (0, wy) a position écran: sy = offsetY - wy * scale
     // (car Y monde croît vers le haut, Y écran vers le bas)
-    // Y visible: de (offsetY - h) / scale à offsetY / scale
-    const minYworld = (this.viewport.offsetY - h) / this.viewport.scale;
-    const maxYworld = (this.viewport.offsetY - rulerSize) / this.viewport.scale;
+    // Plage Y visible (en tenant compte de la règle du bas)
+    const minYworld = (this.viewport.offsetY - (h - rulerSize)) / this.viewport.scale;
+    const maxYworld = this.viewport.offsetY / this.viewport.scale;
     const startY = Math.floor(minYworld / spacing) * spacing;
     const endY = Math.ceil(maxYworld / spacing) * spacing;
 
@@ -594,7 +602,7 @@ export class CADRenderer {
     for (let wy = startY; wy <= endY; wy += spacing) {
       // Position écran: Y monde croît vers le haut
       const sy = this.viewport.offsetY - wy * this.viewport.scale;
-      if (sy < rulerSize || sy > h) continue;
+      if (sy < 0 || sy > h - rulerSize) continue;
 
       const idx = Math.round(Math.abs(wy) / spacing);
       const isMajor = idx % 5 === 0 || spacing >= 50;
@@ -610,12 +618,12 @@ export class CADRenderer {
       }
     }
 
-    // ===== UNITÉ DANS LE COIN =====
+    // ===== UNITÉ DANS LE COIN INFÉRIEUR GAUCHE =====
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.font = "bold 9px Arial, sans-serif";
     ctx.fillStyle = "#666";
-    ctx.fillText("mm", rulerSize / 2, rulerSize / 2);
+    ctx.fillText("mm", rulerSize / 2, h - rulerSize / 2);
 
     ctx.restore();
   }
