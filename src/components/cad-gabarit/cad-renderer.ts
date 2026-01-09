@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.22 - Support direction d'arc (counterClockwise)
+// VERSION: 3.23 - Règles agrandies, texte plus lisible, rotation 90° règle verticale
 // ============================================
 
 import {
@@ -136,7 +136,7 @@ export class CADRenderer {
     // Stocker scaleFactor pour drawRulers
     this.currentScaleFactor = scaleFactor;
 
-    const rulerSize = 25;
+    const rulerSize = 32;
 
     // Clear - fond complet
     this.ctx.fillStyle = this.styles.backgroundColor;
@@ -458,7 +458,7 @@ export class CADRenderer {
     }
 
     // Calculer les limites visibles en coordonnées monde
-    const rulerSize = 25;
+    const rulerSize = 32;
     const left = (rulerSize - this.viewport.offsetX) / this.viewport.scale;
     const right = (this.viewport.width - this.viewport.offsetX) / this.viewport.scale;
     const top = (rulerSize - this.viewport.offsetY) / this.viewport.scale;
@@ -537,10 +537,10 @@ export class CADRenderer {
     ctx.save();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
 
-    const rulerSize = 25;
-    const tickSmall = 4;
-    const tickMedium = 7;
-    const tickLarge = 10;
+    const rulerSize = 32;
+    const tickSmall = 5;
+    const tickMedium = 9;
+    const tickLarge = 13;
 
     // Échelle effective en mm: combien de mm par pixel écran
     // viewport.scale = zoom (px écran par px monde)
@@ -617,16 +617,16 @@ export class CADRenderer {
 
       // Afficher les chiffres
       if (isMajor) {
-        ctx.font = "9px Arial, sans-serif";
+        ctx.font = "11px Arial, sans-serif";
         ctx.fillStyle = "#333";
-        ctx.fillText(`${xMm}`, screenX, rulerSize - tickLarge - 1);
+        ctx.fillText(`${xMm}`, screenX, rulerSize - tickLarge - 2);
       } else if (isSemiMajor && spacingMm <= 20) {
-        ctx.font = "7px Arial, sans-serif";
-        ctx.fillStyle = "#888";
+        ctx.font = "9px Arial, sans-serif";
+        ctx.fillStyle = "#666";
         ctx.fillText(`${xMm}`, screenX, rulerSize - tickMedium - 1);
       } else if (isMinorWithLabel) {
-        ctx.font = "6px Arial, sans-serif";
-        ctx.fillStyle = "#aaa";
+        ctx.font = "8px Arial, sans-serif";
+        ctx.fillStyle = "#999";
         ctx.fillText(`${xMm}`, screenX, rulerSize - tickSmall - 1);
       }
     }
@@ -639,9 +639,7 @@ export class CADRenderer {
     const startYmm = Math.floor(topMm / spacingMm) * spacingMm;
     const endYmm = Math.ceil(bottomMm / spacingMm) * spacingMm;
 
-    ctx.textAlign = "right";
-    ctx.textBaseline = "middle";
-
+    // Pour la règle verticale, on tourne le texte à 90° pour éviter le rognage
     for (let yMm = startYmm; yMm <= endYmm; yMm += spacingMm) {
       const worldPx = yMm * sf;
       const screenY = worldPx * this.viewport.scale + this.viewport.offsetY;
@@ -659,25 +657,33 @@ export class CADRenderer {
       ctx.lineTo(rulerSize - tickW, screenY);
       ctx.stroke();
 
+      // Texte tourné à 90° pour les valeurs
+      ctx.save();
+      ctx.translate(rulerSize - tickW - 3, screenY);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+
       if (isMajor) {
-        ctx.font = "9px Arial, sans-serif";
+        ctx.font = "11px Arial, sans-serif";
         ctx.fillStyle = "#333";
-        ctx.fillText(`${yMm}`, rulerSize - tickW - 2, screenY);
+        ctx.fillText(`${yMm}`, 0, 0);
       } else if (isSemiMajor && spacingMm <= 20) {
-        ctx.font = "7px Arial, sans-serif";
-        ctx.fillStyle = "#888";
-        ctx.fillText(`${yMm}`, rulerSize - tickW - 2, screenY);
+        ctx.font = "9px Arial, sans-serif";
+        ctx.fillStyle = "#666";
+        ctx.fillText(`${yMm}`, 0, 0);
       } else if (isMinorWithLabel) {
-        ctx.font = "6px Arial, sans-serif";
-        ctx.fillStyle = "#aaa";
-        ctx.fillText(`${yMm}`, rulerSize - tickW - 2, screenY);
+        ctx.font = "8px Arial, sans-serif";
+        ctx.fillStyle = "#999";
+        ctx.fillText(`${yMm}`, 0, 0);
       }
+      ctx.restore();
     }
 
     // ===== UNITÉ DANS LE COIN =====
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = "bold 8px Arial, sans-serif";
+    ctx.font = "bold 10px Arial, sans-serif";
     ctx.fillStyle = "#666";
     ctx.fillText("mm", rulerSize / 2, rulerSize / 2);
 
