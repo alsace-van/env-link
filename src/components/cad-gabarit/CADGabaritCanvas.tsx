@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.44 - Fix calcul centre congé: choix via distance aux tangentes
+// VERSION: 5.45 - Sélection par boîte inclut les arcs (congés)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -708,6 +708,78 @@ export function CADGabaritCanvas({
       const distanceSquared = dx * dx + dy * dy;
 
       return distanceSquared <= radius * radius;
+    },
+    [],
+  );
+
+  // Vérifier si un arc intersecte une boîte de sélection
+  const arcIntersectsBox = useCallback(
+    (
+      center: Point,
+      radius: number,
+      startPt: Point,
+      endPt: Point,
+      minX: number,
+      minY: number,
+      maxX: number,
+      maxY: number,
+    ): boolean => {
+      // Calculer les angles de l'arc
+      const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
+      const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
+
+      // Normaliser les angles
+      const normalizeAngle = (a: number) => {
+        while (a < 0) a += 2 * Math.PI;
+        while (a >= 2 * Math.PI) a -= 2 * Math.PI;
+        return a;
+      };
+
+      const start = normalizeAngle(startAngle);
+      const end = normalizeAngle(endAngle);
+
+      // Fonction pour vérifier si un angle est dans l'arc
+      const angleInArc = (angle: number) => {
+        const a = normalizeAngle(angle);
+        if (start <= end) {
+          return a >= start && a <= end;
+        } else {
+          return a >= start || a <= end;
+        }
+      };
+
+      // Vérifier les 4 points cardinaux de l'arc (si dans l'arc)
+      const cardinalPoints = [
+        { angle: 0, x: center.x + radius, y: center.y }, // Droite
+        { angle: Math.PI / 2, x: center.x, y: center.y + radius }, // Bas
+        { angle: Math.PI, x: center.x - radius, y: center.y }, // Gauche
+        { angle: (3 * Math.PI) / 2, x: center.x, y: center.y - radius }, // Haut
+      ];
+
+      for (const cp of cardinalPoints) {
+        if (angleInArc(cp.angle)) {
+          if (cp.x >= minX && cp.x <= maxX && cp.y >= minY && cp.y <= maxY) {
+            return true;
+          }
+        }
+      }
+
+      // Vérifier si le centre est proche de la boîte et si l'arc touche un bord
+      const closestX = Math.max(minX, Math.min(center.x, maxX));
+      const closestY = Math.max(minY, Math.min(center.y, maxY));
+      const dx = center.x - closestX;
+      const dy = center.y - closestY;
+      const distSq = dx * dx + dy * dy;
+
+      if (distSq <= radius * radius) {
+        // Le cercle complet intersecte la boîte, vérifier si l'angle de l'intersection est dans l'arc
+        const angleToClosest = Math.atan2(closestY - center.y, closestX - center.x);
+        if (angleInArc(angleToClosest)) {
+          return true;
+        }
+      }
+
+      return false;
     },
     [],
   );
@@ -3180,6 +3252,29 @@ export function CADGabaritCanvas({
                 isSelected = p1InBox && p2InBox;
               } else {
                 isSelected = p1InBox || p2InBox;
+              }
+            }
+          } else if (geo.type === "arc") {
+            // Gérer les arcs (congés, chanfreins)
+            const arc = geo as Arc;
+            const center = sketch.points.get(arc.center);
+            const startPt = sketch.points.get(arc.startPoint);
+            const endPt = sketch.points.get(arc.endPoint);
+            if (center && startPt && endPt) {
+              const startInBox = startPt.x >= minX && startPt.x <= maxX && startPt.y >= minY && startPt.y <= maxY;
+              const endInBox = endPt.x >= minX && endPt.x <= maxX && endPt.y >= minY && endPt.y <= maxY;
+              const centerInBox = center.x >= minX && center.x <= maxX && center.y >= minY && center.y <= maxY;
+
+              if (isWindowMode) {
+                // Mode Fenêtre : les deux extrémités doivent être dans la zone
+                isSelected = startInBox && endInBox;
+              } else {
+                // Mode Capture : au moins une extrémité dans la zone ou l'arc touche la zone
+                isSelected =
+                  startInBox ||
+                  endInBox ||
+                  centerInBox ||
+                  arcIntersectsBox(center, arc.radius, startPt, endPt, minX, minY, maxX, maxY);
               }
             }
           }
