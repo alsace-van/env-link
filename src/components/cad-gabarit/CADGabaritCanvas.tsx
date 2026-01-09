@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.38 - Fix initialisation viewport avec origine en bas à gauche
+// VERSION: 5.39 - Debug règles
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
