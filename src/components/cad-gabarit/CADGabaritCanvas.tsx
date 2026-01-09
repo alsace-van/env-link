@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.34 - Règles graduées en mm sur les bords (sans axes rouge/vert)
+// VERSION: 5.36 - Origine (0,0) au coin inférieur gauche, Y vers le haut
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -346,12 +346,14 @@ export function CADGabaritCanvas({
     // Taille initiale
     const rect = container.getBoundingClientRect();
     rendererRef.current.resize(rect.width, rect.height);
+    const rulerSize = 30; // Doit correspondre à la taille dans cad-renderer
     setViewport((v) => ({
       ...v,
       width: rect.width,
       height: rect.height,
-      offsetX: rect.width / 2,
-      offsetY: rect.height / 2,
+      // Origine (0,0) au coin inférieur gauche (après les règles)
+      offsetX: rulerSize,
+      offsetY: rect.height - rulerSize,
     }));
 
     // Charger l'image de fond
@@ -4523,12 +4525,13 @@ export function CADGabaritCanvas({
     toast.success("SVG exporté !");
   }, [sketch, templateId]);
 
-  // Reset view
+  // Reset view - origine en bas à gauche
   const resetView = useCallback(() => {
+    const rulerSize = 30;
     setViewport((v) => ({
       ...v,
-      offsetX: v.width / 2,
-      offsetY: v.height / 2,
+      offsetX: rulerSize,
+      offsetY: v.height - rulerSize,
       scale: 4, // ~1mm = 4px, proche de la taille réelle sur écran
     }));
   }, []);
