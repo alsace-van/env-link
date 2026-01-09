@@ -136,11 +136,19 @@ export class CADRenderer {
     this.ctx.fillStyle = this.styles.backgroundColor;
     this.ctx.fillRect(0, 0, this.viewport.width, this.viewport.height);
 
+    // Dessiner les fonds des règles EN PREMIER
+    this.ctx.fillStyle = "#f0f0f0";
+    // Règle du bas (horizontale)
+    this.ctx.fillRect(rulerSize, this.viewport.height - rulerSize, this.viewport.width - rulerSize, rulerSize);
+    // Règle de gauche (verticale)  
+    this.ctx.fillRect(0, 0, rulerSize, this.viewport.height - rulerSize);
+    // Coin inférieur gauche
+    this.ctx.fillStyle = "#e0e0e0";
+    this.ctx.fillRect(0, this.viewport.height - rulerSize, rulerSize, rulerSize);
+
     this.ctx.save();
     
     // Clip: zone de dessin (hors règles)
-    // Règle gauche: 0 à rulerSize en X
-    // Règle bas: (h - rulerSize) à h en Y
     this.ctx.beginPath();
     this.ctx.rect(rulerSize, 0, this.viewport.width - rulerSize, this.viewport.height - rulerSize);
     this.ctx.clip();
@@ -532,10 +540,11 @@ export class CADRenderer {
     }
 
     // ===== FOND DES RÈGLES =====
-    ctx.fillStyle = "#f0f0f0";
-    // Règle du bas (horizontale) - X
+    // Règle du bas (horizontale) - X - avec couleur distincte pour debug
+    ctx.fillStyle = "#d0d0d0";
     ctx.fillRect(rulerSize, h - rulerSize, w - rulerSize, rulerSize);
     // Règle de gauche (verticale) - Y
+    ctx.fillStyle = "#f0f0f0";
     ctx.fillRect(0, 0, rulerSize, h - rulerSize);
     // Coin inférieur gauche (origine)
     ctx.fillStyle = "#e0e0e0";

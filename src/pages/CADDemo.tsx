@@ -75,60 +75,9 @@ export default function CADDemo() {
         </div>
       </div>
 
-      {/* Info panel */}
-      <div className="p-4">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Snap */}
-            <div className="bg-white rounded-lg p-4 shadow">
-              <h3 className="font-medium mb-2">🧲 Types de Snap</h3>
-              <ul className="text-sm space-y-1 text-muted-foreground">
-                <li>□ Extrémité (carré)</li>
-                <li>△ Milieu (triangle)</li>
-                <li>⊕ Centre (cercle+croix)</li>
-                <li>✕ Intersection (X)</li>
-                <li>◇ Quadrant (losange)</li>
-                <li>○ Plus proche (cercle)</li>
-              </ul>
-            </div>
-
-            {/* Contraintes */}
-            <div className="bg-white rounded-lg p-4 shadow">
-              <h3 className="font-medium mb-2">🔗 Contraintes</h3>
-              <ul className="text-sm space-y-1 text-muted-foreground">
-                <li>─ Horizontal</li>
-                <li>│ Vertical</li>
-                <li>⊥ Perpendiculaire</li>
-                <li>∥ Parallèle</li>
-                <li>= Égal</li>
-                <li>● Coïncident</li>
-                <li>⚓ Fixe</li>
-              </ul>
-            </div>
-
-            {/* Export */}
-            <div className="bg-white rounded-lg p-4 shadow">
-              <h3 className="font-medium mb-2">📤 Export</h3>
-              <ul className="text-sm space-y-1 text-muted-foreground">
-                <li>✅ DXF (Fusion 360, AutoCAD)</li>
-                <li>✅ SVG (Web, Illustrator)</li>
-                <li>✅ JSON (sauvegarde interne)</li>
-              </ul>
-              <p className="text-xs text-muted-foreground mt-2">
-                Le DXF est au format AutoCAD 2000, compatible avec la plupart des logiciels CAO.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Footer */}
-      <div className="p-4 text-center text-xs text-muted-foreground">
-        <p>
-          Module CAD Gabarit v1.0 - Solveur simplifié intégré
-          <br />
-          Pour le solveur complet : <code>npm install @salusoft89/planegcs</code>
-        </p>
+      <div className="p-2 text-center text-xs text-muted-foreground">
+        Module CAD Gabarit v1.0 - Solveur simplifié intégré
       </div>
     </div>
   );
