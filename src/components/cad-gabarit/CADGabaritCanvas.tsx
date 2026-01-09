@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.71 - Fix preview temps réel en mode asymétrique
+// VERSION: 5.72 - Asymétrique uniquement pour chanfrein (congé = arc de cercle)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2176,12 +2176,8 @@ export function CADGabaritCanvas({
 
     const previews: typeof filletPreview = [];
     for (const corner of filletDialog.corners) {
-      // En mode asymétrique, utiliser la moyenne de dist1 et dist2 comme rayon approximatif
-      const effectiveRadius = filletDialog.asymmetric ? (corner.dist1 + corner.dist2) / 2 : corner.radius;
-      const maxRadius = filletDialog.asymmetric ? Math.min(corner.maxDist1, corner.maxDist2) : corner.maxRadius;
-
-      if (effectiveRadius > 0 && effectiveRadius <= maxRadius) {
-        const geom = calculateFilletGeometry(corner.pointId, effectiveRadius);
+      if (corner.radius > 0 && corner.radius <= corner.maxRadius) {
+        const geom = calculateFilletGeometry(corner.pointId, corner.radius);
         if (geom) {
           previews.push({
             type: "arc",
@@ -8156,18 +8152,14 @@ export function CADGabaritCanvas({
       {filletDialog?.open &&
         (() => {
           const cornerCount = filletDialog.corners.length;
-          const allValid = filletDialog.asymmetric
-            ? filletDialog.corners.every(
-                (c) => c.dist1 > 0 && c.dist1 <= c.maxDist1 && c.dist2 > 0 && c.dist2 <= c.maxDist2,
-              )
-            : filletDialog.corners.every((c) => c.radius > 0 && c.radius <= c.maxRadius);
+          const allValid = filletDialog.corners.every((c) => c.radius > 0 && c.radius <= c.maxRadius);
           return (
             <div
               className="fixed bg-white rounded-lg shadow-xl border z-50 select-none"
               style={{
                 left: filletPanelPos.x,
                 top: filletPanelPos.y,
-                width: filletDialog.asymmetric ? 320 : 240,
+                width: 240,
               }}
               onMouseDown={(e) => {
                 if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "BUTTON")
@@ -8208,15 +8200,6 @@ export function CADGabaritCanvas({
                 <label className="flex items-center gap-1 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={filletDialog.asymmetric}
-                    onChange={(e) => setFilletDialog({ ...filletDialog, asymmetric: e.target.checked })}
-                    className="h-3 w-3"
-                  />
-                  Asymétrique
-                </label>
-                <label className="flex items-center gap-1 cursor-pointer">
-                  <input
-                    type="checkbox"
                     checked={filletDialog.addDimension}
                     onChange={(e) => setFilletDialog({ ...filletDialog, addDimension: e.target.checked })}
                     className="h-3 w-3"
@@ -8236,8 +8219,8 @@ export function CADGabaritCanvas({
 
               {/* Contenu */}
               <div className="p-2 space-y-2 max-h-[300px] overflow-y-auto">
-                {/* Rayon global si plusieurs coins et mode symétrique */}
-                {cornerCount > 1 && !filletDialog.asymmetric && (
+                {/* Rayon global si plusieurs coins */}
+                {cornerCount > 1 && (
                   <div className="flex items-center gap-2 pb-2 border-b">
                     <span className="text-xs">Tous:</span>
                     <Input
@@ -8270,12 +8253,7 @@ export function CADGabaritCanvas({
 
                 {/* Liste des coins */}
                 {filletDialog.corners.map((corner, idx) => {
-                  const isValid = filletDialog.asymmetric
-                    ? corner.dist1 > 0 &&
-                      corner.dist1 <= corner.maxDist1 &&
-                      corner.dist2 > 0 &&
-                      corner.dist2 <= corner.maxDist2
-                    : corner.radius > 0 && corner.radius <= corner.maxRadius;
+                  const isValid = corner.radius > 0 && corner.radius <= corner.maxRadius;
                   const isHovered = filletDialog.hoveredCornerIdx === idx;
                   return (
                     <div
@@ -8291,64 +8269,27 @@ export function CADGabaritCanvas({
                           <span className="font-medium">#{idx + 1}</span>
                           <span className="text-gray-500 ml-1">({corner.angleDeg.toFixed(0)}°)</span>
                         </div>
-                        {filletDialog.asymmetric ? (
-                          <div className="flex items-center gap-1 flex-1">
-                            <Input
-                              type="number"
-                              value={corner.dist1}
-                              onChange={(e) => {
-                                const newDist = Math.max(0.1, parseFloat(e.target.value) || 0.1);
-                                const newCorners = [...filletDialog.corners];
-                                newCorners[idx] = { ...corner, dist1: newDist };
-                                setFilletDialog({ ...filletDialog, corners: newCorners });
-                              }}
-                              className={`h-6 w-16 text-xs ${corner.dist1 > corner.maxDist1 ? "border-red-500" : ""}`}
-                              min="0.1"
-                              step="1"
-                              onKeyDown={(e) => e.stopPropagation()}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                            <span className="text-gray-400">×</span>
-                            <Input
-                              type="number"
-                              value={corner.dist2}
-                              onChange={(e) => {
-                                const newDist = Math.max(0.1, parseFloat(e.target.value) || 0.1);
-                                const newCorners = [...filletDialog.corners];
-                                newCorners[idx] = { ...corner, dist2: newDist };
-                                setFilletDialog({ ...filletDialog, corners: newCorners });
-                              }}
-                              className={`h-6 w-16 text-xs ${corner.dist2 > corner.maxDist2 ? "border-red-500" : ""}`}
-                              min="0.1"
-                              step="1"
-                              onKeyDown={(e) => e.stopPropagation()}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                            <span className="text-[10px] text-gray-400">mm</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 flex-1 justify-end">
-                            <Input
-                              type="number"
-                              value={corner.radius}
-                              onChange={(e) => {
-                                const newRadius = Math.max(0.1, parseFloat(e.target.value) || 0.1);
-                                const newCorners = [...filletDialog.corners];
-                                newCorners[idx] = { ...corner, radius: newRadius, dist1: newRadius, dist2: newRadius };
-                                setFilletDialog({ ...filletDialog, corners: newCorners });
-                              }}
-                              className={`h-6 w-14 text-xs ${!isValid ? "border-red-500" : ""}`}
-                              min="0.1"
-                              step="1"
-                              onKeyDown={(e) => {
-                                e.stopPropagation();
-                                if (e.key === "Enter" && allValid) applyFilletFromDialog();
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                            <span className="text-[10px] text-gray-400">/{corner.maxRadius.toFixed(0)}</span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1 flex-1 justify-end">
+                          <Input
+                            type="number"
+                            value={corner.radius}
+                            onChange={(e) => {
+                              const newRadius = Math.max(0.1, parseFloat(e.target.value) || 0.1);
+                              const newCorners = [...filletDialog.corners];
+                              newCorners[idx] = { ...corner, radius: newRadius };
+                              setFilletDialog({ ...filletDialog, corners: newCorners });
+                            }}
+                            className={`h-6 w-14 text-xs ${!isValid ? "border-red-500" : ""}`}
+                            min="0.1"
+                            step="1"
+                            onKeyDown={(e) => {
+                              e.stopPropagation();
+                              if (e.key === "Enter" && allValid) applyFilletFromDialog();
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <span className="text-[10px] text-gray-400">/{corner.maxRadius.toFixed(0)}</span>
+                        </div>
                       </div>
                     </div>
                   );
