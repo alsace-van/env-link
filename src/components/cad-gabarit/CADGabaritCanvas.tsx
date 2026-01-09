@@ -1,10 +1,10 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.51 - Fix dépendances useCallback pour drag mesure
+// VERSION: 5.52 - Indicateur longueur segments sélectionnés
 // ============================================
 
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -401,6 +401,49 @@ export function CADGabaritCanvas({
       resizeObserver.disconnect();
     };
   }, [imageUrl]);
+
+  // Calcul de la longueur totale des segments sélectionnés (en mm)
+  const selectedLength = useMemo(() => {
+    if (selectedEntities.size === 0) return null;
+
+    let totalPx = 0;
+    let count = 0;
+
+    selectedEntities.forEach((entityId) => {
+      const geo = sketch.geometries.get(entityId);
+      if (geo) {
+        if (geo.type === "line") {
+          const line = geo as Line;
+          const p1 = sketch.points.get(line.p1);
+          const p2 = sketch.points.get(line.p2);
+          if (p1 && p2) {
+            totalPx += distance(p1, p2);
+            count++;
+          }
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          const center = sketch.points.get(arc.center);
+          const startPt = sketch.points.get(arc.startPoint);
+          const endPt = sketch.points.get(arc.endPoint);
+          if (center && startPt && endPt) {
+            // Longueur d'arc = rayon * angle
+            const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
+            const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
+            let deltaAngle = endAngle - startAngle;
+            while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
+            while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
+            totalPx += Math.abs(deltaAngle) * arc.radius;
+            count++;
+          }
+        }
+      }
+    });
+
+    if (count === 0) return null;
+
+    const totalMm = totalPx / sketch.scaleFactor;
+    return { mm: totalMm, count };
+  }, [selectedEntities, sketch]);
 
   // Rendu
   const render = useCallback(() => {
@@ -5456,6 +5499,14 @@ export function CADGabaritCanvas({
                 {measurements.length > 0 && (
                   <span className="text-green-600 font-medium ml-1">({measurements.length})</span>
                 )}
+              </div>
+            )}
+
+            {/* Indicateur de longueur des segments sélectionnés - coin supérieur droit */}
+            {selectedLength && (
+              <div className="absolute top-2 right-2 bg-gray-100/90 border border-gray-300 rounded px-2 py-1 text-xs text-gray-600 shadow-sm z-10">
+                <span className="font-medium">{selectedLength.mm.toFixed(1)} mm</span>
+                {selectedLength.count > 1 && <span className="text-gray-400 ml-1">({selectedLength.count})</span>}
               </div>
             )}
 
