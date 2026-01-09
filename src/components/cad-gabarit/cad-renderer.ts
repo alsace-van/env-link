@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.19 - Plus de graduations intermédiaires sur les règles
+// VERSION: 3.20 - Surbrillance des formes fermées
 // ============================================
 
 import {
@@ -181,6 +181,9 @@ export class CADRenderer {
     if (showGrid) {
       this.drawGrid(sketch.scaleFactor);
     }
+
+    // 2.5 Surbrillance des formes fermées
+    this.drawClosedShapes(sketch);
 
     // 3. Geometries (filtrer par visibilité du calque)
     // OPTIMISATION: Batch des lignes non-sélectionnées pour réduire les appels draw
@@ -1685,5 +1688,158 @@ export class CADRenderer {
       this.viewport.width / 2,
       y + barHeight / 2,
     );
+  }
+
+  /**
+   * Dessine une surbrillance pour les formes fermées
+   */
+  private drawClosedShapes(sketch: Sketch): void {
+    // Construire un graphe des connexions point -> géométries
+    const pointToGeos = new Map<string, Array<{ geoId: string; otherPointId: string }>>();
+
+    sketch.geometries.forEach((geo, geoId) => {
+      // Vérifier visibilité du calque
+      const layerId = geo.layerId || "trace";
+      const layer = sketch.layers.get(layerId);
+      if (layer?.visible === false) return;
+
+      let p1Id: string | null = null;
+      let p2Id: string | null = null;
+
+      if (geo.type === "line") {
+        const line = geo as Line;
+        p1Id = line.p1;
+        p2Id = line.p2;
+      } else if (geo.type === "arc") {
+        const arc = geo as Arc;
+        p1Id = arc.startPoint;
+        p2Id = arc.endPoint;
+      }
+
+      if (p1Id && p2Id) {
+        if (!pointToGeos.has(p1Id)) pointToGeos.set(p1Id, []);
+        if (!pointToGeos.has(p2Id)) pointToGeos.set(p2Id, []);
+        pointToGeos.get(p1Id)!.push({ geoId, otherPointId: p2Id });
+        pointToGeos.get(p2Id)!.push({ geoId, otherPointId: p1Id });
+      }
+    });
+
+    // Trouver les cycles fermés
+    const foundCycles: Array<Array<{ geoId: string; pointId: string }>> = [];
+    const usedGeos = new Set<string>();
+
+    // Pour chaque point qui a exactement 2 connexions, essayer de trouver un cycle
+    for (const [startPointId, connections] of pointToGeos) {
+      if (connections.length < 2) continue;
+
+      // DFS pour trouver un cycle
+      const findCycle = (
+        currentPointId: string,
+        visitedGeos: Set<string>,
+        path: Array<{ geoId: string; pointId: string }>,
+      ): Array<{ geoId: string; pointId: string }> | null => {
+        const conns = pointToGeos.get(currentPointId) || [];
+
+        for (const conn of conns) {
+          if (visitedGeos.has(conn.geoId)) continue;
+
+          // Si on revient au point de départ et qu'on a assez de segments
+          if (conn.otherPointId === startPointId && path.length >= 2) {
+            return [...path, { geoId: conn.geoId, pointId: conn.otherPointId }];
+          }
+
+          // Continuer la recherche
+          if (path.length < 50) {
+            // Limite pour éviter les boucles infinies
+            const newVisited = new Set(visitedGeos);
+            newVisited.add(conn.geoId);
+            const result = findCycle(conn.otherPointId, newVisited, [
+              ...path,
+              { geoId: conn.geoId, pointId: conn.otherPointId },
+            ]);
+            if (result) return result;
+          }
+        }
+        return null;
+      };
+
+      // Essayer de trouver un cycle à partir de ce point
+      for (const firstConn of connections) {
+        if (usedGeos.has(firstConn.geoId)) continue;
+
+        const cycle = findCycle(firstConn.otherPointId, new Set([firstConn.geoId]), [
+          { geoId: firstConn.geoId, pointId: firstConn.otherPointId },
+        ]);
+
+        if (cycle) {
+          // Vérifier qu'on n'a pas déjà ce cycle (en comparant les geoIds)
+          const cycleGeoIds = new Set(cycle.map((c) => c.geoId));
+          let isDuplicate = false;
+          for (const existingCycle of foundCycles) {
+            const existingGeoIds = new Set(existingCycle.map((c) => c.geoId));
+            if (cycleGeoIds.size === existingGeoIds.size && [...cycleGeoIds].every((id) => existingGeoIds.has(id))) {
+              isDuplicate = true;
+              break;
+            }
+          }
+
+          if (!isDuplicate) {
+            foundCycles.push(cycle);
+            cycle.forEach((c) => usedGeos.add(c.geoId));
+          }
+        }
+      }
+    }
+
+    // Dessiner les cycles trouvés
+    for (const cycle of foundCycles) {
+      this.ctx.beginPath();
+
+      let firstPoint = true;
+      for (let i = 0; i < cycle.length; i++) {
+        const geo = sketch.geometries.get(cycle[i].geoId);
+        if (!geo) continue;
+
+        if (geo.type === "line") {
+          const line = geo as Line;
+          const p1 = sketch.points.get(line.p1);
+          const p2 = sketch.points.get(line.p2);
+          if (!p1 || !p2) continue;
+
+          if (firstPoint) {
+            this.ctx.moveTo(p1.x, p1.y);
+            firstPoint = false;
+          }
+          this.ctx.lineTo(p2.x, p2.y);
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          const center = sketch.points.get(arc.center);
+          const startPt = sketch.points.get(arc.startPoint);
+          const endPt = sketch.points.get(arc.endPoint);
+          if (!center || !startPt || !endPt) continue;
+
+          const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
+          let endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
+
+          // Déterminer le sens
+          let deltaAngle = endAngle - startAngle;
+          while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
+          while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
+          const counterClockwise = deltaAngle < 0;
+
+          if (firstPoint) {
+            this.ctx.moveTo(startPt.x, startPt.y);
+            firstPoint = false;
+          }
+          this.ctx.arc(center.x, center.y, arc.radius, startAngle, endAngle, counterClockwise);
+        }
+      }
+
+      this.ctx.closePath();
+
+      // Remplissage semi-transparent
+      this.ctx.fillStyle = "rgba(100, 180, 255, 0.15)";
+      this.ctx.fill();
+    }
   }
 }
