@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.66 - Modale Congé/Chanfrein améliorée (liste coins, rayons individuels, surbrillance)
+// VERSION: 5.67 - Panneaux Congé/Chanfrein flottants draggables (comme Offset)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -347,6 +347,9 @@ export function CADGabaritCanvas({
     minMaxRadius: number; // Le plus petit maxRadius parmi tous les coins
     hoveredCornerIdx: number | null; // Index du coin survolé dans la liste
   } | null>(null);
+  const [filletPanelPos, setFilletPanelPos] = useState({ x: 100, y: 100 });
+  const [filletPanelDragging, setFilletPanelDragging] = useState(false);
+  const [filletPanelDragStart, setFilletPanelDragStart] = useState({ x: 0, y: 0 });
 
   // Modale pour chanfrein
   const [chamferDialog, setChamferDialog] = useState<{
@@ -356,6 +359,9 @@ export function CADGabaritCanvas({
     minMaxDistance: number; // Le plus petit maxDistance parmi tous les coins
     hoveredCornerIdx: number | null; // Index du coin survolé dans la liste
   } | null>(null);
+  const [chamferPanelPos, setChamferPanelPos] = useState({ x: 100, y: 150 });
+  const [chamferPanelDragging, setChamferPanelDragging] = useState(false);
+  const [chamferPanelDragStart, setChamferPanelDragStart] = useState({ x: 0, y: 0 });
 
   // Modale pour modifier le rayon d'un arc existant
   const [arcEditDialog, setArcEditDialog] = useState<{
@@ -7331,255 +7337,249 @@ export function CADGabaritCanvas({
         </Dialog>
       )}
 
-      {/* Dialogue Congé */}
-      {filletDialog &&
+      {/* Panneau Congé flottant draggable */}
+      {filletDialog?.open &&
         (() => {
           const cornerCount = filletDialog.corners.length;
           const allValid = filletDialog.corners.every((c) => c.radius > 0 && c.radius <= c.maxRadius);
           return (
-            <Dialog open={filletDialog.open} onOpenChange={() => setFilletDialog(null)}>
-              <DialogContent className="sm:max-w-[380px]">
-                <DialogHeader>
-                  <DialogTitle>Congé {cornerCount > 1 ? `(${cornerCount} coins)` : ""}</DialogTitle>
-                  <DialogDescription>
-                    {cornerCount === 1
-                      ? `Angle: ${filletDialog.corners[0].angleDeg.toFixed(1)}° • Max: ${filletDialog.corners[0].maxRadius.toFixed(1)}mm`
-                      : "Définir le rayon pour chaque coin"}
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="py-2 space-y-3">
-                  {/* Rayon global si plusieurs coins */}
-                  {cornerCount > 1 && (
-                    <div className="flex items-center gap-2 pb-2 border-b">
-                      <Label className="text-xs whitespace-nowrap">Tous:</Label>
+            <div
+              className="fixed bg-white rounded-lg shadow-xl border z-50 select-none"
+              style={{
+                left: filletPanelPos.x,
+                top: filletPanelPos.y,
+                width: 240,
+              }}
+              onMouseDown={(e) => {
+                if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "BUTTON")
+                  return;
+                setFilletPanelDragging(true);
+                setFilletPanelDragStart({ x: e.clientX - filletPanelPos.x, y: e.clientY - filletPanelPos.y });
+              }}
+              onMouseMove={(e) => {
+                if (filletPanelDragging) {
+                  setFilletPanelPos({
+                    x: e.clientX - filletPanelDragStart.x,
+                    y: e.clientY - filletPanelDragStart.y,
+                  });
+                }
+              }}
+              onMouseUp={() => setFilletPanelDragging(false)}
+              onMouseLeave={() => setFilletPanelDragging(false)}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-3 py-2 bg-blue-50 rounded-t-lg cursor-move border-b">
+                <span className="text-sm font-medium">Congé {cornerCount > 1 ? `(${cornerCount})` : ""}</span>
+                <button className="text-gray-500 hover:text-gray-700" onClick={() => setFilletDialog(null)}>
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Contenu */}
+              <div className="p-2 space-y-2 max-h-[300px] overflow-y-auto">
+                {/* Rayon global si plusieurs coins */}
+                {cornerCount > 1 && (
+                  <div className="flex items-center gap-2 pb-2 border-b">
+                    <span className="text-xs">Tous:</span>
+                    <Input
+                      type="number"
+                      value={filletDialog.globalRadius}
+                      onChange={(e) => {
+                        const newRadius = Math.max(0.1, parseFloat(e.target.value) || 0.1);
+                        setFilletDialog({
+                          ...filletDialog,
+                          globalRadius: newRadius,
+                          corners: filletDialog.corners.map((c) => ({
+                            ...c,
+                            radius: Math.min(newRadius, c.maxRadius),
+                          })),
+                        });
+                      }}
+                      className="h-7 w-16 text-xs"
+                      min="0.1"
+                      step="1"
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === "Enter" && allValid) applyFilletFromDialog();
+                      }}
+                    />
+                    <span className="text-xs text-gray-500">mm</span>
+                  </div>
+                )}
+
+                {/* Liste des coins */}
+                {filletDialog.corners.map((corner, idx) => {
+                  const pt = sketch.points.get(corner.pointId);
+                  const isValid = corner.radius > 0 && corner.radius <= corner.maxRadius;
+                  const isHovered = filletDialog.hoveredCornerIdx === idx;
+                  return (
+                    <div
+                      key={corner.pointId}
+                      className={`flex items-center gap-2 p-1.5 rounded text-xs transition-colors ${
+                        isHovered ? "bg-blue-100 ring-1 ring-blue-400" : "bg-gray-50 hover:bg-gray-100"
+                      }`}
+                      onMouseEnter={() => setFilletDialog({ ...filletDialog, hoveredCornerIdx: idx })}
+                      onMouseLeave={() => setFilletDialog({ ...filletDialog, hoveredCornerIdx: null })}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <span className="font-medium">#{idx + 1}</span>
+                        <span className="text-gray-500 ml-1">({corner.angleDeg.toFixed(0)}°)</span>
+                      </div>
                       <Input
                         type="number"
-                        value={filletDialog.globalRadius}
+                        value={corner.radius}
                         onChange={(e) => {
                           const newRadius = Math.max(0.1, parseFloat(e.target.value) || 0.1);
-                          setFilletDialog({
-                            ...filletDialog,
-                            globalRadius: newRadius,
-                            corners: filletDialog.corners.map((c) => ({
-                              ...c,
-                              radius: Math.min(newRadius, c.maxRadius),
-                            })),
-                          });
+                          const newCorners = [...filletDialog.corners];
+                          newCorners[idx] = { ...corner, radius: newRadius };
+                          setFilletDialog({ ...filletDialog, corners: newCorners });
                         }}
-                        className="h-8 w-20 text-sm"
+                        className={`h-6 w-14 text-xs ${!isValid ? "border-red-500" : ""}`}
                         min="0.1"
                         step="1"
-                        onKeyDown={(e) => e.stopPropagation()}
-                      />
-                      <span className="text-xs text-muted-foreground">mm</span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 ml-auto text-xs"
-                        onClick={() => {
-                          setFilletDialog({
-                            ...filletDialog,
-                            corners: filletDialog.corners.map((c) => ({
-                              ...c,
-                              radius: Math.min(filletDialog.globalRadius, c.maxRadius),
-                            })),
-                          });
+                        onKeyDown={(e) => {
+                          e.stopPropagation();
+                          if (e.key === "Enter" && allValid) applyFilletFromDialog();
                         }}
-                      >
-                        Appliquer à tous
-                      </Button>
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <span className="text-[10px] text-gray-400">/{corner.maxRadius.toFixed(0)}</span>
                     </div>
-                  )}
+                  );
+                })}
+              </div>
 
-                  {/* Liste des coins */}
-                  <div className="max-h-[200px] overflow-y-auto space-y-2">
-                    {filletDialog.corners.map((corner, idx) => {
-                      const pt = sketch.points.get(corner.pointId);
-                      const isValid = corner.radius > 0 && corner.radius <= corner.maxRadius;
-                      const isHovered = filletDialog.hoveredCornerIdx === idx;
-                      return (
-                        <div
-                          key={corner.pointId}
-                          className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
-                            isHovered ? "bg-blue-100 border border-blue-400" : "bg-gray-50 hover:bg-gray-100"
-                          }`}
-                          onMouseEnter={() => setFilletDialog({ ...filletDialog, hoveredCornerIdx: idx })}
-                          onMouseLeave={() => setFilletDialog({ ...filletDialog, hoveredCornerIdx: null })}
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs font-medium">
-                              Coin {idx + 1}
-                              <span className="text-muted-foreground ml-1">({corner.angleDeg.toFixed(0)}°)</span>
-                            </div>
-                            {pt && (
-                              <div className="text-[10px] text-muted-foreground truncate">
-                                ({(pt.x / sketch.scaleFactor).toFixed(1)}, {(pt.y / sketch.scaleFactor).toFixed(1)})
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Input
-                              type="number"
-                              value={corner.radius}
-                              onChange={(e) => {
-                                const newRadius = Math.max(0.1, parseFloat(e.target.value) || 0.1);
-                                const newCorners = [...filletDialog.corners];
-                                newCorners[idx] = { ...corner, radius: newRadius };
-                                setFilletDialog({ ...filletDialog, corners: newCorners });
-                              }}
-                              className={`h-7 w-16 text-xs ${!isValid ? "border-red-500" : ""}`}
-                              min="0.1"
-                              max={corner.maxRadius}
-                              step="1"
-                              onKeyDown={(e) => {
-                                e.stopPropagation();
-                                if (e.key === "Enter" && allValid) {
-                                  applyFilletFromDialog();
-                                }
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                            <span className="text-[10px] text-muted-foreground">/{corner.maxRadius.toFixed(0)}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button onClick={applyFilletFromDialog} className="w-full" disabled={!allValid}>
-                    <Check className="h-4 w-4 mr-1" />
-                    Appliquer
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+              {/* Footer */}
+              <div className="p-2 border-t">
+                <Button size="sm" className="w-full h-7 text-xs" onClick={applyFilletFromDialog} disabled={!allValid}>
+                  <Check className="h-3 w-3 mr-1" />
+                  Appliquer
+                </Button>
+              </div>
+            </div>
           );
         })()}
 
-      {/* Dialogue Chanfrein */}
-      {chamferDialog &&
+      {/* Panneau Chanfrein flottant draggable */}
+      {chamferDialog?.open &&
         (() => {
           const cornerCount = chamferDialog.corners.length;
           const allValid = chamferDialog.corners.every((c) => c.distance > 0 && c.distance <= c.maxDistance);
           return (
-            <Dialog open={chamferDialog.open} onOpenChange={() => setChamferDialog(null)}>
-              <DialogContent className="sm:max-w-[380px]">
-                <DialogHeader>
-                  <DialogTitle>Chanfrein {cornerCount > 1 ? `(${cornerCount} coins)` : ""}</DialogTitle>
-                  <DialogDescription>
-                    {cornerCount === 1
-                      ? `Angle: ${chamferDialog.corners[0].angleDeg.toFixed(1)}° • Max: ${chamferDialog.corners[0].maxDistance.toFixed(1)}mm`
-                      : "Définir la distance pour chaque coin"}
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="py-2 space-y-3">
-                  {/* Distance globale si plusieurs coins */}
-                  {cornerCount > 1 && (
-                    <div className="flex items-center gap-2 pb-2 border-b">
-                      <Label className="text-xs whitespace-nowrap">Tous:</Label>
+            <div
+              className="fixed bg-white rounded-lg shadow-xl border z-50 select-none"
+              style={{
+                left: chamferPanelPos.x,
+                top: chamferPanelPos.y,
+                width: 240,
+              }}
+              onMouseDown={(e) => {
+                if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "BUTTON")
+                  return;
+                setChamferPanelDragging(true);
+                setChamferPanelDragStart({ x: e.clientX - chamferPanelPos.x, y: e.clientY - chamferPanelPos.y });
+              }}
+              onMouseMove={(e) => {
+                if (chamferPanelDragging) {
+                  setChamferPanelPos({
+                    x: e.clientX - chamferPanelDragStart.x,
+                    y: e.clientY - chamferPanelDragStart.y,
+                  });
+                }
+              }}
+              onMouseUp={() => setChamferPanelDragging(false)}
+              onMouseLeave={() => setChamferPanelDragging(false)}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-3 py-2 bg-orange-50 rounded-t-lg cursor-move border-b">
+                <span className="text-sm font-medium">Chanfrein {cornerCount > 1 ? `(${cornerCount})` : ""}</span>
+                <button className="text-gray-500 hover:text-gray-700" onClick={() => setChamferDialog(null)}>
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Contenu */}
+              <div className="p-2 space-y-2 max-h-[300px] overflow-y-auto">
+                {/* Distance globale si plusieurs coins */}
+                {cornerCount > 1 && (
+                  <div className="flex items-center gap-2 pb-2 border-b">
+                    <span className="text-xs">Tous:</span>
+                    <Input
+                      type="number"
+                      value={chamferDialog.globalDistance}
+                      onChange={(e) => {
+                        const newDistance = Math.max(0.1, parseFloat(e.target.value) || 0.1);
+                        setChamferDialog({
+                          ...chamferDialog,
+                          globalDistance: newDistance,
+                          corners: chamferDialog.corners.map((c) => ({
+                            ...c,
+                            distance: Math.min(newDistance, c.maxDistance),
+                          })),
+                        });
+                      }}
+                      className="h-7 w-16 text-xs"
+                      min="0.1"
+                      step="1"
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === "Enter" && allValid) applyChamferFromDialog();
+                      }}
+                    />
+                    <span className="text-xs text-gray-500">mm</span>
+                  </div>
+                )}
+
+                {/* Liste des coins */}
+                {chamferDialog.corners.map((corner, idx) => {
+                  const pt = sketch.points.get(corner.pointId);
+                  const isValid = corner.distance > 0 && corner.distance <= corner.maxDistance;
+                  const isHovered = chamferDialog.hoveredCornerIdx === idx;
+                  return (
+                    <div
+                      key={corner.pointId}
+                      className={`flex items-center gap-2 p-1.5 rounded text-xs transition-colors ${
+                        isHovered ? "bg-orange-100 ring-1 ring-orange-400" : "bg-gray-50 hover:bg-gray-100"
+                      }`}
+                      onMouseEnter={() => setChamferDialog({ ...chamferDialog, hoveredCornerIdx: idx })}
+                      onMouseLeave={() => setChamferDialog({ ...chamferDialog, hoveredCornerIdx: null })}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <span className="font-medium">#{idx + 1}</span>
+                        <span className="text-gray-500 ml-1">({corner.angleDeg.toFixed(0)}°)</span>
+                      </div>
                       <Input
                         type="number"
-                        value={chamferDialog.globalDistance}
+                        value={corner.distance}
                         onChange={(e) => {
                           const newDistance = Math.max(0.1, parseFloat(e.target.value) || 0.1);
-                          setChamferDialog({
-                            ...chamferDialog,
-                            globalDistance: newDistance,
-                            corners: chamferDialog.corners.map((c) => ({
-                              ...c,
-                              distance: Math.min(newDistance, c.maxDistance),
-                            })),
-                          });
+                          const newCorners = [...chamferDialog.corners];
+                          newCorners[idx] = { ...corner, distance: newDistance };
+                          setChamferDialog({ ...chamferDialog, corners: newCorners });
                         }}
-                        className="h-8 w-20 text-sm"
+                        className={`h-6 w-14 text-xs ${!isValid ? "border-red-500" : ""}`}
                         min="0.1"
                         step="1"
-                        onKeyDown={(e) => e.stopPropagation()}
-                      />
-                      <span className="text-xs text-muted-foreground">mm</span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 ml-auto text-xs"
-                        onClick={() => {
-                          setChamferDialog({
-                            ...chamferDialog,
-                            corners: chamferDialog.corners.map((c) => ({
-                              ...c,
-                              distance: Math.min(chamferDialog.globalDistance, c.maxDistance),
-                            })),
-                          });
+                        onKeyDown={(e) => {
+                          e.stopPropagation();
+                          if (e.key === "Enter" && allValid) applyChamferFromDialog();
                         }}
-                      >
-                        Appliquer à tous
-                      </Button>
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <span className="text-[10px] text-gray-400">/{corner.maxDistance.toFixed(0)}</span>
                     </div>
-                  )}
+                  );
+                })}
+              </div>
 
-                  {/* Liste des coins */}
-                  <div className="max-h-[200px] overflow-y-auto space-y-2">
-                    {chamferDialog.corners.map((corner, idx) => {
-                      const pt = sketch.points.get(corner.pointId);
-                      const isValid = corner.distance > 0 && corner.distance <= corner.maxDistance;
-                      const isHovered = chamferDialog.hoveredCornerIdx === idx;
-                      return (
-                        <div
-                          key={corner.pointId}
-                          className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
-                            isHovered ? "bg-orange-100 border border-orange-400" : "bg-gray-50 hover:bg-gray-100"
-                          }`}
-                          onMouseEnter={() => setChamferDialog({ ...chamferDialog, hoveredCornerIdx: idx })}
-                          onMouseLeave={() => setChamferDialog({ ...chamferDialog, hoveredCornerIdx: null })}
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs font-medium">
-                              Coin {idx + 1}
-                              <span className="text-muted-foreground ml-1">({corner.angleDeg.toFixed(0)}°)</span>
-                            </div>
-                            {pt && (
-                              <div className="text-[10px] text-muted-foreground truncate">
-                                ({(pt.x / sketch.scaleFactor).toFixed(1)}, {(pt.y / sketch.scaleFactor).toFixed(1)})
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Input
-                              type="number"
-                              value={corner.distance}
-                              onChange={(e) => {
-                                const newDistance = Math.max(0.1, parseFloat(e.target.value) || 0.1);
-                                const newCorners = [...chamferDialog.corners];
-                                newCorners[idx] = { ...corner, distance: newDistance };
-                                setChamferDialog({ ...chamferDialog, corners: newCorners });
-                              }}
-                              className={`h-7 w-16 text-xs ${!isValid ? "border-red-500" : ""}`}
-                              min="0.1"
-                              max={corner.maxDistance}
-                              step="1"
-                              onKeyDown={(e) => {
-                                e.stopPropagation();
-                                if (e.key === "Enter" && allValid) {
-                                  applyChamferFromDialog();
-                                }
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                            <span className="text-[10px] text-muted-foreground">/{corner.maxDistance.toFixed(0)}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button onClick={applyChamferFromDialog} className="w-full" disabled={!allValid}>
-                    <Check className="h-4 w-4 mr-1" />
-                    Appliquer
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+              {/* Footer */}
+              <div className="p-2 border-t">
+                <Button size="sm" className="w-full h-7 text-xs" onClick={applyChamferFromDialog} disabled={!allValid}>
+                  <Check className="h-3 w-3 mr-1" />
+                  Appliquer
+                </Button>
+              </div>
+            </div>
           );
         })()}
 
