@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.6 - Règles avec origine 0 en bas à gauche, Y inversé pour augmenter vers le haut
+// VERSION: 3.7 - Règles X (bas) et Y (gauche) avec graduations adaptatives
 // ============================================
 
 import {
@@ -498,142 +498,122 @@ export class CADRenderer {
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 
     const rulerSize = 30; // Largeur/hauteur des règles en pixels
-    const tickSmall = 4;
-    const tickMedium = 8;
-    const tickLarge = 12;
+    const tickSmall = 5;
+    const tickMedium = 10;
+    const tickLarge = 15;
 
     // Calculer l'espacement optimal des graduations en fonction du zoom
-    const baseSpacing = 10; // mm de base
-    let spacing = baseSpacing;
-    let spacingPx = spacing * this.viewport.scale;
+    // On veut environ 50-100 pixels entre chaque graduation majeure
+    const spacings = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
+    let spacing = 10; // par défaut
 
-    // Adapter l'espacement pour avoir des graduations lisibles (entre 30 et 150 pixels)
-    const spacings = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
     for (const s of spacings) {
-      const px = s * this.viewport.scale;
-      if (px >= 30 && px <= 150) {
+      const pxPerSpacing = s * this.viewport.scale;
+      if (pxPerSpacing >= 40) {
         spacing = s;
-        spacingPx = px;
-        break;
-      }
-      if (px > 150) {
-        // Prendre le précédent si on dépasse
-        const idx = spacings.indexOf(s);
-        if (idx > 0) {
-          spacing = spacings[idx - 1];
-          spacingPx = spacing * this.viewport.scale;
-        }
         break;
       }
     }
 
-    // Si toujours trop petit ou trop grand, forcer une valeur
-    if (spacingPx < 20) spacing = 100;
-    if (spacingPx > 200) spacing = 1;
-
-    // Fond des règles
-    this.ctx.fillStyle = "#f5f5f5";
-    // Règle du bas
+    // Fond des règles (gris clair)
+    this.ctx.fillStyle = "#f0f0f0";
+    // Règle du bas (horizontale)
     this.ctx.fillRect(rulerSize, this.viewport.height - rulerSize, this.viewport.width - rulerSize, rulerSize);
-    // Règle de gauche
+    // Règle de gauche (verticale)
     this.ctx.fillRect(0, 0, rulerSize, this.viewport.height - rulerSize);
     // Coin inférieur gauche
-    this.ctx.fillStyle = "#e8e8e8";
+    this.ctx.fillStyle = "#e0e0e0";
     this.ctx.fillRect(0, this.viewport.height - rulerSize, rulerSize, rulerSize);
 
     // Bordures des règles
-    this.ctx.strokeStyle = "#bbb";
+    this.ctx.strokeStyle = "#ccc";
     this.ctx.lineWidth = 1;
     this.ctx.beginPath();
-    // Bordure intérieure règle du bas
     this.ctx.moveTo(rulerSize, this.viewport.height - rulerSize);
     this.ctx.lineTo(this.viewport.width, this.viewport.height - rulerSize);
-    // Bordure intérieure règle de gauche
     this.ctx.moveTo(rulerSize, 0);
     this.ctx.lineTo(rulerSize, this.viewport.height - rulerSize);
     this.ctx.stroke();
 
-    // Configuration du texte
+    // Configuration
+    this.ctx.strokeStyle = "#666";
     this.ctx.fillStyle = "#333";
-    this.ctx.font = "11px sans-serif";
+    this.ctx.font = "10px Arial, sans-serif";
+    this.ctx.lineWidth = 1;
 
-    // ========== RÈGLE HORIZONTALE (BAS) ==========
-    // Calculer les limites en coordonnées monde
+    // ========== RÈGLE HORIZONTALE (BAS) - Axe X ==========
     const leftWorld = -this.viewport.offsetX / this.viewport.scale;
     const rightWorld = (this.viewport.width - this.viewport.offsetX) / this.viewport.scale;
 
     const startX = Math.floor(leftWorld / spacing) * spacing;
     const endX = Math.ceil(rightWorld / spacing) * spacing;
 
-    this.ctx.strokeStyle = "#888";
-    this.ctx.lineWidth = 1;
+    this.ctx.textAlign = "center";
+    this.ctx.textBaseline = "top";
 
     for (let worldX = startX; worldX <= endX; worldX += spacing) {
       const screenX = worldX * this.viewport.scale + this.viewport.offsetX;
 
-      if (screenX < rulerSize - 5 || screenX > this.viewport.width) continue;
+      // Ne pas dessiner hors de la zone de la règle
+      if (screenX < rulerSize || screenX > this.viewport.width) continue;
 
-      // Déterminer le type de graduation
-      const absWorldX = Math.abs(worldX);
-      const isMajor = absWorldX % (spacing * 5) === 0 || spacing >= 50;
-      const isMedium = !isMajor && absWorldX % (spacing * 2) === 0;
-      const tickHeight = isMajor ? tickLarge : isMedium ? tickMedium : tickSmall;
+      // Graduation majeure tous les 5 espacements, ou si espacement >= 50
+      const isMajor = Math.round(worldX / spacing) % 5 === 0 || spacing >= 50;
+      const tickH = isMajor ? tickLarge : tickSmall;
 
-      // Dessiner la graduation
+      // Dessiner le tick
       this.ctx.beginPath();
       this.ctx.moveTo(screenX, this.viewport.height - rulerSize);
-      this.ctx.lineTo(screenX, this.viewport.height - rulerSize + tickHeight);
+      this.ctx.lineTo(screenX, this.viewport.height - rulerSize + tickH);
       this.ctx.stroke();
 
       // Label pour les graduations majeures
-      if (isMajor || spacing >= 20) {
-        this.ctx.textAlign = "center";
-        this.ctx.textBaseline = "top";
-        this.ctx.fillText(`${worldX}`, screenX, this.viewport.height - rulerSize + tickLarge + 2);
+      if (isMajor) {
+        this.ctx.fillText(`${worldX}`, screenX, this.viewport.height - rulerSize + tickLarge + 1);
       }
     }
 
-    // ========== RÈGLE VERTICALE (GAUCHE) ==========
-    // Y est inversé dans le canvas (vers le bas), on affiche -Y pour que 0 soit en bas
+    // ========== RÈGLE VERTICALE (GAUCHE) - Axe Y ==========
+    // Y canvas va vers le bas, mais on veut afficher Y qui va vers le haut (0 en bas)
     const topWorld = -this.viewport.offsetY / this.viewport.scale;
     const bottomWorld = (this.viewport.height - this.viewport.offsetY) / this.viewport.scale;
 
     const startY = Math.floor(topWorld / spacing) * spacing;
     const endY = Math.ceil(bottomWorld / spacing) * spacing;
 
+    this.ctx.textAlign = "right";
+    this.ctx.textBaseline = "middle";
+
     for (let worldY = startY; worldY <= endY; worldY += spacing) {
       const screenY = worldY * this.viewport.scale + this.viewport.offsetY;
 
-      if (screenY < 0 || screenY > this.viewport.height - rulerSize + 5) continue;
+      // Ne pas dessiner hors de la zone de la règle
+      if (screenY < 0 || screenY > this.viewport.height - rulerSize) continue;
 
-      // Déterminer le type de graduation
-      // Utiliser -worldY pour le calcul du type (pour avoir les bonnes graduations majeures)
-      const displayY = -worldY; // Valeur affichée (inversée pour avoir 0 en bas)
-      const absDisplayY = Math.abs(displayY);
-      const isMajor = absDisplayY % (spacing * 5) === 0 || spacing >= 50;
-      const isMedium = !isMajor && absDisplayY % (spacing * 2) === 0;
-      const tickWidth = isMajor ? tickLarge : isMedium ? tickMedium : tickSmall;
+      // La valeur affichée est -worldY (pour que Y augmente vers le haut)
+      const displayY = -worldY;
 
-      // Dessiner la graduation
+      // Graduation majeure
+      const isMajor = Math.round(displayY / spacing) % 5 === 0 || spacing >= 50;
+      const tickW = isMajor ? tickLarge : tickSmall;
+
+      // Dessiner le tick
       this.ctx.beginPath();
-      this.ctx.moveTo(rulerSize - tickWidth, screenY);
+      this.ctx.moveTo(rulerSize - tickW, screenY);
       this.ctx.lineTo(rulerSize, screenY);
       this.ctx.stroke();
 
       // Label pour les graduations majeures
-      // Afficher displayY (valeur inversée pour avoir 0 en bas)
-      if (isMajor || spacing >= 20) {
-        this.ctx.textAlign = "right";
-        this.ctx.textBaseline = "middle";
-        this.ctx.fillText(`${displayY}`, rulerSize - tickWidth - 3, screenY);
+      if (isMajor) {
+        this.ctx.fillText(`${displayY}`, rulerSize - tickW - 2, screenY);
       }
     }
 
     // ========== UNITÉ DANS LE COIN ==========
     this.ctx.textAlign = "center";
     this.ctx.textBaseline = "middle";
-    this.ctx.font = "bold 10px sans-serif";
-    this.ctx.fillStyle = "#666";
+    this.ctx.font = "bold 9px Arial, sans-serif";
+    this.ctx.fillStyle = "#888";
     this.ctx.fillText("mm", rulerSize / 2, this.viewport.height - rulerSize / 2);
 
     this.ctx.restore();
