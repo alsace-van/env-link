@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.62 - Panneau Offset flottant draggable compact
+// VERSION: 5.63 - Offset avec calcul des intersections aux coins
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2235,96 +2235,280 @@ export function CADGabaritCanvas({
     newSketch.points = new Map(sketch.points);
     newSketch.geometries = new Map(sketch.geometries);
 
-    let createdCount = 0;
+    // Séparer les lignes des autres types
+    const lineIds: string[] = [];
+    const circleIds: string[] = [];
+    const arcIds: string[] = [];
 
     offsetDialog.selectedEntities.forEach((entityId) => {
       const geo = sketch.geometries.get(entityId);
-      if (!geo) return;
+      if (geo?.type === "line") lineIds.push(entityId);
+      else if (geo?.type === "circle") circleIds.push(entityId);
+      else if (geo?.type === "arc") arcIds.push(entityId);
+    });
 
-      if (geo.type === "line") {
-        const line = geo as Line;
+    let createdCount = 0;
+
+    // Traiter les cercles
+    circleIds.forEach((entityId) => {
+      const circle = sketch.geometries.get(entityId) as CircleType;
+      const center = sketch.points.get(circle.center);
+      if (!center) return;
+
+      const newRadius =
+        offsetDirection === "outside" ? circle.radius + distancePx : Math.max(1, circle.radius - distancePx);
+
+      const newCircle: CircleType = {
+        id: generateId(),
+        type: "circle",
+        center: circle.center,
+        radius: newRadius,
+        layerId: circle.layerId,
+      };
+      newSketch.geometries.set(newCircle.id, newCircle);
+      createdCount++;
+    });
+
+    // Traiter les arcs
+    arcIds.forEach((entityId) => {
+      const arc = sketch.geometries.get(entityId) as Arc;
+      const center = sketch.points.get(arc.center);
+      const startPt = sketch.points.get(arc.startPoint);
+      const endPt = sketch.points.get(arc.endPoint);
+      if (!center || !startPt || !endPt) return;
+
+      const newRadius = offsetDirection === "outside" ? arc.radius + distancePx : Math.max(1, arc.radius - distancePx);
+
+      const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
+      const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
+
+      const newStartPt: Point = {
+        id: generateId(),
+        x: center.x + Math.cos(startAngle) * newRadius,
+        y: center.y + Math.sin(startAngle) * newRadius,
+      };
+      const newEndPt: Point = {
+        id: generateId(),
+        x: center.x + Math.cos(endAngle) * newRadius,
+        y: center.y + Math.sin(endAngle) * newRadius,
+      };
+      newSketch.points.set(newStartPt.id, newStartPt);
+      newSketch.points.set(newEndPt.id, newEndPt);
+
+      const newArc: Arc = {
+        id: generateId(),
+        type: "arc",
+        center: arc.center,
+        startPoint: newStartPt.id,
+        endPoint: newEndPt.id,
+        radius: newRadius,
+        layerId: arc.layerId,
+        counterClockwise: arc.counterClockwise,
+      };
+      newSketch.geometries.set(newArc.id, newArc);
+      createdCount++;
+    });
+
+    // Traiter les lignes - avec calcul des intersections
+    if (lineIds.length > 0) {
+      // Récupérer les infos des segments
+      type SegInfo = {
+        id: string;
+        p1Id: string;
+        p2Id: string;
+        p1: { x: number; y: number };
+        p2: { x: number; y: number };
+        layerId?: string;
+      };
+
+      const segments: SegInfo[] = [];
+      lineIds.forEach((lineId) => {
+        const line = sketch.geometries.get(lineId) as Line;
         const p1 = sketch.points.get(line.p1);
         const p2 = sketch.points.get(line.p2);
-        if (!p1 || !p2) return;
+        if (p1 && p2) {
+          segments.push({
+            id: lineId,
+            p1Id: line.p1,
+            p2Id: line.p2,
+            p1: { x: p1.x, y: p1.y },
+            p2: { x: p2.x, y: p2.y },
+            layerId: line.layerId,
+          });
+        }
+      });
 
-        const offset = offsetLine(p1, p2, distancePx, offsetDirection);
+      // Construire un graphe point -> segments
+      const pointToSegs = new Map<string, number[]>();
+      segments.forEach((seg, idx) => {
+        if (!pointToSegs.has(seg.p1Id)) pointToSegs.set(seg.p1Id, []);
+        if (!pointToSegs.has(seg.p2Id)) pointToSegs.set(seg.p2Id, []);
+        pointToSegs.get(seg.p1Id)!.push(idx);
+        pointToSegs.get(seg.p2Id)!.push(idx);
+      });
 
-        // Créer les nouveaux points
-        const newP1: Point = { id: generateId(), x: offset.p1.x, y: offset.p1.y };
-        const newP2: Point = { id: generateId(), x: offset.p2.x, y: offset.p2.y };
-        newSketch.points.set(newP1.id, newP1);
-        newSketch.points.set(newP2.id, newP2);
+      // Ordonner les segments en suivant le contour
+      const orderedSegs: Array<{ seg: SegInfo; reversed: boolean }> = [];
+      const used = new Set<number>();
 
-        // Créer la nouvelle ligne
-        const newLine: Line = {
-          id: generateId(),
-          type: "line",
-          p1: newP1.id,
-          p2: newP2.id,
-          layerId: line.layerId,
-        };
-        newSketch.geometries.set(newLine.id, newLine);
-        createdCount++;
-      } else if (geo.type === "circle") {
-        const circle = geo as CircleType;
-        const center = sketch.points.get(circle.center);
-        if (!center) return;
-
-        const newRadius =
-          offsetDirection === "outside" ? circle.radius + distancePx : Math.max(1, circle.radius - distancePx);
-
-        // Créer le nouveau cercle (même centre)
-        const newCircle: CircleType = {
-          id: generateId(),
-          type: "circle",
-          center: circle.center,
-          radius: newRadius,
-          layerId: circle.layerId,
-        };
-        newSketch.geometries.set(newCircle.id, newCircle);
-        createdCount++;
-      } else if (geo.type === "arc") {
-        const arc = geo as Arc;
-        const center = sketch.points.get(arc.center);
-        const startPt = sketch.points.get(arc.startPoint);
-        const endPt = sketch.points.get(arc.endPoint);
-        if (!center || !startPt || !endPt) return;
-
-        const newRadius =
-          offsetDirection === "outside" ? arc.radius + distancePx : Math.max(1, arc.radius - distancePx);
-
-        // Calculer les nouveaux points
-        const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
-        const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
-
-        const newStartPt: Point = {
-          id: generateId(),
-          x: center.x + Math.cos(startAngle) * newRadius,
-          y: center.y + Math.sin(startAngle) * newRadius,
-        };
-        const newEndPt: Point = {
-          id: generateId(),
-          x: center.x + Math.cos(endAngle) * newRadius,
-          y: center.y + Math.sin(endAngle) * newRadius,
-        };
-        newSketch.points.set(newStartPt.id, newStartPt);
-        newSketch.points.set(newEndPt.id, newEndPt);
-
-        // Créer le nouvel arc
-        const newArc: Arc = {
-          id: generateId(),
-          type: "arc",
-          center: arc.center,
-          startPoint: newStartPt.id,
-          endPoint: newEndPt.id,
-          radius: newRadius,
-          layerId: arc.layerId,
-          counterClockwise: arc.counterClockwise,
-        };
-        newSketch.geometries.set(newArc.id, newArc);
-        createdCount++;
+      // Trouver un point de départ (point avec un seul segment = extrémité, sinon n'importe lequel)
+      let startIdx = 0;
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        const count1 = pointToSegs.get(seg.p1Id)?.length || 0;
+        const count2 = pointToSegs.get(seg.p2Id)?.length || 0;
+        if (count1 === 1 || count2 === 1) {
+          startIdx = i;
+          break;
+        }
       }
-    });
+
+      // Commencer par le premier segment
+      const firstSeg = segments[startIdx];
+      const firstP1Count = pointToSegs.get(firstSeg.p1Id)?.length || 0;
+      // Si p1 est une extrémité (1 seul segment), on commence par p1
+      const startReversed = firstP1Count !== 1;
+      orderedSegs.push({ seg: firstSeg, reversed: startReversed });
+      used.add(startIdx);
+
+      let currentEndPtId = startReversed ? firstSeg.p1Id : firstSeg.p2Id;
+
+      // Suivre la chaîne
+      while (orderedSegs.length < segments.length) {
+        const connectedIdxs = pointToSegs.get(currentEndPtId) || [];
+        let found = false;
+
+        for (const idx of connectedIdxs) {
+          if (used.has(idx)) continue;
+
+          const seg = segments[idx];
+          if (seg.p1Id === currentEndPtId) {
+            orderedSegs.push({ seg, reversed: false });
+            currentEndPtId = seg.p2Id;
+            found = true;
+          } else if (seg.p2Id === currentEndPtId) {
+            orderedSegs.push({ seg, reversed: true });
+            currentEndPtId = seg.p1Id;
+            found = true;
+          }
+
+          if (found) {
+            used.add(idx);
+            break;
+          }
+        }
+
+        if (!found) break;
+      }
+
+      // Calculer les lignes décalées
+      const offsetLines: Array<{
+        p1: { x: number; y: number };
+        p2: { x: number; y: number };
+        layerId?: string;
+      }> = [];
+
+      orderedSegs.forEach(({ seg, reversed }) => {
+        const start = reversed ? seg.p2 : seg.p1;
+        const end = reversed ? seg.p1 : seg.p2;
+        const off = offsetLine(start, end, distancePx, offsetDirection);
+        offsetLines.push({ p1: off.p1, p2: off.p2, layerId: seg.layerId });
+      });
+
+      // Vérifier si fermé
+      const firstOs = orderedSegs[0];
+      const lastOs = orderedSegs[orderedSegs.length - 1];
+      const startPtId = firstOs.reversed ? firstOs.seg.p2Id : firstOs.seg.p1Id;
+      const endPtId = lastOs.reversed ? lastOs.seg.p1Id : lastOs.seg.p2Id;
+      const isClosed = startPtId === endPtId;
+
+      // Calculer les points d'intersection entre segments adjacents
+      const computeIntersection = (
+        l1: { p1: { x: number; y: number }; p2: { x: number; y: number } },
+        l2: { p1: { x: number; y: number }; p2: { x: number; y: number } },
+      ): { x: number; y: number } => {
+        const d1x = l1.p2.x - l1.p1.x;
+        const d1y = l1.p2.y - l1.p1.y;
+        const d2x = l2.p2.x - l2.p1.x;
+        const d2y = l2.p2.y - l2.p1.y;
+
+        const cross = d1x * d2y - d1y * d2x;
+        if (Math.abs(cross) < 0.0001) {
+          // Parallèles - utiliser le milieu entre les deux points adjacents
+          return {
+            x: (l1.p2.x + l2.p1.x) / 2,
+            y: (l1.p2.y + l2.p1.y) / 2,
+          };
+        }
+
+        const t = ((l2.p1.x - l1.p1.x) * d2y - (l2.p1.y - l1.p1.y) * d2x) / cross;
+        return {
+          x: l1.p1.x + t * d1x,
+          y: l1.p1.y + t * d1y,
+        };
+      };
+
+      // Créer les nouveaux points et lignes
+      const newPtIds: string[] = [];
+
+      if (isClosed) {
+        // Contour fermé - tous les sommets sont des intersections
+        for (let i = 0; i < offsetLines.length; i++) {
+          const curr = offsetLines[i];
+          const next = offsetLines[(i + 1) % offsetLines.length];
+          const inter = computeIntersection(curr, next);
+          const pt: Point = { id: generateId(), x: inter.x, y: inter.y };
+          newSketch.points.set(pt.id, pt);
+          newPtIds.push(pt.id);
+        }
+
+        // Créer les lignes
+        for (let i = 0; i < offsetLines.length; i++) {
+          const newLine: Line = {
+            id: generateId(),
+            type: "line",
+            p1: newPtIds[i],
+            p2: newPtIds[(i + 1) % newPtIds.length],
+            layerId: offsetLines[i].layerId,
+          };
+          newSketch.geometries.set(newLine.id, newLine);
+          createdCount++;
+        }
+      } else {
+        // Contour ouvert
+        // Premier point = début du premier segment décalé
+        const firstPt: Point = { id: generateId(), x: offsetLines[0].p1.x, y: offsetLines[0].p1.y };
+        newSketch.points.set(firstPt.id, firstPt);
+        newPtIds.push(firstPt.id);
+
+        // Points intermédiaires = intersections
+        for (let i = 0; i < offsetLines.length - 1; i++) {
+          const inter = computeIntersection(offsetLines[i], offsetLines[i + 1]);
+          const pt: Point = { id: generateId(), x: inter.x, y: inter.y };
+          newSketch.points.set(pt.id, pt);
+          newPtIds.push(pt.id);
+        }
+
+        // Dernier point = fin du dernier segment décalé
+        const lastLine = offsetLines[offsetLines.length - 1];
+        const lastPt: Point = { id: generateId(), x: lastLine.p2.x, y: lastLine.p2.y };
+        newSketch.points.set(lastPt.id, lastPt);
+        newPtIds.push(lastPt.id);
+
+        // Créer les lignes
+        for (let i = 0; i < offsetLines.length; i++) {
+          const newLine: Line = {
+            id: generateId(),
+            type: "line",
+            p1: newPtIds[i],
+            p2: newPtIds[i + 1],
+            layerId: offsetLines[i].layerId,
+          };
+          newSketch.geometries.set(newLine.id, newLine);
+          createdCount++;
+        }
+      }
+    }
 
     if (createdCount > 0) {
       setSketch(newSketch);
