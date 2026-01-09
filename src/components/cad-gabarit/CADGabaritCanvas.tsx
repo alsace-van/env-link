@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.60 - Outil Offset (copie parallèle ligne/cercle/arc)
+// VERSION: 5.61 - Outil Offset refait (modale, sélection multiple, contour)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -319,11 +319,22 @@ export function CADGabaritCanvas({
 
   // Offset
   const [offsetDistance, setOffsetDistance] = useState<number>(10); // Distance en mm
-  const [offsetSourceEntity, setOffsetSourceEntity] = useState<string | null>(null); // Entité source
-  const [offsetPreview, setOffsetPreview] = useState<{
-    type: "line" | "circle" | "arc";
-    data: unknown;
+  const [offsetDirection, setOffsetDirection] = useState<"outside" | "inside">("outside");
+  const [offsetDialog, setOffsetDialog] = useState<{
+    open: boolean;
+    selectedEntities: Set<string>;
   } | null>(null);
+  const [offsetPreview, setOffsetPreview] = useState<
+    Array<{
+      type: "line" | "circle" | "arc";
+      points?: Array<{ x: number; y: number }>;
+      center?: { x: number; y: number };
+      radius?: number;
+      startAngle?: number;
+      endAngle?: number;
+      counterClockwise?: boolean;
+    }>
+  >([]);
 
   // Modale pour congé
   const [filletDialog, setFilletDialog] = useState<{
@@ -543,7 +554,7 @@ export function CADGabaritCanvas({
     }
 
     // Dessiner la preview de l'offset (après le render du sketch)
-    if (offsetPreview && canvasRef.current) {
+    if (offsetPreview.length > 0 && canvasRef.current) {
       const ctx = canvasRef.current.getContext("2d");
       if (ctx) {
         ctx.save();
@@ -551,46 +562,48 @@ export function CADGabaritCanvas({
         ctx.lineWidth = 2;
         ctx.setLineDash([6, 4]);
 
-        if (offsetPreview.type === "line" && offsetPreview.points) {
-          const points = offsetPreview.points as Array<{ x: number; y: number }>;
-          const p1Screen = {
-            x: points[0].x * viewport.scale + viewport.offsetX,
-            y: points[0].y * viewport.scale + viewport.offsetY,
-          };
-          const p2Screen = {
-            x: points[1].x * viewport.scale + viewport.offsetX,
-            y: points[1].y * viewport.scale + viewport.offsetY,
-          };
-          ctx.beginPath();
-          ctx.moveTo(p1Screen.x, p1Screen.y);
-          ctx.lineTo(p2Screen.x, p2Screen.y);
-          ctx.stroke();
-        } else if (offsetPreview.type === "circle" && offsetPreview.center && offsetPreview.radius) {
-          const center = offsetPreview.center as { x: number; y: number };
-          const radius = offsetPreview.radius as number;
-          const centerScreen = {
-            x: center.x * viewport.scale + viewport.offsetX,
-            y: center.y * viewport.scale + viewport.offsetY,
-          };
-          const radiusScreen = radius * viewport.scale;
-          ctx.beginPath();
-          ctx.arc(centerScreen.x, centerScreen.y, radiusScreen, 0, Math.PI * 2);
-          ctx.stroke();
-        } else if (offsetPreview.type === "arc" && offsetPreview.center && offsetPreview.radius) {
-          const center = offsetPreview.center as { x: number; y: number };
-          const radius = offsetPreview.radius as number;
-          const startAngle = offsetPreview.startAngle as number;
-          const endAngle = offsetPreview.endAngle as number;
-          const counterClockwise = offsetPreview.counterClockwise as boolean | undefined;
-          const centerScreen = {
-            x: center.x * viewport.scale + viewport.offsetX,
-            y: center.y * viewport.scale + viewport.offsetY,
-          };
-          const radiusScreen = radius * viewport.scale;
-          ctx.beginPath();
-          ctx.arc(centerScreen.x, centerScreen.y, radiusScreen, startAngle, endAngle, counterClockwise ?? false);
-          ctx.stroke();
-        }
+        offsetPreview.forEach((preview) => {
+          if (preview.type === "line" && preview.points) {
+            const points = preview.points;
+            const p1Screen = {
+              x: points[0].x * viewport.scale + viewport.offsetX,
+              y: points[0].y * viewport.scale + viewport.offsetY,
+            };
+            const p2Screen = {
+              x: points[1].x * viewport.scale + viewport.offsetX,
+              y: points[1].y * viewport.scale + viewport.offsetY,
+            };
+            ctx.beginPath();
+            ctx.moveTo(p1Screen.x, p1Screen.y);
+            ctx.lineTo(p2Screen.x, p2Screen.y);
+            ctx.stroke();
+          } else if (preview.type === "circle" && preview.center && preview.radius) {
+            const centerScreen = {
+              x: preview.center.x * viewport.scale + viewport.offsetX,
+              y: preview.center.y * viewport.scale + viewport.offsetY,
+            };
+            const radiusScreen = preview.radius * viewport.scale;
+            ctx.beginPath();
+            ctx.arc(centerScreen.x, centerScreen.y, radiusScreen, 0, Math.PI * 2);
+            ctx.stroke();
+          } else if (preview.type === "arc" && preview.center && preview.radius) {
+            const centerScreen = {
+              x: preview.center.x * viewport.scale + viewport.offsetX,
+              y: preview.center.y * viewport.scale + viewport.offsetY,
+            };
+            const radiusScreen = preview.radius * viewport.scale;
+            ctx.beginPath();
+            ctx.arc(
+              centerScreen.x,
+              centerScreen.y,
+              radiusScreen,
+              preview.startAngle ?? 0,
+              preview.endAngle ?? Math.PI * 2,
+              preview.counterClockwise ?? false,
+            );
+            ctx.stroke();
+          }
+        });
 
         ctx.restore();
       }
@@ -642,8 +655,8 @@ export function CADGabaritCanvas({
     }
     // Réinitialiser l'offset quand on change d'outil
     if (activeTool !== "offset") {
-      setOffsetSourceEntity(null);
-      setOffsetPreview(null);
+      setOffsetDialog(null);
+      setOffsetPreview([]);
     }
   }, [activeTool]);
 
@@ -2102,7 +2115,7 @@ export function CADGabaritCanvas({
       p1: { x: number; y: number },
       p2: { x: number; y: number },
       distancePx: number,
-      side: "left" | "right", // left = côté gauche en regardant de p1 vers p2
+      direction: "outside" | "inside", // outside = vers l'extérieur du contour
     ): { p1: { x: number; y: number }; p2: { x: number; y: number } } => {
       // Vecteur direction de la ligne
       const dx = p2.x - p1.x;
@@ -2110,11 +2123,10 @@ export function CADGabaritCanvas({
       const length = Math.sqrt(dx * dx + dy * dy);
       if (length < 0.001) return { p1, p2 };
 
-      // Vecteur normal (perpendiculaire)
-      // Pour "left", on tourne de 90° dans le sens anti-horaire
-      // Pour "right", on tourne de 90° dans le sens horaire
-      const nx = side === "left" ? -dy / length : dy / length;
-      const ny = side === "left" ? dx / length : -dx / length;
+      // Vecteur normal (perpendiculaire) - outside = vers la droite en regardant de p1 vers p2
+      const sign = direction === "outside" ? 1 : -1;
+      const nx = (sign * dy) / length;
+      const ny = (sign * -dx) / length;
 
       return {
         p1: { x: p1.x + nx * distancePx, y: p1.y + ny * distancePx },
@@ -2124,30 +2136,107 @@ export function CADGabaritCanvas({
     [],
   );
 
-  // Déterminer le côté de l'offset basé sur la position de la souris
-  const getOffsetSide = useCallback(
-    (
-      p1: { x: number; y: number },
-      p2: { x: number; y: number },
-      mousePos: { x: number; y: number },
-    ): "left" | "right" => {
-      // Produit vectoriel pour déterminer de quel côté est le point
-      const cross = (p2.x - p1.x) * (mousePos.y - p1.y) - (p2.y - p1.y) * (mousePos.x - p1.x);
-      return cross > 0 ? "left" : "right";
+  // Ouvrir la modale offset
+  const openOffsetDialog = useCallback(() => {
+    setActiveTool("offset");
+    setOffsetDialog({
+      open: true,
+      selectedEntities: new Set(selectedEntities),
+    });
+  }, [selectedEntities]);
+
+  // Calculer la preview de l'offset pour toutes les entités sélectionnées
+  const calculateOffsetPreviewForSelection = useCallback(
+    (entities: Set<string>, dist: number, dir: "outside" | "inside"): typeof offsetPreview => {
+      const previews: typeof offsetPreview = [];
+      const distancePx = dist * sketch.scaleFactor;
+
+      entities.forEach((entityId) => {
+        const geo = sketch.geometries.get(entityId);
+        if (!geo) return;
+
+        if (geo.type === "line") {
+          const line = geo as Line;
+          const p1 = sketch.points.get(line.p1);
+          const p2 = sketch.points.get(line.p2);
+          if (!p1 || !p2) return;
+
+          const offset = offsetLine(p1, p2, distancePx, dir);
+          previews.push({
+            type: "line",
+            points: [offset.p1, offset.p2],
+          });
+        } else if (geo.type === "circle") {
+          const circle = geo as CircleType;
+          const center = sketch.points.get(circle.center);
+          if (!center) return;
+
+          const newRadius = dir === "outside" ? circle.radius + distancePx : Math.max(1, circle.radius - distancePx);
+
+          previews.push({
+            type: "circle",
+            center,
+            radius: newRadius,
+          });
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          const center = sketch.points.get(arc.center);
+          const startPt = sketch.points.get(arc.startPoint);
+          const endPt = sketch.points.get(arc.endPoint);
+          if (!center || !startPt || !endPt) return;
+
+          const newRadius = dir === "outside" ? arc.radius + distancePx : Math.max(1, arc.radius - distancePx);
+
+          const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
+          const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
+
+          previews.push({
+            type: "arc",
+            center,
+            radius: newRadius,
+            startAngle,
+            endAngle,
+            counterClockwise: arc.counterClockwise,
+          });
+        }
+      });
+
+      return previews;
     },
-    [],
+    [sketch, offsetLine],
   );
 
-  // Appliquer l'offset et créer la nouvelle géométrie
-  const applyOffset = useCallback(
-    (entityId: string, mousePos: { x: number; y: number }) => {
+  // Mettre à jour la preview quand les paramètres changent
+  useEffect(() => {
+    if (offsetDialog?.open && offsetDialog.selectedEntities.size > 0) {
+      const preview = calculateOffsetPreviewForSelection(
+        offsetDialog.selectedEntities,
+        offsetDistance,
+        offsetDirection,
+      );
+      setOffsetPreview(preview);
+    } else {
+      setOffsetPreview([]);
+    }
+  }, [offsetDialog, offsetDistance, offsetDirection, calculateOffsetPreviewForSelection]);
+
+  // Appliquer l'offset à la sélection
+  const applyOffsetToSelection = useCallback(() => {
+    if (!offsetDialog || offsetDialog.selectedEntities.size === 0) {
+      toast.error("Sélectionnez au moins une entité");
+      return;
+    }
+
+    const distancePx = offsetDistance * sketch.scaleFactor;
+    const newSketch = { ...sketch };
+    newSketch.points = new Map(sketch.points);
+    newSketch.geometries = new Map(sketch.geometries);
+
+    let createdCount = 0;
+
+    offsetDialog.selectedEntities.forEach((entityId) => {
       const geo = sketch.geometries.get(entityId);
       if (!geo) return;
-
-      const distancePx = offsetDistance * sketch.scaleFactor;
-      const newSketch = { ...sketch };
-      newSketch.points = new Map(sketch.points);
-      newSketch.geometries = new Map(sketch.geometries);
 
       if (geo.type === "line") {
         const line = geo as Line;
@@ -2155,8 +2244,7 @@ export function CADGabaritCanvas({
         const p2 = sketch.points.get(line.p2);
         if (!p1 || !p2) return;
 
-        const side = getOffsetSide(p1, p2, mousePos);
-        const offset = offsetLine(p1, p2, distancePx, side);
+        const offset = offsetLine(p1, p2, distancePx, offsetDirection);
 
         // Créer les nouveaux points
         const newP1: Point = { id: generateId(), x: offset.p1.x, y: offset.p1.y };
@@ -2173,25 +2261,25 @@ export function CADGabaritCanvas({
           layerId: line.layerId,
         };
         newSketch.geometries.set(newLine.id, newLine);
+        createdCount++;
       } else if (geo.type === "circle") {
         const circle = geo as CircleType;
         const center = sketch.points.get(circle.center);
         if (!center) return;
 
-        // Déterminer si intérieur ou extérieur basé sur la distance au centre
-        const distToCenter = distance(mousePos, center);
-        const isOutside = distToCenter > circle.radius;
-        const newRadius = isOutside ? circle.radius + distancePx : Math.max(1, circle.radius - distancePx);
+        const newRadius =
+          offsetDirection === "outside" ? circle.radius + distancePx : Math.max(1, circle.radius - distancePx);
 
         // Créer le nouveau cercle (même centre)
         const newCircle: CircleType = {
           id: generateId(),
           type: "circle",
-          center: circle.center, // Réutiliser le même centre
+          center: circle.center,
           radius: newRadius,
           layerId: circle.layerId,
         };
         newSketch.geometries.set(newCircle.id, newCircle);
+        createdCount++;
       } else if (geo.type === "arc") {
         const arc = geo as Arc;
         const center = sketch.points.get(arc.center);
@@ -2199,12 +2287,10 @@ export function CADGabaritCanvas({
         const endPt = sketch.points.get(arc.endPoint);
         if (!center || !startPt || !endPt) return;
 
-        // Déterminer si intérieur ou extérieur
-        const distToCenter = distance(mousePos, center);
-        const isOutside = distToCenter > arc.radius;
-        const newRadius = isOutside ? arc.radius + distancePx : Math.max(1, arc.radius - distancePx);
+        const newRadius =
+          offsetDirection === "outside" ? arc.radius + distancePx : Math.max(1, arc.radius - distancePx);
 
-        // Calculer les nouveaux points start/end sur le nouvel arc
+        // Calculer les nouveaux points
         const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
         const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
 
@@ -2225,7 +2311,7 @@ export function CADGabaritCanvas({
         const newArc: Arc = {
           id: generateId(),
           type: "arc",
-          center: arc.center, // Réutiliser le même centre
+          center: arc.center,
           startPoint: newStartPt.id,
           endPoint: newEndPt.id,
           radius: newRadius,
@@ -2233,89 +2319,57 @@ export function CADGabaritCanvas({
           counterClockwise: arc.counterClockwise,
         };
         newSketch.geometries.set(newArc.id, newArc);
+        createdCount++;
       }
+    });
 
+    if (createdCount > 0) {
       setSketch(newSketch);
       solveSketch(newSketch);
       addToHistory(newSketch);
-      toast.success(`Offset ${offsetDistance}mm créé`);
-    },
-    [sketch, offsetDistance, offsetLine, getOffsetSide, addToHistory, solveSketch],
-  );
+      toast.success(`Offset ${offsetDistance}mm créé (${createdCount} élément${createdCount > 1 ? "s" : ""})`);
+    }
 
-  // Calculer la preview de l'offset
-  const calculateOffsetPreview = useCallback(
-    (
-      entityId: string,
-      mousePos: { x: number; y: number },
-    ): {
-      type: "line" | "circle" | "arc";
-      points?: Array<{ x: number; y: number }>;
-      center?: { x: number; y: number };
-      radius?: number;
-      startAngle?: number;
-      endAngle?: number;
-      counterClockwise?: boolean;
-    } | null => {
-      const geo = sketch.geometries.get(entityId);
-      if (!geo) return null;
+    setOffsetDialog(null);
+    setOffsetPreview([]);
+    setSelectedEntities(new Set());
+  }, [offsetDialog, offsetDistance, offsetDirection, sketch, offsetLine, addToHistory, solveSketch]);
 
-      const distancePx = offsetDistance * sketch.scaleFactor;
+  // Ajouter/retirer une entité de la sélection offset
+  const toggleOffsetSelection = useCallback(
+    (entityId: string) => {
+      if (!offsetDialog) return;
 
-      if (geo.type === "line") {
-        const line = geo as Line;
-        const p1 = sketch.points.get(line.p1);
-        const p2 = sketch.points.get(line.p2);
-        if (!p1 || !p2) return null;
-
-        const side = getOffsetSide(p1, p2, mousePos);
-        const offset = offsetLine(p1, p2, distancePx, side);
-
-        return {
-          type: "line",
-          points: [offset.p1, offset.p2],
-        };
-      } else if (geo.type === "circle") {
-        const circle = geo as CircleType;
-        const center = sketch.points.get(circle.center);
-        if (!center) return null;
-
-        const distToCenter = distance(mousePos, center);
-        const isOutside = distToCenter > circle.radius;
-        const newRadius = isOutside ? circle.radius + distancePx : Math.max(1, circle.radius - distancePx);
-
-        return {
-          type: "circle",
-          center,
-          radius: newRadius,
-        };
-      } else if (geo.type === "arc") {
-        const arc = geo as Arc;
-        const center = sketch.points.get(arc.center);
-        const startPt = sketch.points.get(arc.startPoint);
-        const endPt = sketch.points.get(arc.endPoint);
-        if (!center || !startPt || !endPt) return null;
-
-        const distToCenter = distance(mousePos, center);
-        const isOutside = distToCenter > arc.radius;
-        const newRadius = isOutside ? arc.radius + distancePx : Math.max(1, arc.radius - distancePx);
-
-        const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
-        const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
-
-        return {
-          type: "arc",
-          center,
-          radius: newRadius,
-          startAngle,
-          endAngle,
-          counterClockwise: arc.counterClockwise,
-        };
+      const newSelection = new Set(offsetDialog.selectedEntities);
+      if (newSelection.has(entityId)) {
+        newSelection.delete(entityId);
+      } else {
+        newSelection.add(entityId);
       }
 
-      return null;
+      setOffsetDialog({
+        ...offsetDialog,
+        selectedEntities: newSelection,
+      });
+      setSelectedEntities(newSelection);
     },
-    [sketch, offsetDistance, offsetLine, getOffsetSide],
+    [offsetDialog],
+  );
+
+  // Sélectionner tout le contour connecté pour l'offset
+  const selectContourForOffset = useCallback(
+    (startEntityId: string) => {
+      const connectedGeos = findConnectedGeometries(startEntityId);
+
+      if (offsetDialog) {
+        setOffsetDialog({
+          ...offsetDialog,
+          selectedEntities: connectedGeos,
+        });
+      }
+      setSelectedEntities(connectedGeos);
+    },
+    [offsetDialog, findConnectedGeometries],
   );
 
   // Calculer l'intersection de deux lignes (prolongées)
@@ -3656,22 +3710,13 @@ export function CADGabaritCanvas({
         }
 
         case "offset": {
-          // Si on a déjà une entité source, appliquer l'offset
-          if (offsetSourceEntity) {
-            applyOffset(offsetSourceEntity, worldPos);
-            setOffsetSourceEntity(null);
-            setOffsetPreview(null);
-          } else {
-            // Sélectionner l'entité source
+          // Si la modale est ouverte, gérer la sélection
+          if (offsetDialog?.open) {
             const entityId = findEntityAtPosition(worldPos.x, worldPos.y);
             if (entityId) {
               const geo = sketch.geometries.get(entityId);
               if (geo && (geo.type === "line" || geo.type === "circle" || geo.type === "arc")) {
-                setOffsetSourceEntity(entityId);
-                setSelectedEntities(new Set([entityId]));
-                toast.info("Déplacez la souris pour choisir le côté, puis cliquez pour valider");
-              } else {
-                toast.error("Sélectionnez une ligne, un cercle ou un arc");
+                toggleOffsetSelection(entityId);
               }
             }
           }
@@ -3708,8 +3753,8 @@ export function CADGabaritCanvas({
       filletRadius,
       chamferDistance,
       applyChamfer,
-      offsetSourceEntity,
-      applyOffset,
+      offsetDialog,
+      toggleOffsetSelection,
     ],
   );
 
@@ -3934,12 +3979,6 @@ export function CADGabaritCanvas({
         }
       }
 
-      // Mise à jour de la preview offset
-      if (activeTool === "offset" && offsetSourceEntity) {
-        const preview = calculateOffsetPreview(offsetSourceEntity, worldPos);
-        setOffsetPreview(preview as typeof offsetPreview);
-      }
-
       // Mise à jour mesure en cours (preview)
       if (activeTool === "measure" && measureState.phase === "waitingSecond" && measureState.start) {
         setMeasurePreviewEnd(worldPos);
@@ -3974,8 +4013,6 @@ export function CADGabaritCanvas({
       calibrationData,
       selectionBox,
       selectedEntities,
-      offsetSourceEntity,
-      calculateOffsetPreview,
     ],
   );
 
@@ -4184,6 +4221,13 @@ export function CADGabaritCanvas({
       if (entityId) {
         const geo = sketch.geometries.get(entityId);
         if (geo) {
+          // Si la modale offset est ouverte, double-clic = sélectionner le contour
+          if (offsetDialog?.open) {
+            selectContourForOffset(entityId);
+            toast.success("Contour sélectionné");
+            return;
+          }
+
           if (geo.type === "arc") {
             // Double-clic sur arc → ouvrir le dialogue d'édition du rayon
             const arc = geo as Arc;
@@ -4201,7 +4245,14 @@ export function CADGabaritCanvas({
         }
       }
     },
-    [screenToWorld, findEntityAtPosition, sketch.geometries, findConnectedGeometries],
+    [
+      screenToWorld,
+      findEntityAtPosition,
+      sketch.geometries,
+      findConnectedGeometries,
+      offsetDialog,
+      selectContourForOffset,
+    ],
   );
 
   const handleWheel = useCallback(
@@ -5882,18 +5933,15 @@ export function CADGabaritCanvas({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant={activeTool === "offset" ? "default" : "outline"}
+                  variant={offsetDialog?.open ? "default" : "outline"}
                   size="sm"
                   className="h-9 px-2"
-                  onClick={() => setActiveTool(activeTool === "offset" ? "select" : "offset")}
+                  onClick={openOffsetDialog}
                 >
-                  {/* Icône offset: lignes parallèles */}
+                  {/* Icône offset: deux rectangles décalés */}
                   <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 8 L20 8" strokeLinecap="round" />
-                    <path d="M4 16 L20 16" strokeLinecap="round" />
-                    <path d="M12 4 L12 8 M12 16 L12 20" strokeLinecap="round" strokeDasharray="2 2" />
-                    <path d="M8 10 L8 14" strokeLinecap="round" />
-                    <path d="M16 10 L16 14" strokeLinecap="round" />
+                    <rect x="3" y="3" width="12" height="12" rx="1" />
+                    <rect x="9" y="9" width="12" height="12" rx="1" strokeDasharray="3 2" />
                   </svg>
                   <span className="text-xs">{offsetDistance}</span>
                 </Button>
@@ -5903,29 +5951,6 @@ export function CADGabaritCanvas({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-
-          {/* Réglage distance offset */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-9 w-5 p-0">
-                <Settings className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <div className="p-2">
-                <Label className="text-xs">Distance offset (mm)</Label>
-                <Input
-                  type="number"
-                  value={offsetDistance}
-                  onChange={(e) => setOffsetDistance(Math.max(0.1, parseFloat(e.target.value) || 1))}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  className="w-20 h-7 mt-1"
-                  min="0.1"
-                  step="1"
-                />
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
 
         <Separator orientation="vertical" className="h-6" />
@@ -7051,6 +7076,105 @@ export function CADGabaritCanvas({
             </Dialog>
           );
         })()}
+
+      {/* Dialogue Offset */}
+      {offsetDialog && (
+        <Dialog
+          open={offsetDialog.open}
+          onOpenChange={(open) => {
+            if (!open) {
+              setOffsetDialog(null);
+              setOffsetPreview([]);
+              setActiveTool("select");
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-[350px]">
+            <DialogHeader>
+              <DialogTitle>Offset - Copie parallèle</DialogTitle>
+              <DialogDescription>
+                Cliquez sur les éléments à décaler ou double-cliquez pour sélectionner un contour
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+              {/* Distance */}
+              <div>
+                <Label htmlFor="offset-distance">Distance (mm)</Label>
+                <Input
+                  id="offset-distance"
+                  type="number"
+                  value={offsetDistance}
+                  onChange={(e) => setOffsetDistance(Math.max(0.1, parseFloat(e.target.value) || 0.1))}
+                  className="mt-2"
+                  min="0.1"
+                  step="1"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter" && offsetDialog.selectedEntities.size > 0) {
+                      applyOffsetToSelection();
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Direction */}
+              <div>
+                <Label>Direction</Label>
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    variant={offsetDirection === "outside" ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setOffsetDirection("outside")}
+                  >
+                    <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="6" y="6" width="12" height="12" rx="1" />
+                      <path d="M3 3 L6 6 M21 3 L18 6 M3 21 L6 18 M21 21 L18 18" strokeLinecap="round" />
+                    </svg>
+                    Extérieur
+                  </Button>
+                  <Button
+                    variant={offsetDirection === "inside" ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setOffsetDirection("inside")}
+                  >
+                    <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="3" width="18" height="18" rx="1" />
+                      <path d="M8 8 L6 6 M16 8 L18 6 M8 16 L6 18 M16 16 L18 18" strokeLinecap="round" />
+                    </svg>
+                    Intérieur
+                  </Button>
+                </div>
+              </div>
+
+              {/* Sélection */}
+              <div className="text-sm text-muted-foreground bg-muted/50 p-2 rounded">
+                <p className="font-medium">{offsetDialog.selectedEntities.size} élément(s) sélectionné(s)</p>
+                <p className="text-xs mt-1">• Clic = ajouter/retirer un élément</p>
+                <p className="text-xs">• Double-clic = sélectionner le contour</p>
+              </div>
+            </div>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setOffsetDialog(null);
+                  setOffsetPreview([]);
+                  setActiveTool("select");
+                }}
+              >
+                Annuler
+              </Button>
+              <Button onClick={applyOffsetToSelection} disabled={offsetDialog.selectedEntities.size === 0}>
+                <Check className="h-4 w-4 mr-1" />
+                Valider
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Dialogue modification arc */}
       {arcEditDialog && (
