@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.52 - Indicateur longueur segments sélectionnés
+// VERSION: 5.53 - Intersection automatique pour rectangles
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2887,6 +2887,12 @@ export function CADGabaritCanvas({
             ];
 
             lines.forEach((l) => newSketch.geometries.set(l.id, l));
+
+            // Détecter et créer les points d'intersection avec les segments existants
+            // On parcourt les lignes du rectangle et on les coupe si elles croisent d'autres segments
+            for (const line of lines) {
+              createIntersectionPoints(line.id, newSketch);
+            }
 
             // Ajouter contraintes horizontales/verticales
             newSketch.constraints.set(generateId(), { id: generateId(), type: "horizontal", entities: [lines[0].id] });
