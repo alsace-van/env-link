@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.39 - Debug règles
+// VERSION: 5.40 - Règles en haut et gauche, rulerSize=25
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -166,8 +166,8 @@ export function CADGabaritCanvas({
   // State
   const [sketch, setSketch] = useState<Sketch>(() => createEmptySketch(scaleFactor));
   const [viewport, setViewport] = useState<Viewport>({
-    offsetX: 30, // rulerSize
-    offsetY: 570, // Sera mis à jour avec la vraie hauteur - rulerSize
+    offsetX: 25, // rulerSize
+    offsetY: 575, // Sera mis à jour avec la vraie hauteur - rulerSize
     scale: 4, // ~1mm = 4px, proche de la taille réelle sur écran
     width: 800,
     height: 600,
@@ -346,7 +346,7 @@ export function CADGabaritCanvas({
     // Taille initiale
     const rect = container.getBoundingClientRect();
     rendererRef.current.resize(rect.width, rect.height);
-    const rulerSize = 30; // Doit correspondre à la taille dans cad-renderer
+    const rulerSize = 25; // Doit correspondre à la taille dans cad-renderer
     setViewport((v) => ({
       ...v,
       width: rect.width,
@@ -378,7 +378,7 @@ export function CADGabaritCanvas({
         const { width, height } = entry.contentRect;
         if (rendererRef.current) {
           rendererRef.current.resize(width, height);
-          const rulerSz = 30;
+          const rulerSz = 25;
           setViewport((v) => ({
             ...v,
             width,
@@ -4534,7 +4534,7 @@ export function CADGabaritCanvas({
 
   // Reset view - origine en bas à gauche
   const resetView = useCallback(() => {
-    const rulerSize = 30;
+    const rulerSize = 25;
     setViewport((v) => ({
       ...v,
       offsetX: rulerSize,
