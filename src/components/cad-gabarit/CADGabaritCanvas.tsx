@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.36 - Origine (0,0) au coin inférieur gauche, Y vers le haut
+// VERSION: 5.37 - Règles X et Y avec origine 0 en bas à gauche
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
