@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.37 - Règles X et Y avec origine 0 en bas à gauche
+// VERSION: 5.38 - Fix initialisation viewport avec origine en bas à gauche
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
@@ -166,8 +166,8 @@ export function CADGabaritCanvas({
   // State
   const [sketch, setSketch] = useState<Sketch>(() => createEmptySketch(scaleFactor));
   const [viewport, setViewport] = useState<Viewport>({
-    offsetX: 0,
-    offsetY: 0,
+    offsetX: 30, // rulerSize
+    offsetY: 570, // Sera mis à jour avec la vraie hauteur - rulerSize
     scale: 4, // ~1mm = 4px, proche de la taille réelle sur écran
     width: 800,
     height: 600,
@@ -378,7 +378,14 @@ export function CADGabaritCanvas({
         const { width, height } = entry.contentRect;
         if (rendererRef.current) {
           rendererRef.current.resize(width, height);
-          setViewport((v) => ({ ...v, width, height }));
+          const rulerSz = 30;
+          setViewport((v) => ({
+            ...v,
+            width,
+            height,
+            // Garder l'origine en bas à gauche après resize
+            offsetY: v.offsetY + (height - v.height), // Ajuster offsetY si la hauteur change
+          }));
         }
       }
     });
