@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.58 - Fix drag sélection (flag potentialSelectionDrag)
+// VERSION: 5.59 - Règles agrandies à 32px
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -166,7 +166,7 @@ export function CADGabaritCanvas({
   // State
   const [sketch, setSketch] = useState<Sketch>(() => createEmptySketch(scaleFactor));
   const [viewport, setViewport] = useState<Viewport>({
-    offsetX: 25, // rulerSize
+    offsetX: 32, // rulerSize
     offsetY: 575, // Sera mis à jour avec la vraie hauteur - rulerSize
     scale: 4, // ~1mm = 4px, proche de la taille réelle sur écran
     width: 800,
@@ -357,7 +357,7 @@ export function CADGabaritCanvas({
     // Taille initiale
     const rect = container.getBoundingClientRect();
     rendererRef.current.resize(rect.width, rect.height);
-    const rulerSize = 25; // Doit correspondre à la taille dans cad-renderer
+    const rulerSize = 32; // Doit correspondre à la taille dans cad-renderer
     setViewport((v) => ({
       ...v,
       width: rect.width,
@@ -389,7 +389,7 @@ export function CADGabaritCanvas({
         const { width, height } = entry.contentRect;
         if (rendererRef.current) {
           rendererRef.current.resize(width, height);
-          const rulerSz = 25;
+          const rulerSz = 32;
           setViewport((v) => ({
             ...v,
             width,
@@ -2625,7 +2625,7 @@ export function CADGabaritCanvas({
           });
 
           if (hasContent && isFinite(minX) && isFinite(maxX) && isFinite(minY) && isFinite(maxY)) {
-            const rulerSize = 25;
+            const rulerSize = 32;
             const contentWidth = maxX - minX;
             const contentHeight = maxY - minY;
             const centerX = (minX + maxX) / 2;
@@ -2648,7 +2648,7 @@ export function CADGabaritCanvas({
             toast.success("Vue ajustée au contenu");
           } else {
             // Pas de contenu, reset à la vue par défaut
-            const rulerSize = 25;
+            const rulerSize = 32;
             setViewport((v) => ({
               ...v,
               offsetX: rulerSize,
@@ -5176,7 +5176,7 @@ export function CADGabaritCanvas({
 
   // Reset view - origine en bas à gauche
   const resetView = useCallback(() => {
-    const rulerSize = 25;
+    const rulerSize = 32;
     setViewport((v) => ({
       ...v,
       offsetX: rulerSize,
