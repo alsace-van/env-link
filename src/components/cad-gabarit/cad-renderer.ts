@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.20 - Surbrillance des formes fermées
+// VERSION: 3.21 - Fix surbrillance formes fermées (pas de chevauchement)
 // ============================================
 
 import {
@@ -1724,122 +1724,216 @@ export class CADRenderer {
       }
     });
 
-    // Trouver les cycles fermés
-    const foundCycles: Array<Array<{ geoId: string; pointId: string }>> = [];
-    const usedGeos = new Set<string>();
+    // Trouver les cycles fermés - utiliser un Set global pour éviter de réutiliser des géométries
+    const globalUsedGeos = new Set<string>();
+    const foundCycles: Array<string[]> = []; // Array de geoIds dans l'ordre du parcours
 
-    // Pour chaque point qui a exactement 2 connexions, essayer de trouver un cycle
-    for (const [startPointId, connections] of pointToGeos) {
-      if (connections.length < 2) continue;
+    // Fonction pour trouver un cycle minimal à partir d'un point
+    const findMinimalCycle = (startPointId: string): string[] | null => {
+      const conns = pointToGeos.get(startPointId) || [];
+      if (conns.length < 2) return null;
 
-      // DFS pour trouver un cycle
-      const findCycle = (
-        currentPointId: string,
-        visitedGeos: Set<string>,
-        path: Array<{ geoId: string; pointId: string }>,
-      ): Array<{ geoId: string; pointId: string }> | null => {
-        const conns = pointToGeos.get(currentPointId) || [];
+      // Essayer de trouver le plus petit cycle
+      for (const firstConn of conns) {
+        if (globalUsedGeos.has(firstConn.geoId)) continue;
 
-        for (const conn of conns) {
-          if (visitedGeos.has(conn.geoId)) continue;
+        // BFS pour trouver le chemin le plus court qui revient au point de départ
+        const queue: Array<{ pointId: string; path: string[]; visitedPoints: Set<string> }> = [
+          {
+            pointId: firstConn.otherPointId,
+            path: [firstConn.geoId],
+            visitedPoints: new Set([startPointId, firstConn.otherPointId]),
+          },
+        ];
 
-          // Si on revient au point de départ et qu'on a assez de segments
-          if (conn.otherPointId === startPointId && path.length >= 2) {
-            return [...path, { geoId: conn.geoId, pointId: conn.otherPointId }];
-          }
+        while (queue.length > 0) {
+          const current = queue.shift()!;
 
-          // Continuer la recherche
-          if (path.length < 50) {
-            // Limite pour éviter les boucles infinies
-            const newVisited = new Set(visitedGeos);
-            newVisited.add(conn.geoId);
-            const result = findCycle(conn.otherPointId, newVisited, [
-              ...path,
-              { geoId: conn.geoId, pointId: conn.otherPointId },
-            ]);
-            if (result) return result;
+          if (current.path.length > 20) continue; // Limite de sécurité
+
+          const nextConns = pointToGeos.get(current.pointId) || [];
+
+          for (const conn of nextConns) {
+            // Ne pas réutiliser une géométrie déjà dans le chemin
+            if (current.path.includes(conn.geoId)) continue;
+
+            // Si on revient au départ avec au moins 3 segments, c'est un cycle
+            if (conn.otherPointId === startPointId && current.path.length >= 2) {
+              return [...current.path, conn.geoId];
+            }
+
+            // Ne pas revisiter un point (sauf le point de départ)
+            if (current.visitedPoints.has(conn.otherPointId)) continue;
+
+            const newVisited = new Set(current.visitedPoints);
+            newVisited.add(conn.otherPointId);
+
+            queue.push({
+              pointId: conn.otherPointId,
+              path: [...current.path, conn.geoId],
+              visitedPoints: newVisited,
+            });
           }
         }
-        return null;
-      };
+      }
 
-      // Essayer de trouver un cycle à partir de ce point
-      for (const firstConn of connections) {
-        if (usedGeos.has(firstConn.geoId)) continue;
+      return null;
+    };
 
-        const cycle = findCycle(firstConn.otherPointId, new Set([firstConn.geoId]), [
-          { geoId: firstConn.geoId, pointId: firstConn.otherPointId },
-        ]);
+    // Parcourir tous les points pour trouver des cycles
+    const processedStartPoints = new Set<string>();
 
-        if (cycle) {
-          // Vérifier qu'on n'a pas déjà ce cycle (en comparant les geoIds)
-          const cycleGeoIds = new Set(cycle.map((c) => c.geoId));
-          let isDuplicate = false;
-          for (const existingCycle of foundCycles) {
-            const existingGeoIds = new Set(existingCycle.map((c) => c.geoId));
-            if (cycleGeoIds.size === existingGeoIds.size && [...cycleGeoIds].every((id) => existingGeoIds.has(id))) {
-              isDuplicate = true;
-              break;
+    for (const [pointId] of pointToGeos) {
+      if (processedStartPoints.has(pointId)) continue;
+
+      const cycle = findMinimalCycle(pointId);
+
+      if (cycle) {
+        // Marquer toutes les géométries du cycle comme utilisées
+        cycle.forEach((geoId) => globalUsedGeos.add(geoId));
+        foundCycles.push(cycle);
+
+        // Marquer tous les points du cycle comme traités
+        for (const geoId of cycle) {
+          const geo = sketch.geometries.get(geoId);
+          if (geo) {
+            if (geo.type === "line") {
+              const line = geo as Line;
+              processedStartPoints.add(line.p1);
+              processedStartPoints.add(line.p2);
+            } else if (geo.type === "arc") {
+              const arc = geo as Arc;
+              processedStartPoints.add(arc.startPoint);
+              processedStartPoints.add(arc.endPoint);
             }
-          }
-
-          if (!isDuplicate) {
-            foundCycles.push(cycle);
-            cycle.forEach((c) => usedGeos.add(c.geoId));
           }
         }
       }
     }
 
     // Dessiner les cycles trouvés
-    for (const cycle of foundCycles) {
-      this.ctx.beginPath();
+    for (const cycleGeoIds of foundCycles) {
+      // Reconstruire le chemin ordonné des points
+      const orderedPath: Array<{
+        x: number;
+        y: number;
+        isArc?: boolean;
+        arc?: Arc;
+        center?: Point;
+        startPt?: Point;
+        endPt?: Point;
+      }> = [];
 
-      let firstPoint = true;
-      for (let i = 0; i < cycle.length; i++) {
-        const geo = sketch.geometries.get(cycle[i].geoId);
-        if (!geo) continue;
+      // Trouver le premier point et construire le chemin dans l'ordre
+      if (cycleGeoIds.length === 0) continue;
 
-        if (geo.type === "line") {
-          const line = geo as Line;
-          const p1 = sketch.points.get(line.p1);
-          const p2 = sketch.points.get(line.p2);
-          if (!p1 || !p2) continue;
+      const firstGeo = sketch.geometries.get(cycleGeoIds[0]);
+      if (!firstGeo) continue;
 
-          if (firstPoint) {
-            this.ctx.moveTo(p1.x, p1.y);
-            firstPoint = false;
+      let currentPointId: string;
+      if (firstGeo.type === "line") {
+        currentPointId = (firstGeo as Line).p1;
+      } else if (firstGeo.type === "arc") {
+        currentPointId = (firstGeo as Arc).startPoint;
+      } else continue;
+
+      // Parcourir les géométries dans l'ordre pour construire le chemin
+      const remainingGeos = new Set(cycleGeoIds);
+
+      while (remainingGeos.size > 0) {
+        let foundNext = false;
+
+        for (const geoId of remainingGeos) {
+          const geo = sketch.geometries.get(geoId);
+          if (!geo) continue;
+
+          if (geo.type === "line") {
+            const line = geo as Line;
+            if (line.p1 === currentPointId || line.p2 === currentPointId) {
+              const p1 = sketch.points.get(line.p1);
+              const p2 = sketch.points.get(line.p2);
+              if (!p1 || !p2) continue;
+
+              // Ajouter dans le bon sens
+              if (line.p1 === currentPointId) {
+                orderedPath.push({ x: p1.x, y: p1.y });
+                currentPointId = line.p2;
+              } else {
+                orderedPath.push({ x: p2.x, y: p2.y });
+                currentPointId = line.p1;
+              }
+
+              remainingGeos.delete(geoId);
+              foundNext = true;
+              break;
+            }
+          } else if (geo.type === "arc") {
+            const arc = geo as Arc;
+            if (arc.startPoint === currentPointId || arc.endPoint === currentPointId) {
+              const center = sketch.points.get(arc.center);
+              const startPt = sketch.points.get(arc.startPoint);
+              const endPt = sketch.points.get(arc.endPoint);
+              if (!center || !startPt || !endPt) continue;
+
+              // Ajouter l'arc dans le bon sens
+              if (arc.startPoint === currentPointId) {
+                orderedPath.push({ x: startPt.x, y: startPt.y, isArc: true, arc, center, startPt, endPt });
+                currentPointId = arc.endPoint;
+              } else {
+                // Inverser start et end pour l'arc
+                orderedPath.push({ x: endPt.x, y: endPt.y, isArc: true, arc, center, startPt: endPt, endPt: startPt });
+                currentPointId = arc.startPoint;
+              }
+
+              remainingGeos.delete(geoId);
+              foundNext = true;
+              break;
+            }
           }
-          this.ctx.lineTo(p2.x, p2.y);
-        } else if (geo.type === "arc") {
-          const arc = geo as Arc;
-          const center = sketch.points.get(arc.center);
-          const startPt = sketch.points.get(arc.startPoint);
-          const endPt = sketch.points.get(arc.endPoint);
-          if (!center || !startPt || !endPt) continue;
-
-          const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
-          let endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
-
-          // Déterminer le sens
-          let deltaAngle = endAngle - startAngle;
-          while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
-          while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
-          const counterClockwise = deltaAngle < 0;
-
-          if (firstPoint) {
-            this.ctx.moveTo(startPt.x, startPt.y);
-            firstPoint = false;
-          }
-          this.ctx.arc(center.x, center.y, arc.radius, startAngle, endAngle, counterClockwise);
         }
+
+        if (!foundNext) break; // Sécurité anti-boucle infinie
       }
 
-      this.ctx.closePath();
+      // Dessiner le chemin
+      if (orderedPath.length >= 3) {
+        this.ctx.beginPath();
+        this.ctx.moveTo(orderedPath[0].x, orderedPath[0].y);
 
-      // Remplissage semi-transparent
-      this.ctx.fillStyle = "rgba(100, 180, 255, 0.15)";
-      this.ctx.fill();
+        for (let i = 0; i < orderedPath.length; i++) {
+          const segment = orderedPath[i];
+          const nextSegment = orderedPath[(i + 1) % orderedPath.length];
+
+          if (segment.isArc && segment.arc && segment.center && segment.startPt && segment.endPt) {
+            const startAngle = Math.atan2(segment.startPt.y - segment.center.y, segment.startPt.x - segment.center.x);
+            const endAngle = Math.atan2(segment.endPt.y - segment.center.y, segment.endPt.x - segment.center.x);
+
+            // Déterminer le sens (toujours le petit arc)
+            let deltaAngle = endAngle - startAngle;
+            while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
+            while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
+            const counterClockwise = deltaAngle < 0;
+
+            this.ctx.arc(
+              segment.center.x,
+              segment.center.y,
+              segment.arc.radius,
+              startAngle,
+              endAngle,
+              counterClockwise,
+            );
+          } else {
+            // Ligne vers le prochain point
+            this.ctx.lineTo(nextSegment.x, nextSegment.y);
+          }
+        }
+
+        this.ctx.closePath();
+
+        // Remplissage semi-transparent
+        this.ctx.fillStyle = "rgba(100, 180, 255, 0.15)";
+        this.ctx.fill();
+      }
     }
   }
 }
