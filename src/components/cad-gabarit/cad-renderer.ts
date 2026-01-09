@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.13 - Fix doublon rulerSize
+// VERSION: 3.14 - Retour au système Y standard (sans inversion)
 // ============================================
 
 import {
@@ -155,9 +155,9 @@ export class CADRenderer {
 
     // Apply viewport transform
     // offsetX, offsetY = position écran de l'origine monde (0,0)
-    // Pour Y inversé (croissant vers le haut): scale Y négatif
+    // Y canvas augmente vers le bas (système standard)
     this.ctx.translate(this.viewport.offsetX, this.viewport.offsetY);
-    this.ctx.scale(this.viewport.scale, -this.viewport.scale);
+    this.ctx.scale(this.viewport.scale, this.viewport.scale);
 
     // 1. Background image (utiliser l'image transformée si disponible)
     if (transformedImage) {
@@ -181,12 +181,11 @@ export class CADRenderer {
     const normalLines: { p1: Point; p2: Point }[] = [];
     const selectedLines: { p1: Point; p2: Point }[] = [];
 
-    // Viewport bounds pour culling (avec Y inversé par scale(-scale))
-    // Point écran (sx, sy) -> monde ((sx - offsetX)/scale, (offsetY - sy)/scale)
+    // Viewport bounds pour culling
     const cullLeft = (rulerSize - this.viewport.offsetX) / this.viewport.scale;
     const cullRight = (this.viewport.width - this.viewport.offsetX) / this.viewport.scale;
-    const cullMinY = (this.viewport.offsetY - this.viewport.height) / this.viewport.scale;
-    const cullMaxY = (this.viewport.offsetY - rulerSize) / this.viewport.scale;
+    const cullTop = (rulerSize - this.viewport.offsetY) / this.viewport.scale;
+    const cullBottom = (this.viewport.height - this.viewport.offsetY) / this.viewport.scale;
 
     sketch.geometries.forEach((geo, id) => {
       // Vérifier si le calque est visible
@@ -210,7 +209,7 @@ export class CADRenderer {
           const minY = Math.min(p1.y, p2.y);
           const maxY = Math.max(p1.y, p2.y);
 
-          if (maxX >= cullLeft && minX <= cullRight && maxY >= cullMinY && minY <= cullMaxY) {
+          if (maxX >= cullLeft && minX <= cullRight && maxY >= cullTop && minY <= cullBottom) {
             if (isSelected || isHovered) {
               selectedLines.push({ p1, p2 });
             } else {
@@ -424,7 +423,6 @@ export class CADRenderer {
 
   /**
    * Dessine la grille
-   * Note: Le contexte a scale(scale, -scale) donc Y est inversé
    */
   private drawGrid(scaleFactor: number): void {
     // Adapter la grille au niveau de zoom pour éviter trop de lignes
@@ -451,18 +449,16 @@ export class CADRenderer {
     }
 
     // Calculer les limites visibles en coordonnées monde
-    // Avec scale(scale, -scale): point écran (sx, sy) -> monde ((sx-offsetX)/scale, (offsetY-sy)/scale)
     const rulerSize = 25;
     const left = (rulerSize - this.viewport.offsetX) / this.viewport.scale;
     const right = (this.viewport.width - this.viewport.offsetX) / this.viewport.scale;
-    // Y est inversé: haut de l'écran = Y monde max, bas de l'écran = Y monde min
-    const minY = (this.viewport.offsetY - this.viewport.height) / this.viewport.scale;
-    const maxY = (this.viewport.offsetY - rulerSize) / this.viewport.scale;
+    const top = (rulerSize - this.viewport.offsetY) / this.viewport.scale;
+    const bottom = (this.viewport.height - this.viewport.offsetY) / this.viewport.scale;
 
     // Limiter le nombre de lignes (max 200 dans chaque direction)
     const maxLines = 200;
     const horizontalLines = Math.abs(right - left) / gridSize;
-    const verticalLines = Math.abs(maxY - minY) / gridSize;
+    const verticalLines = Math.abs(bottom - top) / gridSize;
 
     if (horizontalLines > maxLines || verticalLines > maxLines) {
       // Grille trop dense, on n'affiche que la grille majeure
@@ -482,12 +478,12 @@ export class CADRenderer {
 
     for (let x = Math.floor(left / gridSize) * gridSize; x <= right; x += gridSize) {
       if (Math.abs(x % majorGridSize) > 0.001) {
-        this.ctx.moveTo(x, minY);
-        this.ctx.lineTo(x, maxY);
+        this.ctx.moveTo(x, top);
+        this.ctx.lineTo(x, bottom);
       }
     }
 
-    for (let y = Math.floor(minY / gridSize) * gridSize; y <= maxY; y += gridSize) {
+    for (let y = Math.floor(top / gridSize) * gridSize; y <= bottom; y += gridSize) {
       if (Math.abs(y % majorGridSize) > 0.001) {
         this.ctx.moveTo(left, y);
         this.ctx.lineTo(right, y);
@@ -502,11 +498,11 @@ export class CADRenderer {
     this.ctx.beginPath();
 
     for (let x = Math.floor(left / majorGridSize) * majorGridSize; x <= right; x += majorGridSize) {
-      this.ctx.moveTo(x, minY);
-      this.ctx.lineTo(x, maxY);
+      this.ctx.moveTo(x, top);
+      this.ctx.lineTo(x, bottom);
     }
 
-    for (let y = Math.floor(minY / majorGridSize) * majorGridSize; y <= maxY; y += majorGridSize) {
+    for (let y = Math.floor(top / majorGridSize) * majorGridSize; y <= bottom; y += majorGridSize) {
       this.ctx.moveTo(left, y);
       this.ctx.lineTo(right, y);
     }
@@ -532,7 +528,7 @@ export class CADRenderer {
     ctx.save();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
 
-    const rulerSize = 25; // Légèrement plus petit
+    const rulerSize = 25;
     const tickSmall = 4;
     const tickLarge = 10;
 
@@ -560,10 +556,8 @@ export class CADRenderer {
     ctx.strokeStyle = "#ccc";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    // Bordure en-dessous de la règle horizontale (haut)
     ctx.moveTo(rulerSize, rulerSize);
     ctx.lineTo(w, rulerSize);
-    // Bordure à droite de la règle verticale (gauche)
     ctx.moveTo(rulerSize, rulerSize);
     ctx.lineTo(rulerSize, h);
     ctx.stroke();
@@ -575,7 +569,7 @@ export class CADRenderer {
     ctx.lineWidth = 1;
 
     // ===== RÈGLE HORIZONTALE (HAUT) - Axe X =====
-    const leftWorld = -this.viewport.offsetX / this.viewport.scale;
+    const leftWorld = (rulerSize - this.viewport.offsetX) / this.viewport.scale;
     const rightWorld = (w - this.viewport.offsetX) / this.viewport.scale;
     const startX = Math.floor(leftWorld / spacing) * spacing;
     const endX = Math.ceil(rightWorld / spacing) * spacing;
@@ -587,7 +581,7 @@ export class CADRenderer {
       const sx = wx * this.viewport.scale + this.viewport.offsetX;
       if (sx < rulerSize || sx > w) continue;
 
-      const idx = Math.round(wx / spacing);
+      const idx = Math.round(Math.abs(wx) / spacing);
       const isMajor = idx % 5 === 0 || spacing >= 50;
       const tickH = isMajor ? tickLarge : tickSmall;
 
@@ -602,19 +596,16 @@ export class CADRenderer {
     }
 
     // ===== RÈGLE VERTICALE (GAUCHE) - Axe Y =====
-    // offsetY est la position Y écran de l'origine monde (0,0)
-    // Y monde croît vers le haut, Y écran vers le bas
-    const minYworld = (this.viewport.offsetY - h) / this.viewport.scale;
-    const maxYworld = (this.viewport.offsetY - rulerSize) / this.viewport.scale;
-    const startY = Math.floor(minYworld / spacing) * spacing;
-    const endY = Math.ceil(maxYworld / spacing) * spacing;
+    const topWorld = (rulerSize - this.viewport.offsetY) / this.viewport.scale;
+    const bottomWorld = (h - this.viewport.offsetY) / this.viewport.scale;
+    const startY = Math.floor(topWorld / spacing) * spacing;
+    const endY = Math.ceil(bottomWorld / spacing) * spacing;
 
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
 
     for (let wy = startY; wy <= endY; wy += spacing) {
-      // Position écran: Y monde croît vers le haut
-      const sy = this.viewport.offsetY - wy * this.viewport.scale;
+      const sy = wy * this.viewport.scale + this.viewport.offsetY;
       if (sy < rulerSize || sy > h) continue;
 
       const idx = Math.round(Math.abs(wy) / spacing);
@@ -631,7 +622,7 @@ export class CADRenderer {
       }
     }
 
-    // ===== UNITÉ DANS LE COIN SUPÉRIEUR GAUCHE =====
+    // ===== UNITÉ DANS LE COIN =====
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.font = "bold 8px Arial, sans-serif";
