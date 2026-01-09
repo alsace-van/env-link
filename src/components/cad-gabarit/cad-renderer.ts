@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.4 - Règles graduées en mm, suppression axes rouge/vert
+// VERSION: 3.6 - Règles avec origine 0 en bas à gauche, Y inversé pour augmenter vers le haut
 // ============================================
 
 import {
@@ -490,124 +490,149 @@ export class CADRenderer {
 
   /**
    * Dessine les règles graduées en mm sur les bords gauche et bas
+   * L'origine (0,0) est dans le coin inférieur gauche
    */
   private drawRulers(): void {
     // Sauvegarder le contexte et revenir aux coordonnées écran
     this.ctx.save();
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    const rulerSize = 25; // Largeur/hauteur des règles en pixels
-    const tickSmall = 5;
-    const tickMedium = 10;
-    const tickLarge = 15;
+    const rulerSize = 30; // Largeur/hauteur des règles en pixels
+    const tickSmall = 4;
+    const tickMedium = 8;
+    const tickLarge = 12;
 
-    // Calculer l'espacement des graduations en fonction du zoom
-    let spacing = 10; // mm par défaut
-    const spacingPx = spacing * this.viewport.scale;
+    // Calculer l'espacement optimal des graduations en fonction du zoom
+    const baseSpacing = 10; // mm de base
+    let spacing = baseSpacing;
+    let spacingPx = spacing * this.viewport.scale;
 
-    // Adapter l'espacement au zoom
-    if (spacingPx < 20) {
-      spacing = 50;
-    } else if (spacingPx < 40) {
-      spacing = 20;
-    } else if (spacingPx > 200) {
-      spacing = 5;
-    } else if (spacingPx > 400) {
-      spacing = 1;
+    // Adapter l'espacement pour avoir des graduations lisibles (entre 30 et 150 pixels)
+    const spacings = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+    for (const s of spacings) {
+      const px = s * this.viewport.scale;
+      if (px >= 30 && px <= 150) {
+        spacing = s;
+        spacingPx = px;
+        break;
+      }
+      if (px > 150) {
+        // Prendre le précédent si on dépasse
+        const idx = spacings.indexOf(s);
+        if (idx > 0) {
+          spacing = spacings[idx - 1];
+          spacingPx = spacing * this.viewport.scale;
+        }
+        break;
+      }
     }
 
-    const spacingOnScreen = spacing * this.viewport.scale;
+    // Si toujours trop petit ou trop grand, forcer une valeur
+    if (spacingPx < 20) spacing = 100;
+    if (spacingPx > 200) spacing = 1;
 
     // Fond des règles
-    this.ctx.fillStyle = "#f8f8f8";
+    this.ctx.fillStyle = "#f5f5f5";
     // Règle du bas
     this.ctx.fillRect(rulerSize, this.viewport.height - rulerSize, this.viewport.width - rulerSize, rulerSize);
     // Règle de gauche
     this.ctx.fillRect(0, 0, rulerSize, this.viewport.height - rulerSize);
-    // Coin
+    // Coin inférieur gauche
+    this.ctx.fillStyle = "#e8e8e8";
     this.ctx.fillRect(0, this.viewport.height - rulerSize, rulerSize, rulerSize);
 
     // Bordures des règles
-    this.ctx.strokeStyle = "#ccc";
+    this.ctx.strokeStyle = "#bbb";
     this.ctx.lineWidth = 1;
     this.ctx.beginPath();
-    // Bordure règle du bas
+    // Bordure intérieure règle du bas
     this.ctx.moveTo(rulerSize, this.viewport.height - rulerSize);
     this.ctx.lineTo(this.viewport.width, this.viewport.height - rulerSize);
-    // Bordure règle de gauche
+    // Bordure intérieure règle de gauche
     this.ctx.moveTo(rulerSize, 0);
     this.ctx.lineTo(rulerSize, this.viewport.height - rulerSize);
     this.ctx.stroke();
 
     // Configuration du texte
     this.ctx.fillStyle = "#333";
-    this.ctx.font = "10px sans-serif";
-    this.ctx.textAlign = "center";
-    this.ctx.textBaseline = "top";
+    this.ctx.font = "11px sans-serif";
 
-    // Règle horizontale (bas) - valeurs en mm
+    // ========== RÈGLE HORIZONTALE (BAS) ==========
+    // Calculer les limites en coordonnées monde
     const leftWorld = -this.viewport.offsetX / this.viewport.scale;
     const rightWorld = (this.viewport.width - this.viewport.offsetX) / this.viewport.scale;
 
     const startX = Math.floor(leftWorld / spacing) * spacing;
     const endX = Math.ceil(rightWorld / spacing) * spacing;
 
-    this.ctx.strokeStyle = "#666";
-    this.ctx.beginPath();
+    this.ctx.strokeStyle = "#888";
+    this.ctx.lineWidth = 1;
 
     for (let worldX = startX; worldX <= endX; worldX += spacing) {
       const screenX = worldX * this.viewport.scale + this.viewport.offsetX;
 
-      if (screenX < rulerSize || screenX > this.viewport.width) continue;
+      if (screenX < rulerSize - 5 || screenX > this.viewport.width) continue;
 
-      // Graduation
-      const isMajor = worldX % (spacing * 5) === 0 || spacing >= 20;
-      const tickHeight = isMajor ? tickLarge : worldX % (spacing * 2) === 0 ? tickMedium : tickSmall;
+      // Déterminer le type de graduation
+      const absWorldX = Math.abs(worldX);
+      const isMajor = absWorldX % (spacing * 5) === 0 || spacing >= 50;
+      const isMedium = !isMajor && absWorldX % (spacing * 2) === 0;
+      const tickHeight = isMajor ? tickLarge : isMedium ? tickMedium : tickSmall;
 
+      // Dessiner la graduation
+      this.ctx.beginPath();
       this.ctx.moveTo(screenX, this.viewport.height - rulerSize);
       this.ctx.lineTo(screenX, this.viewport.height - rulerSize + tickHeight);
+      this.ctx.stroke();
 
       // Label pour les graduations majeures
-      if (isMajor) {
+      if (isMajor || spacing >= 20) {
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "top";
         this.ctx.fillText(`${worldX}`, screenX, this.viewport.height - rulerSize + tickLarge + 2);
       }
     }
-    this.ctx.stroke();
 
-    // Règle verticale (gauche) - valeurs en mm
+    // ========== RÈGLE VERTICALE (GAUCHE) ==========
+    // Y est inversé dans le canvas (vers le bas), on affiche -Y pour que 0 soit en bas
     const topWorld = -this.viewport.offsetY / this.viewport.scale;
     const bottomWorld = (this.viewport.height - this.viewport.offsetY) / this.viewport.scale;
 
     const startY = Math.floor(topWorld / spacing) * spacing;
     const endY = Math.ceil(bottomWorld / spacing) * spacing;
 
-    this.ctx.textAlign = "right";
-    this.ctx.textBaseline = "middle";
-    this.ctx.beginPath();
-
     for (let worldY = startY; worldY <= endY; worldY += spacing) {
       const screenY = worldY * this.viewport.scale + this.viewport.offsetY;
 
-      if (screenY < 0 || screenY > this.viewport.height - rulerSize) continue;
+      if (screenY < 0 || screenY > this.viewport.height - rulerSize + 5) continue;
 
-      // Graduation
-      const isMajor = worldY % (spacing * 5) === 0 || spacing >= 20;
-      const tickWidth = isMajor ? tickLarge : worldY % (spacing * 2) === 0 ? tickMedium : tickSmall;
+      // Déterminer le type de graduation
+      // Utiliser -worldY pour le calcul du type (pour avoir les bonnes graduations majeures)
+      const displayY = -worldY; // Valeur affichée (inversée pour avoir 0 en bas)
+      const absDisplayY = Math.abs(displayY);
+      const isMajor = absDisplayY % (spacing * 5) === 0 || spacing >= 50;
+      const isMedium = !isMajor && absDisplayY % (spacing * 2) === 0;
+      const tickWidth = isMajor ? tickLarge : isMedium ? tickMedium : tickSmall;
 
+      // Dessiner la graduation
+      this.ctx.beginPath();
       this.ctx.moveTo(rulerSize - tickWidth, screenY);
       this.ctx.lineTo(rulerSize, screenY);
+      this.ctx.stroke();
 
       // Label pour les graduations majeures
-      if (isMajor) {
-        this.ctx.fillText(`${worldY}`, rulerSize - tickWidth - 2, screenY);
+      // Afficher displayY (valeur inversée pour avoir 0 en bas)
+      if (isMajor || spacing >= 20) {
+        this.ctx.textAlign = "right";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillText(`${displayY}`, rulerSize - tickWidth - 3, screenY);
       }
     }
-    this.ctx.stroke();
 
-    // Unité dans le coin
+    // ========== UNITÉ DANS LE COIN ==========
     this.ctx.textAlign = "center";
     this.ctx.textBaseline = "middle";
-    this.ctx.font = "9px sans-serif";
+    this.ctx.font = "bold 10px sans-serif";
     this.ctx.fillStyle = "#666";
     this.ctx.fillText("mm", rulerSize / 2, this.viewport.height - rulerSize / 2);
 
