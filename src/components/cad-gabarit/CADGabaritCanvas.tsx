@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.33 - Congé: choix du centre par distance à tan2 (robuste, indépendant du repère)
+// VERSION: 5.34 - Règles graduées en mm sur les bords (sans axes rouge/vert)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
