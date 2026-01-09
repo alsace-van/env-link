@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.7 - Règles X (bas) et Y (gauche) avec graduations adaptatives
+// VERSION: 3.8 - Utilise canvas.width/height pour les règles
 // ============================================
 
 import {
@@ -497,15 +497,17 @@ export class CADRenderer {
     this.ctx.save();
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 
+    // Utiliser les dimensions réelles du canvas
+    const canvasWidth = this.ctx.canvas.width;
+    const canvasHeight = this.ctx.canvas.height;
+
     const rulerSize = 30; // Largeur/hauteur des règles en pixels
     const tickSmall = 5;
-    const tickMedium = 10;
-    const tickLarge = 15;
+    const tickLarge = 12;
 
     // Calculer l'espacement optimal des graduations en fonction du zoom
-    // On veut environ 50-100 pixels entre chaque graduation majeure
     const spacings = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
-    let spacing = 10; // par défaut
+    let spacing = 10;
 
     for (const s of spacings) {
       const pxPerSpacing = s * this.viewport.scale;
@@ -515,35 +517,35 @@ export class CADRenderer {
       }
     }
 
-    // Fond des règles (gris clair)
-    this.ctx.fillStyle = "#f0f0f0";
+    // ===== FOND DES RÈGLES =====
     // Règle du bas (horizontale)
-    this.ctx.fillRect(rulerSize, this.viewport.height - rulerSize, this.viewport.width - rulerSize, rulerSize);
+    this.ctx.fillStyle = "#f0f0f0";
+    this.ctx.fillRect(rulerSize, canvasHeight - rulerSize, canvasWidth - rulerSize, rulerSize);
     // Règle de gauche (verticale)
-    this.ctx.fillRect(0, 0, rulerSize, this.viewport.height - rulerSize);
+    this.ctx.fillRect(0, 0, rulerSize, canvasHeight - rulerSize);
     // Coin inférieur gauche
     this.ctx.fillStyle = "#e0e0e0";
-    this.ctx.fillRect(0, this.viewport.height - rulerSize, rulerSize, rulerSize);
+    this.ctx.fillRect(0, canvasHeight - rulerSize, rulerSize, rulerSize);
 
-    // Bordures des règles
+    // Bordures intérieures
     this.ctx.strokeStyle = "#ccc";
     this.ctx.lineWidth = 1;
     this.ctx.beginPath();
-    this.ctx.moveTo(rulerSize, this.viewport.height - rulerSize);
-    this.ctx.lineTo(this.viewport.width, this.viewport.height - rulerSize);
+    this.ctx.moveTo(rulerSize, canvasHeight - rulerSize);
+    this.ctx.lineTo(canvasWidth, canvasHeight - rulerSize);
     this.ctx.moveTo(rulerSize, 0);
-    this.ctx.lineTo(rulerSize, this.viewport.height - rulerSize);
+    this.ctx.lineTo(rulerSize, canvasHeight - rulerSize);
     this.ctx.stroke();
 
-    // Configuration
-    this.ctx.strokeStyle = "#666";
+    // Configuration texte
     this.ctx.fillStyle = "#333";
     this.ctx.font = "10px Arial, sans-serif";
+    this.ctx.strokeStyle = "#666";
     this.ctx.lineWidth = 1;
 
-    // ========== RÈGLE HORIZONTALE (BAS) - Axe X ==========
+    // ===== RÈGLE HORIZONTALE (BAS) - Axe X =====
     const leftWorld = -this.viewport.offsetX / this.viewport.scale;
-    const rightWorld = (this.viewport.width - this.viewport.offsetX) / this.viewport.scale;
+    const rightWorld = (canvasWidth - this.viewport.offsetX) / this.viewport.scale;
 
     const startX = Math.floor(leftWorld / spacing) * spacing;
     const endX = Math.ceil(rightWorld / spacing) * spacing;
@@ -554,29 +556,24 @@ export class CADRenderer {
     for (let worldX = startX; worldX <= endX; worldX += spacing) {
       const screenX = worldX * this.viewport.scale + this.viewport.offsetX;
 
-      // Ne pas dessiner hors de la zone de la règle
-      if (screenX < rulerSize || screenX > this.viewport.width) continue;
+      if (screenX < rulerSize || screenX > canvasWidth) continue;
 
-      // Graduation majeure tous les 5 espacements, ou si espacement >= 50
       const isMajor = Math.round(worldX / spacing) % 5 === 0 || spacing >= 50;
       const tickH = isMajor ? tickLarge : tickSmall;
 
-      // Dessiner le tick
       this.ctx.beginPath();
-      this.ctx.moveTo(screenX, this.viewport.height - rulerSize);
-      this.ctx.lineTo(screenX, this.viewport.height - rulerSize + tickH);
+      this.ctx.moveTo(screenX, canvasHeight - rulerSize);
+      this.ctx.lineTo(screenX, canvasHeight - rulerSize + tickH);
       this.ctx.stroke();
 
-      // Label pour les graduations majeures
       if (isMajor) {
-        this.ctx.fillText(`${worldX}`, screenX, this.viewport.height - rulerSize + tickLarge + 1);
+        this.ctx.fillText(`${worldX}`, screenX, canvasHeight - rulerSize + tickLarge + 1);
       }
     }
 
-    // ========== RÈGLE VERTICALE (GAUCHE) - Axe Y ==========
-    // Y canvas va vers le bas, mais on veut afficher Y qui va vers le haut (0 en bas)
+    // ===== RÈGLE VERTICALE (GAUCHE) - Axe Y =====
     const topWorld = -this.viewport.offsetY / this.viewport.scale;
-    const bottomWorld = (this.viewport.height - this.viewport.offsetY) / this.viewport.scale;
+    const bottomWorld = (canvasHeight - this.viewport.offsetY) / this.viewport.scale;
 
     const startY = Math.floor(topWorld / spacing) * spacing;
     const endY = Math.ceil(bottomWorld / spacing) * spacing;
@@ -587,34 +584,29 @@ export class CADRenderer {
     for (let worldY = startY; worldY <= endY; worldY += spacing) {
       const screenY = worldY * this.viewport.scale + this.viewport.offsetY;
 
-      // Ne pas dessiner hors de la zone de la règle
-      if (screenY < 0 || screenY > this.viewport.height - rulerSize) continue;
+      if (screenY < 0 || screenY > canvasHeight - rulerSize) continue;
 
-      // La valeur affichée est -worldY (pour que Y augmente vers le haut)
+      // Afficher -worldY pour que Y augmente vers le haut
       const displayY = -worldY;
-
-      // Graduation majeure
-      const isMajor = Math.round(displayY / spacing) % 5 === 0 || spacing >= 50;
+      const isMajor = Math.round(Math.abs(displayY) / spacing) % 5 === 0 || spacing >= 50;
       const tickW = isMajor ? tickLarge : tickSmall;
 
-      // Dessiner le tick
       this.ctx.beginPath();
       this.ctx.moveTo(rulerSize - tickW, screenY);
       this.ctx.lineTo(rulerSize, screenY);
       this.ctx.stroke();
 
-      // Label pour les graduations majeures
       if (isMajor) {
         this.ctx.fillText(`${displayY}`, rulerSize - tickW - 2, screenY);
       }
     }
 
-    // ========== UNITÉ DANS LE COIN ==========
+    // ===== UNITÉ DANS LE COIN =====
     this.ctx.textAlign = "center";
     this.ctx.textBaseline = "middle";
-    this.ctx.font = "bold 9px Arial, sans-serif";
+    this.ctx.font = "bold 9px Arial";
     this.ctx.fillStyle = "#888";
-    this.ctx.fillText("mm", rulerSize / 2, this.viewport.height - rulerSize / 2);
+    this.ctx.fillText("mm", rulerSize / 2, canvasHeight - rulerSize / 2);
 
     this.ctx.restore();
   }
