@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.61 - Outil Offset refait (modale, sélection multiple, contour)
+// VERSION: 5.62 - Panneau Offset flottant draggable compact
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -324,6 +324,9 @@ export function CADGabaritCanvas({
     open: boolean;
     selectedEntities: Set<string>;
   } | null>(null);
+  const [offsetPanelPos, setOffsetPanelPos] = useState({ x: 100, y: 100 });
+  const [offsetPanelDragging, setOffsetPanelDragging] = useState(false);
+  const [offsetPanelDragStart, setOffsetPanelDragStart] = useState({ x: 0, y: 0 });
   const [offsetPreview, setOffsetPreview] = useState<
     Array<{
       type: "line" | "circle" | "arc";
@@ -7077,103 +7080,112 @@ export function CADGabaritCanvas({
           );
         })()}
 
-      {/* Dialogue Offset */}
-      {offsetDialog && (
-        <Dialog
-          open={offsetDialog.open}
-          onOpenChange={(open) => {
-            if (!open) {
-              setOffsetDialog(null);
-              setOffsetPreview([]);
-              setActiveTool("select");
+      {/* Panneau Offset flottant draggable */}
+      {offsetDialog?.open && (
+        <div
+          className="fixed bg-white rounded-lg shadow-xl border z-50 select-none"
+          style={{
+            left: offsetPanelPos.x,
+            top: offsetPanelPos.y,
+            width: 200,
+          }}
+          onMouseDown={(e) => {
+            // Ne pas démarrer le drag si on clique sur un input ou bouton
+            if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "BUTTON") return;
+            setOffsetPanelDragging(true);
+            setOffsetPanelDragStart({ x: e.clientX - offsetPanelPos.x, y: e.clientY - offsetPanelPos.y });
+          }}
+          onMouseMove={(e) => {
+            if (offsetPanelDragging) {
+              setOffsetPanelPos({
+                x: e.clientX - offsetPanelDragStart.x,
+                y: e.clientY - offsetPanelDragStart.y,
+              });
             }
           }}
+          onMouseUp={() => setOffsetPanelDragging(false)}
+          onMouseLeave={() => setOffsetPanelDragging(false)}
         >
-          <DialogContent className="sm:max-w-[350px]">
-            <DialogHeader>
-              <DialogTitle>Offset - Copie parallèle</DialogTitle>
-              <DialogDescription>
-                Cliquez sur les éléments à décaler ou double-cliquez pour sélectionner un contour
-              </DialogDescription>
-            </DialogHeader>
-            <div className="py-4 space-y-4">
-              {/* Distance */}
-              <div>
-                <Label htmlFor="offset-distance">Distance (mm)</Label>
-                <Input
-                  id="offset-distance"
-                  type="number"
-                  value={offsetDistance}
-                  onChange={(e) => setOffsetDistance(Math.max(0.1, parseFloat(e.target.value) || 0.1))}
-                  className="mt-2"
-                  min="0.1"
-                  step="1"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    e.stopPropagation();
-                    if (e.key === "Enter" && offsetDialog.selectedEntities.size > 0) {
-                      applyOffsetToSelection();
-                    }
-                  }}
-                />
-              </div>
+          {/* Header draggable */}
+          <div className="flex items-center justify-between px-3 py-2 bg-gray-100 rounded-t-lg cursor-move border-b">
+            <span className="text-sm font-medium">Offset</span>
+            <button
+              className="text-gray-500 hover:text-gray-700"
+              onClick={() => {
+                setOffsetDialog(null);
+                setOffsetPreview([]);
+                setActiveTool("select");
+              }}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
 
-              {/* Direction */}
-              <div>
-                <Label>Direction</Label>
-                <div className="flex gap-2 mt-2">
-                  <Button
-                    variant={offsetDirection === "outside" ? "default" : "outline"}
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => setOffsetDirection("outside")}
-                  >
-                    <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="6" y="6" width="12" height="12" rx="1" />
-                      <path d="M3 3 L6 6 M21 3 L18 6 M3 21 L6 18 M21 21 L18 18" strokeLinecap="round" />
-                    </svg>
-                    Extérieur
-                  </Button>
-                  <Button
-                    variant={offsetDirection === "inside" ? "default" : "outline"}
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => setOffsetDirection("inside")}
-                  >
-                    <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="3" width="18" height="18" rx="1" />
-                      <path d="M8 8 L6 6 M16 8 L18 6 M8 16 L6 18 M16 16 L18 18" strokeLinecap="round" />
-                    </svg>
-                    Intérieur
-                  </Button>
-                </div>
-              </div>
+          {/* Contenu */}
+          <div className="p-3 space-y-3">
+            {/* Distance + Direction sur une ligne */}
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                value={offsetDistance}
+                onChange={(e) => setOffsetDistance(Math.max(0.1, parseFloat(e.target.value) || 0.1))}
+                className="h-8 w-20 text-sm"
+                min="0.1"
+                step="1"
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter" && offsetDialog.selectedEntities.size > 0) {
+                    applyOffsetToSelection();
+                  }
+                }}
+              />
+              <span className="text-xs text-gray-500">mm</span>
 
-              {/* Sélection */}
-              <div className="text-sm text-muted-foreground bg-muted/50 p-2 rounded">
-                <p className="font-medium">{offsetDialog.selectedEntities.size} élément(s) sélectionné(s)</p>
-                <p className="text-xs mt-1">• Clic = ajouter/retirer un élément</p>
-                <p className="text-xs">• Double-clic = sélectionner le contour</p>
-              </div>
-            </div>
-            <DialogFooter className="gap-2">
+              {/* Toggle direction avec flèches */}
               <Button
                 variant="outline"
-                onClick={() => {
-                  setOffsetDialog(null);
-                  setOffsetPreview([]);
-                  setActiveTool("select");
-                }}
+                size="sm"
+                className="h-8 px-2 ml-auto"
+                onClick={() => setOffsetDirection(offsetDirection === "outside" ? "inside" : "outside")}
+                title={offsetDirection === "outside" ? "Extérieur" : "Intérieur"}
               >
-                Annuler
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  {offsetDirection === "outside" ? (
+                    <>
+                      <path d="M7 12 L4 12 M4 9 L4 15" strokeLinecap="round" />
+                      <path d="M4 12 L1 9 M4 12 L1 15" strokeLinecap="round" />
+                      <path d="M17 12 L20 12 M20 9 L20 15" strokeLinecap="round" />
+                      <path d="M20 12 L23 9 M20 12 L23 15" strokeLinecap="round" />
+                    </>
+                  ) : (
+                    <>
+                      <path d="M1 12 L4 12 M4 9 L4 15" strokeLinecap="round" />
+                      <path d="M4 12 L7 9 M4 12 L7 15" strokeLinecap="round" />
+                      <path d="M23 12 L20 12 M20 9 L20 15" strokeLinecap="round" />
+                      <path d="M20 12 L17 9 M20 12 L17 15" strokeLinecap="round" />
+                    </>
+                  )}
+                </svg>
               </Button>
-              <Button onClick={applyOffsetToSelection} disabled={offsetDialog.selectedEntities.size === 0}>
-                <Check className="h-4 w-4 mr-1" />
-                Valider
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </div>
+
+            {/* Compteur sélection */}
+            <div className="text-xs text-gray-600 bg-gray-50 px-2 py-1 rounded">
+              {offsetDialog.selectedEntities.size} sélectionné(s)
+            </div>
+
+            {/* Bouton valider */}
+            <Button
+              size="sm"
+              className="w-full h-8"
+              onClick={applyOffsetToSelection}
+              disabled={offsetDialog.selectedEntities.size === 0}
+            >
+              <Check className="h-3 w-3 mr-1" />
+              Valider
+            </Button>
+          </div>
+        </div>
       )}
 
       {/* Dialogue modification arc */}
