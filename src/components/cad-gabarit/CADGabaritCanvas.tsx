@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.67 - Panneaux Congé/Chanfrein flottants draggables (comme Offset)
+// VERSION: 5.68 - Preview temps réel congé/chanfrein + fix conversion mm/px
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -339,6 +339,27 @@ export function CADGabaritCanvas({
     }>
   >([]);
 
+  // Preview pour congé/chanfrein (temps réel)
+  const [filletPreview, setFilletPreview] = useState<
+    Array<{
+      type: "arc";
+      center: { x: number; y: number };
+      radius: number;
+      startAngle: number;
+      endAngle: number;
+      counterClockwise: boolean;
+      tan1: { x: number; y: number };
+      tan2: { x: number; y: number };
+    }>
+  >([]);
+  const [chamferPreview, setChamferPreview] = useState<
+    Array<{
+      type: "line";
+      p1: { x: number; y: number };
+      p2: { x: number; y: number };
+    }>
+  >([]);
+
   // Modale pour congé
   const [filletDialog, setFilletDialog] = useState<{
     open: boolean;
@@ -624,6 +645,87 @@ export function CADGabaritCanvas({
     if (canvasRef.current) {
       const ctx = canvasRef.current.getContext("2d");
       if (ctx) {
+        // Dessiner les previews de congé (arcs verts)
+        if (filletPreview.length > 0) {
+          ctx.save();
+          ctx.strokeStyle = "#10B981"; // Vert
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 4]);
+
+          for (const preview of filletPreview) {
+            const centerScreen = {
+              x: preview.center.x * viewport.scale + viewport.offsetX,
+              y: preview.center.y * viewport.scale + viewport.offsetY,
+            };
+            const radiusScreen = preview.radius * viewport.scale;
+
+            ctx.beginPath();
+            ctx.arc(
+              centerScreen.x,
+              centerScreen.y,
+              radiusScreen,
+              preview.startAngle,
+              preview.endAngle,
+              preview.counterClockwise,
+            );
+            ctx.stroke();
+
+            // Dessiner les points de tangence
+            const tan1Screen = {
+              x: preview.tan1.x * viewport.scale + viewport.offsetX,
+              y: preview.tan1.y * viewport.scale + viewport.offsetY,
+            };
+            const tan2Screen = {
+              x: preview.tan2.x * viewport.scale + viewport.offsetX,
+              y: preview.tan2.y * viewport.scale + viewport.offsetY,
+            };
+            ctx.fillStyle = "#10B981";
+            ctx.beginPath();
+            ctx.arc(tan1Screen.x, tan1Screen.y, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(tan2Screen.x, tan2Screen.y, 4, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          ctx.restore();
+        }
+
+        // Dessiner les previews de chanfrein (lignes oranges)
+        if (chamferPreview.length > 0) {
+          ctx.save();
+          ctx.strokeStyle = "#F97316"; // Orange
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 4]);
+
+          for (const preview of chamferPreview) {
+            const p1Screen = {
+              x: preview.p1.x * viewport.scale + viewport.offsetX,
+              y: preview.p1.y * viewport.scale + viewport.offsetY,
+            };
+            const p2Screen = {
+              x: preview.p2.x * viewport.scale + viewport.offsetX,
+              y: preview.p2.y * viewport.scale + viewport.offsetY,
+            };
+
+            ctx.beginPath();
+            ctx.moveTo(p1Screen.x, p1Screen.y);
+            ctx.lineTo(p2Screen.x, p2Screen.y);
+            ctx.stroke();
+
+            // Dessiner les points
+            ctx.fillStyle = "#F97316";
+            ctx.beginPath();
+            ctx.arc(p1Screen.x, p1Screen.y, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(p2Screen.x, p2Screen.y, 4, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          ctx.restore();
+        }
+
         // Points survolés dans la modale congé
         if (filletDialog?.hoveredCornerIdx !== null && filletDialog?.hoveredCornerIdx !== undefined) {
           const corner = filletDialog.corners[filletDialog.hoveredCornerIdx];
@@ -699,6 +801,8 @@ export function CADGabaritCanvas({
     offsetPreview,
     filletDialog,
     chamferDialog,
+    filletPreview,
+    chamferPreview,
   ]);
 
   useEffect(() => {
@@ -1870,6 +1974,182 @@ export function CADGabaritCanvas({
     [sketch.geometries, sketch.points, findSharedPoint],
   );
 
+  // Calculer la géométrie d'un congé sans l'appliquer (pour preview)
+  const calculateFilletGeometry = useCallback(
+    (
+      pointId: string,
+      radiusMm: number,
+    ): {
+      center: { x: number; y: number };
+      radius: number;
+      startAngle: number;
+      endAngle: number;
+      counterClockwise: boolean;
+      tan1: { x: number; y: number };
+      tan2: { x: number; y: number };
+    } | null => {
+      // Trouver les lignes connectées à ce point
+      const connectedLines = findLinesConnectedToPoint(pointId);
+      if (connectedLines.length !== 2) return null;
+
+      const line1 = connectedLines[0];
+      const line2 = connectedLines[1];
+
+      const cornerPt = sketch.points.get(pointId);
+      const endPt1 = sketch.points.get(line1.p1 === pointId ? line1.p2 : line1.p1);
+      const endPt2 = sketch.points.get(line2.p1 === pointId ? line2.p2 : line2.p1);
+
+      if (!cornerPt || !endPt1 || !endPt2) return null;
+
+      const vec1 = { x: endPt1.x - cornerPt.x, y: endPt1.y - cornerPt.y };
+      const vec2 = { x: endPt2.x - cornerPt.x, y: endPt2.y - cornerPt.y };
+
+      const len1 = Math.sqrt(vec1.x * vec1.x + vec1.y * vec1.y);
+      const len2 = Math.sqrt(vec2.x * vec2.x + vec2.y * vec2.y);
+
+      if (len1 < 0.001 || len2 < 0.001) return null;
+
+      const u1 = { x: vec1.x / len1, y: vec1.y / len1 };
+      const u2 = { x: vec2.x / len2, y: vec2.y / len2 };
+
+      const dot = u1.x * u2.x + u1.y * u2.y;
+      const angleRad = Math.acos(Math.max(-1, Math.min(1, dot)));
+
+      if (angleRad < 0.05 || angleRad > Math.PI - 0.05) return null;
+
+      // Convertir rayon mm en px
+      const radiusPx = radiusMm * sketch.scaleFactor;
+      const halfAngle = angleRad / 2;
+      const tangentDist = radiusPx / Math.tan(halfAngle);
+
+      if (tangentDist > len1 * 0.95 || tangentDist > len2 * 0.95) return null;
+
+      const tan1 = { x: cornerPt.x + u1.x * tangentDist, y: cornerPt.y + u1.y * tangentDist };
+      const tan2 = { x: cornerPt.x + u2.x * tangentDist, y: cornerPt.y + u2.y * tangentDist };
+
+      // Calculer le centre du congé sur la bissectrice
+      const bisector = { x: u1.x + u2.x, y: u1.y + u2.y };
+      const bisectorLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
+
+      if (bisectorLen < 0.001) return null;
+
+      const bisectorUnit = { x: bisector.x / bisectorLen, y: bisector.y / bisectorLen };
+      const centerDist = radiusPx / Math.sin(halfAngle);
+      const center = {
+        x: cornerPt.x + bisectorUnit.x * centerDist,
+        y: cornerPt.y + bisectorUnit.y * centerDist,
+      };
+
+      // Calculer les angles de début et fin
+      const startAngle = Math.atan2(tan1.y - center.y, tan1.x - center.x);
+      const endAngle = Math.atan2(tan2.y - center.y, tan2.x - center.x);
+
+      // Déterminer si counterClockwise
+      const cross = u1.x * u2.y - u1.y * u2.x;
+      const counterClockwise = cross > 0;
+
+      return {
+        center,
+        radius: radiusPx,
+        startAngle,
+        endAngle,
+        counterClockwise,
+        tan1,
+        tan2,
+      };
+    },
+    [sketch.points, sketch.scaleFactor, findLinesConnectedToPoint],
+  );
+
+  // Calculer la géométrie d'un chanfrein sans l'appliquer (pour preview)
+  const calculateChamferGeometry = useCallback(
+    (
+      pointId: string,
+      distanceMm: number,
+    ): {
+      p1: { x: number; y: number };
+      p2: { x: number; y: number };
+    } | null => {
+      const connectedLines = findLinesConnectedToPoint(pointId);
+      if (connectedLines.length !== 2) return null;
+
+      const line1 = connectedLines[0];
+      const line2 = connectedLines[1];
+
+      const cornerPt = sketch.points.get(pointId);
+      const endPt1 = sketch.points.get(line1.p1 === pointId ? line1.p2 : line1.p1);
+      const endPt2 = sketch.points.get(line2.p1 === pointId ? line2.p2 : line2.p1);
+
+      if (!cornerPt || !endPt1 || !endPt2) return null;
+
+      const vec1 = { x: endPt1.x - cornerPt.x, y: endPt1.y - cornerPt.y };
+      const vec2 = { x: endPt2.x - cornerPt.x, y: endPt2.y - cornerPt.y };
+
+      const len1 = Math.sqrt(vec1.x * vec1.x + vec1.y * vec1.y);
+      const len2 = Math.sqrt(vec2.x * vec2.x + vec2.y * vec2.y);
+
+      if (len1 < 0.001 || len2 < 0.001) return null;
+
+      // Convertir distance mm en px
+      const distPx = distanceMm * sketch.scaleFactor;
+
+      if (distPx > len1 * 0.95 || distPx > len2 * 0.95) return null;
+
+      const u1 = { x: vec1.x / len1, y: vec1.y / len1 };
+      const u2 = { x: vec2.x / len2, y: vec2.y / len2 };
+
+      const p1 = { x: cornerPt.x + u1.x * distPx, y: cornerPt.y + u1.y * distPx };
+      const p2 = { x: cornerPt.x + u2.x * distPx, y: cornerPt.y + u2.y * distPx };
+
+      return { p1, p2 };
+    },
+    [sketch.points, sketch.scaleFactor, findLinesConnectedToPoint],
+  );
+
+  // Mettre à jour la preview des congés en temps réel
+  useEffect(() => {
+    if (!filletDialog?.open) {
+      setFilletPreview([]);
+      return;
+    }
+
+    const previews: typeof filletPreview = [];
+    for (const corner of filletDialog.corners) {
+      if (corner.radius > 0 && corner.radius <= corner.maxRadius) {
+        const geom = calculateFilletGeometry(corner.pointId, corner.radius);
+        if (geom) {
+          previews.push({
+            type: "arc",
+            ...geom,
+          });
+        }
+      }
+    }
+    setFilletPreview(previews);
+  }, [filletDialog, calculateFilletGeometry]);
+
+  // Mettre à jour la preview des chanfreins en temps réel
+  useEffect(() => {
+    if (!chamferDialog?.open) {
+      setChamferPreview([]);
+      return;
+    }
+
+    const previews: typeof chamferPreview = [];
+    for (const corner of chamferDialog.corners) {
+      if (corner.distance > 0 && corner.distance <= corner.maxDistance) {
+        const geom = calculateChamferGeometry(corner.pointId, corner.distance);
+        if (geom) {
+          previews.push({
+            type: "line",
+            ...geom,
+          });
+        }
+      }
+    }
+    setChamferPreview(previews);
+  }, [chamferDialog, calculateChamferGeometry]);
+
   // Ouvrir le dialogue de congé si 2 lignes OU 1+ points (coins) sont sélectionnés
   const openFilletDialog = useCallback(() => {
     const corners: Array<{ pointId: string; maxRadius: number; angleDeg: number; radius: number }> = [];
@@ -1891,9 +2171,9 @@ export function CADGabaritCanvas({
       }
     }
 
-    // Calculer le rayon suggéré
-    const getSuggestedRadius = (maxRadius: number) => {
-      return Math.min(filletRadius, Math.floor(maxRadius));
+    // Calculer le rayon suggéré (en mm)
+    const getSuggestedRadius = (maxRadiusMm: number) => {
+      return Math.min(filletRadius, Math.floor(maxRadiusMm));
     };
 
     if (allAreCornerPoints && selectedIds.length >= 1) {
@@ -1902,11 +2182,13 @@ export function CADGabaritCanvas({
         const connectedLines = findLinesConnectedToPoint(pointId);
         const params = calculateCornerParams(connectedLines[0].id, connectedLines[1].id);
         if (params) {
+          // Convertir maxRadius de px en mm
+          const maxRadiusMm = params.maxRadius / sketch.scaleFactor;
           corners.push({
             pointId,
-            maxRadius: params.maxRadius,
+            maxRadius: maxRadiusMm,
             angleDeg: params.angleDeg,
-            radius: getSuggestedRadius(params.maxRadius),
+            radius: getSuggestedRadius(maxRadiusMm),
           });
         }
       }
@@ -1923,11 +2205,13 @@ export function CADGabaritCanvas({
         if (shared) {
           const params = calculateCornerParams(selectedIds[0], selectedIds[1]);
           if (params) {
+            // Convertir maxRadius de px en mm
+            const maxRadiusMm = params.maxRadius / sketch.scaleFactor;
             corners.push({
               pointId: shared.sharedPointId,
-              maxRadius: params.maxRadius,
+              maxRadius: maxRadiusMm,
               angleDeg: params.angleDeg,
-              radius: getSuggestedRadius(params.maxRadius),
+              radius: getSuggestedRadius(maxRadiusMm),
             });
           }
         } else {
@@ -1981,11 +2265,13 @@ export function CADGabaritCanvas({
         const lineIds = pointUsage.get(pointId)!;
         const params = calculateCornerParams(lineIds[0], lineIds[1]);
         if (params) {
+          // Convertir maxRadius de px en mm
+          const maxRadiusMm = params.maxRadius / sketch.scaleFactor;
           corners.push({
             pointId,
-            maxRadius: params.maxRadius,
+            maxRadius: maxRadiusMm,
             angleDeg: params.angleDeg,
-            radius: getSuggestedRadius(params.maxRadius),
+            radius: getSuggestedRadius(maxRadiusMm),
           });
         }
       }
@@ -1999,7 +2285,7 @@ export function CADGabaritCanvas({
       return;
     }
 
-    // Trouver le plus petit maxRadius parmi tous les coins
+    // Trouver le plus petit maxRadius parmi tous les coins (déjà en mm)
     const minMaxRadius = Math.min(...corners.map((c) => c.maxRadius));
     const suggestedRadius = Math.min(filletRadius, Math.floor(minMaxRadius));
 
@@ -2014,6 +2300,7 @@ export function CADGabaritCanvas({
     selectedEntities,
     sketch.geometries,
     sketch.points,
+    sketch.scaleFactor,
     findSharedPoint,
     findLinesConnectedToPoint,
     filletRadius,
@@ -2027,9 +2314,9 @@ export function CADGabaritCanvas({
     // Collecter tous les coins valides
     const selectedIds = Array.from(selectedEntities);
 
-    // Calculer la distance suggérée
-    const getSuggestedDistance = (maxDistance: number) => {
-      return Math.min(chamferDistance, Math.floor(maxDistance));
+    // Calculer la distance suggérée (en mm)
+    const getSuggestedDistance = (maxDistanceMm: number) => {
+      return Math.min(chamferDistance, Math.floor(maxDistanceMm));
     };
 
     // Vérifier si ce sont des points (coins)
@@ -2052,11 +2339,13 @@ export function CADGabaritCanvas({
         const connectedLines = findLinesConnectedToPoint(pointId);
         const params = calculateCornerParams(connectedLines[0].id, connectedLines[1].id);
         if (params) {
+          // Convertir maxDistance de px en mm
+          const maxDistanceMm = params.maxDistance / sketch.scaleFactor;
           corners.push({
             pointId,
-            maxDistance: params.maxDistance,
+            maxDistance: maxDistanceMm,
             angleDeg: params.angleDeg,
-            distance: getSuggestedDistance(params.maxDistance),
+            distance: getSuggestedDistance(maxDistanceMm),
           });
         }
       }
@@ -2073,11 +2362,13 @@ export function CADGabaritCanvas({
         if (shared) {
           const params = calculateCornerParams(selectedIds[0], selectedIds[1]);
           if (params) {
+            // Convertir maxDistance de px en mm
+            const maxDistanceMm = params.maxDistance / sketch.scaleFactor;
             corners.push({
               pointId: shared.sharedPointId,
-              maxDistance: params.maxDistance,
+              maxDistance: maxDistanceMm,
               angleDeg: params.angleDeg,
-              distance: getSuggestedDistance(params.maxDistance),
+              distance: getSuggestedDistance(maxDistanceMm),
             });
           }
         } else {
@@ -2131,11 +2422,13 @@ export function CADGabaritCanvas({
         const lineIds = pointUsage.get(pointId)!;
         const params = calculateCornerParams(lineIds[0], lineIds[1]);
         if (params) {
+          // Convertir maxDistance de px en mm
+          const maxDistanceMm = params.maxDistance / sketch.scaleFactor;
           corners.push({
             pointId,
-            maxDistance: params.maxDistance,
+            maxDistance: maxDistanceMm,
             angleDeg: params.angleDeg,
-            distance: getSuggestedDistance(params.maxDistance),
+            distance: getSuggestedDistance(maxDistanceMm),
           });
         }
       }
@@ -2149,7 +2442,7 @@ export function CADGabaritCanvas({
       return;
     }
 
-    // Trouver le plus petit maxDistance parmi tous les coins
+    // Trouver le plus petit maxDistance parmi tous les coins (déjà en mm)
     const minMaxDistance = Math.min(...corners.map((c) => c.maxDistance));
     const suggestedDistance = Math.min(chamferDistance, Math.floor(minMaxDistance));
 
@@ -2164,6 +2457,7 @@ export function CADGabaritCanvas({
     selectedEntities,
     sketch.geometries,
     sketch.points,
+    sketch.scaleFactor,
     findSharedPoint,
     findLinesConnectedToPoint,
     chamferDistance,
@@ -2173,6 +2467,8 @@ export function CADGabaritCanvas({
   // Appliquer le congé depuis la modale (sur tous les coins)
   const applyFilletFromDialog = useCallback(() => {
     if (!filletDialog) return;
+
+    console.log("applyFilletFromDialog called", filletDialog);
 
     // Accumuler les changements dans un seul sketch
     let currentSketch: Sketch = {
@@ -2185,6 +2481,7 @@ export function CADGabaritCanvas({
     let successCount = 0;
 
     for (const corner of filletDialog.corners) {
+      console.log("Processing corner:", corner);
       // Retrouver les lignes connectées à ce point dans le sketch COURANT
       const connectedLines: Line[] = [];
       currentSketch.geometries.forEach((geo) => {
@@ -2196,26 +2493,42 @@ export function CADGabaritCanvas({
         }
       });
 
+      console.log("Connected lines:", connectedLines.length);
+
       if (connectedLines.length !== 2) {
         console.log(`Point ${corner.pointId} n'a plus exactement 2 lignes connectées (${connectedLines.length})`);
         continue;
       }
 
-      // Vérifier que le rayon ne dépasse pas le max de ce coin
+      // Vérifier que le rayon ne dépasse pas le max de ce coin (tout en mm)
+      console.log(
+        "corner.radius:",
+        corner.radius,
+        "corner.maxRadius:",
+        corner.maxRadius,
+        "scaleFactor:",
+        sketch.scaleFactor,
+      );
       if (corner.radius <= corner.maxRadius) {
+        // Convertir le rayon de mm en px pour applyFilletToSketch
+        const radiusPx = corner.radius * sketch.scaleFactor;
+        console.log("Applying fillet with radiusPx:", radiusPx);
         const newSketch = applyFilletToSketch(
           currentSketch,
           connectedLines[0].id,
           connectedLines[1].id,
-          corner.radius,
+          radiusPx,
           true,
         );
+        console.log("newSketch:", newSketch ? "success" : "null");
         if (newSketch) {
           currentSketch = newSketch;
           successCount++;
         }
       }
     }
+
+    console.log("successCount:", successCount);
 
     if (successCount > 0) {
       setSketch(currentSketch);
@@ -2225,6 +2538,8 @@ export function CADGabaritCanvas({
       } else {
         toast.success(`${successCount} congés appliqués`);
       }
+    } else {
+      toast.error("Aucun congé n'a pu être appliqué");
     }
 
     setFilletRadius(filletDialog.globalRadius);
@@ -2263,13 +2578,15 @@ export function CADGabaritCanvas({
         continue;
       }
 
-      // Vérifier que la distance ne dépasse pas le max de ce coin
+      // Vérifier que la distance ne dépasse pas le max de ce coin (tout en mm)
       if (corner.distance <= corner.maxDistance) {
+        // Convertir la distance de mm en px pour applyChamferToSketch
+        const distancePx = corner.distance * sketch.scaleFactor;
         const newSketch = applyChamferToSketch(
           currentSketch,
           connectedLines[0].id,
           connectedLines[1].id,
-          corner.distance,
+          distancePx,
           true,
         );
         if (newSketch) {
