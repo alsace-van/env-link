@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.01 - Angle droit strict 90° (±0.1°), fix effet hover formes fermées
+// VERSION: 6.02 - Mesure: affichage angle entre 2 segments, snap amélioré (tolérance 25px)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -300,11 +300,13 @@ export function CADGabaritCanvas({
     start: { x: number; y: number } | null;
     end: { x: number; y: number } | null;
     result: { px: number; mm: number } | null;
+    segment1Id?: string | null; // ID du segment cliqué au premier point
   }>({
     phase: "idle",
     start: null,
     end: null,
     result: null,
+    segment1Id: null,
   });
   const [measurePreviewEnd, setMeasurePreviewEnd] = useState<{ x: number; y: number } | null>(null);
 
@@ -316,6 +318,10 @@ export function CADGabaritCanvas({
       end: { x: number; y: number };
       px: number;
       mm: number;
+      // Optionnel: si les 2 points sont sur des segments, stocker l'angle
+      angle?: number; // en degrés
+      segment1Id?: string;
+      segment2Id?: string;
     }>
   >([]);
 
@@ -1888,6 +1894,7 @@ export function CADGabaritCanvas({
         start: null,
         end: null,
         result: null,
+        segment1Id: null,
       });
       setMeasurePreviewEnd(null);
       // Effacer toutes les mesures quand on quitte l'outil
@@ -5395,6 +5402,7 @@ export function CADGabaritCanvas({
           start: null,
           end: null,
           result: null,
+          segment1Id: null,
         });
         setMeasurePreviewEnd(null);
         // Effacer toutes les mesures
@@ -5938,7 +5946,7 @@ export function CADGabaritCanvas({
         case "measure": {
           // Chercher un point de calibration proche pour snap
           let snapPos = worldPos;
-          const snapTolerance = 15 / viewport.scale;
+          const snapTolerance = 25 / viewport.scale; // Augmenté pour meilleur snap
 
           if (showCalibrationPanel || calibrationData.points.size > 0) {
             let closestCalibPoint: CalibrationPoint | null = null;
@@ -5957,6 +5965,11 @@ export function CADGabaritCanvas({
             }
           }
 
+          // Détecter le segment sous le clic
+          const clickedSegmentId = findEntityAtPosition(worldPos.x, worldPos.y);
+          const clickedGeo = clickedSegmentId ? sketch.geometries.get(clickedSegmentId) : null;
+          const isClickedLine = clickedGeo?.type === "line";
+
           if (measureState.phase === "idle" || measureState.phase === "complete") {
             // Premier point - commence une nouvelle mesure
             setMeasureState({
@@ -5964,6 +5977,7 @@ export function CADGabaritCanvas({
               start: snapPos,
               end: null,
               result: null,
+              segment1Id: isClickedLine ? clickedSegmentId : null,
             });
             setMeasurePreviewEnd(null);
           } else if (measureState.phase === "waitingSecond" && measureState.start) {
@@ -5971,6 +5985,46 @@ export function CADGabaritCanvas({
             const distPx = distance(measureState.start, snapPos);
             // calibrationData.scale est en mm/px, sketch.scaleFactor est en px/mm
             const distMm = calibrationData.scale ? distPx * calibrationData.scale : distPx / sketch.scaleFactor;
+
+            // Calculer l'angle si les 2 points sont sur des segments différents
+            let angleDeg: number | undefined = undefined;
+            const segment1Id = measureState.segment1Id;
+            const segment2Id = isClickedLine ? clickedSegmentId : null;
+
+            if (segment1Id && segment2Id && segment1Id !== segment2Id) {
+              const line1 = sketch.geometries.get(segment1Id) as Line;
+              const line2 = sketch.geometries.get(segment2Id) as Line;
+
+              if (line1 && line2) {
+                const p1a = sketch.points.get(line1.p1);
+                const p1b = sketch.points.get(line1.p2);
+                const p2a = sketch.points.get(line2.p1);
+                const p2b = sketch.points.get(line2.p2);
+
+                if (p1a && p1b && p2a && p2b) {
+                  // Vecteurs directionnels des 2 lignes
+                  const v1 = { x: p1b.x - p1a.x, y: p1b.y - p1a.y };
+                  const v2 = { x: p2b.x - p2a.x, y: p2b.y - p2a.y };
+
+                  // Normaliser
+                  const len1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+                  const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+
+                  if (len1 > 0 && len2 > 0) {
+                    v1.x /= len1;
+                    v1.y /= len1;
+                    v2.x /= len2;
+                    v2.y /= len2;
+
+                    // Produit scalaire pour l'angle
+                    const dot = v1.x * v2.x + v1.y * v2.y;
+                    // Clamp pour éviter les erreurs d'arrondi
+                    const clampedDot = Math.max(-1, Math.min(1, dot));
+                    angleDeg = Math.acos(Math.abs(clampedDot)) * (180 / Math.PI);
+                  }
+                }
+              }
+            }
 
             // Ajouter la mesure au tableau
             setMeasurements((prev) => [
@@ -5981,6 +6035,9 @@ export function CADGabaritCanvas({
                 end: snapPos,
                 px: distPx,
                 mm: distMm,
+                angle: angleDeg,
+                segment1Id: segment1Id || undefined,
+                segment2Id: segment2Id || undefined,
               },
             ]);
 
@@ -5990,10 +6047,16 @@ export function CADGabaritCanvas({
               start: null,
               end: null,
               result: null,
+              segment1Id: null,
             });
             setMeasurePreviewEnd(null);
 
-            toast.success(`Mesure: ${distPx.toFixed(1)} px = ${distMm.toFixed(1)} mm`);
+            // Toast avec distance et angle si disponible
+            if (angleDeg !== undefined) {
+              toast.success(`Mesure: ${distMm.toFixed(1)} mm | Angle: ${angleDeg.toFixed(1)}°`);
+            } else {
+              toast.success(`Mesure: ${distPx.toFixed(1)} px = ${distMm.toFixed(1)} mm`);
+            }
           }
           break;
         }

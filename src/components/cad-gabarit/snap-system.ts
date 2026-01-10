@@ -1,7 +1,7 @@
 // ============================================
 // SNAP SYSTEM: Système de snap intelligent
 // Détection automatique des points d'accroche
-// VERSION: 1.1 - Snap center retourne l'ID du point (pas de la géométrie)
+// VERSION: 1.2 - Tolérance augmentée (25px), priorité nearest améliorée
 // ============================================
 
 import {
@@ -22,7 +22,7 @@ import {
 export const DEFAULT_SNAP_SETTINGS: SnapSettings = {
   enabled: true,
   types: new Set(["endpoint", "midpoint", "center", "intersection", "quadrant", "nearest", "grid"]),
-  tolerance: 15, // pixels
+  tolerance: 25, // pixels - augmenté pour meilleur accrochage
   gridSize: 10, // mm
   showGrid: true,
 };
@@ -143,7 +143,7 @@ export class SnapSystem {
           });
         }
 
-        // Nearest point on line
+        // Nearest point on line (priorité améliorée pour meilleur accrochage)
         if (this.settings.types.has("nearest")) {
           const nearest = this.nearestPointOnLine(p1, p2, cursorPos);
           points.push({
@@ -151,7 +151,7 @@ export class SnapSystem {
             y: nearest.y,
             type: "nearest",
             entityId: geo.id,
-            priority: 5,
+            priority: 3, // Priorité améliorée (était 5)
           });
         }
         break;

@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.31 - Fix effet hover: reset transformation avant isPointInPath
+// VERSION: 3.32 - drawMeasure: affichage angle entre 2 segments (orange)
 // ============================================
 
 import {
@@ -108,6 +108,7 @@ export class CADRenderer {
         end: { x: number; y: number };
         px: number;
         mm: number;
+        angle?: number; // Angle entre 2 segments en degrés
       }>;
       measureScale?: number;
       scaleFactor?: number; // px/mm pour convertir les coordonnées en mm sur les règles
@@ -389,7 +390,7 @@ export class CADRenderer {
     // 8.5. Mesures persistantes
     if (measurements.length > 0) {
       measurements.forEach((m) => {
-        this.drawMeasure(m.start, m.end, measureScale, m.mm);
+        this.drawMeasure(m.start, m.end, measureScale, m.mm, m.angle);
       });
     }
 
@@ -1279,6 +1280,7 @@ export class CADRenderer {
     end: { x: number; y: number } | null,
     scale?: number,
     precomputedMm?: number,
+    angleDeg?: number, // Angle entre 2 segments en degrés
   ): void {
     if (!end) return;
 
@@ -1326,17 +1328,22 @@ export class CADRenderer {
     drawCrosshair(start.x, start.y);
     drawCrosshair(end.x, end.y);
 
-    // Texte avec les distances
+    // Texte avec les distances (et angle si disponible)
     const mid = midpoint(start, end);
     const fontSize = 14 / this.viewport.scale;
     const textPx = `${distPx.toFixed(1)} px`;
     const textMm = `${distMm.toFixed(1)} mm`;
+    const textAngle = angleDeg !== undefined ? `∠ ${angleDeg.toFixed(1)}°` : null;
 
     // Fond pour le texte
     this.ctx.font = `bold ${fontSize}px Arial`;
-    const textWidth = Math.max(this.ctx.measureText(textPx).width, this.ctx.measureText(textMm).width);
+    const textWidthPx = this.ctx.measureText(textPx).width;
+    const textWidthMm = this.ctx.measureText(textMm).width;
+    const textWidthAngle = textAngle ? this.ctx.measureText(textAngle).width : 0;
+    const textWidth = Math.max(textWidthPx, textWidthMm, textWidthAngle);
     const padding = 4 / this.viewport.scale;
     const lineHeight = fontSize * 1.2;
+    const numLines = textAngle ? 3 : 2;
 
     // Calculer l'angle de la ligne pour orienter le texte
     const ang = Math.atan2(end.y - start.y, end.x - start.x);
@@ -1348,9 +1355,9 @@ export class CADRenderer {
     this.ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
     this.ctx.fillRect(
       textX - textWidth / 2 - padding,
-      textY - lineHeight - padding,
+      textY - lineHeight * (numLines / 2) - padding,
       textWidth + padding * 2,
-      lineHeight * 2 + padding * 2,
+      lineHeight * numLines + padding * 2,
     );
 
     // Bordure
@@ -1358,18 +1365,30 @@ export class CADRenderer {
     this.ctx.lineWidth = 1 / this.viewport.scale;
     this.ctx.strokeRect(
       textX - textWidth / 2 - padding,
-      textY - lineHeight - padding,
+      textY - lineHeight * (numLines / 2) - padding,
       textWidth + padding * 2,
-      lineHeight * 2 + padding * 2,
+      lineHeight * numLines + padding * 2,
     );
 
     // Texte
-    this.ctx.fillStyle = "#00AA00";
     this.ctx.textAlign = "center";
     this.ctx.textBaseline = "middle";
-    this.ctx.fillText(textPx, textX, textY - lineHeight / 2);
-    this.ctx.fillStyle = "#006600";
-    this.ctx.fillText(textMm, textX, textY + lineHeight / 2);
+
+    if (textAngle) {
+      // 3 lignes: px, mm, angle
+      this.ctx.fillStyle = "#00AA00";
+      this.ctx.fillText(textPx, textX, textY - lineHeight);
+      this.ctx.fillStyle = "#006600";
+      this.ctx.fillText(textMm, textX, textY);
+      this.ctx.fillStyle = "#FF6600"; // Orange pour l'angle
+      this.ctx.fillText(textAngle, textX, textY + lineHeight);
+    } else {
+      // 2 lignes: px, mm
+      this.ctx.fillStyle = "#00AA00";
+      this.ctx.fillText(textPx, textX, textY - lineHeight / 2);
+      this.ctx.fillStyle = "#006600";
+      this.ctx.fillText(textMm, textX, textY + lineHeight / 2);
+    }
   }
 
   /**
