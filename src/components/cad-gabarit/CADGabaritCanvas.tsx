@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.85 - Affichage des angles en degrés pendant la modification (arc orange + valeur)
+// VERSION: 5.86 - Menu contextuel: modifier longueur (ligne) et angle (coin) avec point de référence
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -428,6 +428,26 @@ export function CADGabaritCanvas({
     open: boolean;
     arcId: string;
     currentRadius: number;
+  } | null>(null);
+
+  // Modale pour modifier la longueur d'une ligne
+  const [lineLengthDialog, setLineLengthDialog] = useState<{
+    open: boolean;
+    lineId: string;
+    currentLength: number; // en mm
+    newLength: string;
+    anchorMode: "p1" | "p2" | "center"; // Point d'ancrage
+  } | null>(null);
+
+  // Modale pour modifier un angle
+  const [angleEditDialog, setAngleEditDialog] = useState<{
+    open: boolean;
+    pointId: string; // Le point du coin
+    line1Id: string;
+    line2Id: string;
+    currentAngle: number; // en degrés
+    newAngle: string;
+    anchorMode: "line1" | "line2" | "symmetric"; // Quelle ligne reste fixe
   } | null>(null);
 
   // Aliases pour compatibilité avec le rendu
@@ -4282,6 +4302,166 @@ export function CADGabaritCanvas({
     [sketch, findLinesConnectedToPoint, lineIntersection, addToHistory],
   );
 
+  // Modifier la longueur d'une ligne
+  const applyLineLengthChange = useCallback(
+    (lineId: string, newLengthMm: number, anchorMode: "p1" | "p2" | "center") => {
+      const line = sketch.geometries.get(lineId) as Line | undefined;
+      if (!line || line.type !== "line") return;
+
+      const p1 = sketch.points.get(line.p1);
+      const p2 = sketch.points.get(line.p2);
+      if (!p1 || !p2) return;
+
+      const newLengthPx = newLengthMm * sketch.scaleFactor;
+      const currentLength = distance(p1, p2);
+
+      if (currentLength < 0.001) return;
+
+      // Vecteur direction normalisé
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const ux = dx / currentLength;
+      const uy = dy / currentLength;
+
+      const newSketch = { ...sketch };
+      newSketch.points = new Map(sketch.points);
+
+      if (anchorMode === "p1") {
+        // P1 fixe, P2 bouge
+        const newP2 = {
+          ...p2,
+          x: p1.x + ux * newLengthPx,
+          y: p1.y + uy * newLengthPx,
+        };
+        newSketch.points.set(line.p2, newP2);
+      } else if (anchorMode === "p2") {
+        // P2 fixe, P1 bouge
+        const newP1 = {
+          ...p1,
+          x: p2.x - ux * newLengthPx,
+          y: p2.y - uy * newLengthPx,
+        };
+        newSketch.points.set(line.p1, newP1);
+      } else {
+        // Symétrique depuis le centre
+        const centerX = (p1.x + p2.x) / 2;
+        const centerY = (p1.y + p2.y) / 2;
+        const halfLength = newLengthPx / 2;
+
+        const newP1 = {
+          ...p1,
+          x: centerX - ux * halfLength,
+          y: centerY - uy * halfLength,
+        };
+        const newP2 = {
+          ...p2,
+          x: centerX + ux * halfLength,
+          y: centerY + uy * halfLength,
+        };
+        newSketch.points.set(line.p1, newP1);
+        newSketch.points.set(line.p2, newP2);
+      }
+
+      setSketch(newSketch);
+      addToHistory(newSketch);
+      toast.success(`Longueur modifiée: ${newLengthMm.toFixed(1)} mm`);
+    },
+    [sketch, addToHistory],
+  );
+
+  // Modifier un angle entre deux lignes
+  const applyAngleChange = useCallback(
+    (
+      pointId: string,
+      line1Id: string,
+      line2Id: string,
+      newAngleDeg: number,
+      anchorMode: "line1" | "line2" | "symmetric",
+    ) => {
+      const point = sketch.points.get(pointId);
+      const line1 = sketch.geometries.get(line1Id) as Line | undefined;
+      const line2 = sketch.geometries.get(line2Id) as Line | undefined;
+
+      if (!point || !line1 || !line2) return;
+
+      // Trouver les autres extrémités
+      const other1Id = line1.p1 === pointId ? line1.p2 : line1.p1;
+      const other2Id = line2.p1 === pointId ? line2.p2 : line2.p1;
+      const other1 = sketch.points.get(other1Id);
+      const other2 = sketch.points.get(other2Id);
+
+      if (!other1 || !other2) return;
+
+      // Longueurs actuelles
+      const len1 = distance(point, other1);
+      const len2 = distance(point, other2);
+
+      if (len1 < 0.001 || len2 < 0.001) return;
+
+      // Angles actuels
+      const angle1 = Math.atan2(other1.y - point.y, other1.x - point.x);
+      const angle2 = Math.atan2(other2.y - point.y, other2.x - point.x);
+
+      // Angle actuel entre les deux lignes
+      let currentDelta = angle2 - angle1;
+      while (currentDelta > Math.PI) currentDelta -= 2 * Math.PI;
+      while (currentDelta < -Math.PI) currentDelta += 2 * Math.PI;
+
+      const newAngleRad = (newAngleDeg * Math.PI) / 180;
+      // Garder le même signe que l'angle actuel
+      const signedNewAngle = currentDelta >= 0 ? newAngleRad : -newAngleRad;
+      const angleDiff = signedNewAngle - currentDelta;
+
+      const newSketch = { ...sketch };
+      newSketch.points = new Map(sketch.points);
+
+      if (anchorMode === "line1") {
+        // Line1 fixe, on tourne line2
+        const newAngle2 = angle1 + signedNewAngle;
+        const newOther2 = {
+          ...other2,
+          x: point.x + Math.cos(newAngle2) * len2,
+          y: point.y + Math.sin(newAngle2) * len2,
+        };
+        newSketch.points.set(other2Id, newOther2);
+      } else if (anchorMode === "line2") {
+        // Line2 fixe, on tourne line1
+        const newAngle1 = angle2 - signedNewAngle;
+        const newOther1 = {
+          ...other1,
+          x: point.x + Math.cos(newAngle1) * len1,
+          y: point.y + Math.sin(newAngle1) * len1,
+        };
+        newSketch.points.set(other1Id, newOther1);
+      } else {
+        // Symétrique: les deux lignes bougent de la même quantité
+        const halfDiff = angleDiff / 2;
+
+        const newAngle1 = angle1 - halfDiff;
+        const newAngle2 = angle2 + halfDiff;
+
+        const newOther1 = {
+          ...other1,
+          x: point.x + Math.cos(newAngle1) * len1,
+          y: point.y + Math.sin(newAngle1) * len1,
+        };
+        const newOther2 = {
+          ...other2,
+          x: point.x + Math.cos(newAngle2) * len2,
+          y: point.y + Math.sin(newAngle2) * len2,
+        };
+
+        newSketch.points.set(other1Id, newOther1);
+        newSketch.points.set(other2Id, newOther2);
+      }
+
+      setSketch(newSketch);
+      addToHistory(newSketch);
+      toast.success(`Angle modifié: ${newAngleDeg.toFixed(1)}°`);
+    },
+    [sketch, addToHistory],
+  );
+
   // Supprimer un congé et restaurer le coin
   const removeFilletAndRestoreCorner = useCallback(
     (arcId: string) => {
@@ -7746,7 +7926,36 @@ export function CADGabaritCanvas({
                 const screenX = e.clientX - rect.left;
                 const screenY = e.clientY - rect.top;
                 const worldPos = screenToWorld(screenX, screenY);
+                const tolerance = 10 / viewport.scale;
 
+                // D'abord chercher si on est sur un point (coin potentiel)
+                for (const [pointId, point] of sketch.points) {
+                  if (distance(worldPos, point) < tolerance) {
+                    // Compter les lignes connectées à ce point
+                    const connectedLines: Line[] = [];
+                    sketch.geometries.forEach((geo) => {
+                      if (geo.type === "line") {
+                        const line = geo as Line;
+                        if (line.p1 === pointId || line.p2 === pointId) {
+                          connectedLines.push(line);
+                        }
+                      }
+                    });
+
+                    // Si au moins 2 lignes connectées, c'est un coin/angle
+                    if (connectedLines.length >= 2) {
+                      setContextMenu({
+                        x: e.clientX,
+                        y: e.clientY,
+                        entityId: pointId,
+                        entityType: "corner",
+                      });
+                      return;
+                    }
+                  }
+                }
+
+                // Sinon chercher une entité géométrique
                 const entityId = findEntityAtPosition(worldPos.x, worldPos.y);
                 if (entityId) {
                   const geo = sketch.geometries.get(entityId);
@@ -9068,6 +9277,181 @@ export function CADGabaritCanvas({
         </Dialog>
       )}
 
+      {/* Dialog modifier la longueur d'une ligne */}
+      {lineLengthDialog && (
+        <Dialog open={lineLengthDialog.open} onOpenChange={() => setLineLengthDialog(null)}>
+          <DialogContent className="sm:max-w-[320px]">
+            <DialogHeader>
+              <DialogTitle>Modifier la longueur</DialogTitle>
+              <DialogDescription>Longueur actuelle : {lineLengthDialog.currentLength.toFixed(1)} mm</DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+              <div>
+                <Label htmlFor="line-length">Nouvelle longueur (mm)</Label>
+                <Input
+                  id="line-length"
+                  type="number"
+                  value={lineLengthDialog.newLength}
+                  onChange={(e) => setLineLengthDialog({ ...lineLengthDialog, newLength: e.target.value })}
+                  className="mt-2"
+                  min="0.1"
+                  step="0.1"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter") {
+                      const value = parseFloat(lineLengthDialog.newLength);
+                      if (!isNaN(value) && value > 0) {
+                        applyLineLengthChange(lineLengthDialog.lineId, value, lineLengthDialog.anchorMode);
+                        setLineLengthDialog(null);
+                      }
+                    }
+                  }}
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-gray-500 mb-2 block">Point de référence</Label>
+                <div className="flex gap-1">
+                  <Button
+                    variant={lineLengthDialog.anchorMode === "p1" ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1 text-xs"
+                    onClick={() => setLineLengthDialog({ ...lineLengthDialog, anchorMode: "p1" })}
+                  >
+                    Depuis P1
+                  </Button>
+                  <Button
+                    variant={lineLengthDialog.anchorMode === "center" ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1 text-xs"
+                    onClick={() => setLineLengthDialog({ ...lineLengthDialog, anchorMode: "center" })}
+                  >
+                    Symétrique
+                  </Button>
+                  <Button
+                    variant={lineLengthDialog.anchorMode === "p2" ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1 text-xs"
+                    onClick={() => setLineLengthDialog({ ...lineLengthDialog, anchorMode: "p2" })}
+                  >
+                    Depuis P2
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={() => {
+                  const value = parseFloat(lineLengthDialog.newLength);
+                  if (!isNaN(value) && value > 0) {
+                    applyLineLengthChange(lineLengthDialog.lineId, value, lineLengthDialog.anchorMode);
+                    setLineLengthDialog(null);
+                  }
+                }}
+                className="w-full"
+              >
+                <Check className="h-4 w-4 mr-2" />
+                Appliquer
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Dialog modifier un angle */}
+      {angleEditDialog && (
+        <Dialog open={angleEditDialog.open} onOpenChange={() => setAngleEditDialog(null)}>
+          <DialogContent className="sm:max-w-[320px]">
+            <DialogHeader>
+              <DialogTitle>Modifier l'angle</DialogTitle>
+              <DialogDescription>Angle actuel : {angleEditDialog.currentAngle.toFixed(1)}°</DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+              <div>
+                <Label htmlFor="angle-value">Nouvel angle (°)</Label>
+                <Input
+                  id="angle-value"
+                  type="number"
+                  value={angleEditDialog.newAngle}
+                  onChange={(e) => setAngleEditDialog({ ...angleEditDialog, newAngle: e.target.value })}
+                  className="mt-2"
+                  min="1"
+                  max="179"
+                  step="0.1"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter") {
+                      const value = parseFloat(angleEditDialog.newAngle);
+                      if (!isNaN(value) && value > 0 && value < 180) {
+                        applyAngleChange(
+                          angleEditDialog.pointId,
+                          angleEditDialog.line1Id,
+                          angleEditDialog.line2Id,
+                          value,
+                          angleEditDialog.anchorMode,
+                        );
+                        setAngleEditDialog(null);
+                      }
+                    }
+                  }}
+                />
+              </div>
+              <div>
+                <Label className="text-xs text-gray-500 mb-2 block">Segment de référence (reste fixe)</Label>
+                <div className="flex gap-1">
+                  <Button
+                    variant={angleEditDialog.anchorMode === "line1" ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1 text-xs"
+                    onClick={() => setAngleEditDialog({ ...angleEditDialog, anchorMode: "line1" })}
+                  >
+                    Segment 1
+                  </Button>
+                  <Button
+                    variant={angleEditDialog.anchorMode === "symmetric" ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1 text-xs"
+                    onClick={() => setAngleEditDialog({ ...angleEditDialog, anchorMode: "symmetric" })}
+                  >
+                    Symétrique
+                  </Button>
+                  <Button
+                    variant={angleEditDialog.anchorMode === "line2" ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1 text-xs"
+                    onClick={() => setAngleEditDialog({ ...angleEditDialog, anchorMode: "line2" })}
+                  >
+                    Segment 2
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={() => {
+                  const value = parseFloat(angleEditDialog.newAngle);
+                  if (!isNaN(value) && value > 0 && value < 180) {
+                    applyAngleChange(
+                      angleEditDialog.pointId,
+                      angleEditDialog.line1Id,
+                      angleEditDialog.line2Id,
+                      value,
+                      angleEditDialog.anchorMode,
+                    );
+                    setAngleEditDialog(null);
+                  }
+                }}
+                className="w-full"
+              >
+                <Check className="h-4 w-4 mr-2" />
+                Appliquer
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Menu contextuel */}
       {contextMenu && (
         <div
@@ -9133,30 +9517,55 @@ export function CADGabaritCanvas({
                 </>
               );
             })()}
-          {contextMenu.entityType === "line" && (
-            <>
-              <button
-                className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                onClick={() => {
-                  setSelectedEntities(new Set([contextMenu.entityId]));
-                  setContextMenu(null);
-                }}
-              >
-                <MousePointer className="h-4 w-4" />
-                Sélectionner
-              </button>
-              <button
-                className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
-                onClick={() => {
-                  deleteSelectedEntities();
-                  setContextMenu(null);
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-                Supprimer
-              </button>
-            </>
-          )}
+          {contextMenu.entityType === "line" &&
+            (() => {
+              const line = sketch.geometries.get(contextMenu.entityId) as Line | undefined;
+              const p1 = line ? sketch.points.get(line.p1) : undefined;
+              const p2 = line ? sketch.points.get(line.p2) : undefined;
+              const currentLength = p1 && p2 ? distance(p1, p2) / sketch.scaleFactor : 0;
+
+              return (
+                <>
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      setSelectedEntities(new Set([contextMenu.entityId]));
+                      setContextMenu(null);
+                    }}
+                  >
+                    <MousePointer className="h-4 w-4" />
+                    Sélectionner
+                  </button>
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      setLineLengthDialog({
+                        open: true,
+                        lineId: contextMenu.entityId,
+                        currentLength: currentLength,
+                        newLength: currentLength.toFixed(1),
+                        anchorMode: "center",
+                      });
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Ruler className="h-4 w-4 text-blue-500" />
+                    Modifier la longueur
+                  </button>
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
+                    onClick={() => {
+                      setSelectedEntities(new Set([contextMenu.entityId]));
+                      deleteSelectedEntities();
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Supprimer
+                  </button>
+                </>
+              );
+            })()}
           {(contextMenu.entityType === "circle" || contextMenu.entityType === "bezier") && (
             <button
               className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
@@ -9170,6 +9579,61 @@ export function CADGabaritCanvas({
               Supprimer
             </button>
           )}
+          {contextMenu.entityType === "corner" &&
+            (() => {
+              // Trouver les lignes connectées à ce point
+              const pointId = contextMenu.entityId;
+              const point = sketch.points.get(pointId);
+              const connectedLines: Line[] = [];
+              sketch.geometries.forEach((geo) => {
+                if (geo.type === "line") {
+                  const line = geo as Line;
+                  if (line.p1 === pointId || line.p2 === pointId) {
+                    connectedLines.push(line);
+                  }
+                }
+              });
+
+              if (connectedLines.length < 2 || !point) return null;
+
+              // Calculer l'angle entre les deux premières lignes
+              const line1 = connectedLines[0];
+              const line2 = connectedLines[1];
+              const other1Id = line1.p1 === pointId ? line1.p2 : line1.p1;
+              const other2Id = line2.p1 === pointId ? line2.p2 : line2.p1;
+              const other1 = sketch.points.get(other1Id);
+              const other2 = sketch.points.get(other2Id);
+
+              if (!other1 || !other2) return null;
+
+              const dir1 = { x: other1.x - point.x, y: other1.y - point.y };
+              const dir2 = { x: other2.x - point.x, y: other2.y - point.y };
+              const len1 = Math.sqrt(dir1.x * dir1.x + dir1.y * dir1.y);
+              const len2 = Math.sqrt(dir2.x * dir2.x + dir2.y * dir2.y);
+              const dot = (dir1.x * dir2.x + dir1.y * dir2.y) / (len1 * len2);
+              const currentAngle = (Math.acos(Math.max(-1, Math.min(1, dot))) * 180) / Math.PI;
+
+              return (
+                <button
+                  className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                  onClick={() => {
+                    setAngleEditDialog({
+                      open: true,
+                      pointId: pointId,
+                      line1Id: line1.id,
+                      line2Id: line2.id,
+                      currentAngle: currentAngle,
+                      newAngle: currentAngle.toFixed(1),
+                      anchorMode: "symmetric",
+                    });
+                    setContextMenu(null);
+                  }}
+                >
+                  <Sliders className="h-4 w-4 text-orange-500" />
+                  Modifier l'angle ({currentAngle.toFixed(1)}°)
+                </button>
+              );
+            })()}
         </div>
       )}
       {/* Fermer le menu contextuel en cliquant ailleurs */}
