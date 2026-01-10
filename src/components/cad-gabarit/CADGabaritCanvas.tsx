@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.89 - Preview temps réel pour modification longueur et angle (Escape pour annuler)
+// VERSION: 5.90 - Affichage temps réel des angles pendant modification (carré vert pour 90°, arc orange sinon)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -984,6 +984,199 @@ export function CADGabaritCanvas({
             ctx.stroke();
             ctx.restore();
           }
+        }
+
+        // Fonction helper pour dessiner l'angle avec sa valeur
+        const drawAngleIndicatorForPanel = (
+          corner: { x: number; y: number },
+          dir1: { x: number; y: number },
+          dir2: { x: number; y: number },
+        ) => {
+          const len1 = Math.sqrt(dir1.x * dir1.x + dir1.y * dir1.y);
+          const len2 = Math.sqrt(dir2.x * dir2.x + dir2.y * dir2.y);
+          if (len1 === 0 || len2 === 0) return;
+
+          const u1 = { x: dir1.x / len1, y: dir1.y / len1 };
+          const u2 = { x: dir2.x / len2, y: dir2.y / len2 };
+
+          const dot = u1.x * u2.x + u1.y * u2.y;
+          const angleDeg = (Math.acos(Math.max(-1, Math.min(1, dot))) * 180) / Math.PI;
+
+          const cornerScreen = {
+            x: corner.x * viewport.scale + viewport.offsetX,
+            y: corner.y * viewport.scale + viewport.offsetY,
+          };
+
+          ctx.save();
+
+          // Si angle droit (90° ± 1°), dessiner le petit carré vert
+          const isRightAngle = Math.abs(angleDeg - 90) < 1;
+
+          if (isRightAngle) {
+            const size = 14;
+            const p1 = {
+              x: cornerScreen.x + u1.x * size,
+              y: cornerScreen.y + u1.y * size,
+            };
+            const p2 = {
+              x: cornerScreen.x + u1.x * size + u2.x * size,
+              y: cornerScreen.y + u1.y * size + u2.y * size,
+            };
+            const p3 = {
+              x: cornerScreen.x + u2.x * size,
+              y: cornerScreen.y + u2.y * size,
+            };
+
+            ctx.strokeStyle = "#10B981";
+            ctx.fillStyle = "rgba(16, 185, 129, 0.2)";
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.lineTo(p3.x, p3.y);
+            ctx.stroke();
+            // Remplir le carré pour mieux le voir
+            ctx.beginPath();
+            ctx.moveTo(cornerScreen.x, cornerScreen.y);
+            ctx.lineTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.lineTo(p3.x, p3.y);
+            ctx.closePath();
+            ctx.fill();
+          } else {
+            // Dessiner un arc orange
+            const arcRadius = 22;
+            const startAngle = Math.atan2(u1.y, u1.x);
+            const endAngle = Math.atan2(u2.y, u2.x);
+
+            ctx.strokeStyle = "#F97316";
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+
+            let deltaAngle = endAngle - startAngle;
+            while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
+            while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
+            const counterClockwise = deltaAngle < 0;
+
+            ctx.arc(cornerScreen.x, cornerScreen.y, arcRadius, startAngle, endAngle, counterClockwise);
+            ctx.stroke();
+          }
+
+          // Afficher la valeur de l'angle
+          const bisectorAngle = Math.atan2(u1.y + u2.y, u1.x + u2.x);
+          const textDistance = 38;
+          const textX = cornerScreen.x + Math.cos(bisectorAngle) * textDistance;
+          const textY = cornerScreen.y + Math.sin(bisectorAngle) * textDistance;
+
+          ctx.font = "bold 12px Arial";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+
+          const angleText = `${angleDeg.toFixed(1)}°`;
+          const textWidth = ctx.measureText(angleText).width;
+
+          // Fond avec bordure
+          ctx.fillStyle = isRightAngle ? "rgba(16, 185, 129, 0.15)" : "rgba(249, 115, 22, 0.15)";
+          ctx.strokeStyle = isRightAngle ? "#10B981" : "#F97316";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.roundRect(textX - textWidth / 2 - 5, textY - 10, textWidth + 10, 20, 4);
+          ctx.fill();
+          ctx.stroke();
+
+          // Texte
+          ctx.fillStyle = isRightAngle ? "#059669" : "#EA580C";
+          ctx.fillText(angleText, textX, textY);
+
+          ctx.restore();
+        };
+
+        // Fonction pour dessiner tous les angles d'une figure connectée
+        const drawAllFigureAngles = (startLineId: string) => {
+          // Collecter tous les points et lignes de la figure
+          const visitedLines = new Set<string>();
+          const linesToVisit: string[] = [startLineId];
+          const allLines: Line[] = [];
+
+          while (linesToVisit.length > 0) {
+            const lineId = linesToVisit.pop()!;
+            if (visitedLines.has(lineId)) continue;
+            visitedLines.add(lineId);
+
+            const line = sketch.geometries.get(lineId) as Line | undefined;
+            if (!line || line.type !== "line") continue;
+
+            allLines.push(line);
+
+            // Trouver les lignes connectées via les points
+            [line.p1, line.p2].forEach((pointId) => {
+              sketch.geometries.forEach((geo, geoId) => {
+                if (geo.type === "line" && !visitedLines.has(geoId)) {
+                  const l = geo as Line;
+                  if (l.p1 === pointId || l.p2 === pointId) {
+                    linesToVisit.push(geoId);
+                  }
+                }
+              });
+            });
+          }
+
+          // Pour chaque point, trouver les lignes connectées et dessiner l'angle
+          const processedCorners = new Set<string>();
+
+          allLines.forEach((line) => {
+            [line.p1, line.p2].forEach((pointId) => {
+              if (processedCorners.has(pointId)) return;
+
+              const point = sketch.points.get(pointId);
+              if (!point) return;
+
+              // Trouver toutes les lignes connectées à ce point
+              const connectedLines: Line[] = [];
+              allLines.forEach((l) => {
+                if (l.p1 === pointId || l.p2 === pointId) {
+                  connectedLines.push(l);
+                }
+              });
+
+              // Si au moins 2 lignes, c'est un coin
+              if (connectedLines.length >= 2) {
+                processedCorners.add(pointId);
+
+                // Dessiner l'angle entre chaque paire de lignes
+                for (let i = 0; i < connectedLines.length; i++) {
+                  for (let j = i + 1; j < connectedLines.length; j++) {
+                    const l1 = connectedLines[i];
+                    const l2 = connectedLines[j];
+
+                    const other1Id = l1.p1 === pointId ? l1.p2 : l1.p1;
+                    const other2Id = l2.p1 === pointId ? l2.p2 : l2.p1;
+
+                    const other1 = sketch.points.get(other1Id);
+                    const other2 = sketch.points.get(other2Id);
+
+                    if (other1 && other2) {
+                      const dir1 = { x: other1.x - point.x, y: other1.y - point.y };
+                      const dir2 = { x: other2.x - point.x, y: other2.y - point.y };
+                      drawAngleIndicatorForPanel(point, dir1, dir2);
+                    }
+                  }
+                }
+              }
+            });
+          });
+        };
+
+        // Afficher les angles quand le panneau longueur est ouvert
+        if (lineLengthDialog?.open) {
+          drawAllFigureAngles(lineLengthDialog.lineId);
+        }
+
+        // Afficher les angles quand le panneau angle est ouvert
+        if (angleEditDialog?.open) {
+          drawAllFigureAngles(angleEditDialog.line1Id);
         }
       }
     }
