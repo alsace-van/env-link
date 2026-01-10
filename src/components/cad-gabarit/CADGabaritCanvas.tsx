@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.87 - Panneaux flottants draggables pour modifier longueur et angle (non bloquants)
+// VERSION: 5.88 - Indicateurs colorés P1/P2 (vert/violet) et S1/S2 sur le canvas + boutons colorés
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -840,6 +840,149 @@ export function CADGabaritCanvas({
             ctx.restore();
           }
         }
+
+        // Indicateurs P1/P2 pour le panneau de longueur
+        if (lineLengthDialog?.open) {
+          const line = sketch.geometries.get(lineLengthDialog.lineId) as Line | undefined;
+          if (line) {
+            const p1 = sketch.points.get(line.p1);
+            const p2 = sketch.points.get(line.p2);
+
+            if (p1) {
+              const p1Screen = {
+                x: p1.x * viewport.scale + viewport.offsetX,
+                y: p1.y * viewport.scale + viewport.offsetY,
+              };
+              // P1 en vert
+              ctx.save();
+              ctx.fillStyle = "#10B981";
+              ctx.strokeStyle = "#059669";
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.arc(p1Screen.x, p1Screen.y, 10, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.stroke();
+              // Label P1
+              ctx.fillStyle = "white";
+              ctx.font = "bold 10px Arial";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillText("P1", p1Screen.x, p1Screen.y);
+              ctx.restore();
+            }
+
+            if (p2) {
+              const p2Screen = {
+                x: p2.x * viewport.scale + viewport.offsetX,
+                y: p2.y * viewport.scale + viewport.offsetY,
+              };
+              // P2 en violet
+              ctx.save();
+              ctx.fillStyle = "#8B5CF6";
+              ctx.strokeStyle = "#7C3AED";
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.arc(p2Screen.x, p2Screen.y, 10, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.stroke();
+              // Label P2
+              ctx.fillStyle = "white";
+              ctx.font = "bold 10px Arial";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillText("P2", p2Screen.x, p2Screen.y);
+              ctx.restore();
+            }
+          }
+        }
+
+        // Indicateurs S1/S2 pour le panneau d'angle
+        if (angleEditDialog?.open) {
+          const line1 = sketch.geometries.get(angleEditDialog.line1Id) as Line | undefined;
+          const line2 = sketch.geometries.get(angleEditDialog.line2Id) as Line | undefined;
+          const cornerPoint = sketch.points.get(angleEditDialog.pointId);
+
+          if (line1 && cornerPoint) {
+            const other1Id = line1.p1 === angleEditDialog.pointId ? line1.p2 : line1.p1;
+            const other1 = sketch.points.get(other1Id);
+            if (other1) {
+              // Segment 1 en vert
+              ctx.save();
+              ctx.strokeStyle = "#10B981";
+              ctx.lineWidth = 4;
+              ctx.setLineDash([]);
+              ctx.beginPath();
+              ctx.moveTo(
+                cornerPoint.x * viewport.scale + viewport.offsetX,
+                cornerPoint.y * viewport.scale + viewport.offsetY,
+              );
+              ctx.lineTo(other1.x * viewport.scale + viewport.offsetX, other1.y * viewport.scale + viewport.offsetY);
+              ctx.stroke();
+              // Label S1 au milieu
+              const midX = ((cornerPoint.x + other1.x) / 2) * viewport.scale + viewport.offsetX;
+              const midY = ((cornerPoint.y + other1.y) / 2) * viewport.scale + viewport.offsetY;
+              ctx.fillStyle = "#10B981";
+              ctx.beginPath();
+              ctx.arc(midX, midY, 12, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = "white";
+              ctx.font = "bold 10px Arial";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillText("S1", midX, midY);
+              ctx.restore();
+            }
+          }
+
+          if (line2 && cornerPoint) {
+            const other2Id = line2.p1 === angleEditDialog.pointId ? line2.p2 : line2.p1;
+            const other2 = sketch.points.get(other2Id);
+            if (other2) {
+              // Segment 2 en violet
+              ctx.save();
+              ctx.strokeStyle = "#8B5CF6";
+              ctx.lineWidth = 4;
+              ctx.setLineDash([]);
+              ctx.beginPath();
+              ctx.moveTo(
+                cornerPoint.x * viewport.scale + viewport.offsetX,
+                cornerPoint.y * viewport.scale + viewport.offsetY,
+              );
+              ctx.lineTo(other2.x * viewport.scale + viewport.offsetX, other2.y * viewport.scale + viewport.offsetY);
+              ctx.stroke();
+              // Label S2 au milieu
+              const midX = ((cornerPoint.x + other2.x) / 2) * viewport.scale + viewport.offsetX;
+              const midY = ((cornerPoint.y + other2.y) / 2) * viewport.scale + viewport.offsetY;
+              ctx.fillStyle = "#8B5CF6";
+              ctx.beginPath();
+              ctx.arc(midX, midY, 12, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = "white";
+              ctx.font = "bold 10px Arial";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillText("S2", midX, midY);
+              ctx.restore();
+            }
+          }
+
+          // Marqueur au coin
+          if (cornerPoint) {
+            const cornerScreen = {
+              x: cornerPoint.x * viewport.scale + viewport.offsetX,
+              y: cornerPoint.y * viewport.scale + viewport.offsetY,
+            };
+            ctx.save();
+            ctx.fillStyle = "#F97316";
+            ctx.strokeStyle = "#EA580C";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(cornerScreen.x, cornerScreen.y, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
       }
     }
 
@@ -1146,6 +1289,8 @@ export function CADGabaritCanvas({
     chamferPreview,
     isDragging,
     dragTarget,
+    lineLengthDialog,
+    angleEditDialog,
   ]);
 
   useEffect(() => {
@@ -9362,6 +9507,11 @@ export function CADGabaritCanvas({
                     variant={lineLengthDialog.anchorMode === "p1" ? "default" : "outline"}
                     size="sm"
                     className="flex-1 h-7 text-xs px-1"
+                    style={
+                      lineLengthDialog.anchorMode === "p1"
+                        ? { backgroundColor: "#10B981", borderColor: "#10B981" }
+                        : { borderColor: "#10B981", color: "#10B981" }
+                    }
                     onClick={() => setLineLengthDialog({ ...lineLengthDialog, anchorMode: "p1" })}
                   >
                     P1 fixe
@@ -9378,6 +9528,11 @@ export function CADGabaritCanvas({
                     variant={lineLengthDialog.anchorMode === "p2" ? "default" : "outline"}
                     size="sm"
                     className="flex-1 h-7 text-xs px-1"
+                    style={
+                      lineLengthDialog.anchorMode === "p2"
+                        ? { backgroundColor: "#8B5CF6", borderColor: "#8B5CF6" }
+                        : { borderColor: "#8B5CF6", color: "#8B5CF6" }
+                    }
                     onClick={() => setLineLengthDialog({ ...lineLengthDialog, anchorMode: "p2" })}
                   >
                     P2 fixe
@@ -9480,6 +9635,11 @@ export function CADGabaritCanvas({
                 variant={angleEditDialog.anchorMode === "line1" ? "default" : "outline"}
                 size="sm"
                 className="flex-1 h-7 text-xs px-1"
+                style={
+                  angleEditDialog.anchorMode === "line1"
+                    ? { backgroundColor: "#10B981", borderColor: "#10B981" }
+                    : { borderColor: "#10B981", color: "#10B981" }
+                }
                 onClick={() => setAngleEditDialog({ ...angleEditDialog, anchorMode: "line1" })}
               >
                 S1 fixe
@@ -9496,6 +9656,11 @@ export function CADGabaritCanvas({
                 variant={angleEditDialog.anchorMode === "line2" ? "default" : "outline"}
                 size="sm"
                 className="flex-1 h-7 text-xs px-1"
+                style={
+                  angleEditDialog.anchorMode === "line2"
+                    ? { backgroundColor: "#8B5CF6", borderColor: "#8B5CF6" }
+                    : { borderColor: "#8B5CF6", color: "#8B5CF6" }
+                }
                 onClick={() => setAngleEditDialog({ ...angleEditDialog, anchorMode: "line2" })}
               >
                 S2 fixe
