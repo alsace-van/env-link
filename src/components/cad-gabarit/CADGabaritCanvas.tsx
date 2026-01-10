@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.76 - Fix inversion des arcs (counterClockwise = false)
+// VERSION: 5.77 - Fix logique détection arcs (inversion counterClockwise)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1201,20 +1201,22 @@ export function CADGabaritCanvas({
               const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
               const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
 
-              // Calculer l'angle balayé
-              // Utiliser counterClockwise si défini, sinon choisir le petit arc
+              // Calculer l'angle balayé selon la direction de l'arc
+              // ctx.arc: counterClockwise=false = sens horaire = angles croissants
+              //          counterClockwise=true = sens anti-horaire = angles décroissants
               let sweepAngle: number;
               if (arc.counterClockwise !== undefined) {
                 sweepAngle = endAngle - startAngle;
                 if (arc.counterClockwise) {
-                  if (sweepAngle < 0) sweepAngle += 2 * Math.PI;
-                } else {
+                  // Sens anti-horaire = angles décroissants, donc sweepAngle doit être négatif
                   if (sweepAngle > 0) sweepAngle -= 2 * Math.PI;
+                } else {
+                  // Sens horaire = angles croissants, donc sweepAngle doit être positif
+                  if (sweepAngle < 0) sweepAngle += 2 * Math.PI;
                 }
               } else {
                 // Pas de counterClockwise défini: utiliser le petit arc (< 180°)
                 sweepAngle = endAngle - startAngle;
-                // Normaliser entre -π et π
                 while (sweepAngle > Math.PI) sweepAngle -= 2 * Math.PI;
                 while (sweepAngle < -Math.PI) sweepAngle += 2 * Math.PI;
               }
