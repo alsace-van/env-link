@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.12 - Panneau ajustements image flottant draggable (plus de modale bloquante)
+// VERSION: 6.13 - Fix ajustements image temps réel + debug logs
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -5604,6 +5604,17 @@ export function CADGabaritCanvas({
     return backgroundImages.find((img) => img.id === selectedImageId) || null;
   }, [backgroundImages, selectedImageId]);
 
+  // Mémoriser l'image sélectionnée et ses ajustements pour le panneau
+  const selectedImageData = useMemo(() => {
+    if (!selectedImageId) return null;
+    const img = backgroundImages.find((img) => img.id === selectedImageId);
+    if (!img) return null;
+    return {
+      image: img,
+      adjustments: img.adjustments || DEFAULT_IMAGE_ADJUSTMENTS,
+    };
+  }, [backgroundImages, selectedImageId]);
+
   const getSelectedImageCalibration = useCallback((): CalibrationData => {
     const selectedImage = getSelectedImage();
     if (selectedImage?.calibrationData) {
@@ -5641,16 +5652,20 @@ export function CADGabaritCanvas({
   const applyImageAdjustments = useCallback(
     (sourceImage: HTMLImageElement | HTMLCanvasElement, adjustments: ImageAdjustments): HTMLCanvasElement => {
       const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return canvas;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) {
+        console.error("Impossible de créer le contexte 2D");
+        return canvas;
+      }
 
       const width = sourceImage.width;
       const height = sourceImage.height;
       canvas.width = width;
       canvas.height = height;
 
-      // Appliquer les filtres CSS
+      // Construire la chaîne de filtres CSS
       const filters: string[] = [];
+
       if (adjustments.contrast !== 100) {
         filters.push(`contrast(${adjustments.contrast}%)`);
       }
@@ -5667,36 +5682,48 @@ export function CADGabaritCanvas({
         filters.push("invert(100%)");
       }
 
-      ctx.filter = filters.length > 0 ? filters.join(" ") : "none";
-      ctx.drawImage(sourceImage, 0, 0);
+      // Appliquer les filtres
+      if (filters.length > 0) {
+        ctx.filter = filters.join(" ");
+      }
+
+      // Dessiner l'image source
+      ctx.drawImage(sourceImage, 0, 0, width, height);
+
+      // Réinitialiser le filtre pour le sharpen
+      ctx.filter = "none";
 
       // Appliquer le sharpen si nécessaire (manipulation de pixels)
-      if (adjustments.sharpen > 0) {
-        const imageData = ctx.getImageData(0, 0, width, height);
-        const data = imageData.data;
-        const factor = adjustments.sharpen / 100;
+      if (adjustments.sharpen > 0 && width > 2 && height > 2) {
+        try {
+          const imageData = ctx.getImageData(0, 0, width, height);
+          const data = imageData.data;
+          const factor = adjustments.sharpen / 100;
 
-        // Kernel de sharpening simple
-        const kernel = [0, -factor, 0, -factor, 1 + 4 * factor, -factor, 0, -factor, 0];
+          // Kernel de sharpening simple
+          const kernel = [0, -factor, 0, -factor, 1 + 4 * factor, -factor, 0, -factor, 0];
 
-        const tempData = new Uint8ClampedArray(data);
+          const tempData = new Uint8ClampedArray(data);
 
-        for (let y = 1; y < height - 1; y++) {
-          for (let x = 1; x < width - 1; x++) {
-            const idx = (y * width + x) * 4;
-            for (let c = 0; c < 3; c++) {
-              let sum = 0;
-              for (let ky = -1; ky <= 1; ky++) {
-                for (let kx = -1; kx <= 1; kx++) {
-                  const kidx = ((y + ky) * width + (x + kx)) * 4 + c;
-                  sum += tempData[kidx] * kernel[(ky + 1) * 3 + (kx + 1)];
+          for (let y = 1; y < height - 1; y++) {
+            for (let x = 1; x < width - 1; x++) {
+              const idx = (y * width + x) * 4;
+              for (let c = 0; c < 3; c++) {
+                let sum = 0;
+                for (let ky = -1; ky <= 1; ky++) {
+                  for (let kx = -1; kx <= 1; kx++) {
+                    const kidx = ((y + ky) * width + (x + kx)) * 4 + c;
+                    sum += tempData[kidx] * kernel[(ky + 1) * 3 + (kx + 1)];
+                  }
                 }
+                data[idx + c] = Math.max(0, Math.min(255, sum));
               }
-              data[idx + c] = Math.max(0, Math.min(255, sum));
             }
           }
+          ctx.putImageData(imageData, 0, 0);
+        } catch (e) {
+          console.error("Erreur sharpen:", e);
         }
-        ctx.putImageData(imageData, 0, 0);
       }
 
       return canvas;
@@ -5707,7 +5734,10 @@ export function CADGabaritCanvas({
   // Mettre à jour les ajustements de l'image sélectionnée
   const updateSelectedImageAdjustments = useCallback(
     (adjustments: Partial<ImageAdjustments>) => {
-      if (!selectedImageId) return;
+      if (!selectedImageId) {
+        console.log("updateSelectedImageAdjustments: pas d'image sélectionnée");
+        return;
+      }
 
       setBackgroundImages((prev) =>
         prev.map((img) => {
@@ -5716,8 +5746,21 @@ export function CADGabaritCanvas({
           const currentAdjustments = img.adjustments || { ...DEFAULT_IMAGE_ADJUSTMENTS };
           const newAdjustments = { ...currentAdjustments, ...adjustments };
 
+          // Utiliser l'image transformée si elle existe, sinon l'originale
+          const sourceImage = img.transformedCanvas || img.image;
+
+          // Vérifier que l'image source est valide
+          if (!sourceImage || (sourceImage instanceof HTMLImageElement && !sourceImage.complete)) {
+            console.error("Image source non valide ou non chargée");
+            return img;
+          }
+
+          console.log("Applying adjustments:", newAdjustments, "to image:", img.name);
+
           // Générer le canvas ajusté
-          const adjustedCanvas = applyImageAdjustments(img.image, newAdjustments);
+          const adjustedCanvas = applyImageAdjustments(sourceImage, newAdjustments);
+
+          console.log("Adjusted canvas created:", adjustedCanvas.width, "x", adjustedCanvas.height);
 
           return {
             ...img,
@@ -11266,7 +11309,7 @@ export function CADGabaritCanvas({
       )}
 
       {/* Panneau flottant ajustements d'image */}
-      {showAdjustmentsDialog && selectedImageId && (
+      {showAdjustmentsDialog && selectedImageData && (
         <div
           className="fixed bg-white rounded-lg shadow-xl border z-50 select-none"
           style={{
@@ -11304,169 +11347,163 @@ export function CADGabaritCanvas({
             </button>
           </div>
 
-          {/* Contenu */}
-          {(() => {
-            const img = getSelectedImage();
-            const adj = img?.adjustments || DEFAULT_IMAGE_ADJUSTMENTS;
-            return (
-              <div className="p-3 space-y-3 max-h-[400px] overflow-y-auto">
-                {/* Contraste */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs">Contraste</Label>
-                    <span className="text-xs text-muted-foreground">{adj.contrast}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="50"
-                    max="200"
-                    value={adj.contrast}
-                    onChange={(e) => updateSelectedImageAdjustments({ contrast: parseInt(e.target.value) })}
-                    className="w-full h-1.5 accent-purple-500"
-                    onKeyDown={(e) => e.stopPropagation()}
-                  />
-                </div>
+          {/* Contenu - utiliser selectedImageData */}
+          <div className="p-3 space-y-3 max-h-[400px] overflow-y-auto">
+            {/* Contraste */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Contraste</Label>
+                <span className="text-xs text-muted-foreground">{selectedImageData.adjustments.contrast}%</span>
+              </div>
+              <input
+                type="range"
+                min="50"
+                max="200"
+                value={selectedImageData.adjustments.contrast}
+                onChange={(e) => updateSelectedImageAdjustments({ contrast: parseInt(e.target.value) })}
+                className="w-full h-1.5 accent-purple-500"
+                onMouseDown={(e) => e.stopPropagation()}
+              />
+            </div>
 
-                {/* Luminosité */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs">Luminosité</Label>
-                    <span className="text-xs text-muted-foreground">{adj.brightness}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="50"
-                    max="200"
-                    value={adj.brightness}
-                    onChange={(e) => updateSelectedImageAdjustments({ brightness: parseInt(e.target.value) })}
-                    className="w-full h-1.5 accent-purple-500"
-                    onKeyDown={(e) => e.stopPropagation()}
-                  />
-                </div>
+            {/* Luminosité */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Luminosité</Label>
+                <span className="text-xs text-muted-foreground">{selectedImageData.adjustments.brightness}%</span>
+              </div>
+              <input
+                type="range"
+                min="50"
+                max="200"
+                value={selectedImageData.adjustments.brightness}
+                onChange={(e) => updateSelectedImageAdjustments({ brightness: parseInt(e.target.value) })}
+                className="w-full h-1.5 accent-purple-500"
+                onMouseDown={(e) => e.stopPropagation()}
+              />
+            </div>
 
-                {/* Netteté */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs">Netteté</Label>
-                    <span className="text-xs text-muted-foreground">{adj.sharpen}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={adj.sharpen}
-                    onChange={(e) => updateSelectedImageAdjustments({ sharpen: parseInt(e.target.value) })}
-                    className="w-full h-1.5 accent-purple-500"
-                    onKeyDown={(e) => e.stopPropagation()}
-                  />
-                </div>
+            {/* Netteté */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Netteté</Label>
+                <span className="text-xs text-muted-foreground">{selectedImageData.adjustments.sharpen}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={selectedImageData.adjustments.sharpen}
+                onChange={(e) => updateSelectedImageAdjustments({ sharpen: parseInt(e.target.value) })}
+                className="w-full h-1.5 accent-purple-500"
+                onMouseDown={(e) => e.stopPropagation()}
+              />
+            </div>
 
-                {/* Saturation */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-xs">Saturation</Label>
-                    <span className="text-xs text-muted-foreground">{adj.saturate}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="200"
-                    value={adj.saturate}
-                    onChange={(e) => updateSelectedImageAdjustments({ saturate: parseInt(e.target.value) })}
-                    className="w-full h-1.5 accent-purple-500"
-                    onKeyDown={(e) => e.stopPropagation()}
-                  />
-                </div>
+            {/* Saturation */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Saturation</Label>
+                <span className="text-xs text-muted-foreground">{selectedImageData.adjustments.saturate}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="200"
+                value={selectedImageData.adjustments.saturate}
+                onChange={(e) => updateSelectedImageAdjustments({ saturate: parseInt(e.target.value) })}
+                className="w-full h-1.5 accent-purple-500"
+                onMouseDown={(e) => e.stopPropagation()}
+              />
+            </div>
 
-                <Separator className="my-2" />
+            <Separator className="my-2" />
 
-                {/* Options binaires compactes */}
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs">Noir et blanc</Label>
-                  <Switch
-                    checked={adj.grayscale}
-                    onCheckedChange={(checked) => updateSelectedImageAdjustments({ grayscale: checked })}
-                    className="scale-75"
-                  />
-                </div>
+            {/* Options binaires compactes */}
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Noir et blanc</Label>
+              <Switch
+                checked={selectedImageData.adjustments.grayscale}
+                onCheckedChange={(checked) => updateSelectedImageAdjustments({ grayscale: checked })}
+                className="scale-75"
+              />
+            </div>
 
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs">Négatif</Label>
-                  <Switch
-                    checked={adj.invert}
-                    onCheckedChange={(checked) => updateSelectedImageAdjustments({ invert: checked })}
-                    className="scale-75"
-                  />
-                </div>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs">Négatif</Label>
+              <Switch
+                checked={selectedImageData.adjustments.invert}
+                onCheckedChange={(checked) => updateSelectedImageAdjustments({ invert: checked })}
+                className="scale-75"
+              />
+            </div>
 
-                <Separator className="my-2" />
+            <Separator className="my-2" />
 
-                {/* Presets rapides */}
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Presets</Label>
-                  <div className="grid grid-cols-3 gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs px-2"
-                      onClick={() =>
-                        updateSelectedImageAdjustments({
-                          contrast: 140,
-                          brightness: 110,
-                          sharpen: 30,
-                          saturate: 100,
-                          grayscale: false,
-                          invert: false,
-                        })
-                      }
-                    >
-                      Contours+
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs px-2"
-                      onClick={() =>
-                        updateSelectedImageAdjustments({
-                          contrast: 180,
-                          brightness: 100,
-                          sharpen: 50,
-                          saturate: 0,
-                          grayscale: true,
-                          invert: false,
-                        })
-                      }
-                    >
-                      N&B
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs px-2"
-                      onClick={() =>
-                        updateSelectedImageAdjustments({
-                          contrast: 150,
-                          brightness: 120,
-                          sharpen: 40,
-                          saturate: 100,
-                          grayscale: false,
-                          invert: true,
-                        })
-                      }
-                    >
-                      Négatif
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Bouton reset */}
-                <Button variant="outline" size="sm" className="w-full h-7 text-xs" onClick={resetImageAdjustments}>
-                  <RotateCw className="h-3 w-3 mr-1" />
-                  Réinitialiser
+            {/* Presets rapides */}
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Presets</Label>
+              <div className="grid grid-cols-3 gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs px-2"
+                  onClick={() =>
+                    updateSelectedImageAdjustments({
+                      contrast: 140,
+                      brightness: 110,
+                      sharpen: 30,
+                      saturate: 100,
+                      grayscale: false,
+                      invert: false,
+                    })
+                  }
+                >
+                  Contours+
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs px-2"
+                  onClick={() =>
+                    updateSelectedImageAdjustments({
+                      contrast: 180,
+                      brightness: 100,
+                      sharpen: 50,
+                      saturate: 0,
+                      grayscale: true,
+                      invert: false,
+                    })
+                  }
+                >
+                  N&B
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs px-2"
+                  onClick={() =>
+                    updateSelectedImageAdjustments({
+                      contrast: 150,
+                      brightness: 120,
+                      sharpen: 40,
+                      saturate: 100,
+                      grayscale: false,
+                      invert: true,
+                    })
+                  }
+                >
+                  Négatif
                 </Button>
               </div>
-            );
-          })()}
+            </div>
+
+            {/* Bouton reset */}
+            <Button variant="outline" size="sm" className="w-full h-7 text-xs" onClick={resetImageAdjustments}>
+              <RotateCw className="h-3 w-3 mr-1" />
+              Réinitialiser
+            </Button>
+          </div>
         </div>
       )}
 
