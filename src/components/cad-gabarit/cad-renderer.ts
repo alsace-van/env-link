@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.23 - Règles agrandies, texte plus lisible, rotation 90° règle verticale
+// VERSION: 3.24 - Cercles remplis (formes fermées)
 // ============================================
 
 import {
@@ -1700,6 +1700,25 @@ export class CADRenderer {
    * Dessine une surbrillance pour les formes fermées
    */
   private drawClosedShapes(sketch: Sketch): void {
+    // D'abord, remplir tous les cercles (ce sont des formes fermées par définition)
+    sketch.geometries.forEach((geo, geoId) => {
+      if (geo.type !== "circle") return;
+
+      const circle = geo as Circle;
+      const layerId = geo.layerId || "trace";
+      const layer = sketch.layers.get(layerId);
+      if (layer?.visible === false) return;
+
+      const center = sketch.points.get(circle.center);
+      if (!center) return;
+
+      this.ctx.beginPath();
+      this.ctx.arc(center.x, center.y, circle.radius, 0, Math.PI * 2);
+      this.ctx.closePath();
+      this.ctx.fillStyle = "rgba(100, 180, 255, 0.15)";
+      this.ctx.fill();
+    });
+
     // Construire un graphe des connexions point -> géométries
     const pointToGeos = new Map<string, Array<{ geoId: string; otherPointId: string }>>();
 
