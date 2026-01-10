@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.95 - Fix findSnapPoint closures stales (utilise sketchRef.current au lieu de sketch)
+// VERSION: 5.96 - Fix complet closures stales (drag sélection, drag points, menu contextuel, perpendicularité)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6253,9 +6253,11 @@ export function CADGabaritCanvas({
           const dy = worldPos.y - selectionDragStart.y;
 
           // Collecter tous les points des géométries sélectionnées
+          // Utiliser sketchRef.current pour éviter les closures stales
+          const currentSketch = sketchRef.current;
           const pointsToMove = new Set<string>();
           selectedEntities.forEach((geoId) => {
-            const geo = sketch.geometries.get(geoId);
+            const geo = currentSketch.geometries.get(geoId);
             if (geo) {
               if (geo.type === "line") {
                 const line = geo as Line;
@@ -6280,8 +6282,8 @@ export function CADGabaritCanvas({
           });
 
           // Déplacer tous les points
-          const newSketch = { ...sketch };
-          newSketch.points = new Map(sketch.points);
+          const newSketch = { ...currentSketch };
+          newSketch.points = new Map(currentSketch.points);
 
           pointsToMove.forEach((pointId) => {
             const point = newSketch.points.get(pointId);
@@ -6325,10 +6327,11 @@ export function CADGabaritCanvas({
           }
         }
 
-        // Mettre à jour la position du point
+        // Mettre à jour la position du point - utiliser sketchRef.current pour éviter closures stales
+        const currentSketch = sketchRef.current;
         if (dragTarget.type === "point") {
-          const newSketch = { ...sketch };
-          newSketch.points = new Map(sketch.points);
+          const newSketch = { ...currentSketch };
+          newSketch.points = new Map(currentSketch.points);
           const point = newSketch.points.get(dragTarget.id);
           if (point) {
             newSketch.points.set(dragTarget.id, {
@@ -6340,11 +6343,11 @@ export function CADGabaritCanvas({
           }
         } else if (dragTarget.type === "handle" && dragTarget.handleType === "circleResize") {
           // Redimensionnement du cercle
-          const newSketch = { ...sketch };
-          newSketch.geometries = new Map(sketch.geometries);
+          const newSketch = { ...currentSketch };
+          newSketch.geometries = new Map(currentSketch.geometries);
           const circle = newSketch.geometries.get(dragTarget.id) as CircleType | undefined;
           if (circle && circle.type === "circle") {
-            const center = sketch.points.get(circle.center);
+            const center = currentSketch.points.get(circle.center);
             if (center) {
               const newRadius = distance(center, targetPos);
               newSketch.geometries.set(dragTarget.id, {
@@ -6356,9 +6359,9 @@ export function CADGabaritCanvas({
           }
         } else if (dragTarget.type === "handle" && dragTarget.handleType === "lineMove") {
           // Déplacement de la ligne entière via la poignée du milieu
-          const newSketch = { ...sketch };
-          newSketch.points = new Map(sketch.points);
-          const line = sketch.geometries.get(dragTarget.id) as Line | undefined;
+          const newSketch = { ...currentSketch };
+          newSketch.points = new Map(currentSketch.points);
+          const line = currentSketch.geometries.get(dragTarget.id) as Line | undefined;
           if (line && line.type === "line") {
             const p1 = newSketch.points.get(line.p1);
             const p2 = newSketch.points.get(line.p2);
@@ -10584,10 +10587,12 @@ export function CADGabaritCanvas({
             })()}
           {contextMenu.entityType === "line" &&
             (() => {
-              const line = sketch.geometries.get(contextMenu.entityId) as Line | undefined;
-              const p1 = line ? sketch.points.get(line.p1) : undefined;
-              const p2 = line ? sketch.points.get(line.p2) : undefined;
-              const currentLength = p1 && p2 ? distance(p1, p2) / sketch.scaleFactor : 0;
+              // Utiliser sketchRef.current pour éviter les closures stales
+              const currentSketch = sketchRef.current;
+              const line = currentSketch.geometries.get(contextMenu.entityId) as Line | undefined;
+              const p1 = line ? currentSketch.points.get(line.p1) : undefined;
+              const p2 = line ? currentSketch.points.get(line.p2) : undefined;
+              const currentLength = p1 && p2 ? distance(p1, p2) / currentSketch.scaleFactor : 0;
 
               return (
                 <>
@@ -10611,12 +10616,13 @@ export function CADGabaritCanvas({
                         currentLength: currentLength,
                         newLength: currentLength.toFixed(1),
                         anchorMode: "center",
+                        // Utiliser sketchRef.current pour éviter les closures stales
                         originalSketch: {
-                          ...sketch,
-                          points: new Map(sketch.points),
-                          geometries: new Map(sketch.geometries),
-                          layers: new Map(sketch.layers),
-                          constraints: new Map(sketch.constraints),
+                          ...sketchRef.current,
+                          points: new Map(sketchRef.current.points),
+                          geometries: new Map(sketchRef.current.geometries),
+                          layers: new Map(sketchRef.current.layers),
+                          constraints: new Map(sketchRef.current.constraints),
                         },
                       });
                       setContextMenu(null);
@@ -10654,11 +10660,12 @@ export function CADGabaritCanvas({
           )}
           {contextMenu.entityType === "corner" &&
             (() => {
-              // Trouver les lignes connectées à ce point
+              // Trouver les lignes connectées à ce point - utiliser sketchRef.current
+              const currentSketch = sketchRef.current;
               const pointId = contextMenu.entityId;
-              const point = sketch.points.get(pointId);
+              const point = currentSketch.points.get(pointId);
               const connectedLines: Line[] = [];
-              sketch.geometries.forEach((geo) => {
+              currentSketch.geometries.forEach((geo) => {
                 if (geo.type === "line") {
                   const line = geo as Line;
                   if (line.p1 === pointId || line.p2 === pointId) {
@@ -10674,8 +10681,8 @@ export function CADGabaritCanvas({
               const line2 = connectedLines[1];
               const other1Id = line1.p1 === pointId ? line1.p2 : line1.p1;
               const other2Id = line2.p1 === pointId ? line2.p2 : line2.p1;
-              const other1 = sketch.points.get(other1Id);
-              const other2 = sketch.points.get(other2Id);
+              const other1 = currentSketch.points.get(other1Id);
+              const other2 = currentSketch.points.get(other2Id);
 
               if (!other1 || !other2) return null;
 
@@ -10699,12 +10706,13 @@ export function CADGabaritCanvas({
                       currentAngle: currentAngle,
                       newAngle: currentAngle.toFixed(1),
                       anchorMode: "symmetric",
+                      // Utiliser sketchRef.current pour éviter les closures stales
                       originalSketch: {
-                        ...sketch,
-                        points: new Map(sketch.points),
-                        geometries: new Map(sketch.geometries),
-                        layers: new Map(sketch.layers),
-                        constraints: new Map(sketch.constraints),
+                        ...sketchRef.current,
+                        points: new Map(sketchRef.current.points),
+                        geometries: new Map(sketchRef.current.geometries),
+                        layers: new Map(sketchRef.current.layers),
+                        constraints: new Map(sketchRef.current.constraints),
                       },
                     });
                     setContextMenu(null);
