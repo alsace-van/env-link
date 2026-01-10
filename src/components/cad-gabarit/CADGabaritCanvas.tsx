@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.03 - Rectangle: saisie dimensions en temps réel (style Fusion 360) avec Tab/Entrée
+// VERSION: 6.04 - Rectangle: preview temps réel pendant saisie dimensions
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1948,6 +1948,54 @@ export function CADGabaritCanvas({
       }, 50);
     }
   }, [rectInputs.active]);
+
+  // Mettre à jour le rectangle preview en temps réel quand on tape les dimensions
+  useEffect(() => {
+    if (!rectInputs.active || !tempGeometry?.type || tempGeometry.type !== "rectangle" || !tempGeometry.p1) return;
+    if (tempPoints.length === 0) return;
+
+    const p1 = tempPoints[0];
+    const inputWidth = parseFloat(rectInputs.widthValue);
+    const inputHeight = parseFloat(rectInputs.heightValue);
+
+    // Si au moins une valeur est saisie, mettre à jour le cursor
+    if ((!isNaN(inputWidth) && inputWidth > 0) || (!isNaN(inputHeight) && inputHeight > 0)) {
+      const currentCursor = tempGeometry.cursor || { x: p1.x + 50, y: p1.y + 50 };
+
+      // Déterminer la direction actuelle (ou par défaut bas-droite)
+      const dirX = currentCursor.x >= p1.x ? 1 : -1;
+      const dirY = currentCursor.y >= p1.y ? 1 : -1;
+
+      // Calculer les nouvelles coordonnées du cursor
+      let newX = currentCursor.x;
+      let newY = currentCursor.y;
+
+      if (!isNaN(inputWidth) && inputWidth > 0) {
+        const widthPx = inputWidth * sketch.scaleFactor;
+        newX = p1.x + widthPx * dirX;
+      }
+
+      if (!isNaN(inputHeight) && inputHeight > 0) {
+        const heightPx = inputHeight * sketch.scaleFactor;
+        newY = p1.y + heightPx * dirY;
+      }
+
+      // Ne mettre à jour que si les valeurs ont changé
+      if (Math.abs(newX - currentCursor.x) > 0.01 || Math.abs(newY - currentCursor.y) > 0.01) {
+        setTempGeometry({
+          ...tempGeometry,
+          cursor: { x: newX, y: newY },
+        });
+      }
+    }
+  }, [
+    rectInputs.widthValue,
+    rectInputs.heightValue,
+    rectInputs.active,
+    tempGeometry?.p1,
+    tempPoints,
+    sketch.scaleFactor,
+  ]);
 
   // Charger les données
   const loadSketchData = useCallback(
