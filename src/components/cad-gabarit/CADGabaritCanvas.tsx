@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.97 - Fix: ne pas appeler solveSketch lors création ligne/cercle/bezier (évite "correction" des contraintes H/V)
+// VERSION: 5.98 - Fix Ctrl+Z: ne pas appeler solveSketch dans loadSketchData ni fin de drag
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1923,7 +1923,9 @@ export function CADGabaritCanvas({
       }
 
       setSketch(newSketch);
-      solveSketch(newSketch);
+      // NE PAS appeler solveSketch ici - on veut restaurer l'état exact de l'historique
+      // sans que le solver "corrige" les contraintes H/V
+      // solveSketch(newSketch);
     },
     [scaleFactor],
   );
@@ -6730,7 +6732,8 @@ export function CADGabaritCanvas({
       // Fin du drag de sélection
       if (isDraggingSelection) {
         addToHistory(sketchRef.current);
-        solveSketch(sketchRef.current);
+        // NE PAS appeler solveSketch - évite de "corriger" les contraintes H/V
+        // solveSketch(sketchRef.current);
         setIsDraggingSelection(false);
         setPotentialSelectionDrag(false);
         return;
@@ -6744,7 +6747,8 @@ export function CADGabaritCanvas({
       // Fin du drag - sauvegarder dans l'historique
       if (isDragging && dragTarget) {
         addToHistory(sketchRef.current);
-        solveSketch(sketchRef.current);
+        // NE PAS appeler solveSketch - évite de "corriger" les contraintes H/V
+        // solveSketch(sketchRef.current);
         setIsDragging(false);
         setDragTarget(null);
       } else if (dragTarget) {
