@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.84 - Afficher dimensions des côtés adjacents lors du drag lineMove
+// VERSION: 5.85 - Affichage des angles en degrés pendant la modification (arc orange + valeur)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -826,14 +826,12 @@ export function CADGabaritCanvas({
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
 
-        // Fonction helper pour dessiner un indicateur d'angle droit
-        const drawRightAngleIndicator = (
+        // Fonction helper pour dessiner l'angle avec sa valeur en degrés
+        const drawAngleAtCorner = (
           corner: { x: number; y: number },
           dir1: { x: number; y: number },
           dir2: { x: number; y: number },
         ) => {
-          const size = 12; // Taille du carré en pixels écran
-
           // Normaliser les directions
           const len1 = Math.sqrt(dir1.x * dir1.x + dir1.y * dir1.y);
           const len2 = Math.sqrt(dir2.x * dir2.x + dir2.y * dir2.y);
@@ -844,17 +842,16 @@ export function CADGabaritCanvas({
 
           // Calculer l'angle entre les deux directions
           const dot = u1.x * u2.x + u1.y * u2.y;
-          const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
-          const angleDeg = Math.abs((angle * 180) / Math.PI);
+          const angleDeg = (Math.acos(Math.max(-1, Math.min(1, dot))) * 180) / Math.PI;
 
-          // Vérifier si c'est un angle droit (90° ± 1°)
+          const cornerScreen = {
+            x: corner.x * viewport.scale + viewport.offsetX,
+            y: corner.y * viewport.scale + viewport.offsetY,
+          };
+
+          // Si angle droit (90° ± 1°), dessiner le petit carré
           if (Math.abs(angleDeg - 90) < 1) {
-            const cornerScreen = {
-              x: corner.x * viewport.scale + viewport.offsetX,
-              y: corner.y * viewport.scale + viewport.offsetY,
-            };
-
-            // Points du petit carré
+            const size = 12;
             const p1 = {
               x: cornerScreen.x + u1.x * size,
               y: cornerScreen.y + u1.y * size,
@@ -869,7 +866,7 @@ export function CADGabaritCanvas({
             };
 
             ctx.save();
-            ctx.strokeStyle = "#10B981"; // Vert
+            ctx.strokeStyle = "#10B981";
             ctx.lineWidth = 2;
             ctx.setLineDash([]);
             ctx.beginPath();
@@ -878,7 +875,45 @@ export function CADGabaritCanvas({
             ctx.lineTo(p3.x, p3.y);
             ctx.stroke();
             ctx.restore();
+          } else {
+            // Dessiner un arc pour montrer l'angle
+            const arcRadius = 20;
+            const startAngle = Math.atan2(u1.y, u1.x);
+            const endAngle = Math.atan2(u2.y, u2.x);
+
+            ctx.save();
+            ctx.strokeStyle = "#F97316"; // Orange
+            ctx.lineWidth = 2;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+
+            // Déterminer le sens de l'arc (prendre le plus court)
+            let deltaAngle = endAngle - startAngle;
+            while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
+            while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
+            const counterClockwise = deltaAngle < 0;
+
+            ctx.arc(cornerScreen.x, cornerScreen.y, arcRadius, startAngle, endAngle, counterClockwise);
+            ctx.stroke();
+            ctx.restore();
           }
+
+          // Afficher la valeur de l'angle
+          const bisectorAngle = Math.atan2(u1.y + u2.y, u1.x + u2.x);
+          const textDistance = 35;
+          const textX = cornerScreen.x + Math.cos(bisectorAngle) * textDistance;
+          const textY = cornerScreen.y + Math.sin(bisectorAngle) * textDistance;
+
+          const angleText = `${angleDeg.toFixed(1)}°`;
+          const textWidth = ctx.measureText(angleText).width;
+
+          // Fond
+          ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+          ctx.fillRect(textX - textWidth / 2 - 3, textY - 8, textWidth + 6, 16);
+
+          // Texte
+          ctx.fillStyle = Math.abs(angleDeg - 90) < 1 ? "#10B981" : "#F97316";
+          ctx.fillText(angleText, textX, textY);
         };
 
         // Fonction helper pour trouver les lignes connectées à un point
@@ -895,14 +930,14 @@ export function CADGabaritCanvas({
           return lines;
         };
 
-        // Fonction helper pour dessiner les indicateurs d'angle droit à un point
-        const drawRightAnglesAtPoint = (pointId: string) => {
+        // Fonction helper pour dessiner les angles à un point
+        const drawAnglesAtPoint = (pointId: string) => {
           const point = sketch.points.get(pointId);
           if (!point) return;
 
           const connectedLines = findConnectedLines(pointId);
 
-          // Pour chaque paire de lignes connectées, vérifier si elles forment un angle droit
+          // Pour chaque paire de lignes connectées, afficher l'angle
           for (let i = 0; i < connectedLines.length; i++) {
             for (let j = i + 1; j < connectedLines.length; j++) {
               const line1 = connectedLines[i];
@@ -917,7 +952,7 @@ export function CADGabaritCanvas({
               if (other1 && other2) {
                 const dir1 = { x: other1.x - point.x, y: other1.y - point.y };
                 const dir2 = { x: other2.x - point.x, y: other2.y - point.y };
-                drawRightAngleIndicator(point, dir1, dir2);
+                drawAngleAtCorner(point, dir1, dir2);
               }
             }
           }
@@ -1007,8 +1042,8 @@ export function CADGabaritCanvas({
             });
 
             // Afficher les angles droits aux deux extrémités
-            drawRightAnglesAtPoint(line.p1);
-            drawRightAnglesAtPoint(line.p2);
+            drawAnglesAtPoint(line.p1);
+            drawAnglesAtPoint(line.p2);
           }
         } else if (dragTarget.type === "point") {
           // Afficher les dimensions des lignes connectées à ce point
@@ -1051,7 +1086,7 @@ export function CADGabaritCanvas({
             });
 
             // Afficher les indicateurs d'angle droit au point qu'on déplace
-            drawRightAnglesAtPoint(pointId);
+            drawAnglesAtPoint(pointId);
           }
         }
         ctx.restore();
