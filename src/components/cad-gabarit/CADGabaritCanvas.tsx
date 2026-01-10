@@ -2538,21 +2538,20 @@ export function CADGabaritCanvas({
       const fileArray = Array.from(files);
       let loadedCount = 0;
 
-      // Calculer la position de départ pour les nouvelles images
-      // Les images sont placées dans la zone visible du canvas avec un décalage
-      const getNextPosition = (index: number) => {
-        // Calculer le centre visible du canvas en coordonnées monde
-        const centerX = (viewport.width / 2 - viewport.offsetX) / viewport.scale;
-        const centerY = (viewport.height / 2 - viewport.offsetY) / viewport.scale;
+      // Calculer le centre visible du canvas en coordonnées monde (capturé une seule fois)
+      const centerX = (viewport.width / 2 - viewport.offsetX) / viewport.scale;
+      const centerY = (viewport.height / 2 - viewport.offsetY) / viewport.scale;
 
+      // Calculer la position de départ pour les nouvelles images
+      const getNextPosition = (totalIndex: number) => {
         // Décalage en spirale pour éviter superposition
-        const offset = 100; // 100 unités entre chaque image
-        const angle = (index * 45 * Math.PI) / 180; // 45° entre chaque
-        const radius = offset * Math.floor(index / 8 + 1); // Spirale
+        const offset = 150; // 150 unités entre chaque image
+        const angle = (totalIndex * 60 * Math.PI) / 180; // 60° entre chaque
+        const radius = offset * (Math.floor(totalIndex / 6) + 1); // Spirale
 
         return {
-          x: centerX + Math.cos(angle) * radius * (index % 8),
-          y: centerY + Math.sin(angle) * radius * (index % 8),
+          x: centerX + Math.cos(angle) * radius,
+          y: centerY + Math.sin(angle) * radius,
         };
       };
 
@@ -2561,23 +2560,28 @@ export function CADGabaritCanvas({
         reader.onload = (event) => {
           const img = new window.Image();
           img.onload = () => {
-            const position = getNextPosition(backgroundImages.length + index);
+            // Utiliser la forme fonctionnelle pour obtenir la longueur actuelle
+            setBackgroundImages((prev) => {
+              const currentLength = prev.length;
+              const position = getNextPosition(currentLength + index);
 
-            const newImage: BackgroundImage = {
-              id: generateId(),
-              name: file.name,
-              image: img,
-              x: position.x,
-              y: position.y,
-              scale: 1,
-              opacity: imageOpacity,
-              visible: true,
-              locked: false,
-              order: backgroundImages.length + index,
-              markers: [],
-            };
+              const newImage: BackgroundImage = {
+                id: generateId(),
+                name: file.name,
+                image: img,
+                x: position.x,
+                y: position.y,
+                scale: 1,
+                opacity: imageOpacity,
+                visible: true,
+                locked: false,
+                order: currentLength + index,
+                markers: [],
+              };
 
-            setBackgroundImages((prev) => [...prev, newImage]);
+              return [...prev, newImage];
+            });
+
             loadedCount++;
 
             if (loadedCount === fileArray.length) {
@@ -2597,7 +2601,7 @@ export function CADGabaritCanvas({
       // Reset l'input pour permettre de re-sélectionner les mêmes fichiers
       e.target.value = "";
     },
-    [backgroundImages.length, imageOpacity, viewport],
+    [imageOpacity, viewport],
   );
 
   // Import DXF
@@ -7911,6 +7915,24 @@ export function CADGabaritCanvas({
 
       // Supprimer
       if (e.key === "Delete" || e.key === "Backspace") {
+        // Supprimer l'image sélectionnée si elle existe
+        if (selectedImageId) {
+          setBackgroundImages((prev) => {
+            const newImages = prev.filter((img) => img.id !== selectedImageId);
+            // Aussi supprimer les liens qui référencent cette image
+            setMarkerLinks((links) =>
+              links.filter((link) =>
+                link.marker1.imageId !== selectedImageId &&
+                link.marker2.imageId !== selectedImageId
+              )
+            );
+            return newImages;
+          });
+          setSelectedImageId(null);
+          toast.success("Photo supprimée");
+          return;
+        }
+        // Sinon supprimer les entités géométriques sélectionnées
         if (selectedEntities.size > 0) {
           deleteSelectedEntities();
         }
