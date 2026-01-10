@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.82 - Redimensionner cercle par drag + dimensions temps réel pendant drag
+// VERSION: 5.83 - Dimensions temps réel pour lineMove + indicateur angle droit (petit carré vert)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -198,6 +198,7 @@ export function CADGabaritCanvas({
     null,
   );
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [lastDragPos, setLastDragPos] = useState({ x: 0, y: 0 });
 
   // Drag de sélection (déplacement de formes entières)
   const [isDraggingSelection, setIsDraggingSelection] = useState(false);
@@ -825,6 +826,138 @@ export function CADGabaritCanvas({
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
 
+        // Fonction helper pour dessiner un indicateur d'angle droit
+        const drawRightAngleIndicator = (
+          corner: { x: number; y: number },
+          dir1: { x: number; y: number },
+          dir2: { x: number; y: number },
+        ) => {
+          const size = 12; // Taille du carré en pixels écran
+
+          // Normaliser les directions
+          const len1 = Math.sqrt(dir1.x * dir1.x + dir1.y * dir1.y);
+          const len2 = Math.sqrt(dir2.x * dir2.x + dir2.y * dir2.y);
+          if (len1 === 0 || len2 === 0) return;
+
+          const u1 = { x: dir1.x / len1, y: dir1.y / len1 };
+          const u2 = { x: dir2.x / len2, y: dir2.y / len2 };
+
+          // Calculer l'angle entre les deux directions
+          const dot = u1.x * u2.x + u1.y * u2.y;
+          const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+          const angleDeg = Math.abs((angle * 180) / Math.PI);
+
+          // Vérifier si c'est un angle droit (90° ± 1°)
+          if (Math.abs(angleDeg - 90) < 1) {
+            const cornerScreen = {
+              x: corner.x * viewport.scale + viewport.offsetX,
+              y: corner.y * viewport.scale + viewport.offsetY,
+            };
+
+            // Points du petit carré
+            const p1 = {
+              x: cornerScreen.x + u1.x * size,
+              y: cornerScreen.y + u1.y * size,
+            };
+            const p2 = {
+              x: cornerScreen.x + u1.x * size + u2.x * size,
+              y: cornerScreen.y + u1.y * size + u2.y * size,
+            };
+            const p3 = {
+              x: cornerScreen.x + u2.x * size,
+              y: cornerScreen.y + u2.y * size,
+            };
+
+            ctx.save();
+            ctx.strokeStyle = "#10B981"; // Vert
+            ctx.lineWidth = 2;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.lineTo(p3.x, p3.y);
+            ctx.stroke();
+            ctx.restore();
+          }
+        };
+
+        // Fonction helper pour trouver les lignes connectées à un point
+        const findConnectedLines = (pointId: string): Line[] => {
+          const lines: Line[] = [];
+          sketch.geometries.forEach((geo) => {
+            if (geo.type === "line") {
+              const line = geo as Line;
+              if (line.p1 === pointId || line.p2 === pointId) {
+                lines.push(line);
+              }
+            }
+          });
+          return lines;
+        };
+
+        // Fonction helper pour dessiner les indicateurs d'angle droit à un point
+        const drawRightAnglesAtPoint = (pointId: string) => {
+          const point = sketch.points.get(pointId);
+          if (!point) return;
+
+          const connectedLines = findConnectedLines(pointId);
+
+          // Pour chaque paire de lignes connectées, vérifier si elles forment un angle droit
+          for (let i = 0; i < connectedLines.length; i++) {
+            for (let j = i + 1; j < connectedLines.length; j++) {
+              const line1 = connectedLines[i];
+              const line2 = connectedLines[j];
+
+              const other1Id = line1.p1 === pointId ? line1.p2 : line1.p1;
+              const other2Id = line2.p1 === pointId ? line2.p2 : line2.p1;
+
+              const other1 = sketch.points.get(other1Id);
+              const other2 = sketch.points.get(other2Id);
+
+              if (other1 && other2) {
+                const dir1 = { x: other1.x - point.x, y: other1.y - point.y };
+                const dir2 = { x: other2.x - point.x, y: other2.y - point.y };
+                drawRightAngleIndicator(point, dir1, dir2);
+              }
+            }
+          }
+        };
+
+        // Fonction helper pour dessiner la dimension d'une ligne
+        const drawLineDimension = (line: Line) => {
+          const p1 = sketch.points.get(line.p1);
+          const p2 = sketch.points.get(line.p2);
+          if (!p1 || !p2) return;
+
+          const lengthPx = distance(p1, p2);
+          const lengthMm = lengthPx / sketch.scaleFactor;
+
+          const midScreen = {
+            x: ((p1.x + p2.x) / 2) * viewport.scale + viewport.offsetX,
+            y: ((p1.y + p2.y) / 2) * viewport.scale + viewport.offsetY,
+          };
+
+          // Offset perpendiculaire
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          const offsetX = len > 0 ? (-dy / len) * 15 : 0;
+          const offsetY = len > 0 ? (dx / len) * 15 : 15;
+
+          const text = `${lengthMm.toFixed(1)} mm`;
+          const textX = midScreen.x + offsetX;
+          const textY = midScreen.y + offsetY;
+          const textWidth = ctx.measureText(text).width;
+
+          // Fond blanc
+          ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+          ctx.fillRect(textX - textWidth / 2 - 4, textY - 8, textWidth + 8, 18);
+
+          // Texte
+          ctx.fillStyle = "#3B82F6";
+          ctx.fillText(text, textX, textY);
+        };
+
         if (dragTarget.type === "handle" && dragTarget.handleType === "circleResize") {
           // Afficher le rayon du cercle
           const circle = sketch.geometries.get(dragTarget.id) as CircleType | undefined;
@@ -851,6 +984,16 @@ export function CADGabaritCanvas({
               ctx.fillText(text, textX, textY);
             }
           }
+        } else if (dragTarget.type === "handle" && dragTarget.handleType === "lineMove") {
+          // Afficher la dimension de la ligne qu'on déplace
+          const line = sketch.geometries.get(dragTarget.id) as Line | undefined;
+          if (line && line.type === "line") {
+            drawLineDimension(line);
+
+            // Afficher les angles droits aux deux extrémités
+            drawRightAnglesAtPoint(line.p1);
+            drawRightAnglesAtPoint(line.p2);
+          }
         } else if (dragTarget.type === "point") {
           // Afficher les dimensions des lignes connectées à ce point
           const pointId = dragTarget.id;
@@ -861,37 +1004,7 @@ export function CADGabaritCanvas({
               if (geo.type === "line") {
                 const line = geo as Line;
                 if (line.p1 === pointId || line.p2 === pointId) {
-                  const p1 = sketch.points.get(line.p1);
-                  const p2 = sketch.points.get(line.p2);
-                  if (p1 && p2) {
-                    const lengthPx = distance(p1, p2);
-                    const lengthMm = lengthPx / sketch.scaleFactor;
-
-                    const midScreen = {
-                      x: ((p1.x + p2.x) / 2) * viewport.scale + viewport.offsetX,
-                      y: ((p1.y + p2.y) / 2) * viewport.scale + viewport.offsetY,
-                    };
-
-                    // Offset perpendiculaire
-                    const dx = p2.x - p1.x;
-                    const dy = p2.y - p1.y;
-                    const len = Math.sqrt(dx * dx + dy * dy);
-                    const offsetX = len > 0 ? (-dy / len) * 15 : 0;
-                    const offsetY = len > 0 ? (dx / len) * 15 : 15;
-
-                    const text = `${lengthMm.toFixed(1)} mm`;
-                    const textX = midScreen.x + offsetX;
-                    const textY = midScreen.y + offsetY;
-                    const textWidth = ctx.measureText(text).width;
-
-                    // Fond blanc
-                    ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-                    ctx.fillRect(textX - textWidth / 2 - 4, textY - 8, textWidth + 8, 18);
-
-                    // Texte
-                    ctx.fillStyle = "#3B82F6";
-                    ctx.fillText(text, textX, textY);
-                  }
+                  drawLineDimension(line);
                 }
               } else if (geo.type === "circle") {
                 const circle = geo as CircleType;
@@ -920,6 +1033,9 @@ export function CADGabaritCanvas({
                 }
               }
             });
+
+            // Afficher les indicateurs d'angle droit au point qu'on déplace
+            drawRightAnglesAtPoint(pointId);
           }
         }
         ctx.restore();
@@ -1426,11 +1542,19 @@ export function CADGabaritCanvas({
             const line = geo as Line;
             const p1 = sketch.points.get(line.p1);
             const p2 = sketch.points.get(line.p2);
-            if (p1 && distance({ x: worldX, y: worldY }, p1) < tolerance) {
-              return { type: "point", id: line.p1 };
-            }
-            if (p2 && distance({ x: worldX, y: worldY }, p2) < tolerance) {
-              return { type: "point", id: line.p2 };
+            if (p1 && p2) {
+              // Poignées aux extrémités
+              if (distance({ x: worldX, y: worldY }, p1) < tolerance) {
+                return { type: "point", id: line.p1 };
+              }
+              if (distance({ x: worldX, y: worldY }, p2) < tolerance) {
+                return { type: "point", id: line.p2 };
+              }
+              // Poignée au milieu pour déplacer la ligne
+              const mid = midpoint(p1, p2);
+              if (distance({ x: worldX, y: worldY }, mid) < tolerance) {
+                return { type: "handle", id: entityId, handleType: "lineMove" };
+              }
             }
           } else if (geo.type === "circle") {
             const circle = geo as CircleType;
@@ -4509,6 +4633,7 @@ export function CADGabaritCanvas({
             setIsDragging(true);
             setDragTarget(handleHit);
             setDragStart(worldPos);
+            setLastDragPos(worldPos);
             return;
           }
 
@@ -5260,6 +5385,35 @@ export function CADGabaritCanvas({
               setSketch(newSketch);
             }
           }
+        } else if (dragTarget.type === "handle" && dragTarget.handleType === "lineMove") {
+          // Déplacement de la ligne entière via la poignée du milieu
+          const newSketch = { ...sketch };
+          newSketch.points = new Map(sketch.points);
+          const line = sketch.geometries.get(dragTarget.id) as Line | undefined;
+          if (line && line.type === "line") {
+            const p1 = newSketch.points.get(line.p1);
+            const p2 = newSketch.points.get(line.p2);
+            if (p1 && p2) {
+              // Calculer le delta de mouvement
+              const deltaX = targetPos.x - lastDragPos.x;
+              const deltaY = targetPos.y - lastDragPos.y;
+
+              // Déplacer les deux extrémités
+              newSketch.points.set(line.p1, {
+                ...p1,
+                x: p1.x + deltaX,
+                y: p1.y + deltaY,
+              });
+              newSketch.points.set(line.p2, {
+                ...p2,
+                x: p2.x + deltaX,
+                y: p2.y + deltaY,
+              });
+
+              setSketch(newSketch);
+              setLastDragPos(targetPos);
+            }
+          }
         }
         return;
       }
@@ -5325,6 +5479,7 @@ export function CADGabaritCanvas({
       panStart,
       dragTarget,
       dragStart,
+      lastDragPos,
       selectionDragStart,
       sketch,
       viewport,
