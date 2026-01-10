@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.73 - Fix détection des arcs (congés) + counterClockwise
+// VERSION: 5.74 - Fix erreurs TypeScript (Dimension, corners)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2806,9 +2806,9 @@ export function CADGabaritCanvas({
             const dimension: Dimension = {
               id: dimId,
               type: "radius",
-              entityId: arc.id,
+              entities: [arc.id],
               value: radiusMm,
-              offset: 20,
+              position: { x: center.x + arc.radius + 20, y: center.y },
             };
             if (!currentSketch.dimensions) {
               (currentSketch as any).dimensions = new Map();
@@ -4810,19 +4810,33 @@ export function CADGabaritCanvas({
                   setFilletFirstLine(null);
                   return;
                 }
-                const suggestedRadius = Math.min(filletRadius, Math.floor(params.maxRadius));
+                const maxRadiusMm = params.maxRadius / sketch.scaleFactor;
+                const len1Mm = params.len1 / sketch.scaleFactor;
+                const len2Mm = params.len2 / sketch.scaleFactor;
+                const suggestedRadius = Math.min(filletRadius, Math.floor(maxRadiusMm));
                 // Ouvrir la modale
                 setFilletDialog({
                   open: true,
                   corners: [
                     {
                       pointId: shared.sharedPointId,
-                      maxRadius: params.maxRadius,
+                      maxRadius: maxRadiusMm,
                       angleDeg: params.angleDeg,
+                      radius: suggestedRadius > 0 ? suggestedRadius : 1,
+                      dist1: suggestedRadius > 0 ? suggestedRadius : 1,
+                      dist2: suggestedRadius > 0 ? suggestedRadius : 1,
+                      maxDist1: len1Mm * 0.9,
+                      maxDist2: len2Mm * 0.9,
+                      line1Id: filletFirstLine,
+                      line2Id: entityId,
                     },
                   ],
-                  radius: suggestedRadius > 0 ? suggestedRadius : 1,
-                  minMaxRadius: params.maxRadius,
+                  globalRadius: suggestedRadius > 0 ? suggestedRadius : 1,
+                  minMaxRadius: maxRadiusMm,
+                  hoveredCornerIdx: null,
+                  asymmetric: false,
+                  addDimension: false,
+                  repeatMode: false,
                 });
                 setFilletFirstLine(null);
               }
@@ -4858,19 +4872,33 @@ export function CADGabaritCanvas({
                   setFilletFirstLine(null);
                   return;
                 }
-                const suggestedDistance = Math.min(chamferDistance, Math.floor(params.maxDistance));
+                const maxDistanceMm = params.maxDistance / sketch.scaleFactor;
+                const len1Mm = params.len1 / sketch.scaleFactor;
+                const len2Mm = params.len2 / sketch.scaleFactor;
+                const suggestedDistance = Math.min(chamferDistance, Math.floor(maxDistanceMm));
                 // Ouvrir la modale
                 setChamferDialog({
                   open: true,
                   corners: [
                     {
                       pointId: shared.sharedPointId,
-                      maxDistance: params.maxDistance,
+                      maxDistance: maxDistanceMm,
                       angleDeg: params.angleDeg,
+                      distance: suggestedDistance > 0 ? suggestedDistance : 1,
+                      dist1: suggestedDistance > 0 ? suggestedDistance : 1,
+                      dist2: suggestedDistance > 0 ? suggestedDistance : 1,
+                      maxDist1: len1Mm * 0.9,
+                      maxDist2: len2Mm * 0.9,
+                      line1Id: filletFirstLine,
+                      line2Id: entityId,
                     },
                   ],
-                  distance: suggestedDistance > 0 ? suggestedDistance : 1,
-                  minMaxDistance: params.maxDistance,
+                  globalDistance: suggestedDistance > 0 ? suggestedDistance : 1,
+                  minMaxDistance: maxDistanceMm,
+                  hoveredCornerIdx: null,
+                  asymmetric: false,
+                  addDimension: false,
+                  repeatMode: false,
                 });
                 setFilletFirstLine(null);
                 setSelectedEntities(new Set());
