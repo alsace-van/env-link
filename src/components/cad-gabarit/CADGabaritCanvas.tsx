@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.10 - Déplacement ajustements dans menu déroulant (barre d'outils simplifiée)
+// VERSION: 6.11 - Fix calibration multi-photos: clics sur image en mode addPoint ne déclenchent plus le drag
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -239,7 +239,9 @@ export function CADGabaritCanvas({
   const [backgroundImages, setBackgroundImages] = useState<BackgroundImage[]>([]);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
-  const [imageDragStart, setImageDragStart] = useState<{ x: number; y: number; imgX: number; imgY: number } | null>(null);
+  const [imageDragStart, setImageDragStart] = useState<{ x: number; y: number; imgX: number; imgY: number } | null>(
+    null,
+  );
 
   // === Marqueurs inter-photos ===
   const [markerLinks, setMarkerLinks] = useState<ImageMarkerLink[]>([]);
@@ -2592,11 +2594,7 @@ export function CADGabaritCanvas({
 
             if (loadedCount === fileArray.length) {
               setShowBackgroundImage(true);
-              toast.success(
-                fileArray.length === 1
-                  ? "Photo chargée !"
-                  : `${fileArray.length} photos chargées !`
-              );
+              toast.success(fileArray.length === 1 ? "Photo chargée !" : `${fileArray.length} photos chargées !`);
             }
           };
           img.src = event.target?.result as string;
@@ -5594,7 +5592,7 @@ export function CADGabaritCanvas({
       }
       return null;
     },
-    [backgroundImages]
+    [backgroundImages],
   );
 
   // === Helpers pour calibration de l'image sélectionnée ===
@@ -5617,115 +5615,117 @@ export function CADGabaritCanvas({
     };
   }, [getSelectedImage]);
 
-  const updateSelectedImageCalibration = useCallback((updater: (prev: CalibrationData) => CalibrationData) => {
-    if (!selectedImageId) return;
-    setBackgroundImages((prev) =>
-      prev.map((img) => {
-        if (img.id !== selectedImageId) return img;
-        const currentCalib = img.calibrationData || {
-          points: new Map(),
-          pairs: new Map(),
-          applied: false,
-          mode: "simple" as const,
-        };
-        return { ...img, calibrationData: updater(currentCalib) };
-      })
-    );
-  }, [selectedImageId]);
+  const updateSelectedImageCalibration = useCallback(
+    (updater: (prev: CalibrationData) => CalibrationData) => {
+      if (!selectedImageId) return;
+      setBackgroundImages((prev) =>
+        prev.map((img) => {
+          if (img.id !== selectedImageId) return img;
+          const currentCalib = img.calibrationData || {
+            points: new Map(),
+            pairs: new Map(),
+            applied: false,
+            mode: "simple" as const,
+          };
+          return { ...img, calibrationData: updater(currentCalib) };
+        }),
+      );
+    },
+    [selectedImageId],
+  );
 
   // Appliquer les ajustements d'image (contraste, luminosité, etc.)
-  const applyImageAdjustments = useCallback((
-    sourceImage: HTMLImageElement | HTMLCanvasElement,
-    adjustments: ImageAdjustments
-  ): HTMLCanvasElement => {
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return canvas;
+  const applyImageAdjustments = useCallback(
+    (sourceImage: HTMLImageElement | HTMLCanvasElement, adjustments: ImageAdjustments): HTMLCanvasElement => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return canvas;
 
-    const width = sourceImage.width;
-    const height = sourceImage.height;
-    canvas.width = width;
-    canvas.height = height;
+      const width = sourceImage.width;
+      const height = sourceImage.height;
+      canvas.width = width;
+      canvas.height = height;
 
-    // Appliquer les filtres CSS
-    const filters: string[] = [];
-    if (adjustments.contrast !== 100) {
-      filters.push(`contrast(${adjustments.contrast}%)`);
-    }
-    if (adjustments.brightness !== 100) {
-      filters.push(`brightness(${adjustments.brightness}%)`);
-    }
-    if (adjustments.saturate !== 100) {
-      filters.push(`saturate(${adjustments.saturate}%)`);
-    }
-    if (adjustments.grayscale) {
-      filters.push("grayscale(100%)");
-    }
-    if (adjustments.invert) {
-      filters.push("invert(100%)");
-    }
+      // Appliquer les filtres CSS
+      const filters: string[] = [];
+      if (adjustments.contrast !== 100) {
+        filters.push(`contrast(${adjustments.contrast}%)`);
+      }
+      if (adjustments.brightness !== 100) {
+        filters.push(`brightness(${adjustments.brightness}%)`);
+      }
+      if (adjustments.saturate !== 100) {
+        filters.push(`saturate(${adjustments.saturate}%)`);
+      }
+      if (adjustments.grayscale) {
+        filters.push("grayscale(100%)");
+      }
+      if (adjustments.invert) {
+        filters.push("invert(100%)");
+      }
 
-    ctx.filter = filters.length > 0 ? filters.join(" ") : "none";
-    ctx.drawImage(sourceImage, 0, 0);
+      ctx.filter = filters.length > 0 ? filters.join(" ") : "none";
+      ctx.drawImage(sourceImage, 0, 0);
 
-    // Appliquer le sharpen si nécessaire (manipulation de pixels)
-    if (adjustments.sharpen > 0) {
-      const imageData = ctx.getImageData(0, 0, width, height);
-      const data = imageData.data;
-      const factor = adjustments.sharpen / 100;
+      // Appliquer le sharpen si nécessaire (manipulation de pixels)
+      if (adjustments.sharpen > 0) {
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const data = imageData.data;
+        const factor = adjustments.sharpen / 100;
 
-      // Kernel de sharpening simple
-      const kernel = [
-        0, -factor, 0,
-        -factor, 1 + 4 * factor, -factor,
-        0, -factor, 0
-      ];
+        // Kernel de sharpening simple
+        const kernel = [0, -factor, 0, -factor, 1 + 4 * factor, -factor, 0, -factor, 0];
 
-      const tempData = new Uint8ClampedArray(data);
+        const tempData = new Uint8ClampedArray(data);
 
-      for (let y = 1; y < height - 1; y++) {
-        for (let x = 1; x < width - 1; x++) {
-          const idx = (y * width + x) * 4;
-          for (let c = 0; c < 3; c++) {
-            let sum = 0;
-            for (let ky = -1; ky <= 1; ky++) {
-              for (let kx = -1; kx <= 1; kx++) {
-                const kidx = ((y + ky) * width + (x + kx)) * 4 + c;
-                sum += tempData[kidx] * kernel[(ky + 1) * 3 + (kx + 1)];
+        for (let y = 1; y < height - 1; y++) {
+          for (let x = 1; x < width - 1; x++) {
+            const idx = (y * width + x) * 4;
+            for (let c = 0; c < 3; c++) {
+              let sum = 0;
+              for (let ky = -1; ky <= 1; ky++) {
+                for (let kx = -1; kx <= 1; kx++) {
+                  const kidx = ((y + ky) * width + (x + kx)) * 4 + c;
+                  sum += tempData[kidx] * kernel[(ky + 1) * 3 + (kx + 1)];
+                }
               }
+              data[idx + c] = Math.max(0, Math.min(255, sum));
             }
-            data[idx + c] = Math.max(0, Math.min(255, sum));
           }
         }
+        ctx.putImageData(imageData, 0, 0);
       }
-      ctx.putImageData(imageData, 0, 0);
-    }
 
-    return canvas;
-  }, []);
+      return canvas;
+    },
+    [],
+  );
 
   // Mettre à jour les ajustements de l'image sélectionnée
-  const updateSelectedImageAdjustments = useCallback((adjustments: Partial<ImageAdjustments>) => {
-    if (!selectedImageId) return;
+  const updateSelectedImageAdjustments = useCallback(
+    (adjustments: Partial<ImageAdjustments>) => {
+      if (!selectedImageId) return;
 
-    setBackgroundImages((prev) =>
-      prev.map((img) => {
-        if (img.id !== selectedImageId) return img;
+      setBackgroundImages((prev) =>
+        prev.map((img) => {
+          if (img.id !== selectedImageId) return img;
 
-        const currentAdjustments = img.adjustments || { ...DEFAULT_IMAGE_ADJUSTMENTS };
-        const newAdjustments = { ...currentAdjustments, ...adjustments };
+          const currentAdjustments = img.adjustments || { ...DEFAULT_IMAGE_ADJUSTMENTS };
+          const newAdjustments = { ...currentAdjustments, ...adjustments };
 
-        // Générer le canvas ajusté
-        const adjustedCanvas = applyImageAdjustments(img.image, newAdjustments);
+          // Générer le canvas ajusté
+          const adjustedCanvas = applyImageAdjustments(img.image, newAdjustments);
 
-        return {
-          ...img,
-          adjustments: newAdjustments,
-          adjustedCanvas,
-        };
-      })
-    );
-  }, [selectedImageId, applyImageAdjustments]);
+          return {
+            ...img,
+            adjustments: newAdjustments,
+            adjustedCanvas,
+          };
+        }),
+      );
+    },
+    [selectedImageId, applyImageAdjustments],
+  );
 
   // Réinitialiser les ajustements de l'image sélectionnée
   const resetImageAdjustments = useCallback(() => {
@@ -5739,7 +5739,7 @@ export function CADGabaritCanvas({
           adjustments: { ...DEFAULT_IMAGE_ADJUSTMENTS },
           adjustedCanvas: undefined,
         };
-      })
+      }),
     );
     toast.success("Ajustements réinitialisés");
   }, [selectedImageId]);
@@ -5890,11 +5890,7 @@ export function CADGabaritCanvas({
 
           // Ajouter le marqueur à l'image
           setBackgroundImages((prev) =>
-            prev.map((img) =>
-              img.id === clickedImage.id
-                ? { ...img, markers: [...img.markers, newMarker] }
-                : img
-            )
+            prev.map((img) => (img.id === clickedImage.id ? { ...img, markers: [...img.markers, newMarker] } : img)),
           );
 
           toast.success(`Marqueur ${newMarker.label} ajouté sur ${clickedImage.name}`);
@@ -5960,7 +5956,9 @@ export function CADGabaritCanvas({
       }
 
       // === Multi-photos: vérifier si on clique sur une image (en mode select) ===
-      if (activeTool === "select" && backgroundImages.length > 0 && markerMode === "idle") {
+      // IMPORTANT: Ne pas intercepter si on est en mode calibration actif (addPoint, selectPair, etc.)
+      const isCalibrationActive = calibrationMode !== "idle" && calibrationMode !== "selectRect";
+      if (activeTool === "select" && backgroundImages.length > 0 && markerMode === "idle" && !isCalibrationActive) {
         const clickedImage = findImageAtPosition(worldPos.x, worldPos.y);
         if (clickedImage) {
           // Sélectionner l'image et préparer le drag
@@ -6829,10 +6827,8 @@ export function CADGabaritCanvas({
 
         setBackgroundImages((prev) =>
           prev.map((img) =>
-            img.id === selectedImageId
-              ? { ...img, x: imageDragStart.imgX + dx, y: imageDragStart.imgY + dy }
-              : img
-          )
+            img.id === selectedImageId ? { ...img, x: imageDragStart.imgX + dx, y: imageDragStart.imgY + dy } : img,
+          ),
         );
         return;
       }
@@ -8099,10 +8095,9 @@ export function CADGabaritCanvas({
             const newImages = prev.filter((img) => img.id !== selectedImageId);
             // Aussi supprimer les liens qui référencent cette image
             setMarkerLinks((links) =>
-              links.filter((link) =>
-                link.marker1.imageId !== selectedImageId &&
-                link.marker2.imageId !== selectedImageId
-              )
+              links.filter(
+                (link) => link.marker1.imageId !== selectedImageId && link.marker2.imageId !== selectedImageId,
+              ),
             );
             return newImages;
           });
@@ -8230,38 +8225,47 @@ export function CADGabaritCanvas({
   }, []);
 
   // Supprimer une paire (utilise l'image sélectionnée)
-  const deleteCalibrationPair = useCallback((pairId: string) => {
-    updateSelectedImageCalibration((prev) => {
-      const newPairs = new Map(prev.pairs);
-      newPairs.delete(pairId);
-      return { ...prev, pairs: newPairs };
-    });
-    toast.success("Paire supprimée");
-  }, [updateSelectedImageCalibration]);
+  const deleteCalibrationPair = useCallback(
+    (pairId: string) => {
+      updateSelectedImageCalibration((prev) => {
+        const newPairs = new Map(prev.pairs);
+        newPairs.delete(pairId);
+        return { ...prev, pairs: newPairs };
+      });
+      toast.success("Paire supprimée");
+    },
+    [updateSelectedImageCalibration],
+  );
 
   // Mettre à jour la distance d'une paire (utilise l'image sélectionnée)
-  const updatePairDistance = useCallback((pairId: string, distanceMm: number) => {
-    updateSelectedImageCalibration((prev) => {
-      const newPairs = new Map(prev.pairs);
-      const pair = newPairs.get(pairId);
-      if (pair) {
-        newPairs.set(pairId, { ...pair, distanceMm });
-      }
-      return { ...prev, pairs: newPairs };
-    });
-  }, [updateSelectedImageCalibration]);
+  const updatePairDistance = useCallback(
+    (pairId: string, distanceMm: number) => {
+      updateSelectedImageCalibration((prev) => {
+        const newPairs = new Map(prev.pairs);
+        const pair = newPairs.get(pairId);
+        if (pair) {
+          newPairs.set(pairId, { ...pair, distanceMm });
+        }
+        return { ...prev, pairs: newPairs };
+      });
+    },
+    [updateSelectedImageCalibration],
+  );
 
   // Mettre à jour la couleur d'une paire (utilise l'image sélectionnée)
-  const updatePairColor = useCallback((pairId: string, color: string) => {
-    updateSelectedImageCalibration((prev) => {
-      const newPairs = new Map(prev.pairs);
-      const pair = newPairs.get(pairId);
-      if (pair) {
-        newPairs.set(pairId, { ...pair, color });
-      }
-      return { ...prev, pairs: newPairs };
-    });
-  }, [updateSelectedImageCalibration]);
+  const updatePairColor = useCallback(
+    (pairId: string, color: string) => {
+      updateSelectedImageCalibration((prev) => {
+        const newPairs = new Map(prev.pairs);
+        const pair = newPairs.get(pairId);
+        if (pair) {
+          newPairs.set(pairId, { ...pair, color });
+        }
+        return { ...prev, pairs: newPairs };
+      });
+    },
+    [updateSelectedImageCalibration],
+  );
 
   // Calculer l'échelle à partir des paires (utilise l'image sélectionnée)
   const calculateCalibration = useCallback(() => {
@@ -8939,7 +8943,14 @@ export function CADGabaritCanvas({
 
         {/* Image de fond (Multi-photos) */}
         <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
-          <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleImageUpload} className="hidden" />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleImageUpload}
+            className="hidden"
+          />
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -9000,7 +9011,7 @@ export function CADGabaritCanvas({
                           onClick={(e) => {
                             e.stopPropagation();
                             setBackgroundImages((prev) =>
-                              prev.map((i) => (i.id === img.id ? { ...i, visible: !i.visible } : i))
+                              prev.map((i) => (i.id === img.id ? { ...i, visible: !i.visible } : i)),
                             );
                           }}
                         >
@@ -9069,7 +9080,6 @@ export function CADGabaritCanvas({
                 />
               </div>
 
-
               {/* Marqueurs inter-photos */}
               <TooltipProvider>
                 <Tooltip>
@@ -9109,7 +9119,7 @@ export function CADGabaritCanvas({
                           setPendingLink(null);
                         } else {
                           // Vérifier qu'il y a au moins 2 marqueurs sur des photos différentes
-                          const imagesWithMarkers = backgroundImages.filter(img => img.markers.length > 0);
+                          const imagesWithMarkers = backgroundImages.filter((img) => img.markers.length > 0);
                           if (imagesWithMarkers.length < 2) {
                             toast.error("Ajoutez au moins 1 marqueur sur 2 photos différentes");
                             return;
@@ -9895,11 +9905,15 @@ export function CADGabaritCanvas({
                   <Target className="h-5 w-5 text-red-500" />
                   <span className="font-semibold">Calibration</span>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => {
-                  setShowCalibrationPanel(false);
-                  setCalibrationMode("idle");
-                  setSelectedCalibrationPoint(null);
-                }}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setShowCalibrationPanel(false);
+                    setCalibrationMode("idle");
+                    setSelectedCalibrationPoint(null);
+                  }}
+                >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
@@ -9909,9 +9923,7 @@ export function CADGabaritCanvas({
                   📷 {getSelectedImage()?.name}
                 </div>
               ) : backgroundImages.length > 0 ? (
-                <div className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">
-                  ⚠️ Sélectionnez une photo
-                </div>
+                <div className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">⚠️ Sélectionnez une photo</div>
               ) : null}
             </div>
 
@@ -11183,9 +11195,7 @@ export function CADGabaritCanvas({
           <DialogContent className="sm:max-w-[320px]">
             <DialogHeader>
               <DialogTitle>Distance entre marqueurs</DialogTitle>
-              <DialogDescription>
-                Entrez la distance réelle entre les deux points de référence
-              </DialogDescription>
+              <DialogDescription>Entrez la distance réelle entre les deux points de référence</DialogDescription>
             </DialogHeader>
             <div className="py-4">
               <Label htmlFor="link-distance">Distance (mm)</Label>
@@ -11221,10 +11231,7 @@ export function CADGabaritCanvas({
               />
             </div>
             <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setLinkDistanceDialog(null)}
-              >
+              <Button variant="outline" onClick={() => setLinkDistanceDialog(null)}>
                 Annuler
               </Button>
               <Button
@@ -11260,158 +11267,161 @@ export function CADGabaritCanvas({
         <DialogContent className="sm:max-w-[360px]">
           <DialogHeader>
             <DialogTitle>Améliorer les contours</DialogTitle>
-            <DialogDescription>
-              Ajustez les paramètres pour faire ressortir les contours de la photo
-            </DialogDescription>
+            <DialogDescription>Ajustez les paramètres pour faire ressortir les contours de la photo</DialogDescription>
           </DialogHeader>
-          {selectedImageId && (() => {
-            const img = getSelectedImage();
-            const adj = img?.adjustments || DEFAULT_IMAGE_ADJUSTMENTS;
-            return (
-              <div className="space-y-4 py-2">
-                {/* Contraste */}
-                <div className="space-y-2">
+          {selectedImageId &&
+            (() => {
+              const img = getSelectedImage();
+              const adj = img?.adjustments || DEFAULT_IMAGE_ADJUSTMENTS;
+              return (
+                <div className="space-y-4 py-2">
+                  {/* Contraste */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm">Contraste</Label>
+                      <span className="text-sm text-muted-foreground">{adj.contrast}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="50"
+                      max="200"
+                      value={adj.contrast}
+                      onChange={(e) => updateSelectedImageAdjustments({ contrast: parseInt(e.target.value) })}
+                      className="w-full h-2"
+                    />
+                  </div>
+
+                  {/* Luminosité */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm">Luminosité</Label>
+                      <span className="text-sm text-muted-foreground">{adj.brightness}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="50"
+                      max="200"
+                      value={adj.brightness}
+                      onChange={(e) => updateSelectedImageAdjustments({ brightness: parseInt(e.target.value) })}
+                      className="w-full h-2"
+                    />
+                  </div>
+
+                  {/* Netteté */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm">Netteté</Label>
+                      <span className="text-sm text-muted-foreground">{adj.sharpen}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={adj.sharpen}
+                      onChange={(e) => updateSelectedImageAdjustments({ sharpen: parseInt(e.target.value) })}
+                      className="w-full h-2"
+                    />
+                  </div>
+
+                  {/* Saturation */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm">Saturation</Label>
+                      <span className="text-sm text-muted-foreground">{adj.saturate}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="200"
+                      value={adj.saturate}
+                      onChange={(e) => updateSelectedImageAdjustments({ saturate: parseInt(e.target.value) })}
+                      className="w-full h-2"
+                    />
+                  </div>
+
+                  <Separator />
+
+                  {/* Options binaires */}
                   <div className="flex items-center justify-between">
-                    <Label className="text-sm">Contraste</Label>
-                    <span className="text-sm text-muted-foreground">{adj.contrast}%</span>
+                    <Label className="text-sm">Noir et blanc</Label>
+                    <Switch
+                      checked={adj.grayscale}
+                      onCheckedChange={(checked) => updateSelectedImageAdjustments({ grayscale: checked })}
+                    />
                   </div>
-                  <input
-                    type="range"
-                    min="50"
-                    max="200"
-                    value={adj.contrast}
-                    onChange={(e) => updateSelectedImageAdjustments({ contrast: parseInt(e.target.value) })}
-                    className="w-full h-2"
-                  />
-                </div>
 
-                {/* Luminosité */}
-                <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label className="text-sm">Luminosité</Label>
-                    <span className="text-sm text-muted-foreground">{adj.brightness}%</span>
+                    <Label className="text-sm">Inverser (négatif)</Label>
+                    <Switch
+                      checked={adj.invert}
+                      onCheckedChange={(checked) => updateSelectedImageAdjustments({ invert: checked })}
+                    />
                   </div>
-                  <input
-                    type="range"
-                    min="50"
-                    max="200"
-                    value={adj.brightness}
-                    onChange={(e) => updateSelectedImageAdjustments({ brightness: parseInt(e.target.value) })}
-                    className="w-full h-2"
-                  />
-                </div>
 
-                {/* Netteté */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm">Netteté</Label>
-                    <span className="text-sm text-muted-foreground">{adj.sharpen}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={adj.sharpen}
-                    onChange={(e) => updateSelectedImageAdjustments({ sharpen: parseInt(e.target.value) })}
-                    className="w-full h-2"
-                  />
-                </div>
-
-                {/* Saturation */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm">Saturation</Label>
-                    <span className="text-sm text-muted-foreground">{adj.saturate}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="200"
-                    value={adj.saturate}
-                    onChange={(e) => updateSelectedImageAdjustments({ saturate: parseInt(e.target.value) })}
-                    className="w-full h-2"
-                  />
-                </div>
-
-                <Separator />
-
-                {/* Options binaires */}
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm">Noir et blanc</Label>
-                  <Switch
-                    checked={adj.grayscale}
-                    onCheckedChange={(checked) => updateSelectedImageAdjustments({ grayscale: checked })}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm">Inverser (négatif)</Label>
-                  <Switch
-                    checked={adj.invert}
-                    onCheckedChange={(checked) => updateSelectedImageAdjustments({ invert: checked })}
-                  />
-                </div>
-
-                {/* Presets rapides */}
-                <Separator />
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Presets rapides</Label>
-                  <div className="flex gap-2 flex-wrap">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => updateSelectedImageAdjustments({
-                        contrast: 140,
-                        brightness: 110,
-                        sharpen: 30,
-                        saturate: 100,
-                        grayscale: false,
-                        invert: false,
-                      })}
-                    >
-                      Contours +
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => updateSelectedImageAdjustments({
-                        contrast: 180,
-                        brightness: 100,
-                        sharpen: 50,
-                        saturate: 0,
-                        grayscale: true,
-                        invert: false,
-                      })}
-                    >
-                      N&B contrasté
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => updateSelectedImageAdjustments({
-                        contrast: 150,
-                        brightness: 120,
-                        sharpen: 40,
-                        saturate: 100,
-                        grayscale: false,
-                        invert: true,
-                      })}
-                    >
-                      Négatif
-                    </Button>
+                  {/* Presets rapides */}
+                  <Separator />
+                  <div className="space-y-2">
+                    <Label className="text-xs text-muted-foreground">Presets rapides</Label>
+                    <div className="flex gap-2 flex-wrap">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          updateSelectedImageAdjustments({
+                            contrast: 140,
+                            brightness: 110,
+                            sharpen: 30,
+                            saturate: 100,
+                            grayscale: false,
+                            invert: false,
+                          })
+                        }
+                      >
+                        Contours +
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          updateSelectedImageAdjustments({
+                            contrast: 180,
+                            brightness: 100,
+                            sharpen: 50,
+                            saturate: 0,
+                            grayscale: true,
+                            invert: false,
+                          })
+                        }
+                      >
+                        N&B contrasté
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          updateSelectedImageAdjustments({
+                            contrast: 150,
+                            brightness: 120,
+                            sharpen: 40,
+                            saturate: 100,
+                            grayscale: false,
+                            invert: true,
+                          })
+                        }
+                      >
+                        Négatif
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })()}
+              );
+            })()}
           <DialogFooter className="flex-row gap-2">
             <Button variant="outline" onClick={resetImageAdjustments}>
               <RotateCw className="h-4 w-4 mr-1" />
               Réinit
             </Button>
-            <Button onClick={() => setShowAdjustmentsDialog(false)}>
-              Fermer
-            </Button>
+            <Button onClick={() => setShowAdjustmentsDialog(false)}>Fermer</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
