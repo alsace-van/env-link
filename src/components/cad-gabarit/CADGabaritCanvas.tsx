@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.74 - Fix erreurs TypeScript (Dimension, corners)
+// VERSION: 5.75 - Fix cercle non rempli + arc intérieur non sélectionnable
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -3752,7 +3752,7 @@ export function CADGabaritCanvas({
           endPoint: endPt.pointId,
           radius: circleRadius,
           layerId: layerId,
-          counterClockwise: false, // Sens horaire = angles croissants
+          counterClockwise: true, // Sens anti-horaire car les angles sont triés par ordre croissant
         };
         sketchToModify.geometries.set(arc.id, arc);
       }
