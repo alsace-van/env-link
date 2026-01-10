@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.39 - Fix calibration multi-photos: points visibles par-dessus les images + style amélioré
+// VERSION: 3.40 - Points de calibration style croix de visée précis avec taille adaptative (min/max)
 // ============================================
 
 import {
@@ -636,17 +636,22 @@ export class CADRenderer {
   /**
    * Dessine les points de calibration de l'image sélectionnée
    * Appelé en dernier pour être par-dessus tout
-   * Style amélioré pour être très visible sur les photos
+   * Style croix de visée précis pour calibration
    */
   private drawImageCalibrationPoints(images: BackgroundImage[], selectedImageId: string): void {
     const selectedImage = images.find((img) => img.id === selectedImageId);
     if (!selectedImage?.calibrationData) return;
 
     const calibData = selectedImage.calibrationData;
-    const pointSize = 12 / this.viewport.scale;
-    const fontSize = 14 / this.viewport.scale;
 
-    // Dessiner les paires de calibration (lignes) - AVEC FOND BLANC POUR CONTRASTE
+    // Taille adaptative avec limite min/max pour rester visible mais pas énorme
+    const baseSize = 6;
+    const minSize = 4;
+    const maxSize = 12;
+    const pointSize = Math.min(maxSize, Math.max(minSize, baseSize / this.viewport.scale));
+    const fontSize = Math.min(14, Math.max(10, 10 / this.viewport.scale));
+
+    // Dessiner les paires de calibration (lignes)
     calibData.pairs.forEach((pair) => {
       const p1 = calibData.points.get(pair.point1Id);
       const p2 = calibData.points.get(pair.point2Id);
@@ -660,12 +665,12 @@ export class CADRenderer {
 
       this.ctx.save();
 
-      // Ligne de fond blanche épaisse (pour contraste)
+      // Ligne de fond blanche (pour contraste)
       this.ctx.beginPath();
       this.ctx.moveTo(x1, y1);
       this.ctx.lineTo(x2, y2);
       this.ctx.strokeStyle = "#FFFFFF";
-      this.ctx.lineWidth = 5 / this.viewport.scale;
+      this.ctx.lineWidth = 3 / this.viewport.scale;
       this.ctx.stroke();
 
       // Ligne pointillée colorée par-dessus
@@ -673,39 +678,34 @@ export class CADRenderer {
       this.ctx.moveTo(x1, y1);
       this.ctx.lineTo(x2, y2);
       this.ctx.strokeStyle = pair.color;
-      this.ctx.lineWidth = 3 / this.viewport.scale;
-      this.ctx.setLineDash([8 / this.viewport.scale, 4 / this.viewport.scale]);
+      this.ctx.lineWidth = 1.5 / this.viewport.scale;
+      this.ctx.setLineDash([6 / this.viewport.scale, 3 / this.viewport.scale]);
       this.ctx.stroke();
       this.ctx.setLineDash([]);
 
-      // Label de distance avec fond et bordure
+      // Label de distance
       const midX = (x1 + x2) / 2;
       const midY = (y1 + y2) / 2;
       this.ctx.font = `bold ${fontSize}px Arial`;
       const labelText = `${pair.distanceMm} mm`;
       const textWidth = this.ctx.measureText(labelText).width;
-      const padding = 5 / this.viewport.scale;
+      const padding = 3 / this.viewport.scale;
 
-      // Fond blanc
-      this.ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+      this.ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
       this.ctx.fillRect(
         midX - textWidth / 2 - padding,
         midY - fontSize / 2 - padding,
         textWidth + padding * 2,
         fontSize + padding * 2,
       );
-
-      // Bordure colorée
       this.ctx.strokeStyle = pair.color;
-      this.ctx.lineWidth = 2 / this.viewport.scale;
+      this.ctx.lineWidth = 1 / this.viewport.scale;
       this.ctx.strokeRect(
         midX - textWidth / 2 - padding,
         midY - fontSize / 2 - padding,
         textWidth + padding * 2,
         fontSize + padding * 2,
       );
-
-      // Texte
       this.ctx.fillStyle = pair.color;
       this.ctx.textAlign = "center";
       this.ctx.textBaseline = "middle";
@@ -713,62 +713,67 @@ export class CADRenderer {
       this.ctx.restore();
     });
 
-    // Dessiner les points de calibration PAR-DESSUS avec style très visible
+    // Dessiner les points de calibration - STYLE CROIX DE VISÉE PRÉCIS
     calibData.points.forEach((point) => {
       const worldX = selectedImage.x + point.x;
       const worldY = selectedImage.y + point.y;
+      const crossSize = pointSize * 1.5;
+      const innerGap = pointSize * 0.4;
 
       this.ctx.save();
 
-      // 1. Cercle de fond blanc (halo pour visibilité)
-      this.ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
-      this.ctx.beginPath();
-      this.ctx.arc(worldX, worldY, pointSize + 4 / this.viewport.scale, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      // 2. Cercle rouge principal
-      this.ctx.fillStyle = "#FF3333";
-      this.ctx.beginPath();
-      this.ctx.arc(worldX, worldY, pointSize, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      // 3. Bordure blanche épaisse
+      // 1. Fond blanc pour les lignes de la croix (contraste)
       this.ctx.strokeStyle = "#FFFFFF";
       this.ctx.lineWidth = 3 / this.viewport.scale;
-      this.ctx.stroke();
-
-      // 4. Croix blanche au centre
-      const crossSize = pointSize * 0.6;
-      this.ctx.strokeStyle = "#FFFFFF";
-      this.ctx.lineWidth = 2.5 / this.viewport.scale;
       this.ctx.beginPath();
+      // Horizontal
       this.ctx.moveTo(worldX - crossSize, worldY);
+      this.ctx.lineTo(worldX - innerGap, worldY);
+      this.ctx.moveTo(worldX + innerGap, worldY);
       this.ctx.lineTo(worldX + crossSize, worldY);
+      // Vertical
       this.ctx.moveTo(worldX, worldY - crossSize);
+      this.ctx.lineTo(worldX, worldY - innerGap);
+      this.ctx.moveTo(worldX, worldY + innerGap);
       this.ctx.lineTo(worldX, worldY + crossSize);
       this.ctx.stroke();
 
-      // 5. Label avec fond rouge
+      // 2. Croix rouge par-dessus
+      this.ctx.strokeStyle = "#FF0000";
+      this.ctx.lineWidth = 1.5 / this.viewport.scale;
+      this.ctx.beginPath();
+      // Horizontal avec gap au centre
+      this.ctx.moveTo(worldX - crossSize, worldY);
+      this.ctx.lineTo(worldX - innerGap, worldY);
+      this.ctx.moveTo(worldX + innerGap, worldY);
+      this.ctx.lineTo(worldX + crossSize, worldY);
+      // Vertical avec gap au centre
+      this.ctx.moveTo(worldX, worldY - crossSize);
+      this.ctx.lineTo(worldX, worldY - innerGap);
+      this.ctx.moveTo(worldX, worldY + innerGap);
+      this.ctx.lineTo(worldX, worldY + crossSize);
+      this.ctx.stroke();
+
+      // 3. Petit point central précis
+      this.ctx.fillStyle = "#FF0000";
+      this.ctx.beginPath();
+      this.ctx.arc(worldX, worldY, 2 / this.viewport.scale, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.strokeStyle = "#FFFFFF";
+      this.ctx.lineWidth = 1 / this.viewport.scale;
+      this.ctx.stroke();
+
+      // 4. Label compact
       const labelText = point.label;
       this.ctx.font = `bold ${fontSize}px Arial`;
       const labelWidth = this.ctx.measureText(labelText).width;
-      const labelPadding = 4 / this.viewport.scale;
-      const labelX = worldX + pointSize + 6 / this.viewport.scale;
-      const labelY = worldY - pointSize / 2;
+      const labelPadding = 2 / this.viewport.scale;
+      const labelX = worldX + crossSize + 3 / this.viewport.scale;
+      const labelY = worldY;
 
       // Fond du label
-      this.ctx.fillStyle = "#FF3333";
+      this.ctx.fillStyle = "rgba(255, 0, 0, 0.85)";
       this.ctx.fillRect(
-        labelX - labelPadding,
-        labelY - fontSize / 2 - labelPadding,
-        labelWidth + labelPadding * 2,
-        fontSize + labelPadding * 2,
-      );
-
-      // Bordure blanche du label
-      this.ctx.strokeStyle = "#FFFFFF";
-      this.ctx.lineWidth = 2 / this.viewport.scale;
-      this.ctx.strokeRect(
         labelX - labelPadding,
         labelY - fontSize / 2 - labelPadding,
         labelWidth + labelPadding * 2,
@@ -1532,11 +1537,15 @@ export class CADRenderer {
 
   /**
    * Dessine les éléments de calibration (points et paires)
-   * Style amélioré pour être visible par-dessus les photos
+   * Style croix de visée précis pour calibration
    */
   private drawCalibration(calibration: CalibrationData): void {
-    const pointSize = 12 / this.viewport.scale;
-    const fontSize = 14 / this.viewport.scale;
+    // Taille adaptative avec limite min/max
+    const baseSize = 6;
+    const minSize = 4;
+    const maxSize = 12;
+    const pointSize = Math.min(maxSize, Math.max(minSize, baseSize / this.viewport.scale));
+    const fontSize = Math.min(14, Math.max(10, 10 / this.viewport.scale));
 
     // Dessiner les lignes de paires EN PREMIER (sous les points)
     calibration.pairs.forEach((pair) => {
@@ -1544,9 +1553,9 @@ export class CADRenderer {
       const p2 = calibration.points.get(pair.point2Id);
 
       if (p1 && p2) {
-        // Ligne de fond blanche épaisse (pour contraste)
+        // Ligne de fond blanche (pour contraste)
         this.ctx.strokeStyle = "#FFFFFF";
-        this.ctx.lineWidth = 5 / this.viewport.scale;
+        this.ctx.lineWidth = 3 / this.viewport.scale;
         this.ctx.setLineDash([]);
         this.ctx.beginPath();
         this.ctx.moveTo(p1.x, p1.y);
@@ -1555,8 +1564,8 @@ export class CADRenderer {
 
         // Ligne pointillée colorée par-dessus
         this.ctx.strokeStyle = pair.color;
-        this.ctx.lineWidth = 3 / this.viewport.scale;
-        this.ctx.setLineDash([8 / this.viewport.scale, 4 / this.viewport.scale]);
+        this.ctx.lineWidth = 1.5 / this.viewport.scale;
+        this.ctx.setLineDash([6 / this.viewport.scale, 3 / this.viewport.scale]);
 
         this.ctx.beginPath();
         this.ctx.moveTo(p1.x, p1.y);
@@ -1572,9 +1581,9 @@ export class CADRenderer {
         // Fond pour le texte
         this.ctx.font = `bold ${fontSize}px Arial`;
         const textWidth = this.ctx.measureText(text).width;
-        const padding = 5 / this.viewport.scale;
+        const padding = 3 / this.viewport.scale;
 
-        this.ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+        this.ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
         this.ctx.fillRect(
           mid.x - textWidth / 2 - padding,
           mid.y - fontSize / 2 - padding,
@@ -1582,9 +1591,9 @@ export class CADRenderer {
           fontSize + padding * 2,
         );
 
-        // Bordure du label
+        // Bordure
         this.ctx.strokeStyle = pair.color;
-        this.ctx.lineWidth = 2 / this.viewport.scale;
+        this.ctx.lineWidth = 1 / this.viewport.scale;
         this.ctx.strokeRect(
           mid.x - textWidth / 2 - padding,
           mid.y - fontSize / 2 - padding,
@@ -1600,57 +1609,61 @@ export class CADRenderer {
       }
     });
 
-    // Dessiner les points de calibration PAR-DESSUS avec style très visible
+    // Dessiner les points de calibration - STYLE CROIX DE VISÉE PRÉCIS
     calibration.points.forEach((point) => {
-      // 1. Cercle de fond blanc (halo)
-      this.ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
-      this.ctx.beginPath();
-      this.ctx.arc(point.x, point.y, pointSize + 4 / this.viewport.scale, 0, Math.PI * 2);
-      this.ctx.fill();
+      const crossSize = pointSize * 1.5;
+      const innerGap = pointSize * 0.4;
 
-      // 2. Cercle rouge principal
-      this.ctx.fillStyle = "#FF3333";
-      this.ctx.beginPath();
-      this.ctx.arc(point.x, point.y, pointSize, 0, Math.PI * 2);
-      this.ctx.fill();
-
-      // 3. Bordure blanche épaisse
+      // 1. Fond blanc pour les lignes de la croix (contraste)
       this.ctx.strokeStyle = "#FFFFFF";
       this.ctx.lineWidth = 3 / this.viewport.scale;
-      this.ctx.stroke();
-
-      // 4. Croix blanche au centre
-      const crossSize = pointSize * 0.6;
-      this.ctx.strokeStyle = "#FFFFFF";
-      this.ctx.lineWidth = 2.5 / this.viewport.scale;
       this.ctx.beginPath();
+      // Horizontal
       this.ctx.moveTo(point.x - crossSize, point.y);
+      this.ctx.lineTo(point.x - innerGap, point.y);
+      this.ctx.moveTo(point.x + innerGap, point.y);
       this.ctx.lineTo(point.x + crossSize, point.y);
+      // Vertical
       this.ctx.moveTo(point.x, point.y - crossSize);
+      this.ctx.lineTo(point.x, point.y - innerGap);
+      this.ctx.moveTo(point.x, point.y + innerGap);
       this.ctx.lineTo(point.x, point.y + crossSize);
       this.ctx.stroke();
 
-      // 5. Label avec fond rouge
+      // 2. Croix rouge par-dessus
+      this.ctx.strokeStyle = "#FF0000";
+      this.ctx.lineWidth = 1.5 / this.viewport.scale;
+      this.ctx.beginPath();
+      this.ctx.moveTo(point.x - crossSize, point.y);
+      this.ctx.lineTo(point.x - innerGap, point.y);
+      this.ctx.moveTo(point.x + innerGap, point.y);
+      this.ctx.lineTo(point.x + crossSize, point.y);
+      this.ctx.moveTo(point.x, point.y - crossSize);
+      this.ctx.lineTo(point.x, point.y - innerGap);
+      this.ctx.moveTo(point.x, point.y + innerGap);
+      this.ctx.lineTo(point.x, point.y + crossSize);
+      this.ctx.stroke();
+
+      // 3. Petit point central précis
+      this.ctx.fillStyle = "#FF0000";
+      this.ctx.beginPath();
+      this.ctx.arc(point.x, point.y, 2 / this.viewport.scale, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.strokeStyle = "#FFFFFF";
+      this.ctx.lineWidth = 1 / this.viewport.scale;
+      this.ctx.stroke();
+
+      // 4. Label compact
       const labelText = point.label;
       this.ctx.font = `bold ${fontSize}px Arial`;
       const labelWidth = this.ctx.measureText(labelText).width;
-      const labelPadding = 4 / this.viewport.scale;
-      const labelX = point.x + pointSize + 6 / this.viewport.scale;
-      const labelY = point.y - pointSize / 2;
+      const labelPadding = 2 / this.viewport.scale;
+      const labelX = point.x + crossSize + 3 / this.viewport.scale;
+      const labelY = point.y;
 
       // Fond du label
-      this.ctx.fillStyle = "#FF3333";
+      this.ctx.fillStyle = "rgba(255, 0, 0, 0.85)";
       this.ctx.fillRect(
-        labelX - labelPadding,
-        labelY - fontSize / 2 - labelPadding,
-        labelWidth + labelPadding * 2,
-        fontSize + labelPadding * 2,
-      );
-
-      // Bordure blanche du label
-      this.ctx.strokeStyle = "#FFFFFF";
-      this.ctx.lineWidth = 2 / this.viewport.scale;
-      this.ctx.strokeRect(
         labelX - labelPadding,
         labelY - fontSize / 2 - labelPadding,
         labelWidth + labelPadding * 2,
