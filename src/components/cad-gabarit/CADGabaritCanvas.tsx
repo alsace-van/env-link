@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.15 - Snap sur markers pour outil mesure inter-photos
+// VERSION: 6.16 - Markers: sélection, drag, suppression (Delete)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -252,6 +252,13 @@ export function CADGabaritCanvas({
     marker1: { imageId: string; markerId: string };
     marker2: { imageId: string; markerId: string };
     distance: string;
+  } | null>(null);
+  // Sélection et drag des markers
+  const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null); // Format: "imageId:markerId"
+  const [draggingMarker, setDraggingMarker] = useState<{
+    imageId: string;
+    markerId: string;
+    startPos: { x: number; y: number };
   } | null>(null);
 
   // Surbrillance des formes fermées
@@ -664,6 +671,7 @@ export function CADGabaritCanvas({
       backgroundImages: showBackgroundImage ? backgroundImages : [],
       selectedImageId,
       markerLinks,
+      selectedMarkerId,
       // Legacy single image (rétrocompatibilité)
       backgroundImage: showBackgroundImage && backgroundImages.length === 0 ? backgroundImageRef.current : null,
       transformedImage: showBackgroundImage && backgroundImages.length === 0 ? transformedImage : null,
@@ -1939,6 +1947,7 @@ export function CADGabaritCanvas({
     backgroundImages,
     selectedImageId,
     markerLinks,
+    selectedMarkerId,
   ]);
 
   useEffect(() => {
@@ -6053,11 +6062,54 @@ export function CADGabaritCanvas({
       // === Multi-photos: vérifier si on clique sur une image (en mode select) ===
       // IMPORTANT: Ne pas intercepter si on est en mode calibration actif (addPoint, selectPair, etc.)
       const isCalibrationActive = calibrationMode !== "idle" && calibrationMode !== "selectRect";
+
+      // === Sélection et drag des marqueurs ===
+      if (activeTool === "select" && markerMode === "idle" && !isCalibrationActive) {
+        // Chercher un marker sous le curseur
+        const tolerance = 15 / viewport.scale;
+        let foundMarker: { imageId: string; markerId: string; marker: ImageMarker; image: BackgroundImage } | null =
+          null;
+
+        for (const img of backgroundImages) {
+          if (!img.visible || img.locked) continue;
+          for (const marker of img.markers) {
+            const markerWorldX = img.x + marker.relativeX;
+            const markerWorldY = img.y + marker.relativeY;
+            const dist = distance(worldPos, { x: markerWorldX, y: markerWorldY });
+            if (dist < tolerance) {
+              foundMarker = { imageId: img.id, markerId: marker.id, marker, image: img };
+              break;
+            }
+          }
+          if (foundMarker) break;
+        }
+
+        if (foundMarker) {
+          // Sélectionner le marker
+          const markerFullId = `${foundMarker.imageId}:${foundMarker.markerId}`;
+          setSelectedMarkerId(markerFullId);
+          setSelectedImageId(foundMarker.imageId);
+
+          // Désélectionner les entités géométriques
+          setSelectedEntities(new Set());
+
+          // Commencer le drag du marker
+          setDraggingMarker({
+            imageId: foundMarker.imageId,
+            markerId: foundMarker.markerId,
+            startPos: worldPos,
+          });
+
+          return;
+        }
+      }
+
       if (activeTool === "select" && backgroundImages.length > 0 && markerMode === "idle" && !isCalibrationActive) {
         const clickedImage = findImageAtPosition(worldPos.x, worldPos.y);
         if (clickedImage) {
           // Sélectionner l'image et préparer le drag
           setSelectedImageId(clickedImage.id);
+          setSelectedMarkerId(null); // Désélectionner le marker
           setIsDraggingImage(true);
           setImageDragStart({
             x: worldPos.x,
@@ -6069,9 +6121,12 @@ export function CADGabaritCanvas({
           setSelectedEntities(new Set());
           return;
         } else {
-          // Clic en dehors des images = désélectionner l'image
+          // Clic en dehors des images = désélectionner l'image et le marker
           if (selectedImageId) {
             setSelectedImageId(null);
+          }
+          if (selectedMarkerId) {
+            setSelectedMarkerId(null);
           }
         }
       }
@@ -6928,6 +6983,30 @@ export function CADGabaritCanvas({
         return;
       }
 
+      // === Drag d'un marker ===
+      if (draggingMarker) {
+        setBackgroundImages((prev) =>
+          prev.map((img) => {
+            if (img.id !== draggingMarker.imageId) return img;
+            return {
+              ...img,
+              markers: img.markers.map((m) => {
+                if (m.id !== draggingMarker.markerId) return m;
+                // Calculer la nouvelle position relative au centre de l'image
+                const newRelativeX = worldPos.x - img.x;
+                const newRelativeY = worldPos.y - img.y;
+                return {
+                  ...m,
+                  relativeX: newRelativeX,
+                  relativeY: newRelativeY,
+                };
+              }),
+            };
+          }),
+        );
+        return;
+      }
+
       // Drag d'un point de calibration
       if (draggingCalibrationPoint) {
         setCalibrationData((prev) => {
@@ -7375,6 +7454,7 @@ export function CADGabaritCanvas({
       imageDragStart,
       selectedImageId,
       markerSnapPoints,
+      draggingMarker,
     ],
   );
 
@@ -7394,6 +7474,12 @@ export function CADGabaritCanvas({
       if (isDraggingImage) {
         setIsDraggingImage(false);
         setImageDragStart(null);
+        return;
+      }
+
+      // === Fin du drag d'un marker ===
+      if (draggingMarker) {
+        setDraggingMarker(null);
         return;
       }
 
@@ -7577,6 +7663,7 @@ export function CADGabaritCanvas({
       screenToWorld,
       // Multi-photos
       isDraggingImage,
+      draggingMarker,
     ],
   );
 
@@ -8204,6 +8291,30 @@ export function CADGabaritCanvas({
 
       // Supprimer
       if (e.key === "Delete" || e.key === "Backspace") {
+        // D'abord vérifier si un marker est sélectionné
+        if (selectedMarkerId) {
+          const [imageId, markerId] = selectedMarkerId.split(":");
+          setBackgroundImages((prev) =>
+            prev.map((img) => {
+              if (img.id !== imageId) return img;
+              return {
+                ...img,
+                markers: img.markers.filter((m) => m.id !== markerId),
+              };
+            }),
+          );
+          // Supprimer les liens qui référencent ce marker
+          setMarkerLinks((links) =>
+            links.filter(
+              (link) =>
+                !(link.marker1.imageId === imageId && link.marker1.markerId === markerId) &&
+                !(link.marker2.imageId === imageId && link.marker2.markerId === markerId),
+            ),
+          );
+          setSelectedMarkerId(null);
+          toast.success("Marqueur supprimé");
+          return;
+        }
         // Supprimer l'image sélectionnée si elle existe
         if (selectedImageId) {
           setBackgroundImages((prev) => {

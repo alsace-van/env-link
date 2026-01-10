@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.40 - Points de calibration style croix de visée précis avec taille adaptative (min/max)
+// VERSION: 3.41 - Markers en croix avec sélection, label décalé
 // ============================================
 
 import {
@@ -97,6 +97,7 @@ export class CADRenderer {
       backgroundImages?: BackgroundImage[];
       selectedImageId?: string | null;
       markerLinks?: ImageMarkerLink[];
+      selectedMarkerId?: string | null; // Marker sélectionné (format: "imageId:markerId")
       // Legacy single image (rétrocompatibilité)
       backgroundImage?: HTMLImageElement | null;
       transformedImage?: HTMLCanvasElement | null;
@@ -137,6 +138,7 @@ export class CADRenderer {
       backgroundImages = [],
       selectedImageId = null,
       markerLinks = [],
+      selectedMarkerId = null,
       // Legacy
       backgroundImage = null,
       transformedImage = null,
@@ -187,7 +189,7 @@ export class CADRenderer {
 
     // 1. Background images (multi-photos)
     if (backgroundImages.length > 0) {
-      this.drawBackgroundImages(backgroundImages, selectedImageId, markerLinks);
+      this.drawBackgroundImages(backgroundImages, selectedImageId, markerLinks, selectedMarkerId);
     } else if (transformedImage) {
       // Legacy: image transformée unique
       this.drawTransformedImage(transformedImage, imageOpacity, imageScale);
@@ -475,6 +477,7 @@ export class CADRenderer {
     images: BackgroundImage[],
     selectedImageId: string | null,
     markerLinks: ImageMarkerLink[],
+    selectedMarkerId: string | null,
   ): void {
     // Trier par ordre d'affichage (0 = fond, plus élevé = devant)
     const sortedImages = [...images].filter((img) => img.visible).sort((a, b) => a.order - b.order);
@@ -540,26 +543,91 @@ export class CADRenderer {
       // Dessiner les marqueurs de l'image
       this.ctx.globalAlpha = 1;
       for (const marker of bgImage.markers) {
-        const markerSize = 10 / this.viewport.scale;
+        const markerSize = 12 / this.viewport.scale;
         const x = marker.relativeX;
         const y = marker.relativeY;
 
-        // Cercle coloré
+        // Vérifier si ce marker est sélectionné
+        const isSelected = selectedMarkerId === `${bgImage.id}:${marker.id}`;
+
+        // Halo de sélection si sélectionné
+        if (isSelected) {
+          this.ctx.beginPath();
+          this.ctx.arc(x, y, markerSize + 6 / this.viewport.scale, 0, Math.PI * 2);
+          this.ctx.fillStyle = "rgba(59, 130, 246, 0.3)";
+          this.ctx.fill();
+          this.ctx.strokeStyle = "#3B82F6";
+          this.ctx.lineWidth = 2 / this.viewport.scale;
+          this.ctx.stroke();
+        }
+
+        // Croix blanche (underlay pour contraste)
+        this.ctx.strokeStyle = "#FFFFFF";
+        this.ctx.lineWidth = 4 / this.viewport.scale;
+        this.ctx.lineCap = "round";
+
+        // Ligne horizontale
         this.ctx.beginPath();
-        this.ctx.arc(x, y, markerSize, 0, Math.PI * 2);
+        this.ctx.moveTo(x - markerSize, y);
+        this.ctx.lineTo(x + markerSize, y);
+        this.ctx.stroke();
+
+        // Ligne verticale
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, y - markerSize);
+        this.ctx.lineTo(x, y + markerSize);
+        this.ctx.stroke();
+
+        // Croix colorée (overlay)
+        this.ctx.strokeStyle = marker.color;
+        this.ctx.lineWidth = 2 / this.viewport.scale;
+
+        // Ligne horizontale
+        this.ctx.beginPath();
+        this.ctx.moveTo(x - markerSize, y);
+        this.ctx.lineTo(x + markerSize, y);
+        this.ctx.stroke();
+
+        // Ligne verticale
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, y - markerSize);
+        this.ctx.lineTo(x, y + markerSize);
+        this.ctx.stroke();
+
+        // Point central
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, 3 / this.viewport.scale, 0, Math.PI * 2);
         this.ctx.fillStyle = marker.color;
         this.ctx.fill();
         this.ctx.strokeStyle = "#FFFFFF";
-        this.ctx.lineWidth = 2 / this.viewport.scale;
+        this.ctx.lineWidth = 1.5 / this.viewport.scale;
         this.ctx.stroke();
 
-        // Label
-        const fontSize = 12 / this.viewport.scale;
+        // Label (décalé vers la droite)
+        const fontSize = 11 / this.viewport.scale;
         this.ctx.font = `bold ${fontSize}px Arial`;
-        this.ctx.textAlign = "center";
+        this.ctx.textAlign = "left";
         this.ctx.textBaseline = "middle";
+
+        // Fond du label
+        const labelX = x + markerSize + 4 / this.viewport.scale;
+        const labelWidth = this.ctx.measureText(marker.label).width + 6 / this.viewport.scale;
+        const labelHeight = fontSize + 4 / this.viewport.scale;
+
+        this.ctx.fillStyle = marker.color;
+        this.ctx.beginPath();
+        this.ctx.roundRect(
+          labelX - 3 / this.viewport.scale,
+          y - labelHeight / 2,
+          labelWidth,
+          labelHeight,
+          3 / this.viewport.scale,
+        );
+        this.ctx.fill();
+
+        // Texte du label
         this.ctx.fillStyle = "#FFFFFF";
-        this.ctx.fillText(marker.label, x, y);
+        this.ctx.fillText(marker.label, labelX, y);
       }
 
       this.ctx.restore();
