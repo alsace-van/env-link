@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.90 - Affichage temps réel des angles pendant modification (carré vert pour 90°, arc orange sinon)
+// VERSION: 5.91 - Affichage temps réel longueurs + angles + indicateurs de déplacement P1/P2 avec delta
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1169,13 +1169,273 @@ export function CADGabaritCanvas({
           });
         };
 
-        // Afficher les angles quand le panneau longueur est ouvert
+        // Fonction pour dessiner la longueur d'un segment
+        const drawSegmentLength = (
+          p1: { x: number; y: number },
+          p2: { x: number; y: number },
+          isMainLine: boolean = false,
+          originalLength?: number,
+        ) => {
+          const lengthPx = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+          const lengthMm = lengthPx / sketch.scaleFactor;
+
+          // Position au milieu du segment
+          const midX = ((p1.x + p2.x) / 2) * viewport.scale + viewport.offsetX;
+          const midY = ((p1.y + p2.y) / 2) * viewport.scale + viewport.offsetY;
+
+          // Direction perpendiculaire pour offset du texte
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          if (len === 0) return;
+
+          // Perpendiculaire normalisée
+          const perpX = -dy / len;
+          const perpY = dx / len;
+
+          // Offset vers le haut/gauche
+          const offset = isMainLine ? 25 : 18;
+          const textX = midX + perpX * offset;
+          const textY = midY + perpY * offset;
+
+          ctx.save();
+          ctx.font = isMainLine ? "bold 13px Arial" : "bold 11px Arial";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+
+          const lengthText = `${lengthMm.toFixed(1)} mm`;
+          const textWidth = ctx.measureText(lengthText).width;
+
+          // Fond
+          if (isMainLine) {
+            ctx.fillStyle = "rgba(59, 130, 246, 0.15)";
+            ctx.strokeStyle = "#3B82F6";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.roundRect(textX - textWidth / 2 - 6, textY - 11, textWidth + 12, 22, 4);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = "#1D4ED8";
+          } else {
+            ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+            ctx.fillRect(textX - textWidth / 2 - 4, textY - 9, textWidth + 8, 18);
+            ctx.fillStyle = "#374151";
+          }
+
+          ctx.fillText(lengthText, textX, textY);
+
+          // Afficher le delta si on a la longueur originale
+          if (originalLength !== undefined && isMainLine) {
+            const deltaMm = lengthMm - originalLength;
+            if (Math.abs(deltaMm) > 0.05) {
+              const deltaText = deltaMm > 0 ? `+${deltaMm.toFixed(1)}` : `${deltaMm.toFixed(1)}`;
+              const deltaWidth = ctx.measureText(deltaText).width;
+
+              const deltaX = textX;
+              const deltaY = textY + 20;
+
+              ctx.font = "bold 11px Arial";
+              ctx.fillStyle = deltaMm > 0 ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)";
+              ctx.strokeStyle = deltaMm > 0 ? "#10B981" : "#EF4444";
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.roundRect(deltaX - deltaWidth / 2 - 4, deltaY - 8, deltaWidth + 8, 16, 3);
+              ctx.fill();
+              ctx.stroke();
+
+              ctx.fillStyle = deltaMm > 0 ? "#059669" : "#DC2626";
+              ctx.fillText(deltaText, deltaX, deltaY);
+            }
+          }
+
+          ctx.restore();
+        };
+
+        // Fonction pour dessiner les longueurs de tous les segments d'une figure
+        const drawAllFigureLengths = (startLineId: string, originalSketch: Sketch | null) => {
+          // Collecter toutes les lignes de la figure
+          const visitedLines = new Set<string>();
+          const linesToVisit: string[] = [startLineId];
+
+          while (linesToVisit.length > 0) {
+            const lineId = linesToVisit.pop()!;
+            if (visitedLines.has(lineId)) continue;
+            visitedLines.add(lineId);
+
+            const line = sketch.geometries.get(lineId) as Line | undefined;
+            if (!line || line.type !== "line") continue;
+
+            const p1 = sketch.points.get(line.p1);
+            const p2 = sketch.points.get(line.p2);
+
+            if (p1 && p2) {
+              // Calculer la longueur originale si disponible
+              let originalLength: number | undefined;
+              if (originalSketch) {
+                const origP1 = originalSketch.points.get(line.p1);
+                const origP2 = originalSketch.points.get(line.p2);
+                if (origP1 && origP2) {
+                  const origLenPx = Math.sqrt((origP2.x - origP1.x) ** 2 + (origP2.y - origP1.y) ** 2);
+                  originalLength = origLenPx / sketch.scaleFactor;
+                }
+              }
+
+              const isMainLine = lineId === startLineId;
+              drawSegmentLength(p1, p2, isMainLine, isMainLine ? originalLength : undefined);
+            }
+
+            // Trouver les lignes connectées
+            [line.p1, line.p2].forEach((pointId) => {
+              sketch.geometries.forEach((geo, geoId) => {
+                if (geo.type === "line" && !visitedLines.has(geoId)) {
+                  const l = geo as Line;
+                  if (l.p1 === pointId || l.p2 === pointId) {
+                    linesToVisit.push(geoId);
+                  }
+                }
+              });
+            });
+          }
+        };
+
+        // Fonction pour dessiner les indicateurs de déplacement P1/P2
+        const drawDisplacementIndicators = (lineId: string, originalSketch: Sketch | null, anchorMode: string) => {
+          if (!originalSketch) return;
+
+          const line = sketch.geometries.get(lineId) as Line | undefined;
+          const origLine = originalSketch.geometries.get(lineId) as Line | undefined;
+          if (!line || !origLine) return;
+
+          const p1 = sketch.points.get(line.p1);
+          const p2 = sketch.points.get(line.p2);
+          const origP1 = originalSketch.points.get(line.p1);
+          const origP2 = originalSketch.points.get(line.p2);
+
+          if (!p1 || !p2 || !origP1 || !origP2) return;
+
+          // Calculer le centre original
+          const origCenterX = (origP1.x + origP2.x) / 2;
+          const origCenterY = (origP1.y + origP2.y) / 2;
+
+          // Dessiner le point central original (fantôme)
+          const centerScreen = {
+            x: origCenterX * viewport.scale + viewport.offsetX,
+            y: origCenterY * viewport.scale + viewport.offsetY,
+          };
+
+          ctx.save();
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = "#9CA3AF";
+          ctx.lineWidth = 1;
+
+          // Dessiner la ligne originale en pointillés
+          ctx.beginPath();
+          ctx.moveTo(origP1.x * viewport.scale + viewport.offsetX, origP1.y * viewport.scale + viewport.offsetY);
+          ctx.lineTo(origP2.x * viewport.scale + viewport.offsetX, origP2.y * viewport.scale + viewport.offsetY);
+          ctx.stroke();
+
+          // Marquer le centre original
+          ctx.setLineDash([]);
+          ctx.fillStyle = "#9CA3AF";
+          ctx.beginPath();
+          ctx.arc(centerScreen.x, centerScreen.y, 4, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Calculer et afficher les déplacements depuis le centre
+          const p1Screen = { x: p1.x * viewport.scale + viewport.offsetX, y: p1.y * viewport.scale + viewport.offsetY };
+          const p2Screen = { x: p2.x * viewport.scale + viewport.offsetX, y: p2.y * viewport.scale + viewport.offsetY };
+          const origP1Screen = {
+            x: origP1.x * viewport.scale + viewport.offsetX,
+            y: origP1.y * viewport.scale + viewport.offsetY,
+          };
+          const origP2Screen = {
+            x: origP2.x * viewport.scale + viewport.offsetX,
+            y: origP2.y * viewport.scale + viewport.offsetY,
+          };
+
+          // Déplacement de P1
+          const deltaP1Px = Math.sqrt((p1.x - origP1.x) ** 2 + (p1.y - origP1.y) ** 2);
+          const deltaP1Mm = deltaP1Px / sketch.scaleFactor;
+
+          // Déplacement de P2
+          const deltaP2Px = Math.sqrt((p2.x - origP2.x) ** 2 + (p2.y - origP2.y) ** 2);
+          const deltaP2Mm = deltaP2Px / sketch.scaleFactor;
+
+          ctx.font = "bold 10px Arial";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+
+          // Afficher delta P1 si significatif
+          if (deltaP1Mm > 0.1) {
+            // Flèche de P1 original vers P1 actuel
+            ctx.strokeStyle = "#10B981";
+            ctx.fillStyle = "#10B981";
+            ctx.setLineDash([2, 2]);
+            ctx.beginPath();
+            ctx.moveTo(origP1Screen.x, origP1Screen.y);
+            ctx.lineTo(p1Screen.x, p1Screen.y);
+            ctx.stroke();
+
+            // Texte du déplacement
+            const midDeltaP1X = (origP1Screen.x + p1Screen.x) / 2;
+            const midDeltaP1Y = (origP1Screen.y + p1Screen.y) / 2 - 12;
+            const deltaP1Text = `Δ ${deltaP1Mm.toFixed(1)}`;
+            const deltaP1Width = ctx.measureText(deltaP1Text).width;
+
+            ctx.setLineDash([]);
+            ctx.fillStyle = "rgba(16, 185, 129, 0.9)";
+            ctx.beginPath();
+            ctx.roundRect(midDeltaP1X - deltaP1Width / 2 - 3, midDeltaP1Y - 7, deltaP1Width + 6, 14, 3);
+            ctx.fill();
+            ctx.fillStyle = "white";
+            ctx.fillText(deltaP1Text, midDeltaP1X, midDeltaP1Y);
+          }
+
+          // Afficher delta P2 si significatif
+          if (deltaP2Mm > 0.1) {
+            ctx.strokeStyle = "#8B5CF6";
+            ctx.fillStyle = "#8B5CF6";
+            ctx.setLineDash([2, 2]);
+            ctx.beginPath();
+            ctx.moveTo(origP2Screen.x, origP2Screen.y);
+            ctx.lineTo(p2Screen.x, p2Screen.y);
+            ctx.stroke();
+
+            // Texte du déplacement
+            const midDeltaP2X = (origP2Screen.x + p2Screen.x) / 2;
+            const midDeltaP2Y = (origP2Screen.y + p2Screen.y) / 2 - 12;
+            const deltaP2Text = `Δ ${deltaP2Mm.toFixed(1)}`;
+            const deltaP2Width = ctx.measureText(deltaP2Text).width;
+
+            ctx.setLineDash([]);
+            ctx.fillStyle = "rgba(139, 92, 246, 0.9)";
+            ctx.beginPath();
+            ctx.roundRect(midDeltaP2X - deltaP2Width / 2 - 3, midDeltaP2Y - 7, deltaP2Width + 6, 14, 3);
+            ctx.fill();
+            ctx.fillStyle = "white";
+            ctx.fillText(deltaP2Text, midDeltaP2X, midDeltaP2Y);
+          }
+
+          ctx.restore();
+        };
+
+        // Afficher quand le panneau longueur est ouvert
         if (lineLengthDialog?.open) {
+          // D'abord les indicateurs de déplacement (en arrière-plan)
+          drawDisplacementIndicators(
+            lineLengthDialog.lineId,
+            lineLengthDialog.originalSketch,
+            lineLengthDialog.anchorMode,
+          );
+          // Puis les longueurs
+          drawAllFigureLengths(lineLengthDialog.lineId, lineLengthDialog.originalSketch);
+          // Enfin les angles
           drawAllFigureAngles(lineLengthDialog.lineId);
         }
 
-        // Afficher les angles quand le panneau angle est ouvert
+        // Afficher quand le panneau angle est ouvert
         if (angleEditDialog?.open) {
+          drawAllFigureLengths(angleEditDialog.line1Id, angleEditDialog.originalSketch);
           drawAllFigureAngles(angleEditDialog.line1Id);
         }
       }
