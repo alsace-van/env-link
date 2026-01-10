@@ -1,7 +1,7 @@
 // ============================================
 // TYPES: CAD Gabarit Types
 // Types pour le système CAO
-// VERSION: 2.8 - Ajout isFillet sur Arc pour distinguer congés des arcs d'intersection
+// VERSION: 2.9 - Ajout BackgroundImage pour support multi-photos
 // ============================================
 
 // === GÉOMÉTRIE DE BASE ===
@@ -436,3 +436,21 @@ export const CALIBRATION_COLORS = [
   "#BB8FCE", // Mauve
   "#85C1E9", // Bleu ciel
 ];
+
+// === IMAGES DE FOND (Multi-photos) ===
+
+export interface BackgroundImage {
+  id: string;
+  name: string; // Nom du fichier ou label
+  image: HTMLImageElement;
+  x: number; // Position X en coordonnées monde (centre de l'image)
+  y: number; // Position Y en coordonnées monde (centre de l'image)
+  scale: number; // Échelle individuelle (1 = taille originale)
+  opacity: number; // Opacité (0-1)
+  visible: boolean;
+  locked: boolean; // Si verrouillé, ne peut pas être déplacé
+  order: number; // Ordre d'affichage (0 = fond)
+  // Transformation optionnelle (après calibration)
+  transformedCanvas?: HTMLCanvasElement;
+  calibrationData?: CalibrationData;
+}

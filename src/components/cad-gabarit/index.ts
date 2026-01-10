@@ -1,7 +1,7 @@
 // ============================================
 // CAD GABARIT - Index
 // Export de tous les modules
-// VERSION: 2.6 - Ajout import DXF
+// VERSION: 2.7 - Ajout BackgroundImage pour multi-photos
 // ============================================
 
 // Types
@@ -33,6 +33,7 @@ export type {
   HomographyMatrix,
   CheckerboardConfig,
   DistortionCoefficients,
+  BackgroundImage,
 } from "./types";
 
 export {

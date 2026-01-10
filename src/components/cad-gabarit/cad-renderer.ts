@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.32 - drawMeasure: affichage angle entre 2 segments (orange)
+// VERSION: 3.33 - Support multi-photos avec BackgroundImage
 // ============================================
 
 import {
@@ -22,6 +22,7 @@ import {
   CalibrationData,
   CalibrationPoint,
   CalibrationPair,
+  BackgroundImage,
   distance,
   midpoint,
   angle,
@@ -91,6 +92,10 @@ export class CADRenderer {
       showGrid?: boolean;
       showConstraints?: boolean;
       showDimensions?: boolean;
+      // Support multi-photos
+      backgroundImages?: BackgroundImage[];
+      selectedImageId?: string | null;
+      // Legacy single image (rétrocompatibilité)
       backgroundImage?: HTMLImageElement | null;
       transformedImage?: HTMLCanvasElement | null;
       imageOpacity?: number;
@@ -126,6 +131,10 @@ export class CADRenderer {
       showGrid = true,
       showConstraints = true,
       showDimensions = true,
+      // Multi-photos
+      backgroundImages = [],
+      selectedImageId = null,
+      // Legacy
       backgroundImage = null,
       transformedImage = null,
       imageOpacity = 0.5,
@@ -173,10 +182,14 @@ export class CADRenderer {
     this.ctx.translate(this.viewport.offsetX, this.viewport.offsetY);
     this.ctx.scale(this.viewport.scale, this.viewport.scale);
 
-    // 1. Background image (utiliser l'image transformée si disponible)
-    if (transformedImage) {
+    // 1. Background images (multi-photos)
+    if (backgroundImages.length > 0) {
+      this.drawBackgroundImages(backgroundImages, selectedImageId);
+    } else if (transformedImage) {
+      // Legacy: image transformée unique
       this.drawTransformedImage(transformedImage, imageOpacity, imageScale);
     } else if (backgroundImage) {
+      // Legacy: image simple unique
       this.drawBackgroundImage(backgroundImage, imageOpacity, imageScale);
     }
 
@@ -436,6 +449,73 @@ export class CADRenderer {
     const scaledHeight = canvas.height * imageScale;
     this.ctx.drawImage(canvas, -scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
     this.ctx.globalAlpha = 1;
+  }
+
+  /**
+   * Dessine plusieurs images de fond (multi-photos)
+   * Les images sont triées par ordre et dessinées à leurs positions respectives
+   */
+  private drawBackgroundImages(images: BackgroundImage[], selectedImageId: string | null): void {
+    // Trier par ordre d'affichage (0 = fond, plus élevé = devant)
+    const sortedImages = [...images]
+      .filter(img => img.visible)
+      .sort((a, b) => a.order - b.order);
+
+    for (const bgImage of sortedImages) {
+      this.ctx.save();
+
+      // Positionner l'image à sa position (x, y)
+      this.ctx.translate(bgImage.x, bgImage.y);
+
+      // Appliquer l'opacité
+      this.ctx.globalAlpha = bgImage.opacity;
+
+      // Utiliser l'image transformée si disponible, sinon l'image originale
+      const imageToDraw = bgImage.transformedCanvas || bgImage.image;
+      const width = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.width : imageToDraw.width;
+      const height = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.height : imageToDraw.height;
+
+      // Appliquer l'échelle
+      const scaledWidth = width * bgImage.scale;
+      const scaledHeight = height * bgImage.scale;
+
+      // Dessiner l'image centrée sur sa position
+      this.ctx.drawImage(imageToDraw, -scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
+
+      // Dessiner le cadre de sélection si l'image est sélectionnée
+      if (selectedImageId === bgImage.id) {
+        this.ctx.globalAlpha = 1;
+        this.ctx.strokeStyle = "#0066FF";
+        this.ctx.lineWidth = 2 / this.viewport.scale;
+        this.ctx.setLineDash([5 / this.viewport.scale, 5 / this.viewport.scale]);
+        this.ctx.strokeRect(-scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
+        this.ctx.setLineDash([]);
+
+        // Dessiner les poignées de coin pour indiquer qu'on peut déplacer
+        const handleSize = 8 / this.viewport.scale;
+        this.ctx.fillStyle = "#0066FF";
+        // Coin supérieur gauche
+        this.ctx.fillRect(-scaledWidth / 2 - handleSize / 2, -scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
+        // Coin supérieur droit
+        this.ctx.fillRect(scaledWidth / 2 - handleSize / 2, -scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
+        // Coin inférieur gauche
+        this.ctx.fillRect(-scaledWidth / 2 - handleSize / 2, scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
+        // Coin inférieur droit
+        this.ctx.fillRect(scaledWidth / 2 - handleSize / 2, scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
+      }
+
+      // Afficher le nom de l'image si elle est verrouillée
+      if (bgImage.locked) {
+        this.ctx.globalAlpha = 0.7;
+        this.ctx.fillStyle = "#666666";
+        const fontSize = 12 / this.viewport.scale;
+        this.ctx.font = `${fontSize}px Arial`;
+        this.ctx.textAlign = "center";
+        this.ctx.fillText("🔒", 0, -scaledHeight / 2 - fontSize);
+      }
+
+      this.ctx.restore();
+    }
   }
 
   /**
