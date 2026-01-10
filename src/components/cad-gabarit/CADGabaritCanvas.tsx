@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.13 - Fix ajustements image temps réel + debug logs
+// VERSION: 6.14 - Fix ajustements image via manipulation de pixels (pas ctx.filter)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -5648,7 +5648,7 @@ export function CADGabaritCanvas({
     [selectedImageId],
   );
 
-  // Appliquer les ajustements d'image (contraste, luminosité, etc.)
+  // Appliquer les ajustements d'image (contraste, luminosité, etc.) via manipulation de pixels
   const applyImageAdjustments = useCallback(
     (sourceImage: HTMLImageElement | HTMLCanvasElement, adjustments: ImageAdjustments): HTMLCanvasElement => {
       const canvas = document.createElement("canvas");
@@ -5663,68 +5663,103 @@ export function CADGabaritCanvas({
       canvas.width = width;
       canvas.height = height;
 
-      // Construire la chaîne de filtres CSS
-      const filters: string[] = [];
-
-      if (adjustments.contrast !== 100) {
-        filters.push(`contrast(${adjustments.contrast}%)`);
-      }
-      if (adjustments.brightness !== 100) {
-        filters.push(`brightness(${adjustments.brightness}%)`);
-      }
-      if (adjustments.saturate !== 100) {
-        filters.push(`saturate(${adjustments.saturate}%)`);
-      }
-      if (adjustments.grayscale) {
-        filters.push("grayscale(100%)");
-      }
-      if (adjustments.invert) {
-        filters.push("invert(100%)");
-      }
-
-      // Appliquer les filtres
-      if (filters.length > 0) {
-        ctx.filter = filters.join(" ");
-      }
-
-      // Dessiner l'image source
+      // Dessiner l'image source d'abord
       ctx.drawImage(sourceImage, 0, 0, width, height);
 
-      // Réinitialiser le filtre pour le sharpen
-      ctx.filter = "none";
+      // Récupérer les données de pixels
+      const imageData = ctx.getImageData(0, 0, width, height);
+      const data = imageData.data;
 
-      // Appliquer le sharpen si nécessaire (manipulation de pixels)
-      if (adjustments.sharpen > 0 && width > 2 && height > 2) {
-        try {
-          const imageData = ctx.getImageData(0, 0, width, height);
-          const data = imageData.data;
-          const factor = adjustments.sharpen / 100;
+      // Précalculer les facteurs
+      const contrastFactor = adjustments.contrast / 100;
+      const brightnessFactor = adjustments.brightness / 100;
+      const saturateFactor = adjustments.saturate / 100;
+      const sharpenFactor = adjustments.sharpen / 100;
+      const doGrayscale = adjustments.grayscale;
+      const doInvert = adjustments.invert;
 
-          // Kernel de sharpening simple
-          const kernel = [0, -factor, 0, -factor, 1 + 4 * factor, -factor, 0, -factor, 0];
+      // Appliquer les transformations pixel par pixel
+      for (let i = 0; i < data.length; i += 4) {
+        let r = data[i];
+        let g = data[i + 1];
+        let b = data[i + 2];
+        // Alpha reste inchangé: data[i + 3]
 
-          const tempData = new Uint8ClampedArray(data);
+        // 1. Luminosité
+        if (brightnessFactor !== 1) {
+          r = r * brightnessFactor;
+          g = g * brightnessFactor;
+          b = b * brightnessFactor;
+        }
 
-          for (let y = 1; y < height - 1; y++) {
-            for (let x = 1; x < width - 1; x++) {
-              const idx = (y * width + x) * 4;
-              for (let c = 0; c < 3; c++) {
-                let sum = 0;
-                for (let ky = -1; ky <= 1; ky++) {
-                  for (let kx = -1; kx <= 1; kx++) {
-                    const kidx = ((y + ky) * width + (x + kx)) * 4 + c;
-                    sum += tempData[kidx] * kernel[(ky + 1) * 3 + (kx + 1)];
-                  }
+        // 2. Contraste (autour de 128)
+        if (contrastFactor !== 1) {
+          r = (r - 128) * contrastFactor + 128;
+          g = (g - 128) * contrastFactor + 128;
+          b = (b - 128) * contrastFactor + 128;
+        }
+
+        // 3. Saturation
+        if (saturateFactor !== 1) {
+          const gray = 0.2989 * r + 0.587 * g + 0.114 * b;
+          r = gray + saturateFactor * (r - gray);
+          g = gray + saturateFactor * (g - gray);
+          b = gray + saturateFactor * (b - gray);
+        }
+
+        // 4. Noir et blanc
+        if (doGrayscale) {
+          const gray = 0.2989 * r + 0.587 * g + 0.114 * b;
+          r = g = b = gray;
+        }
+
+        // 5. Inversion
+        if (doInvert) {
+          r = 255 - r;
+          g = 255 - g;
+          b = 255 - b;
+        }
+
+        // Clamper les valeurs
+        data[i] = Math.max(0, Math.min(255, r));
+        data[i + 1] = Math.max(0, Math.min(255, g));
+        data[i + 2] = Math.max(0, Math.min(255, b));
+      }
+
+      // Appliquer le sharpen si nécessaire (kernel convolution)
+      if (sharpenFactor > 0 && width > 2 && height > 2) {
+        const tempData = new Uint8ClampedArray(data);
+        const kernel = [
+          0,
+          -sharpenFactor,
+          0,
+          -sharpenFactor,
+          1 + 4 * sharpenFactor,
+          -sharpenFactor,
+          0,
+          -sharpenFactor,
+          0,
+        ];
+
+        for (let y = 1; y < height - 1; y++) {
+          for (let x = 1; x < width - 1; x++) {
+            const idx = (y * width + x) * 4;
+            for (let c = 0; c < 3; c++) {
+              let sum = 0;
+              for (let ky = -1; ky <= 1; ky++) {
+                for (let kx = -1; kx <= 1; kx++) {
+                  const kidx = ((y + ky) * width + (x + kx)) * 4 + c;
+                  sum += tempData[kidx] * kernel[(ky + 1) * 3 + (kx + 1)];
                 }
-                data[idx + c] = Math.max(0, Math.min(255, sum));
               }
+              data[idx + c] = Math.max(0, Math.min(255, sum));
             }
           }
-          ctx.putImageData(imageData, 0, 0);
-        } catch (e) {
-          console.error("Erreur sharpen:", e);
         }
       }
+
+      // Remettre les données modifiées
+      ctx.putImageData(imageData, 0, 0);
 
       return canvas;
     },
@@ -5734,10 +5769,7 @@ export function CADGabaritCanvas({
   // Mettre à jour les ajustements de l'image sélectionnée
   const updateSelectedImageAdjustments = useCallback(
     (adjustments: Partial<ImageAdjustments>) => {
-      if (!selectedImageId) {
-        console.log("updateSelectedImageAdjustments: pas d'image sélectionnée");
-        return;
-      }
+      if (!selectedImageId) return;
 
       setBackgroundImages((prev) =>
         prev.map((img) => {
@@ -5751,16 +5783,11 @@ export function CADGabaritCanvas({
 
           // Vérifier que l'image source est valide
           if (!sourceImage || (sourceImage instanceof HTMLImageElement && !sourceImage.complete)) {
-            console.error("Image source non valide ou non chargée");
             return img;
           }
 
-          console.log("Applying adjustments:", newAdjustments, "to image:", img.name);
-
           // Générer le canvas ajusté
           const adjustedCanvas = applyImageAdjustments(sourceImage, newAdjustments);
-
-          console.log("Adjusted canvas created:", adjustedCanvas.width, "x", adjustedCanvas.height);
 
           return {
             ...img,
