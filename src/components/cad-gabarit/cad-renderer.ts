@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.30 - Surbrillance améliorée: sans superposition (offscreen canvas), effet hover, opacité réglable
+// VERSION: 3.31 - Fix effet hover: reset transformation avant isPointInPath
 // ============================================
 
 import {
@@ -2365,13 +2365,20 @@ export class CADRenderer {
     // Détecter quelle forme est survolée (la plus petite qui contient la souris)
     let hoveredShapeIndex = -1;
     if (mouseWorldPos) {
+      // Sauvegarder la transformation actuelle et reset pour tester en coordonnées monde
+      this.ctx.save();
+      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+
       // Parcourir du plus petit au plus grand pour trouver la forme la plus spécifique
       for (let i = closedShapes.length - 1; i >= 0; i--) {
+        // Tester le point en coordonnées monde (le path est en coordonnées monde)
         if (this.ctx.isPointInPath(closedShapes[i].path, mouseWorldPos.x, mouseWorldPos.y)) {
           hoveredShapeIndex = i;
           break;
         }
       }
+
+      this.ctx.restore();
     }
 
     // Créer un canvas offscreen pour éviter la superposition
