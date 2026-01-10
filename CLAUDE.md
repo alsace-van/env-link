@@ -58,6 +58,12 @@ src/
 └── hooks/          # Custom hooks React
 ```
 
+## Documentation de Référence
+
+Consulte ces fichiers avant de coder des fonctions liées à ces APIs :
+- **Evoliz API** : @docs/evoliz-api.md
+- **Gemini API** : @docs/gemini-api.md
+
 ## Bonnes Pratiques
 
 1. Toujours vérifier la documentation API avant d'implémenter des appels externes
