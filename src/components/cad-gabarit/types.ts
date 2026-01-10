@@ -155,9 +155,11 @@ export type ToolType =
   | "select"
   | "pan"
   | "line"
+  | "polyline"
   | "rectangle"
   | "circle"
   | "arc"
+  | "arc3points"
   | "bezier"
   | "dimension"
   | "constraint"
@@ -166,7 +168,8 @@ export type ToolType =
   | "extend"
   | "fillet"
   | "chamfer"
-  | "offset";
+  | "offset"
+  | "mirror";
 
 export interface Tool {
   type: ToolType;

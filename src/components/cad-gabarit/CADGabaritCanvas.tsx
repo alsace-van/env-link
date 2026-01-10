@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.19 - Fix Undo photos: système de pile (push avant suppression, pop pour restaurer)
+// VERSION: 6.20 - Verrouillage calque/photo + Polyline + Arc 3 points + Symétrie
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -70,6 +70,11 @@ import {
   Link2,
   Contrast,
   RotateCw,
+  Lock,
+  Unlock,
+  Pencil,
+  FlipHorizontal2,
+  CircleDot,
 } from "lucide-react";
 
 import {
@@ -226,6 +231,22 @@ export function CADGabaritCanvas({
     intersectionPoint: { x: number; y: number };
     snappedCursor: { x: number; y: number };
   } | null>(null);
+
+  // État pour l'outil Polyline (multi-segments connectés)
+  const [polylinePoints, setPolylinePoints] = useState<string[]>([]); // IDs des points créés
+
+  // État pour l'outil Arc 3 points
+  const [arc3Points, setArc3Points] = useState<Point[]>([]); // 3 points temporaires
+
+  // État pour l'outil Symétrie (miroir)
+  const [mirrorState, setMirrorState] = useState<{
+    phase: "idle" | "waitingAxis1" | "waitingAxis2";
+    axisPoint1?: Point;
+    entitiesToMirror: Set<string>;
+  }>({
+    phase: "idle",
+    entitiesToMirror: new Set(),
+  });
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
@@ -2017,6 +2038,23 @@ export function CADGabaritCanvas({
         heightInputPos: { x: 0, y: 0 },
       });
     }
+    // Réinitialiser polyline quand on change d'outil
+    if (activeTool !== "polyline") {
+      setPolylinePoints([]);
+      setTempPoints([]);
+      setTempGeometry(null);
+    }
+    // Réinitialiser arc 3 points quand on change d'outil
+    if (activeTool !== "arc3points") {
+      setArc3Points([]);
+    }
+    // Réinitialiser symétrie quand on change d'outil
+    if (activeTool !== "mirror") {
+      setMirrorState({
+        phase: "idle",
+        entitiesToMirror: new Set(),
+      });
+    }
   }, [activeTool]);
 
   // Focus sur l'input largeur quand on commence à tracer un rectangle
@@ -2516,6 +2554,47 @@ export function CADGabaritCanvas({
       return null;
     },
     [sketch, viewport.scale],
+  );
+
+  // Vérifier si une entité (géométrie ou point) est sur un calque verrouillé
+  const isEntityOnLockedLayer = useCallback(
+    (entityId: string): boolean => {
+      // D'abord vérifier si c'est une géométrie
+      const geo = sketch.geometries.get(entityId);
+      if (geo) {
+        const layerId = geo.layerId || "trace";
+        const layer = sketch.layers.get(layerId);
+        return layer?.locked ?? false;
+      }
+
+      // Sinon c'est peut-être un point - vérifier les géométries qui l'utilisent
+      for (const g of sketch.geometries.values()) {
+        let usesPoint = false;
+        if (g.type === "line") {
+          const line = g as Line;
+          usesPoint = line.p1 === entityId || line.p2 === entityId;
+        } else if (g.type === "circle") {
+          const circle = g as CircleType;
+          usesPoint = circle.center === entityId;
+        } else if (g.type === "arc") {
+          const arc = g as Arc;
+          usesPoint = arc.center === entityId || arc.startPoint === entityId || arc.endPoint === entityId;
+        } else if (g.type === "bezier") {
+          const bezier = g as Bezier;
+          usesPoint =
+            bezier.p1 === entityId || bezier.p2 === entityId || bezier.cp1 === entityId || bezier.cp2 === entityId;
+        }
+
+        if (usesPoint) {
+          const layerId = g.layerId || "trace";
+          const layer = sketch.layers.get(layerId);
+          if (layer?.locked) return true;
+        }
+      }
+
+      return false;
+    },
+    [sketch],
   );
 
   // Trouver un point (coin) sous le curseur
@@ -6123,7 +6202,7 @@ export function CADGabaritCanvas({
           null;
 
         for (const img of backgroundImages) {
-          if (!img.visible || img.locked) continue;
+          if (!img.visible) continue;
           for (const marker of img.markers) {
             const markerWorldX = img.x + marker.relativeX;
             const markerWorldY = img.y + marker.relativeY;
@@ -6145,12 +6224,14 @@ export function CADGabaritCanvas({
           // Désélectionner les entités géométriques
           setSelectedEntities(new Set());
 
-          // Commencer le drag du marker
-          setDraggingMarker({
-            imageId: foundMarker.imageId,
-            markerId: foundMarker.markerId,
-            startPos: worldPos,
-          });
+          // Commencer le drag du marker SEULEMENT si l'image n'est pas verrouillée
+          if (!foundMarker.image.locked) {
+            setDraggingMarker({
+              imageId: foundMarker.imageId,
+              markerId: foundMarker.markerId,
+              startPos: worldPos,
+            });
+          }
 
           return;
         }
@@ -6159,16 +6240,20 @@ export function CADGabaritCanvas({
       if (activeTool === "select" && backgroundImages.length > 0 && markerMode === "idle" && !isCalibrationActive) {
         const clickedImage = findImageAtPosition(worldPos.x, worldPos.y);
         if (clickedImage) {
-          // Sélectionner l'image et préparer le drag
+          // Sélectionner l'image
           setSelectedImageId(clickedImage.id);
           setSelectedMarkerId(null); // Désélectionner le marker
-          setIsDraggingImage(true);
-          setImageDragStart({
-            x: worldPos.x,
-            y: worldPos.y,
-            imgX: clickedImage.x,
-            imgY: clickedImage.y,
-          });
+
+          // Préparer le drag seulement si l'image n'est pas verrouillée
+          if (!clickedImage.locked) {
+            setIsDraggingImage(true);
+            setImageDragStart({
+              x: worldPos.x,
+              y: worldPos.y,
+              imgX: clickedImage.x,
+              imgY: clickedImage.y,
+            });
+          }
           // Désélectionner les entités géométriques
           setSelectedEntities(new Set());
           return;
@@ -6403,6 +6488,12 @@ export function CADGabaritCanvas({
           // Vérifier d'abord si on clique sur une poignée d'une entité sélectionnée
           const handleHit = findHandleAtPosition(worldPos.x, worldPos.y);
           if (handleHit) {
+            // Vérifier si l'entité est sur un calque verrouillé
+            const entityIdToCheck = handleHit.type === "point" ? handleHit.id : handleHit.id; // Pour les handles, l'id est celui de la géométrie
+            if (isEntityOnLockedLayer(entityIdToCheck)) {
+              toast.error("Cette entité est sur un calque verrouillé");
+              return;
+            }
             setIsDragging(true);
             setDragTarget(handleHit);
             setDragStart(worldPos);
@@ -6414,6 +6505,18 @@ export function CADGabaritCanvas({
           if (entityId) {
             // Si on clique sur une entité déjà sélectionnée, préparer le drag de la sélection
             if (selectedEntities.has(entityId) && selectedEntities.size > 0) {
+              // Vérifier si une entité de la sélection est sur un calque verrouillé
+              let hasLockedEntity = false;
+              for (const id of selectedEntities) {
+                if (isEntityOnLockedLayer(id)) {
+                  hasLockedEntity = true;
+                  break;
+                }
+              }
+              if (hasLockedEntity) {
+                toast.error("Une ou plusieurs entités sont sur un calque verrouillé");
+                return;
+              }
               // Préparer le drag de toute la sélection
               setSelectionDragStart(worldPos);
               setPotentialSelectionDrag(true);
@@ -6547,6 +6650,49 @@ export function CADGabaritCanvas({
           break;
         }
 
+        case "polyline": {
+          // Polyline: clic = ajouter un point, double-clic = terminer
+          const currentSketch = sketchRef.current;
+          const newSketch = { ...currentSketch };
+          newSketch.points = new Map(currentSketch.points);
+          newSketch.geometries = new Map(currentSketch.geometries);
+
+          // Créer ou réutiliser le point
+          let p: Point;
+          if (currentSnapPoint) {
+            const existingPoint = newSketch.points.get(currentSnapPoint.entityId);
+            if (existingPoint && currentSnapPoint.type !== "nearest" && currentSnapPoint.type !== "grid") {
+              p = existingPoint;
+            } else {
+              p = { id: generateId(), x: targetPos.x, y: targetPos.y };
+              newSketch.points.set(p.id, p);
+            }
+          } else {
+            p = { id: generateId(), x: targetPos.x, y: targetPos.y };
+            newSketch.points.set(p.id, p);
+          }
+
+          if (polylinePoints.length > 0) {
+            // Créer un segment entre le dernier point et ce nouveau point
+            const lastPointId = polylinePoints[polylinePoints.length - 1];
+            const line: Line = {
+              id: generateId(),
+              type: "line",
+              p1: lastPointId,
+              p2: p.id,
+              layerId: currentSketch.activeLayerId,
+            };
+            newSketch.geometries.set(line.id, line);
+            createIntersectionPoints(line.id, newSketch);
+          }
+
+          setSketch(newSketch);
+          setPolylinePoints([...polylinePoints, p.id]);
+          setTempPoints([p]);
+          setTempGeometry({ type: "polyline", lastPoint: p });
+          break;
+        }
+
         case "circle": {
           if (tempPoints.length === 0) {
             // Centre
@@ -6585,6 +6731,102 @@ export function CADGabaritCanvas({
 
             setTempPoints([]);
             setTempGeometry(null);
+          }
+          break;
+        }
+
+        case "arc3points": {
+          // Arc par 3 points: cliquer 3 points, l'arc passe par ces 3 points
+          const newPoint: Point = { id: generateId(), x: targetPos.x, y: targetPos.y };
+          const newArc3Points = [...arc3Points, newPoint];
+          setArc3Points(newArc3Points);
+
+          if (newArc3Points.length === 3) {
+            // Calculer le cercle passant par les 3 points
+            const [p1, p2, p3] = newArc3Points;
+
+            // Calcul du centre du cercle circonscrit
+            const ax = p1.x,
+              ay = p1.y;
+            const bx = p2.x,
+              by = p2.y;
+            const cx = p3.x,
+              cy = p3.y;
+
+            const d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+
+            if (Math.abs(d) < 0.0001) {
+              // Points alignés - pas d'arc possible
+              toast.error("Les 3 points sont alignés, impossible de créer un arc");
+              setArc3Points([]);
+              setTempGeometry(null);
+              break;
+            }
+
+            const ux =
+              ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d;
+            const uy =
+              ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d;
+            const radius = Math.sqrt((ax - ux) * (ax - ux) + (ay - uy) * (ay - uy));
+
+            const center: Point = { id: generateId(), x: ux, y: uy };
+
+            // Calculer les angles de début et fin
+            const startAngle = Math.atan2(p1.y - center.y, p1.x - center.x);
+            const midAngle = Math.atan2(p2.y - center.y, p2.x - center.x);
+            const endAngle = Math.atan2(p3.y - center.y, p3.x - center.x);
+
+            // Déterminer la direction (sens horaire ou anti-horaire)
+            // Le point milieu doit être sur l'arc
+            let counterClockwise = false;
+
+            // Normaliser les angles
+            const normalizeAngle = (a: number) => ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+            const nStart = normalizeAngle(startAngle);
+            const nMid = normalizeAngle(midAngle);
+            const nEnd = normalizeAngle(endAngle);
+
+            // Vérifier si le point milieu est dans le sens direct (anti-horaire)
+            if (nStart < nEnd) {
+              counterClockwise = nMid > nStart && nMid < nEnd;
+            } else {
+              counterClockwise = nMid > nStart || nMid < nEnd;
+            }
+
+            // Créer les points et l'arc
+            const currentSketch = sketchRef.current;
+            const newSketch = { ...currentSketch };
+            newSketch.points = new Map(currentSketch.points);
+            newSketch.geometries = new Map(currentSketch.geometries);
+
+            // Points de l'arc
+            const startPt: Point = { id: generateId(), x: p1.x, y: p1.y };
+            const endPt: Point = { id: generateId(), x: p3.x, y: p3.y };
+
+            newSketch.points.set(center.id, center);
+            newSketch.points.set(startPt.id, startPt);
+            newSketch.points.set(endPt.id, endPt);
+
+            const arc: Arc = {
+              id: generateId(),
+              type: "arc",
+              center: center.id,
+              startPoint: startPt.id,
+              endPoint: endPt.id,
+              radius,
+              counterClockwise,
+              layerId: currentSketch.activeLayerId,
+            };
+            newSketch.geometries.set(arc.id, arc);
+
+            setSketch(newSketch);
+            addToHistory(newSketch);
+            setArc3Points([]);
+            setTempGeometry(null);
+            toast.success("Arc créé");
+          } else {
+            // Mettre à jour la prévisualisation
+            setTempGeometry({ type: "arc3points", points: newArc3Points });
           }
           break;
         }
@@ -6957,6 +7199,168 @@ export function CADGabaritCanvas({
           }
           break;
         }
+
+        case "mirror": {
+          // Outil symétrie : définir l'axe puis dupliquer en miroir
+          if (mirrorState.phase === "idle") {
+            // Première utilisation : on a besoin d'une sélection
+            if (selectedEntities.size === 0) {
+              toast.error("Sélectionnez d'abord les entités à symétriser");
+              setActiveTool("select");
+              break;
+            }
+            // Passer en mode définition de l'axe
+            setMirrorState({
+              phase: "waitingAxis1",
+              entitiesToMirror: new Set(selectedEntities),
+            });
+            toast.info("Cliquez le premier point de l'axe de symétrie");
+          } else if (mirrorState.phase === "waitingAxis1") {
+            // Premier point de l'axe
+            const axisPoint1: Point = { id: generateId(), x: targetPos.x, y: targetPos.y };
+            setMirrorState((prev) => ({
+              ...prev,
+              phase: "waitingAxis2",
+              axisPoint1,
+            }));
+            setTempGeometry({ type: "mirrorAxis", p1: axisPoint1 });
+            toast.info("Cliquez le second point de l'axe de symétrie");
+          } else if (mirrorState.phase === "waitingAxis2" && mirrorState.axisPoint1) {
+            // Second point de l'axe - appliquer la symétrie
+            const axisPoint2: Point = { id: generateId(), x: targetPos.x, y: targetPos.y };
+            const axis1 = mirrorState.axisPoint1;
+            const axis2 = axisPoint2;
+
+            // Fonction de réflexion d'un point par rapport à l'axe
+            const reflectPoint = (p: Point): Point => {
+              const dx = axis2.x - axis1.x;
+              const dy = axis2.y - axis1.y;
+              const lenSq = dx * dx + dy * dy;
+              if (lenSq === 0) return { ...p };
+
+              // Projection du point sur l'axe
+              const t = ((p.x - axis1.x) * dx + (p.y - axis1.y) * dy) / lenSq;
+              const projX = axis1.x + t * dx;
+              const projY = axis1.y + t * dy;
+
+              // Réflexion
+              return {
+                id: generateId(),
+                x: 2 * projX - p.x,
+                y: 2 * projY - p.y,
+              };
+            };
+
+            const currentSketch = sketchRef.current;
+            const newSketch = { ...currentSketch };
+            newSketch.points = new Map(currentSketch.points);
+            newSketch.geometries = new Map(currentSketch.geometries);
+
+            // Map des anciens points vers les nouveaux points miroir
+            const pointMapping = new Map<string, string>();
+
+            // Créer les points miroir
+            for (const entityId of mirrorState.entitiesToMirror) {
+              const geo = currentSketch.geometries.get(entityId);
+              if (geo) {
+                if (geo.type === "line") {
+                  const line = geo as Line;
+                  const p1 = currentSketch.points.get(line.p1);
+                  const p2 = currentSketch.points.get(line.p2);
+                  if (p1 && p2) {
+                    if (!pointMapping.has(line.p1)) {
+                      const newP1 = reflectPoint(p1);
+                      newSketch.points.set(newP1.id, newP1);
+                      pointMapping.set(line.p1, newP1.id);
+                    }
+                    if (!pointMapping.has(line.p2)) {
+                      const newP2 = reflectPoint(p2);
+                      newSketch.points.set(newP2.id, newP2);
+                      pointMapping.set(line.p2, newP2.id);
+                    }
+                  }
+                } else if (geo.type === "circle") {
+                  const circle = geo as CircleType;
+                  const center = currentSketch.points.get(circle.center);
+                  if (center && !pointMapping.has(circle.center)) {
+                    const newCenter = reflectPoint(center);
+                    newSketch.points.set(newCenter.id, newCenter);
+                    pointMapping.set(circle.center, newCenter.id);
+                  }
+                } else if (geo.type === "arc") {
+                  const arc = geo as Arc;
+                  const center = currentSketch.points.get(arc.center);
+                  const startPt = currentSketch.points.get(arc.startPoint);
+                  const endPt = currentSketch.points.get(arc.endPoint);
+                  if (center && !pointMapping.has(arc.center)) {
+                    const newCenter = reflectPoint(center);
+                    newSketch.points.set(newCenter.id, newCenter);
+                    pointMapping.set(arc.center, newCenter.id);
+                  }
+                  if (startPt && !pointMapping.has(arc.startPoint)) {
+                    const newStart = reflectPoint(startPt);
+                    newSketch.points.set(newStart.id, newStart);
+                    pointMapping.set(arc.startPoint, newStart.id);
+                  }
+                  if (endPt && !pointMapping.has(arc.endPoint)) {
+                    const newEnd = reflectPoint(endPt);
+                    newSketch.points.set(newEnd.id, newEnd);
+                    pointMapping.set(arc.endPoint, newEnd.id);
+                  }
+                }
+              }
+            }
+
+            // Créer les géométries miroir
+            for (const entityId of mirrorState.entitiesToMirror) {
+              const geo = currentSketch.geometries.get(entityId);
+              if (geo) {
+                if (geo.type === "line") {
+                  const line = geo as Line;
+                  const newLine: Line = {
+                    id: generateId(),
+                    type: "line",
+                    p1: pointMapping.get(line.p1) || line.p1,
+                    p2: pointMapping.get(line.p2) || line.p2,
+                    layerId: line.layerId,
+                  };
+                  newSketch.geometries.set(newLine.id, newLine);
+                } else if (geo.type === "circle") {
+                  const circle = geo as CircleType;
+                  const newCircle: CircleType = {
+                    id: generateId(),
+                    type: "circle",
+                    center: pointMapping.get(circle.center) || circle.center,
+                    radius: circle.radius,
+                    layerId: circle.layerId,
+                  };
+                  newSketch.geometries.set(newCircle.id, newCircle);
+                } else if (geo.type === "arc") {
+                  const arc = geo as Arc;
+                  const newArc: Arc = {
+                    id: generateId(),
+                    type: "arc",
+                    center: pointMapping.get(arc.center) || arc.center,
+                    // Inverser start et end pour la symétrie
+                    startPoint: pointMapping.get(arc.endPoint) || arc.endPoint,
+                    endPoint: pointMapping.get(arc.startPoint) || arc.startPoint,
+                    radius: arc.radius,
+                    counterClockwise: !arc.counterClockwise, // Inverser la direction
+                    layerId: arc.layerId,
+                  };
+                  newSketch.geometries.set(newArc.id, newArc);
+                }
+              }
+            }
+
+            setSketch(newSketch);
+            addToHistory(newSketch);
+            setMirrorState({ phase: "idle", entitiesToMirror: new Set() });
+            setTempGeometry(null);
+            toast.success("Symétrie appliquée");
+          }
+          break;
+        }
       }
     },
     [
@@ -6968,6 +7372,8 @@ export function CADGabaritCanvas({
       snapEnabled,
       selectedEntities,
       findEntityAtPosition,
+      findHandleAtPosition,
+      isEntityOnLockedLayer,
       screenToWorld,
       solveSketch,
       addToHistory,
@@ -6994,6 +7400,10 @@ export function CADGabaritCanvas({
       backgroundImages,
       selectedImageId,
       findImageAtPosition,
+      // Nouveaux outils
+      polylinePoints,
+      arc3Points,
+      mirrorState,
     ],
   );
 
@@ -7461,6 +7871,24 @@ export function CADGabaritCanvas({
             ...tempGeometry,
             cursor: targetPos,
           });
+        } else if (tempGeometry.type === "polyline") {
+          setPerpendicularInfo(null);
+          setTempGeometry({
+            ...tempGeometry,
+            cursor: targetPos,
+          });
+        } else if (tempGeometry.type === "arc3points") {
+          setPerpendicularInfo(null);
+          setTempGeometry({
+            ...tempGeometry,
+            cursor: targetPos,
+          });
+        } else if (tempGeometry.type === "mirrorAxis") {
+          setPerpendicularInfo(null);
+          setTempGeometry({
+            ...tempGeometry,
+            p2: targetPos,
+          });
         }
       } else {
         setPerpendicularInfo(null);
@@ -7729,6 +8157,16 @@ export function CADGabaritCanvas({
       const screenY = e.clientY - rect.top;
       const worldPos = screenToWorld(screenX, screenY);
 
+      // Si on est en mode polyline, terminer la polyline
+      if (activeTool === "polyline" && polylinePoints.length > 0) {
+        addToHistory(sketchRef.current);
+        setPolylinePoints([]);
+        setTempPoints([]);
+        setTempGeometry(null);
+        toast.success(`Polyline terminée (${polylinePoints.length} points)`);
+        return;
+      }
+
       // Vérifier d'abord si on a cliqué sur un point (coin potentiel)
       const pointId = findPointAtPosition(worldPos.x, worldPos.y);
       if (pointId) {
@@ -7778,6 +8216,9 @@ export function CADGabaritCanvas({
       selectContourForOffset,
       findLinesConnectedToPoint,
       openFilletDialogForPoint,
+      activeTool,
+      polylinePoints,
+      addToHistory,
     ],
   );
 
@@ -7824,6 +8265,14 @@ export function CADGabaritCanvas({
 
   // Supprimer les entités sélectionnées
   const deleteSelectedEntities = useCallback(() => {
+    // Vérifier si une entité est sur un calque verrouillé
+    for (const id of selectedEntities) {
+      if (isEntityOnLockedLayer(id)) {
+        toast.error("Impossible de supprimer : une ou plusieurs entités sont sur un calque verrouillé");
+        return;
+      }
+    }
+
     const newSketch = { ...sketch };
     newSketch.points = new Map(sketch.points);
     newSketch.geometries = new Map(sketch.geometries);
@@ -7956,7 +8405,7 @@ export function CADGabaritCanvas({
     setSelectedEntities(new Set());
     addToHistory(newSketch);
     solveSketch(newSketch);
-  }, [sketch, selectedEntities, solveSketch, addToHistory, lineIntersection]);
+  }, [sketch, selectedEntities, solveSketch, addToHistory, lineIntersection, isEntityOnLockedLayer]);
 
   // Undo/Redo
   const undo = useCallback(() => {
@@ -8432,8 +8881,16 @@ export function CADGabaritCanvas({
             setActiveTool("line");
             resetMarkerMode();
             break;
+          case "p":
+            setActiveTool("polyline");
+            resetMarkerMode();
+            break;
           case "c":
             setActiveTool("circle");
+            resetMarkerMode();
+            break;
+          case "a":
+            setActiveTool("arc3points");
             resetMarkerMode();
             break;
           case "r":
@@ -8443,6 +8900,13 @@ export function CADGabaritCanvas({
           case "b":
             setActiveTool("bezier");
             resetMarkerMode();
+            break;
+          case "s":
+            // S pour symétrie seulement si des entités sont sélectionnées
+            if (selectedEntities.size > 0) {
+              setActiveTool("mirror");
+              resetMarkerMode();
+            }
             break;
           case "d":
             setActiveTool("dimension");
@@ -9231,9 +9695,16 @@ export function CADGabaritCanvas({
         {/* Outils de dessin */}
         <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
           <ToolButton tool="line" icon={Minus} label="Ligne" shortcut="L" />
+          <ToolButton tool="polyline" icon={Pencil} label="Polyline" shortcut="P" />
           <ToolButton tool="circle" icon={Circle} label="Cercle" shortcut="C" />
+          <ToolButton tool="arc3points" icon={CircleDot} label="Arc 3 points" shortcut="A" />
           <ToolButton tool="rectangle" icon={Square} label="Rectangle" shortcut="R" />
           <ToolButton tool="bezier" icon={Spline} label="Courbe Bézier" shortcut="B" />
+        </div>
+
+        {/* Outil Symétrie */}
+        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+          <ToolButton tool="mirror" icon={FlipHorizontal2} label="Symétrie" shortcut="S" />
         </div>
 
         <Separator orientation="vertical" className="h-6" />
@@ -9331,8 +9802,24 @@ export function CADGabaritCanvas({
                               prev.map((i) => (i.id === img.id ? { ...i, visible: !i.visible } : i)),
                             );
                           }}
+                          title={img.visible ? "Masquer" : "Afficher"}
                         >
                           {img.visible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className={`h-6 w-6 p-0 ${img.locked ? "text-yellow-600" : "text-gray-400"}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setBackgroundImages((prev) =>
+                              prev.map((i) => (i.id === img.id ? { ...i, locked: !i.locked } : i)),
+                            );
+                            toast.success(img.locked ? `"${img.name}" déverrouillée` : `"${img.name}" verrouillée`);
+                          }}
+                          title={img.locked ? "Déverrouiller" : "Verrouiller"}
+                        >
+                          {img.locked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
                         </Button>
                         <Button
                           variant="ghost"
@@ -9352,6 +9839,7 @@ export function CADGabaritCanvas({
                             if (selectedImageId === img.id) setSelectedImageId(null);
                             toast.success("Photo supprimée");
                           }}
+                          title="Supprimer"
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>
@@ -9928,6 +10416,28 @@ export function CADGabaritCanvas({
                     title={layer.visible ? "Masquer le calque" : "Afficher le calque"}
                   >
                     {layer.visible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                  </button>
+                  {/* Bouton verrouillage */}
+                  <button
+                    className={`p-0.5 rounded hover:bg-yellow-100 ${layer.locked ? "text-yellow-600" : "text-gray-400"}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSketch((prev) => {
+                        const newLayers = new Map(prev.layers);
+                        const l = newLayers.get(layer.id);
+                        if (l) {
+                          newLayers.set(layer.id, { ...l, locked: !l.locked });
+                        }
+                        return { ...prev, layers: newLayers };
+                      });
+                      const l = sketch.layers.get(layer.id);
+                      toast.success(
+                        l?.locked ? `Calque "${layer.name}" déverrouillé` : `Calque "${layer.name}" verrouillé`,
+                      );
+                    }}
+                    title={layer.locked ? "Déverrouiller le calque" : "Verrouiller le calque"}
+                  >
+                    {layer.locked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
                   </button>
                   {/* Bouton supprimer (seulement si plus d'un calque) */}
                   {sketch.layers.size > 1 && (

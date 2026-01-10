@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.41 - Markers en croix avec sélection, label décalé
+// VERSION: 3.42 - Prévisualisation Polyline, Arc 3 points, Axe de symétrie
 // ============================================
 
 import {
@@ -2117,6 +2117,157 @@ export class CADRenderer {
         );
         this.ctx.fillStyle = "#3B82F6";
         this.ctx.fillText(text, textX, textY);
+        this.ctx.restore();
+      }
+    } else if (temp.type === "polyline" && temp.lastPoint) {
+      // Polyline: ligne temporaire du dernier point vers le curseur
+      const p1 = temp.lastPoint;
+      const p2 = temp.cursor;
+      if (p2) {
+        this.ctx.beginPath();
+        this.ctx.moveTo(p1.x, p1.y);
+        this.ctx.lineTo(p2.x, p2.y);
+        this.ctx.stroke();
+
+        // Afficher la longueur
+        const lengthPx = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+        const lengthMm = lengthPx / scaleFactor;
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+
+        this.ctx.save();
+        this.ctx.setLineDash([]);
+        this.ctx.fillStyle = "#10B981"; // Vert pour polyline
+        this.ctx.font = `bold ${fontSize}px Arial`;
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+
+        const text = `${lengthMm.toFixed(1)} mm`;
+        const textWidth = this.ctx.measureText(text).width;
+        this.ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+        this.ctx.fillRect(
+          midX - textWidth / 2 - 3 / this.viewport.scale,
+          midY - 20 / this.viewport.scale - fontSize / 2,
+          textWidth + 6 / this.viewport.scale,
+          fontSize + 4 / this.viewport.scale,
+        );
+        this.ctx.fillStyle = "#10B981";
+        this.ctx.fillText(text, midX, midY - 20 / this.viewport.scale);
+        this.ctx.restore();
+      }
+    } else if (temp.type === "arc3points" && temp.points) {
+      // Arc 3 points: afficher les points cliqués et la prévisualisation
+      const points = temp.points;
+      const cursor = temp.cursor;
+
+      // Dessiner les points déjà cliqués
+      this.ctx.save();
+      this.ctx.setLineDash([]);
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        this.ctx.fillStyle = "#F97316"; // Orange
+        this.ctx.beginPath();
+        this.ctx.arc(p.x, p.y, 6 / this.viewport.scale, 0, Math.PI * 2);
+        this.ctx.fill();
+
+        // Numéro du point
+        this.ctx.fillStyle = "white";
+        this.ctx.font = `bold ${10 / this.viewport.scale}px Arial`;
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillText(String(i + 1), p.x, p.y);
+      }
+      this.ctx.restore();
+
+      // Si on a 2 points et un curseur, prévisualiser l'arc
+      if (points.length === 2 && cursor) {
+        const [p1, p2] = points;
+        const p3 = cursor;
+
+        // Calculer le centre du cercle passant par les 3 points
+        const ax = p1.x,
+          ay = p1.y;
+        const bx = p2.x,
+          by = p2.y;
+        const cx = p3.x,
+          cy = p3.y;
+
+        const d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+
+        if (Math.abs(d) > 0.0001) {
+          const ux =
+            ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d;
+          const uy =
+            ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d;
+          const radius = Math.sqrt((ax - ux) * (ax - ux) + (ay - uy) * (ay - uy));
+
+          // Dessiner l'arc de prévisualisation
+          const startAngle = Math.atan2(p1.y - uy, p1.x - ux);
+          const endAngle = Math.atan2(p3.y - uy, p3.x - ux);
+
+          this.ctx.strokeStyle = "#F97316";
+          this.ctx.lineWidth = 2 / this.viewport.scale;
+          this.ctx.beginPath();
+          this.ctx.arc(ux, uy, radius, startAngle, endAngle);
+          this.ctx.stroke();
+
+          // Afficher le rayon
+          const radiusMm = radius / scaleFactor;
+          this.ctx.save();
+          this.ctx.setLineDash([]);
+          this.ctx.fillStyle = "#F97316";
+          this.ctx.font = `bold ${fontSize}px Arial`;
+          this.ctx.textAlign = "left";
+          const text = `R ${radiusMm.toFixed(1)} mm`;
+          this.ctx.fillText(text, ux + 10 / this.viewport.scale, uy);
+          this.ctx.restore();
+        }
+      }
+    } else if (temp.type === "mirrorAxis" && temp.p1) {
+      // Axe de symétrie
+      const p1 = temp.p1;
+      const p2 = temp.p2 || temp.cursor;
+
+      if (p2) {
+        // Ligne d'axe en pointillés violets
+        this.ctx.save();
+        this.ctx.strokeStyle = "#8B5CF6"; // Violet
+        this.ctx.lineWidth = 2 / this.viewport.scale;
+        this.ctx.setLineDash([10 / this.viewport.scale, 5 / this.viewport.scale]);
+
+        this.ctx.beginPath();
+        this.ctx.moveTo(p1.x, p1.y);
+        this.ctx.lineTo(p2.x, p2.y);
+        this.ctx.stroke();
+
+        // Points aux extrémités
+        this.ctx.setLineDash([]);
+        this.ctx.fillStyle = "#8B5CF6";
+        this.ctx.beginPath();
+        this.ctx.arc(p1.x, p1.y, 5 / this.viewport.scale, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.beginPath();
+        this.ctx.arc(p2.x, p2.y, 5 / this.viewport.scale, 0, Math.PI * 2);
+        this.ctx.fill();
+
+        // Label "Axe de symétrie"
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+        this.ctx.font = `bold ${fontSize}px Arial`;
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "bottom";
+        this.ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+        const text = "Axe de symétrie";
+        const textWidth = this.ctx.measureText(text).width;
+        this.ctx.fillRect(
+          midX - textWidth / 2 - 4 / this.viewport.scale,
+          midY - 25 / this.viewport.scale - fontSize,
+          textWidth + 8 / this.viewport.scale,
+          fontSize + 6 / this.viewport.scale,
+        );
+        this.ctx.fillStyle = "#8B5CF6";
+        this.ctx.fillText(text, midX, midY - 20 / this.viewport.scale);
+
         this.ctx.restore();
       }
     }
