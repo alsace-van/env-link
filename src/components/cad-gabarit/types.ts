@@ -130,7 +130,8 @@ export type SnapType =
   | "tangent"
   | "perpendicular"
   | "nearest"
-  | "grid";
+  | "grid"
+  | "marker";
 
 export interface SnapPoint {
   x: number;
@@ -488,12 +489,12 @@ export interface BackgroundImage {
 
 // Ajustements d'image pour améliorer la visibilité des contours
 export interface ImageAdjustments {
-  contrast: number;    // 0-200, 100 = normal
-  brightness: number;  // 0-200, 100 = normal
-  saturate: number;    // 0-200, 100 = normal
-  sharpen: number;     // 0-100, 0 = pas de netteté
-  invert: boolean;     // Inverser les couleurs
-  grayscale: boolean;  // Noir et blanc
+  contrast: number; // 0-200, 100 = normal
+  brightness: number; // 0-200, 100 = normal
+  saturate: number; // 0-200, 100 = normal
+  sharpen: number; // 0-100, 0 = pas de netteté
+  invert: boolean; // Inverser les couleurs
+  grayscale: boolean; // Noir et blanc
 }
 
 export const DEFAULT_IMAGE_ADJUSTMENTS: ImageAdjustments = {

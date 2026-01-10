@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.14 - Fix ajustements image via manipulation de pixels (pas ctx.filter)
+// VERSION: 6.15 - Snap sur markers pour outil mesure inter-photos
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -107,7 +107,7 @@ import {
   midpoint,
 } from "./types";
 import { CADRenderer } from "./cad-renderer";
-import { SnapSystem, DEFAULT_SNAP_SETTINGS } from "./snap-system";
+import { SnapSystem, DEFAULT_SNAP_SETTINGS, AdditionalSnapPoint } from "./snap-system";
 import { CADSolver } from "./cad-solver";
 import {
   createRectifyingHomography,
@@ -5615,6 +5615,28 @@ export function CADGabaritCanvas({
     };
   }, [backgroundImages, selectedImageId]);
 
+  // Collecter tous les markers de toutes les images comme points de snap additionnels
+  const markerSnapPoints = useMemo((): AdditionalSnapPoint[] => {
+    const points: AdditionalSnapPoint[] = [];
+    for (const img of backgroundImages) {
+      if (!img.markers) continue;
+      for (const marker of img.markers) {
+        // Convertir en coordonnées monde
+        const worldX = img.x + marker.relativeX;
+        const worldY = img.y + marker.relativeY;
+        points.push({
+          x: worldX,
+          y: worldY,
+          type: "marker",
+          label: `${marker.label} (${img.name})`,
+          entityId: `marker-${img.id}-${marker.id}`,
+          priority: 0, // Priorité maximale
+        });
+      }
+    }
+    return points;
+  }, [backgroundImages]);
+
   const getSelectedImageCalibration = useCallback((): CalibrationData => {
     const selectedImage = getSelectedImage();
     if (selectedImage?.calibrationData) {
@@ -6928,7 +6950,14 @@ export function CADGabaritCanvas({
         // Utiliser le snap si activé
         let targetPos = worldPos;
         if (snapEnabled) {
-          const snap = snapSystemRef.current.findSnapPoint(screenX, screenY, sketchRef.current, viewport, []);
+          const snap = snapSystemRef.current.findSnapPoint(
+            screenX,
+            screenY,
+            sketchRef.current,
+            viewport,
+            [],
+            markerSnapPoints,
+          );
           if (snap) {
             targetPos = { x: snap.x, y: snap.y };
             setCurrentSnapPoint(snap);
@@ -7043,9 +7072,14 @@ export function CADGabaritCanvas({
 
         // Snap pendant le drag
         if (snapEnabled) {
-          const snap = snapSystemRef.current.findSnapPoint(screenX, screenY, sketchRef.current, viewport, [
-            dragTarget.id,
-          ]);
+          const snap = snapSystemRef.current.findSnapPoint(
+            screenX,
+            screenY,
+            sketchRef.current,
+            viewport,
+            [dragTarget.id],
+            markerSnapPoints,
+          );
           if (snap) {
             targetPos = { x: snap.x, y: snap.y };
             setCurrentSnapPoint(snap);
@@ -7119,7 +7153,14 @@ export function CADGabaritCanvas({
 
       // Snap
       if (snapEnabled) {
-        const snap = snapSystemRef.current.findSnapPoint(screenX, screenY, sketchRef.current, viewport, []);
+        const snap = snapSystemRef.current.findSnapPoint(
+          screenX,
+          screenY,
+          sketchRef.current,
+          viewport,
+          [],
+          markerSnapPoints,
+        );
         setCurrentSnapPoint(snap);
       } else {
         setCurrentSnapPoint(null);
@@ -7333,6 +7374,7 @@ export function CADGabaritCanvas({
       isDraggingImage,
       imageDragStart,
       selectedImageId,
+      markerSnapPoints,
     ],
   );
 

@@ -1,7 +1,7 @@
 // ============================================
 // SNAP SYSTEM: Système de snap intelligent
 // Détection automatique des points d'accroche
-// VERSION: 1.2 - Tolérance augmentée (25px), priorité nearest améliorée
+// VERSION: 1.3 - Support des points additionnels (markers image)
 // ============================================
 
 import {
@@ -27,6 +27,16 @@ export const DEFAULT_SNAP_SETTINGS: SnapSettings = {
   showGrid: true,
 };
 
+// Type pour les points additionnels (markers, etc.)
+export interface AdditionalSnapPoint {
+  x: number;
+  y: number;
+  type: SnapType;
+  label?: string;
+  entityId?: string;
+  priority?: number;
+}
+
 export class SnapSystem {
   private settings: SnapSettings;
 
@@ -44,6 +54,7 @@ export class SnapSystem {
 
   /**
    * Trouve le meilleur point de snap pour une position donnée
+   * @param additionalPoints - Points supplémentaires à considérer (markers, etc.)
    */
   findSnapPoint(
     mouseX: number,
@@ -51,6 +62,7 @@ export class SnapSystem {
     sketch: Sketch,
     viewport: Viewport,
     excludeIds: string[] = [],
+    additionalPoints: AdditionalSnapPoint[] = [],
   ): SnapPoint | null {
     if (!this.settings.enabled) return null;
 
@@ -59,6 +71,17 @@ export class SnapSystem {
 
     // Collecter tous les points de snap possibles
     const snapPoints: SnapPoint[] = [];
+
+    // 0. Points additionnels (markers, etc.) - PRIORITÉ HAUTE
+    for (const ap of additionalPoints) {
+      snapPoints.push({
+        x: ap.x,
+        y: ap.y,
+        type: ap.type,
+        entityId: ap.entityId,
+        priority: ap.priority ?? 0, // Priorité maximale par défaut
+      });
+    }
 
     // 1. Points existants (endpoints)
     if (this.settings.types.has("endpoint")) {
@@ -495,6 +518,7 @@ export class SnapSystem {
       perpendicular: "⊥",
       nearest: "~",
       grid: "#",
+      marker: "📍",
     };
     return icons[type] || "•";
   }
@@ -513,6 +537,7 @@ export class SnapSystem {
       perpendicular: "Perpendiculaire",
       nearest: "Plus proche",
       grid: "Grille",
+      marker: "Marqueur",
     };
     return names[type] || type;
   }
