@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.02 - Mesure: affichage angle entre 2 segments, snap amélioré (tolérance 25px)
+// VERSION: 6.03 - Rectangle: saisie dimensions en temps réel (style Fusion 360) avec Tab/Entrée
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -187,6 +187,26 @@ export function CADGabaritCanvas({
 
   const [tempGeometry, setTempGeometry] = useState<any>(null);
   const [tempPoints, setTempPoints] = useState<Point[]>([]);
+
+  // Saisie des dimensions du rectangle (style Fusion 360)
+  const [rectInputs, setRectInputs] = useState<{
+    active: boolean;
+    widthValue: string;
+    heightValue: string;
+    activeField: "width" | "height";
+    // Position écran pour afficher les inputs
+    widthInputPos: { x: number; y: number };
+    heightInputPos: { x: number; y: number };
+  }>({
+    active: false,
+    widthValue: "",
+    heightValue: "",
+    activeField: "width",
+    widthInputPos: { x: 0, y: 0 },
+    heightInputPos: { x: 0, y: 0 },
+  });
+  const widthInputRef = useRef<HTMLInputElement>(null);
+  const heightInputRef = useRef<HTMLInputElement>(null);
 
   // Détection de perpendicularité pendant le tracé
   const [perpendicularInfo, setPerpendicularInfo] = useState<{
@@ -1905,7 +1925,29 @@ export function CADGabaritCanvas({
       setOffsetDialog(null);
       setOffsetPreview([]);
     }
+    // Réinitialiser les inputs rectangle quand on change d'outil
+    if (activeTool !== "rectangle") {
+      setRectInputs({
+        active: false,
+        widthValue: "",
+        heightValue: "",
+        activeField: "width",
+        widthInputPos: { x: 0, y: 0 },
+        heightInputPos: { x: 0, y: 0 },
+      });
+    }
   }, [activeTool]);
+
+  // Focus sur l'input largeur quand on commence à tracer un rectangle
+  useEffect(() => {
+    if (rectInputs.active && widthInputRef.current) {
+      // Petit délai pour s'assurer que le DOM est prêt
+      setTimeout(() => {
+        widthInputRef.current?.focus();
+        widthInputRef.current?.select();
+      }, 50);
+    }
+  }, [rectInputs.active]);
 
   // Charger les données
   const loadSketchData = useCallback(
@@ -5288,6 +5330,104 @@ export function CADGabaritCanvas({
     [sketch, findLinesConnectedToPoint, lineIntersection, addToHistory],
   );
 
+  // Création du rectangle avec les dimensions saisies ou le curseur
+  const createRectangleFromInputs = useCallback(() => {
+    if (tempPoints.length === 0 || !tempGeometry?.p1) return;
+
+    const p1 = tempPoints[0];
+    const currentSketch = sketchRef.current;
+
+    // Déterminer les dimensions
+    let width: number;
+    let height: number;
+
+    // Si des valeurs sont saisies, les utiliser
+    const inputWidth = parseFloat(rectInputs.widthValue);
+    const inputHeight = parseFloat(rectInputs.heightValue);
+
+    if (!isNaN(inputWidth) && inputWidth > 0) {
+      width = inputWidth * currentSketch.scaleFactor; // Convertir mm en px
+    } else if (tempGeometry.cursor) {
+      width = Math.abs(tempGeometry.cursor.x - p1.x);
+    } else {
+      return; // Pas de dimension valide
+    }
+
+    if (!isNaN(inputHeight) && inputHeight > 0) {
+      height = inputHeight * currentSketch.scaleFactor; // Convertir mm en px
+    } else if (tempGeometry.cursor) {
+      height = Math.abs(tempGeometry.cursor.y - p1.y);
+    } else {
+      return; // Pas de dimension valide
+    }
+
+    // Déterminer la direction (basée sur le curseur ou par défaut vers le bas-droite)
+    let dirX = 1;
+    let dirY = 1;
+    if (tempGeometry.cursor) {
+      dirX = tempGeometry.cursor.x >= p1.x ? 1 : -1;
+      dirY = tempGeometry.cursor.y >= p1.y ? 1 : -1;
+    }
+
+    // Calculer les 4 coins
+    const p3 = { x: p1.x + width * dirX, y: p1.y + height * dirY };
+    const p2: Point = { id: generateId(), x: p3.x, y: p1.y };
+    const p4: Point = { id: generateId(), x: p1.x, y: p3.y };
+    const p3Pt: Point = { id: generateId(), x: p3.x, y: p3.y };
+
+    // Créer le sketch
+    const newSketch = { ...currentSketch };
+    newSketch.points = new Map(currentSketch.points);
+    newSketch.geometries = new Map(currentSketch.geometries);
+    newSketch.constraints = new Map(currentSketch.constraints);
+
+    newSketch.points.set(p1.id, p1);
+    newSketch.points.set(p2.id, p2);
+    newSketch.points.set(p3Pt.id, p3Pt);
+    newSketch.points.set(p4.id, p4);
+
+    // Créer les 4 lignes avec le calque actif
+    const lines = [
+      { id: generateId(), type: "line" as const, p1: p1.id, p2: p2.id, layerId: currentSketch.activeLayerId },
+      { id: generateId(), type: "line" as const, p1: p2.id, p2: p3Pt.id, layerId: currentSketch.activeLayerId },
+      { id: generateId(), type: "line" as const, p1: p3Pt.id, p2: p4.id, layerId: currentSketch.activeLayerId },
+      { id: generateId(), type: "line" as const, p1: p4.id, p2: p1.id, layerId: currentSketch.activeLayerId },
+    ];
+
+    lines.forEach((l) => newSketch.geometries.set(l.id, l));
+
+    // Détecter et créer les points d'intersection
+    for (const line of lines) {
+      createIntersectionPoints(line.id, newSketch);
+    }
+
+    // Ajouter contraintes horizontales/verticales
+    newSketch.constraints.set(generateId(), { id: generateId(), type: "horizontal", entities: [lines[0].id] });
+    newSketch.constraints.set(generateId(), { id: generateId(), type: "horizontal", entities: [lines[2].id] });
+    newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[1].id] });
+    newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[3].id] });
+
+    setSketch(newSketch);
+    solveSketch(newSketch);
+    addToHistory(newSketch);
+
+    // Reset
+    setTempPoints([]);
+    setTempGeometry(null);
+    setRectInputs({
+      active: false,
+      widthValue: "",
+      heightValue: "",
+      activeField: "width",
+      widthInputPos: { x: 0, y: 0 },
+      heightInputPos: { x: 0, y: 0 },
+    });
+
+    const wMm = width / currentSketch.scaleFactor;
+    const hMm = height / currentSketch.scaleFactor;
+    toast.success(`Rectangle ${wMm.toFixed(1)} × ${hMm.toFixed(1)} mm`);
+  }, [tempPoints, tempGeometry, rectInputs, createIntersectionPoints, solveSketch, addToHistory]);
+
   // Gestion de la souris
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -5799,55 +5939,18 @@ export function CADGabaritCanvas({
             const p1: Point = { id: generateId(), x: targetPos.x, y: targetPos.y };
             setTempPoints([p1]);
             setTempGeometry({ type: "rectangle", p1 });
+            // Initialiser les inputs avec valeurs vides
+            setRectInputs({
+              active: true,
+              widthValue: "",
+              heightValue: "",
+              activeField: "width",
+              widthInputPos: { x: 0, y: 0 },
+              heightInputPos: { x: 0, y: 0 },
+            });
           } else {
-            const p1 = tempPoints[0];
-            const p3 = targetPos;
-
-            // Créer les 4 coins
-            const p2: Point = { id: generateId(), x: p3.x, y: p1.y };
-            const p4: Point = { id: generateId(), x: p1.x, y: p3.y };
-            const p3Pt: Point = { id: generateId(), x: p3.x, y: p3.y };
-
-            // Utiliser sketchRef.current pour éviter les closures stales
-            const currentSketch = sketchRef.current;
-            const newSketch = { ...currentSketch };
-            newSketch.points = new Map(currentSketch.points);
-            newSketch.geometries = new Map(currentSketch.geometries);
-            newSketch.constraints = new Map(currentSketch.constraints);
-
-            newSketch.points.set(p1.id, p1);
-            newSketch.points.set(p2.id, p2);
-            newSketch.points.set(p3Pt.id, p3Pt);
-            newSketch.points.set(p4.id, p4);
-
-            // Créer les 4 lignes avec le calque actif
-            const lines = [
-              { id: generateId(), type: "line" as const, p1: p1.id, p2: p2.id, layerId: currentSketch.activeLayerId },
-              { id: generateId(), type: "line" as const, p1: p2.id, p2: p3Pt.id, layerId: currentSketch.activeLayerId },
-              { id: generateId(), type: "line" as const, p1: p3Pt.id, p2: p4.id, layerId: currentSketch.activeLayerId },
-              { id: generateId(), type: "line" as const, p1: p4.id, p2: p1.id, layerId: currentSketch.activeLayerId },
-            ];
-
-            lines.forEach((l) => newSketch.geometries.set(l.id, l));
-
-            // Détecter et créer les points d'intersection avec les segments existants
-            // On parcourt les lignes du rectangle et on les coupe si elles croisent d'autres segments
-            for (const line of lines) {
-              createIntersectionPoints(line.id, newSketch);
-            }
-
-            // Ajouter contraintes horizontales/verticales
-            newSketch.constraints.set(generateId(), { id: generateId(), type: "horizontal", entities: [lines[0].id] });
-            newSketch.constraints.set(generateId(), { id: generateId(), type: "horizontal", entities: [lines[2].id] });
-            newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[1].id] });
-            newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[3].id] });
-
-            setSketch(newSketch);
-            solveSketch(newSketch);
-            addToHistory(newSketch);
-
-            setTempPoints([]);
-            setTempGeometry(null);
+            // Créer le rectangle avec les dimensions (inputs ou curseur)
+            createRectangleFromInputs();
           }
           break;
         }
@@ -6602,6 +6705,37 @@ export function CADGabaritCanvas({
           });
         } else if (tempGeometry.type === "rectangle") {
           setPerpendicularInfo(null);
+
+          // Calculer les positions des inputs en coordonnées écran (mais ne pas modifier les valeurs)
+          const p1 = tempGeometry.p1;
+
+          // Calculer les positions des inputs en coordonnées écran
+          const rect = canvasRef.current?.getBoundingClientRect();
+          if (rect) {
+            // Position du milieu du côté supérieur (pour largeur)
+            const midTopX = (p1.x + targetPos.x) / 2;
+            const topY = Math.min(p1.y, targetPos.y);
+            const widthScreenPos = {
+              x: midTopX * viewport.scale + viewport.offsetX,
+              y: topY * viewport.scale + viewport.offsetY - 35,
+            };
+
+            // Position du milieu du côté gauche (pour hauteur)
+            const leftX = Math.min(p1.x, targetPos.x);
+            const midLeftY = (p1.y + targetPos.y) / 2;
+            const heightScreenPos = {
+              x: leftX * viewport.scale + viewport.offsetX - 75,
+              y: midLeftY * viewport.scale + viewport.offsetY - 12,
+            };
+
+            setRectInputs((prev) => ({
+              ...prev,
+              active: true,
+              widthInputPos: widthScreenPos,
+              heightInputPos: heightScreenPos,
+            }));
+          }
+
           setTempGeometry({
             ...tempGeometry,
             cursor: targetPos,
@@ -8917,6 +9051,113 @@ export function CADGabaritCanvas({
                 }
               }}
             />
+
+            {/* Inputs de saisie rectangle (style Fusion 360) */}
+            {rectInputs.active && tempGeometry?.type === "rectangle" && tempGeometry.cursor && (
+              <>
+                {/* Input largeur (horizontal - en haut) */}
+                <div
+                  className="absolute z-50 flex items-center"
+                  style={{
+                    left: `${rectInputs.widthInputPos.x}px`,
+                    top: `${rectInputs.widthInputPos.y}px`,
+                    transform: "translateX(-50%)",
+                  }}
+                >
+                  <input
+                    ref={widthInputRef}
+                    type="text"
+                    inputMode="decimal"
+                    value={rectInputs.widthValue}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
+                      setRectInputs((prev) => ({ ...prev, widthValue: val }));
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Tab") {
+                        e.preventDefault();
+                        setRectInputs((prev) => ({ ...prev, activeField: "height" }));
+                        heightInputRef.current?.focus();
+                        heightInputRef.current?.select();
+                      } else if (e.key === "Enter") {
+                        e.preventDefault();
+                        createRectangleFromInputs();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setTempPoints([]);
+                        setTempGeometry(null);
+                        setRectInputs({
+                          active: false,
+                          widthValue: "",
+                          heightValue: "",
+                          activeField: "width",
+                          widthInputPos: { x: 0, y: 0 },
+                          heightInputPos: { x: 0, y: 0 },
+                        });
+                      }
+                    }}
+                    className={`w-16 h-7 px-2 text-center text-sm font-medium rounded border-2 shadow-lg outline-none ${
+                      rectInputs.activeField === "width"
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-gray-300 bg-white text-gray-700"
+                    }`}
+                    placeholder="L"
+                    autoFocus={rectInputs.activeField === "width"}
+                  />
+                  <span className="ml-1 text-xs text-gray-500 font-medium bg-white/80 px-1 rounded">mm</span>
+                </div>
+
+                {/* Input hauteur (vertical - à gauche) */}
+                <div
+                  className="absolute z-50 flex items-center"
+                  style={{
+                    left: `${rectInputs.heightInputPos.x}px`,
+                    top: `${rectInputs.heightInputPos.y}px`,
+                  }}
+                >
+                  <input
+                    ref={heightInputRef}
+                    type="text"
+                    inputMode="decimal"
+                    value={rectInputs.heightValue}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
+                      setRectInputs((prev) => ({ ...prev, heightValue: val }));
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Tab") {
+                        e.preventDefault();
+                        setRectInputs((prev) => ({ ...prev, activeField: "width" }));
+                        widthInputRef.current?.focus();
+                        widthInputRef.current?.select();
+                      } else if (e.key === "Enter") {
+                        e.preventDefault();
+                        createRectangleFromInputs();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setTempPoints([]);
+                        setTempGeometry(null);
+                        setRectInputs({
+                          active: false,
+                          widthValue: "",
+                          heightValue: "",
+                          activeField: "width",
+                          widthInputPos: { x: 0, y: 0 },
+                          heightInputPos: { x: 0, y: 0 },
+                        });
+                      }
+                    }}
+                    className={`w-16 h-7 px-2 text-center text-sm font-medium rounded border-2 shadow-lg outline-none ${
+                      rectInputs.activeField === "height"
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-gray-300 bg-white text-gray-700"
+                    }`}
+                    placeholder="H"
+                  />
+                  <span className="ml-1 text-xs text-gray-500 font-medium bg-white/80 px-1 rounded">mm</span>
+                </div>
+              </>
+            )}
 
             {/* Indicateur discret pour l'outil de mesure - sous la toolbar */}
             {activeTool === "measure" && (
