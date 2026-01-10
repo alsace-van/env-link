@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.25 - Remplissage arcs formant cercle complet
+// VERSION: 3.26 - Dimensions temps réel pendant tracé (longueur, rayon, angle)
 // ============================================
 
 import {
@@ -357,7 +357,7 @@ export class CADRenderer {
 
     // 5. Temp geometry (during drawing)
     if (tempGeometry) {
-      this.drawTempGeometry(tempGeometry);
+      this.drawTempGeometry(tempGeometry, sketch);
     }
 
     // 6. Constraints
@@ -1345,24 +1345,102 @@ export class CADRenderer {
   /**
    * Dessine la géométrie temporaire (pendant le dessin)
    */
-  private drawTempGeometry(temp: any): void {
+  private drawTempGeometry(temp: any, sketch: Sketch): void {
     this.ctx.strokeStyle = this.styles.selectedColor;
     this.ctx.lineWidth = this.styles.lineWidth / this.viewport.scale;
     this.ctx.setLineDash([5 / this.viewport.scale, 5 / this.viewport.scale]);
 
+    const scaleFactor = this.currentScaleFactor || 1;
+    const fontSize = 12 / this.viewport.scale;
+
     if (temp.type === "line" && temp.points?.length >= 1) {
+      const p1 = temp.points[0];
+      const p2 = temp.points.length > 1 ? temp.points[1] : temp.cursor;
+
       this.ctx.beginPath();
-      this.ctx.moveTo(temp.points[0].x, temp.points[0].y);
-      if (temp.points.length > 1) {
-        this.ctx.lineTo(temp.points[1].x, temp.points[1].y);
-      } else if (temp.cursor) {
-        this.ctx.lineTo(temp.cursor.x, temp.cursor.y);
+      this.ctx.moveTo(p1.x, p1.y);
+      if (p2) {
+        this.ctx.lineTo(p2.x, p2.y);
       }
       this.ctx.stroke();
+
+      // Afficher la longueur en mm
+      if (p2) {
+        const lengthPx = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+        const lengthMm = lengthPx / scaleFactor;
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+
+        // Offset perpendiculaire pour ne pas chevaucher la ligne
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const offsetDist = 15 / this.viewport.scale;
+        const offsetX = len > 0 ? (-dy / len) * offsetDist : 0;
+        const offsetY = len > 0 ? (dx / len) * offsetDist : offsetDist;
+
+        this.ctx.save();
+        this.ctx.setLineDash([]);
+        this.ctx.fillStyle = "#3B82F6";
+        this.ctx.font = `bold ${fontSize}px Arial`;
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+
+        // Fond blanc pour lisibilité
+        const text = `${lengthMm.toFixed(1)} mm`;
+        const textWidth = this.ctx.measureText(text).width;
+        this.ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+        this.ctx.fillRect(
+          midX + offsetX - textWidth / 2 - 3 / this.viewport.scale,
+          midY + offsetY - fontSize / 2 - 2 / this.viewport.scale,
+          textWidth + 6 / this.viewport.scale,
+          fontSize + 4 / this.viewport.scale,
+        );
+
+        this.ctx.fillStyle = "#3B82F6";
+        this.ctx.fillText(text, midX + offsetX, midY + offsetY);
+        this.ctx.restore();
+
+        // Calculer l'angle si le point de départ est connecté à un segment existant
+        this.drawAngleWithPreviousSegment(p1, p2, sketch, scaleFactor, fontSize);
+      }
     } else if (temp.type === "circle" && temp.center) {
+      const center = temp.center;
+      const radius = temp.radius || 0;
+
       this.ctx.beginPath();
-      this.ctx.arc(temp.center.x, temp.center.y, temp.radius || 0, 0, Math.PI * 2);
+      this.ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
       this.ctx.stroke();
+
+      // Afficher le rayon en mm
+      if (radius > 0) {
+        const radiusMm = radius / scaleFactor;
+
+        this.ctx.save();
+        this.ctx.setLineDash([]);
+        this.ctx.fillStyle = "#3B82F6";
+        this.ctx.font = `bold ${fontSize}px Arial`;
+        this.ctx.textAlign = "left";
+        this.ctx.textBaseline = "middle";
+
+        const text = `R ${radiusMm.toFixed(1)} mm`;
+        const textX = center.x + 10 / this.viewport.scale;
+        const textY = center.y;
+        const textWidth = this.ctx.measureText(text).width;
+
+        // Fond blanc
+        this.ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+        this.ctx.fillRect(
+          textX - 3 / this.viewport.scale,
+          textY - fontSize / 2 - 2 / this.viewport.scale,
+          textWidth + 6 / this.viewport.scale,
+          fontSize + 4 / this.viewport.scale,
+        );
+
+        this.ctx.fillStyle = "#3B82F6";
+        this.ctx.fillText(text, textX, textY);
+        this.ctx.restore();
+      }
     } else if (temp.type === "rectangle" && temp.p1) {
       const p1 = temp.p1;
       const p2 = temp.cursor || temp.p2;
@@ -1370,6 +1448,60 @@ export class CADRenderer {
         this.ctx.beginPath();
         this.ctx.rect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
         this.ctx.stroke();
+
+        // Afficher largeur et hauteur en mm
+        const widthPx = Math.abs(p2.x - p1.x);
+        const heightPx = Math.abs(p2.y - p1.y);
+        const widthMm = widthPx / scaleFactor;
+        const heightMm = heightPx / scaleFactor;
+
+        this.ctx.save();
+        this.ctx.setLineDash([]);
+        this.ctx.fillStyle = "#3B82F6";
+        this.ctx.font = `bold ${fontSize}px Arial`;
+
+        // Largeur (en haut ou en bas)
+        const midX = (p1.x + p2.x) / 2;
+        const topY = Math.min(p1.y, p2.y);
+        const bottomY = Math.max(p1.y, p2.y);
+        const widthText = `${widthMm.toFixed(1)} mm`;
+        const widthTextWidth = this.ctx.measureText(widthText).width;
+
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "bottom";
+
+        // Fond blanc pour largeur
+        this.ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+        this.ctx.fillRect(
+          midX - widthTextWidth / 2 - 3 / this.viewport.scale,
+          topY - fontSize - 8 / this.viewport.scale,
+          widthTextWidth + 6 / this.viewport.scale,
+          fontSize + 4 / this.viewport.scale,
+        );
+        this.ctx.fillStyle = "#3B82F6";
+        this.ctx.fillText(widthText, midX, topY - 5 / this.viewport.scale);
+
+        // Hauteur (à gauche ou à droite)
+        const leftX = Math.min(p1.x, p2.x);
+        const midY = (p1.y + p2.y) / 2;
+        const heightText = `${heightMm.toFixed(1)} mm`;
+        const heightTextWidth = this.ctx.measureText(heightText).width;
+
+        this.ctx.textAlign = "right";
+        this.ctx.textBaseline = "middle";
+
+        // Fond blanc pour hauteur
+        this.ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+        this.ctx.fillRect(
+          leftX - heightTextWidth - 8 / this.viewport.scale,
+          midY - fontSize / 2 - 2 / this.viewport.scale,
+          heightTextWidth + 6 / this.viewport.scale,
+          fontSize + 4 / this.viewport.scale,
+        );
+        this.ctx.fillStyle = "#3B82F6";
+        this.ctx.fillText(heightText, leftX - 5 / this.viewport.scale, midY);
+
+        this.ctx.restore();
       }
     } else if (temp.type === "bezier" && temp.points?.length >= 1) {
       // Aperçu Bézier
@@ -1379,6 +1511,34 @@ export class CADRenderer {
         this.ctx.moveTo(temp.points[0].x, temp.points[0].y);
         this.ctx.lineTo(temp.cursor.x, temp.cursor.y);
         this.ctx.stroke();
+
+        // Afficher la longueur
+        const p1 = temp.points[0];
+        const p2 = temp.cursor;
+        const lengthPx = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+        const lengthMm = lengthPx / scaleFactor;
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+
+        this.ctx.save();
+        this.ctx.setLineDash([]);
+        this.ctx.fillStyle = "#3B82F6";
+        this.ctx.font = `bold ${fontSize}px Arial`;
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+
+        const text = `${lengthMm.toFixed(1)} mm`;
+        const textWidth = this.ctx.measureText(text).width;
+        this.ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+        this.ctx.fillRect(
+          midX - textWidth / 2 - 3 / this.viewport.scale,
+          midY - 20 / this.viewport.scale - fontSize / 2,
+          textWidth + 6 / this.viewport.scale,
+          fontSize + 4 / this.viewport.scale,
+        );
+        this.ctx.fillStyle = "#3B82F6";
+        this.ctx.fillText(text, midX, midY - 20 / this.viewport.scale);
+        this.ctx.restore();
       } else if (temp.points.length >= 2) {
         const p1 = temp.points[0];
         const p2 = temp.points[1];
@@ -1399,9 +1559,150 @@ export class CADRenderer {
         this.ctx.lineTo(cp2.x, cp2.y);
         this.ctx.stroke();
       }
+    } else if (temp.type === "arc" && temp.center) {
+      // Arc temporaire
+      const center = temp.center;
+      const radius = temp.radius || 0;
+      const startAngle = temp.startAngle || 0;
+      const endAngle = temp.endAngle || 0;
+
+      if (radius > 0) {
+        this.ctx.beginPath();
+        this.ctx.arc(center.x, center.y, radius, startAngle, endAngle, temp.counterClockwise || false);
+        this.ctx.stroke();
+
+        // Afficher le rayon
+        const radiusMm = radius / scaleFactor;
+        this.ctx.save();
+        this.ctx.setLineDash([]);
+        this.ctx.fillStyle = "#3B82F6";
+        this.ctx.font = `bold ${fontSize}px Arial`;
+        this.ctx.textAlign = "left";
+        this.ctx.textBaseline = "middle";
+
+        const text = `R ${radiusMm.toFixed(1)} mm`;
+        const textX = center.x + 10 / this.viewport.scale;
+        const textY = center.y;
+
+        this.ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+        const textWidth = this.ctx.measureText(text).width;
+        this.ctx.fillRect(
+          textX - 3 / this.viewport.scale,
+          textY - fontSize / 2 - 2 / this.viewport.scale,
+          textWidth + 6 / this.viewport.scale,
+          fontSize + 4 / this.viewport.scale,
+        );
+        this.ctx.fillStyle = "#3B82F6";
+        this.ctx.fillText(text, textX, textY);
+        this.ctx.restore();
+      }
     }
 
     this.ctx.setLineDash([]);
+  }
+
+  /**
+   * Dessine l'angle entre le nouveau segment et un segment existant connecté
+   */
+  private drawAngleWithPreviousSegment(
+    p1: { x: number; y: number },
+    p2: { x: number; y: number },
+    sketch: Sketch,
+    scaleFactor: number,
+    fontSize: number,
+  ): void {
+    // Chercher un point existant proche de p1
+    let connectedPointId: string | null = null;
+    const tolerance = 5 / this.viewport.scale;
+
+    for (const [pointId, point] of sketch.points) {
+      const dist = Math.sqrt((point.x - p1.x) ** 2 + (point.y - p1.y) ** 2);
+      if (dist < tolerance) {
+        connectedPointId = pointId;
+        break;
+      }
+    }
+
+    if (!connectedPointId) return;
+
+    // Chercher les segments connectés à ce point
+    const connectedLines: Array<{ otherPoint: { x: number; y: number } }> = [];
+
+    sketch.geometries.forEach((geo) => {
+      if (geo.type === "line") {
+        const line = geo as Line;
+        if (line.p1 === connectedPointId) {
+          const otherPt = sketch.points.get(line.p2);
+          if (otherPt) connectedLines.push({ otherPoint: otherPt });
+        } else if (line.p2 === connectedPointId) {
+          const otherPt = sketch.points.get(line.p1);
+          if (otherPt) connectedLines.push({ otherPoint: otherPt });
+        }
+      }
+    });
+
+    if (connectedLines.length === 0) return;
+
+    // Calculer l'angle avec le premier segment trouvé
+    const prevLine = connectedLines[0];
+    const vec1 = { x: prevLine.otherPoint.x - p1.x, y: prevLine.otherPoint.y - p1.y };
+    const vec2 = { x: p2.x - p1.x, y: p2.y - p1.y };
+
+    const len1 = Math.sqrt(vec1.x * vec1.x + vec1.y * vec1.y);
+    const len2 = Math.sqrt(vec2.x * vec2.x + vec2.y * vec2.y);
+
+    if (len1 < 0.001 || len2 < 0.001) return;
+
+    const dot = vec1.x * vec2.x + vec1.y * vec2.y;
+    const angleRad = Math.acos(Math.max(-1, Math.min(1, dot / (len1 * len2))));
+    const angleDeg = (angleRad * 180) / Math.PI;
+
+    // Dessiner l'arc d'angle
+    const arcRadius = 20 / this.viewport.scale;
+    const startAngle = Math.atan2(vec1.y, vec1.x);
+    const endAngle = Math.atan2(vec2.y, vec2.x);
+
+    this.ctx.save();
+    this.ctx.setLineDash([]);
+    this.ctx.strokeStyle = "#F97316"; // Orange
+    this.ctx.lineWidth = 1.5 / this.viewport.scale;
+
+    // Déterminer le sens de l'arc (le plus court)
+    let deltaAngle = endAngle - startAngle;
+    while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
+    while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
+    const counterClockwise = deltaAngle < 0;
+
+    this.ctx.beginPath();
+    this.ctx.arc(p1.x, p1.y, arcRadius, startAngle, endAngle, counterClockwise);
+    this.ctx.stroke();
+
+    // Afficher la valeur de l'angle
+    const midAngle = startAngle + deltaAngle / 2;
+    const textDist = arcRadius + 15 / this.viewport.scale;
+    const textX = p1.x + Math.cos(midAngle) * textDist;
+    const textY = p1.y + Math.sin(midAngle) * textDist;
+
+    this.ctx.fillStyle = "#F97316";
+    this.ctx.font = `bold ${fontSize}px Arial`;
+    this.ctx.textAlign = "center";
+    this.ctx.textBaseline = "middle";
+
+    const angleText = `${angleDeg.toFixed(1)}°`;
+    const textWidth = this.ctx.measureText(angleText).width;
+
+    // Fond blanc
+    this.ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+    this.ctx.fillRect(
+      textX - textWidth / 2 - 3 / this.viewport.scale,
+      textY - fontSize / 2 - 2 / this.viewport.scale,
+      textWidth + 6 / this.viewport.scale,
+      fontSize + 4 / this.viewport.scale,
+    );
+
+    this.ctx.fillStyle = "#F97316";
+    this.ctx.fillText(angleText, textX, textY);
+    this.ctx.restore();
   }
 
   /**

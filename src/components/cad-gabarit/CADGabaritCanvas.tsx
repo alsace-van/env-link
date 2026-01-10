@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.78 - Double-clic arc sélectionne figure (pas modale)
+// VERSION: 5.79 - Dimensions temps réel pendant tracé
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -5173,6 +5173,11 @@ export function CADGabaritCanvas({
             radius,
           });
         } else if (tempGeometry.type === "rectangle") {
+          setTempGeometry({
+            ...tempGeometry,
+            cursor: targetPos,
+          });
+        } else if (tempGeometry.type === "bezier") {
           setTempGeometry({
             ...tempGeometry,
             cursor: targetPos,
