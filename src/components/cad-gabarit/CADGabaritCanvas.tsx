@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.20 - Verrouillage calque/photo + Polyline + Arc 3 points + Symétrie
+// VERSION: 6.21 - Fix priorité sélection : entités géométriques > photos
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2407,8 +2407,8 @@ export function CADGabaritCanvas({
   // Trouver l'entité sous le curseur
   const findEntityAtPosition = useCallback(
     (worldX: number, worldY: number): string | null => {
-      const tolerance = 10 / viewport.scale;
-      const pointTolerance = 8 / viewport.scale; // Tolérance plus stricte pour les points
+      const tolerance = 15 / viewport.scale; // Augmenté de 10 à 15 pour meilleure détection
+      const pointTolerance = 10 / viewport.scale; // Augmenté de 8 à 10
 
       // PRIORITÉ 1: Vérifier les points de COIN en premier (pour congé/chanfrein)
       // Un coin est un point connecté à exactement 2 lignes
@@ -6238,32 +6238,59 @@ export function CADGabaritCanvas({
       }
 
       if (activeTool === "select" && backgroundImages.length > 0 && markerMode === "idle" && !isCalibrationActive) {
-        const clickedImage = findImageAtPosition(worldPos.x, worldPos.y);
-        if (clickedImage) {
-          // Sélectionner l'image
-          setSelectedImageId(clickedImage.id);
-          setSelectedMarkerId(null); // Désélectionner le marker
+        // IMPORTANT: Vérifier d'abord s'il y a une entité géométrique sous le curseur
+        // Les entités ont la priorité sur les photos
+        const entityUnderCursor = findEntityAtPosition(worldPos.x, worldPos.y);
+        console.log("[DEBUG] Click at", worldPos, "entityUnderCursor:", entityUnderCursor);
 
-          // Préparer le drag seulement si l'image n'est pas verrouillée
-          if (!clickedImage.locked) {
-            setIsDraggingImage(true);
-            setImageDragStart({
-              x: worldPos.x,
-              y: worldPos.y,
-              imgX: clickedImage.x,
-              imgY: clickedImage.y,
-            });
+        if (entityUnderCursor) {
+          // Il y a une entité géométrique - la sélectionner directement ici
+          // au lieu de laisser le switch case le faire (pour éviter que la photo intercepte)
+          console.log("[DEBUG] Entité trouvée:", entityUnderCursor);
+          if (e.shiftKey) {
+            const newSelection = new Set(selectedEntities);
+            if (newSelection.has(entityUnderCursor)) {
+              newSelection.delete(entityUnderCursor);
+            } else {
+              newSelection.add(entityUnderCursor);
+            }
+            setSelectedEntities(newSelection);
+          } else {
+            setSelectedEntities(new Set([entityUnderCursor]));
           }
-          // Désélectionner les entités géométriques
-          setSelectedEntities(new Set());
-          return;
+          // Désélectionner photo et marker
+          setSelectedImageId(null);
+          setSelectedMarkerId(null);
+          return; // IMPORTANT: ne pas continuer vers la photo
         } else {
-          // Clic en dehors des images = désélectionner l'image et le marker
-          if (selectedImageId) {
-            setSelectedImageId(null);
-          }
-          if (selectedMarkerId) {
-            setSelectedMarkerId(null);
+          const clickedImage = findImageAtPosition(worldPos.x, worldPos.y);
+          if (clickedImage) {
+            console.log("[DEBUG] Photo sélectionnée:", clickedImage.name);
+            // Sélectionner l'image
+            setSelectedImageId(clickedImage.id);
+            setSelectedMarkerId(null); // Désélectionner le marker
+
+            // Préparer le drag seulement si l'image n'est pas verrouillée
+            if (!clickedImage.locked) {
+              setIsDraggingImage(true);
+              setImageDragStart({
+                x: worldPos.x,
+                y: worldPos.y,
+                imgX: clickedImage.x,
+                imgY: clickedImage.y,
+              });
+            }
+            // Désélectionner les entités géométriques
+            setSelectedEntities(new Set());
+            return;
+          } else {
+            // Clic en dehors des images = désélectionner l'image et le marker
+            if (selectedImageId) {
+              setSelectedImageId(null);
+            }
+            if (selectedMarkerId) {
+              setSelectedMarkerId(null);
+            }
           }
         }
       }
@@ -6538,6 +6565,9 @@ export function CADGabaritCanvas({
               setSelectedEntities(new Set([entityId]));
               setPotentialSelectionDrag(false);
             }
+            // Désélectionner photo et marker quand on sélectionne une entité géométrique
+            setSelectedImageId(null);
+            setSelectedMarkerId(null);
           } else {
             // Clic dans le vide : commencer une sélection rectangulaire
             if (!e.shiftKey) {
@@ -8810,7 +8840,12 @@ export function CADGabaritCanvas({
 
       // Supprimer
       if (e.key === "Delete" || e.key === "Backspace") {
-        // D'abord vérifier si un marker est sélectionné
+        // PRIORITÉ 1: Entités géométriques sélectionnées
+        if (selectedEntities.size > 0) {
+          deleteSelectedEntities();
+          return;
+        }
+        // PRIORITÉ 2: Marker sélectionné
         if (selectedMarkerId) {
           // Sauvegarder l'état actuel dans l'historique AVANT de supprimer
           addToImageHistoryRef.current(backgroundImagesRef.current, markerLinksRef.current);
@@ -8837,7 +8872,7 @@ export function CADGabaritCanvas({
           toast.success("Marqueur supprimé");
           return;
         }
-        // Supprimer l'image sélectionnée si elle existe
+        // PRIORITÉ 3: Photo sélectionnée
         if (selectedImageId) {
           // Sauvegarder l'état actuel dans l'historique AVANT de supprimer
           addToImageHistoryRef.current(backgroundImagesRef.current, markerLinksRef.current);
@@ -8855,10 +8890,6 @@ export function CADGabaritCanvas({
           setSelectedImageId(null);
           toast.success("Photo supprimée");
           return;
-        }
-        // Sinon supprimer les entités géométriques sélectionnées
-        if (selectedEntities.size > 0) {
-          deleteSelectedEntities();
         }
       }
 
