@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.93 - Fix bug closure stale (sketchRef) + perpendicularité plus précise (1.5°/8px)
+// VERSION: 5.94 - Fix complet closure stale (sketchRef dans applyLineLengthChange, applyAngleChange, addToHistory)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -5024,14 +5024,16 @@ export function CADGabaritCanvas({
   // Modifier la longueur d'une ligne
   const applyLineLengthChange = useCallback(
     (lineId: string, newLengthMm: number, anchorMode: "p1" | "p2" | "center", saveToHistory: boolean = true) => {
-      const line = sketch.geometries.get(lineId) as Line | undefined;
+      // Utiliser sketchRef.current pour éviter les closures stales
+      const currentSketch = sketchRef.current;
+      const line = currentSketch.geometries.get(lineId) as Line | undefined;
       if (!line || line.type !== "line") return;
 
-      const p1 = sketch.points.get(line.p1);
-      const p2 = sketch.points.get(line.p2);
+      const p1 = currentSketch.points.get(line.p1);
+      const p2 = currentSketch.points.get(line.p2);
       if (!p1 || !p2) return;
 
-      const newLengthPx = newLengthMm * sketch.scaleFactor;
+      const newLengthPx = newLengthMm * currentSketch.scaleFactor;
       const currentLength = distance(p1, p2);
 
       if (currentLength < 0.001) return;
@@ -5042,8 +5044,8 @@ export function CADGabaritCanvas({
       const ux = dx / currentLength;
       const uy = dy / currentLength;
 
-      const newSketch = { ...sketch };
-      newSketch.points = new Map(sketch.points);
+      const newSketch = { ...currentSketch };
+      newSketch.points = new Map(currentSketch.points);
 
       if (anchorMode === "p1") {
         // P1 fixe, P2 bouge
@@ -5087,7 +5089,7 @@ export function CADGabaritCanvas({
         toast.success(`Longueur modifiée: ${newLengthMm.toFixed(1)} mm`);
       }
     },
-    [sketch, addToHistory],
+    [addToHistory],
   );
 
   // Modifier un angle entre deux lignes
@@ -5100,17 +5102,19 @@ export function CADGabaritCanvas({
       anchorMode: "line1" | "line2" | "symmetric",
       saveToHistory: boolean = true,
     ) => {
-      const point = sketch.points.get(pointId);
-      const line1 = sketch.geometries.get(line1Id) as Line | undefined;
-      const line2 = sketch.geometries.get(line2Id) as Line | undefined;
+      // Utiliser sketchRef.current pour éviter les closures stales
+      const currentSketch = sketchRef.current;
+      const point = currentSketch.points.get(pointId);
+      const line1 = currentSketch.geometries.get(line1Id) as Line | undefined;
+      const line2 = currentSketch.geometries.get(line2Id) as Line | undefined;
 
       if (!point || !line1 || !line2) return;
 
       // Trouver les autres extrémités
       const other1Id = line1.p1 === pointId ? line1.p2 : line1.p1;
       const other2Id = line2.p1 === pointId ? line2.p2 : line2.p1;
-      const other1 = sketch.points.get(other1Id);
-      const other2 = sketch.points.get(other2Id);
+      const other1 = currentSketch.points.get(other1Id);
+      const other2 = currentSketch.points.get(other2Id);
 
       if (!other1 || !other2) return;
 
@@ -5134,8 +5138,8 @@ export function CADGabaritCanvas({
       const signedNewAngle = currentDelta >= 0 ? newAngleRad : -newAngleRad;
       const angleDiff = signedNewAngle - currentDelta;
 
-      const newSketch = { ...sketch };
-      newSketch.points = new Map(sketch.points);
+      const newSketch = { ...currentSketch };
+      newSketch.points = new Map(currentSketch.points);
 
       if (anchorMode === "line1") {
         // Line1 fixe, on tourne line2
@@ -5183,7 +5187,7 @@ export function CADGabaritCanvas({
         toast.success(`Angle modifié: ${newAngleDeg.toFixed(1)}°`);
       }
     },
-    [sketch, addToHistory],
+    [addToHistory],
   );
 
   // Supprimer un congé et restaurer le coin
@@ -6715,8 +6719,8 @@ export function CADGabaritCanvas({
 
       // Fin du drag de sélection
       if (isDraggingSelection) {
-        addToHistory(sketch);
-        solveSketch(sketch);
+        addToHistory(sketchRef.current);
+        solveSketch(sketchRef.current);
         setIsDraggingSelection(false);
         setPotentialSelectionDrag(false);
         return;
@@ -6729,8 +6733,8 @@ export function CADGabaritCanvas({
 
       // Fin du drag - sauvegarder dans l'historique
       if (isDragging && dragTarget) {
-        addToHistory(sketch);
-        solveSketch(sketch);
+        addToHistory(sketchRef.current);
+        solveSketch(sketchRef.current);
         setIsDragging(false);
         setDragTarget(null);
       } else if (dragTarget) {
@@ -10190,8 +10194,8 @@ export function CADGabaritCanvas({
                       if (e.key === "Enter") {
                         const value = parseFloat(lineLengthDialog.newLength);
                         if (!isNaN(value) && value > 0) {
-                          // Valider: ajouter à l'historique
-                          addToHistory(sketch);
+                          // Valider: ajouter à l'historique (utiliser sketchRef pour éviter closure stale)
+                          addToHistory(sketchRef.current);
                           toast.success(`Longueur modifiée: ${value.toFixed(1)} mm`);
                           setLineLengthDialog(null);
                         }
@@ -10287,8 +10291,8 @@ export function CADGabaritCanvas({
                   onClick={() => {
                     const value = parseFloat(lineLengthDialog.newLength);
                     if (!isNaN(value) && value > 0) {
-                      // Valider: ajouter à l'historique
-                      addToHistory(sketch);
+                      // Valider: ajouter à l'historique (utiliser sketchRef pour éviter closure stale)
+                      addToHistory(sketchRef.current);
                       toast.success(`Longueur modifiée: ${value.toFixed(1)} mm`);
                       setLineLengthDialog(null);
                     }
@@ -10379,8 +10383,8 @@ export function CADGabaritCanvas({
                   if (e.key === "Enter") {
                     const value = parseFloat(angleEditDialog.newAngle);
                     if (!isNaN(value) && value > 0 && value < 180) {
-                      // Valider: ajouter à l'historique
-                      addToHistory(sketch);
+                      // Valider: ajouter à l'historique (utiliser sketchRef pour éviter closure stale)
+                      addToHistory(sketchRef.current);
                       toast.success(`Angle modifié: ${value.toFixed(1)}°`);
                       setAngleEditDialog(null);
                     }
@@ -10496,8 +10500,8 @@ export function CADGabaritCanvas({
               onClick={() => {
                 const value = parseFloat(angleEditDialog.newAngle);
                 if (!isNaN(value) && value > 0 && value < 180) {
-                  // Valider: ajouter à l'historique
-                  addToHistory(sketch);
+                  // Valider: ajouter à l'historique (utiliser sketchRef pour éviter closure stale)
+                  addToHistory(sketchRef.current);
                   toast.success(`Angle modifié: ${value.toFixed(1)}°`);
                   setAngleEditDialog(null);
                 }
