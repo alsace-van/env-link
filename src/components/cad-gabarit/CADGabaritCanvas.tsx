@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.04 - Rectangle: preview temps réel pendant saisie dimensions
+// VERSION: 6.06 - Ajout marqueurs inter-photos avec cotation de distance
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -65,6 +65,8 @@ import {
   Check,
   ChevronRight,
   ChevronLeft,
+  MapPin,
+  Link2,
 } from "lucide-react";
 
 import {
@@ -90,7 +92,11 @@ import {
   ReferenceRectangle,
   HomographyMatrix,
   DistortionCoefficients,
+  BackgroundImage,
+  ImageMarker,
+  ImageMarkerLink,
   CALIBRATION_COLORS,
+  MARKER_COLORS,
   generateId,
   distance,
   midpoint,
@@ -223,6 +229,23 @@ export function CADGabaritCanvas({
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [showBackgroundImage, setShowBackgroundImage] = useState(true);
   const [imageOpacity, setImageOpacity] = useState(0.5);
+
+  // === Multi-photos ===
+  const [backgroundImages, setBackgroundImages] = useState<BackgroundImage[]>([]);
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const [imageDragStart, setImageDragStart] = useState<{ x: number; y: number; imgX: number; imgY: number } | null>(null);
+
+  // === Marqueurs inter-photos ===
+  const [markerLinks, setMarkerLinks] = useState<ImageMarkerLink[]>([]);
+  const [markerMode, setMarkerMode] = useState<"idle" | "addMarker" | "linkMarker1" | "linkMarker2">("idle");
+  const [pendingLink, setPendingLink] = useState<{ imageId: string; markerId: string } | null>(null);
+  const [linkDistanceDialog, setLinkDistanceDialog] = useState<{
+    open: boolean;
+    marker1: { imageId: string; markerId: string };
+    marker2: { imageId: string; markerId: string };
+    distance: string;
+  } | null>(null);
 
   // Surbrillance des formes fermées
   const [highlightOpacity, setHighlightOpacity] = useState(0.12);
@@ -626,8 +649,13 @@ export function CADGabaritCanvas({
       showGrid,
       showConstraints,
       showDimensions,
-      backgroundImage: showBackgroundImage ? backgroundImageRef.current : null,
-      transformedImage: showBackgroundImage ? transformedImage : null,
+      // Multi-photos
+      backgroundImages: showBackgroundImage ? backgroundImages : [],
+      selectedImageId,
+      markerLinks,
+      // Legacy single image (rétrocompatibilité)
+      backgroundImage: showBackgroundImage && backgroundImages.length === 0 ? backgroundImageRef.current : null,
+      transformedImage: showBackgroundImage && backgroundImages.length === 0 ? transformedImage : null,
       imageOpacity,
       imageScale,
       calibrationData,
@@ -1896,6 +1924,10 @@ export function CADGabaritCanvas({
     tempPoints,
     highlightOpacity,
     mouseWorldPos,
+    // Multi-photos
+    backgroundImages,
+    selectedImageId,
+    markerLinks,
   ]);
 
   useEffect(() => {
@@ -2497,26 +2529,75 @@ export function CADGabaritCanvas({
     [sketch, viewport.scale, selectedEntities],
   );
 
-  // Charger une image de fond
+  // Charger une ou plusieurs images de fond (multi-photos)
   const handleImageUpload = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
 
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const img = new window.Image();
-        img.onload = () => {
-          backgroundImageRef.current = img;
-          setShowBackgroundImage(true);
-          render();
-          toast.success("Image chargée !");
+      const fileArray = Array.from(files);
+      let loadedCount = 0;
+
+      // Calculer la position de départ pour les nouvelles images
+      // Les images sont placées dans la zone visible du canvas avec un décalage
+      const getNextPosition = (index: number) => {
+        // Calculer le centre visible du canvas en coordonnées monde
+        const centerX = (viewport.width / 2 - viewport.offsetX) / viewport.scale;
+        const centerY = (viewport.height / 2 - viewport.offsetY) / viewport.scale;
+
+        // Décalage en spirale pour éviter superposition
+        const offset = 100; // 100 unités entre chaque image
+        const angle = (index * 45 * Math.PI) / 180; // 45° entre chaque
+        const radius = offset * Math.floor(index / 8 + 1); // Spirale
+
+        return {
+          x: centerX + Math.cos(angle) * radius * (index % 8),
+          y: centerY + Math.sin(angle) * radius * (index % 8),
         };
-        img.src = event.target?.result as string;
       };
-      reader.readAsDataURL(file);
+
+      fileArray.forEach((file, index) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new window.Image();
+          img.onload = () => {
+            const position = getNextPosition(backgroundImages.length + index);
+
+            const newImage: BackgroundImage = {
+              id: generateId(),
+              name: file.name,
+              image: img,
+              x: position.x,
+              y: position.y,
+              scale: 1,
+              opacity: imageOpacity,
+              visible: true,
+              locked: false,
+              order: backgroundImages.length + index,
+              markers: [],
+            };
+
+            setBackgroundImages((prev) => [...prev, newImage]);
+            loadedCount++;
+
+            if (loadedCount === fileArray.length) {
+              setShowBackgroundImage(true);
+              toast.success(
+                fileArray.length === 1
+                  ? "Photo chargée !"
+                  : `${fileArray.length} photos chargées !`
+              );
+            }
+          };
+          img.src = event.target?.result as string;
+        };
+        reader.readAsDataURL(file);
+      });
+
+      // Reset l'input pour permettre de re-sélectionner les mêmes fichiers
+      e.target.value = "";
     },
-    [render],
+    [backgroundImages.length, imageOpacity, viewport],
   );
 
   // Import DXF
@@ -5476,6 +5557,36 @@ export function CADGabaritCanvas({
     toast.success(`Rectangle ${wMm.toFixed(1)} × ${hMm.toFixed(1)} mm`);
   }, [tempPoints, tempGeometry, rectInputs, createIntersectionPoints, solveSketch, addToHistory]);
 
+  // === Multi-photos: détection de clic sur une image ===
+  const findImageAtPosition = useCallback(
+    (worldX: number, worldY: number): BackgroundImage | null => {
+      // Chercher dans l'ordre inverse (les images du dessus d'abord)
+      const sortedImages = [...backgroundImages]
+        .filter((img) => img.visible && !img.locked)
+        .sort((a, b) => b.order - a.order);
+
+      for (const bgImage of sortedImages) {
+        const imageToDraw = bgImage.transformedCanvas || bgImage.image;
+        const width = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.width : imageToDraw.width;
+        const height = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.height : imageToDraw.height;
+        const scaledWidth = width * bgImage.scale;
+        const scaledHeight = height * bgImage.scale;
+
+        // Vérifier si le point est dans le rectangle de l'image
+        const left = bgImage.x - scaledWidth / 2;
+        const right = bgImage.x + scaledWidth / 2;
+        const top = bgImage.y - scaledHeight / 2;
+        const bottom = bgImage.y + scaledHeight / 2;
+
+        if (worldX >= left && worldX <= right && worldY >= top && worldY <= bottom) {
+          return bgImage;
+        }
+      }
+      return null;
+    },
+    [backgroundImages]
+  );
+
   // Gestion de la souris
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -5600,6 +5711,120 @@ export function CADGabaritCanvas({
       }
 
       // À partir d'ici, c'est un clic gauche (e.button === 0)
+
+      // === Marqueurs inter-photos ===
+      if (markerMode === "addMarker" && backgroundImages.length > 0) {
+        // Trouver l'image sous le curseur
+        const clickedImage = findImageAtPosition(worldPos.x, worldPos.y);
+        if (clickedImage) {
+          // Calculer la position relative au centre de l'image
+          const relativeX = worldPos.x - clickedImage.x;
+          const relativeY = worldPos.y - clickedImage.y;
+
+          // Créer un nouveau marqueur
+          const markerCount = clickedImage.markers.length;
+          const newMarker: ImageMarker = {
+            id: generateId(),
+            label: String.fromCharCode(65 + markerCount), // A, B, C, ...
+            relativeX,
+            relativeY,
+            color: MARKER_COLORS[markerCount % MARKER_COLORS.length],
+          };
+
+          // Ajouter le marqueur à l'image
+          setBackgroundImages((prev) =>
+            prev.map((img) =>
+              img.id === clickedImage.id
+                ? { ...img, markers: [...img.markers, newMarker] }
+                : img
+            )
+          );
+
+          toast.success(`Marqueur ${newMarker.label} ajouté sur ${clickedImage.name}`);
+          return;
+        } else {
+          toast.error("Cliquez sur une photo pour ajouter un marqueur");
+          return;
+        }
+      }
+
+      // === Lier deux marqueurs avec distance ===
+      if (markerMode === "linkMarker1" || markerMode === "linkMarker2") {
+        // Trouver le marqueur sous le curseur
+        const tolerance = 15 / viewport.scale;
+        let foundMarker: { imageId: string; markerId: string; marker: ImageMarker } | null = null;
+
+        for (const img of backgroundImages) {
+          if (!img.visible) continue;
+          for (const marker of img.markers) {
+            const markerWorldX = img.x + marker.relativeX;
+            const markerWorldY = img.y + marker.relativeY;
+            const dist = distance(worldPos, { x: markerWorldX, y: markerWorldY });
+            if (dist < tolerance) {
+              foundMarker = { imageId: img.id, markerId: marker.id, marker };
+              break;
+            }
+          }
+          if (foundMarker) break;
+        }
+
+        if (foundMarker) {
+          if (markerMode === "linkMarker1") {
+            // Premier marqueur sélectionné
+            setPendingLink({ imageId: foundMarker.imageId, markerId: foundMarker.markerId });
+            setMarkerMode("linkMarker2");
+            toast.info(`Marqueur ${foundMarker.marker.label} sélectionné. Cliquez sur le 2ème marqueur.`);
+          } else if (markerMode === "linkMarker2" && pendingLink) {
+            // Vérifier que ce n'est pas le même marqueur
+            if (pendingLink.imageId === foundMarker.imageId && pendingLink.markerId === foundMarker.markerId) {
+              toast.error("Sélectionnez un marqueur différent");
+              return;
+            }
+            // Vérifier que c'est une photo différente
+            if (pendingLink.imageId === foundMarker.imageId) {
+              toast.error("Sélectionnez un marqueur sur une autre photo");
+              return;
+            }
+            // Ouvrir la boîte de dialogue pour saisir la distance
+            setLinkDistanceDialog({
+              open: true,
+              marker1: pendingLink,
+              marker2: { imageId: foundMarker.imageId, markerId: foundMarker.markerId },
+              distance: "",
+            });
+            setMarkerMode("idle");
+            setPendingLink(null);
+          }
+          return;
+        } else {
+          toast.error("Cliquez sur un marqueur existant");
+          return;
+        }
+      }
+
+      // === Multi-photos: vérifier si on clique sur une image (en mode select) ===
+      if (activeTool === "select" && backgroundImages.length > 0 && markerMode === "idle") {
+        const clickedImage = findImageAtPosition(worldPos.x, worldPos.y);
+        if (clickedImage) {
+          // Sélectionner l'image et préparer le drag
+          setSelectedImageId(clickedImage.id);
+          setIsDraggingImage(true);
+          setImageDragStart({
+            x: worldPos.x,
+            y: worldPos.y,
+            imgX: clickedImage.x,
+            imgY: clickedImage.y,
+          });
+          // Désélectionner les entités géométriques
+          setSelectedEntities(new Set());
+          return;
+        } else {
+          // Clic en dehors des images = désélectionner l'image
+          if (selectedImageId) {
+            setSelectedImageId(null);
+          }
+        }
+      }
 
       // Vérifier si on clique sur un point de mesure pour le déplacer (outil mesure actif)
       if (activeTool === "measure" && measurements.length > 0) {
@@ -6383,6 +6608,10 @@ export function CADGabaritCanvas({
       applyChamfer,
       offsetDialog,
       toggleOffsetSelection,
+      // Multi-photos
+      backgroundImages,
+      selectedImageId,
+      findImageAtPosition,
     ],
   );
 
@@ -6408,6 +6637,21 @@ export function CADGabaritCanvas({
           offsetY: v.offsetY + dy,
         }));
         setPanStart({ x: e.clientX, y: e.clientY });
+        return;
+      }
+
+      // === Multi-photos: drag d'une image ===
+      if (isDraggingImage && imageDragStart && selectedImageId) {
+        const dx = worldPos.x - imageDragStart.x;
+        const dy = worldPos.y - imageDragStart.y;
+
+        setBackgroundImages((prev) =>
+          prev.map((img) =>
+            img.id === selectedImageId
+              ? { ...img, x: imageDragStart.imgX + dx, y: imageDragStart.imgY + dy }
+              : img
+          )
+        );
         return;
       }
 
@@ -6834,6 +7078,10 @@ export function CADGabaritCanvas({
       calibrationData,
       selectionBox,
       selectedEntities,
+      // Multi-photos
+      isDraggingImage,
+      imageDragStart,
+      selectedImageId,
     ],
   );
 
@@ -6847,6 +7095,13 @@ export function CADGabaritCanvas({
       // Fin du pan
       if (isPanning) {
         setIsPanning(false);
+      }
+
+      // === Multi-photos: fin du drag d'une image ===
+      if (isDraggingImage) {
+        setIsDraggingImage(false);
+        setImageDragStart(null);
+        return;
       }
 
       // Fin du drag d'un point de mesure
@@ -7027,6 +7282,8 @@ export function CADGabaritCanvas({
       selectionBox,
       selectedEntities,
       screenToWorld,
+      // Multi-photos
+      isDraggingImage,
     ],
   );
 
@@ -8482,24 +8739,29 @@ export function CADGabaritCanvas({
 
         <Separator orientation="vertical" className="h-6" />
 
-        {/* Image de fond */}
+        {/* Image de fond (Multi-photos) */}
         <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
-          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+          <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleImageUpload} className="hidden" />
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="h-9 px-2">
                   <Image className="h-4 w-4 mr-1" />
-                  <span className="text-xs">Photo</span>
+                  <span className="text-xs">Photos</span>
+                  {backgroundImages.length > 0 && (
+                    <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
+                      {backgroundImages.length}
+                    </Badge>
+                  )}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Charger une image de fond</p>
+                <p>Charger une ou plusieurs photos (multi-sélection possible)</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
 
-          {backgroundImageRef.current && (
+          {backgroundImages.length > 0 && (
             <>
               <Button
                 variant={showBackgroundImage ? "default" : "outline"}
@@ -8509,6 +8771,74 @@ export function CADGabaritCanvas({
               >
                 {showBackgroundImage ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
               </Button>
+
+              {/* Menu de gestion des photos */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 px-2">
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-64">
+                  <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
+                    Photos ({backgroundImages.length})
+                  </div>
+                  <DropdownMenuSeparator />
+                  {backgroundImages.map((img) => (
+                    <DropdownMenuItem
+                      key={img.id}
+                      className={`flex items-center justify-between ${selectedImageId === img.id ? "bg-blue-50" : ""}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setSelectedImageId(img.id === selectedImageId ? null : img.id);
+                      }}
+                    >
+                      <span className="text-xs truncate max-w-[140px]">{img.name}</span>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setBackgroundImages((prev) =>
+                              prev.map((i) => (i.id === img.id ? { ...i, visible: !i.visible } : i))
+                            );
+                          }}
+                        >
+                          {img.visible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-red-500"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setBackgroundImages((prev) => prev.filter((i) => i.id !== img.id));
+                            if (selectedImageId === img.id) setSelectedImageId(null);
+                            toast.success("Photo supprimée");
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-red-500"
+                    onClick={() => {
+                      setBackgroundImages([]);
+                      setSelectedImageId(null);
+                      toast.success("Toutes les photos supprimées");
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Supprimer toutes les photos
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               <div className="flex items-center gap-1 ml-1">
                 <span className="text-xs text-muted-foreground">Opacité:</span>
                 <input
@@ -8517,10 +8847,82 @@ export function CADGabaritCanvas({
                   max="1"
                   step="0.1"
                   value={imageOpacity}
-                  onChange={(e) => setImageOpacity(parseFloat(e.target.value))}
+                  onChange={(e) => {
+                    const newOpacity = parseFloat(e.target.value);
+                    setImageOpacity(newOpacity);
+                    // Appliquer l'opacité à toutes les images
+                    setBackgroundImages((prev) => prev.map((img) => ({ ...img, opacity: newOpacity })));
+                  }}
                   className="w-16 h-1"
                 />
               </div>
+
+              <Separator orientation="vertical" className="h-6 mx-1" />
+
+              {/* Marqueurs inter-photos */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={markerMode === "addMarker" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        if (markerMode === "addMarker") {
+                          setMarkerMode("idle");
+                        } else {
+                          setMarkerMode("addMarker");
+                          toast.info("Cliquez sur une photo pour ajouter un marqueur");
+                        }
+                      }}
+                      className="h-9 px-2"
+                    >
+                      <MapPin className="h-4 w-4 mr-1" />
+                      <span className="text-xs">Marqueur</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Ajouter un point de référence sur une photo</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={markerMode === "linkMarker1" || markerMode === "linkMarker2" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        if (markerMode === "linkMarker1" || markerMode === "linkMarker2") {
+                          setMarkerMode("idle");
+                          setPendingLink(null);
+                        } else {
+                          // Vérifier qu'il y a au moins 2 marqueurs sur des photos différentes
+                          const imagesWithMarkers = backgroundImages.filter(img => img.markers.length > 0);
+                          if (imagesWithMarkers.length < 2) {
+                            toast.error("Ajoutez au moins 1 marqueur sur 2 photos différentes");
+                            return;
+                          }
+                          setMarkerMode("linkMarker1");
+                          toast.info("Cliquez sur le 1er marqueur");
+                        }
+                      }}
+                      className="h-9 px-2"
+                    >
+                      <Link2 className="h-4 w-4 mr-1" />
+                      <span className="text-xs">Lier</span>
+                      {markerLinks.length > 0 && (
+                        <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
+                          {markerLinks.length}
+                        </Badge>
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Lier 2 marqueurs avec une distance connue</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
 
               <Separator orientation="vertical" className="h-6 mx-1" />
 
@@ -10505,6 +10907,84 @@ export function CADGabaritCanvas({
                 className="w-full"
               >
                 <Check className="h-4 w-4" />
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Dialogue distance entre marqueurs de photos */}
+      {linkDistanceDialog && (
+        <Dialog open={linkDistanceDialog.open} onOpenChange={() => setLinkDistanceDialog(null)}>
+          <DialogContent className="sm:max-w-[320px]">
+            <DialogHeader>
+              <DialogTitle>Distance entre marqueurs</DialogTitle>
+              <DialogDescription>
+                Entrez la distance réelle entre les deux points de référence
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <Label htmlFor="link-distance">Distance (mm)</Label>
+              <Input
+                id="link-distance"
+                type="number"
+                value={linkDistanceDialog.distance}
+                onChange={(e) => setLinkDistanceDialog({ ...linkDistanceDialog, distance: e.target.value })}
+                className="mt-2"
+                min="1"
+                step="1"
+                placeholder="ex: 2300"
+                autoFocus
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter") {
+                    const value = parseFloat(linkDistanceDialog.distance);
+                    if (!isNaN(value) && value > 0) {
+                      // Créer le lien
+                      const newLink: ImageMarkerLink = {
+                        id: generateId(),
+                        marker1: linkDistanceDialog.marker1,
+                        marker2: linkDistanceDialog.marker2,
+                        distanceMm: value,
+                        color: MARKER_COLORS[markerLinks.length % MARKER_COLORS.length],
+                      };
+                      setMarkerLinks([...markerLinks, newLink]);
+                      toast.success(`Lien créé: ${value} mm`);
+                      setLinkDistanceDialog(null);
+                    }
+                  }
+                }}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setLinkDistanceDialog(null)}
+              >
+                Annuler
+              </Button>
+              <Button
+                onClick={() => {
+                  const value = parseFloat(linkDistanceDialog.distance);
+                  if (!isNaN(value) && value > 0) {
+                    // Créer le lien
+                    const newLink: ImageMarkerLink = {
+                      id: generateId(),
+                      marker1: linkDistanceDialog.marker1,
+                      marker2: linkDistanceDialog.marker2,
+                      distanceMm: value,
+                      color: MARKER_COLORS[markerLinks.length % MARKER_COLORS.length],
+                    };
+                    setMarkerLinks([...markerLinks, newLink]);
+                    toast.success(`Lien créé: ${value} mm`);
+                    setLinkDistanceDialog(null);
+                  } else {
+                    toast.error("Entrez une distance valide");
+                  }
+                }}
+              >
+                <Check className="h-4 w-4 mr-1" />
+                Valider
               </Button>
             </DialogFooter>
           </DialogContent>

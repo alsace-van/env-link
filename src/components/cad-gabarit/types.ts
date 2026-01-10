@@ -1,7 +1,7 @@
 // ============================================
 // TYPES: CAD Gabarit Types
 // Types pour le système CAO
-// VERSION: 2.8 - Ajout isFillet sur Arc pour distinguer congés des arcs d'intersection
+// VERSION: 3.0 - Ajout ImageMarker et ImageMarkerLink pour alignement multi-photos
 // ============================================
 
 // === GÉOMÉTRIE DE BASE ===
@@ -435,4 +435,61 @@ export const CALIBRATION_COLORS = [
   "#F7DC6F", // Or
   "#BB8FCE", // Mauve
   "#85C1E9", // Bleu ciel
+];
+
+// === IMAGES DE FOND (Multi-photos) ===
+
+// Point de référence sur une image (pour alignement inter-photos)
+export interface ImageMarker {
+  id: string;
+  label: string; // "A", "B", "1", "2", etc.
+  // Position relative à l'image (en pixels depuis le centre de l'image)
+  relativeX: number;
+  relativeY: number;
+  color: string;
+}
+
+// Lien entre deux marqueurs de photos différentes avec distance connue
+export interface ImageMarkerLink {
+  id: string;
+  marker1: {
+    imageId: string;
+    markerId: string;
+  };
+  marker2: {
+    imageId: string;
+    markerId: string;
+  };
+  distanceMm: number; // Distance réelle en mm entre les deux points
+  color: string;
+}
+
+export interface BackgroundImage {
+  id: string;
+  name: string; // Nom du fichier ou label
+  image: HTMLImageElement;
+  x: number; // Position X en coordonnées monde (centre de l'image)
+  y: number; // Position Y en coordonnées monde (centre de l'image)
+  scale: number; // Échelle individuelle (1 = taille originale)
+  opacity: number; // Opacité (0-1)
+  visible: boolean;
+  locked: boolean; // Si verrouillé, ne peut pas être déplacé
+  order: number; // Ordre d'affichage (0 = fond)
+  // Points de référence pour alignement
+  markers: ImageMarker[];
+  // Transformation optionnelle (après calibration)
+  transformedCanvas?: HTMLCanvasElement;
+  calibrationData?: CalibrationData;
+}
+
+// Couleurs pour les marqueurs
+export const MARKER_COLORS = [
+  "#E74C3C", // Rouge
+  "#3498DB", // Bleu
+  "#2ECC71", // Vert
+  "#F39C12", // Orange
+  "#9B59B6", // Violet
+  "#1ABC9C", // Turquoise
+  "#E91E63", // Rose
+  "#00BCD4", // Cyan
 ];

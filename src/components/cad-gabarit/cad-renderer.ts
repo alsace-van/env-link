@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.32 - drawMeasure: affichage angle entre 2 segments (orange)
+// VERSION: 3.34 - Affichage marqueurs inter-photos et liens avec distances
 // ============================================
 
 import {
@@ -22,6 +22,8 @@ import {
   CalibrationData,
   CalibrationPoint,
   CalibrationPair,
+  BackgroundImage,
+  ImageMarkerLink,
   distance,
   midpoint,
   angle,
@@ -91,6 +93,11 @@ export class CADRenderer {
       showGrid?: boolean;
       showConstraints?: boolean;
       showDimensions?: boolean;
+      // Support multi-photos
+      backgroundImages?: BackgroundImage[];
+      selectedImageId?: string | null;
+      markerLinks?: ImageMarkerLink[];
+      // Legacy single image (rétrocompatibilité)
       backgroundImage?: HTMLImageElement | null;
       transformedImage?: HTMLCanvasElement | null;
       imageOpacity?: number;
@@ -126,6 +133,11 @@ export class CADRenderer {
       showGrid = true,
       showConstraints = true,
       showDimensions = true,
+      // Multi-photos
+      backgroundImages = [],
+      selectedImageId = null,
+      markerLinks = [],
+      // Legacy
       backgroundImage = null,
       transformedImage = null,
       imageOpacity = 0.5,
@@ -173,10 +185,14 @@ export class CADRenderer {
     this.ctx.translate(this.viewport.offsetX, this.viewport.offsetY);
     this.ctx.scale(this.viewport.scale, this.viewport.scale);
 
-    // 1. Background image (utiliser l'image transformée si disponible)
-    if (transformedImage) {
+    // 1. Background images (multi-photos)
+    if (backgroundImages.length > 0) {
+      this.drawBackgroundImages(backgroundImages, selectedImageId, markerLinks);
+    } else if (transformedImage) {
+      // Legacy: image transformée unique
       this.drawTransformedImage(transformedImage, imageOpacity, imageScale);
     } else if (backgroundImage) {
+      // Legacy: image simple unique
       this.drawBackgroundImage(backgroundImage, imageOpacity, imageScale);
     }
 
@@ -436,6 +452,165 @@ export class CADRenderer {
     const scaledHeight = canvas.height * imageScale;
     this.ctx.drawImage(canvas, -scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
     this.ctx.globalAlpha = 1;
+  }
+
+  /**
+   * Dessine plusieurs images de fond (multi-photos)
+   * Les images sont triées par ordre et dessinées à leurs positions respectives
+   */
+  private drawBackgroundImages(images: BackgroundImage[], selectedImageId: string | null, markerLinks: ImageMarkerLink[]): void {
+    // Trier par ordre d'affichage (0 = fond, plus élevé = devant)
+    const sortedImages = [...images]
+      .filter(img => img.visible)
+      .sort((a, b) => a.order - b.order);
+
+    for (const bgImage of sortedImages) {
+      this.ctx.save();
+
+      // Positionner l'image à sa position (x, y)
+      this.ctx.translate(bgImage.x, bgImage.y);
+
+      // Appliquer l'opacité
+      this.ctx.globalAlpha = bgImage.opacity;
+
+      // Utiliser l'image transformée si disponible, sinon l'image originale
+      const imageToDraw = bgImage.transformedCanvas || bgImage.image;
+      const width = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.width : imageToDraw.width;
+      const height = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.height : imageToDraw.height;
+
+      // Appliquer l'échelle
+      const scaledWidth = width * bgImage.scale;
+      const scaledHeight = height * bgImage.scale;
+
+      // Dessiner l'image centrée sur sa position
+      this.ctx.drawImage(imageToDraw, -scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
+
+      // Dessiner le cadre de sélection si l'image est sélectionnée
+      if (selectedImageId === bgImage.id) {
+        this.ctx.globalAlpha = 1;
+        this.ctx.strokeStyle = "#0066FF";
+        this.ctx.lineWidth = 2 / this.viewport.scale;
+        this.ctx.setLineDash([5 / this.viewport.scale, 5 / this.viewport.scale]);
+        this.ctx.strokeRect(-scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
+        this.ctx.setLineDash([]);
+
+        // Dessiner les poignées de coin pour indiquer qu'on peut déplacer
+        const handleSize = 8 / this.viewport.scale;
+        this.ctx.fillStyle = "#0066FF";
+        // Coin supérieur gauche
+        this.ctx.fillRect(-scaledWidth / 2 - handleSize / 2, -scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
+        // Coin supérieur droit
+        this.ctx.fillRect(scaledWidth / 2 - handleSize / 2, -scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
+        // Coin inférieur gauche
+        this.ctx.fillRect(-scaledWidth / 2 - handleSize / 2, scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
+        // Coin inférieur droit
+        this.ctx.fillRect(scaledWidth / 2 - handleSize / 2, scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
+      }
+
+      // Afficher le nom de l'image si elle est verrouillée
+      if (bgImage.locked) {
+        this.ctx.globalAlpha = 0.7;
+        this.ctx.fillStyle = "#666666";
+        const fontSize = 12 / this.viewport.scale;
+        this.ctx.font = `${fontSize}px Arial`;
+        this.ctx.textAlign = "center";
+        this.ctx.fillText("🔒", 0, -scaledHeight / 2 - fontSize);
+      }
+
+      // Dessiner les marqueurs de l'image
+      this.ctx.globalAlpha = 1;
+      for (const marker of bgImage.markers) {
+        const markerSize = 10 / this.viewport.scale;
+        const x = marker.relativeX;
+        const y = marker.relativeY;
+
+        // Cercle coloré
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, markerSize, 0, Math.PI * 2);
+        this.ctx.fillStyle = marker.color;
+        this.ctx.fill();
+        this.ctx.strokeStyle = "#FFFFFF";
+        this.ctx.lineWidth = 2 / this.viewport.scale;
+        this.ctx.stroke();
+
+        // Label
+        const fontSize = 12 / this.viewport.scale;
+        this.ctx.font = `bold ${fontSize}px Arial`;
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillStyle = "#FFFFFF";
+        this.ctx.fillText(marker.label, x, y);
+      }
+
+      this.ctx.restore();
+    }
+
+    // Dessiner les liens entre marqueurs (par-dessus toutes les images)
+    for (const link of markerLinks) {
+      // Trouver les deux images et marqueurs
+      const img1 = images.find(img => img.id === link.marker1.imageId);
+      const img2 = images.find(img => img.id === link.marker2.imageId);
+      if (!img1 || !img2) continue;
+
+      const marker1 = img1.markers.find(m => m.id === link.marker1.markerId);
+      const marker2 = img2.markers.find(m => m.id === link.marker2.markerId);
+      if (!marker1 || !marker2) continue;
+
+      // Calculer les positions mondiales des marqueurs
+      const x1 = img1.x + marker1.relativeX;
+      const y1 = img1.y + marker1.relativeY;
+      const x2 = img2.x + marker2.relativeX;
+      const y2 = img2.y + marker2.relativeY;
+
+      this.ctx.save();
+
+      // Dessiner la ligne de liaison
+      this.ctx.beginPath();
+      this.ctx.moveTo(x1, y1);
+      this.ctx.lineTo(x2, y2);
+      this.ctx.strokeStyle = link.color;
+      this.ctx.lineWidth = 2 / this.viewport.scale;
+      this.ctx.setLineDash([8 / this.viewport.scale, 4 / this.viewport.scale]);
+      this.ctx.stroke();
+      this.ctx.setLineDash([]);
+
+      // Dessiner le label de distance au milieu
+      const midX = (x1 + x2) / 2;
+      const midY = (y1 + y2) / 2;
+      const labelText = `${link.distanceMm} mm`;
+
+      const fontSize = 14 / this.viewport.scale;
+      this.ctx.font = `bold ${fontSize}px Arial`;
+      const textWidth = this.ctx.measureText(labelText).width;
+      const padding = 4 / this.viewport.scale;
+
+      // Fond du label
+      this.ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+      this.ctx.fillRect(
+        midX - textWidth / 2 - padding,
+        midY - fontSize / 2 - padding,
+        textWidth + padding * 2,
+        fontSize + padding * 2
+      );
+
+      // Bordure du label
+      this.ctx.strokeStyle = link.color;
+      this.ctx.lineWidth = 1 / this.viewport.scale;
+      this.ctx.strokeRect(
+        midX - textWidth / 2 - padding,
+        midY - fontSize / 2 - padding,
+        textWidth + padding * 2,
+        fontSize + padding * 2
+      );
+
+      // Texte
+      this.ctx.fillStyle = link.color;
+      this.ctx.textAlign = "center";
+      this.ctx.textBaseline = "middle";
+      this.ctx.fillText(labelText, midX, midY);
+
+      this.ctx.restore();
+    }
   }
 
   /**
