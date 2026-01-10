@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.36 - Support des ajustements d'image (contraste, luminosité, netteté)
+// VERSION: 3.37 - Points de calibration dessinés par-dessus tout (après grille et géométries)
 // ============================================
 
 import {
@@ -187,7 +187,7 @@ export class CADRenderer {
 
     // 1. Background images (multi-photos)
     if (backgroundImages.length > 0) {
-      this.drawBackgroundImages(backgroundImages, selectedImageId, markerLinks, showCalibration);
+      this.drawBackgroundImages(backgroundImages, selectedImageId, markerLinks);
     } else if (transformedImage) {
       // Legacy: image transformée unique
       this.drawTransformedImage(transformedImage, imageOpacity, imageScale);
@@ -415,6 +415,11 @@ export class CADRenderer {
       this.drawMeasure(measureData.start, measureData.end, measureData.scale);
     }
 
+    // 8.7. Points de calibration (PAR-DESSUS TOUT en world coords)
+    if (showCalibration && backgroundImages.length > 0 && selectedImageId) {
+      this.drawImageCalibrationPoints(backgroundImages, selectedImageId);
+    }
+
     this.ctx.restore();
 
     // 9. Snap indicator (in screen coords)
@@ -458,7 +463,7 @@ export class CADRenderer {
    * Dessine plusieurs images de fond (multi-photos)
    * Les images sont triées par ordre et dessinées à leurs positions respectives
    */
-  private drawBackgroundImages(images: BackgroundImage[], selectedImageId: string | null, markerLinks: ImageMarkerLink[], showCalibration: boolean): void {
+  private drawBackgroundImages(images: BackgroundImage[], selectedImageId: string | null, markerLinks: ImageMarkerLink[]): void {
     // Trier par ordre d'affichage (0 = fond, plus élevé = devant)
     const sortedImages = [...images]
       .filter(img => img.visible)
@@ -611,92 +616,95 @@ export class CADRenderer {
 
       this.ctx.restore();
     }
+  }
 
-    // Dessiner les points de calibration de l'image sélectionnée (par-dessus tout)
-    if (showCalibration && selectedImageId) {
-      const selectedImage = images.find(img => img.id === selectedImageId);
-      if (selectedImage?.calibrationData) {
-        const calibData = selectedImage.calibrationData;
+  /**
+   * Dessine les points de calibration de l'image sélectionnée
+   * Appelé en dernier pour être par-dessus tout
+   */
+  private drawImageCalibrationPoints(images: BackgroundImage[], selectedImageId: string): void {
+    const selectedImage = images.find(img => img.id === selectedImageId);
+    if (!selectedImage?.calibrationData) return;
 
-        // Dessiner les paires de calibration
-        calibData.pairs.forEach((pair) => {
-          const p1 = calibData.points.get(pair.point1Id);
-          const p2 = calibData.points.get(pair.point2Id);
-          if (!p1 || !p2) return;
+    const calibData = selectedImage.calibrationData;
 
-          // Convertir en coordonnées monde
-          const x1 = selectedImage.x + p1.x;
-          const y1 = selectedImage.y + p1.y;
-          const x2 = selectedImage.x + p2.x;
-          const y2 = selectedImage.y + p2.y;
+    // Dessiner les paires de calibration (lignes)
+    calibData.pairs.forEach((pair) => {
+      const p1 = calibData.points.get(pair.point1Id);
+      const p2 = calibData.points.get(pair.point2Id);
+      if (!p1 || !p2) return;
 
-          this.ctx.save();
-          this.ctx.beginPath();
-          this.ctx.moveTo(x1, y1);
-          this.ctx.lineTo(x2, y2);
-          this.ctx.strokeStyle = pair.color;
-          this.ctx.lineWidth = 2 / this.viewport.scale;
-          this.ctx.setLineDash([6 / this.viewport.scale, 4 / this.viewport.scale]);
-          this.ctx.stroke();
-          this.ctx.setLineDash([]);
+      // Convertir en coordonnées monde
+      const x1 = selectedImage.x + p1.x;
+      const y1 = selectedImage.y + p1.y;
+      const x2 = selectedImage.x + p2.x;
+      const y2 = selectedImage.y + p2.y;
 
-          // Label de distance
-          const midX = (x1 + x2) / 2;
-          const midY = (y1 + y2) / 2;
-          const fontSize = 12 / this.viewport.scale;
-          this.ctx.font = `bold ${fontSize}px Arial`;
-          const labelText = `${pair.distanceMm} mm`;
-          const textWidth = this.ctx.measureText(labelText).width;
-          const padding = 3 / this.viewport.scale;
+      this.ctx.save();
+      this.ctx.beginPath();
+      this.ctx.moveTo(x1, y1);
+      this.ctx.lineTo(x2, y2);
+      this.ctx.strokeStyle = pair.color;
+      this.ctx.lineWidth = 2 / this.viewport.scale;
+      this.ctx.setLineDash([6 / this.viewport.scale, 4 / this.viewport.scale]);
+      this.ctx.stroke();
+      this.ctx.setLineDash([]);
 
-          this.ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-          this.ctx.fillRect(midX - textWidth / 2 - padding, midY - fontSize / 2 - padding, textWidth + padding * 2, fontSize + padding * 2);
-          this.ctx.fillStyle = pair.color;
-          this.ctx.textAlign = "center";
-          this.ctx.textBaseline = "middle";
-          this.ctx.fillText(labelText, midX, midY);
-          this.ctx.restore();
-        });
+      // Label de distance
+      const midX = (x1 + x2) / 2;
+      const midY = (y1 + y2) / 2;
+      const fontSize = 12 / this.viewport.scale;
+      this.ctx.font = `bold ${fontSize}px Arial`;
+      const labelText = `${pair.distanceMm} mm`;
+      const textWidth = this.ctx.measureText(labelText).width;
+      const padding = 3 / this.viewport.scale;
 
-        // Dessiner les points de calibration PAR-DESSUS
-        calibData.points.forEach((point) => {
-          const worldX = selectedImage.x + point.x;
-          const worldY = selectedImage.y + point.y;
-          const pointSize = 8 / this.viewport.scale;
+      this.ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+      this.ctx.fillRect(midX - textWidth / 2 - padding, midY - fontSize / 2 - padding, textWidth + padding * 2, fontSize + padding * 2);
+      this.ctx.fillStyle = pair.color;
+      this.ctx.textAlign = "center";
+      this.ctx.textBaseline = "middle";
+      this.ctx.fillText(labelText, midX, midY);
+      this.ctx.restore();
+    });
 
-          this.ctx.save();
+    // Dessiner les points de calibration PAR-DESSUS
+    calibData.points.forEach((point) => {
+      const worldX = selectedImage.x + point.x;
+      const worldY = selectedImage.y + point.y;
+      const pointSize = 8 / this.viewport.scale;
 
-          // Cercle extérieur rouge
-          this.ctx.beginPath();
-          this.ctx.arc(worldX, worldY, pointSize, 0, Math.PI * 2);
-          this.ctx.fillStyle = "#FF6B6B";
-          this.ctx.fill();
-          this.ctx.strokeStyle = "#FFFFFF";
-          this.ctx.lineWidth = 2 / this.viewport.scale;
-          this.ctx.stroke();
+      this.ctx.save();
 
-          // Croix au centre
-          this.ctx.beginPath();
-          this.ctx.moveTo(worldX - pointSize * 0.5, worldY);
-          this.ctx.lineTo(worldX + pointSize * 0.5, worldY);
-          this.ctx.moveTo(worldX, worldY - pointSize * 0.5);
-          this.ctx.lineTo(worldX, worldY + pointSize * 0.5);
-          this.ctx.strokeStyle = "#FFFFFF";
-          this.ctx.lineWidth = 1.5 / this.viewport.scale;
-          this.ctx.stroke();
+      // Cercle extérieur rouge
+      this.ctx.beginPath();
+      this.ctx.arc(worldX, worldY, pointSize, 0, Math.PI * 2);
+      this.ctx.fillStyle = "#FF6B6B";
+      this.ctx.fill();
+      this.ctx.strokeStyle = "#FFFFFF";
+      this.ctx.lineWidth = 2 / this.viewport.scale;
+      this.ctx.stroke();
 
-          // Label
-          const fontSize = 11 / this.viewport.scale;
-          this.ctx.font = `bold ${fontSize}px Arial`;
-          this.ctx.textAlign = "center";
-          this.ctx.textBaseline = "bottom";
-          this.ctx.fillStyle = "#FF6B6B";
-          this.ctx.fillText(point.label, worldX, worldY - pointSize - 2 / this.viewport.scale);
+      // Croix au centre
+      this.ctx.beginPath();
+      this.ctx.moveTo(worldX - pointSize * 0.5, worldY);
+      this.ctx.lineTo(worldX + pointSize * 0.5, worldY);
+      this.ctx.moveTo(worldX, worldY - pointSize * 0.5);
+      this.ctx.lineTo(worldX, worldY + pointSize * 0.5);
+      this.ctx.strokeStyle = "#FFFFFF";
+      this.ctx.lineWidth = 1.5 / this.viewport.scale;
+      this.ctx.stroke();
 
-          this.ctx.restore();
-        });
-      }
-    }
+      // Label
+      const fontSize = 11 / this.viewport.scale;
+      this.ctx.font = `bold ${fontSize}px Arial`;
+      this.ctx.textAlign = "center";
+      this.ctx.textBaseline = "bottom";
+      this.ctx.fillStyle = "#FF6B6B";
+      this.ctx.fillText(point.label, worldX, worldY - pointSize - 2 / this.viewport.scale);
+
+      this.ctx.restore();
+    });
   }
 
   /**
