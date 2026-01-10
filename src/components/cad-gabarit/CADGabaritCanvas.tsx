@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.98 - Fix Ctrl+Z: ne pas appeler solveSketch dans loadSketchData ni fin de drag
+// VERSION: 5.99 - Surbrillance améliorée: sans superposition, effet hover, opacité réglable
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -203,6 +203,10 @@ export function CADGabaritCanvas({
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [showBackgroundImage, setShowBackgroundImage] = useState(true);
   const [imageOpacity, setImageOpacity] = useState(0.5);
+
+  // Surbrillance des formes fermées
+  const [highlightOpacity, setHighlightOpacity] = useState(0.12);
+  const [mouseWorldPos, setMouseWorldPos] = useState<{ x: number; y: number } | null>(null);
 
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
@@ -617,6 +621,9 @@ export function CADGabaritCanvas({
       measureScale: calibrationData.scale || 1 / sketch.scaleFactor,
       // scaleFactor en px/mm pour les règles
       scaleFactor: sketch.scaleFactor,
+      // Surbrillance des formes fermées
+      highlightOpacity,
+      mouseWorldPos,
     });
 
     // Dessiner le rectangle de sélection (après le render du sketch)
@@ -1861,6 +1868,8 @@ export function CADGabaritCanvas({
     perpendicularInfo,
     tempGeometry,
     tempPoints,
+    highlightOpacity,
+    mouseWorldPos,
   ]);
 
   useEffect(() => {
@@ -6172,6 +6181,9 @@ export function CADGabaritCanvas({
       const screenY = e.clientY - rect.top;
       const worldPos = screenToWorld(screenX, screenY);
 
+      // Mettre à jour la position de la souris pour l'effet hover des formes fermées
+      setMouseWorldPos(worldPos);
+
       // Pan
       if (isPanning) {
         const dx = e.clientX - panStart.x;
@@ -8606,6 +8618,24 @@ export function CADGabaritCanvas({
           >
             <Magnet className="h-4 w-4" />
           </Button>
+
+          {/* Slider opacité surbrillance */}
+          <div className="flex items-center gap-1 ml-2 px-2 py-1 bg-blue-50 rounded">
+            <span className="text-xs text-blue-600" title="Surbrillance formes fermées">
+              🔹
+            </span>
+            <input
+              type="range"
+              min="0"
+              max="0.3"
+              step="0.02"
+              value={highlightOpacity}
+              onChange={(e) => setHighlightOpacity(parseFloat(e.target.value))}
+              className="w-14 h-1 accent-blue-500"
+              title={`Opacité surbrillance: ${Math.round(highlightOpacity * 100)}%`}
+            />
+            <span className="text-xs text-blue-500 w-6">{Math.round(highlightOpacity * 100)}%</span>
+          </div>
         </div>
 
         <Separator orientation="vertical" className="h-6" />
