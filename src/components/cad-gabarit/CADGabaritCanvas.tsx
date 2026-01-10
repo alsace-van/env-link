@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.21 - Fix priorité sélection : entités géométriques > photos
+// VERSION: 6.22 - Suppression Polyline (redondant) + Fix priorité sélection entités > photos
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -72,7 +72,6 @@ import {
   RotateCw,
   Lock,
   Unlock,
-  Pencil,
   FlipHorizontal2,
   CircleDot,
 } from "lucide-react";
@@ -231,9 +230,6 @@ export function CADGabaritCanvas({
     intersectionPoint: { x: number; y: number };
     snappedCursor: { x: number; y: number };
   } | null>(null);
-
-  // État pour l'outil Polyline (multi-segments connectés)
-  const [polylinePoints, setPolylinePoints] = useState<string[]>([]); // IDs des points créés
 
   // État pour l'outil Arc 3 points
   const [arc3Points, setArc3Points] = useState<Point[]>([]); // 3 points temporaires
@@ -2037,12 +2033,6 @@ export function CADGabaritCanvas({
         widthInputPos: { x: 0, y: 0 },
         heightInputPos: { x: 0, y: 0 },
       });
-    }
-    // Réinitialiser polyline quand on change d'outil
-    if (activeTool !== "polyline") {
-      setPolylinePoints([]);
-      setTempPoints([]);
-      setTempGeometry(null);
     }
     // Réinitialiser arc 3 points quand on change d'outil
     if (activeTool !== "arc3points") {
@@ -6241,12 +6231,10 @@ export function CADGabaritCanvas({
         // IMPORTANT: Vérifier d'abord s'il y a une entité géométrique sous le curseur
         // Les entités ont la priorité sur les photos
         const entityUnderCursor = findEntityAtPosition(worldPos.x, worldPos.y);
-        console.log("[DEBUG] Click at", worldPos, "entityUnderCursor:", entityUnderCursor);
 
         if (entityUnderCursor) {
           // Il y a une entité géométrique - la sélectionner directement ici
           // au lieu de laisser le switch case le faire (pour éviter que la photo intercepte)
-          console.log("[DEBUG] Entité trouvée:", entityUnderCursor);
           if (e.shiftKey) {
             const newSelection = new Set(selectedEntities);
             if (newSelection.has(entityUnderCursor)) {
@@ -6265,7 +6253,6 @@ export function CADGabaritCanvas({
         } else {
           const clickedImage = findImageAtPosition(worldPos.x, worldPos.y);
           if (clickedImage) {
-            console.log("[DEBUG] Photo sélectionnée:", clickedImage.name);
             // Sélectionner l'image
             setSelectedImageId(clickedImage.id);
             setSelectedMarkerId(null); // Désélectionner le marker
@@ -6677,49 +6664,6 @@ export function CADGabaritCanvas({
             setTempPoints([p2]);
             setTempGeometry({ type: "line", points: [p2] });
           }
-          break;
-        }
-
-        case "polyline": {
-          // Polyline: clic = ajouter un point, double-clic = terminer
-          const currentSketch = sketchRef.current;
-          const newSketch = { ...currentSketch };
-          newSketch.points = new Map(currentSketch.points);
-          newSketch.geometries = new Map(currentSketch.geometries);
-
-          // Créer ou réutiliser le point
-          let p: Point;
-          if (currentSnapPoint) {
-            const existingPoint = newSketch.points.get(currentSnapPoint.entityId);
-            if (existingPoint && currentSnapPoint.type !== "nearest" && currentSnapPoint.type !== "grid") {
-              p = existingPoint;
-            } else {
-              p = { id: generateId(), x: targetPos.x, y: targetPos.y };
-              newSketch.points.set(p.id, p);
-            }
-          } else {
-            p = { id: generateId(), x: targetPos.x, y: targetPos.y };
-            newSketch.points.set(p.id, p);
-          }
-
-          if (polylinePoints.length > 0) {
-            // Créer un segment entre le dernier point et ce nouveau point
-            const lastPointId = polylinePoints[polylinePoints.length - 1];
-            const line: Line = {
-              id: generateId(),
-              type: "line",
-              p1: lastPointId,
-              p2: p.id,
-              layerId: currentSketch.activeLayerId,
-            };
-            newSketch.geometries.set(line.id, line);
-            createIntersectionPoints(line.id, newSketch);
-          }
-
-          setSketch(newSketch);
-          setPolylinePoints([...polylinePoints, p.id]);
-          setTempPoints([p]);
-          setTempGeometry({ type: "polyline", lastPoint: p });
           break;
         }
 
@@ -7431,7 +7375,6 @@ export function CADGabaritCanvas({
       selectedImageId,
       findImageAtPosition,
       // Nouveaux outils
-      polylinePoints,
       arc3Points,
       mirrorState,
     ],
@@ -7901,12 +7844,6 @@ export function CADGabaritCanvas({
             ...tempGeometry,
             cursor: targetPos,
           });
-        } else if (tempGeometry.type === "polyline") {
-          setPerpendicularInfo(null);
-          setTempGeometry({
-            ...tempGeometry,
-            cursor: targetPos,
-          });
         } else if (tempGeometry.type === "arc3points") {
           setPerpendicularInfo(null);
           setTempGeometry({
@@ -8187,16 +8124,6 @@ export function CADGabaritCanvas({
       const screenY = e.clientY - rect.top;
       const worldPos = screenToWorld(screenX, screenY);
 
-      // Si on est en mode polyline, terminer la polyline
-      if (activeTool === "polyline" && polylinePoints.length > 0) {
-        addToHistory(sketchRef.current);
-        setPolylinePoints([]);
-        setTempPoints([]);
-        setTempGeometry(null);
-        toast.success(`Polyline terminée (${polylinePoints.length} points)`);
-        return;
-      }
-
       // Vérifier d'abord si on a cliqué sur un point (coin potentiel)
       const pointId = findPointAtPosition(worldPos.x, worldPos.y);
       if (pointId) {
@@ -8247,7 +8174,6 @@ export function CADGabaritCanvas({
       findLinesConnectedToPoint,
       openFilletDialogForPoint,
       activeTool,
-      polylinePoints,
       addToHistory,
     ],
   );
@@ -8910,10 +8836,6 @@ export function CADGabaritCanvas({
             break;
           case "l":
             setActiveTool("line");
-            resetMarkerMode();
-            break;
-          case "p":
-            setActiveTool("polyline");
             resetMarkerMode();
             break;
           case "c":
@@ -9726,7 +9648,6 @@ export function CADGabaritCanvas({
         {/* Outils de dessin */}
         <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
           <ToolButton tool="line" icon={Minus} label="Ligne" shortcut="L" />
-          <ToolButton tool="polyline" icon={Pencil} label="Polyline" shortcut="P" />
           <ToolButton tool="circle" icon={Circle} label="Cercle" shortcut="C" />
           <ToolButton tool="arc3points" icon={CircleDot} label="Arc 3 points" shortcut="A" />
           <ToolButton tool="rectangle" icon={Square} label="Rectangle" shortcut="R" />

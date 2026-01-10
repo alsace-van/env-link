@@ -155,7 +155,6 @@ export type ToolType =
   | "select"
   | "pan"
   | "line"
-  | "polyline"
   | "rectangle"
   | "circle"
   | "arc"

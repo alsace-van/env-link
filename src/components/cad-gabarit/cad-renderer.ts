@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.42 - Prévisualisation Polyline, Arc 3 points, Axe de symétrie
+// VERSION: 3.43 - Suppression Polyline (redondant), Preview Arc 3 points + Axe symétrie
 // ============================================
 
 import {
@@ -2117,42 +2117,6 @@ export class CADRenderer {
         );
         this.ctx.fillStyle = "#3B82F6";
         this.ctx.fillText(text, textX, textY);
-        this.ctx.restore();
-      }
-    } else if (temp.type === "polyline" && temp.lastPoint) {
-      // Polyline: ligne temporaire du dernier point vers le curseur
-      const p1 = temp.lastPoint;
-      const p2 = temp.cursor;
-      if (p2) {
-        this.ctx.beginPath();
-        this.ctx.moveTo(p1.x, p1.y);
-        this.ctx.lineTo(p2.x, p2.y);
-        this.ctx.stroke();
-
-        // Afficher la longueur
-        const lengthPx = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-        const lengthMm = lengthPx / scaleFactor;
-        const midX = (p1.x + p2.x) / 2;
-        const midY = (p1.y + p2.y) / 2;
-
-        this.ctx.save();
-        this.ctx.setLineDash([]);
-        this.ctx.fillStyle = "#10B981"; // Vert pour polyline
-        this.ctx.font = `bold ${fontSize}px Arial`;
-        this.ctx.textAlign = "center";
-        this.ctx.textBaseline = "middle";
-
-        const text = `${lengthMm.toFixed(1)} mm`;
-        const textWidth = this.ctx.measureText(text).width;
-        this.ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-        this.ctx.fillRect(
-          midX - textWidth / 2 - 3 / this.viewport.scale,
-          midY - 20 / this.viewport.scale - fontSize / 2,
-          textWidth + 6 / this.viewport.scale,
-          fontSize + 4 / this.viewport.scale,
-        );
-        this.ctx.fillStyle = "#10B981";
-        this.ctx.fillText(text, midX, midY - 20 / this.viewport.scale);
         this.ctx.restore();
       }
     } else if (temp.type === "arc3points" && temp.points) {
