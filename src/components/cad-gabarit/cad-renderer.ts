@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.33 - Support multi-photos avec BackgroundImage
+// VERSION: 3.34 - Affichage marqueurs inter-photos et liens avec distances
 // ============================================
 
 import {
@@ -23,6 +23,7 @@ import {
   CalibrationPoint,
   CalibrationPair,
   BackgroundImage,
+  ImageMarkerLink,
   distance,
   midpoint,
   angle,
@@ -95,6 +96,7 @@ export class CADRenderer {
       // Support multi-photos
       backgroundImages?: BackgroundImage[];
       selectedImageId?: string | null;
+      markerLinks?: ImageMarkerLink[];
       // Legacy single image (rétrocompatibilité)
       backgroundImage?: HTMLImageElement | null;
       transformedImage?: HTMLCanvasElement | null;
@@ -134,6 +136,7 @@ export class CADRenderer {
       // Multi-photos
       backgroundImages = [],
       selectedImageId = null,
+      markerLinks = [],
       // Legacy
       backgroundImage = null,
       transformedImage = null,
@@ -184,7 +187,7 @@ export class CADRenderer {
 
     // 1. Background images (multi-photos)
     if (backgroundImages.length > 0) {
-      this.drawBackgroundImages(backgroundImages, selectedImageId);
+      this.drawBackgroundImages(backgroundImages, selectedImageId, markerLinks);
     } else if (transformedImage) {
       // Legacy: image transformée unique
       this.drawTransformedImage(transformedImage, imageOpacity, imageScale);
@@ -455,7 +458,7 @@ export class CADRenderer {
    * Dessine plusieurs images de fond (multi-photos)
    * Les images sont triées par ordre et dessinées à leurs positions respectives
    */
-  private drawBackgroundImages(images: BackgroundImage[], selectedImageId: string | null): void {
+  private drawBackgroundImages(images: BackgroundImage[], selectedImageId: string | null, markerLinks: ImageMarkerLink[]): void {
     // Trier par ordre d'affichage (0 = fond, plus élevé = devant)
     const sortedImages = [...images]
       .filter(img => img.visible)
@@ -513,6 +516,98 @@ export class CADRenderer {
         this.ctx.textAlign = "center";
         this.ctx.fillText("🔒", 0, -scaledHeight / 2 - fontSize);
       }
+
+      // Dessiner les marqueurs de l'image
+      this.ctx.globalAlpha = 1;
+      for (const marker of bgImage.markers) {
+        const markerSize = 10 / this.viewport.scale;
+        const x = marker.relativeX;
+        const y = marker.relativeY;
+
+        // Cercle coloré
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, markerSize, 0, Math.PI * 2);
+        this.ctx.fillStyle = marker.color;
+        this.ctx.fill();
+        this.ctx.strokeStyle = "#FFFFFF";
+        this.ctx.lineWidth = 2 / this.viewport.scale;
+        this.ctx.stroke();
+
+        // Label
+        const fontSize = 12 / this.viewport.scale;
+        this.ctx.font = `bold ${fontSize}px Arial`;
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillStyle = "#FFFFFF";
+        this.ctx.fillText(marker.label, x, y);
+      }
+
+      this.ctx.restore();
+    }
+
+    // Dessiner les liens entre marqueurs (par-dessus toutes les images)
+    for (const link of markerLinks) {
+      // Trouver les deux images et marqueurs
+      const img1 = images.find(img => img.id === link.marker1.imageId);
+      const img2 = images.find(img => img.id === link.marker2.imageId);
+      if (!img1 || !img2) continue;
+
+      const marker1 = img1.markers.find(m => m.id === link.marker1.markerId);
+      const marker2 = img2.markers.find(m => m.id === link.marker2.markerId);
+      if (!marker1 || !marker2) continue;
+
+      // Calculer les positions mondiales des marqueurs
+      const x1 = img1.x + marker1.relativeX;
+      const y1 = img1.y + marker1.relativeY;
+      const x2 = img2.x + marker2.relativeX;
+      const y2 = img2.y + marker2.relativeY;
+
+      this.ctx.save();
+
+      // Dessiner la ligne de liaison
+      this.ctx.beginPath();
+      this.ctx.moveTo(x1, y1);
+      this.ctx.lineTo(x2, y2);
+      this.ctx.strokeStyle = link.color;
+      this.ctx.lineWidth = 2 / this.viewport.scale;
+      this.ctx.setLineDash([8 / this.viewport.scale, 4 / this.viewport.scale]);
+      this.ctx.stroke();
+      this.ctx.setLineDash([]);
+
+      // Dessiner le label de distance au milieu
+      const midX = (x1 + x2) / 2;
+      const midY = (y1 + y2) / 2;
+      const labelText = `${link.distanceMm} mm`;
+
+      const fontSize = 14 / this.viewport.scale;
+      this.ctx.font = `bold ${fontSize}px Arial`;
+      const textWidth = this.ctx.measureText(labelText).width;
+      const padding = 4 / this.viewport.scale;
+
+      // Fond du label
+      this.ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+      this.ctx.fillRect(
+        midX - textWidth / 2 - padding,
+        midY - fontSize / 2 - padding,
+        textWidth + padding * 2,
+        fontSize + padding * 2
+      );
+
+      // Bordure du label
+      this.ctx.strokeStyle = link.color;
+      this.ctx.lineWidth = 1 / this.viewport.scale;
+      this.ctx.strokeRect(
+        midX - textWidth / 2 - padding,
+        midY - fontSize / 2 - padding,
+        textWidth + padding * 2,
+        fontSize + padding * 2
+      );
+
+      // Texte
+      this.ctx.fillStyle = link.color;
+      this.ctx.textAlign = "center";
+      this.ctx.textBaseline = "middle";
+      this.ctx.fillText(labelText, midX, midY);
 
       this.ctx.restore();
     }

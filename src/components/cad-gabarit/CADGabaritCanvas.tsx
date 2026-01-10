@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.05 - Support multi-photos avec positionnement et grab
+// VERSION: 6.06 - Ajout marqueurs inter-photos avec cotation de distance
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -65,6 +65,8 @@ import {
   Check,
   ChevronRight,
   ChevronLeft,
+  MapPin,
+  Link2,
 } from "lucide-react";
 
 import {
@@ -91,7 +93,10 @@ import {
   HomographyMatrix,
   DistortionCoefficients,
   BackgroundImage,
+  ImageMarker,
+  ImageMarkerLink,
   CALIBRATION_COLORS,
+  MARKER_COLORS,
   generateId,
   distance,
   midpoint,
@@ -230,6 +235,17 @@ export function CADGabaritCanvas({
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [imageDragStart, setImageDragStart] = useState<{ x: number; y: number; imgX: number; imgY: number } | null>(null);
+
+  // === Marqueurs inter-photos ===
+  const [markerLinks, setMarkerLinks] = useState<ImageMarkerLink[]>([]);
+  const [markerMode, setMarkerMode] = useState<"idle" | "addMarker" | "linkMarker1" | "linkMarker2">("idle");
+  const [pendingLink, setPendingLink] = useState<{ imageId: string; markerId: string } | null>(null);
+  const [linkDistanceDialog, setLinkDistanceDialog] = useState<{
+    open: boolean;
+    marker1: { imageId: string; markerId: string };
+    marker2: { imageId: string; markerId: string };
+    distance: string;
+  } | null>(null);
 
   // Surbrillance des formes fermées
   const [highlightOpacity, setHighlightOpacity] = useState(0.12);
@@ -636,6 +652,7 @@ export function CADGabaritCanvas({
       // Multi-photos
       backgroundImages: showBackgroundImage ? backgroundImages : [],
       selectedImageId,
+      markerLinks,
       // Legacy single image (rétrocompatibilité)
       backgroundImage: showBackgroundImage && backgroundImages.length === 0 ? backgroundImageRef.current : null,
       transformedImage: showBackgroundImage && backgroundImages.length === 0 ? transformedImage : null,
@@ -1910,6 +1927,7 @@ export function CADGabaritCanvas({
     // Multi-photos
     backgroundImages,
     selectedImageId,
+    markerLinks,
   ]);
 
   useEffect(() => {
@@ -2556,6 +2574,7 @@ export function CADGabaritCanvas({
               visible: true,
               locked: false,
               order: backgroundImages.length + index,
+              markers: [],
             };
 
             setBackgroundImages((prev) => [...prev, newImage]);
@@ -5693,8 +5712,98 @@ export function CADGabaritCanvas({
 
       // À partir d'ici, c'est un clic gauche (e.button === 0)
 
+      // === Marqueurs inter-photos ===
+      if (markerMode === "addMarker" && backgroundImages.length > 0) {
+        // Trouver l'image sous le curseur
+        const clickedImage = findImageAtPosition(worldPos.x, worldPos.y);
+        if (clickedImage) {
+          // Calculer la position relative au centre de l'image
+          const relativeX = worldPos.x - clickedImage.x;
+          const relativeY = worldPos.y - clickedImage.y;
+
+          // Créer un nouveau marqueur
+          const markerCount = clickedImage.markers.length;
+          const newMarker: ImageMarker = {
+            id: generateId(),
+            label: String.fromCharCode(65 + markerCount), // A, B, C, ...
+            relativeX,
+            relativeY,
+            color: MARKER_COLORS[markerCount % MARKER_COLORS.length],
+          };
+
+          // Ajouter le marqueur à l'image
+          setBackgroundImages((prev) =>
+            prev.map((img) =>
+              img.id === clickedImage.id
+                ? { ...img, markers: [...img.markers, newMarker] }
+                : img
+            )
+          );
+
+          toast.success(`Marqueur ${newMarker.label} ajouté sur ${clickedImage.name}`);
+          return;
+        } else {
+          toast.error("Cliquez sur une photo pour ajouter un marqueur");
+          return;
+        }
+      }
+
+      // === Lier deux marqueurs avec distance ===
+      if (markerMode === "linkMarker1" || markerMode === "linkMarker2") {
+        // Trouver le marqueur sous le curseur
+        const tolerance = 15 / viewport.scale;
+        let foundMarker: { imageId: string; markerId: string; marker: ImageMarker } | null = null;
+
+        for (const img of backgroundImages) {
+          if (!img.visible) continue;
+          for (const marker of img.markers) {
+            const markerWorldX = img.x + marker.relativeX;
+            const markerWorldY = img.y + marker.relativeY;
+            const dist = distance(worldPos, { x: markerWorldX, y: markerWorldY });
+            if (dist < tolerance) {
+              foundMarker = { imageId: img.id, markerId: marker.id, marker };
+              break;
+            }
+          }
+          if (foundMarker) break;
+        }
+
+        if (foundMarker) {
+          if (markerMode === "linkMarker1") {
+            // Premier marqueur sélectionné
+            setPendingLink({ imageId: foundMarker.imageId, markerId: foundMarker.markerId });
+            setMarkerMode("linkMarker2");
+            toast.info(`Marqueur ${foundMarker.marker.label} sélectionné. Cliquez sur le 2ème marqueur.`);
+          } else if (markerMode === "linkMarker2" && pendingLink) {
+            // Vérifier que ce n'est pas le même marqueur
+            if (pendingLink.imageId === foundMarker.imageId && pendingLink.markerId === foundMarker.markerId) {
+              toast.error("Sélectionnez un marqueur différent");
+              return;
+            }
+            // Vérifier que c'est une photo différente
+            if (pendingLink.imageId === foundMarker.imageId) {
+              toast.error("Sélectionnez un marqueur sur une autre photo");
+              return;
+            }
+            // Ouvrir la boîte de dialogue pour saisir la distance
+            setLinkDistanceDialog({
+              open: true,
+              marker1: pendingLink,
+              marker2: { imageId: foundMarker.imageId, markerId: foundMarker.markerId },
+              distance: "",
+            });
+            setMarkerMode("idle");
+            setPendingLink(null);
+          }
+          return;
+        } else {
+          toast.error("Cliquez sur un marqueur existant");
+          return;
+        }
+      }
+
       // === Multi-photos: vérifier si on clique sur une image (en mode select) ===
-      if (activeTool === "select" && backgroundImages.length > 0) {
+      if (activeTool === "select" && backgroundImages.length > 0 && markerMode === "idle") {
         const clickedImage = findImageAtPosition(worldPos.x, worldPos.y);
         if (clickedImage) {
           // Sélectionner l'image et préparer le drag
@@ -8750,6 +8859,73 @@ export function CADGabaritCanvas({
 
               <Separator orientation="vertical" className="h-6 mx-1" />
 
+              {/* Marqueurs inter-photos */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={markerMode === "addMarker" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        if (markerMode === "addMarker") {
+                          setMarkerMode("idle");
+                        } else {
+                          setMarkerMode("addMarker");
+                          toast.info("Cliquez sur une photo pour ajouter un marqueur");
+                        }
+                      }}
+                      className="h-9 px-2"
+                    >
+                      <MapPin className="h-4 w-4 mr-1" />
+                      <span className="text-xs">Marqueur</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Ajouter un point de référence sur une photo</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={markerMode === "linkMarker1" || markerMode === "linkMarker2" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        if (markerMode === "linkMarker1" || markerMode === "linkMarker2") {
+                          setMarkerMode("idle");
+                          setPendingLink(null);
+                        } else {
+                          // Vérifier qu'il y a au moins 2 marqueurs sur des photos différentes
+                          const imagesWithMarkers = backgroundImages.filter(img => img.markers.length > 0);
+                          if (imagesWithMarkers.length < 2) {
+                            toast.error("Ajoutez au moins 1 marqueur sur 2 photos différentes");
+                            return;
+                          }
+                          setMarkerMode("linkMarker1");
+                          toast.info("Cliquez sur le 1er marqueur");
+                        }
+                      }}
+                      className="h-9 px-2"
+                    >
+                      <Link2 className="h-4 w-4 mr-1" />
+                      <span className="text-xs">Lier</span>
+                      {markerLinks.length > 0 && (
+                        <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
+                          {markerLinks.length}
+                        </Badge>
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Lier 2 marqueurs avec une distance connue</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <Separator orientation="vertical" className="h-6 mx-1" />
+
               {/* Bouton Calibration */}
               <TooltipProvider>
                 <Tooltip>
@@ -10731,6 +10907,84 @@ export function CADGabaritCanvas({
                 className="w-full"
               >
                 <Check className="h-4 w-4" />
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Dialogue distance entre marqueurs de photos */}
+      {linkDistanceDialog && (
+        <Dialog open={linkDistanceDialog.open} onOpenChange={() => setLinkDistanceDialog(null)}>
+          <DialogContent className="sm:max-w-[320px]">
+            <DialogHeader>
+              <DialogTitle>Distance entre marqueurs</DialogTitle>
+              <DialogDescription>
+                Entrez la distance réelle entre les deux points de référence
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <Label htmlFor="link-distance">Distance (mm)</Label>
+              <Input
+                id="link-distance"
+                type="number"
+                value={linkDistanceDialog.distance}
+                onChange={(e) => setLinkDistanceDialog({ ...linkDistanceDialog, distance: e.target.value })}
+                className="mt-2"
+                min="1"
+                step="1"
+                placeholder="ex: 2300"
+                autoFocus
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter") {
+                    const value = parseFloat(linkDistanceDialog.distance);
+                    if (!isNaN(value) && value > 0) {
+                      // Créer le lien
+                      const newLink: ImageMarkerLink = {
+                        id: generateId(),
+                        marker1: linkDistanceDialog.marker1,
+                        marker2: linkDistanceDialog.marker2,
+                        distanceMm: value,
+                        color: MARKER_COLORS[markerLinks.length % MARKER_COLORS.length],
+                      };
+                      setMarkerLinks([...markerLinks, newLink]);
+                      toast.success(`Lien créé: ${value} mm`);
+                      setLinkDistanceDialog(null);
+                    }
+                  }
+                }}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setLinkDistanceDialog(null)}
+              >
+                Annuler
+              </Button>
+              <Button
+                onClick={() => {
+                  const value = parseFloat(linkDistanceDialog.distance);
+                  if (!isNaN(value) && value > 0) {
+                    // Créer le lien
+                    const newLink: ImageMarkerLink = {
+                      id: generateId(),
+                      marker1: linkDistanceDialog.marker1,
+                      marker2: linkDistanceDialog.marker2,
+                      distanceMm: value,
+                      color: MARKER_COLORS[markerLinks.length % MARKER_COLORS.length],
+                    };
+                    setMarkerLinks([...markerLinks, newLink]);
+                    toast.success(`Lien créé: ${value} mm`);
+                    setLinkDistanceDialog(null);
+                  } else {
+                    toast.error("Entrez une distance valide");
+                  }
+                }}
+              >
+                <Check className="h-4 w-4 mr-1" />
+                Valider
               </Button>
             </DialogFooter>
           </DialogContent>
