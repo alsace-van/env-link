@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.35 - Affichage points calibration par-dessus l'image sélectionnée
+// VERSION: 3.36 - Support des ajustements d'image (contraste, luminosité, netteté)
 // ============================================
 
 import {
@@ -473,8 +473,8 @@ export class CADRenderer {
       // Appliquer l'opacité
       this.ctx.globalAlpha = bgImage.opacity;
 
-      // Utiliser l'image transformée si disponible, sinon l'image originale
-      const imageToDraw = bgImage.transformedCanvas || bgImage.image;
+      // Utiliser l'image ajustée si disponible, puis transformée, sinon l'originale
+      const imageToDraw = bgImage.adjustedCanvas || bgImage.transformedCanvas || bgImage.image;
       const width = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.width : imageToDraw.width;
       const height = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.height : imageToDraw.height;
 

@@ -1,7 +1,7 @@
 // ============================================
 // CAD GABARIT - Index
 // Export de tous les modules
-// VERSION: 2.8 - Ajout ImageMarker et ImageMarkerLink pour alignement multi-photos
+// VERSION: 2.9 - Ajout ImageAdjustments pour amélioration des contours
 // ============================================
 
 // Types
@@ -36,6 +36,7 @@ export type {
   BackgroundImage,
   ImageMarker,
   ImageMarkerLink,
+  ImageAdjustments,
 } from "./types";
 
 export {
@@ -48,6 +49,7 @@ export {
   CALIBRATION_COLORS,
   DEFAULT_LAYERS,
   MARKER_COLORS,
+  DEFAULT_IMAGE_ADJUSTMENTS,
 } from "./types";
 
 // Homography (correction de perspective et distorsion)
