@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.99 - Surbrillance améliorée: sans superposition, effet hover, opacité réglable
+// VERSION: 6.01 - Angle droit strict 90° (±0.1°), fix effet hover formes fermées
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1031,8 +1031,8 @@ export function CADGabaritCanvas({
 
           ctx.save();
 
-          // Si angle droit (90° ± 1°), dessiner le petit carré vert
-          const isRightAngle = Math.abs(angleDeg - 90) < 1;
+          // Si angle droit (90° exact, tolérance ±0.1°), dessiner le petit carré vert
+          const isRightAngle = Math.abs(angleDeg - 90) < 0.1;
 
           if (isRightAngle) {
             const size = 14;
@@ -1592,8 +1592,8 @@ export function CADGabaritCanvas({
             y: corner.y * viewport.scale + viewport.offsetY,
           };
 
-          // Si angle droit (90° ± 1°), dessiner le petit carré
-          if (Math.abs(angleDeg - 90) < 1) {
+          // Si angle droit (90° exact, tolérance ±0.1°), dessiner le petit carré
+          if (Math.abs(angleDeg - 90) < 0.1) {
             const size = 12;
             const p1 = {
               x: cornerScreen.x + u1.x * size,
@@ -1654,8 +1654,8 @@ export function CADGabaritCanvas({
           ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
           ctx.fillRect(textX - textWidth / 2 - 3, textY - 8, textWidth + 6, 16);
 
-          // Texte
-          ctx.fillStyle = Math.abs(angleDeg - 90) < 1 ? "#10B981" : "#F97316";
+          // Texte (vert si 90° exact, orange sinon)
+          ctx.fillStyle = Math.abs(angleDeg - 90) < 0.1 ? "#10B981" : "#F97316";
           ctx.fillText(angleText, textX, textY);
         };
 
