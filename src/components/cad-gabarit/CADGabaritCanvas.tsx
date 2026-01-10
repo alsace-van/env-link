@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.92 - Snap perpendicularité pendant tracé + indicateur 90° vert + longueurs temps réel
+// VERSION: 5.93 - Fix bug closure stale (sketchRef) + perpendicularité plus précise (1.5°/8px)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -165,6 +165,13 @@ export function CADGabaritCanvas({
 
   // State
   const [sketch, setSketch] = useState<Sketch>(() => createEmptySketch(scaleFactor));
+
+  // Ref pour toujours avoir la dernière valeur du sketch (évite les closures stales)
+  const sketchRef = useRef<Sketch>(sketch);
+  useEffect(() => {
+    sketchRef.current = sketch;
+  }, [sketch]);
+
   const [viewport, setViewport] = useState<Viewport>({
     offsetX: 32, // rulerSize
     offsetY: 575, // Sera mis à jour avec la vraie hauteur - rulerSize
@@ -2492,20 +2499,18 @@ export function CADGabaritCanvas({
   );
 
   // Helper: récupère un point existant si snap endpoint, sinon crée un nouveau point
-  const getOrCreatePoint = useCallback(
-    (targetPos: { x: number; y: number }, snapPoint: SnapPoint | null): Point => {
-      // Si on snappe sur un endpoint ou center existant, réutiliser ce point
-      if (snapPoint && (snapPoint.type === "endpoint" || snapPoint.type === "center") && snapPoint.entityId) {
-        const existingPoint = sketch.points.get(snapPoint.entityId);
-        if (existingPoint) {
-          return existingPoint;
-        }
+  const getOrCreatePoint = useCallback((targetPos: { x: number; y: number }, snapPoint: SnapPoint | null): Point => {
+    // Si on snappe sur un endpoint ou center existant, réutiliser ce point
+    // Utiliser sketchRef.current pour éviter les closures stales
+    if (snapPoint && (snapPoint.type === "endpoint" || snapPoint.type === "center") && snapPoint.entityId) {
+      const existingPoint = sketchRef.current.points.get(snapPoint.entityId);
+      if (existingPoint) {
+        return existingPoint;
       }
-      // Sinon créer un nouveau point
-      return { id: generateId(), x: targetPos.x, y: targetPos.y };
-    },
-    [sketch.points],
-  );
+    }
+    // Sinon créer un nouveau point
+    return { id: generateId(), x: targetPos.x, y: targetPos.y };
+  }, []);
 
   // Helper: coupe une ligne en deux à une position donnée et retourne le point de coupure
   const splitLineAtPoint = useCallback(
@@ -5625,10 +5630,11 @@ export function CADGabaritCanvas({
 
         case "line": {
           if (tempPoints.length === 0) {
-            // Premier point
-            const newSketch = { ...sketch };
-            newSketch.points = new Map(sketch.points);
-            newSketch.geometries = new Map(sketch.geometries);
+            // Premier point - utiliser sketchRef.current pour éviter les closures stales
+            const currentSketch = sketchRef.current;
+            const newSketch = { ...currentSketch };
+            newSketch.points = new Map(currentSketch.points);
+            newSketch.geometries = new Map(currentSketch.geometries);
 
             let p: Point;
 
@@ -5638,7 +5644,7 @@ export function CADGabaritCanvas({
               (currentSnapPoint.type === "nearest" || currentSnapPoint.type === "perpendicular") &&
               currentSnapPoint.entityId
             ) {
-              const geo = sketch.geometries.get(currentSnapPoint.entityId);
+              const geo = currentSketch.geometries.get(currentSnapPoint.entityId);
               if (geo && geo.type === "line") {
                 const splitPoint = splitLineAtPoint(currentSnapPoint.entityId, targetPos, newSketch);
                 if (splitPoint) {
@@ -5657,13 +5663,14 @@ export function CADGabaritCanvas({
             setTempPoints([p]);
             setTempGeometry({ type: "line", points: [p] });
           } else {
-            // Deuxième point - créer la ligne
+            // Deuxième point - créer la ligne - utiliser sketchRef.current
             const p1 = tempPoints[0];
 
             // Ajouter les points
-            const newSketch = { ...sketch };
-            newSketch.points = new Map(sketch.points);
-            newSketch.geometries = new Map(sketch.geometries);
+            const currentSketch = sketchRef.current;
+            const newSketch = { ...currentSketch };
+            newSketch.points = new Map(currentSketch.points);
+            newSketch.geometries = new Map(currentSketch.geometries);
 
             let p2: Point;
 
@@ -5673,7 +5680,7 @@ export function CADGabaritCanvas({
               (currentSnapPoint.type === "nearest" || currentSnapPoint.type === "perpendicular") &&
               currentSnapPoint.entityId
             ) {
-              const geo = sketch.geometries.get(currentSnapPoint.entityId);
+              const geo = currentSketch.geometries.get(currentSnapPoint.entityId);
               if (geo && geo.type === "line") {
                 const splitPoint = splitLineAtPoint(currentSnapPoint.entityId, targetPos, newSketch);
                 if (splitPoint) {
@@ -5702,7 +5709,7 @@ export function CADGabaritCanvas({
               type: "line",
               p1: p1.id,
               p2: p2.id,
-              layerId: sketch.activeLayerId,
+              layerId: currentSketch.activeLayerId,
             };
             newSketch.geometries.set(line.id, line);
 
@@ -5731,9 +5738,11 @@ export function CADGabaritCanvas({
             const center = tempPoints[0];
             const radius = distance(center, targetPos);
 
-            const newSketch = { ...sketch };
-            newSketch.points = new Map(sketch.points);
-            newSketch.geometries = new Map(sketch.geometries);
+            // Utiliser sketchRef.current pour éviter les closures stales
+            const currentSketch = sketchRef.current;
+            const newSketch = { ...currentSketch };
+            newSketch.points = new Map(currentSketch.points);
+            newSketch.geometries = new Map(currentSketch.geometries);
 
             newSketch.points.set(center.id, center);
 
@@ -5742,12 +5751,12 @@ export function CADGabaritCanvas({
               type: "circle",
               center: center.id,
               radius,
-              layerId: sketch.activeLayerId,
+              layerId: currentSketch.activeLayerId,
             };
             newSketch.geometries.set(circle.id, circle);
 
             // Créer les intersections avec les segments existants (coupe le cercle en arcs si nécessaire)
-            createCircleIntersections(circle.id, center, center.id, radius, sketch.activeLayerId, newSketch);
+            createCircleIntersections(circle.id, center, center.id, radius, currentSketch.activeLayerId, newSketch);
 
             setSketch(newSketch);
             solveSketch(newSketch);
@@ -5773,10 +5782,12 @@ export function CADGabaritCanvas({
             const p4: Point = { id: generateId(), x: p1.x, y: p3.y };
             const p3Pt: Point = { id: generateId(), x: p3.x, y: p3.y };
 
-            const newSketch = { ...sketch };
-            newSketch.points = new Map(sketch.points);
-            newSketch.geometries = new Map(sketch.geometries);
-            newSketch.constraints = new Map(sketch.constraints);
+            // Utiliser sketchRef.current pour éviter les closures stales
+            const currentSketch = sketchRef.current;
+            const newSketch = { ...currentSketch };
+            newSketch.points = new Map(currentSketch.points);
+            newSketch.geometries = new Map(currentSketch.geometries);
+            newSketch.constraints = new Map(currentSketch.constraints);
 
             newSketch.points.set(p1.id, p1);
             newSketch.points.set(p2.id, p2);
@@ -5785,10 +5796,10 @@ export function CADGabaritCanvas({
 
             // Créer les 4 lignes avec le calque actif
             const lines = [
-              { id: generateId(), type: "line" as const, p1: p1.id, p2: p2.id, layerId: sketch.activeLayerId },
-              { id: generateId(), type: "line" as const, p1: p2.id, p2: p3Pt.id, layerId: sketch.activeLayerId },
-              { id: generateId(), type: "line" as const, p1: p3Pt.id, p2: p4.id, layerId: sketch.activeLayerId },
-              { id: generateId(), type: "line" as const, p1: p4.id, p2: p1.id, layerId: sketch.activeLayerId },
+              { id: generateId(), type: "line" as const, p1: p1.id, p2: p2.id, layerId: currentSketch.activeLayerId },
+              { id: generateId(), type: "line" as const, p1: p2.id, p2: p3Pt.id, layerId: currentSketch.activeLayerId },
+              { id: generateId(), type: "line" as const, p1: p3Pt.id, p2: p4.id, layerId: currentSketch.activeLayerId },
+              { id: generateId(), type: "line" as const, p1: p4.id, p2: p1.id, layerId: currentSketch.activeLayerId },
             ];
 
             lines.forEach((l) => newSketch.geometries.set(l.id, l));
@@ -5836,15 +5847,17 @@ export function CADGabaritCanvas({
             const [p1, p2, cp1] = tempPoints;
             const cp2: Point = { id: generateId(), x: targetPos.x, y: targetPos.y };
 
-            const newSketch = { ...sketch };
-            newSketch.points = new Map(sketch.points);
-            newSketch.geometries = new Map(sketch.geometries);
+            // Utiliser sketchRef.current pour éviter les closures stales
+            const currentSketch = sketchRef.current;
+            const newSketch = { ...currentSketch };
+            newSketch.points = new Map(currentSketch.points);
+            newSketch.geometries = new Map(currentSketch.geometries);
 
             // N'ajouter que les points qui n'existent pas déjà
-            if (!sketch.points.has(p1.id)) {
+            if (!currentSketch.points.has(p1.id)) {
               newSketch.points.set(p1.id, p1);
             }
-            if (!sketch.points.has(p2.id)) {
+            if (!currentSketch.points.has(p2.id)) {
               newSketch.points.set(p2.id, p2);
             }
             newSketch.points.set(cp1.id, cp1);
@@ -5857,7 +5870,7 @@ export function CADGabaritCanvas({
               p2: p2.id,
               cp1: cp1.id,
               cp2: cp2.id,
-              layerId: sketch.activeLayerId,
+              layerId: currentSketch.activeLayerId,
             };
             newSketch.geometries.set(bezier.id, bezier);
 
@@ -6392,8 +6405,8 @@ export function CADGabaritCanvas({
 
           // Détecter la perpendicularité avec les segments existants
           let perpInfo: typeof perpendicularInfo = null;
-          const perpTolerance = 3; // degrés de tolérance
-          const perpSnapDistance = 15 / viewport.scale; // distance de snap en monde
+          const perpTolerance = 1.5; // degrés de tolérance (plus précis)
+          const perpSnapDistance = 8 / viewport.scale; // distance de snap en monde (plus proche)
 
           // Direction de la ligne en cours
           const lineDir = {
