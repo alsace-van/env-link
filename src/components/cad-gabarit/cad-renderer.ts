@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.24 - Cercles remplis (formes fermées)
+// VERSION: 3.25 - Remplissage arcs formant cercle complet
 // ============================================
 
 import {
@@ -1717,6 +1717,58 @@ export class CADRenderer {
       this.ctx.closePath();
       this.ctx.fillStyle = "rgba(100, 180, 255, 0.15)";
       this.ctx.fill();
+    });
+
+    // Détecter les arcs qui partagent le même centre et rayon (cercle coupé)
+    // et les remplir comme un cercle complet
+    const arcGroups = new Map<string, Arc[]>(); // clé: "centerId-radius"
+    sketch.geometries.forEach((geo) => {
+      if (geo.type !== "arc") return;
+      const arc = geo as Arc;
+      const layerId = geo.layerId || "trace";
+      const layer = sketch.layers.get(layerId);
+      if (layer?.visible === false) return;
+
+      const key = `${arc.center}-${Math.round(arc.radius * 100)}`;
+      if (!arcGroups.has(key)) arcGroups.set(key, []);
+      arcGroups.get(key)!.push(arc);
+    });
+
+    // Pour chaque groupe d'arcs formant un cercle, remplir le cercle
+    arcGroups.forEach((arcs, key) => {
+      if (arcs.length < 2) return; // Un seul arc ne forme pas forcément un cercle complet
+
+      const firstArc = arcs[0];
+      const center = sketch.points.get(firstArc.center);
+      if (!center) return;
+
+      // Vérifier que les arcs couvrent bien 360° (forment un cercle complet)
+      let totalAngle = 0;
+      for (const arc of arcs) {
+        const startPt = sketch.points.get(arc.startPoint);
+        const endPt = sketch.points.get(arc.endPoint);
+        if (!startPt || !endPt) continue;
+
+        const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
+        const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
+
+        let sweep = endAngle - startAngle;
+        if (arc.counterClockwise) {
+          if (sweep > 0) sweep -= 2 * Math.PI;
+        } else {
+          if (sweep < 0) sweep += 2 * Math.PI;
+        }
+        totalAngle += Math.abs(sweep);
+      }
+
+      // Si les arcs couvrent environ 360° (avec une tolérance), remplir comme un cercle
+      if (Math.abs(totalAngle - 2 * Math.PI) < 0.1) {
+        this.ctx.beginPath();
+        this.ctx.arc(center.x, center.y, firstArc.radius, 0, Math.PI * 2);
+        this.ctx.closePath();
+        this.ctx.fillStyle = "rgba(100, 180, 255, 0.15)";
+        this.ctx.fill();
+      }
     });
 
     // Construire un graphe des connexions point -> géométries
