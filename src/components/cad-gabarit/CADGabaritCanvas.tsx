@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.06 - Ajout marqueurs inter-photos avec cotation de distance
+// VERSION: 6.07 - Fix multi-photo import + suppression images avec Delete
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
