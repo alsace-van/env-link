@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.29 - Fix détection cycles multiples partageant des points (triangle dans rectangle)
+// VERSION: 3.30 - Surbrillance améliorée: sans superposition (offscreen canvas), effet hover, opacité réglable
 // ============================================
 
 import {
@@ -111,6 +111,10 @@ export class CADRenderer {
       }>;
       measureScale?: number;
       scaleFactor?: number; // px/mm pour convertir les coordonnées en mm sur les règles
+      // Options de surbrillance des formes fermées
+      highlightOpacity?: number; // 0-1, défaut 0.15
+      hoveredShapeIndex?: number | null; // Index de la forme survolée
+      mouseWorldPos?: { x: number; y: number } | null; // Position souris en coordonnées monde
     } = {},
   ): void {
     const {
@@ -131,6 +135,9 @@ export class CADRenderer {
       measurements = [],
       measureScale = 1,
       scaleFactor = 1, // Par défaut 1 (coordonnées = mm)
+      highlightOpacity = 0.12,
+      hoveredShapeIndex = null,
+      mouseWorldPos = null,
     } = options;
 
     // Stocker scaleFactor pour drawRulers
@@ -182,8 +189,8 @@ export class CADRenderer {
       this.drawGrid(sketch.scaleFactor);
     }
 
-    // 2.5 Surbrillance des formes fermées
-    this.drawClosedShapes(sketch);
+    // 2.5 Surbrillance des formes fermées (sans superposition, avec effet hover)
+    this.drawClosedShapes(sketch, highlightOpacity, mouseWorldPos);
 
     // 3. Geometries (filtrer par visibilité du calque)
     // OPTIMISATION: Batch des lignes non-sélectionnées pour réduire les appels draw
@@ -2023,8 +2030,20 @@ export class CADRenderer {
   /**
    * Dessine une surbrillance pour les formes fermées
    */
-  private drawClosedShapes(sketch: Sketch): void {
-    // D'abord, remplir tous les cercles (ce sont des formes fermées par définition)
+  private drawClosedShapes(
+    sketch: Sketch,
+    highlightOpacity: number = 0.12,
+    mouseWorldPos: { x: number; y: number } | null = null,
+  ): void {
+    // Collecter toutes les formes fermées avec leurs paths
+    const closedShapes: Array<{
+      type: "circle" | "arcCircle" | "polygon";
+      path: Path2D;
+      area: number;
+      geoIds: string[];
+    }> = [];
+
+    // 1. Collecter les cercles
     sketch.geometries.forEach((geo, geoId) => {
       if (geo.type !== "circle") return;
 
@@ -2036,16 +2055,20 @@ export class CADRenderer {
       const center = sketch.points.get(circle.center);
       if (!center) return;
 
-      this.ctx.beginPath();
-      this.ctx.arc(center.x, center.y, circle.radius, 0, Math.PI * 2);
-      this.ctx.closePath();
-      this.ctx.fillStyle = "rgba(100, 180, 255, 0.15)";
-      this.ctx.fill();
+      const path = new Path2D();
+      path.arc(center.x, center.y, circle.radius, 0, Math.PI * 2);
+      path.closePath();
+
+      closedShapes.push({
+        type: "circle",
+        path,
+        area: Math.PI * circle.radius * circle.radius,
+        geoIds: [geoId],
+      });
     });
 
-    // Détecter les arcs qui partagent le même centre et rayon (cercle coupé)
-    // et les remplir comme un cercle complet
-    const arcGroups = new Map<string, Arc[]>(); // clé: "centerId-radius"
+    // 2. Collecter les arcs formant des cercles complets
+    const arcGroups = new Map<string, Arc[]>();
     sketch.geometries.forEach((geo) => {
       if (geo.type !== "arc") return;
       const arc = geo as Arc;
@@ -2058,15 +2081,13 @@ export class CADRenderer {
       arcGroups.get(key)!.push(arc);
     });
 
-    // Pour chaque groupe d'arcs formant un cercle, remplir le cercle
-    arcGroups.forEach((arcs, key) => {
-      if (arcs.length < 2) return; // Un seul arc ne forme pas forcément un cercle complet
+    arcGroups.forEach((arcs) => {
+      if (arcs.length < 2) return;
 
       const firstArc = arcs[0];
       const center = sketch.points.get(firstArc.center);
       if (!center) return;
 
-      // Vérifier que les arcs couvrent bien 360° (forment un cercle complet)
       let totalAngle = 0;
       for (const arc of arcs) {
         const startPt = sketch.points.get(arc.startPoint);
@@ -2085,21 +2106,24 @@ export class CADRenderer {
         totalAngle += Math.abs(sweep);
       }
 
-      // Si les arcs couvrent environ 360° (avec une tolérance), remplir comme un cercle
       if (Math.abs(totalAngle - 2 * Math.PI) < 0.1) {
-        this.ctx.beginPath();
-        this.ctx.arc(center.x, center.y, firstArc.radius, 0, Math.PI * 2);
-        this.ctx.closePath();
-        this.ctx.fillStyle = "rgba(100, 180, 255, 0.15)";
-        this.ctx.fill();
+        const path = new Path2D();
+        path.arc(center.x, center.y, firstArc.radius, 0, Math.PI * 2);
+        path.closePath();
+
+        closedShapes.push({
+          type: "arcCircle",
+          path,
+          area: Math.PI * firstArc.radius * firstArc.radius,
+          geoIds: arcs.map((a) => a.id),
+        });
       }
     });
 
-    // Construire un graphe des connexions point -> géométries
+    // 3. Construire le graphe et trouver les cycles (polygones)
     const pointToGeos = new Map<string, Array<{ geoId: string; otherPointId: string }>>();
 
     sketch.geometries.forEach((geo, geoId) => {
-      // Vérifier visibilité du calque
       const layerId = geo.layerId || "trace";
       const layer = sketch.layers.get(layerId);
       if (layer?.visible === false) return;
@@ -2125,27 +2149,17 @@ export class CADRenderer {
       }
     });
 
-    // Trouver les cycles fermés - NE PAS utiliser globalUsedGeos pour permettre plusieurs cycles
-    // qui partagent des points ou des géométries
-    const foundCycles: Array<string[]> = []; // Array de geoIds dans l'ordre du parcours
-    const foundCycleKeys = new Set<string>(); // Pour éviter les doublons
+    const foundCycleKeys = new Set<string>();
 
-    // Fonction pour créer une clé unique pour un cycle (triée pour être indépendante de l'ordre)
     const getCycleKey = (cycle: string[]): string => {
       return [...cycle].sort().join(",");
     };
 
-    // Fonction pour trouver un cycle minimal à partir d'un point
-    const findMinimalCycle = (startPointId: string, excludeGeo?: string): string[] | null => {
+    const findMinimalCycle = (startPointId: string): string[] | null => {
       const conns = pointToGeos.get(startPointId) || [];
       if (conns.length < 2) return null;
 
-      // Essayer de trouver le plus petit cycle
       for (const firstConn of conns) {
-        // Permettre de trouver plusieurs cycles, mais exclure le geo spécifié si fourni
-        if (excludeGeo && firstConn.geoId === excludeGeo) continue;
-
-        // BFS pour trouver le chemin le plus court qui revient au point de départ
         const queue: Array<{ pointId: string; path: string[]; visitedPoints: Set<string> }> = [
           {
             pointId: firstConn.otherPointId,
@@ -2156,27 +2170,21 @@ export class CADRenderer {
 
         while (queue.length > 0) {
           const current = queue.shift()!;
-
-          if (current.path.length > 20) continue; // Limite de sécurité
+          if (current.path.length > 20) continue;
 
           const nextConns = pointToGeos.get(current.pointId) || [];
 
           for (const conn of nextConns) {
-            // Ne pas réutiliser une géométrie déjà dans le chemin
             if (current.path.includes(conn.geoId)) continue;
 
-            // Si on revient au départ avec au moins 3 segments, c'est un cycle
             if (conn.otherPointId === startPointId && current.path.length >= 2) {
               const cycle = [...current.path, conn.geoId];
               const key = getCycleKey(cycle);
-
-              // Vérifier si ce cycle n'a pas déjà été trouvé
               if (!foundCycleKeys.has(key)) {
                 return cycle;
               }
             }
 
-            // Ne pas revisiter un point (sauf le point de départ)
             if (current.visitedPoints.has(conn.otherPointId)) continue;
 
             const newVisited = new Set(current.visitedPoints);
@@ -2190,158 +2198,263 @@ export class CADRenderer {
           }
         }
       }
-
       return null;
     };
 
-    // Parcourir tous les points pour trouver des cycles
-    // Faire plusieurs passes pour trouver tous les cycles possibles
+    // Trouver tous les cycles
     for (let pass = 0; pass < 3; pass++) {
       for (const [pointId] of pointToGeos) {
-        // Essayer de trouver un cycle à partir de ce point
         const cycle = findMinimalCycle(pointId);
-
         if (cycle) {
           const key = getCycleKey(cycle);
           if (!foundCycleKeys.has(key)) {
             foundCycleKeys.add(key);
-            foundCycles.push(cycle);
+
+            // Construire le path pour ce cycle
+            const orderedPath: Array<{
+              x: number;
+              y: number;
+              isArc?: boolean;
+              arc?: Arc;
+              center?: Point;
+              startPt?: Point;
+              endPt?: Point;
+            }> = [];
+
+            const firstGeo = sketch.geometries.get(cycle[0]);
+            if (!firstGeo) continue;
+
+            let currentPointId: string;
+            if (firstGeo.type === "line") {
+              currentPointId = (firstGeo as Line).p1;
+            } else if (firstGeo.type === "arc") {
+              currentPointId = (firstGeo as Arc).startPoint;
+            } else continue;
+
+            const remainingGeos = new Set(cycle);
+
+            while (remainingGeos.size > 0) {
+              let foundNext = false;
+
+              for (const geoId of remainingGeos) {
+                const geo = sketch.geometries.get(geoId);
+                if (!geo) continue;
+
+                if (geo.type === "line") {
+                  const line = geo as Line;
+                  if (line.p1 === currentPointId || line.p2 === currentPointId) {
+                    const p1 = sketch.points.get(line.p1);
+                    const p2 = sketch.points.get(line.p2);
+                    if (!p1 || !p2) continue;
+
+                    if (line.p1 === currentPointId) {
+                      orderedPath.push({ x: p1.x, y: p1.y });
+                      currentPointId = line.p2;
+                    } else {
+                      orderedPath.push({ x: p2.x, y: p2.y });
+                      currentPointId = line.p1;
+                    }
+
+                    remainingGeos.delete(geoId);
+                    foundNext = true;
+                    break;
+                  }
+                } else if (geo.type === "arc") {
+                  const arc = geo as Arc;
+                  if (arc.startPoint === currentPointId || arc.endPoint === currentPointId) {
+                    const center = sketch.points.get(arc.center);
+                    const startPt = sketch.points.get(arc.startPoint);
+                    const endPt = sketch.points.get(arc.endPoint);
+                    if (!center || !startPt || !endPt) continue;
+
+                    if (arc.startPoint === currentPointId) {
+                      orderedPath.push({ x: startPt.x, y: startPt.y, isArc: true, arc, center, startPt, endPt });
+                      currentPointId = arc.endPoint;
+                    } else {
+                      orderedPath.push({
+                        x: endPt.x,
+                        y: endPt.y,
+                        isArc: true,
+                        arc,
+                        center,
+                        startPt: endPt,
+                        endPt: startPt,
+                      });
+                      currentPointId = arc.startPoint;
+                    }
+
+                    remainingGeos.delete(geoId);
+                    foundNext = true;
+                    break;
+                  }
+                }
+              }
+
+              if (!foundNext) break;
+            }
+
+            // Créer le Path2D pour ce cycle
+            if (orderedPath.length >= 3) {
+              const path = new Path2D();
+              path.moveTo(orderedPath[0].x, orderedPath[0].y);
+
+              for (let i = 0; i < orderedPath.length; i++) {
+                const segment = orderedPath[i];
+                const nextSegment = orderedPath[(i + 1) % orderedPath.length];
+
+                if (segment.isArc && segment.arc && segment.center && segment.startPt && segment.endPt) {
+                  const startAngle = Math.atan2(
+                    segment.startPt.y - segment.center.y,
+                    segment.startPt.x - segment.center.x,
+                  );
+                  const endAngle = Math.atan2(segment.endPt.y - segment.center.y, segment.endPt.x - segment.center.x);
+
+                  let counterClockwise: boolean;
+                  if (segment.arc.counterClockwise !== undefined) {
+                    const isReversed = segment.startPt !== sketch.points.get(segment.arc.startPoint);
+                    counterClockwise = isReversed ? !segment.arc.counterClockwise : segment.arc.counterClockwise;
+                  } else {
+                    let deltaAngle = endAngle - startAngle;
+                    while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
+                    while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
+                    counterClockwise = deltaAngle < 0;
+                  }
+
+                  path.arc(
+                    segment.center.x,
+                    segment.center.y,
+                    segment.arc.radius,
+                    startAngle,
+                    endAngle,
+                    counterClockwise,
+                  );
+                } else {
+                  path.lineTo(nextSegment.x, nextSegment.y);
+                }
+              }
+
+              path.closePath();
+
+              // Calculer l'aire approximative (somme des coords pour trier)
+              let area = 0;
+              for (let i = 0; i < orderedPath.length; i++) {
+                const j = (i + 1) % orderedPath.length;
+                area += orderedPath[i].x * orderedPath[j].y;
+                area -= orderedPath[j].x * orderedPath[i].y;
+              }
+              area = Math.abs(area) / 2;
+
+              closedShapes.push({
+                type: "polygon",
+                path,
+                area,
+                geoIds: cycle,
+              });
+            }
           }
         }
       }
     }
 
-    // Dessiner les cycles trouvés
-    for (const cycleGeoIds of foundCycles) {
-      // Reconstruire le chemin ordonné des points
-      const orderedPath: Array<{
-        x: number;
-        y: number;
-        isArc?: boolean;
-        arc?: Arc;
-        center?: Point;
-        startPt?: Point;
-        endPt?: Point;
-      }> = [];
+    // Si aucune forme, sortir
+    if (closedShapes.length === 0) return;
 
-      // Trouver le premier point et construire le chemin dans l'ordre
-      if (cycleGeoIds.length === 0) continue;
+    // Trier par aire décroissante (grandes formes d'abord)
+    closedShapes.sort((a, b) => b.area - a.area);
 
-      const firstGeo = sketch.geometries.get(cycleGeoIds[0]);
-      if (!firstGeo) continue;
+    // Détecter quelle forme est survolée (la plus petite qui contient la souris)
+    let hoveredShapeIndex = -1;
+    if (mouseWorldPos) {
+      // Parcourir du plus petit au plus grand pour trouver la forme la plus spécifique
+      for (let i = closedShapes.length - 1; i >= 0; i--) {
+        if (this.ctx.isPointInPath(closedShapes[i].path, mouseWorldPos.x, mouseWorldPos.y)) {
+          hoveredShapeIndex = i;
+          break;
+        }
+      }
+    }
 
-      let currentPointId: string;
-      if (firstGeo.type === "line") {
-        currentPointId = (firstGeo as Line).p1;
-      } else if (firstGeo.type === "arc") {
-        currentPointId = (firstGeo as Arc).startPoint;
-      } else continue;
+    // Créer un canvas offscreen pour éviter la superposition
+    const offscreenCanvas = document.createElement("canvas");
+    offscreenCanvas.width = this.canvas.width;
+    offscreenCanvas.height = this.canvas.height;
+    const offCtx = offscreenCanvas.getContext("2d");
+    if (!offCtx) return;
 
-      // Parcourir les géométries dans l'ordre pour construire le chemin
-      const remainingGeos = new Set(cycleGeoIds);
+    // Appliquer la même transformation que le canvas principal
+    offCtx.scale(this.dpr, this.dpr);
+    offCtx.translate(this.viewport.offsetX, this.viewport.offsetY);
+    offCtx.scale(this.viewport.scale, this.viewport.scale);
 
-      while (remainingGeos.size > 0) {
-        let foundNext = false;
+    // Dessiner les formes sur le canvas offscreen
+    // Utiliser destination-out pour "creuser" les formes intérieures
 
-        for (const geoId of remainingGeos) {
-          const geo = sketch.geometries.get(geoId);
-          if (!geo) continue;
+    // D'abord dessiner toutes les formes en bleu opaque
+    offCtx.fillStyle = "rgb(100, 180, 255)";
 
-          if (geo.type === "line") {
-            const line = geo as Line;
-            if (line.p1 === currentPointId || line.p2 === currentPointId) {
-              const p1 = sketch.points.get(line.p1);
-              const p2 = sketch.points.get(line.p2);
-              if (!p1 || !p2) continue;
+    for (let i = 0; i < closedShapes.length; i++) {
+      const shape = closedShapes[i];
 
-              // Ajouter dans le bon sens
-              if (line.p1 === currentPointId) {
-                orderedPath.push({ x: p1.x, y: p1.y });
-                currentPointId = line.p2;
-              } else {
-                orderedPath.push({ x: p2.x, y: p2.y });
-                currentPointId = line.p1;
-              }
+      if (i === 0) {
+        // Première forme (la plus grande): dessiner normalement
+        offCtx.fill(shape.path);
+      } else {
+        // Formes suivantes: d'abord "creuser" la zone, puis remplir
+        offCtx.globalCompositeOperation = "destination-out";
+        offCtx.fill(shape.path);
+        offCtx.globalCompositeOperation = "source-over";
+        offCtx.fill(shape.path);
+      }
+    }
 
-              remainingGeos.delete(geoId);
-              foundNext = true;
-              break;
-            }
-          } else if (geo.type === "arc") {
-            const arc = geo as Arc;
-            if (arc.startPoint === currentPointId || arc.endPoint === currentPointId) {
-              const center = sketch.points.get(arc.center);
-              const startPt = sketch.points.get(arc.startPoint);
-              const endPt = sketch.points.get(arc.endPoint);
-              if (!center || !startPt || !endPt) continue;
+    // Copier le canvas offscreen sur le canvas principal avec l'opacité voulue
+    this.ctx.save();
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform pour copier pixel par pixel
+    this.ctx.globalAlpha = highlightOpacity;
+    this.ctx.drawImage(offscreenCanvas, 0, 0);
+    this.ctx.restore();
 
-              // Ajouter l'arc dans le bon sens
-              if (arc.startPoint === currentPointId) {
-                orderedPath.push({ x: startPt.x, y: startPt.y, isArc: true, arc, center, startPt, endPt });
-                currentPointId = arc.endPoint;
-              } else {
-                // Inverser start et end pour l'arc
-                orderedPath.push({ x: endPt.x, y: endPt.y, isArc: true, arc, center, startPt: endPt, endPt: startPt });
-                currentPointId = arc.startPoint;
-              }
+    // Dessiner l'effet de survol (forme survolée plus visible)
+    if (hoveredShapeIndex >= 0) {
+      const hoveredShape = closedShapes[hoveredShapeIndex];
 
-              remainingGeos.delete(geoId);
-              foundNext = true;
-              break;
-            }
-          }
+      // Créer un second canvas offscreen pour le hover
+      const hoverCanvas = document.createElement("canvas");
+      hoverCanvas.width = this.canvas.width;
+      hoverCanvas.height = this.canvas.height;
+      const hoverCtx = hoverCanvas.getContext("2d");
+      if (hoverCtx) {
+        hoverCtx.scale(this.dpr, this.dpr);
+        hoverCtx.translate(this.viewport.offsetX, this.viewport.offsetY);
+        hoverCtx.scale(this.viewport.scale, this.viewport.scale);
+
+        // Dessiner la forme survolée
+        hoverCtx.fillStyle = "rgb(59, 130, 246)"; // Bleu plus vif
+        hoverCtx.fill(hoveredShape.path);
+
+        // Retirer les formes plus petites qui sont à l'intérieur
+        hoverCtx.globalCompositeOperation = "destination-out";
+        for (let i = hoveredShapeIndex + 1; i < closedShapes.length; i++) {
+          const smallerShape = closedShapes[i];
+          // Vérifier si cette forme est à l'intérieur de la forme survolée
+          // (simplification: on retire toutes les formes plus petites)
+          hoverCtx.fill(smallerShape.path);
         }
 
-        if (!foundNext) break; // Sécurité anti-boucle infinie
+        // Copier sur le canvas principal
+        this.ctx.save();
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        this.ctx.globalAlpha = 0.15; // Opacité supplémentaire pour le hover
+        this.ctx.drawImage(hoverCanvas, 0, 0);
+        this.ctx.restore();
       }
 
-      // Dessiner le chemin
-      if (orderedPath.length >= 3) {
-        this.ctx.beginPath();
-        this.ctx.moveTo(orderedPath[0].x, orderedPath[0].y);
-
-        for (let i = 0; i < orderedPath.length; i++) {
-          const segment = orderedPath[i];
-          const nextSegment = orderedPath[(i + 1) % orderedPath.length];
-
-          if (segment.isArc && segment.arc && segment.center && segment.startPt && segment.endPt) {
-            const startAngle = Math.atan2(segment.startPt.y - segment.center.y, segment.startPt.x - segment.center.x);
-            const endAngle = Math.atan2(segment.endPt.y - segment.center.y, segment.endPt.x - segment.center.x);
-
-            // Utiliser la direction stockée si elle est définie
-            let counterClockwise: boolean;
-            if (segment.arc.counterClockwise !== undefined) {
-              // Si on a inversé les points (parcours inverse), inverser aussi la direction
-              const isReversed = segment.startPt !== sketch.points.get(segment.arc.startPoint);
-              counterClockwise = isReversed ? !segment.arc.counterClockwise : segment.arc.counterClockwise;
-            } else {
-              // Comportement par défaut : dessiner le petit arc
-              let deltaAngle = endAngle - startAngle;
-              while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
-              while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
-              counterClockwise = deltaAngle < 0;
-            }
-
-            this.ctx.arc(
-              segment.center.x,
-              segment.center.y,
-              segment.arc.radius,
-              startAngle,
-              endAngle,
-              counterClockwise,
-            );
-          } else {
-            // Ligne vers le prochain point
-            this.ctx.lineTo(nextSegment.x, nextSegment.y);
-          }
-        }
-
-        this.ctx.closePath();
-
-        // Remplissage semi-transparent
-        this.ctx.fillStyle = "rgba(100, 180, 255, 0.15)";
-        this.ctx.fill();
-      }
+      // Dessiner un contour sur la forme survolée
+      this.ctx.save();
+      this.ctx.strokeStyle = "rgba(59, 130, 246, 0.6)";
+      this.ctx.lineWidth = 2 / this.viewport.scale;
+      this.ctx.stroke(hoveredShape.path);
+      this.ctx.restore();
     }
   }
 }
