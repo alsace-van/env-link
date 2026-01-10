@@ -480,7 +480,30 @@ export interface BackgroundImage {
   // Transformation optionnelle (après calibration)
   transformedCanvas?: HTMLCanvasElement;
   calibrationData?: CalibrationData;
+  // Ajustements d'image pour améliorer les contours
+  adjustments?: ImageAdjustments;
+  // Canvas avec les ajustements appliqués (cache)
+  adjustedCanvas?: HTMLCanvasElement;
 }
+
+// Ajustements d'image pour améliorer la visibilité des contours
+export interface ImageAdjustments {
+  contrast: number;    // 0-200, 100 = normal
+  brightness: number;  // 0-200, 100 = normal
+  saturate: number;    // 0-200, 100 = normal
+  sharpen: number;     // 0-100, 0 = pas de netteté
+  invert: boolean;     // Inverser les couleurs
+  grayscale: boolean;  // Noir et blanc
+}
+
+export const DEFAULT_IMAGE_ADJUSTMENTS: ImageAdjustments = {
+  contrast: 100,
+  brightness: 100,
+  saturate: 100,
+  sharpen: 0,
+  invert: false,
+  grayscale: false,
+};
 
 // Couleurs pour les marqueurs
 export const MARKER_COLORS = [
