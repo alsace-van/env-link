@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.83 - Dimensions temps réel pour lineMove + indicateur angle droit (petit carré vert)
+// VERSION: 5.84 - Afficher dimensions des côtés adjacents lors du drag lineMove
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -989,6 +989,22 @@ export function CADGabaritCanvas({
           const line = sketch.geometries.get(dragTarget.id) as Line | undefined;
           if (line && line.type === "line") {
             drawLineDimension(line);
+
+            // Afficher aussi les dimensions des lignes connectées (côtés adjacents)
+            const connectedToP1 = findConnectedLines(line.p1);
+            const connectedToP2 = findConnectedLines(line.p2);
+
+            // Dessiner les dimensions des lignes adjacentes (exclure la ligne elle-même)
+            connectedToP1.forEach((connectedLine) => {
+              if (connectedLine.id !== line.id) {
+                drawLineDimension(connectedLine);
+              }
+            });
+            connectedToP2.forEach((connectedLine) => {
+              if (connectedLine.id !== line.id) {
+                drawLineDimension(connectedLine);
+              }
+            });
 
             // Afficher les angles droits aux deux extrémités
             drawRightAnglesAtPoint(line.p1);
