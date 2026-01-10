@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.16 - Markers: sélection, drag, suppression (Delete)
+// VERSION: 6.17 - Fix: markerMode se désactive quand on change d'outil (boutons et raccourcis)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1958,6 +1958,10 @@ export function CADGabaritCanvas({
   useEffect(() => {
     if (activeTool !== "select") {
       setSelectedEntities(new Set());
+      // Désactiver le mode marqueur quand on change d'outil
+      setMarkerMode("idle");
+      setPendingLink(null);
+      setSelectedMarkerId(null);
     }
     // Réinitialiser la mesure quand on change d'outil
     if (activeTool !== "measure") {
@@ -8339,30 +8343,42 @@ export function CADGabaritCanvas({
 
       // Raccourcis outils
       if (!e.ctrlKey && !e.metaKey) {
+        const resetMarkerMode = () => {
+          setMarkerMode("idle");
+          setPendingLink(null);
+        };
         switch (e.key.toLowerCase()) {
           case "v":
             setActiveTool("select");
+            resetMarkerMode();
             break;
           case "h":
             setActiveTool("pan");
+            resetMarkerMode();
             break;
           case "l":
             setActiveTool("line");
+            resetMarkerMode();
             break;
           case "c":
             setActiveTool("circle");
+            resetMarkerMode();
             break;
           case "r":
             setActiveTool("rectangle");
+            resetMarkerMode();
             break;
           case "b":
             setActiveTool("bezier");
+            resetMarkerMode();
             break;
           case "d":
             setActiveTool("dimension");
+            resetMarkerMode();
             break;
           case "m":
             setActiveTool("measure");
+            resetMarkerMode();
             break;
           case "f":
             fitToContent();
@@ -9110,6 +9126,9 @@ export function CADGabaritCanvas({
               setTempPoints([]);
               setTempGeometry(null);
               setFilletFirstLine(null); // Reset fillet/chamfer selection
+              // Désactiver le mode marqueur quand on clique sur un outil
+              setMarkerMode("idle");
+              setPendingLink(null);
             }}
             className="h-9 w-9 p-0"
           >
