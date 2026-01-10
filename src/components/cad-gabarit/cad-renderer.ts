@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.38 - Points de calibration très visibles (cercle rouge + halo blanc) par-dessus les photos
+// VERSION: 3.39 - Fix calibration multi-photos: points visibles par-dessus les images + style amélioré
 // ============================================
 
 import {
@@ -413,16 +413,18 @@ export class CADRenderer {
     }
 
     // 8.7. Points de calibration (TOUJOURS par-dessus tout)
-    // En mode multi-photos: utiliser calibrationData globale si showCalibration est vrai
-    // Les points de l'image sélectionnée (selectedImage.calibrationData) sont un backup
-    if (showCalibration && calibrationData && calibrationData.points.size > 0) {
-      // Dessiner les points de calibration globaux avec style très visible
-      this.drawCalibration(calibrationData);
-    } else if (backgroundImages.length > 0 && selectedImageId) {
-      // Fallback: points stockés dans l'image elle-même
-      const selectedImage = backgroundImages.find((img) => img.id === selectedImageId);
-      if (selectedImage?.calibrationData && selectedImage.calibrationData.points.size > 0) {
-        this.drawImageCalibrationPoints(backgroundImages, selectedImageId);
+    // En mode multi-photos: utiliser les points de l'image sélectionnée
+    // En mode legacy (sans multi-photos): utiliser calibrationData globale
+    if (showCalibration) {
+      if (backgroundImages.length > 0 && selectedImageId) {
+        // Mode multi-photos: points stockés dans selectedImage.calibrationData
+        const selectedImage = backgroundImages.find((img) => img.id === selectedImageId);
+        if (selectedImage?.calibrationData && selectedImage.calibrationData.points.size > 0) {
+          this.drawImageCalibrationPoints(backgroundImages, selectedImageId);
+        }
+      } else if (calibrationData && calibrationData.points.size > 0) {
+        // Mode legacy sans multi-photos: utiliser calibrationData globale
+        this.drawCalibration(calibrationData);
       }
     }
 
@@ -634,14 +636,17 @@ export class CADRenderer {
   /**
    * Dessine les points de calibration de l'image sélectionnée
    * Appelé en dernier pour être par-dessus tout
+   * Style amélioré pour être très visible sur les photos
    */
   private drawImageCalibrationPoints(images: BackgroundImage[], selectedImageId: string): void {
     const selectedImage = images.find((img) => img.id === selectedImageId);
     if (!selectedImage?.calibrationData) return;
 
     const calibData = selectedImage.calibrationData;
+    const pointSize = 12 / this.viewport.scale;
+    const fontSize = 14 / this.viewport.scale;
 
-    // Dessiner les paires de calibration (lignes)
+    // Dessiner les paires de calibration (lignes) - AVEC FOND BLANC POUR CONTRASTE
     calibData.pairs.forEach((pair) => {
       const p1 = calibData.points.get(pair.point1Id);
       const p2 = calibData.points.get(pair.point2Id);
@@ -654,31 +659,53 @@ export class CADRenderer {
       const y2 = selectedImage.y + p2.y;
 
       this.ctx.save();
+
+      // Ligne de fond blanche épaisse (pour contraste)
+      this.ctx.beginPath();
+      this.ctx.moveTo(x1, y1);
+      this.ctx.lineTo(x2, y2);
+      this.ctx.strokeStyle = "#FFFFFF";
+      this.ctx.lineWidth = 5 / this.viewport.scale;
+      this.ctx.stroke();
+
+      // Ligne pointillée colorée par-dessus
       this.ctx.beginPath();
       this.ctx.moveTo(x1, y1);
       this.ctx.lineTo(x2, y2);
       this.ctx.strokeStyle = pair.color;
-      this.ctx.lineWidth = 2 / this.viewport.scale;
-      this.ctx.setLineDash([6 / this.viewport.scale, 4 / this.viewport.scale]);
+      this.ctx.lineWidth = 3 / this.viewport.scale;
+      this.ctx.setLineDash([8 / this.viewport.scale, 4 / this.viewport.scale]);
       this.ctx.stroke();
       this.ctx.setLineDash([]);
 
-      // Label de distance
+      // Label de distance avec fond et bordure
       const midX = (x1 + x2) / 2;
       const midY = (y1 + y2) / 2;
-      const fontSize = 12 / this.viewport.scale;
       this.ctx.font = `bold ${fontSize}px Arial`;
       const labelText = `${pair.distanceMm} mm`;
       const textWidth = this.ctx.measureText(labelText).width;
-      const padding = 3 / this.viewport.scale;
+      const padding = 5 / this.viewport.scale;
 
-      this.ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+      // Fond blanc
+      this.ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
       this.ctx.fillRect(
         midX - textWidth / 2 - padding,
         midY - fontSize / 2 - padding,
         textWidth + padding * 2,
         fontSize + padding * 2,
       );
+
+      // Bordure colorée
+      this.ctx.strokeStyle = pair.color;
+      this.ctx.lineWidth = 2 / this.viewport.scale;
+      this.ctx.strokeRect(
+        midX - textWidth / 2 - padding,
+        midY - fontSize / 2 - padding,
+        textWidth + padding * 2,
+        fontSize + padding * 2,
+      );
+
+      // Texte
       this.ctx.fillStyle = pair.color;
       this.ctx.textAlign = "center";
       this.ctx.textBaseline = "middle";
@@ -686,40 +713,73 @@ export class CADRenderer {
       this.ctx.restore();
     });
 
-    // Dessiner les points de calibration PAR-DESSUS
+    // Dessiner les points de calibration PAR-DESSUS avec style très visible
     calibData.points.forEach((point) => {
       const worldX = selectedImage.x + point.x;
       const worldY = selectedImage.y + point.y;
-      const pointSize = 8 / this.viewport.scale;
 
       this.ctx.save();
 
-      // Cercle extérieur rouge
+      // 1. Cercle de fond blanc (halo pour visibilité)
+      this.ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+      this.ctx.beginPath();
+      this.ctx.arc(worldX, worldY, pointSize + 4 / this.viewport.scale, 0, Math.PI * 2);
+      this.ctx.fill();
+
+      // 2. Cercle rouge principal
+      this.ctx.fillStyle = "#FF3333";
       this.ctx.beginPath();
       this.ctx.arc(worldX, worldY, pointSize, 0, Math.PI * 2);
-      this.ctx.fillStyle = "#FF6B6B";
       this.ctx.fill();
+
+      // 3. Bordure blanche épaisse
+      this.ctx.strokeStyle = "#FFFFFF";
+      this.ctx.lineWidth = 3 / this.viewport.scale;
+      this.ctx.stroke();
+
+      // 4. Croix blanche au centre
+      const crossSize = pointSize * 0.6;
+      this.ctx.strokeStyle = "#FFFFFF";
+      this.ctx.lineWidth = 2.5 / this.viewport.scale;
+      this.ctx.beginPath();
+      this.ctx.moveTo(worldX - crossSize, worldY);
+      this.ctx.lineTo(worldX + crossSize, worldY);
+      this.ctx.moveTo(worldX, worldY - crossSize);
+      this.ctx.lineTo(worldX, worldY + crossSize);
+      this.ctx.stroke();
+
+      // 5. Label avec fond rouge
+      const labelText = point.label;
+      this.ctx.font = `bold ${fontSize}px Arial`;
+      const labelWidth = this.ctx.measureText(labelText).width;
+      const labelPadding = 4 / this.viewport.scale;
+      const labelX = worldX + pointSize + 6 / this.viewport.scale;
+      const labelY = worldY - pointSize / 2;
+
+      // Fond du label
+      this.ctx.fillStyle = "#FF3333";
+      this.ctx.fillRect(
+        labelX - labelPadding,
+        labelY - fontSize / 2 - labelPadding,
+        labelWidth + labelPadding * 2,
+        fontSize + labelPadding * 2,
+      );
+
+      // Bordure blanche du label
       this.ctx.strokeStyle = "#FFFFFF";
       this.ctx.lineWidth = 2 / this.viewport.scale;
-      this.ctx.stroke();
+      this.ctx.strokeRect(
+        labelX - labelPadding,
+        labelY - fontSize / 2 - labelPadding,
+        labelWidth + labelPadding * 2,
+        fontSize + labelPadding * 2,
+      );
 
-      // Croix au centre
-      this.ctx.beginPath();
-      this.ctx.moveTo(worldX - pointSize * 0.5, worldY);
-      this.ctx.lineTo(worldX + pointSize * 0.5, worldY);
-      this.ctx.moveTo(worldX, worldY - pointSize * 0.5);
-      this.ctx.lineTo(worldX, worldY + pointSize * 0.5);
-      this.ctx.strokeStyle = "#FFFFFF";
-      this.ctx.lineWidth = 1.5 / this.viewport.scale;
-      this.ctx.stroke();
-
-      // Label
-      const fontSize = 11 / this.viewport.scale;
-      this.ctx.font = `bold ${fontSize}px Arial`;
-      this.ctx.textAlign = "center";
-      this.ctx.textBaseline = "bottom";
-      this.ctx.fillStyle = "#FF6B6B";
-      this.ctx.fillText(point.label, worldX, worldY - pointSize - 2 / this.viewport.scale);
+      // Texte du label
+      this.ctx.fillStyle = "#FFFFFF";
+      this.ctx.textAlign = "left";
+      this.ctx.textBaseline = "middle";
+      this.ctx.fillText(labelText, labelX, labelY);
 
       this.ctx.restore();
     });
