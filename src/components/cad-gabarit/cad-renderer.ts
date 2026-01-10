@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.27 - Marqueur de centre visible pour cercles et arcs
+// VERSION: 3.28 - Simplifié poignées cercle (1 seule pour resize)
 // ============================================
 
 import {
@@ -964,13 +964,10 @@ export class CADRenderer {
             const circle = geo as Circle;
             const center = sketch.points.get(circle.center);
             if (center) {
-              // Poignée au centre
+              // Poignée au centre pour déplacer
               this.drawHandle(center.x, center.y, handleSize, "move");
-              // Poignées sur les quadrants pour redimensionner
+              // Une seule poignée sur le bord droit pour redimensionner
               this.drawHandle(center.x + circle.radius, center.y, handleSize, "resize");
-              this.drawHandle(center.x - circle.radius, center.y, handleSize, "resize");
-              this.drawHandle(center.x, center.y + circle.radius, handleSize, "resize");
-              this.drawHandle(center.x, center.y - circle.radius, handleSize, "resize");
             }
             break;
           }

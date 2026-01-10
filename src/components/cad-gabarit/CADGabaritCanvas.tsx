@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.81 - Snap sur centre des cercles/arcs amélioré
+// VERSION: 5.82 - Redimensionner cercle par drag + dimensions temps réel pendant drag
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -815,6 +815,116 @@ export function CADGabaritCanvas({
         }
       }
     }
+
+    // Dessiner les dimensions pendant le drag (modification de figure)
+    if (isDragging && dragTarget && canvasRef.current) {
+      const ctx = canvasRef.current.getContext("2d");
+      if (ctx) {
+        ctx.save();
+        ctx.font = "bold 12px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        if (dragTarget.type === "handle" && dragTarget.handleType === "circleResize") {
+          // Afficher le rayon du cercle
+          const circle = sketch.geometries.get(dragTarget.id) as CircleType | undefined;
+          if (circle && circle.type === "circle") {
+            const center = sketch.points.get(circle.center);
+            if (center) {
+              const radiusMm = circle.radius / sketch.scaleFactor;
+              const centerScreen = {
+                x: center.x * viewport.scale + viewport.offsetX,
+                y: center.y * viewport.scale + viewport.offsetY,
+              };
+
+              const text = `R ${radiusMm.toFixed(1)} mm`;
+              const textX = centerScreen.x;
+              const textY = centerScreen.y - 20;
+              const textWidth = ctx.measureText(text).width;
+
+              // Fond blanc
+              ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+              ctx.fillRect(textX - textWidth / 2 - 4, textY - 8, textWidth + 8, 18);
+
+              // Texte
+              ctx.fillStyle = "#3B82F6";
+              ctx.fillText(text, textX, textY);
+            }
+          }
+        } else if (dragTarget.type === "point") {
+          // Afficher les dimensions des lignes connectées à ce point
+          const pointId = dragTarget.id;
+          const point = sketch.points.get(pointId);
+          if (point) {
+            // Chercher les géométries connectées
+            sketch.geometries.forEach((geo) => {
+              if (geo.type === "line") {
+                const line = geo as Line;
+                if (line.p1 === pointId || line.p2 === pointId) {
+                  const p1 = sketch.points.get(line.p1);
+                  const p2 = sketch.points.get(line.p2);
+                  if (p1 && p2) {
+                    const lengthPx = distance(p1, p2);
+                    const lengthMm = lengthPx / sketch.scaleFactor;
+
+                    const midScreen = {
+                      x: ((p1.x + p2.x) / 2) * viewport.scale + viewport.offsetX,
+                      y: ((p1.y + p2.y) / 2) * viewport.scale + viewport.offsetY,
+                    };
+
+                    // Offset perpendiculaire
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y;
+                    const len = Math.sqrt(dx * dx + dy * dy);
+                    const offsetX = len > 0 ? (-dy / len) * 15 : 0;
+                    const offsetY = len > 0 ? (dx / len) * 15 : 15;
+
+                    const text = `${lengthMm.toFixed(1)} mm`;
+                    const textX = midScreen.x + offsetX;
+                    const textY = midScreen.y + offsetY;
+                    const textWidth = ctx.measureText(text).width;
+
+                    // Fond blanc
+                    ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+                    ctx.fillRect(textX - textWidth / 2 - 4, textY - 8, textWidth + 8, 18);
+
+                    // Texte
+                    ctx.fillStyle = "#3B82F6";
+                    ctx.fillText(text, textX, textY);
+                  }
+                }
+              } else if (geo.type === "circle") {
+                const circle = geo as CircleType;
+                if (circle.center === pointId) {
+                  const center = sketch.points.get(circle.center);
+                  if (center) {
+                    const radiusMm = circle.radius / sketch.scaleFactor;
+                    const centerScreen = {
+                      x: center.x * viewport.scale + viewport.offsetX,
+                      y: center.y * viewport.scale + viewport.offsetY,
+                    };
+
+                    const text = `R ${radiusMm.toFixed(1)} mm`;
+                    const textX = centerScreen.x;
+                    const textY = centerScreen.y - 20;
+                    const textWidth = ctx.measureText(text).width;
+
+                    // Fond blanc
+                    ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+                    ctx.fillRect(textX - textWidth / 2 - 4, textY - 8, textWidth + 8, 18);
+
+                    // Texte
+                    ctx.fillStyle = "#3B82F6";
+                    ctx.fillText(text, textX, textY);
+                  }
+                }
+              }
+            });
+          }
+        }
+        ctx.restore();
+      }
+    }
   }, [
     sketch,
     viewport,
@@ -841,6 +951,8 @@ export function CADGabaritCanvas({
     chamferDialog,
     filletPreview,
     chamferPreview,
+    isDragging,
+    dragTarget,
   ]);
 
   useEffect(() => {
@@ -1324,19 +1436,12 @@ export function CADGabaritCanvas({
             const circle = geo as CircleType;
             const center = sketch.points.get(circle.center);
             if (center) {
-              // Poignées sur les quadrants
-              const handles = [
-                { x: center.x + circle.radius, y: center.y },
-                { x: center.x - circle.radius, y: center.y },
-                { x: center.x, y: center.y + circle.radius },
-                { x: center.x, y: center.y - circle.radius },
-              ];
-              for (const h of handles) {
-                if (distance({ x: worldX, y: worldY }, h) < tolerance) {
-                  return { type: "handle", id: entityId, handleType: "resize" };
-                }
+              // Poignée de redimensionnement sur le bord droit
+              const resizeHandle = { x: center.x + circle.radius, y: center.y };
+              if (distance({ x: worldX, y: worldY }, resizeHandle) < tolerance) {
+                return { type: "handle", id: entityId, handleType: "circleResize" };
               }
-              // Centre
+              // Centre pour déplacer
               if (distance({ x: worldX, y: worldY }, center) < tolerance) {
                 return { type: "point", id: circle.center };
               }
@@ -5138,6 +5243,22 @@ export function CADGabaritCanvas({
               y: targetPos.y,
             });
             setSketch(newSketch);
+          }
+        } else if (dragTarget.type === "handle" && dragTarget.handleType === "circleResize") {
+          // Redimensionnement du cercle
+          const newSketch = { ...sketch };
+          newSketch.geometries = new Map(sketch.geometries);
+          const circle = newSketch.geometries.get(dragTarget.id) as CircleType | undefined;
+          if (circle && circle.type === "circle") {
+            const center = sketch.points.get(circle.center);
+            if (center) {
+              const newRadius = distance(center, targetPos);
+              newSketch.geometries.set(dragTarget.id, {
+                ...circle,
+                radius: newRadius,
+              });
+              setSketch(newSketch);
+            }
           }
         }
         return;
