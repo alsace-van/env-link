@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.77 - Fix logique détection arcs (inversion counterClockwise)
+// VERSION: 5.78 - Double-clic arc sélectionne figure (pas modale)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -5442,13 +5442,12 @@ export function CADGabaritCanvas({
           }
 
           if (geo.type === "arc") {
-            // Double-clic sur arc → ouvrir le dialogue d'édition du rayon
-            const arc = geo as Arc;
-            setArcEditDialog({
-              open: true,
-              arcId: entityId,
-              currentRadius: arc.radius,
-            });
+            // Double-clic sur arc → sélectionner toute la figure connectée (comme les lignes)
+            const connectedGeos = findConnectedGeometries(entityId);
+            setSelectedEntities(connectedGeos);
+            if (connectedGeos.size > 1) {
+              toast.success(`${connectedGeos.size} élément(s) sélectionné(s)`);
+            }
           } else if (geo.type === "line" || geo.type === "bezier") {
             // Double-clic sur ligne/bezier → sélectionner toute la figure connectée
             const connectedGeos = findConnectedGeometries(entityId);
