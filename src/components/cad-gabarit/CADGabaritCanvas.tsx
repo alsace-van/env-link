@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.88 - Indicateurs colorés P1/P2 (vert/violet) et S1/S2 sur le canvas + boutons colorés
+// VERSION: 5.89 - Preview temps réel pour modification longueur et angle (Escape pour annuler)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -437,6 +437,7 @@ export function CADGabaritCanvas({
     currentLength: number; // en mm
     newLength: string;
     anchorMode: "p1" | "p2" | "center"; // Point d'ancrage
+    originalSketch: Sketch | null; // Sketch original pour annulation
   } | null>(null);
   const [lineLengthPanelPos, setLineLengthPanelPos] = useState({ x: 100, y: 100 });
   const [lineLengthPanelDragging, setLineLengthPanelDragging] = useState(false);
@@ -451,6 +452,7 @@ export function CADGabaritCanvas({
     currentAngle: number; // en degrés
     newAngle: string;
     anchorMode: "line1" | "line2" | "symmetric"; // Quelle ligne reste fixe
+    originalSketch: Sketch | null; // Sketch original pour annulation
   } | null>(null);
   const [anglePanelPos, setAnglePanelPos] = useState({ x: 100, y: 100 });
   const [anglePanelDragging, setAnglePanelDragging] = useState(false);
@@ -4455,7 +4457,7 @@ export function CADGabaritCanvas({
 
   // Modifier la longueur d'une ligne
   const applyLineLengthChange = useCallback(
-    (lineId: string, newLengthMm: number, anchorMode: "p1" | "p2" | "center") => {
+    (lineId: string, newLengthMm: number, anchorMode: "p1" | "p2" | "center", saveToHistory: boolean = true) => {
       const line = sketch.geometries.get(lineId) as Line | undefined;
       if (!line || line.type !== "line") return;
 
@@ -4514,8 +4516,10 @@ export function CADGabaritCanvas({
       }
 
       setSketch(newSketch);
-      addToHistory(newSketch);
-      toast.success(`Longueur modifiée: ${newLengthMm.toFixed(1)} mm`);
+      if (saveToHistory) {
+        addToHistory(newSketch);
+        toast.success(`Longueur modifiée: ${newLengthMm.toFixed(1)} mm`);
+      }
     },
     [sketch, addToHistory],
   );
@@ -4528,6 +4532,7 @@ export function CADGabaritCanvas({
       line2Id: string,
       newAngleDeg: number,
       anchorMode: "line1" | "line2" | "symmetric",
+      saveToHistory: boolean = true,
     ) => {
       const point = sketch.points.get(pointId);
       const line1 = sketch.geometries.get(line1Id) as Line | undefined;
@@ -4607,8 +4612,10 @@ export function CADGabaritCanvas({
       }
 
       setSketch(newSketch);
-      addToHistory(newSketch);
-      toast.success(`Angle modifié: ${newAngleDeg.toFixed(1)}°`);
+      if (saveToHistory) {
+        addToHistory(newSketch);
+        toast.success(`Angle modifié: ${newAngleDeg.toFixed(1)}°`);
+      }
     },
     [sketch, addToHistory],
   );
@@ -9466,7 +9473,15 @@ export function CADGabaritCanvas({
               {/* Header */}
               <div className="flex items-center justify-between px-3 py-1.5 bg-blue-500 text-white rounded-t-lg cursor-move">
                 <span className="text-sm font-medium">📏 Longueur</span>
-                <button onClick={() => setLineLengthDialog(null)}>
+                <button
+                  onClick={() => {
+                    // Restaurer le sketch original
+                    if (lineLengthDialog.originalSketch) {
+                      setSketch(lineLengthDialog.originalSketch);
+                    }
+                    setLineLengthDialog(null);
+                  }}
+                >
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -9481,7 +9496,15 @@ export function CADGabaritCanvas({
                   <Input
                     type="number"
                     value={lineLengthDialog.newLength}
-                    onChange={(e) => setLineLengthDialog({ ...lineLengthDialog, newLength: e.target.value })}
+                    onChange={(e) => {
+                      const newValue = e.target.value;
+                      const value = parseFloat(newValue);
+                      // Appliquer en temps réel si valeur valide
+                      if (!isNaN(value) && value > 0) {
+                        applyLineLengthChange(lineLengthDialog.lineId, value, lineLengthDialog.anchorMode, false);
+                      }
+                      setLineLengthDialog({ ...lineLengthDialog, newLength: newValue });
+                    }}
                     className="h-8 flex-1 text-sm"
                     min="0.1"
                     step="0.1"
@@ -9491,11 +9514,19 @@ export function CADGabaritCanvas({
                       if (e.key === "Enter") {
                         const value = parseFloat(lineLengthDialog.newLength);
                         if (!isNaN(value) && value > 0) {
-                          applyLineLengthChange(lineLengthDialog.lineId, value, lineLengthDialog.anchorMode);
+                          // Valider: ajouter à l'historique
+                          addToHistory(sketch);
+                          toast.success(`Longueur modifiée: ${value.toFixed(1)} mm`);
                           setLineLengthDialog(null);
                         }
                       }
-                      if (e.key === "Escape") setLineLengthDialog(null);
+                      if (e.key === "Escape") {
+                        // Restaurer le sketch original
+                        if (lineLengthDialog.originalSketch) {
+                          setSketch(lineLengthDialog.originalSketch);
+                        }
+                        setLineLengthDialog(null);
+                      }
                     }}
                   />
                   <span className="text-xs text-gray-500">mm</span>
@@ -9512,7 +9543,19 @@ export function CADGabaritCanvas({
                         ? { backgroundColor: "#10B981", borderColor: "#10B981" }
                         : { borderColor: "#10B981", color: "#10B981" }
                     }
-                    onClick={() => setLineLengthDialog({ ...lineLengthDialog, anchorMode: "p1" })}
+                    onClick={() => {
+                      const value = parseFloat(lineLengthDialog.newLength);
+                      // Restaurer puis appliquer avec le nouveau mode
+                      if (lineLengthDialog.originalSketch) {
+                        setSketch(lineLengthDialog.originalSketch);
+                        if (!isNaN(value) && value > 0) {
+                          setTimeout(() => {
+                            applyLineLengthChange(lineLengthDialog.lineId, value, "p1", false);
+                          }, 0);
+                        }
+                      }
+                      setLineLengthDialog({ ...lineLengthDialog, anchorMode: "p1" });
+                    }}
                   >
                     P1 fixe
                   </Button>
@@ -9520,7 +9563,18 @@ export function CADGabaritCanvas({
                     variant={lineLengthDialog.anchorMode === "center" ? "default" : "outline"}
                     size="sm"
                     className="flex-1 h-7 text-xs px-1"
-                    onClick={() => setLineLengthDialog({ ...lineLengthDialog, anchorMode: "center" })}
+                    onClick={() => {
+                      const value = parseFloat(lineLengthDialog.newLength);
+                      if (lineLengthDialog.originalSketch) {
+                        setSketch(lineLengthDialog.originalSketch);
+                        if (!isNaN(value) && value > 0) {
+                          setTimeout(() => {
+                            applyLineLengthChange(lineLengthDialog.lineId, value, "center", false);
+                          }, 0);
+                        }
+                      }
+                      setLineLengthDialog({ ...lineLengthDialog, anchorMode: "center" });
+                    }}
                   >
                     Centre
                   </Button>
@@ -9533,7 +9587,18 @@ export function CADGabaritCanvas({
                         ? { backgroundColor: "#8B5CF6", borderColor: "#8B5CF6" }
                         : { borderColor: "#8B5CF6", color: "#8B5CF6" }
                     }
-                    onClick={() => setLineLengthDialog({ ...lineLengthDialog, anchorMode: "p2" })}
+                    onClick={() => {
+                      const value = parseFloat(lineLengthDialog.newLength);
+                      if (lineLengthDialog.originalSketch) {
+                        setSketch(lineLengthDialog.originalSketch);
+                        if (!isNaN(value) && value > 0) {
+                          setTimeout(() => {
+                            applyLineLengthChange(lineLengthDialog.lineId, value, "p2", false);
+                          }, 0);
+                        }
+                      }
+                      setLineLengthDialog({ ...lineLengthDialog, anchorMode: "p2" });
+                    }}
                   >
                     P2 fixe
                   </Button>
@@ -9546,7 +9611,9 @@ export function CADGabaritCanvas({
                   onClick={() => {
                     const value = parseFloat(lineLengthDialog.newLength);
                     if (!isNaN(value) && value > 0) {
-                      applyLineLengthChange(lineLengthDialog.lineId, value, lineLengthDialog.anchorMode);
+                      // Valider: ajouter à l'historique
+                      addToHistory(sketch);
+                      toast.success(`Longueur modifiée: ${value.toFixed(1)} mm`);
                       setLineLengthDialog(null);
                     }
                   }}
@@ -9587,7 +9654,15 @@ export function CADGabaritCanvas({
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-1.5 bg-orange-500 text-white rounded-t-lg cursor-move">
             <span className="text-sm font-medium">📐 Angle</span>
-            <button onClick={() => setAngleEditDialog(null)}>
+            <button
+              onClick={() => {
+                // Restaurer le sketch original
+                if (angleEditDialog.originalSketch) {
+                  setSketch(angleEditDialog.originalSketch);
+                }
+                setAngleEditDialog(null);
+              }}
+            >
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -9602,7 +9677,22 @@ export function CADGabaritCanvas({
               <Input
                 type="number"
                 value={angleEditDialog.newAngle}
-                onChange={(e) => setAngleEditDialog({ ...angleEditDialog, newAngle: e.target.value })}
+                onChange={(e) => {
+                  const newValue = e.target.value;
+                  const value = parseFloat(newValue);
+                  // Appliquer en temps réel si valeur valide
+                  if (!isNaN(value) && value > 0 && value < 180) {
+                    applyAngleChange(
+                      angleEditDialog.pointId,
+                      angleEditDialog.line1Id,
+                      angleEditDialog.line2Id,
+                      value,
+                      angleEditDialog.anchorMode,
+                      false,
+                    );
+                  }
+                  setAngleEditDialog({ ...angleEditDialog, newAngle: newValue });
+                }}
                 className="h-8 flex-1 text-sm"
                 min="1"
                 max="179"
@@ -9613,17 +9703,19 @@ export function CADGabaritCanvas({
                   if (e.key === "Enter") {
                     const value = parseFloat(angleEditDialog.newAngle);
                     if (!isNaN(value) && value > 0 && value < 180) {
-                      applyAngleChange(
-                        angleEditDialog.pointId,
-                        angleEditDialog.line1Id,
-                        angleEditDialog.line2Id,
-                        value,
-                        angleEditDialog.anchorMode,
-                      );
+                      // Valider: ajouter à l'historique
+                      addToHistory(sketch);
+                      toast.success(`Angle modifié: ${value.toFixed(1)}°`);
                       setAngleEditDialog(null);
                     }
                   }
-                  if (e.key === "Escape") setAngleEditDialog(null);
+                  if (e.key === "Escape") {
+                    // Restaurer le sketch original
+                    if (angleEditDialog.originalSketch) {
+                      setSketch(angleEditDialog.originalSketch);
+                    }
+                    setAngleEditDialog(null);
+                  }
                 }}
               />
               <span className="text-xs text-gray-500">°</span>
@@ -9640,7 +9732,25 @@ export function CADGabaritCanvas({
                     ? { backgroundColor: "#10B981", borderColor: "#10B981" }
                     : { borderColor: "#10B981", color: "#10B981" }
                 }
-                onClick={() => setAngleEditDialog({ ...angleEditDialog, anchorMode: "line1" })}
+                onClick={() => {
+                  const value = parseFloat(angleEditDialog.newAngle);
+                  if (angleEditDialog.originalSketch) {
+                    setSketch(angleEditDialog.originalSketch);
+                    if (!isNaN(value) && value > 0 && value < 180) {
+                      setTimeout(() => {
+                        applyAngleChange(
+                          angleEditDialog.pointId,
+                          angleEditDialog.line1Id,
+                          angleEditDialog.line2Id,
+                          value,
+                          "line1",
+                          false,
+                        );
+                      }, 0);
+                    }
+                  }
+                  setAngleEditDialog({ ...angleEditDialog, anchorMode: "line1" });
+                }}
               >
                 S1 fixe
               </Button>
@@ -9648,7 +9758,25 @@ export function CADGabaritCanvas({
                 variant={angleEditDialog.anchorMode === "symmetric" ? "default" : "outline"}
                 size="sm"
                 className="flex-1 h-7 text-xs px-1"
-                onClick={() => setAngleEditDialog({ ...angleEditDialog, anchorMode: "symmetric" })}
+                onClick={() => {
+                  const value = parseFloat(angleEditDialog.newAngle);
+                  if (angleEditDialog.originalSketch) {
+                    setSketch(angleEditDialog.originalSketch);
+                    if (!isNaN(value) && value > 0 && value < 180) {
+                      setTimeout(() => {
+                        applyAngleChange(
+                          angleEditDialog.pointId,
+                          angleEditDialog.line1Id,
+                          angleEditDialog.line2Id,
+                          value,
+                          "symmetric",
+                          false,
+                        );
+                      }, 0);
+                    }
+                  }
+                  setAngleEditDialog({ ...angleEditDialog, anchorMode: "symmetric" });
+                }}
               >
                 Sym
               </Button>
@@ -9661,7 +9789,25 @@ export function CADGabaritCanvas({
                     ? { backgroundColor: "#8B5CF6", borderColor: "#8B5CF6" }
                     : { borderColor: "#8B5CF6", color: "#8B5CF6" }
                 }
-                onClick={() => setAngleEditDialog({ ...angleEditDialog, anchorMode: "line2" })}
+                onClick={() => {
+                  const value = parseFloat(angleEditDialog.newAngle);
+                  if (angleEditDialog.originalSketch) {
+                    setSketch(angleEditDialog.originalSketch);
+                    if (!isNaN(value) && value > 0 && value < 180) {
+                      setTimeout(() => {
+                        applyAngleChange(
+                          angleEditDialog.pointId,
+                          angleEditDialog.line1Id,
+                          angleEditDialog.line2Id,
+                          value,
+                          "line2",
+                          false,
+                        );
+                      }, 0);
+                    }
+                  }
+                  setAngleEditDialog({ ...angleEditDialog, anchorMode: "line2" });
+                }}
               >
                 S2 fixe
               </Button>
@@ -9674,13 +9820,9 @@ export function CADGabaritCanvas({
               onClick={() => {
                 const value = parseFloat(angleEditDialog.newAngle);
                 if (!isNaN(value) && value > 0 && value < 180) {
-                  applyAngleChange(
-                    angleEditDialog.pointId,
-                    angleEditDialog.line1Id,
-                    angleEditDialog.line2Id,
-                    value,
-                    angleEditDialog.anchorMode,
-                  );
+                  // Valider: ajouter à l'historique
+                  addToHistory(sketch);
+                  toast.success(`Angle modifié: ${value.toFixed(1)}°`);
                   setAngleEditDialog(null);
                 }
               }}
@@ -9786,6 +9928,13 @@ export function CADGabaritCanvas({
                         currentLength: currentLength,
                         newLength: currentLength.toFixed(1),
                         anchorMode: "center",
+                        originalSketch: {
+                          ...sketch,
+                          points: new Map(sketch.points),
+                          geometries: new Map(sketch.geometries),
+                          layers: new Map(sketch.layers),
+                          constraints: new Map(sketch.constraints),
+                        },
                       });
                       setContextMenu(null);
                     }}
@@ -9867,6 +10016,13 @@ export function CADGabaritCanvas({
                       currentAngle: currentAngle,
                       newAngle: currentAngle.toFixed(1),
                       anchorMode: "symmetric",
+                      originalSketch: {
+                        ...sketch,
+                        points: new Map(sketch.points),
+                        geometries: new Map(sketch.geometries),
+                        layers: new Map(sketch.layers),
+                        constraints: new Map(sketch.constraints),
+                      },
                     });
                     setContextMenu(null);
                   }}
