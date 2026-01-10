@@ -1,7 +1,7 @@
 // ============================================
 // TYPES: CAD Gabarit Types
 // Types pour le système CAO
-// VERSION: 2.7 - Ajout outils fillet, chamfer, offset
+// VERSION: 2.8 - Ajout isFillet sur Arc pour distinguer congés des arcs d'intersection
 // ============================================
 
 // === GÉOMÉTRIE DE BASE ===
@@ -38,6 +38,7 @@ export interface Arc {
   radius: number;
   layerId?: string;
   counterClockwise?: boolean; // Si true, dessiner dans le sens anti-horaire (grand arc si nécessaire)
+  isFillet?: boolean; // Si true, cet arc est un congé (peut être supprimé pour restaurer le coin)
 }
 
 export interface Rectangle {

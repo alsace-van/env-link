@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.79 - Dimensions temps réel pendant tracé
+// VERSION: 5.80 - Distinction congé/arc normal (suppression sans restauration pour arcs d'intersection)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1754,6 +1754,7 @@ export function CADGabaritCanvas({
         radius: radius,
         layerId: currentLine1.layerId || "trace",
         counterClockwise: counterClockwise,
+        isFillet: true, // Marquer comme congé pour permettre la restauration du coin
       };
       newSketch.geometries.set(arcId, arc);
 
@@ -5527,8 +5528,8 @@ export function CADGabaritCanvas({
     selectedEntities.forEach((id) => {
       const geo = newSketch.geometries.get(id);
 
-      // Si c'est un arc (potentiellement un congé), restaurer le coin
-      if (geo && geo.type === "arc") {
+      // Si c'est un arc CONGÉ (isFillet === true), restaurer le coin
+      if (geo && geo.type === "arc" && (geo as Arc).isFillet === true) {
         const arc = geo as Arc;
         const startPt = newSketch.points.get(arc.startPoint);
         const endPt = newSketch.points.get(arc.endPoint);
@@ -5596,6 +5597,10 @@ export function CADGabaritCanvas({
 
         // Supprimer l'arc
         newSketch.geometries.delete(id);
+      } else if (geo && geo.type === "arc") {
+        // Arc normal (pas un congé) - supprimer simplement sans restaurer de coin
+        newSketch.geometries.delete(id);
+        // Ne pas supprimer les points car ils peuvent être partagés avec d'autres géométries
       } else {
         // Supprimer normalement les autres entités
         newSketch.points.delete(id);
@@ -8743,34 +8748,64 @@ export function CADGabaritCanvas({
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={() => setContextMenu(null)}
         >
-          {contextMenu.entityType === "arc" && (
-            <>
-              <button
-                className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                onClick={() => {
-                  removeFilletFromArc(contextMenu.entityId);
-                  setContextMenu(null);
-                }}
-              >
-                <RotateCcw className="h-4 w-4 text-red-500" />
-                Supprimer le congé
-              </button>
-              <button
-                className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                onClick={() => {
-                  setArcEditDialog({
-                    open: true,
-                    arcId: contextMenu.entityId,
-                    currentRadius: (sketch.geometries.get(contextMenu.entityId) as Arc)?.radius || 0,
-                  });
-                  setContextMenu(null);
-                }}
-              >
-                <Settings className="h-4 w-4 text-blue-500" />
-                Modifier le rayon
-              </button>
-            </>
-          )}
+          {contextMenu.entityType === "arc" &&
+            (() => {
+              const arc = sketch.geometries.get(contextMenu.entityId) as Arc | undefined;
+              const isFillet = arc?.isFillet === true;
+              return (
+                <>
+                  {isFillet ? (
+                    <button
+                      className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                      onClick={() => {
+                        removeFilletFromArc(contextMenu.entityId);
+                        setContextMenu(null);
+                      }}
+                    >
+                      <RotateCcw className="h-4 w-4 text-red-500" />
+                      Supprimer le congé
+                    </button>
+                  ) : (
+                    <button
+                      className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                      onClick={() => {
+                        // Supprimer simplement l'arc sans restaurer de coin
+                        const newSketch: Sketch = {
+                          ...sketch,
+                          points: new Map(sketch.points),
+                          geometries: new Map(sketch.geometries),
+                          layers: new Map(sketch.layers),
+                          constraints: new Map(sketch.constraints),
+                        };
+                        newSketch.geometries.delete(contextMenu.entityId);
+                        // Ne pas supprimer les points car ils peuvent être utilisés par d'autres géométries
+                        setSketch(newSketch);
+                        addToHistory(newSketch);
+                        toast.success("Arc supprimé");
+                        setContextMenu(null);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                      Supprimer
+                    </button>
+                  )}
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      setArcEditDialog({
+                        open: true,
+                        arcId: contextMenu.entityId,
+                        currentRadius: arc?.radius || 0,
+                      });
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Settings className="h-4 w-4 text-blue-500" />
+                    Modifier le rayon
+                  </button>
+                </>
+              );
+            })()}
           {contextMenu.entityType === "line" && (
             <>
               <button
