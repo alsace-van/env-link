@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.17 - Fix: markerMode se désactive quand on change d'outil (boutons et raccourcis)
+// VERSION: 6.18 - Undo/Redo pour photos et markers (historique séparé)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -242,6 +242,9 @@ export function CADGabaritCanvas({
   const [imageDragStart, setImageDragStart] = useState<{ x: number; y: number; imgX: number; imgY: number } | null>(
     null,
   );
+  // Refs pour accéder aux images depuis les event handlers (évite stale closures)
+  const backgroundImagesRef = useRef<BackgroundImage[]>([]);
+  const markerLinksRef = useRef<ImageMarkerLink[]>([]);
 
   // === Marqueurs inter-photos ===
   const [markerLinks, setMarkerLinks] = useState<ImageMarkerLink[]>([]);
@@ -260,6 +263,15 @@ export function CADGabaritCanvas({
     markerId: string;
     startPos: { x: number; y: number };
   } | null>(null);
+
+  // Synchroniser les refs avec les états
+  useEffect(() => {
+    backgroundImagesRef.current = backgroundImages;
+  }, [backgroundImages]);
+
+  useEffect(() => {
+    markerLinksRef.current = markerLinks;
+  }, [markerLinks]);
 
   // Surbrillance des formes fermées
   const [highlightOpacity, setHighlightOpacity] = useState(0.12);
@@ -305,10 +317,23 @@ export function CADGabaritCanvas({
   const [historyIndex, setHistoryIndex] = useState(-1);
   const historyRef = useRef<{ history: any[]; index: number }>({ history: [], index: -1 });
 
+  // Historique séparé pour les images (car HTMLImageElement ne peut pas être sérialisé)
+  interface ImageHistoryState {
+    backgroundImages: BackgroundImage[];
+    markerLinks: ImageMarkerLink[];
+  }
+  const [imageHistory, setImageHistory] = useState<ImageHistoryState[]>([]);
+  const [imageHistoryIndex, setImageHistoryIndex] = useState(-1);
+  const imageHistoryRef = useRef<{ history: ImageHistoryState[]; index: number }>({ history: [], index: -1 });
+
   // Synchroniser la ref avec l'état
   useEffect(() => {
     historyRef.current = { history, index: historyIndex };
   }, [history, historyIndex]);
+
+  useEffect(() => {
+    imageHistoryRef.current = { history: imageHistory, index: imageHistoryIndex };
+  }, [imageHistory, imageHistoryIndex]);
 
   // Sauvegarder l'état initial au montage
   const historyInitializedRef = useRef(false);
@@ -2142,6 +2167,35 @@ export function CADGabaritCanvas({
     setHistoryIndex(newIndex);
     historyRef.current = { history: newHistory, index: newIndex };
   }, []);
+
+  // Historique des images (séparé car contient des objets HTML non-sérialisables)
+  const addToImageHistory = useCallback((images: BackgroundImage[], links: ImageMarkerLink[]) => {
+    const { history: currentHistory, index: currentIndex } = imageHistoryRef.current;
+    // Créer une copie profonde des images (sans les HTMLElement qui sont partagés)
+    const imagesCopy = images.map((img) => ({
+      ...img,
+      markers: [...img.markers.map((m) => ({ ...m }))],
+    }));
+    const linksCopy = links.map((l) => ({
+      ...l,
+      marker1: { ...l.marker1 },
+      marker2: { ...l.marker2 },
+    }));
+
+    const newState = { backgroundImages: imagesCopy, markerLinks: linksCopy };
+    const newHistory = [...currentHistory.slice(0, currentIndex + 1), newState];
+    const newIndex = currentIndex + 1;
+
+    setImageHistory(newHistory);
+    setImageHistoryIndex(newIndex);
+    imageHistoryRef.current = { history: newHistory, index: newIndex };
+  }, []);
+
+  // Ref pour addToImageHistory (évite stale closures dans event handlers)
+  const addToImageHistoryRef = useRef(addToImageHistory);
+  useEffect(() => {
+    addToImageHistoryRef.current = addToImageHistory;
+  }, [addToImageHistory]);
 
   // Conversion coordonnées (système standard: Y vers le bas)
   const screenToWorld = useCallback(
@@ -7912,24 +7966,55 @@ export function CADGabaritCanvas({
 
   // Undo/Redo
   const undo = useCallback(() => {
-    if (historyIndex > 0) {
+    // D'abord essayer de restaurer les images si l'historique d'images est plus récent
+    const sketchCanUndo = historyIndex > 0;
+    const imageCanUndo = imageHistoryIndex > 0;
+
+    if (imageCanUndo && (!sketchCanUndo || imageHistoryIndex >= historyIndex)) {
+      // Restaurer l'état précédent des images
+      const prevImageState = imageHistory[imageHistoryIndex - 1];
+      const newImageIndex = imageHistoryIndex - 1;
+      setBackgroundImages(prevImageState.backgroundImages);
+      setMarkerLinks(prevImageState.markerLinks);
+      setImageHistoryIndex(newImageIndex);
+      imageHistoryRef.current = { ...imageHistoryRef.current, index: newImageIndex };
+      toast.success("Annulation (images)");
+      return;
+    }
+
+    if (sketchCanUndo) {
       const prevState = history[historyIndex - 1];
       const newIndex = historyIndex - 1;
       loadSketchData(prevState);
       setHistoryIndex(newIndex);
       historyRef.current = { ...historyRef.current, index: newIndex };
     }
-  }, [history, historyIndex, loadSketchData]);
+  }, [history, historyIndex, loadSketchData, imageHistory, imageHistoryIndex]);
 
   const redo = useCallback(() => {
-    if (historyIndex < history.length - 1) {
+    // D'abord essayer le sketch, puis les images
+    const sketchCanRedo = historyIndex < history.length - 1;
+    const imageCanRedo = imageHistoryIndex < imageHistory.length - 1;
+
+    if (sketchCanRedo) {
       const nextState = history[historyIndex + 1];
       const newIndex = historyIndex + 1;
       loadSketchData(nextState);
       setHistoryIndex(newIndex);
       historyRef.current = { ...historyRef.current, index: newIndex };
+      return;
     }
-  }, [history, historyIndex, loadSketchData]);
+
+    if (imageCanRedo) {
+      const nextImageState = imageHistory[imageHistoryIndex + 1];
+      const newImageIndex = imageHistoryIndex + 1;
+      setBackgroundImages(nextImageState.backgroundImages);
+      setMarkerLinks(nextImageState.markerLinks);
+      setImageHistoryIndex(newImageIndex);
+      imageHistoryRef.current = { ...imageHistoryRef.current, index: newImageIndex };
+      toast.success("Rétablissement (images)");
+    }
+  }, [history, historyIndex, loadSketchData, imageHistory, imageHistoryIndex]);
 
   // === COPIER / COLLER / DUPLIQUER ===
 
@@ -8297,6 +8382,9 @@ export function CADGabaritCanvas({
       if (e.key === "Delete" || e.key === "Backspace") {
         // D'abord vérifier si un marker est sélectionné
         if (selectedMarkerId) {
+          // Sauvegarder l'état actuel dans l'historique AVANT de supprimer
+          addToImageHistoryRef.current(backgroundImagesRef.current, markerLinksRef.current);
+
           const [imageId, markerId] = selectedMarkerId.split(":");
           setBackgroundImages((prev) =>
             prev.map((img) => {
@@ -8321,6 +8409,9 @@ export function CADGabaritCanvas({
         }
         // Supprimer l'image sélectionnée si elle existe
         if (selectedImageId) {
+          // Sauvegarder l'état actuel dans l'historique AVANT de supprimer
+          addToImageHistoryRef.current(backgroundImagesRef.current, markerLinksRef.current);
+
           setBackgroundImages((prev) => {
             const newImages = prev.filter((img) => img.id !== selectedImageId);
             // Aussi supprimer les liens qui référencent cette image
@@ -9268,7 +9359,15 @@ export function CADGabaritCanvas({
                           className="h-6 w-6 p-0 text-red-500"
                           onClick={(e) => {
                             e.stopPropagation();
+                            // Sauvegarder l'état avant de supprimer
+                            addToImageHistory(backgroundImages, markerLinks);
                             setBackgroundImages((prev) => prev.filter((i) => i.id !== img.id));
+                            // Supprimer les liens qui référencent cette image
+                            setMarkerLinks((links) =>
+                              links.filter(
+                                (link) => link.marker1.imageId !== img.id && link.marker2.imageId !== img.id,
+                              ),
+                            );
                             if (selectedImageId === img.id) setSelectedImageId(null);
                             toast.success("Photo supprimée");
                           }}
@@ -9296,8 +9395,12 @@ export function CADGabaritCanvas({
                   <DropdownMenuItem
                     className="text-red-500"
                     onClick={() => {
+                      // Sauvegarder l'état avant de supprimer
+                      addToImageHistory(backgroundImages, markerLinks);
                       setBackgroundImages([]);
+                      setMarkerLinks([]);
                       setSelectedImageId(null);
+                      setSelectedMarkerId(null);
                       toast.success("Toutes les photos supprimées");
                     }}
                   >
