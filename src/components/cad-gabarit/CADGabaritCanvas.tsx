@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.94 - Fix complet closure stale (sketchRef dans applyLineLengthChange, applyAngleChange, addToHistory)
+// VERSION: 5.95 - Fix findSnapPoint closures stales (utilise sketchRef.current au lieu de sketch)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6201,7 +6201,7 @@ export function CADGabaritCanvas({
         // Utiliser le snap si activé
         let targetPos = worldPos;
         if (snapEnabled) {
-          const snap = snapSystemRef.current.findSnapPoint(screenX, screenY, sketch, viewport, []);
+          const snap = snapSystemRef.current.findSnapPoint(screenX, screenY, sketchRef.current, viewport, []);
           if (snap) {
             targetPos = { x: snap.x, y: snap.y };
             setCurrentSnapPoint(snap);
@@ -6314,7 +6314,9 @@ export function CADGabaritCanvas({
 
         // Snap pendant le drag
         if (snapEnabled) {
-          const snap = snapSystemRef.current.findSnapPoint(screenX, screenY, sketch, viewport, [dragTarget.id]);
+          const snap = snapSystemRef.current.findSnapPoint(screenX, screenY, sketchRef.current, viewport, [
+            dragTarget.id,
+          ]);
           if (snap) {
             targetPos = { x: snap.x, y: snap.y };
             setCurrentSnapPoint(snap);
@@ -6387,7 +6389,7 @@ export function CADGabaritCanvas({
 
       // Snap
       if (snapEnabled) {
-        const snap = snapSystemRef.current.findSnapPoint(screenX, screenY, sketch, viewport, []);
+        const snap = snapSystemRef.current.findSnapPoint(screenX, screenY, sketchRef.current, viewport, []);
         setCurrentSnapPoint(snap);
       } else {
         setCurrentSnapPoint(null);
@@ -6423,13 +6425,14 @@ export function CADGabaritCanvas({
             // Minimum de longueur pour détecter
             const lineDirNorm = { x: lineDir.x / lineLen, y: lineDir.y / lineLen };
 
-            // Parcourir les segments existants
-            sketch.geometries.forEach((geo, geoId) => {
+            // Parcourir les segments existants - utiliser sketchRef.current pour éviter closure stale
+            const currentSketch = sketchRef.current;
+            currentSketch.geometries.forEach((geo, geoId) => {
               if (geo.type !== "line" || perpInfo) return;
 
               const line = geo as Line;
-              const p1 = sketch.points.get(line.p1);
-              const p2 = sketch.points.get(line.p2);
+              const p1 = currentSketch.points.get(line.p1);
+              const p2 = currentSketch.points.get(line.p2);
               if (!p1 || !p2) return;
 
               // Direction du segment existant
