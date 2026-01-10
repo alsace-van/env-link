@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.80 - Distinction congé/arc normal (suppression sans restauration pour arcs d'intersection)
+// VERSION: 5.81 - Snap sur centre des cercles/arcs amélioré
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1480,8 +1480,8 @@ export function CADGabaritCanvas({
   // Helper: récupère un point existant si snap endpoint, sinon crée un nouveau point
   const getOrCreatePoint = useCallback(
     (targetPos: { x: number; y: number }, snapPoint: SnapPoint | null): Point => {
-      // Si on snappe sur un endpoint existant, réutiliser ce point
-      if (snapPoint && snapPoint.type === "endpoint" && snapPoint.entityId) {
+      // Si on snappe sur un endpoint ou center existant, réutiliser ce point
+      if (snapPoint && (snapPoint.type === "endpoint" || snapPoint.type === "center") && snapPoint.entityId) {
         const existingPoint = sketch.points.get(snapPoint.entityId);
         if (existingPoint) {
           return existingPoint;

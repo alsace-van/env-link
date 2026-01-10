@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.26 - Dimensions temps réel pendant tracé (longueur, rayon, angle)
+// VERSION: 3.27 - Marqueur de centre visible pour cercles et arcs
 // ============================================
 
 import {
@@ -784,14 +784,8 @@ export class CADRenderer {
     this.ctx.arc(center.x, center.y, circle.radius, 0, Math.PI * 2);
     this.ctx.stroke();
 
-    // Marqueur de centre
-    const r = 3 / this.viewport.scale;
-    this.ctx.beginPath();
-    this.ctx.moveTo(center.x - r, center.y);
-    this.ctx.lineTo(center.x + r, center.y);
-    this.ctx.moveTo(center.x, center.y - r);
-    this.ctx.lineTo(center.x, center.y + r);
-    this.ctx.stroke();
+    // Marqueur de centre (croix + petit cercle) - toujours visible
+    this.drawCenterMarker(center.x, center.y);
   }
 
   private drawArc(arc: Arc, sketch: Sketch): void {
@@ -818,6 +812,38 @@ export class CADRenderer {
     this.ctx.beginPath();
     this.ctx.arc(center.x, center.y, arc.radius, startAngle, endAngle, counterClockwise);
     this.ctx.stroke();
+
+    // Marqueur de centre pour les arcs (permet de snapper sur le centre)
+    this.drawCenterMarker(center.x, center.y);
+  }
+
+  /**
+   * Dessine un marqueur de centre (croix + petit cercle) pour les cercles et arcs
+   * Permet de visualiser le point de snap "center"
+   */
+  private drawCenterMarker(x: number, y: number): void {
+    const r = 5 / this.viewport.scale; // Taille de la croix
+    const dotR = 2 / this.viewport.scale; // Rayon du petit cercle
+
+    this.ctx.save();
+    this.ctx.strokeStyle = "#6B7280"; // Gris
+    this.ctx.lineWidth = 1 / this.viewport.scale;
+    this.ctx.setLineDash([]);
+
+    // Croix
+    this.ctx.beginPath();
+    this.ctx.moveTo(x - r, y);
+    this.ctx.lineTo(x + r, y);
+    this.ctx.moveTo(x, y - r);
+    this.ctx.lineTo(x, y + r);
+    this.ctx.stroke();
+
+    // Petit cercle au centre
+    this.ctx.beginPath();
+    this.ctx.arc(x, y, dotR, 0, Math.PI * 2);
+    this.ctx.stroke();
+
+    this.ctx.restore();
   }
 
   private drawRectangle(rect: Rectangle, sketch: Sketch): void {
