@@ -9765,7 +9765,11 @@ export function CADGabaritCanvas({
                   <Target className="h-5 w-5 text-red-500" />
                   <span className="font-semibold">Calibration</span>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setShowCalibrationPanel(false)}>
+                <Button variant="ghost" size="sm" onClick={() => {
+                  setShowCalibrationPanel(false);
+                  setCalibrationMode("idle");
+                  setSelectedCalibrationPoint(null);
+                }}>
                   <X className="h-4 w-4" />
                 </Button>
               </div>
