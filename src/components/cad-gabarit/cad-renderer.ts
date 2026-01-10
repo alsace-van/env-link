@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.28 - Simplifié poignées cercle (1 seule pour resize)
+// VERSION: 3.29 - Fix détection cycles multiples partageant des points (triangle dans rectangle)
 // ============================================
 
 import {
@@ -2125,18 +2125,25 @@ export class CADRenderer {
       }
     });
 
-    // Trouver les cycles fermés - utiliser un Set global pour éviter de réutiliser des géométries
-    const globalUsedGeos = new Set<string>();
+    // Trouver les cycles fermés - NE PAS utiliser globalUsedGeos pour permettre plusieurs cycles
+    // qui partagent des points ou des géométries
     const foundCycles: Array<string[]> = []; // Array de geoIds dans l'ordre du parcours
+    const foundCycleKeys = new Set<string>(); // Pour éviter les doublons
+
+    // Fonction pour créer une clé unique pour un cycle (triée pour être indépendante de l'ordre)
+    const getCycleKey = (cycle: string[]): string => {
+      return [...cycle].sort().join(",");
+    };
 
     // Fonction pour trouver un cycle minimal à partir d'un point
-    const findMinimalCycle = (startPointId: string): string[] | null => {
+    const findMinimalCycle = (startPointId: string, excludeGeo?: string): string[] | null => {
       const conns = pointToGeos.get(startPointId) || [];
       if (conns.length < 2) return null;
 
       // Essayer de trouver le plus petit cycle
       for (const firstConn of conns) {
-        if (globalUsedGeos.has(firstConn.geoId)) continue;
+        // Permettre de trouver plusieurs cycles, mais exclure le geo spécifié si fourni
+        if (excludeGeo && firstConn.geoId === excludeGeo) continue;
 
         // BFS pour trouver le chemin le plus court qui revient au point de départ
         const queue: Array<{ pointId: string; path: string[]; visitedPoints: Set<string> }> = [
@@ -2160,7 +2167,13 @@ export class CADRenderer {
 
             // Si on revient au départ avec au moins 3 segments, c'est un cycle
             if (conn.otherPointId === startPointId && current.path.length >= 2) {
-              return [...current.path, conn.geoId];
+              const cycle = [...current.path, conn.geoId];
+              const key = getCycleKey(cycle);
+
+              // Vérifier si ce cycle n'a pas déjà été trouvé
+              if (!foundCycleKeys.has(key)) {
+                return cycle;
+              }
             }
 
             // Ne pas revisiter un point (sauf le point de départ)
@@ -2182,31 +2195,17 @@ export class CADRenderer {
     };
 
     // Parcourir tous les points pour trouver des cycles
-    const processedStartPoints = new Set<string>();
+    // Faire plusieurs passes pour trouver tous les cycles possibles
+    for (let pass = 0; pass < 3; pass++) {
+      for (const [pointId] of pointToGeos) {
+        // Essayer de trouver un cycle à partir de ce point
+        const cycle = findMinimalCycle(pointId);
 
-    for (const [pointId] of pointToGeos) {
-      if (processedStartPoints.has(pointId)) continue;
-
-      const cycle = findMinimalCycle(pointId);
-
-      if (cycle) {
-        // Marquer toutes les géométries du cycle comme utilisées
-        cycle.forEach((geoId) => globalUsedGeos.add(geoId));
-        foundCycles.push(cycle);
-
-        // Marquer tous les points du cycle comme traités
-        for (const geoId of cycle) {
-          const geo = sketch.geometries.get(geoId);
-          if (geo) {
-            if (geo.type === "line") {
-              const line = geo as Line;
-              processedStartPoints.add(line.p1);
-              processedStartPoints.add(line.p2);
-            } else if (geo.type === "arc") {
-              const arc = geo as Arc;
-              processedStartPoints.add(arc.startPoint);
-              processedStartPoints.add(arc.endPoint);
-            }
+        if (cycle) {
+          const key = getCycleKey(cycle);
+          if (!foundCycleKeys.has(key)) {
+            foundCycleKeys.add(key);
+            foundCycles.push(cycle);
           }
         }
       }
