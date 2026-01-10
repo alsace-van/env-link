@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.86 - Menu contextuel: modifier longueur (ligne) et angle (coin) avec point de référence
+// VERSION: 5.87 - Panneaux flottants draggables pour modifier longueur et angle (non bloquants)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -438,6 +438,9 @@ export function CADGabaritCanvas({
     newLength: string;
     anchorMode: "p1" | "p2" | "center"; // Point d'ancrage
   } | null>(null);
+  const [lineLengthPanelPos, setLineLengthPanelPos] = useState({ x: 100, y: 100 });
+  const [lineLengthPanelDragging, setLineLengthPanelDragging] = useState(false);
+  const [lineLengthPanelDragStart, setLineLengthPanelDragStart] = useState({ x: 0, y: 0 });
 
   // Modale pour modifier un angle
   const [angleEditDialog, setAngleEditDialog] = useState<{
@@ -449,6 +452,9 @@ export function CADGabaritCanvas({
     newAngle: string;
     anchorMode: "line1" | "line2" | "symmetric"; // Quelle ligne reste fixe
   } | null>(null);
+  const [anglePanelPos, setAnglePanelPos] = useState({ x: 100, y: 100 });
+  const [anglePanelDragging, setAnglePanelDragging] = useState(false);
+  const [anglePanelDragStart, setAnglePanelDragStart] = useState({ x: 0, y: 0 });
 
   // Aliases pour compatibilité avec le rendu
   const measureStart = measureState.start;
@@ -9277,179 +9283,248 @@ export function CADGabaritCanvas({
         </Dialog>
       )}
 
-      {/* Dialog modifier la longueur d'une ligne */}
-      {lineLengthDialog && (
-        <Dialog open={lineLengthDialog.open} onOpenChange={() => setLineLengthDialog(null)}>
-          <DialogContent className="sm:max-w-[320px]">
-            <DialogHeader>
-              <DialogTitle>Modifier la longueur</DialogTitle>
-              <DialogDescription>Longueur actuelle : {lineLengthDialog.currentLength.toFixed(1)} mm</DialogDescription>
-            </DialogHeader>
-            <div className="py-4 space-y-4">
-              <div>
-                <Label htmlFor="line-length">Nouvelle longueur (mm)</Label>
-                <Input
-                  id="line-length"
-                  type="number"
-                  value={lineLengthDialog.newLength}
-                  onChange={(e) => setLineLengthDialog({ ...lineLengthDialog, newLength: e.target.value })}
-                  className="mt-2"
-                  min="0.1"
-                  step="0.1"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    e.stopPropagation();
-                    if (e.key === "Enter") {
-                      const value = parseFloat(lineLengthDialog.newLength);
-                      if (!isNaN(value) && value > 0) {
-                        applyLineLengthChange(lineLengthDialog.lineId, value, lineLengthDialog.anchorMode);
-                        setLineLengthDialog(null);
-                      }
-                    }
-                  }}
-                />
+      {/* Panneau modifier longueur - draggable */}
+      {lineLengthDialog?.open &&
+        (() => {
+          const line = sketch.geometries.get(lineLengthDialog.lineId) as Line | undefined;
+          const p1 = line ? sketch.points.get(line.p1) : undefined;
+          const p2 = line ? sketch.points.get(line.p2) : undefined;
+
+          return (
+            <div
+              className="fixed bg-white rounded-lg shadow-xl border z-50 select-none"
+              style={{
+                left: lineLengthPanelPos.x,
+                top: lineLengthPanelPos.y,
+                width: 220,
+              }}
+              onMouseDown={(e) => {
+                if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "BUTTON")
+                  return;
+                setLineLengthPanelDragging(true);
+                setLineLengthPanelDragStart({
+                  x: e.clientX - lineLengthPanelPos.x,
+                  y: e.clientY - lineLengthPanelPos.y,
+                });
+              }}
+              onMouseMove={(e) => {
+                if (lineLengthPanelDragging) {
+                  setLineLengthPanelPos({
+                    x: e.clientX - lineLengthPanelDragStart.x,
+                    y: e.clientY - lineLengthPanelDragStart.y,
+                  });
+                }
+              }}
+              onMouseUp={() => setLineLengthPanelDragging(false)}
+              onMouseLeave={() => setLineLengthPanelDragging(false)}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-3 py-1.5 bg-blue-500 text-white rounded-t-lg cursor-move">
+                <span className="text-sm font-medium">📏 Longueur</span>
+                <button onClick={() => setLineLengthDialog(null)}>
+                  <X className="h-4 w-4" />
+                </button>
               </div>
-              <div>
-                <Label className="text-xs text-gray-500 mb-2 block">Point de référence</Label>
+
+              {/* Contenu */}
+              <div className="p-2 space-y-2">
+                {/* Longueur actuelle */}
+                <div className="text-xs text-gray-500">Actuel: {lineLengthDialog.currentLength.toFixed(1)} mm</div>
+
+                {/* Input nouvelle longueur */}
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    value={lineLengthDialog.newLength}
+                    onChange={(e) => setLineLengthDialog({ ...lineLengthDialog, newLength: e.target.value })}
+                    className="h-8 flex-1 text-sm"
+                    min="0.1"
+                    step="0.1"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === "Enter") {
+                        const value = parseFloat(lineLengthDialog.newLength);
+                        if (!isNaN(value) && value > 0) {
+                          applyLineLengthChange(lineLengthDialog.lineId, value, lineLengthDialog.anchorMode);
+                          setLineLengthDialog(null);
+                        }
+                      }
+                      if (e.key === "Escape") setLineLengthDialog(null);
+                    }}
+                  />
+                  <span className="text-xs text-gray-500">mm</span>
+                </div>
+
+                {/* Boutons P1 / Centre / P2 */}
                 <div className="flex gap-1">
                   <Button
                     variant={lineLengthDialog.anchorMode === "p1" ? "default" : "outline"}
                     size="sm"
-                    className="flex-1 text-xs"
+                    className="flex-1 h-7 text-xs px-1"
                     onClick={() => setLineLengthDialog({ ...lineLengthDialog, anchorMode: "p1" })}
                   >
-                    Depuis P1
+                    P1 fixe
                   </Button>
                   <Button
                     variant={lineLengthDialog.anchorMode === "center" ? "default" : "outline"}
                     size="sm"
-                    className="flex-1 text-xs"
+                    className="flex-1 h-7 text-xs px-1"
                     onClick={() => setLineLengthDialog({ ...lineLengthDialog, anchorMode: "center" })}
                   >
-                    Symétrique
+                    Centre
                   </Button>
                   <Button
                     variant={lineLengthDialog.anchorMode === "p2" ? "default" : "outline"}
                     size="sm"
-                    className="flex-1 text-xs"
+                    className="flex-1 h-7 text-xs px-1"
                     onClick={() => setLineLengthDialog({ ...lineLengthDialog, anchorMode: "p2" })}
                   >
-                    Depuis P2
+                    P2 fixe
                   </Button>
                 </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                onClick={() => {
-                  const value = parseFloat(lineLengthDialog.newLength);
-                  if (!isNaN(value) && value > 0) {
-                    applyLineLengthChange(lineLengthDialog.lineId, value, lineLengthDialog.anchorMode);
-                    setLineLengthDialog(null);
-                  }
-                }}
-                className="w-full"
-              >
-                <Check className="h-4 w-4 mr-2" />
-                Appliquer
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
 
-      {/* Dialog modifier un angle */}
-      {angleEditDialog && (
-        <Dialog open={angleEditDialog.open} onOpenChange={() => setAngleEditDialog(null)}>
-          <DialogContent className="sm:max-w-[320px]">
-            <DialogHeader>
-              <DialogTitle>Modifier l'angle</DialogTitle>
-              <DialogDescription>Angle actuel : {angleEditDialog.currentAngle.toFixed(1)}°</DialogDescription>
-            </DialogHeader>
-            <div className="py-4 space-y-4">
-              <div>
-                <Label htmlFor="angle-value">Nouvel angle (°)</Label>
-                <Input
-                  id="angle-value"
-                  type="number"
-                  value={angleEditDialog.newAngle}
-                  onChange={(e) => setAngleEditDialog({ ...angleEditDialog, newAngle: e.target.value })}
-                  className="mt-2"
-                  min="1"
-                  max="179"
-                  step="0.1"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    e.stopPropagation();
-                    if (e.key === "Enter") {
-                      const value = parseFloat(angleEditDialog.newAngle);
-                      if (!isNaN(value) && value > 0 && value < 180) {
-                        applyAngleChange(
-                          angleEditDialog.pointId,
-                          angleEditDialog.line1Id,
-                          angleEditDialog.line2Id,
-                          value,
-                          angleEditDialog.anchorMode,
-                        );
-                        setAngleEditDialog(null);
-                      }
+                {/* Bouton valider */}
+                <Button
+                  size="sm"
+                  className="w-full h-7"
+                  onClick={() => {
+                    const value = parseFloat(lineLengthDialog.newLength);
+                    if (!isNaN(value) && value > 0) {
+                      applyLineLengthChange(lineLengthDialog.lineId, value, lineLengthDialog.anchorMode);
+                      setLineLengthDialog(null);
                     }
                   }}
-                />
-              </div>
-              <div>
-                <Label className="text-xs text-gray-500 mb-2 block">Segment de référence (reste fixe)</Label>
-                <div className="flex gap-1">
-                  <Button
-                    variant={angleEditDialog.anchorMode === "line1" ? "default" : "outline"}
-                    size="sm"
-                    className="flex-1 text-xs"
-                    onClick={() => setAngleEditDialog({ ...angleEditDialog, anchorMode: "line1" })}
-                  >
-                    Segment 1
-                  </Button>
-                  <Button
-                    variant={angleEditDialog.anchorMode === "symmetric" ? "default" : "outline"}
-                    size="sm"
-                    className="flex-1 text-xs"
-                    onClick={() => setAngleEditDialog({ ...angleEditDialog, anchorMode: "symmetric" })}
-                  >
-                    Symétrique
-                  </Button>
-                  <Button
-                    variant={angleEditDialog.anchorMode === "line2" ? "default" : "outline"}
-                    size="sm"
-                    className="flex-1 text-xs"
-                    onClick={() => setAngleEditDialog({ ...angleEditDialog, anchorMode: "line2" })}
-                  >
-                    Segment 2
-                  </Button>
-                </div>
+                >
+                  <Check className="h-3 w-3 mr-1" />
+                  Appliquer
+                </Button>
               </div>
             </div>
-            <DialogFooter>
-              <Button
-                onClick={() => {
-                  const value = parseFloat(angleEditDialog.newAngle);
-                  if (!isNaN(value) && value > 0 && value < 180) {
-                    applyAngleChange(
-                      angleEditDialog.pointId,
-                      angleEditDialog.line1Id,
-                      angleEditDialog.line2Id,
-                      value,
-                      angleEditDialog.anchorMode,
-                    );
-                    setAngleEditDialog(null);
+          );
+        })()}
+
+      {/* Panneau modifier angle - draggable */}
+      {angleEditDialog?.open && (
+        <div
+          className="fixed bg-white rounded-lg shadow-xl border z-50 select-none"
+          style={{
+            left: anglePanelPos.x,
+            top: anglePanelPos.y,
+            width: 220,
+          }}
+          onMouseDown={(e) => {
+            if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "BUTTON") return;
+            setAnglePanelDragging(true);
+            setAnglePanelDragStart({ x: e.clientX - anglePanelPos.x, y: e.clientY - anglePanelPos.y });
+          }}
+          onMouseMove={(e) => {
+            if (anglePanelDragging) {
+              setAnglePanelPos({
+                x: e.clientX - anglePanelDragStart.x,
+                y: e.clientY - anglePanelDragStart.y,
+              });
+            }
+          }}
+          onMouseUp={() => setAnglePanelDragging(false)}
+          onMouseLeave={() => setAnglePanelDragging(false)}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-3 py-1.5 bg-orange-500 text-white rounded-t-lg cursor-move">
+            <span className="text-sm font-medium">📐 Angle</span>
+            <button onClick={() => setAngleEditDialog(null)}>
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Contenu */}
+          <div className="p-2 space-y-2">
+            {/* Angle actuel */}
+            <div className="text-xs text-gray-500">Actuel: {angleEditDialog.currentAngle.toFixed(1)}°</div>
+
+            {/* Input nouvel angle */}
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                value={angleEditDialog.newAngle}
+                onChange={(e) => setAngleEditDialog({ ...angleEditDialog, newAngle: e.target.value })}
+                className="h-8 flex-1 text-sm"
+                min="1"
+                max="179"
+                step="0.1"
+                autoFocus
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter") {
+                    const value = parseFloat(angleEditDialog.newAngle);
+                    if (!isNaN(value) && value > 0 && value < 180) {
+                      applyAngleChange(
+                        angleEditDialog.pointId,
+                        angleEditDialog.line1Id,
+                        angleEditDialog.line2Id,
+                        value,
+                        angleEditDialog.anchorMode,
+                      );
+                      setAngleEditDialog(null);
+                    }
                   }
+                  if (e.key === "Escape") setAngleEditDialog(null);
                 }}
-                className="w-full"
+              />
+              <span className="text-xs text-gray-500">°</span>
+            </div>
+
+            {/* Boutons S1 / Sym / S2 */}
+            <div className="flex gap-1">
+              <Button
+                variant={angleEditDialog.anchorMode === "line1" ? "default" : "outline"}
+                size="sm"
+                className="flex-1 h-7 text-xs px-1"
+                onClick={() => setAngleEditDialog({ ...angleEditDialog, anchorMode: "line1" })}
               >
-                <Check className="h-4 w-4 mr-2" />
-                Appliquer
+                S1 fixe
               </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              <Button
+                variant={angleEditDialog.anchorMode === "symmetric" ? "default" : "outline"}
+                size="sm"
+                className="flex-1 h-7 text-xs px-1"
+                onClick={() => setAngleEditDialog({ ...angleEditDialog, anchorMode: "symmetric" })}
+              >
+                Sym
+              </Button>
+              <Button
+                variant={angleEditDialog.anchorMode === "line2" ? "default" : "outline"}
+                size="sm"
+                className="flex-1 h-7 text-xs px-1"
+                onClick={() => setAngleEditDialog({ ...angleEditDialog, anchorMode: "line2" })}
+              >
+                S2 fixe
+              </Button>
+            </div>
+
+            {/* Bouton valider */}
+            <Button
+              size="sm"
+              className="w-full h-7"
+              onClick={() => {
+                const value = parseFloat(angleEditDialog.newAngle);
+                if (!isNaN(value) && value > 0 && value < 180) {
+                  applyAngleChange(
+                    angleEditDialog.pointId,
+                    angleEditDialog.line1Id,
+                    angleEditDialog.line2Id,
+                    value,
+                    angleEditDialog.anchorMode,
+                  );
+                  setAngleEditDialog(null);
+                }
+              }}
+            >
+              <Check className="h-3 w-3 mr-1" />
+              Appliquer
+            </Button>
+          </div>
+        </div>
       )}
 
       {/* Menu contextuel */}
@@ -9539,6 +9614,7 @@ export function CADGabaritCanvas({
                   <button
                     className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
                     onClick={() => {
+                      setLineLengthPanelPos({ x: contextMenu.x + 10, y: contextMenu.y });
                       setLineLengthDialog({
                         open: true,
                         lineId: contextMenu.entityId,
@@ -9617,6 +9693,7 @@ export function CADGabaritCanvas({
                 <button
                   className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
                   onClick={() => {
+                    setAnglePanelPos({ x: contextMenu.x + 10, y: contextMenu.y });
                     setAngleEditDialog({
                       open: true,
                       pointId: pointId,
