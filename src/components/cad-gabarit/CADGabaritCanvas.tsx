@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.91 - Affichage temps réel longueurs + angles + indicateurs de déplacement P1/P2 avec delta
+// VERSION: 5.92 - Snap perpendicularité pendant tracé + indicateur 90° vert + longueurs temps réel
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -180,6 +180,14 @@ export function CADGabaritCanvas({
 
   const [tempGeometry, setTempGeometry] = useState<any>(null);
   const [tempPoints, setTempPoints] = useState<Point[]>([]);
+
+  // Détection de perpendicularité pendant le tracé
+  const [perpendicularInfo, setPerpendicularInfo] = useState<{
+    isActive: boolean;
+    lineId: string;
+    intersectionPoint: { x: number; y: number };
+    snappedCursor: { x: number; y: number };
+  } | null>(null);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
@@ -1438,6 +1446,103 @@ export function CADGabaritCanvas({
           drawAllFigureLengths(angleEditDialog.line1Id, angleEditDialog.originalSketch);
           drawAllFigureAngles(angleEditDialog.line1Id);
         }
+
+        // Afficher l'indicateur de perpendicularité pendant le tracé
+        if (perpendicularInfo?.isActive && tempGeometry?.type === "line" && tempPoints.length > 0) {
+          const startPoint = tempPoints[0];
+          const startScreen = {
+            x: startPoint.x * viewport.scale + viewport.offsetX,
+            y: startPoint.y * viewport.scale + viewport.offsetY,
+          };
+          const intersectionScreen = {
+            x: perpendicularInfo.intersectionPoint.x * viewport.scale + viewport.offsetX,
+            y: perpendicularInfo.intersectionPoint.y * viewport.scale + viewport.offsetY,
+          };
+          const snappedScreen = {
+            x: perpendicularInfo.snappedCursor.x * viewport.scale + viewport.offsetX,
+            y: perpendicularInfo.snappedCursor.y * viewport.scale + viewport.offsetY,
+          };
+
+          // Dessiner le symbole perpendiculaire (petit carré)
+          const line = sketch.geometries.get(perpendicularInfo.lineId) as Line | undefined;
+          if (line) {
+            const p1 = sketch.points.get(line.p1);
+            const p2 = sketch.points.get(line.p2);
+            if (p1 && p2) {
+              // Direction du segment
+              const segDir = { x: p2.x - p1.x, y: p2.y - p1.y };
+              const segLen = Math.sqrt(segDir.x * segDir.x + segDir.y * segDir.y);
+              const segNorm = { x: segDir.x / segLen, y: segDir.y / segLen };
+
+              // Direction de la ligne tracée (du start vers intersection)
+              const lineDir = {
+                x: perpendicularInfo.intersectionPoint.x - startPoint.x,
+                y: perpendicularInfo.intersectionPoint.y - startPoint.y,
+              };
+              const lineLen = Math.sqrt(lineDir.x * lineDir.x + lineDir.y * lineDir.y);
+              const lineNorm = lineLen > 0 ? { x: lineDir.x / lineLen, y: lineDir.y / lineLen } : { x: 0, y: 0 };
+
+              // Dessiner le symbole perpendiculaire (⊥) au point d'intersection
+              const size = 14;
+              const corner1 = {
+                x: intersectionScreen.x + segNorm.x * size,
+                y: intersectionScreen.y + segNorm.y * size,
+              };
+              const corner2 = {
+                x: intersectionScreen.x + segNorm.x * size + lineNorm.x * size,
+                y: intersectionScreen.y + segNorm.y * size + lineNorm.y * size,
+              };
+              const corner3 = {
+                x: intersectionScreen.x + lineNorm.x * size,
+                y: intersectionScreen.y + lineNorm.y * size,
+              };
+
+              ctx.save();
+              // Remplissage vert semi-transparent
+              ctx.fillStyle = "rgba(16, 185, 129, 0.3)";
+              ctx.beginPath();
+              ctx.moveTo(intersectionScreen.x, intersectionScreen.y);
+              ctx.lineTo(corner1.x, corner1.y);
+              ctx.lineTo(corner2.x, corner2.y);
+              ctx.lineTo(corner3.x, corner3.y);
+              ctx.closePath();
+              ctx.fill();
+
+              // Bordure verte
+              ctx.strokeStyle = "#10B981";
+              ctx.lineWidth = 2.5;
+              ctx.setLineDash([]);
+              ctx.beginPath();
+              ctx.moveTo(corner1.x, corner1.y);
+              ctx.lineTo(corner2.x, corner2.y);
+              ctx.lineTo(corner3.x, corner3.y);
+              ctx.stroke();
+
+              // Point d'intersection
+              ctx.fillStyle = "#10B981";
+              ctx.beginPath();
+              ctx.arc(intersectionScreen.x, intersectionScreen.y, 5, 0, Math.PI * 2);
+              ctx.fill();
+
+              // Label "90°"
+              ctx.font = "bold 12px Arial";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+
+              const labelX = intersectionScreen.x + (segNorm.x + lineNorm.x) * 25;
+              const labelY = intersectionScreen.y + (segNorm.y + lineNorm.y) * 25;
+
+              ctx.fillStyle = "rgba(16, 185, 129, 0.9)";
+              ctx.beginPath();
+              ctx.roundRect(labelX - 18, labelY - 10, 36, 20, 4);
+              ctx.fill();
+              ctx.fillStyle = "white";
+              ctx.fillText("90°", labelX, labelY);
+
+              ctx.restore();
+            }
+          }
+        }
       }
     }
 
@@ -1746,6 +1851,9 @@ export function CADGabaritCanvas({
     dragTarget,
     lineLengthDialog,
     angleEditDialog,
+    perpendicularInfo,
+    tempGeometry,
+    tempPoints,
   ]);
 
   useEffect(() => {
@@ -6280,27 +6388,129 @@ export function CADGabaritCanvas({
         }
 
         if (tempGeometry.type === "line" && tempPoints.length > 0) {
+          const startPoint = tempPoints[0];
+
+          // Détecter la perpendicularité avec les segments existants
+          let perpInfo: typeof perpendicularInfo = null;
+          const perpTolerance = 3; // degrés de tolérance
+          const perpSnapDistance = 15 / viewport.scale; // distance de snap en monde
+
+          // Direction de la ligne en cours
+          const lineDir = {
+            x: targetPos.x - startPoint.x,
+            y: targetPos.y - startPoint.y,
+          };
+          const lineLen = Math.sqrt(lineDir.x * lineDir.x + lineDir.y * lineDir.y);
+
+          if (lineLen > 5) {
+            // Minimum de longueur pour détecter
+            const lineDirNorm = { x: lineDir.x / lineLen, y: lineDir.y / lineLen };
+
+            // Parcourir les segments existants
+            sketch.geometries.forEach((geo, geoId) => {
+              if (geo.type !== "line" || perpInfo) return;
+
+              const line = geo as Line;
+              const p1 = sketch.points.get(line.p1);
+              const p2 = sketch.points.get(line.p2);
+              if (!p1 || !p2) return;
+
+              // Direction du segment existant
+              const segDir = { x: p2.x - p1.x, y: p2.y - p1.y };
+              const segLen = Math.sqrt(segDir.x * segDir.x + segDir.y * segDir.y);
+              if (segLen < 1) return;
+
+              const segDirNorm = { x: segDir.x / segLen, y: segDir.y / segLen };
+
+              // Produit scalaire pour vérifier la perpendicularité
+              const dot = lineDirNorm.x * segDirNorm.x + lineDirNorm.y * segDirNorm.y;
+              const angleDeg = (Math.acos(Math.abs(dot)) * 180) / Math.PI;
+
+              // Si proche de 90° (dot proche de 0)
+              if (angleDeg > 90 - perpTolerance && angleDeg < 90 + perpTolerance) {
+                // Calculer le point d'intersection entre la ligne en cours et le segment
+                // Ligne en cours: startPoint + t * lineDir
+                // Segment: p1 + s * segDir
+
+                const denom = lineDir.x * segDir.y - lineDir.y * segDir.x;
+                if (Math.abs(denom) > 0.001) {
+                  const t = ((p1.x - startPoint.x) * segDir.y - (p1.y - startPoint.y) * segDir.x) / denom;
+                  const s = ((p1.x - startPoint.x) * lineDir.y - (p1.y - startPoint.y) * lineDir.x) / denom;
+
+                  // Vérifier si l'intersection est sur le segment (0 <= s <= 1)
+                  if (s >= -0.1 && s <= 1.1 && t > 0) {
+                    const intersectionPoint = {
+                      x: startPoint.x + t * lineDir.x,
+                      y: startPoint.y + t * lineDir.y,
+                    };
+
+                    // Calculer le point snappé exactement perpendiculaire
+                    // La direction perpendiculaire au segment
+                    const perpDir = { x: -segDirNorm.y, y: segDirNorm.x };
+
+                    // Projeter le curseur sur la direction perpendiculaire depuis startPoint
+                    const toIntersection = {
+                      x: intersectionPoint.x - startPoint.x,
+                      y: intersectionPoint.y - startPoint.y,
+                    };
+                    const projLen = toIntersection.x * perpDir.x + toIntersection.y * perpDir.y;
+
+                    const snappedCursor = {
+                      x: startPoint.x + perpDir.x * projLen,
+                      y: startPoint.y + perpDir.y * projLen,
+                    };
+
+                    // Distance entre curseur et position snappée
+                    const snapDist = Math.sqrt(
+                      (targetPos.x - snappedCursor.x) ** 2 + (targetPos.y - snappedCursor.y) ** 2,
+                    );
+
+                    // Si assez proche, activer le snap
+                    if (snapDist < perpSnapDistance) {
+                      perpInfo = {
+                        isActive: true,
+                        lineId: geoId,
+                        intersectionPoint: intersectionPoint,
+                        snappedCursor: snappedCursor,
+                      };
+
+                      // Appliquer le snap perpendiculaire
+                      targetPos = snappedCursor;
+                    }
+                  }
+                }
+              }
+            });
+          }
+
+          setPerpendicularInfo(perpInfo);
+
           setTempGeometry({
             ...tempGeometry,
             cursor: targetPos,
           });
         } else if (tempGeometry.type === "circle" && tempPoints.length > 0) {
+          setPerpendicularInfo(null);
           const radius = distance(tempPoints[0], targetPos);
           setTempGeometry({
             ...tempGeometry,
             radius,
           });
         } else if (tempGeometry.type === "rectangle") {
+          setPerpendicularInfo(null);
           setTempGeometry({
             ...tempGeometry,
             cursor: targetPos,
           });
         } else if (tempGeometry.type === "bezier") {
+          setPerpendicularInfo(null);
           setTempGeometry({
             ...tempGeometry,
             cursor: targetPos,
           });
         }
+      } else {
+        setPerpendicularInfo(null);
       }
 
       // Mise à jour mesure en cours (preview)
