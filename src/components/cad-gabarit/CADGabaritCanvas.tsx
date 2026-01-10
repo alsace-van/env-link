@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 5.96 - Fix complet closures stales (drag sélection, drag points, menu contextuel, perpendicularité)
+// VERSION: 5.97 - Fix: ne pas appeler solveSketch lors création ligne/cercle/bezier (évite "correction" des contraintes H/V)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -5721,7 +5721,9 @@ export function CADGabaritCanvas({
             createIntersectionPoints(line.id, newSketch);
 
             setSketch(newSketch);
-            solveSketch(newSketch);
+            // NE PAS appeler solveSketch ici car il "corrige" les contraintes H/V
+            // et annule les modifications manuelles de dimensions
+            // solveSketch(newSketch);
             addToHistory(newSketch);
 
             // Reset pour une nouvelle ligne (continuer depuis p2)
@@ -5763,7 +5765,8 @@ export function CADGabaritCanvas({
             createCircleIntersections(circle.id, center, center.id, radius, currentSketch.activeLayerId, newSketch);
 
             setSketch(newSketch);
-            solveSketch(newSketch);
+            // NE PAS appeler solveSketch - évite de "corriger" les contraintes
+            // solveSketch(newSketch);
             addToHistory(newSketch);
 
             setTempPoints([]);
@@ -5879,7 +5882,8 @@ export function CADGabaritCanvas({
             newSketch.geometries.set(bezier.id, bezier);
 
             setSketch(newSketch);
-            solveSketch(newSketch);
+            // NE PAS appeler solveSketch - évite de "corriger" les contraintes
+            // solveSketch(newSketch);
             addToHistory(newSketch);
 
             setTempPoints([]);
