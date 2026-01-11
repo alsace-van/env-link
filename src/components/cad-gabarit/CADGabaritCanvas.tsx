@@ -6229,10 +6229,9 @@ export function CADGabaritCanvas({
         center: selectionGizmoData.center,
       });
 
-      // Sauvegarder l'historique au début du drag
-      addToHistory(sketch);
+      // Note: l'historique sera sauvegardé à la fin du drag (endGizmoDrag)
     },
-    [selectionGizmoData, sketch, addToHistory],
+    [selectionGizmoData, sketch],
   );
 
   // Mettre à jour pendant le drag
@@ -6296,13 +6295,23 @@ export function CADGabaritCanvas({
   const endGizmoDrag = useCallback(() => {
     if (!gizmoDrag) return;
 
+    // Sauvegarder l'état AVANT le drag dans l'historique
+    // (pour que Ctrl+Z restaure l'état d'avant le déplacement)
+    const sketchBeforeDrag = { ...sketchRef.current };
+    sketchBeforeDrag.points = new Map(sketchRef.current.points);
+    // Restaurer les positions initiales dans la copie
+    for (const [pointId, initialPos] of gizmoDrag.initialPositions) {
+      sketchBeforeDrag.points.set(pointId, { id: pointId, x: initialPos.x, y: initialPos.y });
+    }
+    addToHistory(sketchBeforeDrag);
+
     const modeLabel = gizmoDrag.mode === "translateX" ? "X" : gizmoDrag.mode === "translateY" ? "Y" : "rotation";
     const value =
       gizmoDrag.mode === "rotate" ? `${gizmoDrag.currentValue.toFixed(1)}°` : `${gizmoDrag.currentValue.toFixed(1)} mm`;
 
     toast.success(`${modeLabel}: ${value}`);
     setGizmoDrag(null);
-  }, [gizmoDrag]);
+  }, [gizmoDrag, addToHistory]);
 
   // Annuler le drag (Échap)
   const cancelGizmoDrag = useCallback(() => {
@@ -6320,12 +6329,9 @@ export function CADGabaritCanvas({
       return newSketch;
     });
 
-    // Annuler aussi l'historique (undo)
-    undo();
-
     setGizmoDrag(null);
     toast.info("Déplacement annulé");
-  }, [gizmoDrag, undo]);
+  }, [gizmoDrag]);
 
   // Gestion de la souris
   const handleMouseDown = useCallback(
