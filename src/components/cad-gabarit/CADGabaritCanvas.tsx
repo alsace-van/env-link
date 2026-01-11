@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.35 - Fix complet Échap/clic droit gizmo + fantôme plus visible
+// VERSION: 6.36 - Panneau d'historique avec aperçu temps réel
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -74,6 +74,8 @@ import {
   Unlock,
   FlipHorizontal2,
   CircleDot,
+  History,
+  Clock,
 } from "lucide-react";
 
 import {
@@ -368,9 +370,20 @@ export function CADGabaritCanvas({
     currentAngle: number; // Angle actuel en degrés
   } | null>(null);
 
-  const [history, setHistory] = useState<any[]>([]);
+  // Interface pour les entrées d'historique avec description
+  interface HistoryEntry {
+    sketch: any; // Sketch sérialisé
+    description: string;
+    timestamp: number;
+  }
+
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
-  const historyRef = useRef<{ history: any[]; index: number }>({ history: [], index: -1 });
+  const historyRef = useRef<{ history: HistoryEntry[]; index: number }>({ history: [], index: -1 });
+
+  // Panneau d'historique
+  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
+  const [previewHistoryIndex, setPreviewHistoryIndex] = useState<number | null>(null);
 
   // Historique séparé pour les images (car HTMLImageElement ne peut pas être sérialisé)
   // Fonctionne comme une PILE : on empile avant suppression, on dépile pour restaurer
@@ -395,10 +408,14 @@ export function CADGabaritCanvas({
   useEffect(() => {
     if (!historyInitializedRef.current) {
       historyInitializedRef.current = true;
-      const initialState = serializeSketch(sketch);
-      setHistory([initialState]);
+      const initialEntry: HistoryEntry = {
+        sketch: serializeSketch(sketch),
+        description: "État initial",
+        timestamp: Date.now(),
+      };
+      setHistory([initialEntry]);
       setHistoryIndex(0);
-      historyRef.current = { history: [initialState], index: 0 };
+      historyRef.current = { history: [initialEntry], index: 0 };
     }
   }, []);
 
@@ -2368,11 +2385,15 @@ export function CADGabaritCanvas({
   }, []);
 
   // Historique - défini tôt car utilisé par plusieurs callbacks
-  const addToHistory = useCallback((newSketch: Sketch) => {
+  const addToHistory = useCallback((newSketch: Sketch, description: string = "Modification") => {
     const { history: currentHistory, index: currentIndex } = historyRef.current;
-    const serialized = serializeSketch(newSketch);
+    const newEntry: HistoryEntry = {
+      sketch: serializeSketch(newSketch),
+      description,
+      timestamp: Date.now(),
+    };
     // Couper l'historique au point actuel et ajouter le nouvel état
-    const newHistory = [...currentHistory.slice(0, currentIndex + 1), serialized];
+    const newHistory = [...currentHistory.slice(0, currentIndex + 1), newEntry];
     const newIndex = currentIndex + 1;
 
     setHistory(newHistory);
@@ -3315,7 +3336,7 @@ export function CADGabaritCanvas({
       const newSketch = applyFilletToSketch(sketch, line1Id, line2Id, radius, false);
       if (newSketch) {
         setSketch(newSketch);
-        addToHistory(newSketch);
+        addToHistory(newSketch, `Congé R${radius}mm`);
         toast.success(`Congé R${radius}mm appliqué`);
       }
     },
@@ -3436,7 +3457,7 @@ export function CADGabaritCanvas({
       const newSketch = applyChamferToSketch(sketch, line1Id, line2Id, dist, false);
       if (newSketch) {
         setSketch(newSketch);
-        addToHistory(newSketch);
+        addToHistory(newSketch, `Chanfrein ${dist}mm`);
         toast.success(`Chanfrein ${dist}mm appliqué`);
       }
     },
@@ -5897,9 +5918,13 @@ export function CADGabaritCanvas({
     newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[1].id] });
     newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[3].id] });
 
+    const wMm = width / currentSketch.scaleFactor;
+    const hMm = height / currentSketch.scaleFactor;
+    const modeLabel = isCenter ? " (centre)" : "";
+
     setSketch(newSketch);
     solveSketch(newSketch);
-    addToHistory(newSketch);
+    addToHistory(newSketch, `Rectangle ${wMm.toFixed(1)}×${hMm.toFixed(1)}mm${modeLabel}`);
 
     // Reset
     setTempPoints([]);
@@ -5913,9 +5938,6 @@ export function CADGabaritCanvas({
       heightInputPos: { x: 0, y: 0 },
     });
 
-    const wMm = width / currentSketch.scaleFactor;
-    const hMm = height / currentSketch.scaleFactor;
-    const modeLabel = isCenter ? " (centre)" : "";
     toast.success(`Rectangle ${wMm.toFixed(1)} × ${hMm.toFixed(1)} mm${modeLabel}`);
   }, [tempPoints, tempGeometry, rectInputs, createIntersectionPoints, solveSketch, addToHistory]);
 
@@ -6274,7 +6296,13 @@ export function CADGabaritCanvas({
   const confirmGizmoTransform = useCallback(() => {
     if (!transformGizmo.active) return;
 
-    addToHistory(sketch);
+    const modeLabel =
+      transformGizmo.mode === "translateX"
+        ? "Déplacement X"
+        : transformGizmo.mode === "translateY"
+          ? "Déplacement Y"
+          : "Rotation";
+    addToHistory(sketch, `${modeLabel} (clavier)`);
     setTransformGizmo({
       active: false,
       mode: "idle",
@@ -6283,8 +6311,6 @@ export function CADGabaritCanvas({
       center: { x: 0, y: 0 },
     });
 
-    const modeLabel =
-      transformGizmo.mode === "translateX" ? "X" : transformGizmo.mode === "translateY" ? "Y" : "rotation";
     toast.success(`Transformation ${modeLabel} appliquée`);
   }, [transformGizmo, sketch, addToHistory]);
 
@@ -6421,11 +6447,17 @@ export function CADGabaritCanvas({
     for (const [pointId, initialPos] of gizmoDrag.initialPositions) {
       sketchBeforeDrag.points.set(pointId, { id: pointId, x: initialPos.x, y: initialPos.y });
     }
-    addToHistory(sketchBeforeDrag);
 
-    const modeLabel = gizmoDrag.mode === "translateX" ? "X" : gizmoDrag.mode === "translateY" ? "Y" : "rotation";
+    const modeLabel =
+      gizmoDrag.mode === "translateX"
+        ? "Déplacement X"
+        : gizmoDrag.mode === "translateY"
+          ? "Déplacement Y"
+          : "Rotation";
     const value =
       gizmoDrag.mode === "rotate" ? `${gizmoDrag.currentValue.toFixed(1)}°` : `${gizmoDrag.currentValue.toFixed(1)} mm`;
+
+    addToHistory(sketchBeforeDrag, `${modeLabel} ${value}`);
 
     toast.success(`${modeLabel}: ${value}`);
     setGizmoDrag(null);
@@ -7181,7 +7213,7 @@ export function CADGabaritCanvas({
             // NE PAS appeler solveSketch ici car il "corrige" les contraintes H/V
             // et annule les modifications manuelles de dimensions
             // solveSketch(newSketch);
-            addToHistory(newSketch);
+            addToHistory(newSketch, "Ligne");
 
             // Reset pour une nouvelle ligne (continuer depuis p2)
             setTempPoints([p2]);
@@ -7224,7 +7256,8 @@ export function CADGabaritCanvas({
             setSketch(newSketch);
             // NE PAS appeler solveSketch - évite de "corriger" les contraintes
             // solveSketch(newSketch);
-            addToHistory(newSketch);
+            const radiusMm = radius / (currentSketch.scaleFactor || 1);
+            addToHistory(newSketch, `Cercle R${radiusMm.toFixed(1)}mm`);
 
             setTempPoints([]);
             setTempGeometry(null);
@@ -7317,7 +7350,8 @@ export function CADGabaritCanvas({
             newSketch.geometries.set(arc.id, arc);
 
             setSketch(newSketch);
-            addToHistory(newSketch);
+            const radiusMm = radius / (currentSketch.scaleFactor || 1);
+            addToHistory(newSketch, `Arc 3pts R${radiusMm.toFixed(1)}mm`);
             setArc3Points([]);
             setTempGeometry(null);
             toast.success("Arc créé");
@@ -7401,7 +7435,7 @@ export function CADGabaritCanvas({
             setSketch(newSketch);
             // NE PAS appeler solveSketch - évite de "corriger" les contraintes
             // solveSketch(newSketch);
-            addToHistory(newSketch);
+            addToHistory(newSketch, "Courbe Bézier");
 
             setTempPoints([]);
             setTempGeometry(null);
@@ -8913,7 +8947,8 @@ export function CADGabaritCanvas({
 
     setSketch(newSketch);
     setSelectedEntities(new Set());
-    addToHistory(newSketch);
+    const count = selectedEntities.size;
+    addToHistory(newSketch, `Suppression (${count})`);
     solveSketch(newSketch);
   }, [sketch, selectedEntities, solveSketch, addToHistory, lineIntersection, isEntityOnLockedLayer]);
 
@@ -8935,11 +8970,13 @@ export function CADGabaritCanvas({
     }
 
     if (sketchCanUndo) {
-      const prevState = history[historyIndex - 1];
+      const prevEntry = history[historyIndex - 1];
       const newIndex = historyIndex - 1;
-      loadSketchData(prevState);
+      loadSketchData(prevEntry.sketch);
       setHistoryIndex(newIndex);
       historyRef.current = { ...historyRef.current, index: newIndex };
+      // Annuler la prévisualisation si active
+      setPreviewHistoryIndex(null);
     }
   }, [history, historyIndex, loadSketchData, imageHistory]);
 
@@ -8948,13 +8985,48 @@ export function CADGabaritCanvas({
     const sketchCanRedo = historyIndex < history.length - 1;
 
     if (sketchCanRedo) {
-      const nextState = history[historyIndex + 1];
+      const nextEntry = history[historyIndex + 1];
       const newIndex = historyIndex + 1;
-      loadSketchData(nextState);
+      loadSketchData(nextEntry.sketch);
       setHistoryIndex(newIndex);
       historyRef.current = { ...historyRef.current, index: newIndex };
+      // Annuler la prévisualisation si active
+      setPreviewHistoryIndex(null);
     }
   }, [history, historyIndex, loadSketchData]);
+
+  // Aller à une version spécifique de l'historique
+  const goToHistoryIndex = useCallback(
+    (targetIndex: number) => {
+      if (targetIndex < 0 || targetIndex >= history.length) return;
+      const entry = history[targetIndex];
+      loadSketchData(entry.sketch);
+      setHistoryIndex(targetIndex);
+      historyRef.current = { ...historyRef.current, index: targetIndex };
+      setPreviewHistoryIndex(null);
+      toast.success(`Retour à: ${entry.description}`);
+    },
+    [history, loadSketchData],
+  );
+
+  // Prévisualiser une version (sans modifier l'index)
+  const previewHistoryEntry = useCallback(
+    (targetIndex: number | null) => {
+      if (targetIndex === null) {
+        // Restaurer l'état actuel
+        if (historyIndex >= 0 && historyIndex < history.length) {
+          const currentEntry = history[historyIndex];
+          loadSketchData(currentEntry.sketch);
+        }
+        setPreviewHistoryIndex(null);
+      } else if (targetIndex >= 0 && targetIndex < history.length) {
+        const entry = history[targetIndex];
+        loadSketchData(entry.sketch);
+        setPreviewHistoryIndex(targetIndex);
+      }
+    },
+    [history, historyIndex, loadSketchData],
+  );
 
   // === COPIER / COLLER / DUPLIQUER ===
 
@@ -10902,6 +10974,15 @@ export function CADGabaritCanvas({
           >
             <Redo className="h-4 w-4" />
           </Button>
+          <Button
+            variant={showHistoryPanel ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowHistoryPanel(!showHistoryPanel)}
+            className="h-8 px-2"
+            title="Panneau d'historique"
+          >
+            <History className="h-4 w-4" />
+          </Button>
         </div>
 
         <Separator orientation="vertical" className="h-6" />
@@ -12022,6 +12103,89 @@ export function CADGabaritCanvas({
                 </div>
               </div>
             </ScrollArea>
+          </div>
+        )}
+
+        {/* Panneau d'historique (à droite) */}
+        {showHistoryPanel && (
+          <div className="w-64 border-l bg-white flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-2 border-b bg-gray-50">
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4 text-gray-600" />
+                <span className="text-sm font-medium">Historique</span>
+                <span className="text-xs text-gray-400">({history.length})</span>
+              </div>
+              <button className="text-gray-500 hover:text-gray-700" onClick={() => setShowHistoryPanel(false)}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {history.length === 0 ? (
+                <p className="text-sm text-gray-400 italic p-3">Aucun historique</p>
+              ) : (
+                <div className="divide-y">
+                  {history.map((entry, idx) => {
+                    const isActive = idx === historyIndex;
+                    const isPreviewing = idx === previewHistoryIndex;
+                    const isFuture = idx > historyIndex;
+                    const date = new Date(entry.timestamp);
+                    const timeStr = date.toLocaleTimeString("fr-FR", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    });
+
+                    return (
+                      <div
+                        key={idx}
+                        className={`
+                          px-3 py-2 cursor-pointer transition-colors text-sm
+                          ${isActive ? "bg-blue-100 border-l-4 border-blue-500" : ""}
+                          ${isPreviewing ? "bg-yellow-100 border-l-4 border-yellow-500" : ""}
+                          ${isFuture ? "opacity-50" : ""}
+                          ${!isActive && !isPreviewing ? "hover:bg-gray-100" : ""}
+                        `}
+                        onClick={() => goToHistoryIndex(idx)}
+                        onMouseEnter={() => {
+                          if (idx !== historyIndex) {
+                            previewHistoryEntry(idx);
+                          }
+                        }}
+                        onMouseLeave={() => {
+                          if (previewHistoryIndex !== null) {
+                            previewHistoryEntry(null);
+                          }
+                        }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className={`font-medium ${isFuture ? "text-gray-400" : "text-gray-700"}`}>
+                            {entry.description}
+                          </span>
+                          <span className="text-xs text-gray-400">#{idx + 1}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <Clock className="h-3 w-3 text-gray-400" />
+                          <span className="text-xs text-gray-400">{timeStr}</span>
+                          {isActive && <span className="text-xs text-blue-600 font-medium">← actuel</span>}
+                          {isPreviewing && <span className="text-xs text-yellow-600 font-medium">← aperçu</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Légende */}
+            <div className="border-t px-3 py-2 bg-gray-50 text-xs text-gray-500 space-y-1">
+              <p>
+                💡 <strong>Survoler</strong> = aperçu
+              </p>
+              <p>
+                💡 <strong>Cliquer</strong> = revenir
+              </p>
+            </div>
           </div>
         )}
       </div>
