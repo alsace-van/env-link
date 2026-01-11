@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.22 - Suppression Polyline (redondant) + Fix priorité sélection entités > photos
+// VERSION: 6.23 - Gizmo de transformation (flèches X/Y + rotation, input inline)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -243,6 +243,24 @@ export function CADGabaritCanvas({
     phase: "idle",
     entitiesToMirror: new Set(),
   });
+
+  // État pour le gizmo de transformation (translation/rotation)
+  const [transformGizmo, setTransformGizmo] = useState<{
+    active: boolean;
+    mode: "idle" | "translateX" | "translateY" | "rotate";
+    inputValue: string;
+    // Position initiale pour annulation
+    initialPositions: Map<string, { x: number; y: number }>;
+    // Centre du gizmo (en coordonnées monde)
+    center: { x: number; y: number };
+  }>({
+    active: false,
+    mode: "idle",
+    inputValue: "",
+    initialPositions: new Map(),
+    center: { x: 0, y: 0 },
+  });
+  const transformInputRef = useRef<HTMLInputElement>(null);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
@@ -739,6 +757,9 @@ export function CADGabaritCanvas({
       // Surbrillance des formes fermées
       highlightOpacity,
       mouseWorldPos,
+      // Gizmo de transformation
+      transformGizmo: transformGizmo.active ? transformGizmo : null,
+      selectionCenter: selectionGizmoData?.center || null,
     });
 
     // Dessiner le rectangle de sélection (après le render du sketch)
@@ -1990,6 +2011,9 @@ export function CADGabaritCanvas({
     selectedImageId,
     markerLinks,
     selectedMarkerId,
+    // Gizmo de transformation
+    transformGizmo,
+    selectionGizmoData,
   ]);
 
   useEffect(() => {
@@ -5745,6 +5769,69 @@ export function CADGabaritCanvas({
     };
   }, [backgroundImages, selectedImageId]);
 
+  // Calculer le centre et les points de la sélection pour le gizmo
+  const selectionGizmoData = useMemo(() => {
+    if (selectedEntities.size === 0) return null;
+
+    // Collecter tous les points concernés par la sélection
+    const pointIds = new Set<string>();
+
+    for (const entityId of selectedEntities) {
+      // Vérifier si c'est un point directement
+      if (sketch.points.has(entityId)) {
+        pointIds.add(entityId);
+        continue;
+      }
+
+      // Sinon c'est une géométrie - collecter ses points
+      const geo = sketch.geometries.get(entityId);
+      if (geo) {
+        if (geo.type === "line") {
+          const line = geo as Line;
+          pointIds.add(line.p1);
+          pointIds.add(line.p2);
+        } else if (geo.type === "circle") {
+          const circle = geo as CircleType;
+          pointIds.add(circle.center);
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          pointIds.add(arc.center);
+          pointIds.add(arc.startPoint);
+          pointIds.add(arc.endPoint);
+        } else if (geo.type === "bezier") {
+          const bezier = geo as Bezier;
+          pointIds.add(bezier.p1);
+          pointIds.add(bezier.p2);
+          pointIds.add(bezier.cp1);
+          pointIds.add(bezier.cp2);
+        }
+      }
+    }
+
+    if (pointIds.size === 0) return null;
+
+    // Calculer le centre (barycentre)
+    let sumX = 0,
+      sumY = 0;
+    const points: Array<{ id: string; x: number; y: number }> = [];
+
+    for (const pointId of pointIds) {
+      const pt = sketch.points.get(pointId);
+      if (pt) {
+        sumX += pt.x;
+        sumY += pt.y;
+        points.push({ id: pointId, x: pt.x, y: pt.y });
+      }
+    }
+
+    const center = {
+      x: sumX / points.length,
+      y: sumY / points.length,
+    };
+
+    return { center, points, pointIds };
+  }, [selectedEntities, sketch.points, sketch.geometries]);
+
   // Collecter tous les markers de toutes les images comme points de snap additionnels
   const markerSnapPoints = useMemo((): AdditionalSnapPoint[] => {
     const points: AdditionalSnapPoint[] = [];
@@ -5969,6 +6056,131 @@ export function CADGabaritCanvas({
     toast.success("Ajustements réinitialisés");
   }, [selectedImageId]);
 
+  // === GIZMO DE TRANSFORMATION ===
+
+  // Démarrer une transformation (appelé quand on clique sur une flèche du gizmo)
+  const startGizmoTransform = useCallback(
+    (mode: "translateX" | "translateY" | "rotate") => {
+      if (!selectionGizmoData) return;
+
+      // Sauvegarder les positions initiales de tous les points
+      const initialPositions = new Map<string, { x: number; y: number }>();
+      for (const pointId of selectionGizmoData.pointIds) {
+        const pt = sketch.points.get(pointId);
+        if (pt) {
+          initialPositions.set(pointId, { x: pt.x, y: pt.y });
+        }
+      }
+
+      setTransformGizmo({
+        active: true,
+        mode,
+        inputValue: "0",
+        initialPositions,
+        center: selectionGizmoData.center,
+      });
+
+      // Focus sur l'input après un court délai
+      setTimeout(() => {
+        transformInputRef.current?.focus();
+        transformInputRef.current?.select();
+      }, 50);
+    },
+    [selectionGizmoData, sketch.points],
+  );
+
+  // Appliquer la transformation en temps réel (appelé à chaque changement de l'input)
+  const applyGizmoTransform = useCallback(
+    (value: string) => {
+      if (!transformGizmo.active || transformGizmo.mode === "idle") return;
+
+      const numValue = parseFloat(value) || 0;
+      const scaleFactor = sketch.scaleFactor || 1; // px/mm
+
+      setSketch((prev) => {
+        const newSketch = { ...prev };
+        newSketch.points = new Map(prev.points);
+
+        if (transformGizmo.mode === "translateX" || transformGizmo.mode === "translateY") {
+          // Translation en mm → convertir en px
+          const deltaPx = numValue * scaleFactor;
+
+          for (const [pointId, initialPos] of transformGizmo.initialPositions) {
+            const newX = transformGizmo.mode === "translateX" ? initialPos.x + deltaPx : initialPos.x;
+            const newY = transformGizmo.mode === "translateY" ? initialPos.y + deltaPx : initialPos.y;
+            newSketch.points.set(pointId, { id: pointId, x: newX, y: newY });
+          }
+        } else if (transformGizmo.mode === "rotate") {
+          // Rotation en degrés autour du centre
+          const angleRad = (numValue * Math.PI) / 180;
+          const cos = Math.cos(angleRad);
+          const sin = Math.sin(angleRad);
+          const cx = transformGizmo.center.x;
+          const cy = transformGizmo.center.y;
+
+          for (const [pointId, initialPos] of transformGizmo.initialPositions) {
+            // Rotation autour du centre
+            const dx = initialPos.x - cx;
+            const dy = initialPos.y - cy;
+            const newX = cx + dx * cos - dy * sin;
+            const newY = cy + dx * sin + dy * cos;
+            newSketch.points.set(pointId, { id: pointId, x: newX, y: newY });
+          }
+        }
+
+        return newSketch;
+      });
+
+      setTransformGizmo((prev) => ({ ...prev, inputValue: value }));
+    },
+    [transformGizmo, sketch.scaleFactor],
+  );
+
+  // Valider la transformation (Entrée)
+  const confirmGizmoTransform = useCallback(() => {
+    if (!transformGizmo.active) return;
+
+    addToHistory(sketch);
+    setTransformGizmo({
+      active: false,
+      mode: "idle",
+      inputValue: "",
+      initialPositions: new Map(),
+      center: { x: 0, y: 0 },
+    });
+
+    const modeLabel =
+      transformGizmo.mode === "translateX" ? "X" : transformGizmo.mode === "translateY" ? "Y" : "rotation";
+    toast.success(`Transformation ${modeLabel} appliquée`);
+  }, [transformGizmo, sketch, addToHistory]);
+
+  // Annuler la transformation (Échap)
+  const cancelGizmoTransform = useCallback(() => {
+    if (!transformGizmo.active) return;
+
+    // Restaurer les positions initiales
+    setSketch((prev) => {
+      const newSketch = { ...prev };
+      newSketch.points = new Map(prev.points);
+
+      for (const [pointId, initialPos] of transformGizmo.initialPositions) {
+        newSketch.points.set(pointId, { id: pointId, x: initialPos.x, y: initialPos.y });
+      }
+
+      return newSketch;
+    });
+
+    setTransformGizmo({
+      active: false,
+      mode: "idle",
+      inputValue: "",
+      initialPositions: new Map(),
+      center: { x: 0, y: 0 },
+    });
+
+    toast.info("Transformation annulée");
+  }, [transformGizmo]);
+
   // Gestion de la souris
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -6093,6 +6305,53 @@ export function CADGabaritCanvas({
       }
 
       // À partir d'ici, c'est un clic gauche (e.button === 0)
+
+      // === Gizmo de transformation : détection des clics sur les flèches ===
+      if (selectionGizmoData && activeTool === "select" && !transformGizmo.active) {
+        const center = selectionGizmoData.center;
+        const arrowLength = 60 / viewport.scale;
+        const rotationRadius = 35 / viewport.scale;
+        const hitTolerance = 15 / viewport.scale;
+
+        // Flèche X (vers la droite)
+        const xArrowEnd = { x: center.x + arrowLength, y: center.y };
+        const distToXArrow =
+          Math.abs(worldPos.y - center.y) +
+          (worldPos.x >= center.x && worldPos.x <= xArrowEnd.x
+            ? 0
+            : Math.min(Math.abs(worldPos.x - center.x), Math.abs(worldPos.x - xArrowEnd.x)));
+
+        if (
+          worldPos.x >= center.x - hitTolerance &&
+          worldPos.x <= xArrowEnd.x + hitTolerance &&
+          Math.abs(worldPos.y - center.y) < hitTolerance
+        ) {
+          startGizmoTransform("translateX");
+          return;
+        }
+
+        // Flèche Y (vers le haut = Y négatif)
+        const yArrowEnd = { x: center.x, y: center.y - arrowLength };
+        if (
+          worldPos.y <= center.y + hitTolerance &&
+          worldPos.y >= yArrowEnd.y - hitTolerance &&
+          Math.abs(worldPos.x - center.x) < hitTolerance
+        ) {
+          startGizmoTransform("translateY");
+          return;
+        }
+
+        // Arc de rotation (en bas à droite du centre)
+        const distToCenter = Math.sqrt((worldPos.x - center.x) ** 2 + (worldPos.y - center.y) ** 2);
+        if (
+          Math.abs(distToCenter - rotationRadius) < hitTolerance &&
+          worldPos.x >= center.x - hitTolerance &&
+          worldPos.y >= center.y - hitTolerance
+        ) {
+          startGizmoTransform("rotate");
+          return;
+        }
+      }
 
       // === Marqueurs inter-photos ===
       if (markerMode === "addMarker" && backgroundImages.length > 0) {
@@ -7377,6 +7636,10 @@ export function CADGabaritCanvas({
       // Nouveaux outils
       arc3Points,
       mirrorState,
+      // Gizmo de transformation
+      selectionGizmoData,
+      transformGizmo,
+      startGizmoTransform,
     ],
   );
 
@@ -10625,6 +10888,59 @@ export function CADGabaritCanvas({
                   <span className="ml-1 text-xs text-gray-500 font-medium bg-white/80 px-1 rounded">mm</span>
                 </div>
               </>
+            )}
+
+            {/* Input inline pour le gizmo de transformation */}
+            {transformGizmo.active && selectionGizmoData && (
+              <div
+                className="absolute z-50 flex items-center gap-1"
+                style={{
+                  left: `${selectionGizmoData.center.x * viewport.scale + viewport.offsetX + (transformGizmo.mode === "translateX" ? 80 : transformGizmo.mode === "rotate" ? 50 : 0)}px`,
+                  top: `${selectionGizmoData.center.y * viewport.scale + viewport.offsetY + (transformGizmo.mode === "translateY" ? -80 : transformGizmo.mode === "rotate" ? 50 : 0)}px`,
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                <input
+                  ref={transformInputRef}
+                  type="text"
+                  inputMode="decimal"
+                  value={transformGizmo.inputValue}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
+                    applyGizmoTransform(val);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      confirmGizmoTransform();
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      cancelGizmoTransform();
+                    }
+                    e.stopPropagation();
+                  }}
+                  className={`w-20 h-8 px-2 text-center text-sm font-bold rounded border-2 shadow-lg outline-none ${
+                    transformGizmo.mode === "translateX"
+                      ? "border-red-500 bg-red-50 text-red-700"
+                      : transformGizmo.mode === "translateY"
+                        ? "border-green-500 bg-green-50 text-green-700"
+                        : "border-blue-500 bg-blue-50 text-blue-700"
+                  }`}
+                  placeholder="0"
+                  autoFocus
+                />
+                <span
+                  className={`text-xs font-bold px-1 rounded ${
+                    transformGizmo.mode === "translateX"
+                      ? "text-red-600 bg-red-100"
+                      : transformGizmo.mode === "translateY"
+                        ? "text-green-600 bg-green-100"
+                        : "text-blue-600 bg-blue-100"
+                  }`}
+                >
+                  {transformGizmo.mode === "rotate" ? "°" : "mm"}
+                </span>
+              </div>
             )}
 
             {/* Indicateur discret pour l'outil de mesure - sous la toolbar */}

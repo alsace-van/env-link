@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.43 - Suppression Polyline (redondant), Preview Arc 3 points + Axe symétrie
+// VERSION: 3.44 - Gizmo de transformation (flèches X/Y, arc rotation)
 // ============================================
 
 import {
@@ -124,6 +124,13 @@ export class CADRenderer {
       highlightOpacity?: number; // 0-1, défaut 0.15
       hoveredShapeIndex?: number | null; // Index de la forme survolée
       mouseWorldPos?: { x: number; y: number } | null; // Position souris en coordonnées monde
+      // Gizmo de transformation
+      transformGizmo?: {
+        active: boolean;
+        mode: "idle" | "translateX" | "translateY" | "rotate";
+        center: { x: number; y: number };
+      } | null;
+      selectionCenter?: { x: number; y: number } | null; // Centre de la sélection pour afficher le gizmo
     } = {},
   ): void {
     const {
@@ -153,6 +160,8 @@ export class CADRenderer {
       highlightOpacity = 0.12,
       hoveredShapeIndex = null,
       mouseWorldPos = null,
+      transformGizmo = null,
+      selectionCenter = null,
     } = options;
 
     // Stocker scaleFactor pour drawRulers
@@ -400,6 +409,11 @@ export class CADRenderer {
     // 8. Poignées des entités sélectionnées
     if (selectedEntities.size > 0) {
       this.drawHandles(sketch, selectedEntities);
+    }
+
+    // 8.4. Gizmo de transformation (flèches X, Y, rotation)
+    if (selectionCenter && selectedEntities.size > 0) {
+      this.drawTransformGizmo(selectionCenter, transformGizmo);
     }
 
     // 8.5. Mesures persistantes
@@ -3071,5 +3085,126 @@ export class CADRenderer {
       this.ctx.stroke(hoveredShape.path);
       this.ctx.restore();
     }
+  }
+
+  /**
+   * Dessine le gizmo de transformation (flèches X, Y, symbole rotation)
+   */
+  private drawTransformGizmo(
+    center: { x: number; y: number },
+    transformGizmo: { active: boolean; mode: string; center: { x: number; y: number } } | null,
+  ): void {
+    const arrowLength = 60 / this.viewport.scale;
+    const arrowHeadSize = 12 / this.viewport.scale;
+    const rotationRadius = 35 / this.viewport.scale;
+    const lineWidth = 3 / this.viewport.scale;
+
+    // Couleurs
+    const xColor = "#EF4444"; // Rouge
+    const yColor = "#22C55E"; // Vert
+    const rotateColor = "#3B82F6"; // Bleu
+    const activeColor = "#FBBF24"; // Jaune pour l'axe actif
+
+    this.ctx.save();
+    this.ctx.lineCap = "round";
+    this.ctx.lineJoin = "round";
+
+    // === Flèche X (rouge, vers la droite) ===
+    const xActive = transformGizmo?.active && transformGizmo.mode === "translateX";
+    this.ctx.strokeStyle = xActive ? activeColor : xColor;
+    this.ctx.fillStyle = xActive ? activeColor : xColor;
+    this.ctx.lineWidth = xActive ? lineWidth * 1.5 : lineWidth;
+
+    // Ligne
+    this.ctx.beginPath();
+    this.ctx.moveTo(center.x, center.y);
+    this.ctx.lineTo(center.x + arrowLength, center.y);
+    this.ctx.stroke();
+
+    // Tête de flèche
+    this.ctx.beginPath();
+    this.ctx.moveTo(center.x + arrowLength, center.y);
+    this.ctx.lineTo(center.x + arrowLength - arrowHeadSize, center.y - arrowHeadSize / 2);
+    this.ctx.lineTo(center.x + arrowLength - arrowHeadSize, center.y + arrowHeadSize / 2);
+    this.ctx.closePath();
+    this.ctx.fill();
+
+    // Label X
+    this.ctx.font = `bold ${14 / this.viewport.scale}px Arial`;
+    this.ctx.textAlign = "left";
+    this.ctx.textBaseline = "middle";
+    this.ctx.fillText("X", center.x + arrowLength + 5 / this.viewport.scale, center.y);
+
+    // === Flèche Y (vert, vers le haut - coordonnées canvas inversées) ===
+    const yActive = transformGizmo?.active && transformGizmo.mode === "translateY";
+    this.ctx.strokeStyle = yActive ? activeColor : yColor;
+    this.ctx.fillStyle = yActive ? activeColor : yColor;
+    this.ctx.lineWidth = yActive ? lineWidth * 1.5 : lineWidth;
+
+    // Ligne (vers le haut = Y négatif en canvas)
+    this.ctx.beginPath();
+    this.ctx.moveTo(center.x, center.y);
+    this.ctx.lineTo(center.x, center.y - arrowLength);
+    this.ctx.stroke();
+
+    // Tête de flèche
+    this.ctx.beginPath();
+    this.ctx.moveTo(center.x, center.y - arrowLength);
+    this.ctx.lineTo(center.x - arrowHeadSize / 2, center.y - arrowLength + arrowHeadSize);
+    this.ctx.lineTo(center.x + arrowHeadSize / 2, center.y - arrowLength + arrowHeadSize);
+    this.ctx.closePath();
+    this.ctx.fill();
+
+    // Label Y
+    this.ctx.textAlign = "center";
+    this.ctx.textBaseline = "bottom";
+    this.ctx.fillText("Y", center.x, center.y - arrowLength - 5 / this.viewport.scale);
+
+    // === Arc de rotation (bleu, en bas à droite) ===
+    const rotateActive = transformGizmo?.active && transformGizmo.mode === "rotate";
+    this.ctx.strokeStyle = rotateActive ? activeColor : rotateColor;
+    this.ctx.fillStyle = rotateActive ? activeColor : rotateColor;
+    this.ctx.lineWidth = rotateActive ? lineWidth * 1.5 : lineWidth;
+
+    // Arc (3/4 de cercle)
+    this.ctx.beginPath();
+    this.ctx.arc(center.x, center.y, rotationRadius, 0.3, Math.PI * 1.7);
+    this.ctx.stroke();
+
+    // Flèche au bout de l'arc
+    const endAngle = Math.PI * 1.7;
+    const arrowX = center.x + rotationRadius * Math.cos(endAngle);
+    const arrowY = center.y + rotationRadius * Math.sin(endAngle);
+
+    // Direction tangente
+    const tangentAngle = endAngle + Math.PI / 2;
+    const smallArrowSize = 8 / this.viewport.scale;
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(arrowX, arrowY);
+    this.ctx.lineTo(
+      arrowX + smallArrowSize * Math.cos(tangentAngle - 0.5),
+      arrowY + smallArrowSize * Math.sin(tangentAngle - 0.5),
+    );
+    this.ctx.lineTo(
+      arrowX + smallArrowSize * Math.cos(tangentAngle + 0.5),
+      arrowY + smallArrowSize * Math.sin(tangentAngle + 0.5),
+    );
+    this.ctx.closePath();
+    this.ctx.fill();
+
+    // Symbole ° au centre de l'arc
+    this.ctx.textAlign = "center";
+    this.ctx.textBaseline = "middle";
+    this.ctx.font = `bold ${12 / this.viewport.scale}px Arial`;
+    this.ctx.fillText("°", center.x + rotationRadius * 0.6, center.y + rotationRadius * 0.6);
+
+    // === Point central ===
+    this.ctx.fillStyle = "#6B7280";
+    this.ctx.beginPath();
+    this.ctx.arc(center.x, center.y, 4 / this.viewport.scale, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    this.ctx.restore();
   }
 }
