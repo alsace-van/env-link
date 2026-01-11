@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.46 - Mode reveal (rideau avant/après) + overlay
+// VERSION: 6.47 - Fix deserializeSketch (propriétés manquantes)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -14574,6 +14574,8 @@ function distanceToBezier(
 
 function serializeSketch(sketch: Sketch): any {
   return {
+    id: sketch.id,
+    name: sketch.name,
     points: Object.fromEntries(sketch.points),
     geometries: Object.fromEntries(sketch.geometries),
     constraints: Object.fromEntries(sketch.constraints),
@@ -14581,11 +14583,15 @@ function serializeSketch(sketch: Sketch): any {
     scaleFactor: sketch.scaleFactor,
     layers: sketch.layers ? Object.fromEntries(sketch.layers) : undefined,
     activeLayerId: sketch.activeLayerId,
+    dof: sketch.dof,
+    status: sketch.status,
   };
 }
 
 function deserializeSketch(data: any): Sketch {
   return {
+    id: data.id || "sketch-1",
+    name: data.name || "Sketch",
     points: new Map(Object.entries(data.points || {})),
     geometries: new Map(Object.entries(data.geometries || {})),
     constraints: new Map(Object.entries(data.constraints || {})),
@@ -14593,6 +14599,8 @@ function deserializeSketch(data: any): Sketch {
     scaleFactor: data.scaleFactor || 1,
     layers: data.layers ? new Map(Object.entries(data.layers)) : new Map(),
     activeLayerId: data.activeLayerId || "trace",
+    dof: data.dof ?? 0,
+    status: data.status || "under-constrained",
   };
 }
 
