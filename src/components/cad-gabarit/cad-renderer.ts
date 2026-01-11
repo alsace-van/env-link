@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.54 - Fix mode reveal (gestion contexte canvas)
+// VERSION: 3.56 - Fix mode reveal (restore/save correct pour effacement)
 // ============================================
 
 import {
@@ -469,37 +469,37 @@ export class CADRenderer {
       const canvasWidth = this.viewport.width - rulerSize;
       const clipX = rulerSize + (canvasWidth * revealPosition) / 100;
 
-      // ÉTAPE 1: Restaurer le contexte pour revenir aux coordonnées écran
+      // Restaurer pour revenir aux coordonnées écran (annule le save de la ligne 226)
       this.ctx.restore();
 
-      // ÉTAPE 2: Sauvegarder l'état propre (sans transformation)
+      // Sauvegarder l'état propre
       this.ctx.save();
 
-      // ÉTAPE 3: Créer le clipping pour la zone DROITE uniquement
+      // Créer le clipping pour la zone DROITE uniquement (en coordonnées écran)
       this.ctx.beginPath();
       this.ctx.rect(clipX, rulerSize, this.viewport.width - clipX, this.viewport.height - rulerSize);
       this.ctx.clip();
 
-      // ÉTAPE 4: Effacer la zone droite avec le fond
+      // Effacer la zone droite avec le fond (en coordonnées écran)
       this.ctx.fillStyle = this.styles.backgroundColor;
       this.ctx.fillRect(clipX, rulerSize, this.viewport.width - clipX, this.viewport.height - rulerSize);
 
-      // ÉTAPE 5: Appliquer la transformation du viewport
+      // Appliquer la transformation du viewport pour dessiner les géométries
       this.ctx.translate(this.viewport.offsetX, this.viewport.offsetY);
       this.ctx.scale(this.viewport.scale, this.viewport.scale);
 
-      // ÉTAPE 6: Redessiner la grille dans la zone reveal
+      // Redessiner la grille dans la zone reveal
       if (showGrid) {
         this.drawGrid(sketch.scaleFactor);
       }
 
-      // ÉTAPE 7: Dessiner les géométries de la branche reveal
+      // Dessiner les géométries de la branche reveal (traits pleins, pas pointillés)
       this.drawRevealBranch(revealBranch.sketch, revealBranch.color);
 
-      // ÉTAPE 8: Restaurer le contexte (enlève le clipping)
+      // Restaurer (enlève le clipping de la zone droite)
       this.ctx.restore();
 
-      // ÉTAPE 9: Recréer le contexte pour le reste du rendu (poignées, etc.)
+      // Recréer le contexte principal pour le reste du rendu (poignées, calibration, etc.)
       this.ctx.save();
       this.ctx.beginPath();
       this.ctx.rect(rulerSize, rulerSize, this.viewport.width - rulerSize, this.viewport.height - rulerSize);
