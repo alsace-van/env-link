@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.31 - Optimisation fluidité tracé rectangle (RAF throttling + panneau fixe)
+// VERSION: 6.32 - Fix fluidité rectangle: désactiver snap grille pendant le tracé
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -8286,18 +8286,22 @@ export function CADGabaritCanvas({
           // OPTIMISATION: Utiliser callback pour éviter re-render si déjà null
           setPerpendicularInfo((prev) => (prev === null ? prev : null));
 
+          // IMPORTANT: Pour le rectangle, NE PAS utiliser le snap (évite les sauts de 10mm sur la grille)
+          // On utilise worldPos directement (position brute de la souris)
+          const rectTargetPos = worldPos;
+
           // Utiliser callback pour éviter re-render si curseur identique
           setTempGeometry((prev: any) => {
             if (!prev) return prev;
             // Comparaison avec tolérance pour éviter les micro-mises à jour
-            const dx = Math.abs((prev.cursor?.x || 0) - targetPos.x);
-            const dy = Math.abs((prev.cursor?.y || 0) - targetPos.y);
+            const dx = Math.abs((prev.cursor?.x || 0) - rectTargetPos.x);
+            const dy = Math.abs((prev.cursor?.y || 0) - rectTargetPos.y);
             if (dx < 0.5 && dy < 0.5) {
               return prev; // Pas de changement significatif
             }
             return {
               ...prev,
-              cursor: { x: targetPos.x, y: targetPos.y },
+              cursor: { x: rectTargetPos.x, y: rectTargetPos.y },
             };
           });
 
