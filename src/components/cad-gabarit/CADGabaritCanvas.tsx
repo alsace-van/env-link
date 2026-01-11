@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.45 - Fix comparaison branches (deserializeSketch + auto-visible)
+// VERSION: 6.46 - Mode reveal (rideau avant/après) + overlay
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -416,8 +416,12 @@ export function CADGabaritCanvas({
 
   // Mode comparaison
   const [comparisonMode, setComparisonMode] = useState(false);
+  const [comparisonStyle, setComparisonStyle] = useState<"overlay" | "reveal">("overlay"); // overlay = superposition, reveal = rideau
   const [visibleBranches, setVisibleBranches] = useState<Set<string>>(new Set());
-  const [comparisonOpacity, setComparisonOpacity] = useState(70); // 0-100
+  const [comparisonOpacity, setComparisonOpacity] = useState(70); // 0-100 pour mode overlay
+  const [revealPosition, setRevealPosition] = useState(50); // 0-100 position du diviseur pour mode reveal
+  const [revealBranchId, setRevealBranchId] = useState<string | null>(null); // Branche à comparer en mode reveal
+  const [isDraggingReveal, setIsDraggingReveal] = useState(false); // Drag du diviseur
 
   // Helper pour obtenir la branche active
   const getActiveBranch = useCallback((): Branch | null => {
@@ -793,33 +797,17 @@ export function CADGabaritCanvas({
       sketch: Sketch;
     }> = [];
 
-    console.log("[Comparaison] Mode actif, branches:", branches.length, "visibles:", Array.from(visibleBranches));
-
     branches.forEach((branch) => {
       // Ne pas inclure la branche active (elle est dessinée normalement)
-      if (branch.id === activeBranchId) {
-        console.log("[Comparaison] Skip branche active:", branch.name);
-        return;
-      }
+      if (branch.id === activeBranchId) return;
       // Ne pas inclure les branches non visibles
-      if (!visibleBranches.has(branch.id)) {
-        console.log("[Comparaison] Skip branche non visible:", branch.name);
-        return;
-      }
+      if (!visibleBranches.has(branch.id)) return;
 
       // Charger le sketch de l'état actuel de la branche
       const entry = branch.history[branch.historyIndex];
       if (entry) {
         try {
           const branchSketch = deserializeSketch(entry.sketch);
-          console.log(
-            "[Comparaison] Branche chargée:",
-            branch.name,
-            "geometries:",
-            branchSketch.geometries.size,
-            "points:",
-            branchSketch.points.size,
-          );
           result.push({
             branchId: branch.id,
             branchName: branch.name,
@@ -832,7 +820,6 @@ export function CADGabaritCanvas({
       }
     });
 
-    console.log("[Comparaison] Résultat:", result.length, "branches à dessiner");
     return result;
   }, [comparisonMode, visibleBranches, branches, activeBranchId]);
 
@@ -841,6 +828,30 @@ export function CADGabaritCanvas({
     const branch = branches.find((b) => b.id === activeBranchId);
     return branch?.color || "#3B82F6";
   }, [branches, activeBranchId]);
+
+  // Données de la branche pour le mode reveal
+  const revealBranchData = useMemo(() => {
+    if (!comparisonMode || comparisonStyle !== "reveal" || !revealBranchId) return null;
+
+    const branch = branches.find((b) => b.id === revealBranchId);
+    if (!branch || branch.id === activeBranchId) return null;
+
+    const entry = branch.history[branch.historyIndex];
+    if (!entry) return null;
+
+    try {
+      const branchSketch = deserializeSketch(entry.sketch);
+      return {
+        branchId: branch.id,
+        branchName: branch.name,
+        color: branch.color,
+        sketch: branchSketch,
+      };
+    } catch (e) {
+      console.error("Erreur lors du chargement de la branche reveal:", e);
+      return null;
+    }
+  }, [comparisonMode, comparisonStyle, revealBranchId, branches, activeBranchId]);
 
   // Calcul de la longueur totale des segments sélectionnés (en mm) + angle interne si 2 segments
   const selectedLength = useMemo(() => {
@@ -1055,9 +1066,13 @@ export function CADGabaritCanvas({
       selectedEntitiesForGhost: gizmoDrag ? selectedEntities : new Set<string>(),
       // Mode comparaison de branches
       comparisonMode,
+      comparisonStyle,
       comparisonBranches: comparisonBranchesData,
       comparisonOpacity,
       activeBranchColor,
+      // Mode reveal (rideau)
+      revealBranch: revealBranchData,
+      revealPosition,
     });
 
     // Dessiner le rectangle de sélection (après le render du sketch)
@@ -2316,9 +2331,12 @@ export function CADGabaritCanvas({
     gizmoDrag,
     // Mode comparaison branches
     comparisonMode,
+    comparisonStyle,
     comparisonBranchesData,
     comparisonOpacity,
     activeBranchColor,
+    revealBranchData,
+    revealPosition,
   ]);
 
   useEffect(() => {
@@ -11693,6 +11711,83 @@ export function CADGabaritCanvas({
               }}
             />
 
+            {/* Poignée du mode reveal (rideau) */}
+            {comparisonMode && comparisonStyle === "reveal" && revealBranchData && (
+              <div
+                className="absolute inset-0 pointer-events-none z-40"
+                style={{ left: "32px" }} // Décalage pour la règle
+              >
+                {/* Ligne de division */}
+                <div
+                  className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg pointer-events-none"
+                  style={{
+                    left: `${revealPosition}%`,
+                    boxShadow: "0 0 8px rgba(0,0,0,0.5), 0 0 2px rgba(0,0,0,0.3)",
+                  }}
+                />
+
+                {/* Poignée draggable */}
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 pointer-events-auto cursor-ew-resize z-50"
+                  style={{ left: `${revealPosition}%` }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    setIsDraggingReveal(true);
+
+                    const container = e.currentTarget.parentElement;
+                    if (!container) return;
+
+                    const rect = container.getBoundingClientRect();
+
+                    const handleMouseMove = (moveEvent: MouseEvent) => {
+                      const x = moveEvent.clientX - rect.left;
+                      const percentage = Math.max(5, Math.min(95, (x / rect.width) * 100));
+                      setRevealPosition(percentage);
+                    };
+
+                    const handleMouseUp = () => {
+                      setIsDraggingReveal(false);
+                      document.removeEventListener("mousemove", handleMouseMove);
+                      document.removeEventListener("mouseup", handleMouseUp);
+                    };
+
+                    document.addEventListener("mousemove", handleMouseMove);
+                    document.addEventListener("mouseup", handleMouseUp);
+                  }}
+                >
+                  {/* Poignée visuelle */}
+                  <div className="w-8 h-12 bg-white rounded-lg shadow-lg border border-gray-300 flex flex-col items-center justify-center gap-0.5">
+                    <div className="flex gap-0.5">
+                      <div className="w-0.5 h-4 bg-gray-400 rounded-full" />
+                      <div className="w-0.5 h-4 bg-gray-400 rounded-full" />
+                    </div>
+                    {/* Flèches */}
+                    <div className="flex items-center text-gray-500 text-[8px] font-bold">◀ ▶</div>
+                  </div>
+                </div>
+
+                {/* Labels des branches */}
+                <div
+                  className="absolute top-2 px-2 py-1 rounded text-[10px] font-medium text-white shadow-md pointer-events-none"
+                  style={{
+                    left: `calc(${revealPosition}% - 60px)`,
+                    backgroundColor: activeBranchColor,
+                  }}
+                >
+                  {branches.find((b) => b.id === activeBranchId)?.name || "Active"}
+                </div>
+                <div
+                  className="absolute top-2 px-2 py-1 rounded text-[10px] font-medium text-white shadow-md pointer-events-none"
+                  style={{
+                    left: `calc(${revealPosition}% + 8px)`,
+                    backgroundColor: revealBranchData.color,
+                  }}
+                >
+                  {revealBranchData.branchName}
+                </div>
+              </div>
+            )}
+
             {/* Panneau de saisie rectangle FIXE (en bas du canvas) */}
             {rectInputs.active && tempGeometry?.type === "rectangle" && (
               <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-3 bg-white/95 backdrop-blur-sm border border-gray-300 rounded-lg shadow-lg px-4 py-2">
@@ -14148,14 +14243,50 @@ export function CADGabaritCanvas({
                     // Quand on active le mode comparaison, rendre toutes les branches visibles
                     if (newMode) {
                       setVisibleBranches(new Set(branches.map((b) => b.id)));
+                      // Sélectionner la première branche non-active pour reveal
+                      const otherBranch = branches.find((b) => b.id !== activeBranchId);
+                      if (otherBranch) setRevealBranchId(otherBranch.id);
                     }
                   }}
                   className="w-3.5 h-3.5 rounded"
+                  disabled={branches.length <= 1}
                 />
-                <span>Comparer</span>
+                <span className={branches.length <= 1 ? "text-gray-400" : ""}>Comparer</span>
               </label>
+
+              {/* Choix du mode de comparaison */}
               {comparisonMode && (
-                <div className="flex-1 flex items-center gap-1.5">
+                <div className="flex items-center gap-1 ml-auto">
+                  <button
+                    className={`px-1.5 py-0.5 text-[10px] rounded ${
+                      comparisonStyle === "overlay"
+                        ? "bg-blue-500 text-white"
+                        : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                    }`}
+                    onClick={() => setComparisonStyle("overlay")}
+                    title="Superposition avec opacité"
+                  >
+                    Superpos.
+                  </button>
+                  <button
+                    className={`px-1.5 py-0.5 text-[10px] rounded ${
+                      comparisonStyle === "reveal"
+                        ? "bg-blue-500 text-white"
+                        : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                    }`}
+                    onClick={() => setComparisonStyle("reveal")}
+                    title="Rideau avant/après"
+                  >
+                    Rideau
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Options du mode overlay (superposition) */}
+            {comparisonMode && comparisonStyle === "overlay" && (
+              <>
+                <div className="flex items-center gap-1.5">
                   <span className="text-[10px] text-gray-400">Opacité:</span>
                   <input
                     type="range"
@@ -14167,28 +14298,82 @@ export function CADGabaritCanvas({
                   />
                   <span className="text-[10px] text-gray-500 w-8">{comparisonOpacity}%</span>
                 </div>
-              )}
-            </div>
 
-            {/* Liste des branches (mode comparaison) */}
-            {comparisonMode && branches.length > 1 && (
-              <div className="border rounded bg-white p-1.5 space-y-1 max-h-24 overflow-y-auto">
-                {branches.map((branch) => (
-                  <div key={branch.id} className="flex items-center gap-1.5 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={visibleBranches.has(branch.id)}
-                      onChange={() => toggleBranchVisibility(branch.id)}
-                      disabled={branch.id === activeBranchId}
-                      className="w-3 h-3 rounded"
-                    />
-                    <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: branch.color }} />
-                    <span className={`truncate ${branch.id === activeBranchId ? "font-medium" : ""}`}>
-                      {branch.name}
-                    </span>
-                    {branch.id === activeBranchId && <span className="text-[10px] text-gray-400 ml-auto">active</span>}
+                {/* Liste des branches (mode overlay) */}
+                {branches.length > 1 && (
+                  <div className="border rounded bg-white p-1.5 space-y-1 max-h-24 overflow-y-auto">
+                    {branches.map((branch) => (
+                      <div key={branch.id} className="flex items-center gap-1.5 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={visibleBranches.has(branch.id)}
+                          onChange={() => toggleBranchVisibility(branch.id)}
+                          disabled={branch.id === activeBranchId}
+                          className="w-3 h-3 rounded"
+                        />
+                        <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: branch.color }} />
+                        <span className={`truncate ${branch.id === activeBranchId ? "font-medium" : ""}`}>
+                          {branch.name}
+                        </span>
+                        {branch.id === activeBranchId && (
+                          <span className="text-[10px] text-gray-400 ml-auto">active</span>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
+              </>
+            )}
+
+            {/* Options du mode reveal (rideau) */}
+            {comparisonMode && comparisonStyle === "reveal" && branches.length > 1 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-gray-500">Comparer avec:</span>
+                  <select
+                    className="flex-1 text-xs border rounded px-1.5 py-0.5 bg-white"
+                    value={revealBranchId || ""}
+                    onChange={(e) => setRevealBranchId(e.target.value)}
+                  >
+                    {branches
+                      .filter((b) => b.id !== activeBranchId)
+                      .map((branch) => (
+                        <option key={branch.id} value={branch.id}>
+                          {branch.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                {/* Légende du mode reveal */}
+                <div className="flex items-center gap-2 text-[10px]">
+                  <div className="flex items-center gap-1">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: activeBranchColor }} />
+                    <span>◀ Gauche</span>
+                  </div>
+                  <span className="text-gray-400">|</span>
+                  <div className="flex items-center gap-1">
+                    <span>Droite ▶</span>
+                    <div
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{ backgroundColor: branches.find((b) => b.id === revealBranchId)?.color || "#F97316" }}
+                    />
+                  </div>
+                </div>
+
+                {/* Slider position du rideau */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-gray-400">Position:</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={revealPosition}
+                    onChange={(e) => setRevealPosition(parseInt(e.target.value))}
+                    className="flex-1 h-1.5"
+                  />
+                  <span className="text-[10px] text-gray-500 w-8">{revealPosition}%</span>
+                </div>
               </div>
             )}
           </div>

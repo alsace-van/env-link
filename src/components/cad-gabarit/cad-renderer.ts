@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.51 - Support mode comparaison de branches
+// VERSION: 3.52 - Mode reveal (rideau avant/après)
 // ============================================
 
 import {
@@ -143,6 +143,7 @@ export class CADRenderer {
       selectedEntitiesForGhost?: Set<string>;
       // Mode comparaison de branches
       comparisonMode?: boolean;
+      comparisonStyle?: "overlay" | "reveal";
       comparisonBranches?: Array<{
         branchId: string;
         branchName: string;
@@ -151,6 +152,14 @@ export class CADRenderer {
       }>;
       comparisonOpacity?: number; // 0-100
       activeBranchColor?: string;
+      // Mode reveal (rideau)
+      revealBranch?: {
+        branchId: string;
+        branchName: string;
+        color: string;
+        sketch: Sketch;
+      } | null;
+      revealPosition?: number; // 0-100
     } = {},
   ): void {
     const {
@@ -186,9 +195,13 @@ export class CADRenderer {
       selectedEntitiesForGhost = new Set<string>(),
       // Mode comparaison
       comparisonMode = false,
+      comparisonStyle = "overlay",
       comparisonBranches = [],
       comparisonOpacity = 70,
       activeBranchColor = "#3B82F6",
+      // Mode reveal
+      revealBranch = null,
+      revealPosition = 50,
     } = options;
 
     // Stocker scaleFactor pour drawRulers
@@ -245,18 +258,9 @@ export class CADRenderer {
     this.drawClosedShapes(sketch, highlightOpacity, mouseWorldPos);
 
     // 2.6 Branches de comparaison (avant la branche active pour qu'elle soit au-dessus)
-    if (comparisonMode && comparisonBranches.length > 0) {
-      console.log("[Renderer] Dessin de", comparisonBranches.length, "branche(s) de comparaison");
+    if (comparisonMode && comparisonStyle === "overlay" && comparisonBranches.length > 0) {
       const opacity = comparisonOpacity / 100;
       comparisonBranches.forEach((branch) => {
-        console.log(
-          "[Renderer] Dessin branche:",
-          branch.branchName,
-          "couleur:",
-          branch.color,
-          "geos:",
-          branch.sketch.geometries.size,
-        );
         this.drawComparisonBranch(branch.sketch, branch.color, opacity, branch.branchName);
       });
     }
@@ -453,6 +457,56 @@ export class CADRenderer {
       sketch.dimensions.forEach((dimension) => {
         this.drawDimension(dimension, sketch);
       });
+    }
+
+    // 7.5. Mode reveal (rideau avant/après)
+    if (comparisonMode && comparisonStyle === "reveal" && revealBranch) {
+      this.ctx.save();
+
+      // Calculer la position X du clipping en coordonnées écran
+      // revealPosition est en pourcentage de la largeur du canvas (après la règle)
+      const canvasWidth = this.viewport.width - rulerSize;
+      const clipX = rulerSize + (canvasWidth * revealPosition) / 100;
+
+      // Reset la transformation pour le clipping en coordonnées écran
+      this.ctx.restore(); // Restaurer avant le clip
+      this.ctx.save();
+
+      // Clip rectangle sur la partie droite du canvas
+      this.ctx.beginPath();
+      this.ctx.rect(clipX, rulerSize, this.viewport.width - clipX, this.viewport.height - rulerSize);
+      this.ctx.clip();
+
+      // Réappliquer la transformation du viewport
+      this.ctx.translate(this.viewport.offsetX, this.viewport.offsetY);
+      this.ctx.scale(this.viewport.scale, this.viewport.scale);
+
+      // Dessiner un fond pour couvrir la branche active à droite
+      const worldClipX = (clipX - this.viewport.offsetX) / this.viewport.scale;
+      const worldRight = (this.viewport.width - this.viewport.offsetX) / this.viewport.scale;
+      const worldTop = (rulerSize - this.viewport.offsetY) / this.viewport.scale;
+      const worldBottom = (this.viewport.height - this.viewport.offsetY) / this.viewport.scale;
+
+      this.ctx.fillStyle = this.styles.backgroundColor;
+      this.ctx.fillRect(worldClipX, worldTop, worldRight - worldClipX, worldBottom - worldTop);
+
+      // Redessiner la grille dans la zone reveal
+      if (showGrid) {
+        this.drawGrid(sketch.scaleFactor);
+      }
+
+      // Dessiner les géométries de la branche reveal
+      this.drawRevealBranch(revealBranch.sketch, revealBranch.color);
+
+      this.ctx.restore();
+
+      // Réappliquer la transformation du viewport pour le reste du rendu
+      this.ctx.save();
+      this.ctx.beginPath();
+      this.ctx.rect(rulerSize, rulerSize, this.viewport.width - rulerSize, this.viewport.height - rulerSize);
+      this.ctx.clip();
+      this.ctx.translate(this.viewport.offsetX, this.viewport.offsetY);
+      this.ctx.scale(this.viewport.scale, this.viewport.scale);
     }
 
     // 8. Poignées des entités sélectionnées
@@ -3598,8 +3652,6 @@ export class CADRenderer {
     const lineWidth = 2 / this.viewport.scale;
     const dashPattern = [6 / this.viewport.scale, 3 / this.viewport.scale];
 
-    let drawnCount = 0;
-
     // Dessiner toutes les géométries de la branche
     branchSketch.geometries.forEach((geo, geoId) => {
       // Vérifier si le calque est visible
@@ -3619,9 +3671,6 @@ export class CADRenderer {
           this.ctx.moveTo(p1.x, p1.y);
           this.ctx.lineTo(p2.x, p2.y);
           this.ctx.stroke();
-          drawnCount++;
-        } else {
-          console.warn("[Renderer] Line points not found:", line.p1, line.p2);
         }
       } else if (geo.type === "circle") {
         const circle = geo as Circle;
@@ -3633,7 +3682,6 @@ export class CADRenderer {
           this.ctx.beginPath();
           this.ctx.arc(center.x, center.y, circle.radius, 0, Math.PI * 2);
           this.ctx.stroke();
-          drawnCount++;
         }
       } else if (geo.type === "arc") {
         const arc = geo as Arc;
@@ -3650,7 +3698,6 @@ export class CADRenderer {
           this.ctx.beginPath();
           this.ctx.arc(center.x, center.y, arc.radius, startAngle, endAngle, arc.counterClockwise);
           this.ctx.stroke();
-          drawnCount++;
         }
       } else if (geo.type === "bezier") {
         const bezier = geo as Bezier;
@@ -3666,12 +3713,9 @@ export class CADRenderer {
           this.ctx.moveTo(p1.x, p1.y);
           this.ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, p2.x, p2.y);
           this.ctx.stroke();
-          drawnCount++;
         }
       }
     });
-
-    console.log("[Renderer] Branche", branchName, "- géométries dessinées:", drawnCount);
 
     // Dessiner les points de la branche (petits cercles)
     const pointRadius = 3 / this.viewport.scale;
@@ -3685,5 +3729,87 @@ export class CADRenderer {
     });
 
     this.ctx.restore();
+  }
+
+  /**
+   * Dessine les géométries d'une branche pour le mode reveal (trait plein, couleur de la branche)
+   */
+  private drawRevealBranch(branchSketch: Sketch, color: string): void {
+    const lineWidth = 2 / this.viewport.scale;
+
+    // Dessiner toutes les géométries de la branche
+    branchSketch.geometries.forEach((geo) => {
+      // Vérifier si le calque est visible
+      const layerId = (geo as any).layerId || "trace";
+      const layer = branchSketch.layers?.get(layerId);
+      if (layer?.visible === false) return;
+
+      if (geo.type === "line") {
+        const line = geo as Line;
+        const p1 = branchSketch.points.get(line.p1);
+        const p2 = branchSketch.points.get(line.p2);
+        if (p1 && p2) {
+          this.ctx.strokeStyle = color;
+          this.ctx.lineWidth = lineWidth;
+          this.ctx.setLineDash([]);
+          this.ctx.beginPath();
+          this.ctx.moveTo(p1.x, p1.y);
+          this.ctx.lineTo(p2.x, p2.y);
+          this.ctx.stroke();
+        }
+      } else if (geo.type === "circle") {
+        const circle = geo as Circle;
+        const center = branchSketch.points.get(circle.center);
+        if (center) {
+          this.ctx.strokeStyle = color;
+          this.ctx.lineWidth = lineWidth;
+          this.ctx.setLineDash([]);
+          this.ctx.beginPath();
+          this.ctx.arc(center.x, center.y, circle.radius, 0, Math.PI * 2);
+          this.ctx.stroke();
+        }
+      } else if (geo.type === "arc") {
+        const arc = geo as Arc;
+        const center = branchSketch.points.get(arc.center);
+        const startPt = branchSketch.points.get(arc.startPoint);
+        const endPt = branchSketch.points.get(arc.endPoint);
+        if (center && startPt && endPt) {
+          const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
+          const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
+
+          this.ctx.strokeStyle = color;
+          this.ctx.lineWidth = lineWidth;
+          this.ctx.setLineDash([]);
+          this.ctx.beginPath();
+          this.ctx.arc(center.x, center.y, arc.radius, startAngle, endAngle, arc.counterClockwise);
+          this.ctx.stroke();
+        }
+      } else if (geo.type === "bezier") {
+        const bezier = geo as Bezier;
+        const p1 = branchSketch.points.get(bezier.p1);
+        const p2 = branchSketch.points.get(bezier.p2);
+        const cp1 = branchSketch.points.get(bezier.cp1);
+        const cp2 = branchSketch.points.get(bezier.cp2);
+        if (p1 && p2 && cp1 && cp2) {
+          this.ctx.strokeStyle = color;
+          this.ctx.lineWidth = lineWidth;
+          this.ctx.setLineDash([]);
+          this.ctx.beginPath();
+          this.ctx.moveTo(p1.x, p1.y);
+          this.ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, p2.x, p2.y);
+          this.ctx.stroke();
+        }
+      }
+    });
+
+    // Dessiner les points de la branche (petits cercles)
+    const pointRadius = 3 / this.viewport.scale;
+    this.ctx.fillStyle = color;
+
+    branchSketch.points.forEach((point) => {
+      this.ctx.beginPath();
+      this.ctx.arc(point.x, point.y, pointRadius, 0, Math.PI * 2);
+      this.ctx.fill();
+    });
   }
 }
