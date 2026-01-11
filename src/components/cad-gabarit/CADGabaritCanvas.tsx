@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.53 - Fix cohérence revealBranchId quand branche active change
+// VERSION: 6.54 - Dropdown Historique + Modales paramétrage et vue d'ensemble
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -82,6 +82,10 @@ import {
   Edit3,
   Eye as EyeIcon2,
   EyeOff as EyeOffIcon2,
+  Layers,
+  GitMerge,
+  ChevronDown,
+  SplitSquareVertical,
 } from "lucide-react";
 
 import {
@@ -466,6 +470,19 @@ export function CADGabaritCanvas({
   // Panneau d'historique
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [previewHistoryIndex, setPreviewHistoryIndex] = useState<number | null>(null);
+
+  // Modales de gestion des branches
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showOverviewModal, setShowOverviewModal] = useState(false);
+  const [settingsModalPos, setSettingsModalPos] = useState({ x: 100, y: 100 });
+  const [isDraggingSettingsModal, setIsDraggingSettingsModal] = useState(false);
+  const [settingsModalDragStart, setSettingsModalDragStart] = useState({ x: 0, y: 0 });
+  const [renamingBranchId, setRenamingBranchId] = useState<string | null>(null);
+  const [renamingValue, setRenamingValue] = useState("");
+  const [mergeBranchIds, setMergeBranchIds] = useState<{ source: string | null; target: string | null }>({
+    source: null,
+    target: null,
+  });
 
   // Historique séparé pour les images (car HTMLImageElement ne peut pas être sérialisé)
   // Fonctionne comme une PILE : on empile avant suppression, on dépile pour restaurer
@@ -9460,6 +9477,128 @@ export function CADGabaritCanvas({
     [activeBranchId],
   );
 
+  // Renommer une branche
+  const renameBranch = useCallback((branchId: string, newName: string) => {
+    if (!newName.trim()) {
+      toast.error("Le nom ne peut pas être vide");
+      return;
+    }
+
+    setBranches((prev) => prev.map((b) => (b.id === branchId ? { ...b, name: newName.trim() } : b)));
+    toast.success(`Branche renommée: ${newName.trim()}`);
+  }, []);
+
+  // Fusionner deux branches (copier les géométries de la source vers la cible)
+  const mergeBranches = useCallback(
+    (sourceBranchId: string, targetBranchId: string) => {
+      const sourceBranch = branches.find((b) => b.id === sourceBranchId);
+      const targetBranch = branches.find((b) => b.id === targetBranchId);
+
+      if (!sourceBranch || !targetBranch) {
+        toast.error("Branches invalides");
+        return;
+      }
+
+      // Récupérer le sketch de la source (dernier état)
+      const sourceSketch = deserializeSketch(sourceBranch.history[sourceBranch.historyIndex].sketch);
+
+      // Récupérer le sketch de la cible (dernier état)
+      const targetSketchData = targetBranch.history[targetBranch.historyIndex].sketch;
+      const targetSketch = deserializeSketch(targetSketchData);
+
+      // Créer une map pour reindexer les points de la source
+      const pointIdMap = new Map<string, string>();
+      let newPointIndex = targetSketch.points.size;
+
+      // Copier les points de la source vers la cible
+      sourceSketch.points.forEach((point, oldId) => {
+        const newId = `p${newPointIndex++}`;
+        pointIdMap.set(oldId, newId);
+        targetSketch.points.set(newId, { ...point, id: newId });
+      });
+
+      // Copier les géométries avec les nouveaux IDs de points
+      let newGeoIndex = targetSketch.geometries.size;
+      sourceSketch.geometries.forEach((geo) => {
+        const newGeoId = `g${newGeoIndex++}`;
+        let newGeo: Geometry;
+
+        if (geo.type === "line") {
+          const line = geo as Line;
+          newGeo = {
+            ...line,
+            id: newGeoId,
+            p1: pointIdMap.get(line.p1) || line.p1,
+            p2: pointIdMap.get(line.p2) || line.p2,
+          };
+        } else if (geo.type === "circle") {
+          const circle = geo as CircleType;
+          newGeo = {
+            ...circle,
+            id: newGeoId,
+            center: pointIdMap.get(circle.center) || circle.center,
+          };
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          newGeo = {
+            ...arc,
+            id: newGeoId,
+            center: pointIdMap.get(arc.center) || arc.center,
+            startPoint: pointIdMap.get(arc.startPoint) || arc.startPoint,
+            endPoint: pointIdMap.get(arc.endPoint) || arc.endPoint,
+          };
+        } else if (geo.type === "bezier") {
+          const bezier = geo as Bezier;
+          newGeo = {
+            ...bezier,
+            id: newGeoId,
+            p1: pointIdMap.get(bezier.p1) || bezier.p1,
+            p2: pointIdMap.get(bezier.p2) || bezier.p2,
+            cp1: pointIdMap.get(bezier.cp1) || bezier.cp1,
+            cp2: pointIdMap.get(bezier.cp2) || bezier.cp2,
+          };
+        } else {
+          newGeo = { ...geo, id: newGeoId };
+        }
+
+        targetSketch.geometries.set(newGeoId, newGeo);
+      });
+
+      // Serialiser le sketch fusionné
+      const mergedSketchData = serializeSketch(targetSketch);
+
+      // Créer une nouvelle entrée d'historique pour la branche cible
+      const newEntry: HistoryEntry = {
+        sketch: mergedSketchData,
+        description: `Fusion avec ${sourceBranch.name}`,
+        timestamp: Date.now(),
+      };
+
+      // Mettre à jour les branches
+      setBranches((prev) =>
+        prev.map((b) => {
+          if (b.id === targetBranchId) {
+            const newHistory = [...b.history.slice(0, b.historyIndex + 1), newEntry];
+            return {
+              ...b,
+              history: newHistory,
+              historyIndex: newHistory.length - 1,
+            };
+          }
+          return b;
+        }),
+      );
+
+      // Si la cible est la branche active, charger le sketch fusionné
+      if (targetBranchId === activeBranchId) {
+        loadSketchData(mergedSketchData);
+      }
+
+      toast.success(`Branches fusionnées: ${sourceBranch.name} → ${targetBranch.name}`);
+    },
+    [branches, activeBranchId, loadSketchData],
+  );
+
   // Prévisualiser une version (sans modifier l'index)
   const previewHistoryEntry = useCallback(
     (targetIndex: number | null) => {
@@ -11417,7 +11556,7 @@ export function CADGabaritCanvas({
 
         <Separator orientation="vertical" className="h-6" />
 
-        {/* Undo/Redo */}
+        {/* Undo/Redo + Dropdown Historique */}
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="sm" onClick={undo} disabled={historyIndex <= 0} className="h-8 w-8 p-0">
             <Undo className="h-4 w-4" />
@@ -11431,22 +11570,88 @@ export function CADGabaritCanvas({
           >
             <Redo className="h-4 w-4" />
           </Button>
-          <Button
-            variant={showHistoryPanel ? "default" : "outline"}
-            size="sm"
-            onClick={() => {
-              const newValue = !showHistoryPanel;
-              setShowHistoryPanel(newValue);
-              // Désactiver la comparaison quand on ferme la sidebar
-              if (!newValue) {
-                setComparisonMode(false);
-              }
-            }}
-            className="h-8 px-2"
-            title="Panneau d'historique"
-          >
-            <History className="h-4 w-4" />
-          </Button>
+
+          {/* Dropdown Historique & Branches */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant={showSettingsModal || comparisonMode ? "default" : "outline"}
+                size="sm"
+                className="h-8 px-2 gap-1"
+                title="Historique et branches"
+              >
+                <History className="h-4 w-4" />
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              {/* Historique */}
+              <DropdownMenuItem
+                onClick={() => {
+                  setShowSettingsModal(true);
+                  setComparisonMode(false);
+                }}
+                className="gap-2"
+              >
+                <History className="h-4 w-4" />
+                <span>Historique des états</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+
+              {/* Mode Superposition */}
+              <DropdownMenuItem
+                onClick={() => {
+                  setShowSettingsModal(true);
+                  setComparisonMode(true);
+                  setComparisonStyle("overlay");
+                  setVisibleBranches(new Set(branches.map((b) => b.id)));
+                }}
+                className="gap-2"
+                disabled={branches.length <= 1}
+              >
+                <Layers className="h-4 w-4" />
+                <span>Mode Superposition</span>
+                {comparisonMode && comparisonStyle === "overlay" && <Check className="h-4 w-4 ml-auto text-blue-500" />}
+              </DropdownMenuItem>
+
+              {/* Mode Rideau */}
+              <DropdownMenuItem
+                onClick={() => {
+                  setShowSettingsModal(true);
+                  setComparisonMode(true);
+                  setComparisonStyle("reveal");
+                  const otherBranch = branches.find((b) => b.id !== activeBranchId);
+                  if (otherBranch) setRevealBranchId(otherBranch.id);
+                }}
+                className="gap-2"
+                disabled={branches.length <= 1}
+              >
+                <SplitSquareVertical className="h-4 w-4" />
+                <span>Mode Rideau</span>
+                {comparisonMode && comparisonStyle === "reveal" && <Check className="h-4 w-4 ml-auto text-blue-500" />}
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+
+              {/* Nouvelle branche */}
+              <DropdownMenuItem
+                onClick={() => createBranchFromHistoryIndex(historyIndex)}
+                className="gap-2"
+                disabled={branches.length >= 10}
+              >
+                <Plus className="h-4 w-4" />
+                <span>Nouvelle branche</span>
+                <span className="text-xs text-gray-400 ml-auto">{branches.length}/10</span>
+              </DropdownMenuItem>
+
+              {/* Vue d'ensemble */}
+              <DropdownMenuItem onClick={() => setShowOverviewModal(true)} className="gap-2">
+                <GitBranch className="h-4 w-4" />
+                <span>Vue d'ensemble</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <Separator orientation="vertical" className="h-6" />
@@ -14228,28 +14433,36 @@ export function CADGabaritCanvas({
       {/* Fermer le menu contextuel en cliquant ailleurs */}
       {contextMenu && <div className="fixed inset-0 z-[99]" onClick={() => setContextMenu(null)} />}
 
-      {/* Panneau d'historique avec branches - Toujours rendu, animé avec CSS */}
-      <div
-        className={`fixed inset-0 z-[100] pointer-events-none transition-opacity duration-150 ${
-          showHistoryPanel ? "opacity-100" : "opacity-0 pointer-events-none"
-        }`}
-        style={{ visibility: showHistoryPanel ? "visible" : "hidden" }}
-      >
+      {/* ============================================ */}
+      {/* MODALE FLOTTANTE DRAGGABLE - PARAMÉTRAGE */}
+      {/* ============================================ */}
+      {showSettingsModal && (
         <div
-          className={`absolute right-0 top-[88px] bottom-0 w-72 flex flex-col transition-transform duration-150 ${
-            showHistoryPanel ? "translate-x-0 pointer-events-auto" : "translate-x-full"
-          }`}
+          className="fixed z-[200] bg-white rounded-lg shadow-xl border flex flex-col"
+          style={{
+            left: settingsModalPos.x,
+            top: settingsModalPos.y,
+            width: 320,
+            maxHeight: "calc(100vh - 120px)",
+          }}
         >
-          {/* Header */}
-          <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-l rounded-tl-lg shadow-sm">
+          {/* Header draggable */}
+          <div
+            className="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-t-lg cursor-move select-none"
+            onMouseDown={(e) => {
+              if (e.button !== 0) return;
+              setIsDraggingSettingsModal(true);
+              setSettingsModalDragStart({ x: e.clientX - settingsModalPos.x, y: e.clientY - settingsModalPos.y });
+            }}
+          >
             <div className="flex items-center gap-2">
-              <History className="h-4 w-4 text-gray-600" />
-              <span className="text-sm font-medium">Historique</span>
+              <History className="h-4 w-4" />
+              <span className="font-medium text-sm">Historique & Branches</span>
             </div>
             <button
-              className="text-gray-500 hover:text-gray-700 p-1 hover:bg-gray-100 rounded"
+              className="p-1 hover:bg-white/20 rounded"
               onClick={() => {
-                setShowHistoryPanel(false);
+                setShowSettingsModal(false);
                 setComparisonMode(false);
               }}
             >
@@ -14257,321 +14470,546 @@ export function CADGabaritCanvas({
             </button>
           </div>
 
-          {/* Barre d'outils branches */}
-          <div className="px-2 py-2 bg-gray-50 border-l border-b space-y-2">
+          {/* Contenu scrollable */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {/* Sélecteur de branche active */}
-            <div className="flex items-center gap-2">
-              <GitBranch className="h-3.5 w-3.5 text-gray-500" />
-              <select
-                className="flex-1 text-xs border rounded px-2 py-1 bg-white"
-                value={activeBranchId}
-                onChange={(e) => switchToBranch(e.target.value)}
-              >
-                {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id}>
-                    {branch.name} ({branch.history.length})
-                  </option>
-                ))}
-              </select>
-              <button
-                className="p-1 rounded hover:bg-gray-200 text-gray-500 hover:text-green-600"
-                title="Nouvelle branche depuis l'état actuel"
-                onClick={() => createBranchFromHistoryIndex(historyIndex)}
-                disabled={branches.length >= 10}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-gray-600">Branche active</label>
+              <div className="flex items-center gap-2">
+                <select
+                  className="flex-1 text-sm border rounded px-2 py-1.5 bg-white"
+                  value={activeBranchId}
+                  onChange={(e) => switchToBranch(e.target.value)}
+                >
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name} ({branch.history.length} états)
+                    </option>
+                  ))}
+                </select>
+                <div
+                  className="w-5 h-5 rounded-full border-2 border-white shadow"
+                  style={{ backgroundColor: activeBranchColor }}
+                  title="Couleur de la branche"
+                />
+              </div>
             </div>
 
             {/* Mode comparaison */}
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={comparisonMode}
-                  onChange={(e) => {
-                    const newMode = e.target.checked;
-                    setComparisonMode(newMode);
-                    // Quand on active le mode comparaison, rendre toutes les branches visibles
-                    if (newMode) {
-                      setVisibleBranches(new Set(branches.map((b) => b.id)));
-                      // Sélectionner la première branche non-active pour reveal
-                      const otherBranch = branches.find((b) => b.id !== activeBranchId);
-                      if (otherBranch) setRevealBranchId(otherBranch.id);
-                    }
-                  }}
-                  className="w-3.5 h-3.5 rounded"
-                  disabled={branches.length <= 1}
-                />
-                <span className={branches.length <= 1 ? "text-gray-400" : ""}>Comparer</span>
-              </label>
-
-              {/* Choix du mode de comparaison */}
-              {comparisonMode && (
-                <div className="flex items-center gap-1 ml-auto">
-                  <button
-                    className={`px-1.5 py-0.5 text-[10px] rounded ${
-                      comparisonStyle === "overlay"
-                        ? "bg-blue-500 text-white"
-                        : "bg-gray-200 text-gray-600 hover:bg-gray-300"
-                    }`}
-                    onClick={() => setComparisonStyle("overlay")}
-                    title="Superposition avec opacité"
-                  >
-                    Superpos.
-                  </button>
-                  <button
-                    className={`px-1.5 py-0.5 text-[10px] rounded ${
-                      comparisonStyle === "reveal"
-                        ? "bg-blue-500 text-white"
-                        : "bg-gray-200 text-gray-600 hover:bg-gray-300"
-                    }`}
-                    onClick={() => setComparisonStyle("reveal")}
-                    title="Rideau avant/après"
-                  >
-                    Rideau
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Options du mode overlay (superposition) */}
-            {comparisonMode && comparisonStyle === "overlay" && (
-              <>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-gray-400">Opacité:</span>
-                  <input
-                    type="range"
-                    min="10"
-                    max="100"
-                    value={comparisonOpacity}
-                    onChange={(e) => setComparisonOpacity(parseInt(e.target.value))}
-                    className="flex-1 h-1.5"
+            {branches.length > 1 && (
+              <div className="space-y-2 p-2 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-gray-600">Mode comparaison</label>
+                  <Switch
+                    checked={comparisonMode}
+                    onCheckedChange={(checked) => {
+                      setComparisonMode(checked);
+                      if (checked) {
+                        setVisibleBranches(new Set(branches.map((b) => b.id)));
+                        const otherBranch = branches.find((b) => b.id !== activeBranchId);
+                        if (otherBranch) setRevealBranchId(otherBranch.id);
+                      }
+                    }}
                   />
-                  <span className="text-[10px] text-gray-500 w-8">{comparisonOpacity}%</span>
                 </div>
 
-                {/* Liste des branches (mode overlay) */}
-                {branches.length > 1 && (
-                  <div className="border rounded bg-white p-1.5 space-y-1 max-h-24 overflow-y-auto">
-                    {branches.map((branch) => (
-                      <div key={branch.id} className="flex items-center gap-1.5 text-xs">
-                        <input
-                          type="checkbox"
-                          checked={visibleBranches.has(branch.id)}
-                          onChange={() => toggleBranchVisibility(branch.id)}
-                          disabled={branch.id === activeBranchId}
-                          className="w-3 h-3 rounded"
-                        />
-                        <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: branch.color }} />
-                        <span className={`truncate ${branch.id === activeBranchId ? "font-medium" : ""}`}>
-                          {branch.name}
-                        </span>
-                        {branch.id === activeBranchId && (
-                          <span className="text-[10px] text-gray-400 ml-auto">active</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Options du mode reveal (rideau) */}
-            {comparisonMode && comparisonStyle === "reveal" && branches.length > 1 && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-gray-500">Comparer avec:</span>
-                  <select
-                    className="flex-1 text-xs border rounded px-1.5 py-0.5 bg-white"
-                    value={revealBranchId || ""}
-                    onChange={(e) => setRevealBranchId(e.target.value)}
-                  >
-                    {branches
-                      .filter((b) => b.id !== activeBranchId)
-                      .map((branch) => (
-                        <option key={branch.id} value={branch.id}>
-                          {branch.name}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-
-                {/* Légende du mode reveal */}
-                <div className="flex items-center gap-2 text-[10px]">
-                  <div className="flex items-center gap-1">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: activeBranchColor }} />
-                    <span>◀ Gauche</span>
-                  </div>
-                  <span className="text-gray-400">|</span>
-                  <div className="flex items-center gap-1">
-                    <span>Droite ▶</span>
-                    <div
-                      className="w-2.5 h-2.5 rounded-full"
-                      style={{
-                        backgroundColor:
-                          revealBranchData?.color || branches.find((b) => b.id === revealBranchId)?.color || "#888888",
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Slider position du rideau */}
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-gray-400">Position:</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={revealPosition}
-                    onChange={(e) => setRevealPosition(parseInt(e.target.value))}
-                    className="flex-1 h-1.5"
-                  />
-                  <span className="text-[10px] text-gray-500 w-8">{revealPosition}%</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Info branche active */}
-          {(() => {
-            const activeBranch = branches.find((b) => b.id === activeBranchId);
-            if (!activeBranch) return null;
-            return (
-              <div className="px-2 py-1.5 bg-white border-l border-b flex items-center gap-2 text-xs">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: activeBranch.color }} />
-                <span className="font-medium truncate">{activeBranch.name}</span>
-                <span className="text-gray-400">({activeBranch.history.length} états)</span>
-                {branches.length > 1 && (
-                  <button
-                    className="ml-auto p-0.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-600"
-                    title="Supprimer cette branche"
-                    onClick={() => deleteBranch(activeBranchId)}
-                  >
-                    <TrashIcon className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Liste historique - fond transparent */}
-          <div className="flex-1 overflow-y-auto border-l bg-transparent">
-            {history.length === 0 ? (
-              <p className="text-sm text-gray-400 italic p-3 bg-white/80">Aucun historique</p>
-            ) : (
-              <div className="space-y-1 p-1">
-                {[...history].reverse().map((entry, reverseIdx) => {
-                  const idx = history.length - 1 - reverseIdx;
-                  const isActive = idx === historyIndex;
-                  const isPreviewing = idx === previewHistoryIndex;
-                  const isFuture = idx > historyIndex;
-                  const date = new Date(entry.timestamp);
-                  const timeStr = date.toLocaleTimeString("fr-FR", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                  });
-                  const activeBranch = branches.find((b) => b.id === activeBranchId);
-                  const branchColor = activeBranch?.color || "#3B82F6";
-
-                  return (
-                    <div
-                      key={idx}
-                      className={`
-                        px-2 py-1.5 cursor-pointer transition-all text-xs rounded
-                        ${
-                          isActive
-                            ? "text-white shadow-md"
-                            : isPreviewing
-                              ? "bg-yellow-400 text-gray-900 shadow-md"
-                              : isFuture
-                                ? "bg-white/60 text-gray-400"
-                                : "bg-white/90 hover:bg-white hover:shadow-sm text-gray-700"
-                        }
-                      `}
-                      style={isActive ? { backgroundColor: branchColor } : undefined}
-                      onClick={() => goToHistoryIndex(idx)}
-                      onMouseEnter={() => {
-                        if (idx !== historyIndex) {
-                          previewHistoryEntry(idx);
-                        }
-                      }}
-                      onMouseLeave={() => {
-                        if (previewHistoryIndex !== null) {
-                          previewHistoryEntry(null);
-                        }
-                      }}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className={`font-medium truncate ${isActive ? "text-white" : ""}`}>
-                          {entry.description}
-                        </span>
-                        <span className={`text-[10px] ml-1 ${isActive ? "opacity-70" : "text-gray-400"}`}>
-                          #{idx + 1}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <Clock className={`h-2.5 w-2.5 ${isActive ? "opacity-70" : "text-gray-400"}`} />
-                        <span className={`text-[10px] ${isActive ? "opacity-70" : "text-gray-400"}`}>{timeStr}</span>
-                        {isActive && <span className="text-[10px] opacity-80">● actuel</span>}
-                        {isPreviewing && <span className="text-[10px] text-gray-900">● aperçu</span>}
-
-                        {/* Boutons d'action */}
-                        {idx < history.length - 1 && (
-                          <div className="ml-auto flex items-center gap-0.5">
-                            {/* Nouvelle branche */}
-                            <button
-                              className={`p-0.5 rounded transition-colors ${
-                                isActive
-                                  ? "opacity-70 hover:opacity-100 hover:bg-white/20"
-                                  : isPreviewing
-                                    ? "text-yellow-700 hover:text-green-700 hover:bg-yellow-300"
-                                    : "text-gray-400 hover:text-green-600 hover:bg-green-100"
-                              }`}
-                              title="Créer une branche ici"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                createBranchFromHistoryIndex(idx);
-                              }}
-                              disabled={branches.length >= 10}
-                            >
-                              <GitBranch className="h-3 w-3" />
-                            </button>
-                            {/* Tronquer l'historique */}
-                            <button
-                              className={`p-0.5 rounded transition-colors ${
-                                isActive
-                                  ? "opacity-70 hover:opacity-100 hover:bg-white/20"
-                                  : isPreviewing
-                                    ? "text-yellow-700 hover:text-red-700 hover:bg-yellow-300"
-                                    : "text-gray-400 hover:text-red-600 hover:bg-red-100"
-                              }`}
-                              title="Tronquer l'historique ici"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                truncateHistoryAtIndex(idx);
-                              }}
-                            >
-                              <Scissors className="h-3 w-3" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                {comparisonMode && (
+                  <>
+                    {/* Toggle Superposition / Rideau */}
+                    <div className="flex gap-1">
+                      <button
+                        className={`flex-1 px-2 py-1.5 text-xs rounded flex items-center justify-center gap-1.5 transition-colors ${
+                          comparisonStyle === "overlay" ? "bg-blue-500 text-white" : "bg-white border hover:bg-gray-100"
+                        }`}
+                        onClick={() => setComparisonStyle("overlay")}
+                      >
+                        <Layers className="h-3.5 w-3.5" />
+                        Superposition
+                      </button>
+                      <button
+                        className={`flex-1 px-2 py-1.5 text-xs rounded flex items-center justify-center gap-1.5 transition-colors ${
+                          comparisonStyle === "reveal" ? "bg-blue-500 text-white" : "bg-white border hover:bg-gray-100"
+                        }`}
+                        onClick={() => setComparisonStyle("reveal")}
+                      >
+                        <SplitSquareVertical className="h-3.5 w-3.5" />
+                        Rideau
+                      </button>
                     </div>
-                  );
-                })}
+
+                    {/* Options Superposition */}
+                    {comparisonStyle === "overlay" && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500">Opacité:</span>
+                          <input
+                            type="range"
+                            min="10"
+                            max="100"
+                            value={comparisonOpacity}
+                            onChange={(e) => setComparisonOpacity(parseInt(e.target.value))}
+                            className="flex-1 h-1.5"
+                          />
+                          <span className="text-xs text-gray-600 w-10">{comparisonOpacity}%</span>
+                        </div>
+                        <div className="border rounded bg-white p-2 space-y-1 max-h-28 overflow-y-auto">
+                          {branches.map((branch) => (
+                            <div key={branch.id} className="flex items-center gap-2 text-xs">
+                              <input
+                                type="checkbox"
+                                checked={visibleBranches.has(branch.id)}
+                                onChange={() => toggleBranchVisibility(branch.id)}
+                                disabled={branch.id === activeBranchId}
+                                className="w-3.5 h-3.5 rounded"
+                              />
+                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: branch.color }} />
+                              <span className={branch.id === activeBranchId ? "font-medium" : ""}>{branch.name}</span>
+                              {branch.id === activeBranchId && (
+                                <span className="text-[10px] text-gray-400 ml-auto">active</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Options Rideau */}
+                    {comparisonStyle === "reveal" && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500">Comparer avec:</span>
+                          <select
+                            className="flex-1 text-xs border rounded px-2 py-1 bg-white"
+                            value={revealBranchId || ""}
+                            onChange={(e) => setRevealBranchId(e.target.value)}
+                          >
+                            {branches
+                              .filter((b) => b.id !== activeBranchId)
+                              .map((branch) => (
+                                <option key={branch.id} value={branch.id}>
+                                  {branch.name}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                        <div className="flex items-center justify-center gap-3 text-xs py-1">
+                          <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: activeBranchColor }} />
+                            <span>◀ Gauche</span>
+                          </div>
+                          <span className="text-gray-300">|</span>
+                          <div className="flex items-center gap-1">
+                            <span>Droite ▶</span>
+                            <div
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: revealBranchData?.color || "#888" }}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500">Position:</span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={revealPosition}
+                            onChange={(e) => setRevealPosition(parseInt(e.target.value))}
+                            className="flex-1 h-1.5"
+                          />
+                          <span className="text-xs text-gray-600 w-10">{revealPosition}%</span>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
+
+            {/* Historique de la branche active */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-gray-600">Historique ({history.length} états)</label>
+              </div>
+              <div className="border rounded bg-gray-50 max-h-64 overflow-y-auto">
+                {history.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic p-3">Aucun historique</p>
+                ) : (
+                  <div className="p-1 space-y-0.5">
+                    {[...history].reverse().map((entry, reverseIdx) => {
+                      const idx = history.length - 1 - reverseIdx;
+                      const isActive = idx === historyIndex;
+                      const isPreviewing = idx === previewHistoryIndex;
+                      const isFuture = idx > historyIndex;
+                      const date = new Date(entry.timestamp);
+                      const timeStr = date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+
+                      return (
+                        <div
+                          key={idx}
+                          className={`
+                            px-2 py-1.5 cursor-pointer transition-all text-xs rounded
+                            ${
+                              isActive
+                                ? "text-white shadow"
+                                : isPreviewing
+                                  ? "bg-yellow-100 text-yellow-900"
+                                  : isFuture
+                                    ? "bg-gray-100 text-gray-400"
+                                    : "bg-white hover:bg-blue-50"
+                            }
+                          `}
+                          style={isActive ? { backgroundColor: activeBranchColor } : undefined}
+                          onClick={() => goToHistoryIndex(idx)}
+                          onMouseEnter={() => idx !== historyIndex && previewHistoryEntry(idx)}
+                          onMouseLeave={() => previewHistoryIndex !== null && previewHistoryEntry(null)}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium truncate">{entry.description}</span>
+                            <span className={`text-[10px] ${isActive ? "opacity-70" : "text-gray-400"}`}>
+                              {timeStr}
+                            </span>
+                          </div>
+                          {idx < history.length - 1 && (
+                            <div className="flex items-center gap-1 mt-1">
+                              <button
+                                className={`p-0.5 rounded text-[10px] ${
+                                  isActive
+                                    ? "hover:bg-white/20"
+                                    : "hover:bg-green-100 text-gray-400 hover:text-green-600"
+                                }`}
+                                title="Créer branche ici"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  createBranchFromHistoryIndex(idx);
+                                }}
+                              >
+                                <GitBranch className="h-3 w-3" />
+                              </button>
+                              <button
+                                className={`p-0.5 rounded text-[10px] ${
+                                  isActive ? "hover:bg-white/20" : "hover:bg-red-100 text-gray-400 hover:text-red-600"
+                                }`}
+                                title="Tronquer ici"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  truncateHistoryAtIndex(idx);
+                                }}
+                              >
+                                <Scissors className="h-3 w-3" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Footer légende */}
-          <div className="px-2 py-1.5 bg-white border-l border-t rounded-bl-lg text-[10px] text-gray-500 flex flex-col gap-0.5">
-            <span>👆 Survoler = aperçu | Cliquer = revenir</span>
-            <span>🔀 Branche | ✂️ Tronquer</span>
+          {/* Footer avec légende */}
+          <div className="px-3 py-2 bg-gray-50 border-t rounded-b-lg text-[10px] text-gray-500">
+            👆 Survoler = aperçu | Cliquer = revenir | 🔀 Branche | ✂️ Tronquer
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Handler global pour le drag de la modale settings */}
+      {isDraggingSettingsModal && (
+        <div
+          className="fixed inset-0 z-[199] cursor-move"
+          onMouseMove={(e) => {
+            setSettingsModalPos({
+              x: Math.max(0, Math.min(e.clientX - settingsModalDragStart.x, window.innerWidth - 320)),
+              y: Math.max(0, Math.min(e.clientY - settingsModalDragStart.y, window.innerHeight - 200)),
+            });
+          }}
+          onMouseUp={() => setIsDraggingSettingsModal(false)}
+          onMouseLeave={() => setIsDraggingSettingsModal(false)}
+        />
+      )}
+
+      {/* ============================================ */}
+      {/* MODALE VUE D'ENSEMBLE (ORGANIGRAMME) */}
+      {/* ============================================ */}
+      <Dialog open={showOverviewModal} onOpenChange={setShowOverviewModal}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <GitBranch className="h-5 w-5" />
+              Vue d'ensemble des branches
+            </DialogTitle>
+            <DialogDescription>Gérez vos branches : renommer, supprimer, fusionner</DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto space-y-4 py-4">
+            {/* Liste des branches */}
+            {branches.map((branch, branchIdx) => (
+              <div
+                key={branch.id}
+                className={`border rounded-lg overflow-hidden ${
+                  branch.id === activeBranchId ? "ring-2 ring-blue-500" : ""
+                }`}
+              >
+                {/* Header de la branche */}
+                <div className="flex items-center gap-3 px-4 py-3" style={{ backgroundColor: `${branch.color}15` }}>
+                  <div className="w-4 h-4 rounded-full" style={{ backgroundColor: branch.color }} />
+
+                  {renamingBranchId === branch.id ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <Input
+                        value={renamingValue}
+                        onChange={(e) => setRenamingValue(e.target.value)}
+                        className="h-7 text-sm"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            renameBranch(branch.id, renamingValue);
+                            setRenamingBranchId(null);
+                          } else if (e.key === "Escape") {
+                            setRenamingBranchId(null);
+                          }
+                        }}
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          renameBranch(branch.id, renamingValue);
+                          setRenamingBranchId(null);
+                        }}
+                      >
+                        <Check className="h-4 w-4 text-green-600" />
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setRenamingBranchId(null)}>
+                        <X className="h-4 w-4 text-gray-400" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="font-medium flex-1">{branch.name}</span>
+                      <span className="text-sm text-gray-500">{branch.history.length} états</span>
+                      {branch.id === activeBranchId && (
+                        <Badge variant="secondary" className="text-xs">
+                          Active
+                        </Badge>
+                      )}
+                    </>
+                  )}
+
+                  <div className="flex items-center gap-1">
+                    {branch.id !== activeBranchId && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => switchToBranch(branch.id)}
+                        title="Activer cette branche"
+                      >
+                        <Check className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setRenamingBranchId(branch.id);
+                        setRenamingValue(branch.name);
+                      }}
+                      title="Renommer"
+                    >
+                      <Edit3 className="h-4 w-4" />
+                    </Button>
+                    {branches.length > 1 && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => deleteBranch(branch.id)}
+                        title="Supprimer"
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Timeline des états */}
+                <div className="px-4 py-2 bg-gray-50 max-h-40 overflow-y-auto">
+                  <div className="flex flex-wrap gap-1">
+                    {branch.history.map((entry, entryIdx) => {
+                      const isCurrentInBranch = entryIdx === branch.historyIndex;
+                      return (
+                        <div
+                          key={entryIdx}
+                          className={`
+                            px-2 py-1 text-xs rounded cursor-pointer transition-colors
+                            ${isCurrentInBranch ? "text-white" : "bg-white hover:bg-gray-100 text-gray-600"}
+                          `}
+                          style={isCurrentInBranch ? { backgroundColor: branch.color } : undefined}
+                          title={`${entry.description} - ${new Date(entry.timestamp).toLocaleTimeString("fr-FR")}`}
+                          onClick={() => {
+                            if (branch.id !== activeBranchId) {
+                              switchToBranch(branch.id);
+                            }
+                            goToHistoryIndex(entryIdx);
+                          }}
+                        >
+                          #{entryIdx + 1}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {/* Section Fusion */}
+            {branches.length > 1 && (
+              <div className="border rounded-lg p-4 bg-purple-50">
+                <h3 className="font-medium text-sm flex items-center gap-2 mb-3">
+                  <GitMerge className="h-4 w-4 text-purple-600" />
+                  Fusionner des branches
+                </h3>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500 mb-1 block">Source (à copier)</label>
+                    <select
+                      className="w-full text-sm border rounded px-2 py-1.5 bg-white"
+                      value={mergeBranchIds.source || ""}
+                      onChange={(e) => setMergeBranchIds((prev) => ({ ...prev, source: e.target.value || null }))}
+                    >
+                      <option value="">Sélectionner...</option>
+                      {branches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="text-gray-400 pt-5">→</div>
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500 mb-1 block">Cible (destination)</label>
+                    <select
+                      className="w-full text-sm border rounded px-2 py-1.5 bg-white"
+                      value={mergeBranchIds.target || ""}
+                      onChange={(e) => setMergeBranchIds((prev) => ({ ...prev, target: e.target.value || null }))}
+                    >
+                      <option value="">Sélectionner...</option>
+                      {branches
+                        .filter((b) => b.id !== mergeBranchIds.source)
+                        .map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  <Button
+                    className="mt-5"
+                    disabled={!mergeBranchIds.source || !mergeBranchIds.target}
+                    onClick={() => {
+                      if (mergeBranchIds.source && mergeBranchIds.target) {
+                        mergeBranches(mergeBranchIds.source, mergeBranchIds.target);
+                        setMergeBranchIds({ source: null, target: null });
+                      }
+                    }}
+                  >
+                    <GitMerge className="h-4 w-4 mr-2" />
+                    Fusionner
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Les géométries de la branche source seront copiées vers la branche cible.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowOverviewModal(false)}>
+              Fermer
+            </Button>
+            <Button onClick={() => createBranchFromHistoryIndex(historyIndex)} disabled={branches.length >= 10}>
+              <Plus className="h-4 w-4 mr-2" />
+              Nouvelle branche ({branches.length}/10)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Handle pour le rideau (conservé) */}
+      {comparisonMode && comparisonStyle === "reveal" && revealBranchData && (
+        <div className="fixed inset-0 z-[50] pointer-events-none" style={{ marginTop: 140, marginLeft: 32 }}>
+          {/* Ligne verticale du rideau */}
+          <div
+            className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg pointer-events-none"
+            style={{ left: `${revealPosition}%` }}
+          />
+          {/* Handle draggable */}
+          <div
+            className="absolute pointer-events-auto cursor-ew-resize"
+            style={{
+              left: `${revealPosition}%`,
+              top: "50%",
+              transform: "translate(-50%, -50%)",
+            }}
+            onMouseDown={(e) => {
+              if (e.button !== 0) return;
+              e.preventDefault();
+              isDraggingRevealRef.current = true;
+              setIsDraggingReveal(true);
+            }}
+          >
+            <div className="bg-white rounded-full shadow-lg border-2 border-gray-300 px-2 py-3 flex flex-col items-center gap-0.5">
+              <div className="w-0.5 h-2 bg-gray-400 rounded" />
+              <div className="w-0.5 h-2 bg-gray-400 rounded" />
+              <span className="text-[10px] text-gray-500">◀▶</span>
+            </div>
+          </div>
+          {/* Labels des branches en haut */}
+          <div
+            className="absolute top-2 pointer-events-none flex items-center gap-2"
+            style={{ left: `${revealPosition}%`, transform: "translateX(-50%)" }}
+          >
+            <div
+              className="px-2 py-0.5 rounded text-xs font-medium text-white"
+              style={{ backgroundColor: activeBranchColor }}
+            >
+              {branches.find((b) => b.id === activeBranchId)?.name || "Principal"}
+            </div>
+            <div
+              className="px-2 py-0.5 rounded text-xs font-medium text-white"
+              style={{ backgroundColor: revealBranchData.color }}
+            >
+              {revealBranchData.branchName}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Handler global pour le drag du rideau */}
+      {isDraggingReveal && (
+        <div
+          className="fixed inset-0 z-[60] cursor-ew-resize"
+          onMouseMove={(e) => {
+            const canvasRect = canvasRef.current?.getBoundingClientRect();
+            if (!canvasRect) return;
+            const relativeX = e.clientX - canvasRect.left - 32;
+            const canvasWidth = canvasRect.width - 32;
+            const percentage = Math.max(5, Math.min(95, (relativeX / canvasWidth) * 100));
+            setRevealPosition(percentage);
+          }}
+          onMouseUp={() => {
+            isDraggingRevealRef.current = false;
+            setIsDraggingReveal(false);
+          }}
+          onMouseLeave={() => {
+            isDraggingRevealRef.current = false;
+            setIsDraggingReveal(false);
+          }}
+        />
+      )}
     </div>
   );
 }
