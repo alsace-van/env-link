@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.23 - Gizmo de transformation (flèches X/Y + rotation, input inline)
+// VERSION: 6.24 - Gizmo de transformation avec bouton d'activation (T) + design amélioré
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -74,6 +74,7 @@ import {
   Unlock,
   FlipHorizontal2,
   CircleDot,
+  Move,
 } from "lucide-react";
 
 import {
@@ -245,6 +246,7 @@ export function CADGabaritCanvas({
   });
 
   // État pour le gizmo de transformation (translation/rotation)
+  const [showTransformGizmo, setShowTransformGizmo] = useState(false);
   const [transformGizmo, setTransformGizmo] = useState<{
     active: boolean;
     mode: "idle" | "translateX" | "translateY" | "rotate";
@@ -820,9 +822,9 @@ export function CADGabaritCanvas({
       // Surbrillance des formes fermées
       highlightOpacity,
       mouseWorldPos,
-      // Gizmo de transformation
+      // Gizmo de transformation (seulement si activé)
       transformGizmo: transformGizmo.active ? transformGizmo : null,
-      selectionCenter: selectionGizmoData?.center || null,
+      selectionCenter: showTransformGizmo ? selectionGizmoData?.center || null : null,
     });
 
     // Dessiner le rectangle de sélection (après le render du sketch)
@@ -2077,6 +2079,7 @@ export function CADGabaritCanvas({
     // Gizmo de transformation
     transformGizmo,
     selectionGizmoData,
+    showTransformGizmo,
   ]);
 
   useEffect(() => {
@@ -6307,46 +6310,40 @@ export function CADGabaritCanvas({
       // À partir d'ici, c'est un clic gauche (e.button === 0)
 
       // === Gizmo de transformation : détection des clics sur les flèches ===
-      if (selectionGizmoData && activeTool === "select" && !transformGizmo.active) {
+      if (showTransformGizmo && selectionGizmoData && activeTool === "select" && !transformGizmo.active) {
         const center = selectionGizmoData.center;
-        const arrowLength = 60 / viewport.scale;
-        const rotationRadius = 35 / viewport.scale;
-        const hitTolerance = 15 / viewport.scale;
+        const arrowLength = 50 / viewport.scale;
+        const rotationRadius = 30 / viewport.scale;
+        const hitTolerance = 12 / viewport.scale;
 
-        // Flèche X (vers la droite)
-        const xArrowEnd = { x: center.x + arrowLength, y: center.y };
-        const distToXArrow =
-          Math.abs(worldPos.y - center.y) +
-          (worldPos.x >= center.x && worldPos.x <= xArrowEnd.x
-            ? 0
-            : Math.min(Math.abs(worldPos.x - center.x), Math.abs(worldPos.x - xArrowEnd.x)));
-
+        // Flèche X (vers la droite, commence à 8px du centre)
         if (
-          worldPos.x >= center.x - hitTolerance &&
-          worldPos.x <= xArrowEnd.x + hitTolerance &&
+          worldPos.x >= center.x + 5 / viewport.scale &&
+          worldPos.x <= center.x + arrowLength + 10 / viewport.scale &&
           Math.abs(worldPos.y - center.y) < hitTolerance
         ) {
           startGizmoTransform("translateX");
           return;
         }
 
-        // Flèche Y (vers le haut = Y négatif)
-        const yArrowEnd = { x: center.x, y: center.y - arrowLength };
+        // Flèche Y (vers le haut = Y négatif, commence à 8px du centre)
         if (
-          worldPos.y <= center.y + hitTolerance &&
-          worldPos.y >= yArrowEnd.y - hitTolerance &&
+          worldPos.y <= center.y - 5 / viewport.scale &&
+          worldPos.y >= center.y - arrowLength - 10 / viewport.scale &&
           Math.abs(worldPos.x - center.x) < hitTolerance
         ) {
           startGizmoTransform("translateY");
           return;
         }
 
-        // Arc de rotation (en bas à droite du centre)
+        // Arc de rotation (arc en haut, entre 0.15π et 0.85π)
         const distToCenter = Math.sqrt((worldPos.x - center.x) ** 2 + (worldPos.y - center.y) ** 2);
+        const angleToMouse = Math.atan2(worldPos.y - center.y, worldPos.x - center.x);
+        // Vérifier si on est sur l'arc (entre 0.15π et 0.85π, donc en haut)
         if (
           Math.abs(distToCenter - rotationRadius) < hitTolerance &&
-          worldPos.x >= center.x - hitTolerance &&
-          worldPos.y >= center.y - hitTolerance
+          angleToMouse >= Math.PI * 0.1 &&
+          angleToMouse <= Math.PI * 0.9
         ) {
           startGizmoTransform("rotate");
           return;
@@ -7637,6 +7634,7 @@ export function CADGabaritCanvas({
       arc3Points,
       mirrorState,
       // Gizmo de transformation
+      showTransformGizmo,
       selectionGizmoData,
       transformGizmo,
       startGizmoTransform,
@@ -9124,6 +9122,10 @@ export function CADGabaritCanvas({
               resetMarkerMode();
             }
             break;
+          case "t":
+            // T pour activer/désactiver le gizmo de transformation
+            setShowTransformGizmo(!showTransformGizmo);
+            break;
           case "d":
             setActiveTool("dimension");
             resetMarkerMode();
@@ -9188,6 +9190,7 @@ export function CADGabaritCanvas({
     undo,
     redo,
     fitToContent,
+    showTransformGizmo,
   ]);
 
   // === FONCTIONS DE CALIBRATION ===
@@ -9917,9 +9920,26 @@ export function CADGabaritCanvas({
           <ToolButton tool="bezier" icon={Spline} label="Courbe Bézier" shortcut="B" />
         </div>
 
-        {/* Outil Symétrie */}
+        {/* Outil Symétrie + Transformation */}
         <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
           <ToolButton tool="mirror" icon={FlipHorizontal2} label="Symétrie" shortcut="S" />
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={showTransformGizmo ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowTransformGizmo(!showTransformGizmo)}
+                  className={`h-9 w-9 p-0 ${showTransformGizmo ? "bg-orange-500 hover:bg-orange-600 text-white" : ""}`}
+                >
+                  <Move className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Déplacer / Rotation (T)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
 
         <Separator orientation="vertical" className="h-6" />
@@ -10895,8 +10915,8 @@ export function CADGabaritCanvas({
               <div
                 className="absolute z-50 flex items-center gap-1"
                 style={{
-                  left: `${selectionGizmoData.center.x * viewport.scale + viewport.offsetX + (transformGizmo.mode === "translateX" ? 80 : transformGizmo.mode === "rotate" ? 50 : 0)}px`,
-                  top: `${selectionGizmoData.center.y * viewport.scale + viewport.offsetY + (transformGizmo.mode === "translateY" ? -80 : transformGizmo.mode === "rotate" ? 50 : 0)}px`,
+                  left: `${selectionGizmoData.center.x * viewport.scale + viewport.offsetX + (transformGizmo.mode === "translateX" ? 70 : transformGizmo.mode === "rotate" ? 0 : 0)}px`,
+                  top: `${selectionGizmoData.center.y * viewport.scale + viewport.offsetY + (transformGizmo.mode === "translateY" ? -70 : transformGizmo.mode === "rotate" ? 45 : 0)}px`,
                   transform: "translate(-50%, -50%)",
                 }}
               >

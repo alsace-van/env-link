@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.44 - Gizmo de transformation (flèches X/Y, arc rotation)
+// VERSION: 3.45 - Gizmo de transformation design amélioré (contours blancs, flèches élégantes)
 // ============================================
 
 import {
@@ -3094,115 +3094,184 @@ export class CADRenderer {
     center: { x: number; y: number },
     transformGizmo: { active: boolean; mode: string; center: { x: number; y: number } } | null,
   ): void {
-    const arrowLength = 60 / this.viewport.scale;
-    const arrowHeadSize = 12 / this.viewport.scale;
-    const rotationRadius = 35 / this.viewport.scale;
-    const lineWidth = 3 / this.viewport.scale;
+    const arrowLength = 50 / this.viewport.scale;
+    const arrowHeadLength = 14 / this.viewport.scale;
+    const arrowHeadWidth = 8 / this.viewport.scale;
+    const rotationRadius = 30 / this.viewport.scale;
+    const lineWidth = 2.5 / this.viewport.scale;
+    const outlineWidth = 4.5 / this.viewport.scale;
 
     // Couleurs
-    const xColor = "#EF4444"; // Rouge
-    const yColor = "#22C55E"; // Vert
-    const rotateColor = "#3B82F6"; // Bleu
-    const activeColor = "#FBBF24"; // Jaune pour l'axe actif
+    const xColor = "#DC2626"; // Rouge vif
+    const yColor = "#16A34A"; // Vert vif
+    const rotateColor = "#2563EB"; // Bleu vif
+    const activeColor = "#F59E0B"; // Orange pour l'axe actif
+    const outlineColor = "rgba(255, 255, 255, 0.9)";
 
     this.ctx.save();
     this.ctx.lineCap = "round";
     this.ctx.lineJoin = "round";
 
+    // Fonction pour dessiner une flèche avec contour
+    const drawArrow = (
+      startX: number,
+      startY: number,
+      endX: number,
+      endY: number,
+      color: string,
+      isActive: boolean,
+    ) => {
+      const currentColor = isActive ? activeColor : color;
+      const currentWidth = isActive ? lineWidth * 1.4 : lineWidth;
+
+      // Direction de la flèche
+      const dx = endX - startX;
+      const dy = endY - startY;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      const ux = dx / len;
+      const uy = dy / len;
+
+      // Point de base de la tête de flèche
+      const headBaseX = endX - ux * arrowHeadLength;
+      const headBaseY = endY - uy * arrowHeadLength;
+
+      // Points perpendiculaires pour la tête
+      const perpX = (-uy * arrowHeadWidth) / 2;
+      const perpY = (ux * arrowHeadWidth) / 2;
+
+      // Contour blanc (ombre)
+      this.ctx.strokeStyle = outlineColor;
+      this.ctx.lineWidth = outlineWidth;
+      this.ctx.beginPath();
+      this.ctx.moveTo(startX, startY);
+      this.ctx.lineTo(headBaseX, headBaseY);
+      this.ctx.stroke();
+
+      // Ligne principale
+      this.ctx.strokeStyle = currentColor;
+      this.ctx.lineWidth = currentWidth;
+      this.ctx.beginPath();
+      this.ctx.moveTo(startX, startY);
+      this.ctx.lineTo(headBaseX, headBaseY);
+      this.ctx.stroke();
+
+      // Tête de flèche - contour
+      this.ctx.fillStyle = outlineColor;
+      this.ctx.beginPath();
+      this.ctx.moveTo(endX + (ux * 1.5) / this.viewport.scale, endY + (uy * 1.5) / this.viewport.scale);
+      this.ctx.lineTo(
+        headBaseX + perpX - (ux * 1) / this.viewport.scale,
+        headBaseY + perpY - (uy * 1) / this.viewport.scale,
+      );
+      this.ctx.lineTo(
+        headBaseX - perpX - (ux * 1) / this.viewport.scale,
+        headBaseY - perpY - (uy * 1) / this.viewport.scale,
+      );
+      this.ctx.closePath();
+      this.ctx.fill();
+
+      // Tête de flèche - remplie
+      this.ctx.fillStyle = currentColor;
+      this.ctx.beginPath();
+      this.ctx.moveTo(endX, endY);
+      this.ctx.lineTo(headBaseX + perpX, headBaseY + perpY);
+      this.ctx.lineTo(headBaseX - perpX, headBaseY - perpY);
+      this.ctx.closePath();
+      this.ctx.fill();
+    };
+
     // === Flèche X (rouge, vers la droite) ===
     const xActive = transformGizmo?.active && transformGizmo.mode === "translateX";
-    this.ctx.strokeStyle = xActive ? activeColor : xColor;
-    this.ctx.fillStyle = xActive ? activeColor : xColor;
-    this.ctx.lineWidth = xActive ? lineWidth * 1.5 : lineWidth;
-
-    // Ligne
-    this.ctx.beginPath();
-    this.ctx.moveTo(center.x, center.y);
-    this.ctx.lineTo(center.x + arrowLength, center.y);
-    this.ctx.stroke();
-
-    // Tête de flèche
-    this.ctx.beginPath();
-    this.ctx.moveTo(center.x + arrowLength, center.y);
-    this.ctx.lineTo(center.x + arrowLength - arrowHeadSize, center.y - arrowHeadSize / 2);
-    this.ctx.lineTo(center.x + arrowLength - arrowHeadSize, center.y + arrowHeadSize / 2);
-    this.ctx.closePath();
-    this.ctx.fill();
+    drawArrow(center.x + 8 / this.viewport.scale, center.y, center.x + arrowLength, center.y, xColor, xActive);
 
     // Label X
-    this.ctx.font = `bold ${14 / this.viewport.scale}px Arial`;
-    this.ctx.textAlign = "left";
+    this.ctx.fillStyle = xActive ? activeColor : xColor;
+    this.ctx.font = `bold ${11 / this.viewport.scale}px Arial`;
+    this.ctx.textAlign = "center";
     this.ctx.textBaseline = "middle";
-    this.ctx.fillText("X", center.x + arrowLength + 5 / this.viewport.scale, center.y);
-
-    // === Flèche Y (vert, vers le haut - coordonnées canvas inversées) ===
-    const yActive = transformGizmo?.active && transformGizmo.mode === "translateY";
-    this.ctx.strokeStyle = yActive ? activeColor : yColor;
-    this.ctx.fillStyle = yActive ? activeColor : yColor;
-    this.ctx.lineWidth = yActive ? lineWidth * 1.5 : lineWidth;
-
-    // Ligne (vers le haut = Y négatif en canvas)
+    // Fond blanc pour le label
+    const labelX = center.x + arrowLength + 8 / this.viewport.scale;
+    this.ctx.fillStyle = outlineColor;
     this.ctx.beginPath();
-    this.ctx.moveTo(center.x, center.y);
-    this.ctx.lineTo(center.x, center.y - arrowLength);
-    this.ctx.stroke();
-
-    // Tête de flèche
-    this.ctx.beginPath();
-    this.ctx.moveTo(center.x, center.y - arrowLength);
-    this.ctx.lineTo(center.x - arrowHeadSize / 2, center.y - arrowLength + arrowHeadSize);
-    this.ctx.lineTo(center.x + arrowHeadSize / 2, center.y - arrowLength + arrowHeadSize);
-    this.ctx.closePath();
+    this.ctx.arc(labelX, center.y, 7 / this.viewport.scale, 0, Math.PI * 2);
     this.ctx.fill();
+    this.ctx.fillStyle = xActive ? activeColor : xColor;
+    this.ctx.fillText("X", labelX, center.y);
+
+    // === Flèche Y (vert, vers le haut) ===
+    const yActive = transformGizmo?.active && transformGizmo.mode === "translateY";
+    drawArrow(center.x, center.y - 8 / this.viewport.scale, center.x, center.y - arrowLength, yColor, yActive);
 
     // Label Y
-    this.ctx.textAlign = "center";
-    this.ctx.textBaseline = "bottom";
-    this.ctx.fillText("Y", center.x, center.y - arrowLength - 5 / this.viewport.scale);
-
-    // === Arc de rotation (bleu, en bas à droite) ===
-    const rotateActive = transformGizmo?.active && transformGizmo.mode === "rotate";
-    this.ctx.strokeStyle = rotateActive ? activeColor : rotateColor;
-    this.ctx.fillStyle = rotateActive ? activeColor : rotateColor;
-    this.ctx.lineWidth = rotateActive ? lineWidth * 1.5 : lineWidth;
-
-    // Arc (3/4 de cercle)
+    const labelY = center.y - arrowLength - 8 / this.viewport.scale;
+    this.ctx.fillStyle = outlineColor;
     this.ctx.beginPath();
-    this.ctx.arc(center.x, center.y, rotationRadius, 0.3, Math.PI * 1.7);
+    this.ctx.arc(center.x, labelY, 7 / this.viewport.scale, 0, Math.PI * 2);
+    this.ctx.fill();
+    this.ctx.fillStyle = yActive ? activeColor : yColor;
+    this.ctx.fillText("Y", center.x, labelY);
+
+    // === Arc de rotation (bleu) ===
+    const rotateActive = transformGizmo?.active && transformGizmo.mode === "rotate";
+    const rotColor = rotateActive ? activeColor : rotateColor;
+    const rotWidth = rotateActive ? lineWidth * 1.4 : lineWidth;
+
+    // Arc - contour blanc
+    this.ctx.strokeStyle = outlineColor;
+    this.ctx.lineWidth = outlineWidth;
+    this.ctx.beginPath();
+    this.ctx.arc(center.x, center.y, rotationRadius, Math.PI * 0.15, Math.PI * 0.85);
     this.ctx.stroke();
 
-    // Flèche au bout de l'arc
-    const endAngle = Math.PI * 1.7;
+    // Arc - couleur
+    this.ctx.strokeStyle = rotColor;
+    this.ctx.lineWidth = rotWidth;
+    this.ctx.beginPath();
+    this.ctx.arc(center.x, center.y, rotationRadius, Math.PI * 0.15, Math.PI * 0.85);
+    this.ctx.stroke();
+
+    // Flèche au bout de l'arc (côté gauche)
+    const endAngle = Math.PI * 0.85;
     const arrowX = center.x + rotationRadius * Math.cos(endAngle);
     const arrowY = center.y + rotationRadius * Math.sin(endAngle);
-
-    // Direction tangente
     const tangentAngle = endAngle + Math.PI / 2;
-    const smallArrowSize = 8 / this.viewport.scale;
+    const smallArrowSize = 6 / this.viewport.scale;
 
+    // Flèche de rotation
+    this.ctx.fillStyle = rotColor;
     this.ctx.beginPath();
-    this.ctx.moveTo(arrowX, arrowY);
-    this.ctx.lineTo(
-      arrowX + smallArrowSize * Math.cos(tangentAngle - 0.5),
-      arrowY + smallArrowSize * Math.sin(tangentAngle - 0.5),
+    this.ctx.moveTo(
+      arrowX + smallArrowSize * 1.2 * Math.cos(tangentAngle),
+      arrowY + smallArrowSize * 1.2 * Math.sin(tangentAngle),
     );
     this.ctx.lineTo(
-      arrowX + smallArrowSize * Math.cos(tangentAngle + 0.5),
-      arrowY + smallArrowSize * Math.sin(tangentAngle + 0.5),
+      arrowX + smallArrowSize * Math.cos(tangentAngle - 0.8),
+      arrowY + smallArrowSize * Math.sin(tangentAngle - 0.8),
+    );
+    this.ctx.lineTo(
+      arrowX + smallArrowSize * Math.cos(tangentAngle + 0.8),
+      arrowY + smallArrowSize * Math.sin(tangentAngle + 0.8),
     );
     this.ctx.closePath();
     this.ctx.fill();
 
-    // Symbole ° au centre de l'arc
-    this.ctx.textAlign = "center";
-    this.ctx.textBaseline = "middle";
-    this.ctx.font = `bold ${12 / this.viewport.scale}px Arial`;
-    this.ctx.fillText("°", center.x + rotationRadius * 0.6, center.y + rotationRadius * 0.6);
-
     // === Point central ===
-    this.ctx.fillStyle = "#6B7280";
+    // Cercle blanc de fond
+    this.ctx.fillStyle = outlineColor;
+    this.ctx.beginPath();
+    this.ctx.arc(center.x, center.y, 6 / this.viewport.scale, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    // Cercle coloré
+    this.ctx.fillStyle = "#475569";
     this.ctx.beginPath();
     this.ctx.arc(center.x, center.y, 4 / this.viewport.scale, 0, Math.PI * 2);
+    this.ctx.fill();
+
+    // Point central blanc
+    this.ctx.fillStyle = "#FFFFFF";
+    this.ctx.beginPath();
+    this.ctx.arc(center.x, center.y, 1.5 / this.viewport.scale, 0, Math.PI * 2);
     this.ctx.fill();
 
     this.ctx.restore();
