@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.28 - Dimensions rectangle temps réel dans les inputs L/H
+// VERSION: 6.29 - Précision au dixième de mm pour les dimensions rectangle
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -8231,10 +8231,10 @@ export function CADGabaritCanvas({
         } else if (tempGeometry.type === "rectangle") {
           setPerpendicularInfo(null);
 
-          // Calculer les positions des inputs en coordonnées écran (mais ne pas modifier les valeurs)
+          // Calculer les positions des inputs en coordonnées écran
           const p1 = tempGeometry.p1;
 
-          // Calculer les dimensions réelles en mm
+          // Calculer les dimensions réelles en mm avec précision au dixième
           const scaleFactor = sketch.scaleFactor || 1; // px/mm
           const widthPx = Math.abs(targetPos.x - p1.x);
           const heightPx = Math.abs(targetPos.y - p1.y);
@@ -8260,14 +8260,23 @@ export function CADGabaritCanvas({
               y: midLeftY * viewport.scale + viewport.offsetY - 12,
             };
 
+            // Formater les valeurs avec précision adaptative
+            // Arrondi au dixième de mm (0.1 mm)
+            const formatValue = (val: number): string => {
+              if (val < 0.05) return "";
+              // Arrondir au dixième de mm
+              const rounded = Math.round(val * 10) / 10;
+              return rounded.toFixed(1);
+            };
+
             setRectInputs((prev) => ({
               ...prev,
               active: true,
               widthInputPos: widthScreenPos,
               heightInputPos: heightScreenPos,
-              // Mettre à jour les valeurs en temps réel (arrondi à 1 décimale)
-              widthValue: widthMm > 0.1 ? widthMm.toFixed(1) : "",
-              heightValue: heightMm > 0.1 ? heightMm.toFixed(1) : "",
+              // Mettre à jour les valeurs en temps réel (précision 0.1 mm)
+              widthValue: formatValue(widthMm),
+              heightValue: formatValue(heightMm),
             }));
           }
 
