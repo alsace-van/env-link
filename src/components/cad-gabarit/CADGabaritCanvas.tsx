@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.25 - Gizmo drag avec affichage temps réel des déplacements
+// VERSION: 6.26 - Fix: Gizmo désactivé automatiquement quand on change d'outil
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2107,6 +2107,8 @@ export function CADGabaritCanvas({
       setMarkerMode("idle");
       setPendingLink(null);
       setSelectedMarkerId(null);
+      // Désactiver le gizmo de transformation quand on change d'outil
+      setShowTransformGizmo(false);
     }
     // Réinitialiser la mesure quand on change d'outil
     if (activeTool !== "measure") {
@@ -9297,6 +9299,11 @@ export function CADGabaritCanvas({
             break;
           case "t":
             // T pour activer/désactiver le gizmo de transformation
+            if (!showTransformGizmo) {
+              // Activer le gizmo = passer en mode select
+              setActiveTool("select");
+              resetMarkerMode();
+            }
             setShowTransformGizmo(!showTransformGizmo);
             break;
           case "d":
@@ -10104,7 +10111,14 @@ export function CADGabaritCanvas({
                 <Button
                   variant={showTransformGizmo ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setShowTransformGizmo(!showTransformGizmo)}
+                  onClick={() => {
+                    if (!showTransformGizmo) {
+                      // Activer le gizmo = passer en mode select
+                      setActiveTool("select");
+                      setMarkerMode("idle");
+                    }
+                    setShowTransformGizmo(!showTransformGizmo);
+                  }}
                   className={`h-9 w-9 p-0 ${showTransformGizmo ? "bg-orange-500 hover:bg-orange-600 text-white" : ""}`}
                 >
                   <Move className="h-4 w-4" />
