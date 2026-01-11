@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.60 - Mode reveal = noir (actif) + pointillés colorés (reveal)
+// VERSION: 3.61 - Mode reveal: actif en noir + reveal en pointillés
 // ============================================
 
 import {
@@ -465,8 +465,9 @@ export class CADRenderer {
 
     // 7.5. Mode reveal (rideau avant/après)
     // LOGIQUE: Le rendu normal (noir) a déjà été fait sur tout le canvas
-    // On clippe la zone DROITE, on l'efface, et on dessine la branche reveal en pointillés colorés
-    // Résultat: Zone GAUCHE = branche active en noir, Zone DROITE = branche reveal en pointillés colorés
+    // On clippe la zone DROITE, on l'efface, puis on dessine :
+    // 1. La branche active en NOIR (trait plein) - même rendu que zone gauche
+    // 2. La branche reveal en POINTILLÉS COLORÉS par-dessus
     if (isRevealMode && revealBranch) {
       // Calculer la position X du clipping en coordonnées écran
       const canvasWidth = this.viewport.width - rulerSize;
@@ -496,10 +497,13 @@ export class CADRenderer {
         this.drawGrid(sketch.scaleFactor);
       }
 
-      // Surbrillance des formes fermées de la branche reveal
-      this.drawClosedShapes(revealBranch.sketch, highlightOpacity, mouseWorldPos);
+      // Surbrillance des formes fermées de la branche active
+      this.drawClosedShapes(sketch, highlightOpacity, mouseWorldPos);
 
-      // Dessiner la branche reveal en POINTILLÉS COLORÉS (comme en mode superposition)
+      // 1. Redessiner la branche ACTIVE en NOIR (trait plein) - identique à la zone gauche
+      this.drawRevealBranch(sketch, this.styles.lineColor);
+
+      // 2. Dessiner la branche REVEAL en POINTILLÉS COLORÉS par-dessus
       this.drawComparisonBranch(revealBranch.sketch, revealBranch.color, 1.0, revealBranch.branchName);
 
       // Restaurer (enlève le clipping droite)
