@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.43 - Fix rectangle: dimensions finales = tracé provisoire
+// VERSION: 6.44 - Système de branches (max 10) + comparaison
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -77,6 +77,11 @@ import {
   History,
   Clock,
   Scissors,
+  GitBranch,
+  Trash2 as TrashIcon,
+  Edit3,
+  Eye as EyeIcon2,
+  EyeOff as EyeOffIcon2,
 } from "lucide-react";
 
 import {
@@ -378,8 +383,59 @@ export function CADGabaritCanvas({
     timestamp: number;
   }
 
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
+  // === SYSTÈME DE BRANCHES ===
+  // Couleurs disponibles pour les branches (max 10)
+  const BRANCH_COLORS = [
+    "#3B82F6", // Bleu
+    "#F97316", // Orange
+    "#22C55E", // Vert
+    "#A855F7", // Violet
+    "#EC4899", // Rose
+    "#06B6D4", // Cyan
+    "#EAB308", // Jaune
+    "#EF4444", // Rouge
+    "#6366F1", // Indigo
+    "#14B8A6", // Teal
+  ];
+
+  interface Branch {
+    id: string;
+    name: string;
+    color: string;
+    history: HistoryEntry[];
+    historyIndex: number;
+    parentBranchId?: string;
+    parentHistoryIndex?: number;
+    createdAt: number;
+  }
+
+  // États des branches
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [activeBranchId, setActiveBranchId] = useState<string>("");
+  const branchesRef = useRef<{ branches: Branch[]; activeBranchId: string }>({ branches: [], activeBranchId: "" });
+
+  // Mode comparaison
+  const [comparisonMode, setComparisonMode] = useState(false);
+  const [visibleBranches, setVisibleBranches] = useState<Set<string>>(new Set());
+  const [comparisonOpacity, setComparisonOpacity] = useState(70); // 0-100
+
+  // Helper pour obtenir la branche active
+  const getActiveBranch = useCallback((): Branch | null => {
+    return branches.find((b) => b.id === activeBranchId) || null;
+  }, [branches, activeBranchId]);
+
+  // Helper pour obtenir l'historique et l'index actuels (pour compatibilité)
+  const history = useMemo(() => {
+    const branch = branches.find((b) => b.id === activeBranchId);
+    return branch?.history || [];
+  }, [branches, activeBranchId]);
+
+  const historyIndex = useMemo(() => {
+    const branch = branches.find((b) => b.id === activeBranchId);
+    return branch?.historyIndex ?? -1;
+  }, [branches, activeBranchId]);
+
+  // Ref pour compatibilité avec le code existant
   const historyRef = useRef<{ history: HistoryEntry[]; index: number }>({ history: [], index: -1 });
 
   // Panneau d'historique
@@ -395,16 +451,20 @@ export function CADGabaritCanvas({
   const [imageHistory, setImageHistory] = useState<ImageHistoryState[]>([]);
   const imageHistoryRef = useRef<ImageHistoryState[]>([]);
 
-  // Synchroniser la ref avec l'état
+  // Synchroniser les refs
   useEffect(() => {
-    historyRef.current = { history, index: historyIndex };
-  }, [history, historyIndex]);
+    const branch = branches.find((b) => b.id === activeBranchId);
+    if (branch) {
+      historyRef.current = { history: branch.history, index: branch.historyIndex };
+    }
+    branchesRef.current = { branches, activeBranchId };
+  }, [branches, activeBranchId]);
 
   useEffect(() => {
     imageHistoryRef.current = imageHistory;
   }, [imageHistory]);
 
-  // Sauvegarder l'état initial au montage
+  // Initialiser avec une branche par défaut au montage
   const historyInitializedRef = useRef(false);
   useEffect(() => {
     if (!historyInitializedRef.current) {
@@ -414,8 +474,18 @@ export function CADGabaritCanvas({
         description: "État initial",
         timestamp: Date.now(),
       };
-      setHistory([initialEntry]);
-      setHistoryIndex(0);
+      const mainBranch: Branch = {
+        id: generateId(),
+        name: "Principal",
+        color: BRANCH_COLORS[0],
+        history: [initialEntry],
+        historyIndex: 0,
+        createdAt: Date.now(),
+      };
+      setBranches([mainBranch]);
+      setActiveBranchId(mainBranch.id);
+      setVisibleBranches(new Set([mainBranch.id]));
+      branchesRef.current = { branches: [mainBranch], activeBranchId: mainBranch.id };
       historyRef.current = { history: [initialEntry], index: 0 };
     }
   }, []);
@@ -709,6 +779,49 @@ export function CADGabaritCanvas({
     };
   }, [imageUrl]);
 
+  // Données des branches visibles pour le mode comparaison
+  const comparisonBranchesData = useMemo(() => {
+    if (!comparisonMode || visibleBranches.size <= 1) return [];
+
+    const result: Array<{
+      branchId: string;
+      branchName: string;
+      color: string;
+      sketch: Sketch;
+    }> = [];
+
+    branches.forEach((branch) => {
+      // Ne pas inclure la branche active (elle est dessinée normalement)
+      if (branch.id === activeBranchId) return;
+      // Ne pas inclure les branches non visibles
+      if (!visibleBranches.has(branch.id)) return;
+
+      // Charger le sketch de l'état actuel de la branche
+      const entry = branch.history[branch.historyIndex];
+      if (entry) {
+        try {
+          const branchSketch = deserializeSketch(entry.sketch);
+          result.push({
+            branchId: branch.id,
+            branchName: branch.name,
+            color: branch.color,
+            sketch: branchSketch,
+          });
+        } catch (e) {
+          console.error("Erreur lors du chargement de la branche pour comparaison:", e);
+        }
+      }
+    });
+
+    return result;
+  }, [comparisonMode, visibleBranches, branches, activeBranchId]);
+
+  // Couleur de la branche active pour le rendu
+  const activeBranchColor = useMemo(() => {
+    const branch = branches.find((b) => b.id === activeBranchId);
+    return branch?.color || "#3B82F6";
+  }, [branches, activeBranchId]);
+
   // Calcul de la longueur totale des segments sélectionnés (en mm) + angle interne si 2 segments
   const selectedLength = useMemo(() => {
     if (selectedEntities.size === 0) return null;
@@ -920,6 +1033,11 @@ export function CADGabaritCanvas({
       gizmoDrag,
       // Entités sélectionnées (pour dessiner le fantôme)
       selectedEntitiesForGhost: gizmoDrag ? selectedEntities : new Set<string>(),
+      // Mode comparaison de branches
+      comparisonMode,
+      comparisonBranches: comparisonBranchesData,
+      comparisonOpacity,
+      activeBranchColor,
     });
 
     // Dessiner le rectangle de sélection (après le render du sketch)
@@ -2176,6 +2294,11 @@ export function CADGabaritCanvas({
     selectionGizmoData,
     showTransformGizmo,
     gizmoDrag,
+    // Mode comparaison branches
+    comparisonMode,
+    comparisonBranchesData,
+    comparisonOpacity,
+    activeBranchColor,
   ]);
 
   useEffect(() => {
@@ -2387,18 +2510,27 @@ export function CADGabaritCanvas({
 
   // Historique - défini tôt car utilisé par plusieurs callbacks
   const addToHistory = useCallback((newSketch: Sketch, description: string = "Modification") => {
-    const { history: currentHistory, index: currentIndex } = historyRef.current;
+    const { branches: currentBranches, activeBranchId: currentActiveBranchId } = branchesRef.current;
+    const branchIndex = currentBranches.findIndex((b) => b.id === currentActiveBranchId);
+    if (branchIndex === -1) return;
+
+    const branch = currentBranches[branchIndex];
     const newEntry: HistoryEntry = {
       sketch: serializeSketch(newSketch),
       description,
       timestamp: Date.now(),
     };
-    // Couper l'historique au point actuel et ajouter le nouvel état
-    const newHistory = [...currentHistory.slice(0, currentIndex + 1), newEntry];
-    const newIndex = currentIndex + 1;
 
-    setHistory(newHistory);
-    setHistoryIndex(newIndex);
+    // Couper l'historique au point actuel et ajouter le nouvel état
+    const newHistory = [...branch.history.slice(0, branch.historyIndex + 1), newEntry];
+    const newIndex = branch.historyIndex + 1;
+
+    const updatedBranch = { ...branch, history: newHistory, historyIndex: newIndex };
+    const newBranches = [...currentBranches];
+    newBranches[branchIndex] = updatedBranch;
+
+    setBranches(newBranches);
+    branchesRef.current = { branches: newBranches, activeBranchId: currentActiveBranchId };
     historyRef.current = { history: newHistory, index: newIndex };
   }, []);
 
@@ -9010,7 +9142,8 @@ export function CADGabaritCanvas({
   // Undo/Redo
   const undo = useCallback(() => {
     // D'abord essayer de restaurer les images si l'historique d'images contient des états
-    const sketchCanUndo = historyIndex > 0;
+    const branch = branches.find((b) => b.id === activeBranchId);
+    const sketchCanUndo = branch && branch.historyIndex > 0;
     const imageCanUndo = imageHistory.length > 0;
 
     // Priorité aux images si on a un état à restaurer
@@ -9024,85 +9157,253 @@ export function CADGabaritCanvas({
       return;
     }
 
-    if (sketchCanUndo) {
-      const prevEntry = history[historyIndex - 1];
-      const newIndex = historyIndex - 1;
+    if (sketchCanUndo && branch) {
+      const newIndex = branch.historyIndex - 1;
+      const prevEntry = branch.history[newIndex];
       loadSketchData(prevEntry.sketch);
-      setHistoryIndex(newIndex);
-      historyRef.current = { ...historyRef.current, index: newIndex };
-      // Annuler la prévisualisation si active
+
+      // Mettre à jour la branche
+      const branchIndex = branches.findIndex((b) => b.id === activeBranchId);
+      const updatedBranch = { ...branch, historyIndex: newIndex };
+      const newBranches = [...branches];
+      newBranches[branchIndex] = updatedBranch;
+      setBranches(newBranches);
+      branchesRef.current = { branches: newBranches, activeBranchId };
+      historyRef.current = { history: branch.history, index: newIndex };
       setPreviewHistoryIndex(null);
     }
-  }, [history, historyIndex, loadSketchData, imageHistory]);
+  }, [branches, activeBranchId, loadSketchData, imageHistory]);
 
   const redo = useCallback(() => {
-    // Le redo ne fonctionne que pour le sketch (les images utilisent une pile simple)
-    const sketchCanRedo = historyIndex < history.length - 1;
+    const branch = branches.find((b) => b.id === activeBranchId);
+    const sketchCanRedo = branch && branch.historyIndex < branch.history.length - 1;
 
-    if (sketchCanRedo) {
-      const nextEntry = history[historyIndex + 1];
-      const newIndex = historyIndex + 1;
+    if (sketchCanRedo && branch) {
+      const newIndex = branch.historyIndex + 1;
+      const nextEntry = branch.history[newIndex];
       loadSketchData(nextEntry.sketch);
-      setHistoryIndex(newIndex);
-      historyRef.current = { ...historyRef.current, index: newIndex };
-      // Annuler la prévisualisation si active
+
+      // Mettre à jour la branche
+      const branchIndex = branches.findIndex((b) => b.id === activeBranchId);
+      const updatedBranch = { ...branch, historyIndex: newIndex };
+      const newBranches = [...branches];
+      newBranches[branchIndex] = updatedBranch;
+      setBranches(newBranches);
+      branchesRef.current = { branches: newBranches, activeBranchId };
+      historyRef.current = { history: branch.history, index: newIndex };
       setPreviewHistoryIndex(null);
     }
-  }, [history, historyIndex, loadSketchData]);
+  }, [branches, activeBranchId, loadSketchData]);
 
   // Aller à une version spécifique de l'historique
   const goToHistoryIndex = useCallback(
     (targetIndex: number) => {
-      if (targetIndex < 0 || targetIndex >= history.length) return;
-      const entry = history[targetIndex];
+      const branch = branches.find((b) => b.id === activeBranchId);
+      if (!branch || targetIndex < 0 || targetIndex >= branch.history.length) return;
+
+      const entry = branch.history[targetIndex];
       loadSketchData(entry.sketch);
-      setHistoryIndex(targetIndex);
-      historyRef.current = { ...historyRef.current, index: targetIndex };
+
+      // Mettre à jour la branche
+      const branchIndex = branches.findIndex((b) => b.id === activeBranchId);
+      const updatedBranch = { ...branch, historyIndex: targetIndex };
+      const newBranches = [...branches];
+      newBranches[branchIndex] = updatedBranch;
+      setBranches(newBranches);
+      branchesRef.current = { branches: newBranches, activeBranchId };
+      historyRef.current = { history: branch.history, index: targetIndex };
       setPreviewHistoryIndex(null);
       toast.success(`Retour à: ${entry.description}`);
     },
-    [history, loadSketchData],
+    [branches, activeBranchId, loadSketchData],
   );
 
-  // Repartir d'un point précis (supprimer tout l'historique après)
-  const branchFromHistoryIndex = useCallback(
-    (targetIndex: number) => {
-      if (targetIndex < 0 || targetIndex >= history.length) return;
-      const entry = history[targetIndex];
+  // Créer une nouvelle branche à partir d'un point de l'historique
+  const createBranchFromHistoryIndex = useCallback(
+    (targetIndex: number, branchName?: string) => {
+      const parentBranch = branches.find((b) => b.id === activeBranchId);
+      if (!parentBranch || targetIndex < 0 || targetIndex >= parentBranch.history.length) return;
+
+      // Vérifier la limite de 10 branches
+      if (branches.length >= 10) {
+        toast.error("Maximum 10 branches atteint");
+        return;
+      }
+
+      const entry = parentBranch.history[targetIndex];
+
+      // Trouver la prochaine couleur disponible
+      const usedColors = new Set(branches.map((b) => b.color));
+      const nextColor =
+        BRANCH_COLORS.find((c) => !usedColors.has(c)) || BRANCH_COLORS[branches.length % BRANCH_COLORS.length];
+
+      // Créer la nouvelle branche
+      const newBranchId = generateId();
+      const newBranch: Branch = {
+        id: newBranchId,
+        name: branchName || `Branche ${branches.length + 1}`,
+        color: nextColor,
+        history: parentBranch.history.slice(0, targetIndex + 1), // Copier l'historique jusqu'au point de branchement
+        historyIndex: targetIndex,
+        parentBranchId: activeBranchId,
+        parentHistoryIndex: targetIndex,
+        createdAt: Date.now(),
+      };
 
       // Charger l'état
       loadSketchData(entry.sketch);
 
-      // Couper l'historique à cet index (garder uniquement jusqu'à targetIndex inclus)
-      const newHistory = history.slice(0, targetIndex + 1);
-      setHistory(newHistory);
-      setHistoryIndex(targetIndex);
+      // Ajouter la branche et la rendre active
+      const newBranches = [...branches, newBranch];
+      setBranches(newBranches);
+      setActiveBranchId(newBranchId);
+      setVisibleBranches((prev) => new Set([...prev, newBranchId]));
+      branchesRef.current = { branches: newBranches, activeBranchId: newBranchId };
+      historyRef.current = { history: newBranch.history, index: targetIndex };
+      setPreviewHistoryIndex(null);
+
+      toast.success(`Nouvelle branche créée: ${newBranch.name}`);
+    },
+    [branches, activeBranchId, loadSketchData],
+  );
+
+  // Supprimer l'historique après un point (ancien comportement)
+  const truncateHistoryAtIndex = useCallback(
+    (targetIndex: number) => {
+      const branch = branches.find((b) => b.id === activeBranchId);
+      if (!branch || targetIndex < 0 || targetIndex >= branch.history.length) return;
+
+      const entry = branch.history[targetIndex];
+      loadSketchData(entry.sketch);
+
+      // Couper l'historique
+      const newHistory = branch.history.slice(0, targetIndex + 1);
+      const deletedCount = branch.history.length - targetIndex - 1;
+
+      // Mettre à jour la branche
+      const branchIndex = branches.findIndex((b) => b.id === activeBranchId);
+      const updatedBranch = { ...branch, history: newHistory, historyIndex: targetIndex };
+      const newBranches = [...branches];
+      newBranches[branchIndex] = updatedBranch;
+      setBranches(newBranches);
+      branchesRef.current = { branches: newBranches, activeBranchId };
       historyRef.current = { history: newHistory, index: targetIndex };
       setPreviewHistoryIndex(null);
 
-      const deletedCount = history.length - targetIndex - 1;
-      toast.success(`Reparti de: ${entry.description} (${deletedCount} entrée(s) supprimée(s))`);
+      toast.success(`Historique tronqué: ${deletedCount} entrée(s) supprimée(s)`);
     },
-    [history, loadSketchData],
+    [branches, activeBranchId, loadSketchData],
+  );
+
+  // Switcher vers une autre branche
+  const switchToBranch = useCallback(
+    (branchId: string) => {
+      const branch = branches.find((b) => b.id === branchId);
+      if (!branch) return;
+
+      // Charger l'état actuel de la branche
+      const entry = branch.history[branch.historyIndex];
+      loadSketchData(entry.sketch);
+
+      setActiveBranchId(branchId);
+      branchesRef.current = { ...branchesRef.current, activeBranchId: branchId };
+      historyRef.current = { history: branch.history, index: branch.historyIndex };
+      setPreviewHistoryIndex(null);
+
+      toast.success(`Branche active: ${branch.name}`);
+    },
+    [branches, loadSketchData],
+  );
+
+  // Renommer une branche
+  const renameBranch = useCallback(
+    (branchId: string, newName: string) => {
+      const branchIndex = branches.findIndex((b) => b.id === branchId);
+      if (branchIndex === -1) return;
+
+      const newBranches = [...branches];
+      newBranches[branchIndex] = { ...newBranches[branchIndex], name: newName };
+      setBranches(newBranches);
+      branchesRef.current = { ...branchesRef.current, branches: newBranches };
+    },
+    [branches],
+  );
+
+  // Supprimer une branche
+  const deleteBranch = useCallback(
+    (branchId: string) => {
+      if (branches.length <= 1) {
+        toast.error("Impossible de supprimer la dernière branche");
+        return;
+      }
+
+      const branchIndex = branches.findIndex((b) => b.id === branchId);
+      if (branchIndex === -1) return;
+
+      const branchName = branches[branchIndex].name;
+      const newBranches = branches.filter((b) => b.id !== branchId);
+
+      // Si c'était la branche active, switcher vers la première
+      let newActiveBranchId = activeBranchId;
+      if (activeBranchId === branchId) {
+        newActiveBranchId = newBranches[0].id;
+        const newActiveBranch = newBranches[0];
+        loadSketchData(newActiveBranch.history[newActiveBranch.historyIndex].sketch);
+      }
+
+      setBranches(newBranches);
+      setActiveBranchId(newActiveBranchId);
+      setVisibleBranches((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(branchId);
+        return newSet;
+      });
+      branchesRef.current = { branches: newBranches, activeBranchId: newActiveBranchId };
+
+      toast.success(`Branche supprimée: ${branchName}`);
+    },
+    [branches, activeBranchId, loadSketchData],
+  );
+
+  // Toggle visibilité d'une branche en mode comparaison
+  const toggleBranchVisibility = useCallback(
+    (branchId: string) => {
+      setVisibleBranches((prev) => {
+        const newSet = new Set(prev);
+        if (newSet.has(branchId)) {
+          // Ne pas permettre de cacher la branche active
+          if (branchId !== activeBranchId) {
+            newSet.delete(branchId);
+          }
+        } else {
+          newSet.add(branchId);
+        }
+        return newSet;
+      });
+    },
+    [activeBranchId],
   );
 
   // Prévisualiser une version (sans modifier l'index)
   const previewHistoryEntry = useCallback(
     (targetIndex: number | null) => {
+      const branch = branches.find((b) => b.id === activeBranchId);
+      if (!branch) return;
+
       if (targetIndex === null) {
         // Restaurer l'état actuel
-        if (historyIndex >= 0 && historyIndex < history.length) {
-          const currentEntry = history[historyIndex];
+        if (branch.historyIndex >= 0 && branch.historyIndex < branch.history.length) {
+          const currentEntry = branch.history[branch.historyIndex];
           loadSketchData(currentEntry.sketch);
         }
         setPreviewHistoryIndex(null);
-      } else if (targetIndex >= 0 && targetIndex < history.length) {
-        const entry = history[targetIndex];
+      } else if (targetIndex >= 0 && targetIndex < branch.history.length) {
+        const entry = branch.history[targetIndex];
         loadSketchData(entry.sketch);
         setPreviewHistoryIndex(targetIndex);
       }
     },
-    [history, historyIndex, loadSketchData],
+    [branches, activeBranchId, loadSketchData],
   );
 
   // === COPIER / COLLER / DUPLIQUER ===
@@ -13763,7 +14064,7 @@ export function CADGabaritCanvas({
       {/* Fermer le menu contextuel en cliquant ailleurs */}
       {contextMenu && <div className="fixed inset-0 z-[99]" onClick={() => setContextMenu(null)} />}
 
-      {/* Panneau d'historique - Toujours rendu, animé avec CSS (évite les recalculs de layout) */}
+      {/* Panneau d'historique avec branches - Toujours rendu, animé avec CSS */}
       <div
         className={`fixed inset-0 z-[100] pointer-events-none transition-opacity duration-150 ${
           showHistoryPanel ? "opacity-100" : "opacity-0 pointer-events-none"
@@ -13771,7 +14072,7 @@ export function CADGabaritCanvas({
         style={{ visibility: showHistoryPanel ? "visible" : "hidden" }}
       >
         <div
-          className={`absolute right-0 top-[88px] bottom-0 w-56 flex flex-col transition-transform duration-150 ${
+          className={`absolute right-0 top-[88px] bottom-0 w-72 flex flex-col transition-transform duration-150 ${
             showHistoryPanel ? "translate-x-0 pointer-events-auto" : "translate-x-full"
           }`}
         >
@@ -13780,7 +14081,6 @@ export function CADGabaritCanvas({
             <div className="flex items-center gap-2">
               <History className="h-4 w-4 text-gray-600" />
               <span className="text-sm font-medium">Historique</span>
-              <span className="text-xs text-gray-400">({history.length})</span>
             </div>
             <button
               className="text-gray-500 hover:text-gray-700 p-1 hover:bg-gray-100 rounded"
@@ -13790,7 +14090,105 @@ export function CADGabaritCanvas({
             </button>
           </div>
 
-          {/* Liste - fond transparent */}
+          {/* Barre d'outils branches */}
+          <div className="px-2 py-2 bg-gray-50 border-l border-b space-y-2">
+            {/* Sélecteur de branche active */}
+            <div className="flex items-center gap-2">
+              <GitBranch className="h-3.5 w-3.5 text-gray-500" />
+              <select
+                className="flex-1 text-xs border rounded px-2 py-1 bg-white"
+                value={activeBranchId}
+                onChange={(e) => switchToBranch(e.target.value)}
+              >
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name} ({branch.history.length})
+                  </option>
+                ))}
+              </select>
+              <button
+                className="p-1 rounded hover:bg-gray-200 text-gray-500 hover:text-green-600"
+                title="Nouvelle branche depuis l'état actuel"
+                onClick={() => createBranchFromHistoryIndex(historyIndex)}
+                disabled={branches.length >= 10}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            {/* Mode comparaison */}
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={comparisonMode}
+                  onChange={(e) => setComparisonMode(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded"
+                />
+                <span>Comparer</span>
+              </label>
+              {comparisonMode && (
+                <div className="flex-1 flex items-center gap-1.5">
+                  <span className="text-[10px] text-gray-400">Opacité:</span>
+                  <input
+                    type="range"
+                    min="10"
+                    max="100"
+                    value={comparisonOpacity}
+                    onChange={(e) => setComparisonOpacity(parseInt(e.target.value))}
+                    className="flex-1 h-1.5"
+                  />
+                  <span className="text-[10px] text-gray-500 w-8">{comparisonOpacity}%</span>
+                </div>
+              )}
+            </div>
+
+            {/* Liste des branches (mode comparaison) */}
+            {comparisonMode && branches.length > 1 && (
+              <div className="border rounded bg-white p-1.5 space-y-1 max-h-24 overflow-y-auto">
+                {branches.map((branch) => (
+                  <div key={branch.id} className="flex items-center gap-1.5 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={visibleBranches.has(branch.id)}
+                      onChange={() => toggleBranchVisibility(branch.id)}
+                      disabled={branch.id === activeBranchId}
+                      className="w-3 h-3 rounded"
+                    />
+                    <div className="w-3 h-3 rounded-full border" style={{ backgroundColor: branch.color }} />
+                    <span className={`truncate ${branch.id === activeBranchId ? "font-medium" : ""}`}>
+                      {branch.name}
+                    </span>
+                    {branch.id === activeBranchId && <span className="text-[10px] text-gray-400 ml-auto">active</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Info branche active */}
+          {(() => {
+            const activeBranch = branches.find((b) => b.id === activeBranchId);
+            if (!activeBranch) return null;
+            return (
+              <div className="px-2 py-1.5 bg-white border-l border-b flex items-center gap-2 text-xs">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: activeBranch.color }} />
+                <span className="font-medium truncate">{activeBranch.name}</span>
+                <span className="text-gray-400">({activeBranch.history.length} états)</span>
+                {branches.length > 1 && (
+                  <button
+                    className="ml-auto p-0.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-600"
+                    title="Supprimer cette branche"
+                    onClick={() => deleteBranch(activeBranchId)}
+                  >
+                    <TrashIcon className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Liste historique - fond transparent */}
           <div className="flex-1 overflow-y-auto border-l bg-transparent">
             {history.length === 0 ? (
               <p className="text-sm text-gray-400 italic p-3 bg-white/80">Aucun historique</p>
@@ -13807,22 +14205,25 @@ export function CADGabaritCanvas({
                     minute: "2-digit",
                     second: "2-digit",
                   });
+                  const activeBranch = branches.find((b) => b.id === activeBranchId);
+                  const branchColor = activeBranch?.color || "#3B82F6";
 
                   return (
                     <div
                       key={idx}
                       className={`
-                          px-2 py-1.5 cursor-pointer transition-all text-xs rounded
-                          ${
-                            isActive
-                              ? "bg-blue-500 text-white shadow-md"
-                              : isPreviewing
-                                ? "bg-yellow-400 text-gray-900 shadow-md"
-                                : isFuture
-                                  ? "bg-white/60 text-gray-400"
-                                  : "bg-white/90 hover:bg-white hover:shadow-sm text-gray-700"
-                          }
-                        `}
+                        px-2 py-1.5 cursor-pointer transition-all text-xs rounded
+                        ${
+                          isActive
+                            ? "text-white shadow-md"
+                            : isPreviewing
+                              ? "bg-yellow-400 text-gray-900 shadow-md"
+                              : isFuture
+                                ? "bg-white/60 text-gray-400"
+                                : "bg-white/90 hover:bg-white hover:shadow-sm text-gray-700"
+                        }
+                      `}
+                      style={isActive ? { backgroundColor: branchColor } : undefined}
                       onClick={() => goToHistoryIndex(idx)}
                       onMouseEnter={() => {
                         if (idx !== historyIndex) {
@@ -13839,34 +14240,55 @@ export function CADGabaritCanvas({
                         <span className={`font-medium truncate ${isActive ? "text-white" : ""}`}>
                           {entry.description}
                         </span>
-                        <span className={`text-[10px] ml-1 ${isActive ? "text-blue-100" : "text-gray-400"}`}>
+                        <span className={`text-[10px] ml-1 ${isActive ? "opacity-70" : "text-gray-400"}`}>
                           #{idx + 1}
                         </span>
                       </div>
                       <div className="flex items-center gap-1 mt-0.5">
-                        <Clock className={`h-2.5 w-2.5 ${isActive ? "text-blue-200" : "text-gray-400"}`} />
-                        <span className={`text-[10px] ${isActive ? "text-blue-100" : "text-gray-400"}`}>{timeStr}</span>
-                        {isActive && <span className="text-[10px] text-blue-100">● actuel</span>}
+                        <Clock className={`h-2.5 w-2.5 ${isActive ? "opacity-70" : "text-gray-400"}`} />
+                        <span className={`text-[10px] ${isActive ? "opacity-70" : "text-gray-400"}`}>{timeStr}</span>
+                        {isActive && <span className="text-[10px] opacity-80">● actuel</span>}
                         {isPreviewing && <span className="text-[10px] text-gray-900">● aperçu</span>}
 
-                        {/* Bouton Repartir d'ici - toujours visible sauf sur la dernière entrée */}
+                        {/* Boutons d'action */}
                         {idx < history.length - 1 && (
-                          <button
-                            className={`ml-auto p-0.5 rounded transition-colors ${
-                              isActive
-                                ? "text-blue-200 hover:text-white hover:bg-blue-600"
-                                : isPreviewing
-                                  ? "text-yellow-700 hover:text-red-700 hover:bg-yellow-300"
-                                  : "text-gray-400 hover:text-red-600 hover:bg-red-100"
-                            }`}
-                            title="Repartir d'ici (supprimer l'historique suivant)"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              branchFromHistoryIndex(idx);
-                            }}
-                          >
-                            <Scissors className="h-3 w-3" />
-                          </button>
+                          <div className="ml-auto flex items-center gap-0.5">
+                            {/* Nouvelle branche */}
+                            <button
+                              className={`p-0.5 rounded transition-colors ${
+                                isActive
+                                  ? "opacity-70 hover:opacity-100 hover:bg-white/20"
+                                  : isPreviewing
+                                    ? "text-yellow-700 hover:text-green-700 hover:bg-yellow-300"
+                                    : "text-gray-400 hover:text-green-600 hover:bg-green-100"
+                              }`}
+                              title="Créer une branche ici"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                createBranchFromHistoryIndex(idx);
+                              }}
+                              disabled={branches.length >= 10}
+                            >
+                              <GitBranch className="h-3 w-3" />
+                            </button>
+                            {/* Tronquer l'historique */}
+                            <button
+                              className={`p-0.5 rounded transition-colors ${
+                                isActive
+                                  ? "opacity-70 hover:opacity-100 hover:bg-white/20"
+                                  : isPreviewing
+                                    ? "text-yellow-700 hover:text-red-700 hover:bg-yellow-300"
+                                    : "text-gray-400 hover:text-red-600 hover:bg-red-100"
+                              }`}
+                              title="Tronquer l'historique ici"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                truncateHistoryAtIndex(idx);
+                              }}
+                            >
+                              <Scissors className="h-3 w-3" />
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -13879,7 +14301,7 @@ export function CADGabaritCanvas({
           {/* Footer légende */}
           <div className="px-2 py-1.5 bg-white border-l border-t rounded-bl-lg text-[10px] text-gray-500 flex flex-col gap-0.5">
             <span>👆 Survoler = aperçu | Cliquer = revenir</span>
-            <span>✂️ = Repartir d'ici (supprimer le reste)</span>
+            <span>🔀 Branche | ✂️ Tronquer</span>
           </div>
         </div>
       </div>

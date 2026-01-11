@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.50 - Fantôme plus visible (gris-bleu, plus épais)
+// VERSION: 3.51 - Support mode comparaison de branches
 // ============================================
 
 import {
@@ -141,6 +141,16 @@ export class CADRenderer {
       } | null;
       // Entités sélectionnées pour le fantôme pendant le drag
       selectedEntitiesForGhost?: Set<string>;
+      // Mode comparaison de branches
+      comparisonMode?: boolean;
+      comparisonBranches?: Array<{
+        branchId: string;
+        branchName: string;
+        color: string;
+        sketch: Sketch;
+      }>;
+      comparisonOpacity?: number; // 0-100
+      activeBranchColor?: string;
     } = {},
   ): void {
     const {
@@ -174,6 +184,11 @@ export class CADRenderer {
       selectionCenter = null,
       gizmoDrag = null,
       selectedEntitiesForGhost = new Set<string>(),
+      // Mode comparaison
+      comparisonMode = false,
+      comparisonBranches = [],
+      comparisonOpacity = 70,
+      activeBranchColor = "#3B82F6",
     } = options;
 
     // Stocker scaleFactor pour drawRulers
@@ -228,6 +243,14 @@ export class CADRenderer {
 
     // 2.5 Surbrillance des formes fermées (sans superposition, avec effet hover)
     this.drawClosedShapes(sketch, highlightOpacity, mouseWorldPos);
+
+    // 2.6 Branches de comparaison (avant la branche active pour qu'elle soit au-dessus)
+    if (comparisonMode && comparisonBranches.length > 0) {
+      const opacity = comparisonOpacity / 100;
+      comparisonBranches.forEach((branch) => {
+        this.drawComparisonBranch(branch.sketch, branch.color, opacity, branch.branchName);
+      });
+    }
 
     // 3. Geometries (filtrer par visibilité du calque)
     // OPTIMISATION: Batch des lignes non-sélectionnées pour réduire les appels draw
@@ -3550,6 +3573,96 @@ export class CADRenderer {
       this.ctx.arc(pos.x, pos.y, pointRadius, 0, Math.PI * 2);
       this.ctx.fill();
       this.ctx.stroke();
+    });
+
+    this.ctx.restore();
+  }
+
+  /**
+   * Dessine les géométries d'une branche de comparaison avec une couleur et opacité spécifiques
+   */
+  private drawComparisonBranch(branchSketch: Sketch, color: string, opacity: number, branchName: string): void {
+    this.ctx.save();
+    this.ctx.globalAlpha = opacity;
+
+    // Style pour les géométries de comparaison
+    const lineWidth = 2 / this.viewport.scale;
+    const dashPattern = [6 / this.viewport.scale, 3 / this.viewport.scale];
+
+    // Dessiner toutes les géométries de la branche
+    branchSketch.geometries.forEach((geo) => {
+      // Vérifier si le calque est visible
+      const layerId = geo.layerId || "trace";
+      const layer = branchSketch.layers?.get(layerId);
+      if (layer?.visible === false) return;
+
+      if (geo.type === "line") {
+        const line = geo as Line;
+        const p1 = branchSketch.points.get(line.p1);
+        const p2 = branchSketch.points.get(line.p2);
+        if (p1 && p2) {
+          this.ctx.strokeStyle = color;
+          this.ctx.lineWidth = lineWidth;
+          this.ctx.setLineDash(dashPattern);
+          this.ctx.beginPath();
+          this.ctx.moveTo(p1.x, p1.y);
+          this.ctx.lineTo(p2.x, p2.y);
+          this.ctx.stroke();
+        }
+      } else if (geo.type === "circle") {
+        const circle = geo as Circle;
+        const center = branchSketch.points.get(circle.center);
+        if (center) {
+          this.ctx.strokeStyle = color;
+          this.ctx.lineWidth = lineWidth;
+          this.ctx.setLineDash(dashPattern);
+          this.ctx.beginPath();
+          this.ctx.arc(center.x, center.y, circle.radius, 0, Math.PI * 2);
+          this.ctx.stroke();
+        }
+      } else if (geo.type === "arc") {
+        const arc = geo as Arc;
+        const center = branchSketch.points.get(arc.center);
+        const startPt = branchSketch.points.get(arc.startPoint);
+        const endPt = branchSketch.points.get(arc.endPoint);
+        if (center && startPt && endPt) {
+          const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
+          const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
+
+          this.ctx.strokeStyle = color;
+          this.ctx.lineWidth = lineWidth;
+          this.ctx.setLineDash(dashPattern);
+          this.ctx.beginPath();
+          this.ctx.arc(center.x, center.y, arc.radius, startAngle, endAngle, arc.counterClockwise);
+          this.ctx.stroke();
+        }
+      } else if (geo.type === "bezier") {
+        const bezier = geo as Bezier;
+        const p1 = branchSketch.points.get(bezier.p1);
+        const p2 = branchSketch.points.get(bezier.p2);
+        const cp1 = branchSketch.points.get(bezier.cp1);
+        const cp2 = branchSketch.points.get(bezier.cp2);
+        if (p1 && p2 && cp1 && cp2) {
+          this.ctx.strokeStyle = color;
+          this.ctx.lineWidth = lineWidth;
+          this.ctx.setLineDash(dashPattern);
+          this.ctx.beginPath();
+          this.ctx.moveTo(p1.x, p1.y);
+          this.ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, p2.x, p2.y);
+          this.ctx.stroke();
+        }
+      }
+    });
+
+    // Dessiner les points de la branche (petits cercles)
+    const pointRadius = 3 / this.viewport.scale;
+    this.ctx.fillStyle = color;
+    this.ctx.setLineDash([]);
+
+    branchSketch.points.forEach((point) => {
+      this.ctx.beginPath();
+      this.ctx.arc(point.x, point.y, pointRadius, 0, Math.PI * 2);
+      this.ctx.fill();
     });
 
     this.ctx.restore();
