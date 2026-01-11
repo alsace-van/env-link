@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.45 - Gizmo de transformation design amélioré (contours blancs, flèches élégantes)
+// VERSION: 3.46 - Gizmo drag avec affichage temps réel des valeurs
 // ============================================
 
 import {
@@ -131,6 +131,13 @@ export class CADRenderer {
         center: { x: number; y: number };
       } | null;
       selectionCenter?: { x: number; y: number } | null; // Centre de la sélection pour afficher le gizmo
+      // Drag du gizmo (pour affichage temps réel)
+      gizmoDrag?: {
+        active: boolean;
+        mode: "translateX" | "translateY" | "rotate";
+        currentValue: number; // en mm ou degrés
+        center: { x: number; y: number };
+      } | null;
     } = {},
   ): void {
     const {
@@ -162,6 +169,7 @@ export class CADRenderer {
       mouseWorldPos = null,
       transformGizmo = null,
       selectionCenter = null,
+      gizmoDrag = null,
     } = options;
 
     // Stocker scaleFactor pour drawRulers
@@ -413,7 +421,7 @@ export class CADRenderer {
 
     // 8.4. Gizmo de transformation (flèches X, Y, rotation)
     if (selectionCenter && selectedEntities.size > 0) {
-      this.drawTransformGizmo(selectionCenter, transformGizmo);
+      this.drawTransformGizmo(selectionCenter, transformGizmo, gizmoDrag);
     }
 
     // 8.5. Mesures persistantes
@@ -3093,6 +3101,7 @@ export class CADRenderer {
   private drawTransformGizmo(
     center: { x: number; y: number },
     transformGizmo: { active: boolean; mode: string; center: { x: number; y: number } } | null,
+    gizmoDrag: { active: boolean; mode: string; currentValue: number; center: { x: number; y: number } } | null = null,
   ): void {
     const arrowLength = 50 / this.viewport.scale;
     const arrowHeadLength = 14 / this.viewport.scale;
@@ -3181,7 +3190,9 @@ export class CADRenderer {
     };
 
     // === Flèche X (rouge, vers la droite) ===
-    const xActive = transformGizmo?.active && transformGizmo.mode === "translateX";
+    const xActive =
+      (transformGizmo?.active && transformGizmo.mode === "translateX") ||
+      (gizmoDrag?.active && gizmoDrag.mode === "translateX");
     drawArrow(center.x + 8 / this.viewport.scale, center.y, center.x + arrowLength, center.y, xColor, xActive);
 
     // Label X
@@ -3198,8 +3209,38 @@ export class CADRenderer {
     this.ctx.fillStyle = xActive ? activeColor : xColor;
     this.ctx.fillText("X", labelX, center.y);
 
+    // Affichage valeur X en temps réel
+    if (gizmoDrag?.active && gizmoDrag.mode === "translateX") {
+      const valueText = `${gizmoDrag.currentValue >= 0 ? "+" : ""}${gizmoDrag.currentValue.toFixed(1)} mm`;
+      this.ctx.font = `bold ${12 / this.viewport.scale}px Arial`;
+      const textWidth = this.ctx.measureText(valueText).width;
+      const valuePosX = center.x + arrowLength + 25 / this.viewport.scale;
+      const valuePosY = center.y;
+
+      // Fond du badge
+      this.ctx.fillStyle = "rgba(220, 38, 38, 0.95)"; // Rouge
+      const padding = 4 / this.viewport.scale;
+      const height = 16 / this.viewport.scale;
+      this.ctx.beginPath();
+      this.ctx.roundRect(
+        valuePosX - padding,
+        valuePosY - height / 2,
+        textWidth + padding * 2,
+        height,
+        3 / this.viewport.scale,
+      );
+      this.ctx.fill();
+
+      // Texte
+      this.ctx.fillStyle = "#FFFFFF";
+      this.ctx.textAlign = "left";
+      this.ctx.fillText(valueText, valuePosX, valuePosY);
+    }
+
     // === Flèche Y (vert, vers le haut) ===
-    const yActive = transformGizmo?.active && transformGizmo.mode === "translateY";
+    const yActive =
+      (transformGizmo?.active && transformGizmo.mode === "translateY") ||
+      (gizmoDrag?.active && gizmoDrag.mode === "translateY");
     drawArrow(center.x, center.y - 8 / this.viewport.scale, center.x, center.y - arrowLength, yColor, yActive);
 
     // Label Y
@@ -3209,10 +3250,41 @@ export class CADRenderer {
     this.ctx.arc(center.x, labelY, 7 / this.viewport.scale, 0, Math.PI * 2);
     this.ctx.fill();
     this.ctx.fillStyle = yActive ? activeColor : yColor;
+    this.ctx.textAlign = "center";
     this.ctx.fillText("Y", center.x, labelY);
 
+    // Affichage valeur Y en temps réel
+    if (gizmoDrag?.active && gizmoDrag.mode === "translateY") {
+      const valueText = `${gizmoDrag.currentValue >= 0 ? "+" : ""}${gizmoDrag.currentValue.toFixed(1)} mm`;
+      this.ctx.font = `bold ${12 / this.viewport.scale}px Arial`;
+      const textWidth = this.ctx.measureText(valueText).width;
+      const valuePosX = center.x + 20 / this.viewport.scale;
+      const valuePosY = center.y - arrowLength - 8 / this.viewport.scale;
+
+      // Fond du badge
+      this.ctx.fillStyle = "rgba(22, 163, 74, 0.95)"; // Vert
+      const padding = 4 / this.viewport.scale;
+      const height = 16 / this.viewport.scale;
+      this.ctx.beginPath();
+      this.ctx.roundRect(
+        valuePosX - padding,
+        valuePosY - height / 2,
+        textWidth + padding * 2,
+        height,
+        3 / this.viewport.scale,
+      );
+      this.ctx.fill();
+
+      // Texte
+      this.ctx.fillStyle = "#FFFFFF";
+      this.ctx.textAlign = "left";
+      this.ctx.fillText(valueText, valuePosX, valuePosY);
+    }
+
     // === Arc de rotation (bleu) ===
-    const rotateActive = transformGizmo?.active && transformGizmo.mode === "rotate";
+    const rotateActive =
+      (transformGizmo?.active && transformGizmo.mode === "rotate") ||
+      (gizmoDrag?.active && gizmoDrag.mode === "rotate");
     const rotColor = rotateActive ? activeColor : rotateColor;
     const rotWidth = rotateActive ? lineWidth * 1.4 : lineWidth;
 
@@ -3254,6 +3326,35 @@ export class CADRenderer {
     );
     this.ctx.closePath();
     this.ctx.fill();
+
+    // Affichage valeur rotation en temps réel
+    if (gizmoDrag?.active && gizmoDrag.mode === "rotate") {
+      const valueText = `${gizmoDrag.currentValue >= 0 ? "+" : ""}${gizmoDrag.currentValue.toFixed(1)}°`;
+      this.ctx.font = `bold ${12 / this.viewport.scale}px Arial`;
+      const textWidth = this.ctx.measureText(valueText).width;
+      const valuePosX = center.x + rotationRadius + 15 / this.viewport.scale;
+      const valuePosY = center.y + rotationRadius / 2;
+
+      // Fond du badge
+      this.ctx.fillStyle = "rgba(37, 99, 235, 0.95)"; // Bleu
+      const padding = 4 / this.viewport.scale;
+      const height = 16 / this.viewport.scale;
+      this.ctx.beginPath();
+      this.ctx.roundRect(
+        valuePosX - padding,
+        valuePosY - height / 2,
+        textWidth + padding * 2,
+        height,
+        3 / this.viewport.scale,
+      );
+      this.ctx.fill();
+
+      // Texte
+      this.ctx.fillStyle = "#FFFFFF";
+      this.ctx.textAlign = "left";
+      this.ctx.textBaseline = "middle";
+      this.ctx.fillText(valueText, valuePosX, valuePosY);
+    }
 
     // === Point central ===
     // Cercle blanc de fond

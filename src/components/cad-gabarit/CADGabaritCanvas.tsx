@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.24 - Gizmo de transformation avec bouton d'activation (T) + design amélioré
+// VERSION: 6.25 - Gizmo drag avec affichage temps réel des déplacements
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -262,6 +262,17 @@ export function CADGabaritCanvas({
     center: { x: 0, y: 0 },
   });
   const transformInputRef = useRef<HTMLInputElement>(null);
+
+  // État pour le drag du gizmo
+  const [gizmoDrag, setGizmoDrag] = useState<{
+    active: boolean;
+    mode: "translateX" | "translateY" | "rotate";
+    startPos: { x: number; y: number };
+    startAngle: number; // Pour la rotation
+    currentValue: number; // Valeur actuelle en mm ou degrés
+    initialPositions: Map<string, { x: number; y: number }>;
+    center: { x: number; y: number };
+  } | null>(null);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
@@ -824,6 +835,8 @@ export function CADGabaritCanvas({
       // Gizmo de transformation (seulement si activé)
       transformGizmo: transformGizmo.active ? transformGizmo : null,
       selectionCenter: showTransformGizmo ? selectionGizmoData?.center || null : null,
+      // Drag du gizmo (pour affichage temps réel)
+      gizmoDrag,
     });
 
     // Dessiner le rectangle de sélection (après le render du sketch)
@@ -2079,6 +2092,7 @@ export function CADGabaritCanvas({
     transformGizmo,
     selectionGizmoData,
     showTransformGizmo,
+    gizmoDrag,
   ]);
 
   useEffect(() => {
@@ -6183,6 +6197,136 @@ export function CADGabaritCanvas({
     toast.info("Transformation annulée");
   }, [transformGizmo]);
 
+  // === DRAG DU GIZMO ===
+
+  // Démarrer le drag du gizmo
+  const startGizmoDrag = useCallback(
+    (mode: "translateX" | "translateY" | "rotate", worldPos: { x: number; y: number }) => {
+      if (!selectionGizmoData) return;
+
+      // Sauvegarder les positions initiales
+      const initialPositions = new Map<string, { x: number; y: number }>();
+      for (const pointId of selectionGizmoData.pointIds) {
+        const pt = sketch.points.get(pointId);
+        if (pt) {
+          initialPositions.set(pointId, { x: pt.x, y: pt.y });
+        }
+      }
+
+      // Pour la rotation, calculer l'angle initial
+      const startAngle =
+        mode === "rotate"
+          ? Math.atan2(worldPos.y - selectionGizmoData.center.y, worldPos.x - selectionGizmoData.center.x)
+          : 0;
+
+      setGizmoDrag({
+        active: true,
+        mode,
+        startPos: worldPos,
+        startAngle,
+        currentValue: 0,
+        initialPositions,
+        center: selectionGizmoData.center,
+      });
+
+      // Sauvegarder l'historique au début du drag
+      addToHistory(sketch);
+    },
+    [selectionGizmoData, sketch, addToHistory],
+  );
+
+  // Mettre à jour pendant le drag
+  const updateGizmoDrag = useCallback(
+    (worldPos: { x: number; y: number }) => {
+      if (!gizmoDrag) return;
+
+      const scaleFactor = sketch.scaleFactor || 1;
+      let currentValue = 0;
+
+      setSketch((prev) => {
+        const newSketch = { ...prev };
+        newSketch.points = new Map(prev.points);
+
+        if (gizmoDrag.mode === "translateX") {
+          // Déplacement en X
+          const deltaPx = worldPos.x - gizmoDrag.startPos.x;
+          currentValue = deltaPx / scaleFactor; // en mm
+
+          for (const [pointId, initialPos] of gizmoDrag.initialPositions) {
+            newSketch.points.set(pointId, { id: pointId, x: initialPos.x + deltaPx, y: initialPos.y });
+          }
+        } else if (gizmoDrag.mode === "translateY") {
+          // Déplacement en Y (inversé car canvas Y est vers le bas)
+          const deltaPx = gizmoDrag.startPos.y - worldPos.y; // Inversé pour que haut = positif
+          currentValue = deltaPx / scaleFactor; // en mm
+
+          for (const [pointId, initialPos] of gizmoDrag.initialPositions) {
+            newSketch.points.set(pointId, { id: pointId, x: initialPos.x, y: initialPos.y - deltaPx });
+          }
+        } else if (gizmoDrag.mode === "rotate") {
+          // Rotation
+          const currentAngle = Math.atan2(worldPos.y - gizmoDrag.center.y, worldPos.x - gizmoDrag.center.x);
+          const deltaAngle = currentAngle - gizmoDrag.startAngle;
+          currentValue = (deltaAngle * 180) / Math.PI; // en degrés
+
+          const cos = Math.cos(deltaAngle);
+          const sin = Math.sin(deltaAngle);
+          const cx = gizmoDrag.center.x;
+          const cy = gizmoDrag.center.y;
+
+          for (const [pointId, initialPos] of gizmoDrag.initialPositions) {
+            const dx = initialPos.x - cx;
+            const dy = initialPos.y - cy;
+            const newX = cx + dx * cos - dy * sin;
+            const newY = cy + dx * sin + dy * cos;
+            newSketch.points.set(pointId, { id: pointId, x: newX, y: newY });
+          }
+        }
+
+        return newSketch;
+      });
+
+      // Mettre à jour la valeur affichée
+      setGizmoDrag((prev) => (prev ? { ...prev, currentValue } : null));
+    },
+    [gizmoDrag, sketch.scaleFactor],
+  );
+
+  // Terminer le drag
+  const endGizmoDrag = useCallback(() => {
+    if (!gizmoDrag) return;
+
+    const modeLabel = gizmoDrag.mode === "translateX" ? "X" : gizmoDrag.mode === "translateY" ? "Y" : "rotation";
+    const value =
+      gizmoDrag.mode === "rotate" ? `${gizmoDrag.currentValue.toFixed(1)}°` : `${gizmoDrag.currentValue.toFixed(1)} mm`;
+
+    toast.success(`${modeLabel}: ${value}`);
+    setGizmoDrag(null);
+  }, [gizmoDrag]);
+
+  // Annuler le drag (Échap)
+  const cancelGizmoDrag = useCallback(() => {
+    if (!gizmoDrag) return;
+
+    // Restaurer les positions initiales
+    setSketch((prev) => {
+      const newSketch = { ...prev };
+      newSketch.points = new Map(prev.points);
+
+      for (const [pointId, initialPos] of gizmoDrag.initialPositions) {
+        newSketch.points.set(pointId, { id: pointId, x: initialPos.x, y: initialPos.y });
+      }
+
+      return newSketch;
+    });
+
+    // Annuler aussi l'historique (undo)
+    undo();
+
+    setGizmoDrag(null);
+    toast.info("Déplacement annulé");
+  }, [gizmoDrag, undo]);
+
   // Gestion de la souris
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -6308,8 +6452,8 @@ export function CADGabaritCanvas({
 
       // À partir d'ici, c'est un clic gauche (e.button === 0)
 
-      // === Gizmo de transformation : détection des clics sur les flèches ===
-      if (showTransformGizmo && selectionGizmoData && activeTool === "select" && !transformGizmo.active) {
+      // === Gizmo de transformation : détection des clics sur les flèches (drag) ===
+      if (showTransformGizmo && selectionGizmoData && activeTool === "select" && !transformGizmo.active && !gizmoDrag) {
         const center = selectionGizmoData.center;
         const arrowLength = 50 / viewport.scale;
         const rotationRadius = 30 / viewport.scale;
@@ -6321,7 +6465,7 @@ export function CADGabaritCanvas({
           worldPos.x <= center.x + arrowLength + 10 / viewport.scale &&
           Math.abs(worldPos.y - center.y) < hitTolerance
         ) {
-          startGizmoTransform("translateX");
+          startGizmoDrag("translateX", worldPos);
           return;
         }
 
@@ -6331,7 +6475,7 @@ export function CADGabaritCanvas({
           worldPos.y >= center.y - arrowLength - 10 / viewport.scale &&
           Math.abs(worldPos.x - center.x) < hitTolerance
         ) {
-          startGizmoTransform("translateY");
+          startGizmoDrag("translateY", worldPos);
           return;
         }
 
@@ -6344,7 +6488,7 @@ export function CADGabaritCanvas({
           angleToMouse >= Math.PI * 0.1 &&
           angleToMouse <= Math.PI * 0.9
         ) {
-          startGizmoTransform("rotate");
+          startGizmoDrag("rotate", worldPos);
           return;
         }
       }
@@ -7636,7 +7780,8 @@ export function CADGabaritCanvas({
       showTransformGizmo,
       selectionGizmoData,
       transformGizmo,
-      startGizmoTransform,
+      gizmoDrag,
+      startGizmoDrag,
     ],
   );
 
@@ -7662,6 +7807,12 @@ export function CADGabaritCanvas({
           offsetY: v.offsetY + dy,
         }));
         setPanStart({ x: e.clientX, y: e.clientY });
+        return;
+      }
+
+      // === Drag du gizmo de transformation ===
+      if (gizmoDrag) {
+        updateGizmoDrag(worldPos);
         return;
       }
 
@@ -8162,6 +8313,9 @@ export function CADGabaritCanvas({
       selectedImageId,
       markerSnapPoints,
       draggingMarker,
+      // Gizmo drag
+      gizmoDrag,
+      updateGizmoDrag,
     ],
   );
 
@@ -8175,6 +8329,12 @@ export function CADGabaritCanvas({
       // Fin du pan
       if (isPanning) {
         setIsPanning(false);
+      }
+
+      // === Fin du drag du gizmo de transformation ===
+      if (gizmoDrag) {
+        endGizmoDrag();
+        return;
       }
 
       // === Multi-photos: fin du drag d'une image ===
@@ -8371,6 +8531,9 @@ export function CADGabaritCanvas({
       // Multi-photos
       isDraggingImage,
       draggingMarker,
+      // Gizmo drag
+      gizmoDrag,
+      endGizmoDrag,
     ],
   );
 
@@ -9015,6 +9178,11 @@ export function CADGabaritCanvas({
     const handleKeyDown = (e: KeyboardEvent) => {
       // Echap - annuler l'action en cours
       if (e.key === "Escape") {
+        // Annuler le drag du gizmo en premier
+        if (gizmoDrag) {
+          cancelGizmoDrag();
+          return;
+        }
         if (isFullscreen) {
           setIsFullscreen(false);
         } else {
@@ -9190,6 +9358,8 @@ export function CADGabaritCanvas({
     redo,
     fitToContent,
     showTransformGizmo,
+    gizmoDrag,
+    cancelGizmoDrag,
   ]);
 
   // === FONCTIONS DE CALIBRATION ===
