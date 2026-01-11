@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.51 - Fix sélection pendant drag poignée rideau (ref)
+// VERSION: 6.52 - Fermer sidebar désactive mode comparaison
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -11410,7 +11410,14 @@ export function CADGabaritCanvas({
           <Button
             variant={showHistoryPanel ? "default" : "outline"}
             size="sm"
-            onClick={() => setShowHistoryPanel(!showHistoryPanel)}
+            onClick={() => {
+              const newValue = !showHistoryPanel;
+              setShowHistoryPanel(newValue);
+              // Désactiver la comparaison quand on ferme la sidebar
+              if (!newValue) {
+                setComparisonMode(false);
+              }
+            }}
             className="h-8 px-2"
             title="Panneau d'historique"
           >
@@ -14217,7 +14224,10 @@ export function CADGabaritCanvas({
             </div>
             <button
               className="text-gray-500 hover:text-gray-700 p-1 hover:bg-gray-100 rounded"
-              onClick={() => setShowHistoryPanel(false)}
+              onClick={() => {
+                setShowHistoryPanel(false);
+                setComparisonMode(false);
+              }}
             >
               <X className="h-4 w-4" />
             </button>
