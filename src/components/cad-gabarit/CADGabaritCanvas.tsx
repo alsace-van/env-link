@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.52 - Fermer sidebar désactive mode comparaison
+// VERSION: 6.53 - Fix cohérence revealBranchId quand branche active change
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -429,6 +429,21 @@ export function CADGabaritCanvas({
     isDraggingRevealRef.current = isDraggingReveal;
   }, [isDraggingReveal]);
 
+  // Maintenir la cohérence de revealBranchId quand la branche active change
+  useEffect(() => {
+    // Vérifier si la branche reveal actuelle est valide
+    const currentRevealBranch = branches.find((b) => b.id === revealBranchId);
+    const isInvalid = !revealBranchId || revealBranchId === activeBranchId || !currentRevealBranch;
+
+    if (isInvalid && branches.length > 1) {
+      // Sélectionner la première branche qui n'est pas la branche active
+      const otherBranch = branches.find((b) => b.id !== activeBranchId);
+      if (otherBranch) {
+        setRevealBranchId(otherBranch.id);
+      }
+    }
+  }, [activeBranchId, branches, revealBranchId]);
+
   // Helper pour obtenir la branche active
   const getActiveBranch = useCallback((): Branch | null => {
     return branches.find((b) => b.id === activeBranchId) || null;
@@ -837,13 +852,22 @@ export function CADGabaritCanvas({
 
   // Données de la branche pour le mode reveal
   const revealBranchData = useMemo(() => {
-    if (!comparisonMode || comparisonStyle !== "reveal" || !revealBranchId) return null;
+    if (!comparisonMode || comparisonStyle !== "reveal" || !revealBranchId) {
+      return null;
+    }
 
     const branch = branches.find((b) => b.id === revealBranchId);
-    if (!branch || branch.id === activeBranchId) return null;
+    if (!branch) {
+      return null;
+    }
+    if (branch.id === activeBranchId) {
+      return null;
+    }
 
     const entry = branch.history[branch.historyIndex];
-    if (!entry) return null;
+    if (!entry) {
+      return null;
+    }
 
     try {
       const branchSketch = deserializeSketch(entry.sketch);
@@ -14384,7 +14408,10 @@ export function CADGabaritCanvas({
                     <span>Droite ▶</span>
                     <div
                       className="w-2.5 h-2.5 rounded-full"
-                      style={{ backgroundColor: branches.find((b) => b.id === revealBranchId)?.color || "#F97316" }}
+                      style={{
+                        backgroundColor:
+                          revealBranchData?.color || branches.find((b) => b.id === revealBranchId)?.color || "#888888",
+                      }}
                     />
                   </div>
                 </div>

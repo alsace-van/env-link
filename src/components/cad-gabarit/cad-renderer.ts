@@ -464,7 +464,14 @@ export class CADRenderer {
     // 7.5. Mode reveal (rideau avant/après)
     // IMPORTANT: Ce mode utilise un clipping pour diviser le canvas en deux zones
     // Gauche = branche active (déjà dessinée), Droite = branche reveal
+    console.log("[Renderer REVEAL]", {
+      comparisonMode,
+      comparisonStyle,
+      revealBranch: revealBranch ? revealBranch.branchName : null,
+      revealPosition,
+    });
     if (comparisonMode && comparisonStyle === "reveal" && revealBranch) {
+      console.log("[Renderer REVEAL] ACTIF - Dessin branche:", revealBranch.branchName);
       // Calculer la position X du clipping en coordonnées écran
       const canvasWidth = this.viewport.width - rulerSize;
       const clipX = rulerSize + (canvasWidth * revealPosition) / 100;
