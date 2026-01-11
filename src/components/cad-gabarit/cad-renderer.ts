@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.47 - Fantôme en pointillé pendant le drag du gizmo
+// VERSION: 3.48 - Fix Arc dans drawGhostGeometries (startPoint/endPoint)
 // ============================================
 
 import {
@@ -3446,9 +3446,12 @@ export class CADRenderer {
         case "arc": {
           const arc = geo as Arc;
           const center = getInitialPos(arc.center);
-          if (center) {
-            const startAngle = arc.startAngle;
-            const endAngle = arc.endAngle;
+          const startPt = getInitialPos(arc.startPoint);
+          const endPt = getInitialPos(arc.endPoint);
+          if (center && startPt && endPt) {
+            // Calculer les angles à partir des positions
+            const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
+            const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
             this.ctx.arc(center.x, center.y, arc.radius, startAngle, endAngle, arc.counterClockwise);
             this.ctx.stroke();
           }
