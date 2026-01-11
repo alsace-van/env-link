@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.50 - Fix sélection pendant drag rideau reveal
+// VERSION: 6.51 - Fix sélection pendant drag poignée rideau (ref)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -422,6 +422,12 @@ export function CADGabaritCanvas({
   const [revealPosition, setRevealPosition] = useState(50); // 0-100 position du diviseur pour mode reveal
   const [revealBranchId, setRevealBranchId] = useState<string | null>(null); // Branche à comparer en mode reveal
   const [isDraggingReveal, setIsDraggingReveal] = useState(false); // Drag du diviseur
+  const isDraggingRevealRef = useRef(false); // Ref pour éviter stale closure
+
+  // Sync ref avec state
+  useEffect(() => {
+    isDraggingRevealRef.current = isDraggingReveal;
+  }, [isDraggingReveal]);
 
   // Helper pour obtenir la branche active
   const getActiveBranch = useCallback((): Branch | null => {
@@ -6690,8 +6696,8 @@ export function CADGabaritCanvas({
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
 
-      // Ignorer si on est en train de drag le rideau reveal
-      if (isDraggingReveal) return;
+      // Ignorer si on est en train de drag le rideau reveal (utiliser ref pour éviter stale closure)
+      if (isDraggingRevealRef.current) return;
 
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
@@ -8146,8 +8152,7 @@ export function CADGabaritCanvas({
       transformGizmo,
       gizmoDrag,
       startGizmoDrag,
-      // Mode reveal
-      isDraggingReveal,
+      // Note: isDraggingRevealRef.current utilisé directement (pas dans deps)
     ],
   );
 
@@ -8156,8 +8161,8 @@ export function CADGabaritCanvas({
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
 
-      // Ignorer si on est en train de drag le rideau reveal
-      if (isDraggingReveal) return;
+      // Ignorer si on est en train de drag le rideau reveal (utiliser ref pour éviter stale closure)
+      if (isDraggingRevealRef.current) return;
 
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
@@ -8696,8 +8701,7 @@ export function CADGabaritCanvas({
       // Gizmo drag
       gizmoDrag,
       updateGizmoDrag,
-      // Mode reveal
-      isDraggingReveal,
+      // Note: isDraggingRevealRef.current utilisé directement (pas dans deps)
     ],
   );
 
@@ -11742,6 +11746,8 @@ export function CADGabaritCanvas({
                   style={{ left: `${revealPosition}%` }}
                   onMouseDown={(e) => {
                     e.stopPropagation();
+                    e.preventDefault();
+                    isDraggingRevealRef.current = true;
                     setIsDraggingReveal(true);
 
                     const container = e.currentTarget.parentElement;
@@ -11750,12 +11756,14 @@ export function CADGabaritCanvas({
                     const rect = container.getBoundingClientRect();
 
                     const handleMouseMove = (moveEvent: MouseEvent) => {
+                      moveEvent.preventDefault();
                       const x = moveEvent.clientX - rect.left;
                       const percentage = Math.max(5, Math.min(95, (x / rect.width) * 100));
                       setRevealPosition(percentage);
                     };
 
                     const handleMouseUp = () => {
+                      isDraggingRevealRef.current = false;
                       setIsDraggingReveal(false);
                       document.removeEventListener("mousemove", handleMouseMove);
                       document.removeEventListener("mouseup", handleMouseUp);
