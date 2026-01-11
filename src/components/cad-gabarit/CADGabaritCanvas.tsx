@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.34 - Fix Échap et clic droit pour annuler gizmo transformation
+// VERSION: 6.35 - Fix complet Échap/clic droit gizmo + fantôme plus visible
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -8444,9 +8444,27 @@ export function CADGabaritCanvas({
         setIsPanning(false);
       }
 
-      // === Fin du drag du gizmo de transformation ===
+      // === Gizmo drag: bouton droit = annuler, bouton gauche = valider ===
       if (gizmoDrag) {
-        endGizmoDrag();
+        if (e.button === 2) {
+          // Clic droit: ANNULER et restaurer les positions initiales
+          setSketch((prev) => {
+            const newSketch = { ...prev };
+            newSketch.points = new Map(prev.points);
+
+            for (const [pointId, initialPos] of gizmoDrag.initialPositions) {
+              newSketch.points.set(pointId, { id: pointId, x: initialPos.x, y: initialPos.y });
+            }
+
+            return newSketch;
+          });
+          setGizmoDrag(null);
+          setShowTransformGizmo(false);
+          toast.info("Transformation annulée");
+        } else {
+          // Clic gauche: VALIDER
+          endGizmoDrag();
+        }
         return;
       }
 
@@ -11114,13 +11132,15 @@ export function CADGabaritCanvas({
                 e.preventDefault();
 
                 // === PRIORITÉ 1: Annuler le drag du gizmo en cours ===
-                if (gizmoDrag) {
+                // Utiliser la ref pour éviter stale closure
+                const currentGizmoDrag = gizmoDragRef.current;
+                if (currentGizmoDrag) {
                   // Restaurer les positions initiales
                   setSketch((prev) => {
                     const newSketch = { ...prev };
                     newSketch.points = new Map(prev.points);
 
-                    for (const [pointId, initialPos] of gizmoDrag.initialPositions) {
+                    for (const [pointId, initialPos] of currentGizmoDrag.initialPositions) {
                       newSketch.points.set(pointId, { id: pointId, x: initialPos.x, y: initialPos.y });
                     }
 

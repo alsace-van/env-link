@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.49 - Rectangle mode centre avec croix au centre
+// VERSION: 3.50 - Fantôme plus visible (gris-bleu, plus épais)
 // ============================================
 
 import {
@@ -3446,10 +3446,10 @@ export class CADRenderer {
   ): void {
     this.ctx.save();
 
-    // Style fantôme: gris, fin, pointillé
-    this.ctx.strokeStyle = "rgba(150, 150, 150, 0.6)";
-    this.ctx.lineWidth = 1 / this.viewport.scale;
-    this.ctx.setLineDash([4 / this.viewport.scale, 4 / this.viewport.scale]);
+    // Style fantôme: gris-bleu, semi-transparent, pointillé fin
+    this.ctx.strokeStyle = "rgba(100, 150, 200, 0.5)";
+    this.ctx.lineWidth = 1.5 / this.viewport.scale;
+    this.ctx.setLineDash([6 / this.viewport.scale, 3 / this.viewport.scale]);
     this.ctx.lineCap = "round";
     this.ctx.lineJoin = "round";
 
@@ -3538,15 +3538,18 @@ export class CADRenderer {
       }
     });
 
-    // Dessiner les points fantômes
+    // Dessiner les points fantômes (petits cercles aux positions initiales)
     this.ctx.setLineDash([]);
-    this.ctx.fillStyle = "rgba(150, 150, 150, 0.5)";
-    const pointRadius = 3 / this.viewport.scale;
+    this.ctx.fillStyle = "rgba(100, 150, 200, 0.4)";
+    this.ctx.strokeStyle = "rgba(100, 150, 200, 0.6)";
+    this.ctx.lineWidth = 1 / this.viewport.scale;
+    const pointRadius = 4 / this.viewport.scale;
 
     initialPositions.forEach((pos) => {
       this.ctx.beginPath();
       this.ctx.arc(pos.x, pos.y, pointRadius, 0, Math.PI * 2);
       this.ctx.fill();
+      this.ctx.stroke();
     });
 
     this.ctx.restore();
