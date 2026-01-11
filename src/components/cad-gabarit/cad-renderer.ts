@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.56 - Fix mode reveal (restore/save correct pour effacement)
+// VERSION: 3.58 - Fix mode reveal (skip rendu normal)
 // ============================================
 
 import {
@@ -254,256 +254,297 @@ export class CADRenderer {
       this.drawGrid(sketch.scaleFactor);
     }
 
+    // Déterminer si on est en mode reveal (rideau)
+    // En mode reveal, le rendu des géométries est géré séparément pour chaque zone
+    const isRevealMode = comparisonMode && comparisonStyle === "reveal" && revealBranch !== null;
+
     // 2.5 Surbrillance des formes fermées (sans superposition, avec effet hover)
-    this.drawClosedShapes(sketch, highlightOpacity, mouseWorldPos);
+    // SKIP en mode reveal car géré par drawRevealBranch
+    if (!isRevealMode) {
+      this.drawClosedShapes(sketch, highlightOpacity, mouseWorldPos);
+    }
 
     // 2.6 Branches de comparaison (avant la branche active pour qu'elle soit au-dessus)
+    // Seulement en mode overlay
     if (comparisonMode && comparisonStyle === "overlay" && comparisonBranches.length > 0) {
-      console.log("[Renderer] Dessin overlay de", comparisonBranches.length, "branche(s)");
       const opacity = comparisonOpacity / 100;
       comparisonBranches.forEach((branch) => {
-        console.log("[Renderer] Dessin branche:", branch.branchName, "geos:", branch.sketch.geometries.size);
         this.drawComparisonBranch(branch.sketch, branch.color, opacity, branch.branchName);
       });
     }
 
     // 3. Geometries (filtrer par visibilité du calque)
-    // OPTIMISATION: Batch des lignes non-sélectionnées pour réduire les appels draw
-    const normalLines: { p1: Point; p2: Point }[] = [];
-    const selectedLines: { p1: Point; p2: Point }[] = [];
+    // SKIP en mode reveal car géré par drawRevealBranch
+    if (!isRevealMode) {
+      // OPTIMISATION: Batch des lignes non-sélectionnées pour réduire les appels draw
+      const normalLines: { p1: Point; p2: Point }[] = [];
+      const selectedLines: { p1: Point; p2: Point }[] = [];
 
-    // Viewport bounds pour culling
-    const cullLeft = (rulerSize - this.viewport.offsetX) / this.viewport.scale;
-    const cullRight = (this.viewport.width - this.viewport.offsetX) / this.viewport.scale;
-    const cullTop = (rulerSize - this.viewport.offsetY) / this.viewport.scale;
-    const cullBottom = (this.viewport.height - this.viewport.offsetY) / this.viewport.scale;
+      // Viewport bounds pour culling
+      const cullLeft = (rulerSize - this.viewport.offsetX) / this.viewport.scale;
+      const cullRight = (this.viewport.width - this.viewport.offsetX) / this.viewport.scale;
+      const cullTop = (rulerSize - this.viewport.offsetY) / this.viewport.scale;
+      const cullBottom = (this.viewport.height - this.viewport.offsetY) / this.viewport.scale;
 
-    // 2.5 FANTÔME: Dessiner les positions initiales en pointillé pendant le drag du gizmo
-    if (gizmoDrag && gizmoDrag.active && gizmoDrag.initialPositions && selectedEntitiesForGhost.size > 0) {
-      this.drawGhostGeometries(sketch, selectedEntitiesForGhost, gizmoDrag.initialPositions);
-    }
+      // 2.5 FANTÔME: Dessiner les positions initiales en pointillé pendant le drag du gizmo
+      if (gizmoDrag && gizmoDrag.active && gizmoDrag.initialPositions && selectedEntitiesForGhost.size > 0) {
+        this.drawGhostGeometries(sketch, selectedEntitiesForGhost, gizmoDrag.initialPositions);
+      }
 
-    sketch.geometries.forEach((geo, id) => {
-      // Vérifier si le calque est visible
-      const layerId = geo.layerId || "trace";
-      const layer = sketch.layers.get(layerId);
-      // Si le calque existe et n'est pas visible, ne pas dessiner
-      if (layer?.visible === false) return;
+      sketch.geometries.forEach((geo, id) => {
+        // Vérifier si le calque est visible
+        const layerId = geo.layerId || "trace";
+        const layer = sketch.layers.get(layerId);
+        // Si le calque existe et n'est pas visible, ne pas dessiner
+        if (layer?.visible === false) return;
 
-      const isSelected = selectedEntities.has(id);
-      const isHovered = hoveredEntity === id;
+        const isSelected = selectedEntities.has(id);
+        const isHovered = hoveredEntity === id;
 
-      // Pour les lignes, utiliser le batching
-      if (geo.type === "line") {
-        const line = geo as Line;
-        const p1 = sketch.points.get(line.p1);
-        const p2 = sketch.points.get(line.p2);
-        if (p1 && p2) {
-          // Viewport culling
-          const minX = Math.min(p1.x, p2.x);
-          const maxX = Math.max(p1.x, p2.x);
-          const minY = Math.min(p1.y, p2.y);
-          const maxY = Math.max(p1.y, p2.y);
+        // Pour les lignes, utiliser le batching
+        if (geo.type === "line") {
+          const line = geo as Line;
+          const p1 = sketch.points.get(line.p1);
+          const p2 = sketch.points.get(line.p2);
+          if (p1 && p2) {
+            // Viewport culling
+            const minX = Math.min(p1.x, p2.x);
+            const maxX = Math.max(p1.x, p2.x);
+            const minY = Math.min(p1.y, p2.y);
+            const maxY = Math.max(p1.y, p2.y);
 
-          if (maxX >= cullLeft && minX <= cullRight && maxY >= cullTop && minY <= cullBottom) {
-            if (isSelected || isHovered) {
-              selectedLines.push({ p1, p2 });
-            } else {
-              normalLines.push({ p1, p2 });
+            if (maxX >= cullLeft && minX <= cullRight && maxY >= cullTop && minY <= cullBottom) {
+              if (isSelected || isHovered) {
+                selectedLines.push({ p1, p2 });
+              } else {
+                normalLines.push({ p1, p2 });
+              }
             }
           }
+        } else {
+          // Autres géométries: dessin individuel
+          this.drawGeometry(geo, sketch, isSelected, isHovered);
         }
-      } else {
-        // Autres géométries: dessin individuel
-        this.drawGeometry(geo, sketch, isSelected, isHovered);
-      }
-    });
-
-    // Dessiner les lignes normales en batch
-    if (normalLines.length > 0) {
-      this.ctx.strokeStyle = this.styles.lineColor;
-      this.ctx.lineWidth = this.styles.lineWidth / this.viewport.scale;
-      this.ctx.lineCap = "round";
-      this.ctx.beginPath();
-      for (const { p1, p2 } of normalLines) {
-        this.ctx.moveTo(p1.x, p1.y);
-        this.ctx.lineTo(p2.x, p2.y);
-      }
-      this.ctx.stroke();
-    }
-
-    // Dessiner les lignes sélectionnées en batch
-    if (selectedLines.length > 0) {
-      this.ctx.strokeStyle = this.styles.selectedColor;
-      this.ctx.lineWidth = this.styles.selectedWidth / this.viewport.scale;
-      this.ctx.lineCap = "round";
-      this.ctx.beginPath();
-      for (const { p1, p2 } of selectedLines) {
-        this.ctx.moveTo(p1.x, p1.y);
-        this.ctx.lineTo(p2.x, p2.y);
-      }
-      this.ctx.stroke();
-    }
-
-    // 3.5 Marqueurs géométriques (milieux et angles droits) - seulement pour éléments sélectionnés
-    this.drawMidpointMarkers(sketch, selectedEntities);
-    this.drawRightAngleMarkers(sketch, selectedEntities);
-
-    // 4. Points (filtrer par calques visibles - un point est visible si au moins une de ses géométries l'est)
-    const visiblePointIds = new Set<string>();
-    sketch.geometries.forEach((geo) => {
-      const layerId = geo.layerId || "trace";
-      const layer = sketch.layers.get(layerId);
-      if (layer?.visible === false) return;
-
-      // Collecter les points de cette géométrie
-      if (geo.type === "line") {
-        visiblePointIds.add((geo as Line).p1);
-        visiblePointIds.add((geo as Line).p2);
-      } else if (geo.type === "circle") {
-        visiblePointIds.add((geo as Circle).center);
-      } else if (geo.type === "bezier") {
-        visiblePointIds.add((geo as Bezier).p1);
-        visiblePointIds.add((geo as Bezier).p2);
-        visiblePointIds.add((geo as Bezier).cp1);
-        visiblePointIds.add((geo as Bezier).cp2);
-      } else if (geo.type === "arc") {
-        visiblePointIds.add((geo as Arc).center);
-        visiblePointIds.add((geo as Arc).startPoint);
-        visiblePointIds.add((geo as Arc).endPoint);
-      }
-    });
-
-    // Ne dessiner les points QUE pour les géométries sélectionnées ou survolées
-    // Cela évite de polluer l'affichage avec tous les points
-    const pointsToShow = new Set<string>();
-
-    // Ajouter les points des géométries sélectionnées
-    selectedEntities.forEach((entityId) => {
-      const geo = sketch.geometries.get(entityId);
-      if (geo) {
-        if (geo.type === "line") {
-          pointsToShow.add((geo as Line).p1);
-          pointsToShow.add((geo as Line).p2);
-        } else if (geo.type === "circle") {
-          pointsToShow.add((geo as Circle).center);
-        } else if (geo.type === "bezier") {
-          pointsToShow.add((geo as Bezier).p1);
-          pointsToShow.add((geo as Bezier).p2);
-          pointsToShow.add((geo as Bezier).cp1);
-          pointsToShow.add((geo as Bezier).cp2);
-        } else if (geo.type === "arc") {
-          pointsToShow.add((geo as Arc).center);
-          pointsToShow.add((geo as Arc).startPoint);
-          pointsToShow.add((geo as Arc).endPoint);
-        }
-      }
-      // Si c'est un point lui-même qui est sélectionné
-      if (sketch.points.has(entityId)) {
-        pointsToShow.add(entityId);
-      }
-    });
-
-    // Ajouter les points de la géométrie survolée
-    if (hoveredEntity) {
-      const geo = sketch.geometries.get(hoveredEntity);
-      if (geo) {
-        if (geo.type === "line") {
-          pointsToShow.add((geo as Line).p1);
-          pointsToShow.add((geo as Line).p2);
-        } else if (geo.type === "circle") {
-          pointsToShow.add((geo as Circle).center);
-        } else if (geo.type === "bezier") {
-          pointsToShow.add((geo as Bezier).p1);
-          pointsToShow.add((geo as Bezier).p2);
-          pointsToShow.add((geo as Bezier).cp1);
-          pointsToShow.add((geo as Bezier).cp2);
-        } else if (geo.type === "arc") {
-          pointsToShow.add((geo as Arc).center);
-          pointsToShow.add((geo as Arc).startPoint);
-          pointsToShow.add((geo as Arc).endPoint);
-        }
-      }
-      // Si c'est un point lui-même qui est survolé
-      if (sketch.points.has(hoveredEntity)) {
-        pointsToShow.add(hoveredEntity);
-      }
-    }
-
-    // Ne dessiner que les points qui doivent être visibles
-    sketch.points.forEach((point, id) => {
-      // Vérifier que le point appartient à une géométrie visible
-      if (!visiblePointIds.has(id)) return;
-      // Ne dessiner que les points sélectionnés/survolés
-      if (!pointsToShow.has(id)) return;
-
-      const isSelected = selectedEntities.has(id);
-      const isHovered = hoveredEntity === id;
-      this.drawPoint(point, isSelected, isHovered);
-    });
-
-    // 5. Temp geometry (during drawing)
-    if (tempGeometry) {
-      this.drawTempGeometry(tempGeometry, sketch);
-    }
-
-    // 6. Constraints
-    if (showConstraints) {
-      sketch.constraints.forEach((constraint) => {
-        this.drawConstraint(constraint, sketch);
       });
-    }
 
-    // 7. Dimensions
-    if (showDimensions) {
-      sketch.dimensions.forEach((dimension) => {
-        this.drawDimension(dimension, sketch);
+      // Dessiner les lignes normales en batch
+      if (normalLines.length > 0) {
+        this.ctx.strokeStyle = this.styles.lineColor;
+        this.ctx.lineWidth = this.styles.lineWidth / this.viewport.scale;
+        this.ctx.lineCap = "round";
+        this.ctx.beginPath();
+        for (const { p1, p2 } of normalLines) {
+          this.ctx.moveTo(p1.x, p1.y);
+          this.ctx.lineTo(p2.x, p2.y);
+        }
+        this.ctx.stroke();
+      }
+
+      // Dessiner les lignes sélectionnées en batch
+      if (selectedLines.length > 0) {
+        this.ctx.strokeStyle = this.styles.selectedColor;
+        this.ctx.lineWidth = this.styles.selectedWidth / this.viewport.scale;
+        this.ctx.lineCap = "round";
+        this.ctx.beginPath();
+        for (const { p1, p2 } of selectedLines) {
+          this.ctx.moveTo(p1.x, p1.y);
+          this.ctx.lineTo(p2.x, p2.y);
+        }
+        this.ctx.stroke();
+      }
+
+      // 3.5 Marqueurs géométriques (milieux et angles droits) - seulement pour éléments sélectionnés
+      this.drawMidpointMarkers(sketch, selectedEntities);
+      this.drawRightAngleMarkers(sketch, selectedEntities);
+
+      // 4. Points (filtrer par calques visibles - un point est visible si au moins une de ses géométries l'est)
+      const visiblePointIds = new Set<string>();
+      sketch.geometries.forEach((geo) => {
+        const layerId = geo.layerId || "trace";
+        const layer = sketch.layers.get(layerId);
+        if (layer?.visible === false) return;
+
+        // Collecter les points de cette géométrie
+        if (geo.type === "line") {
+          visiblePointIds.add((geo as Line).p1);
+          visiblePointIds.add((geo as Line).p2);
+        } else if (geo.type === "circle") {
+          visiblePointIds.add((geo as Circle).center);
+        } else if (geo.type === "bezier") {
+          visiblePointIds.add((geo as Bezier).p1);
+          visiblePointIds.add((geo as Bezier).p2);
+          visiblePointIds.add((geo as Bezier).cp1);
+          visiblePointIds.add((geo as Bezier).cp2);
+        } else if (geo.type === "arc") {
+          visiblePointIds.add((geo as Arc).center);
+          visiblePointIds.add((geo as Arc).startPoint);
+          visiblePointIds.add((geo as Arc).endPoint);
+        }
       });
-    }
+
+      // Ne dessiner les points QUE pour les géométries sélectionnées ou survolées
+      // Cela évite de polluer l'affichage avec tous les points
+      const pointsToShow = new Set<string>();
+
+      // Ajouter les points des géométries sélectionnées
+      selectedEntities.forEach((entityId) => {
+        const geo = sketch.geometries.get(entityId);
+        if (geo) {
+          if (geo.type === "line") {
+            pointsToShow.add((geo as Line).p1);
+            pointsToShow.add((geo as Line).p2);
+          } else if (geo.type === "circle") {
+            pointsToShow.add((geo as Circle).center);
+          } else if (geo.type === "bezier") {
+            pointsToShow.add((geo as Bezier).p1);
+            pointsToShow.add((geo as Bezier).p2);
+            pointsToShow.add((geo as Bezier).cp1);
+            pointsToShow.add((geo as Bezier).cp2);
+          } else if (geo.type === "arc") {
+            pointsToShow.add((geo as Arc).center);
+            pointsToShow.add((geo as Arc).startPoint);
+            pointsToShow.add((geo as Arc).endPoint);
+          }
+        }
+        // Si c'est un point lui-même qui est sélectionné
+        if (sketch.points.has(entityId)) {
+          pointsToShow.add(entityId);
+        }
+      });
+
+      // Ajouter les points de la géométrie survolée
+      if (hoveredEntity) {
+        const geo = sketch.geometries.get(hoveredEntity);
+        if (geo) {
+          if (geo.type === "line") {
+            pointsToShow.add((geo as Line).p1);
+            pointsToShow.add((geo as Line).p2);
+          } else if (geo.type === "circle") {
+            pointsToShow.add((geo as Circle).center);
+          } else if (geo.type === "bezier") {
+            pointsToShow.add((geo as Bezier).p1);
+            pointsToShow.add((geo as Bezier).p2);
+            pointsToShow.add((geo as Bezier).cp1);
+            pointsToShow.add((geo as Bezier).cp2);
+          } else if (geo.type === "arc") {
+            pointsToShow.add((geo as Arc).center);
+            pointsToShow.add((geo as Arc).startPoint);
+            pointsToShow.add((geo as Arc).endPoint);
+          }
+        }
+        // Si c'est un point lui-même qui est survolé
+        if (sketch.points.has(hoveredEntity)) {
+          pointsToShow.add(hoveredEntity);
+        }
+      }
+
+      // Ne dessiner que les points qui doivent être visibles
+      sketch.points.forEach((point, id) => {
+        // Vérifier que le point appartient à une géométrie visible
+        if (!visiblePointIds.has(id)) return;
+        // Ne dessiner que les points sélectionnés/survolés
+        if (!pointsToShow.has(id)) return;
+
+        const isSelected = selectedEntities.has(id);
+        const isHovered = hoveredEntity === id;
+        this.drawPoint(point, isSelected, isHovered);
+      });
+
+      // 5. Temp geometry (during drawing)
+      if (tempGeometry) {
+        this.drawTempGeometry(tempGeometry, sketch);
+      }
+
+      // 6. Constraints
+      if (showConstraints) {
+        sketch.constraints.forEach((constraint) => {
+          this.drawConstraint(constraint, sketch);
+        });
+      }
+
+      // 7. Dimensions
+      if (showDimensions) {
+        sketch.dimensions.forEach((dimension) => {
+          this.drawDimension(dimension, sketch);
+        });
+      }
+    } // Fin du bloc if (!isRevealMode)
 
     // 7.5. Mode reveal (rideau avant/après)
-    // IMPORTANT: Ce mode utilise un clipping pour diviser le canvas en deux zones
-    // Gauche = branche active (déjà dessinée), Droite = branche reveal
-    console.log("[Renderer REVEAL]", {
-      comparisonMode,
-      comparisonStyle,
-      revealBranch: revealBranch ? revealBranch.branchName : null,
-      revealPosition,
-    });
+    // LOGIQUE: Divise le canvas en deux zones avec des branches en couleur
+    // - Zone GAUCHE = branche active en sa couleur (ex: bleu)
+    // - Zone DROITE = branche reveal en sa couleur (ex: orange)
+    // Le slider contrôle la position du rideau:
+    // - Slider vers gauche (0%) = voir plus de branche active (bleu)
+    // - Slider vers droite (100%) = voir plus de branche reveal (orange)
     if (comparisonMode && comparisonStyle === "reveal" && revealBranch) {
-      console.log("[Renderer REVEAL] ACTIF - Dessin branche:", revealBranch.branchName);
       // Calculer la position X du clipping en coordonnées écran
+      // INVERSÉ: on veut que slider vers droite = plus de zone droite (reveal)
       const canvasWidth = this.viewport.width - rulerSize;
-      const clipX = rulerSize + (canvasWidth * revealPosition) / 100;
+      const clipX = rulerSize + (canvasWidth * (100 - revealPosition)) / 100;
 
-      // Restaurer pour revenir aux coordonnées écran (annule le save de la ligne 226)
+      // === ZONE GAUCHE: Branche active en sa couleur ===
+      // Restaurer pour revenir aux coordonnées écran
       this.ctx.restore();
 
       // Sauvegarder l'état propre
       this.ctx.save();
 
-      // Créer le clipping pour la zone DROITE uniquement (en coordonnées écran)
+      // Clipper la zone GAUCHE
       this.ctx.beginPath();
-      this.ctx.rect(clipX, rulerSize, this.viewport.width - clipX, this.viewport.height - rulerSize);
+      this.ctx.rect(rulerSize, rulerSize, clipX - rulerSize, this.viewport.height - rulerSize);
       this.ctx.clip();
 
-      // Effacer la zone droite avec le fond (en coordonnées écran)
+      // Effacer la zone gauche
       this.ctx.fillStyle = this.styles.backgroundColor;
-      this.ctx.fillRect(clipX, rulerSize, this.viewport.width - clipX, this.viewport.height - rulerSize);
+      this.ctx.fillRect(rulerSize, rulerSize, clipX - rulerSize, this.viewport.height - rulerSize);
 
-      // Appliquer la transformation du viewport pour dessiner les géométries
+      // Appliquer la transformation du viewport
       this.ctx.translate(this.viewport.offsetX, this.viewport.offsetY);
       this.ctx.scale(this.viewport.scale, this.viewport.scale);
 
-      // Redessiner la grille dans la zone reveal
+      // Redessiner la grille dans la zone gauche
       if (showGrid) {
         this.drawGrid(sketch.scaleFactor);
       }
 
-      // Dessiner les géométries de la branche reveal (traits pleins, pas pointillés)
+      // Surbrillance des formes fermées dans la zone gauche
+      this.drawClosedShapes(sketch, highlightOpacity, mouseWorldPos);
+
+      // Dessiner la branche active en sa couleur (bleu)
+      this.drawRevealBranch(sketch, activeBranchColor);
+
+      // Restaurer (enlève le clipping gauche)
+      this.ctx.restore();
+
+      // === ZONE DROITE: Branche reveal en sa couleur ===
+      this.ctx.save();
+
+      // Clipper la zone DROITE
+      this.ctx.beginPath();
+      this.ctx.rect(clipX, rulerSize, this.viewport.width - clipX, this.viewport.height - rulerSize);
+      this.ctx.clip();
+
+      // Effacer la zone droite
+      this.ctx.fillStyle = this.styles.backgroundColor;
+      this.ctx.fillRect(clipX, rulerSize, this.viewport.width - clipX, this.viewport.height - rulerSize);
+
+      // Appliquer la transformation du viewport
+      this.ctx.translate(this.viewport.offsetX, this.viewport.offsetY);
+      this.ctx.scale(this.viewport.scale, this.viewport.scale);
+
+      // Redessiner la grille dans la zone droite
+      if (showGrid) {
+        this.drawGrid(sketch.scaleFactor);
+      }
+
+      // Surbrillance des formes fermées dans la zone droite
+      this.drawClosedShapes(revealBranch.sketch, highlightOpacity, mouseWorldPos);
+
+      // Dessiner la branche reveal en sa couleur (orange)
       this.drawRevealBranch(revealBranch.sketch, revealBranch.color);
 
-      // Restaurer (enlève le clipping de la zone droite)
+      // Restaurer (enlève le clipping droite)
       this.ctx.restore();
 
       // Recréer le contexte principal pour le reste du rendu (poignées, calibration, etc.)
