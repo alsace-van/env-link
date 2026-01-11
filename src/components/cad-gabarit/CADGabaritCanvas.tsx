@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.38 - Désactiver snap grille pour tous les outils de tracé
+// VERSION: 6.39 - Bouton "Repartir d'ici" dans l'historique
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -76,6 +76,7 @@ import {
   CircleDot,
   History,
   Clock,
+  Scissors,
 } from "lucide-react";
 
 import {
@@ -9032,6 +9033,28 @@ export function CADGabaritCanvas({
     [history, loadSketchData],
   );
 
+  // Repartir d'un point précis (supprimer tout l'historique après)
+  const branchFromHistoryIndex = useCallback(
+    (targetIndex: number) => {
+      if (targetIndex < 0 || targetIndex >= history.length) return;
+      const entry = history[targetIndex];
+
+      // Charger l'état
+      loadSketchData(entry.sketch);
+
+      // Couper l'historique à cet index (garder uniquement jusqu'à targetIndex inclus)
+      const newHistory = history.slice(0, targetIndex + 1);
+      setHistory(newHistory);
+      setHistoryIndex(targetIndex);
+      historyRef.current = { history: newHistory, index: targetIndex };
+      setPreviewHistoryIndex(null);
+
+      const deletedCount = history.length - targetIndex - 1;
+      toast.success(`Reparti de: ${entry.description} (${deletedCount} entrée(s) supprimée(s))`);
+    },
+    [history, loadSketchData],
+  );
+
   // Prévisualiser une version (sans modifier l'index)
   const previewHistoryEntry = useCallback(
     (targetIndex: number | null) => {
@@ -12209,6 +12232,20 @@ export function CADGabaritCanvas({
                         <span className={`text-[10px] ${isActive ? "text-blue-100" : "text-gray-400"}`}>{timeStr}</span>
                         {isActive && <span className="text-[10px] ml-auto">● actuel</span>}
                         {isPreviewing && <span className="text-[10px] ml-auto text-gray-900">● aperçu</span>}
+
+                        {/* Bouton Repartir d'ici - visible seulement si pas le dernier */}
+                        {idx < history.length - 1 && !isActive && !isPreviewing && (
+                          <button
+                            className="ml-auto p-0.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-600 transition-colors"
+                            title="Repartir d'ici (supprimer l'historique suivant)"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              branchFromHistoryIndex(idx);
+                            }}
+                          >
+                            <Scissors className="h-3 w-3" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -12218,9 +12255,9 @@ export function CADGabaritCanvas({
           </div>
 
           {/* Footer légende */}
-          <div className="px-2 py-1.5 bg-white border-l border-t rounded-bl-lg text-[10px] text-gray-500 flex gap-3">
-            <span>👆 Survoler = aperçu</span>
-            <span>👆 Cliquer = revenir</span>
+          <div className="px-2 py-1.5 bg-white border-l border-t rounded-bl-lg text-[10px] text-gray-500 flex flex-col gap-0.5">
+            <span>👆 Survoler = aperçu | Cliquer = revenir</span>
+            <span>✂️ = Repartir d'ici (supprimer le reste)</span>
           </div>
         </div>
       )}
