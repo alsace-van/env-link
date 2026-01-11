@@ -246,8 +246,17 @@ export class CADRenderer {
 
     // 2.6 Branches de comparaison (avant la branche active pour qu'elle soit au-dessus)
     if (comparisonMode && comparisonBranches.length > 0) {
+      console.log("[Renderer] Dessin de", comparisonBranches.length, "branche(s) de comparaison");
       const opacity = comparisonOpacity / 100;
       comparisonBranches.forEach((branch) => {
+        console.log(
+          "[Renderer] Dessin branche:",
+          branch.branchName,
+          "couleur:",
+          branch.color,
+          "geos:",
+          branch.sketch.geometries.size,
+        );
         this.drawComparisonBranch(branch.sketch, branch.color, opacity, branch.branchName);
       });
     }
@@ -3589,10 +3598,12 @@ export class CADRenderer {
     const lineWidth = 2 / this.viewport.scale;
     const dashPattern = [6 / this.viewport.scale, 3 / this.viewport.scale];
 
+    let drawnCount = 0;
+
     // Dessiner toutes les géométries de la branche
-    branchSketch.geometries.forEach((geo) => {
+    branchSketch.geometries.forEach((geo, geoId) => {
       // Vérifier si le calque est visible
-      const layerId = geo.layerId || "trace";
+      const layerId = (geo as any).layerId || "trace";
       const layer = branchSketch.layers?.get(layerId);
       if (layer?.visible === false) return;
 
@@ -3608,6 +3619,9 @@ export class CADRenderer {
           this.ctx.moveTo(p1.x, p1.y);
           this.ctx.lineTo(p2.x, p2.y);
           this.ctx.stroke();
+          drawnCount++;
+        } else {
+          console.warn("[Renderer] Line points not found:", line.p1, line.p2);
         }
       } else if (geo.type === "circle") {
         const circle = geo as Circle;
@@ -3619,6 +3633,7 @@ export class CADRenderer {
           this.ctx.beginPath();
           this.ctx.arc(center.x, center.y, circle.radius, 0, Math.PI * 2);
           this.ctx.stroke();
+          drawnCount++;
         }
       } else if (geo.type === "arc") {
         const arc = geo as Arc;
@@ -3635,6 +3650,7 @@ export class CADRenderer {
           this.ctx.beginPath();
           this.ctx.arc(center.x, center.y, arc.radius, startAngle, endAngle, arc.counterClockwise);
           this.ctx.stroke();
+          drawnCount++;
         }
       } else if (geo.type === "bezier") {
         const bezier = geo as Bezier;
@@ -3650,9 +3666,12 @@ export class CADRenderer {
           this.ctx.moveTo(p1.x, p1.y);
           this.ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, p2.x, p2.y);
           this.ctx.stroke();
+          drawnCount++;
         }
       }
     });
+
+    console.log("[Renderer] Branche", branchName, "- géométries dessinées:", drawnCount);
 
     // Dessiner les points de la branche (petits cercles)
     const pointRadius = 3 / this.viewport.scale;

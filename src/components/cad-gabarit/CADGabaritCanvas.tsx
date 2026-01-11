@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.44 - Système de branches (max 10) + comparaison
+// VERSION: 6.45 - Fix comparaison branches (deserializeSketch + auto-visible)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -781,7 +781,10 @@ export function CADGabaritCanvas({
 
   // Données des branches visibles pour le mode comparaison
   const comparisonBranchesData = useMemo(() => {
-    if (!comparisonMode || visibleBranches.size <= 1) return [];
+    // Désactivé si pas en mode comparaison ou s'il n'y a qu'une branche
+    if (!comparisonMode || branches.length <= 1) {
+      return [];
+    }
 
     const result: Array<{
       branchId: string;
@@ -790,17 +793,33 @@ export function CADGabaritCanvas({
       sketch: Sketch;
     }> = [];
 
+    console.log("[Comparaison] Mode actif, branches:", branches.length, "visibles:", Array.from(visibleBranches));
+
     branches.forEach((branch) => {
       // Ne pas inclure la branche active (elle est dessinée normalement)
-      if (branch.id === activeBranchId) return;
+      if (branch.id === activeBranchId) {
+        console.log("[Comparaison] Skip branche active:", branch.name);
+        return;
+      }
       // Ne pas inclure les branches non visibles
-      if (!visibleBranches.has(branch.id)) return;
+      if (!visibleBranches.has(branch.id)) {
+        console.log("[Comparaison] Skip branche non visible:", branch.name);
+        return;
+      }
 
       // Charger le sketch de l'état actuel de la branche
       const entry = branch.history[branch.historyIndex];
       if (entry) {
         try {
           const branchSketch = deserializeSketch(entry.sketch);
+          console.log(
+            "[Comparaison] Branche chargée:",
+            branch.name,
+            "geometries:",
+            branchSketch.geometries.size,
+            "points:",
+            branchSketch.points.size,
+          );
           result.push({
             branchId: branch.id,
             branchName: branch.name,
@@ -813,6 +832,7 @@ export function CADGabaritCanvas({
       }
     });
 
+    console.log("[Comparaison] Résultat:", result.length, "branches à dessiner");
     return result;
   }, [comparisonMode, visibleBranches, branches, activeBranchId]);
 
@@ -14122,7 +14142,14 @@ export function CADGabaritCanvas({
                 <input
                   type="checkbox"
                   checked={comparisonMode}
-                  onChange={(e) => setComparisonMode(e.target.checked)}
+                  onChange={(e) => {
+                    const newMode = e.target.checked;
+                    setComparisonMode(newMode);
+                    // Quand on active le mode comparaison, rendre toutes les branches visibles
+                    if (newMode) {
+                      setVisibleBranches(new Set(branches.map((b) => b.id)));
+                    }
+                  }}
                   className="w-3.5 h-3.5 rounded"
                 />
                 <span>Comparer</span>
@@ -14367,6 +14394,20 @@ function serializeSketch(sketch: Sketch): any {
     constraints: Object.fromEntries(sketch.constraints),
     dimensions: Object.fromEntries(sketch.dimensions),
     scaleFactor: sketch.scaleFactor,
+    layers: sketch.layers ? Object.fromEntries(sketch.layers) : undefined,
+    activeLayerId: sketch.activeLayerId,
+  };
+}
+
+function deserializeSketch(data: any): Sketch {
+  return {
+    points: new Map(Object.entries(data.points || {})),
+    geometries: new Map(Object.entries(data.geometries || {})),
+    constraints: new Map(Object.entries(data.constraints || {})),
+    dimensions: new Map(Object.entries(data.dimensions || {})),
+    scaleFactor: data.scaleFactor || 1,
+    layers: data.layers ? new Map(Object.entries(data.layers)) : new Map(),
+    activeLayerId: data.activeLayerId || "trace",
   };
 }
 
