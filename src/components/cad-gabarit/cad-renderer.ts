@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.58 - Fix mode reveal (skip rendu normal)
+// VERSION: 3.59 - Fix clipX synchronisé avec poignée rideau
 // ============================================
 
 import {
@@ -474,14 +474,12 @@ export class CADRenderer {
     // LOGIQUE: Divise le canvas en deux zones avec des branches en couleur
     // - Zone GAUCHE = branche active en sa couleur (ex: bleu)
     // - Zone DROITE = branche reveal en sa couleur (ex: orange)
-    // Le slider contrôle la position du rideau:
-    // - Slider vers gauche (0%) = voir plus de branche active (bleu)
-    // - Slider vers droite (100%) = voir plus de branche reveal (orange)
+    // Le rideau suit la position de la poignée (revealPosition%)
     if (comparisonMode && comparisonStyle === "reveal" && revealBranch) {
       // Calculer la position X du clipping en coordonnées écran
-      // INVERSÉ: on veut que slider vers droite = plus de zone droite (reveal)
+      // La position correspond directement à revealPosition%
       const canvasWidth = this.viewport.width - rulerSize;
-      const clipX = rulerSize + (canvasWidth * (100 - revealPosition)) / 100;
+      const clipX = rulerSize + (canvasWidth * revealPosition) / 100;
 
       // === ZONE GAUCHE: Branche active en sa couleur ===
       // Restaurer pour revenir aux coordonnées écran
