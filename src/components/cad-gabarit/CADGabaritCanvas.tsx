@@ -74,7 +74,6 @@ import {
   Unlock,
   FlipHorizontal2,
   CircleDot,
-  Move,
 } from "lucide-react";
 
 import {
