@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.30 - Rectangle mode centre avec dropdown
+// VERSION: 6.31 - Optimisation fluidité tracé rectangle (RAF throttling + panneau fixe)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -177,6 +177,7 @@ export function CADGabaritCanvas({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dxfInputRef = useRef<HTMLInputElement>(null);
   const lastMiddleClickRef = useRef<number>(0); // Pour détecter le double-clic molette
+  const renderRequestRef = useRef<number | null>(null); // Pour throttler le rendu avec RAF
 
   // State
   const [sketch, setSketch] = useState<Sketch>(() => createEmptySketch(scaleFactor));
@@ -2105,7 +2106,21 @@ export function CADGabaritCanvas({
   ]);
 
   useEffect(() => {
-    render();
+    // Utiliser requestAnimationFrame pour throttler le rendu
+    // Cela évite les rendus trop fréquents pendant le tracé
+    if (renderRequestRef.current !== null) {
+      cancelAnimationFrame(renderRequestRef.current);
+    }
+    renderRequestRef.current = requestAnimationFrame(() => {
+      render();
+      renderRequestRef.current = null;
+    });
+
+    return () => {
+      if (renderRequestRef.current !== null) {
+        cancelAnimationFrame(renderRequestRef.current);
+      }
+    };
   }, [render]);
 
   // Vider la sélection quand on change d'outil (sauf pour select)
@@ -8268,82 +8283,26 @@ export function CADGabaritCanvas({
             radius,
           });
         } else if (tempGeometry.type === "rectangle") {
-          setPerpendicularInfo(null);
+          // OPTIMISATION: Utiliser callback pour éviter re-render si déjà null
+          setPerpendicularInfo((prev) => (prev === null ? prev : null));
 
-          // Point de référence (coin ou centre selon le mode)
-          const p1 = tempGeometry.p1;
-          const isCenter = tempGeometry.mode === "center";
-
-          // Calculer les dimensions réelles en mm avec précision au dixième
-          const scaleFactor = sketch.scaleFactor || 1; // px/mm
-
-          let widthPx: number, heightPx: number;
-          let rectLeft: number, rectRight: number, rectTop: number, rectBottom: number;
-
-          if (isCenter) {
-            // Mode centre: p1 est le centre, dimensions = 2x distance au curseur
-            const halfWidth = Math.abs(targetPos.x - p1.x);
-            const halfHeight = Math.abs(targetPos.y - p1.y);
-            widthPx = halfWidth * 2;
-            heightPx = halfHeight * 2;
-            rectLeft = p1.x - halfWidth;
-            rectRight = p1.x + halfWidth;
-            rectTop = p1.y - halfHeight;
-            rectBottom = p1.y + halfHeight;
-          } else {
-            // Mode coin: p1 est un coin
-            widthPx = Math.abs(targetPos.x - p1.x);
-            heightPx = Math.abs(targetPos.y - p1.y);
-            rectLeft = Math.min(p1.x, targetPos.x);
-            rectRight = Math.max(p1.x, targetPos.x);
-            rectTop = Math.min(p1.y, targetPos.y);
-            rectBottom = Math.max(p1.y, targetPos.y);
-          }
-
-          const widthMm = widthPx / scaleFactor;
-          const heightMm = heightPx / scaleFactor;
-
-          // Calculer les positions des inputs en coordonnées écran
-          const rect = canvasRef.current?.getBoundingClientRect();
-          if (rect) {
-            // Position du milieu du côté supérieur (pour largeur)
-            const midTopX = (rectLeft + rectRight) / 2;
-            const widthScreenPos = {
-              x: midTopX * viewport.scale + viewport.offsetX,
-              y: rectTop * viewport.scale + viewport.offsetY - 35,
-            };
-
-            // Position du milieu du côté gauche (pour hauteur)
-            const midLeftY = (rectTop + rectBottom) / 2;
-            const heightScreenPos = {
-              x: rectLeft * viewport.scale + viewport.offsetX - 75,
-              y: midLeftY * viewport.scale + viewport.offsetY - 12,
-            };
-
-            // Formater les valeurs avec précision adaptative
-            // Arrondi au dixième de mm (0.1 mm)
-            const formatValue = (val: number): string => {
-              if (val < 0.05) return "";
-              // Arrondir au dixième de mm
-              const rounded = Math.round(val * 10) / 10;
-              return rounded.toFixed(1);
-            };
-
-            setRectInputs((prev) => ({
+          // Utiliser callback pour éviter re-render si curseur identique
+          setTempGeometry((prev: any) => {
+            if (!prev) return prev;
+            // Comparaison avec tolérance pour éviter les micro-mises à jour
+            const dx = Math.abs((prev.cursor?.x || 0) - targetPos.x);
+            const dy = Math.abs((prev.cursor?.y || 0) - targetPos.y);
+            if (dx < 0.5 && dy < 0.5) {
+              return prev; // Pas de changement significatif
+            }
+            return {
               ...prev,
-              active: true,
-              widthInputPos: widthScreenPos,
-              heightInputPos: heightScreenPos,
-              // Mettre à jour les valeurs en temps réel (précision 0.1 mm)
-              widthValue: formatValue(widthMm),
-              heightValue: formatValue(heightMm),
-            }));
-          }
-
-          setTempGeometry({
-            ...tempGeometry,
-            cursor: targetPos,
+              cursor: { x: targetPos.x, y: targetPos.y },
+            };
           });
+
+          // Activer les inputs une seule fois (callback retourne même obj si déjà actif)
+          setRectInputs((prev) => (prev.active ? prev : { ...prev, active: true }));
         } else if (tempGeometry.type === "bezier") {
           setPerpendicularInfo(null);
           setTempGeometry({
@@ -11141,26 +11100,20 @@ export function CADGabaritCanvas({
               }}
             />
 
-            {/* Inputs de saisie rectangle (style Fusion 360) */}
-            {rectInputs.active && tempGeometry?.type === "rectangle" && tempGeometry.cursor && (
-              <>
-                {/* Input largeur (horizontal - en haut) */}
-                <div
-                  className="absolute z-50 flex items-center"
-                  style={{
-                    left: `${rectInputs.widthInputPos.x}px`,
-                    top: `${rectInputs.widthInputPos.y}px`,
-                    transform: "translateX(-50%)",
-                  }}
-                >
+            {/* Panneau de saisie rectangle FIXE (en bas du canvas) */}
+            {rectInputs.active && tempGeometry?.type === "rectangle" && (
+              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-3 bg-white/95 backdrop-blur-sm border border-gray-300 rounded-lg shadow-lg px-4 py-2">
+                <span className="text-xs text-gray-500 font-medium">Rectangle:</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-gray-500">L</span>
                   <input
                     ref={widthInputRef}
                     type="text"
                     inputMode="decimal"
-                    value={rectInputs.widthValue}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
-                      setRectInputs((prev) => ({ ...prev, widthValue: val }));
+                    defaultValue=""
+                    onFocus={(e) => {
+                      setRectInputs((prev) => ({ ...prev, activeField: "width" }));
+                      e.target.select();
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Tab") {
@@ -11170,7 +11123,10 @@ export function CADGabaritCanvas({
                         heightInputRef.current?.select();
                       } else if (e.key === "Enter") {
                         e.preventDefault();
-                        createRectangleFromInputs();
+                        const wVal = widthInputRef.current?.value || "";
+                        const hVal = heightInputRef.current?.value || "";
+                        setRectInputs((prev) => ({ ...prev, widthValue: wVal, heightValue: hVal }));
+                        setTimeout(() => createRectangleFromInputs(), 0);
                       } else if (e.key === "Escape") {
                         e.preventDefault();
                         setTempPoints([]);
@@ -11185,33 +11141,26 @@ export function CADGabaritCanvas({
                         });
                       }
                     }}
-                    className={`w-16 h-7 px-2 text-center text-sm font-medium rounded border-2 shadow-lg outline-none ${
+                    className={`w-20 h-7 px-2 text-center text-sm font-medium rounded border-2 outline-none ${
                       rectInputs.activeField === "width"
                         ? "border-blue-500 bg-blue-50 text-blue-700"
                         : "border-gray-300 bg-white text-gray-700"
                     }`}
-                    placeholder="L"
-                    autoFocus={rectInputs.activeField === "width"}
+                    placeholder="largeur"
                   />
-                  <span className="ml-1 text-xs text-gray-500 font-medium bg-white/80 px-1 rounded">mm</span>
+                  <span className="text-xs text-gray-500">mm</span>
                 </div>
-
-                {/* Input hauteur (vertical - à gauche) */}
-                <div
-                  className="absolute z-50 flex items-center"
-                  style={{
-                    left: `${rectInputs.heightInputPos.x}px`,
-                    top: `${rectInputs.heightInputPos.y}px`,
-                  }}
-                >
+                <span className="text-gray-400">×</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-gray-500">H</span>
                   <input
                     ref={heightInputRef}
                     type="text"
                     inputMode="decimal"
-                    value={rectInputs.heightValue}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
-                      setRectInputs((prev) => ({ ...prev, heightValue: val }));
+                    defaultValue=""
+                    onFocus={(e) => {
+                      setRectInputs((prev) => ({ ...prev, activeField: "height" }));
+                      e.target.select();
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Tab") {
@@ -11221,7 +11170,10 @@ export function CADGabaritCanvas({
                         widthInputRef.current?.select();
                       } else if (e.key === "Enter") {
                         e.preventDefault();
-                        createRectangleFromInputs();
+                        const wVal = widthInputRef.current?.value || "";
+                        const hVal = heightInputRef.current?.value || "";
+                        setRectInputs((prev) => ({ ...prev, widthValue: wVal, heightValue: hVal }));
+                        setTimeout(() => createRectangleFromInputs(), 0);
                       } else if (e.key === "Escape") {
                         e.preventDefault();
                         setTempPoints([]);
@@ -11236,16 +11188,17 @@ export function CADGabaritCanvas({
                         });
                       }
                     }}
-                    className={`w-16 h-7 px-2 text-center text-sm font-medium rounded border-2 shadow-lg outline-none ${
+                    className={`w-20 h-7 px-2 text-center text-sm font-medium rounded border-2 outline-none ${
                       rectInputs.activeField === "height"
                         ? "border-blue-500 bg-blue-50 text-blue-700"
                         : "border-gray-300 bg-white text-gray-700"
                     }`}
-                    placeholder="H"
+                    placeholder="hauteur"
                   />
-                  <span className="ml-1 text-xs text-gray-500 font-medium bg-white/80 px-1 rounded">mm</span>
+                  <span className="text-xs text-gray-500">mm</span>
                 </div>
-              </>
+                <span className="text-xs text-gray-400 ml-2">Tab: changer • Entrée: valider</span>
+              </div>
             )}
 
             {/* Input inline pour le gizmo de transformation */}
