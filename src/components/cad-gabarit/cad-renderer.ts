@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.46 - Gizmo drag avec affichage temps réel des valeurs
+// VERSION: 3.47 - Fantôme en pointillé pendant le drag du gizmo
 // ============================================
 
 import {
@@ -137,7 +137,10 @@ export class CADRenderer {
         mode: "translateX" | "translateY" | "rotate";
         currentValue: number; // en mm ou degrés
         center: { x: number; y: number };
+        initialPositions: Map<string, { x: number; y: number }>; // Positions initiales pour le fantôme
       } | null;
+      // Entités sélectionnées pour le fantôme pendant le drag
+      selectedEntitiesForGhost?: Set<string>;
     } = {},
   ): void {
     const {
@@ -170,6 +173,7 @@ export class CADRenderer {
       transformGizmo = null,
       selectionCenter = null,
       gizmoDrag = null,
+      selectedEntitiesForGhost = new Set<string>(),
     } = options;
 
     // Stocker scaleFactor pour drawRulers
@@ -235,6 +239,11 @@ export class CADRenderer {
     const cullRight = (this.viewport.width - this.viewport.offsetX) / this.viewport.scale;
     const cullTop = (rulerSize - this.viewport.offsetY) / this.viewport.scale;
     const cullBottom = (this.viewport.height - this.viewport.offsetY) / this.viewport.scale;
+
+    // 2.5 FANTÔME: Dessiner les positions initiales en pointillé pendant le drag du gizmo
+    if (gizmoDrag && gizmoDrag.active && gizmoDrag.initialPositions && selectedEntitiesForGhost.size > 0) {
+      this.drawGhostGeometries(sketch, selectedEntitiesForGhost, gizmoDrag.initialPositions);
+    }
 
     sketch.geometries.forEach((geo, id) => {
       // Vérifier si le calque est visible
@@ -3374,6 +3383,119 @@ export class CADRenderer {
     this.ctx.beginPath();
     this.ctx.arc(center.x, center.y, 1.5 / this.viewport.scale, 0, Math.PI * 2);
     this.ctx.fill();
+
+    this.ctx.restore();
+  }
+
+  /**
+   * Dessine le fantôme des géométries pendant le drag (positions initiales en pointillé)
+   */
+  private drawGhostGeometries(
+    sketch: Sketch,
+    selectedEntities: Set<string>,
+    initialPositions: Map<string, { x: number; y: number }>,
+  ): void {
+    this.ctx.save();
+
+    // Style fantôme: gris, fin, pointillé
+    this.ctx.strokeStyle = "rgba(150, 150, 150, 0.6)";
+    this.ctx.lineWidth = 1 / this.viewport.scale;
+    this.ctx.setLineDash([4 / this.viewport.scale, 4 / this.viewport.scale]);
+    this.ctx.lineCap = "round";
+    this.ctx.lineJoin = "round";
+
+    // Helper pour obtenir la position initiale d'un point
+    const getInitialPos = (pointId: string): { x: number; y: number } | null => {
+      const initialPos = initialPositions.get(pointId);
+      if (initialPos) return initialPos;
+      // Si pas dans les positions initiales, utiliser la position actuelle
+      const pt = sketch.points.get(pointId);
+      return pt ? { x: pt.x, y: pt.y } : null;
+    };
+
+    // Dessiner les géométries sélectionnées avec leurs positions initiales
+    selectedEntities.forEach((geoId) => {
+      const geo = sketch.geometries.get(geoId);
+      if (!geo) return;
+
+      this.ctx.beginPath();
+
+      switch (geo.type) {
+        case "line": {
+          const line = geo as Line;
+          const p1 = getInitialPos(line.p1);
+          const p2 = getInitialPos(line.p2);
+          if (p1 && p2) {
+            this.ctx.moveTo(p1.x, p1.y);
+            this.ctx.lineTo(p2.x, p2.y);
+            this.ctx.stroke();
+          }
+          break;
+        }
+
+        case "circle": {
+          const circle = geo as Circle;
+          const center = getInitialPos(circle.center);
+          if (center) {
+            this.ctx.arc(center.x, center.y, circle.radius, 0, Math.PI * 2);
+            this.ctx.stroke();
+          }
+          break;
+        }
+
+        case "arc": {
+          const arc = geo as Arc;
+          const center = getInitialPos(arc.center);
+          if (center) {
+            const startAngle = arc.startAngle;
+            const endAngle = arc.endAngle;
+            this.ctx.arc(center.x, center.y, arc.radius, startAngle, endAngle, arc.counterClockwise);
+            this.ctx.stroke();
+          }
+          break;
+        }
+
+        case "rectangle": {
+          const rect = geo as Rectangle;
+          const corners = [rect.p1, rect.p2, rect.p3, rect.p4];
+          const positions = corners.map(getInitialPos).filter(Boolean) as { x: number; y: number }[];
+          if (positions.length === 4) {
+            this.ctx.moveTo(positions[0].x, positions[0].y);
+            this.ctx.lineTo(positions[1].x, positions[1].y);
+            this.ctx.lineTo(positions[2].x, positions[2].y);
+            this.ctx.lineTo(positions[3].x, positions[3].y);
+            this.ctx.closePath();
+            this.ctx.stroke();
+          }
+          break;
+        }
+
+        case "bezier": {
+          const bezier = geo as Bezier;
+          const p1 = getInitialPos(bezier.p1);
+          const p2 = getInitialPos(bezier.p2);
+          const cp1 = getInitialPos(bezier.cp1);
+          const cp2 = getInitialPos(bezier.cp2);
+          if (p1 && p2 && cp1 && cp2) {
+            this.ctx.moveTo(p1.x, p1.y);
+            this.ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, p2.x, p2.y);
+            this.ctx.stroke();
+          }
+          break;
+        }
+      }
+    });
+
+    // Dessiner les points fantômes
+    this.ctx.setLineDash([]);
+    this.ctx.fillStyle = "rgba(150, 150, 150, 0.5)";
+    const pointRadius = 3 / this.viewport.scale;
+
+    initialPositions.forEach((pos) => {
+      this.ctx.beginPath();
+      this.ctx.arc(pos.x, pos.y, pointRadius, 0, Math.PI * 2);
+      this.ctx.fill();
+    });
 
     this.ctx.restore();
   }

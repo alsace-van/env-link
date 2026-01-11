@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.26 - Fix: Gizmo désactivé automatiquement quand on change d'outil
+// VERSION: 6.27 - Fix Échap + fantôme en pointillé pendant le drag
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -273,6 +273,12 @@ export function CADGabaritCanvas({
     initialPositions: Map<string, { x: number; y: number }>;
     center: { x: number; y: number };
   } | null>(null);
+
+  // Ref pour gizmoDrag (éviter stale closure dans handleKeyDown)
+  const gizmoDragRef = useRef(gizmoDrag);
+  useEffect(() => {
+    gizmoDragRef.current = gizmoDrag;
+  }, [gizmoDrag]);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
@@ -835,8 +841,10 @@ export function CADGabaritCanvas({
       // Gizmo de transformation (seulement si activé)
       transformGizmo: transformGizmo.active ? transformGizmo : null,
       selectionCenter: showTransformGizmo ? selectionGizmoData?.center || null : null,
-      // Drag du gizmo (pour affichage temps réel)
+      // Drag du gizmo (pour affichage temps réel et fantôme)
       gizmoDrag,
+      // Entités sélectionnées (pour dessiner le fantôme)
+      selectedEntitiesForGhost: gizmoDrag ? selectedEntities : new Set<string>(),
     });
 
     // Dessiner le rectangle de sélection (après le render du sketch)
@@ -9186,9 +9194,22 @@ export function CADGabaritCanvas({
     const handleKeyDown = (e: KeyboardEvent) => {
       // Echap - annuler l'action en cours
       if (e.key === "Escape") {
-        // Annuler le drag du gizmo en premier
-        if (gizmoDrag) {
-          cancelGizmoDrag();
+        // Annuler le drag du gizmo en premier (utiliser ref pour éviter stale closure)
+        if (gizmoDragRef.current) {
+          // Restaurer les positions initiales directement ici
+          const dragData = gizmoDragRef.current;
+          setSketch((prev) => {
+            const newSketch = { ...prev };
+            newSketch.points = new Map(prev.points);
+
+            for (const [pointId, initialPos] of dragData.initialPositions) {
+              newSketch.points.set(pointId, { id: pointId, x: initialPos.x, y: initialPos.y });
+            }
+
+            return newSketch;
+          });
+          setGizmoDrag(null);
+          toast.info("Déplacement annulé");
           return;
         }
         if (isFullscreen) {
@@ -9371,8 +9392,7 @@ export function CADGabaritCanvas({
     redo,
     fitToContent,
     showTransformGizmo,
-    gizmoDrag,
-    cancelGizmoDrag,
+    // Note: gizmoDragRef utilisé directement pour éviter stale closure
   ]);
 
   // === FONCTIONS DE CALIBRATION ===
