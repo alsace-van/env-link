@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.32 - Fix fluidité rectangle: désactiver snap grille pendant le tracé
+// VERSION: 6.33 - Affichage angle interne quand 2 segments sélectionnés
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -691,12 +691,13 @@ export function CADGabaritCanvas({
     };
   }, [imageUrl]);
 
-  // Calcul de la longueur totale des segments sélectionnés (en mm)
+  // Calcul de la longueur totale des segments sélectionnés (en mm) + angle interne si 2 segments
   const selectedLength = useMemo(() => {
     if (selectedEntities.size === 0) return null;
 
     let totalPx = 0;
     let count = 0;
+    const lines: Array<{ id: string; p1: Point; p2: Point }> = [];
 
     selectedEntities.forEach((entityId) => {
       const geo = sketch.geometries.get(entityId);
@@ -708,6 +709,7 @@ export function CADGabaritCanvas({
           if (p1 && p2) {
             totalPx += distance(p1, p2);
             count++;
+            lines.push({ id: entityId, p1, p2 });
           }
         } else if (geo.type === "arc") {
           const arc = geo as Arc;
@@ -731,7 +733,60 @@ export function CADGabaritCanvas({
     if (count === 0) return null;
 
     const totalMm = totalPx / sketch.scaleFactor;
-    return { mm: totalMm, count };
+
+    // Calcul de l'angle interne si exactement 2 lignes sont sélectionnées
+    let internalAngle: number | null = null;
+    if (lines.length === 2) {
+      const [line1, line2] = lines;
+
+      // Trouver le point commun entre les 2 lignes
+      let commonPoint: Point | null = null;
+      let otherPoint1: Point | null = null;
+      let otherPoint2: Point | null = null;
+
+      const tolerance = 0.5; // Tolérance pour considérer 2 points comme identiques
+
+      // Tester toutes les combinaisons pour trouver un point commun
+      if (distance(line1.p1, line2.p1) < tolerance) {
+        commonPoint = line1.p1;
+        otherPoint1 = line1.p2;
+        otherPoint2 = line2.p2;
+      } else if (distance(line1.p1, line2.p2) < tolerance) {
+        commonPoint = line1.p1;
+        otherPoint1 = line1.p2;
+        otherPoint2 = line2.p1;
+      } else if (distance(line1.p2, line2.p1) < tolerance) {
+        commonPoint = line1.p2;
+        otherPoint1 = line1.p1;
+        otherPoint2 = line2.p2;
+      } else if (distance(line1.p2, line2.p2) < tolerance) {
+        commonPoint = line1.p2;
+        otherPoint1 = line1.p1;
+        otherPoint2 = line2.p1;
+      }
+
+      if (commonPoint && otherPoint1 && otherPoint2) {
+        // Vecteurs depuis le point commun vers les autres extrémités
+        const v1 = { x: otherPoint1.x - commonPoint.x, y: otherPoint1.y - commonPoint.y };
+        const v2 = { x: otherPoint2.x - commonPoint.x, y: otherPoint2.y - commonPoint.y };
+
+        // Longueurs des vecteurs
+        const len1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+        const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+
+        if (len1 > 0 && len2 > 0) {
+          // Produit scalaire
+          const dot = v1.x * v2.x + v1.y * v2.y;
+          // Angle en radians
+          const cosAngle = Math.max(-1, Math.min(1, dot / (len1 * len2)));
+          const angleRad = Math.acos(cosAngle);
+          // Convertir en degrés
+          internalAngle = angleRad * (180 / Math.PI);
+        }
+      }
+    }
+
+    return { mm: totalMm, count, internalAngle };
   }, [selectedEntities, sketch]);
 
   // Calculer le centre et les points de la sélection pour le gizmo
@@ -11277,9 +11332,14 @@ export function CADGabaritCanvas({
 
             {/* Indicateur de longueur des segments sélectionnés - coin supérieur droit */}
             {selectedLength && (
-              <div className="absolute top-2 right-2 bg-gray-100/90 border border-gray-300 rounded px-2 py-1 text-xs text-gray-600 shadow-sm z-10">
-                <span className="font-medium">{selectedLength.mm.toFixed(1)} mm</span>
-                {selectedLength.count > 1 && <span className="text-gray-400 ml-1">({selectedLength.count})</span>}
+              <div className="absolute top-2 right-2 bg-gray-100/90 border border-gray-300 rounded px-2 py-1 text-xs text-gray-600 shadow-sm z-10 flex flex-col gap-0.5">
+                <div>
+                  <span className="font-medium">{selectedLength.mm.toFixed(1)} mm</span>
+                  {selectedLength.count > 1 && <span className="text-gray-400 ml-1">({selectedLength.count})</span>}
+                </div>
+                {selectedLength.internalAngle !== null && (
+                  <div className="text-orange-600 font-medium">∠ {selectedLength.internalAngle.toFixed(1)}°</div>
+                )}
               </div>
             )}
 
