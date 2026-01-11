@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.56 - Modale comparaison flottante légère draggable
+// VERSION: 6.57 - Fix double handle rideau + arrondi pourcentage position
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -11973,7 +11973,7 @@ export function CADGabaritCanvas({
                     const handleMouseMove = (moveEvent: MouseEvent) => {
                       moveEvent.preventDefault();
                       const x = moveEvent.clientX - rect.left;
-                      const percentage = Math.max(5, Math.min(95, (x / rect.width) * 100));
+                      const percentage = Math.round(Math.max(5, Math.min(95, (x / rect.width) * 100)));
                       setRevealPosition(percentage);
                     };
 
@@ -14833,7 +14833,7 @@ export function CADGabaritCanvas({
                       onChange={(e) => setRevealPosition(parseInt(e.target.value))}
                       className="flex-1 h-1.5"
                     />
-                    <span className="text-xs w-10 text-right">{revealPosition}%</span>
+                    <span className="text-xs w-10 text-right">{Math.round(revealPosition)}%</span>
                   </div>
                 </div>
               )}
@@ -15108,76 +15108,6 @@ export function CADGabaritCanvas({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Handle pour le rideau */}
-      {comparisonMode && comparisonStyle === "reveal" && revealBranchData && (
-        <div className="fixed inset-0 z-[50] pointer-events-none" style={{ marginTop: 140, marginLeft: 32 }}>
-          <div
-            className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg pointer-events-none"
-            style={{ left: `${revealPosition}%` }}
-          />
-          <div
-            className="absolute pointer-events-auto cursor-ew-resize"
-            style={{
-              left: `${revealPosition}%`,
-              top: "50%",
-              transform: "translate(-50%, -50%)",
-            }}
-            onMouseDown={(e) => {
-              if (e.button !== 0) return;
-              e.preventDefault();
-              isDraggingRevealRef.current = true;
-              setIsDraggingReveal(true);
-            }}
-          >
-            <div className="bg-white rounded-full shadow-lg border-2 border-gray-300 px-2 py-3 flex flex-col items-center gap-0.5">
-              <div className="w-0.5 h-2 bg-gray-400 rounded" />
-              <div className="w-0.5 h-2 bg-gray-400 rounded" />
-              <span className="text-[10px] text-gray-500">◀▶</span>
-            </div>
-          </div>
-          <div
-            className="absolute top-2 pointer-events-none flex items-center gap-2"
-            style={{ left: `${revealPosition}%`, transform: "translateX(-50%)" }}
-          >
-            <div
-              className="px-2 py-0.5 rounded text-xs font-medium text-white"
-              style={{ backgroundColor: activeBranchColor }}
-            >
-              {branches.find((b) => b.id === activeBranchId)?.name || "Principal"}
-            </div>
-            <div
-              className="px-2 py-0.5 rounded text-xs font-medium text-white"
-              style={{ backgroundColor: revealBranchData.color }}
-            >
-              {revealBranchData.branchName}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Handler global pour le drag du rideau */}
-      {isDraggingReveal && (
-        <div
-          className="fixed inset-0 z-[60] cursor-ew-resize"
-          onMouseMove={(e) => {
-            const canvasRect = canvasRef.current?.getBoundingClientRect();
-            if (!canvasRect) return;
-            const relativeX = e.clientX - canvasRect.left - 32;
-            const canvasWidth = canvasRect.width - 32;
-            const percentage = Math.max(5, Math.min(95, (relativeX / canvasWidth) * 100));
-            setRevealPosition(percentage);
-          }}
-          onMouseUp={() => {
-            isDraggingRevealRef.current = false;
-            setIsDraggingReveal(false);
-          }}
-          onMouseLeave={() => {
-            isDraggingRevealRef.current = false;
-            setIsDraggingReveal(false);
-          }}
-        />
-      )}
     </div>
   );
 }
