@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.61 - Mode reveal: actif en noir + reveal en pointillés
+// VERSION: 3.62 - Mode reveal: reveal en dessous, actif au-dessus
 // ============================================
 
 import {
@@ -500,11 +500,11 @@ export class CADRenderer {
       // Surbrillance des formes fermées de la branche active
       this.drawClosedShapes(sketch, highlightOpacity, mouseWorldPos);
 
-      // 1. Redessiner la branche ACTIVE en NOIR (trait plein) - identique à la zone gauche
-      this.drawRevealBranch(sketch, this.styles.lineColor);
-
-      // 2. Dessiner la branche REVEAL en POINTILLÉS COLORÉS par-dessus
+      // 1. D'abord dessiner la branche REVEAL en POINTILLÉS COLORÉS (en dessous)
       this.drawComparisonBranch(revealBranch.sketch, revealBranch.color, 1.0, revealBranch.branchName);
+
+      // 2. Ensuite dessiner la branche ACTIVE en NOIR (trait plein) par-dessus
+      this.drawRevealBranch(sketch, this.styles.lineColor);
 
       // Restaurer (enlève le clipping droite)
       this.ctx.restore();
