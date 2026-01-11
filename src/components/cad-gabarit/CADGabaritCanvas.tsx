@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.41 - Bouton ciseaux toujours visible dans l'historique
+// VERSION: 6.42 - Fix décalage toolbar (panneau CSS au lieu de conditionnel)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -10341,9 +10341,12 @@ export function CADGabaritCanvas({
   );
 
   return (
-    <div ref={containerRef} className={`flex flex-col ${isFullscreen ? "fixed inset-0 z-50 bg-white" : "h-[700px]"}`}>
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 p-2 bg-gray-100 border-b flex-wrap">
+    <div
+      ref={containerRef}
+      className={`flex flex-col overflow-hidden ${isFullscreen ? "fixed inset-0 z-50 bg-white" : "h-[700px]"}`}
+    >
+      {/* Toolbar - flex-nowrap pour éviter les recalculs */}
+      <div className="flex items-center gap-2 p-2 bg-gray-100 border-b flex-wrap flex-shrink-0">
         {/* Outils de sélection/navigation */}
         <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
           <ToolButton tool="select" icon={MousePointer} label="Sélection" shortcut="V" />
@@ -13729,47 +13732,55 @@ export function CADGabaritCanvas({
       {/* Fermer le menu contextuel en cliquant ailleurs */}
       {contextMenu && <div className="fixed inset-0 z-[99]" onClick={() => setContextMenu(null)} />}
 
-      {/* Panneau d'historique - Overlay isolé (ne perturbe pas le layout) */}
-      {showHistoryPanel && (
-        <div className="fixed inset-0 z-[100] pointer-events-none">
-          <div className="absolute right-0 top-[88px] bottom-0 w-56 flex flex-col pointer-events-auto">
-            {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-l rounded-tl-lg shadow-sm">
-              <div className="flex items-center gap-2">
-                <History className="h-4 w-4 text-gray-600" />
-                <span className="text-sm font-medium">Historique</span>
-                <span className="text-xs text-gray-400">({history.length})</span>
-              </div>
-              <button
-                className="text-gray-500 hover:text-gray-700 p-1 hover:bg-gray-100 rounded"
-                onClick={() => setShowHistoryPanel(false)}
-              >
-                <X className="h-4 w-4" />
-              </button>
+      {/* Panneau d'historique - Toujours rendu, animé avec CSS (évite les recalculs de layout) */}
+      <div
+        className={`fixed inset-0 z-[100] pointer-events-none transition-opacity duration-150 ${
+          showHistoryPanel ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
+        style={{ visibility: showHistoryPanel ? "visible" : "hidden" }}
+      >
+        <div
+          className={`absolute right-0 top-[88px] bottom-0 w-56 flex flex-col transition-transform duration-150 ${
+            showHistoryPanel ? "translate-x-0 pointer-events-auto" : "translate-x-full"
+          }`}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-l rounded-tl-lg shadow-sm">
+            <div className="flex items-center gap-2">
+              <History className="h-4 w-4 text-gray-600" />
+              <span className="text-sm font-medium">Historique</span>
+              <span className="text-xs text-gray-400">({history.length})</span>
             </div>
+            <button
+              className="text-gray-500 hover:text-gray-700 p-1 hover:bg-gray-100 rounded"
+              onClick={() => setShowHistoryPanel(false)}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
 
-            {/* Liste - fond transparent */}
-            <div className="flex-1 overflow-y-auto border-l bg-transparent">
-              {history.length === 0 ? (
-                <p className="text-sm text-gray-400 italic p-3 bg-white/80">Aucun historique</p>
-              ) : (
-                <div className="space-y-1 p-1">
-                  {[...history].reverse().map((entry, reverseIdx) => {
-                    const idx = history.length - 1 - reverseIdx;
-                    const isActive = idx === historyIndex;
-                    const isPreviewing = idx === previewHistoryIndex;
-                    const isFuture = idx > historyIndex;
-                    const date = new Date(entry.timestamp);
-                    const timeStr = date.toLocaleTimeString("fr-FR", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      second: "2-digit",
-                    });
+          {/* Liste - fond transparent */}
+          <div className="flex-1 overflow-y-auto border-l bg-transparent">
+            {history.length === 0 ? (
+              <p className="text-sm text-gray-400 italic p-3 bg-white/80">Aucun historique</p>
+            ) : (
+              <div className="space-y-1 p-1">
+                {[...history].reverse().map((entry, reverseIdx) => {
+                  const idx = history.length - 1 - reverseIdx;
+                  const isActive = idx === historyIndex;
+                  const isPreviewing = idx === previewHistoryIndex;
+                  const isFuture = idx > historyIndex;
+                  const date = new Date(entry.timestamp);
+                  const timeStr = date.toLocaleTimeString("fr-FR", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  });
 
-                    return (
-                      <div
-                        key={idx}
-                        className={`
+                  return (
+                    <div
+                      key={idx}
+                      className={`
                           px-2 py-1.5 cursor-pointer transition-all text-xs rounded
                           ${
                             isActive
@@ -13781,69 +13792,66 @@ export function CADGabaritCanvas({
                                   : "bg-white/90 hover:bg-white hover:shadow-sm text-gray-700"
                           }
                         `}
-                        onClick={() => goToHistoryIndex(idx)}
-                        onMouseEnter={() => {
-                          if (idx !== historyIndex) {
-                            previewHistoryEntry(idx);
-                          }
-                        }}
-                        onMouseLeave={() => {
-                          if (previewHistoryIndex !== null) {
-                            previewHistoryEntry(null);
-                          }
-                        }}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className={`font-medium truncate ${isActive ? "text-white" : ""}`}>
-                            {entry.description}
-                          </span>
-                          <span className={`text-[10px] ml-1 ${isActive ? "text-blue-100" : "text-gray-400"}`}>
-                            #{idx + 1}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <Clock className={`h-2.5 w-2.5 ${isActive ? "text-blue-200" : "text-gray-400"}`} />
-                          <span className={`text-[10px] ${isActive ? "text-blue-100" : "text-gray-400"}`}>
-                            {timeStr}
-                          </span>
-                          {isActive && <span className="text-[10px] text-blue-100">● actuel</span>}
-                          {isPreviewing && <span className="text-[10px] text-gray-900">● aperçu</span>}
-
-                          {/* Bouton Repartir d'ici - toujours visible sauf sur la dernière entrée */}
-                          {idx < history.length - 1 && (
-                            <button
-                              className={`ml-auto p-0.5 rounded transition-colors ${
-                                isActive
-                                  ? "text-blue-200 hover:text-white hover:bg-blue-600"
-                                  : isPreviewing
-                                    ? "text-yellow-700 hover:text-red-700 hover:bg-yellow-300"
-                                    : "text-gray-400 hover:text-red-600 hover:bg-red-100"
-                              }`}
-                              title="Repartir d'ici (supprimer l'historique suivant)"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                branchFromHistoryIndex(idx);
-                              }}
-                            >
-                              <Scissors className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
+                      onClick={() => goToHistoryIndex(idx)}
+                      onMouseEnter={() => {
+                        if (idx !== historyIndex) {
+                          previewHistoryEntry(idx);
+                        }
+                      }}
+                      onMouseLeave={() => {
+                        if (previewHistoryIndex !== null) {
+                          previewHistoryEntry(null);
+                        }
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={`font-medium truncate ${isActive ? "text-white" : ""}`}>
+                          {entry.description}
+                        </span>
+                        <span className={`text-[10px] ml-1 ${isActive ? "text-blue-100" : "text-gray-400"}`}>
+                          #{idx + 1}
+                        </span>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <Clock className={`h-2.5 w-2.5 ${isActive ? "text-blue-200" : "text-gray-400"}`} />
+                        <span className={`text-[10px] ${isActive ? "text-blue-100" : "text-gray-400"}`}>{timeStr}</span>
+                        {isActive && <span className="text-[10px] text-blue-100">● actuel</span>}
+                        {isPreviewing && <span className="text-[10px] text-gray-900">● aperçu</span>}
 
-            {/* Footer légende */}
-            <div className="px-2 py-1.5 bg-white border-l border-t rounded-bl-lg text-[10px] text-gray-500 flex flex-col gap-0.5">
-              <span>👆 Survoler = aperçu | Cliquer = revenir</span>
-              <span>✂️ = Repartir d'ici (supprimer le reste)</span>
-            </div>
+                        {/* Bouton Repartir d'ici - toujours visible sauf sur la dernière entrée */}
+                        {idx < history.length - 1 && (
+                          <button
+                            className={`ml-auto p-0.5 rounded transition-colors ${
+                              isActive
+                                ? "text-blue-200 hover:text-white hover:bg-blue-600"
+                                : isPreviewing
+                                  ? "text-yellow-700 hover:text-red-700 hover:bg-yellow-300"
+                                  : "text-gray-400 hover:text-red-600 hover:bg-red-100"
+                            }`}
+                            title="Repartir d'ici (supprimer l'historique suivant)"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              branchFromHistoryIndex(idx);
+                            }}
+                          >
+                            <Scissors className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Footer légende */}
+          <div className="px-2 py-1.5 bg-white border-l border-t rounded-bl-lg text-[10px] text-gray-500 flex flex-col gap-0.5">
+            <span>👆 Survoler = aperçu | Cliquer = revenir</span>
+            <span>✂️ = Repartir d'ici (supprimer le reste)</span>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
