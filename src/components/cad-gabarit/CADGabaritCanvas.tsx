@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.40 - Fix sidebar historique isolée (pas de décalage toolbar)
+// VERSION: 6.41 - Bouton ciseaux toujours visible dans l'historique
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -13806,13 +13806,19 @@ export function CADGabaritCanvas({
                           <span className={`text-[10px] ${isActive ? "text-blue-100" : "text-gray-400"}`}>
                             {timeStr}
                           </span>
-                          {isActive && <span className="text-[10px] ml-auto">● actuel</span>}
-                          {isPreviewing && <span className="text-[10px] ml-auto text-gray-900">● aperçu</span>}
+                          {isActive && <span className="text-[10px] text-blue-100">● actuel</span>}
+                          {isPreviewing && <span className="text-[10px] text-gray-900">● aperçu</span>}
 
-                          {/* Bouton Repartir d'ici - visible seulement si pas le dernier */}
-                          {idx < history.length - 1 && !isActive && !isPreviewing && (
+                          {/* Bouton Repartir d'ici - toujours visible sauf sur la dernière entrée */}
+                          {idx < history.length - 1 && (
                             <button
-                              className="ml-auto p-0.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-600 transition-colors"
+                              className={`ml-auto p-0.5 rounded transition-colors ${
+                                isActive
+                                  ? "text-blue-200 hover:text-white hover:bg-blue-600"
+                                  : isPreviewing
+                                    ? "text-yellow-700 hover:text-red-700 hover:bg-yellow-300"
+                                    : "text-gray-400 hover:text-red-600 hover:bg-red-100"
+                              }`}
                               title="Repartir d'ici (supprimer l'historique suivant)"
                               onClick={(e) => {
                                 e.stopPropagation();
