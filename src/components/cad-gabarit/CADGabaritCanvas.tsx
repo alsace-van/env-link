@@ -790,6 +790,15 @@ export function CADGabaritCanvas({
       return [];
     }
 
+    console.log(
+      "[DEBUG] comparisonBranchesData - comparisonMode:",
+      comparisonMode,
+      "comparisonStyle:",
+      comparisonStyle,
+      "branches:",
+      branches.length,
+    );
+
     const result: Array<{
       branchId: string;
       branchName: string;
@@ -799,15 +808,36 @@ export function CADGabaritCanvas({
 
     branches.forEach((branch) => {
       // Ne pas inclure la branche active (elle est dessinée normalement)
-      if (branch.id === activeBranchId) return;
+      if (branch.id === activeBranchId) {
+        console.log("[DEBUG] Skip branche active:", branch.name);
+        return;
+      }
       // Ne pas inclure les branches non visibles
-      if (!visibleBranches.has(branch.id)) return;
+      if (!visibleBranches.has(branch.id)) {
+        console.log("[DEBUG] Skip branche non visible:", branch.name, "visibleBranches:", Array.from(visibleBranches));
+        return;
+      }
 
       // Charger le sketch de l'état actuel de la branche
       const entry = branch.history[branch.historyIndex];
+      console.log(
+        "[DEBUG] Branche",
+        branch.name,
+        "entry:",
+        entry ? "ok" : "null",
+        "historyIndex:",
+        branch.historyIndex,
+      );
       if (entry) {
         try {
+          console.log("[DEBUG] entry.sketch:", entry.sketch);
           const branchSketch = deserializeSketch(entry.sketch);
+          console.log(
+            "[DEBUG] branchSketch points:",
+            branchSketch.points.size,
+            "geometries:",
+            branchSketch.geometries.size,
+          );
           result.push({
             branchId: branch.id,
             branchName: branch.name,
@@ -820,8 +850,9 @@ export function CADGabaritCanvas({
       }
     });
 
+    console.log("[DEBUG] comparisonBranchesData result:", result.length);
     return result;
-  }, [comparisonMode, visibleBranches, branches, activeBranchId]);
+  }, [comparisonMode, comparisonStyle, visibleBranches, branches, activeBranchId]);
 
   // Couleur de la branche active pour le rendu
   const activeBranchColor = useMemo(() => {

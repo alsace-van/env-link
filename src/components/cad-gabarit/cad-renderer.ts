@@ -258,9 +258,19 @@ export class CADRenderer {
     this.drawClosedShapes(sketch, highlightOpacity, mouseWorldPos);
 
     // 2.6 Branches de comparaison (avant la branche active pour qu'elle soit au-dessus)
+    console.log(
+      "[Renderer DEBUG] comparisonMode:",
+      comparisonMode,
+      "comparisonStyle:",
+      comparisonStyle,
+      "comparisonBranches:",
+      comparisonBranches.length,
+    );
     if (comparisonMode && comparisonStyle === "overlay" && comparisonBranches.length > 0) {
+      console.log("[Renderer] Dessin overlay de", comparisonBranches.length, "branche(s)");
       const opacity = comparisonOpacity / 100;
       comparisonBranches.forEach((branch) => {
+        console.log("[Renderer] Dessin branche:", branch.branchName, "geos:", branch.sketch.geometries.size);
         this.drawComparisonBranch(branch.sketch, branch.color, opacity, branch.branchName);
       });
     }
