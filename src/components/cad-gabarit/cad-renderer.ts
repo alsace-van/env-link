@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.48 - Fix Arc dans drawGhostGeometries (startPoint/endPoint)
+// VERSION: 3.49 - Rectangle mode centre avec croix au centre
 // ============================================
 
 import {
@@ -1998,14 +1998,60 @@ export class CADRenderer {
     } else if (temp.type === "rectangle" && temp.p1) {
       const p1 = temp.p1;
       const p2 = temp.cursor || temp.p2;
+      const isCenter = temp.mode === "center";
+
       if (p2) {
+        let rectX: number, rectY: number, rectW: number, rectH: number;
+        let widthPx: number, heightPx: number;
+
+        if (isCenter) {
+          // Mode centre: p1 est le centre
+          const halfW = Math.abs(p2.x - p1.x);
+          const halfH = Math.abs(p2.y - p1.y);
+          widthPx = halfW * 2;
+          heightPx = halfH * 2;
+          rectX = p1.x - halfW;
+          rectY = p1.y - halfH;
+          rectW = widthPx;
+          rectH = heightPx;
+
+          // Dessiner une croix au centre
+          this.ctx.save();
+          this.ctx.strokeStyle = "#10B981"; // Vert
+          this.ctx.lineWidth = 1.5 / this.viewport.scale;
+          this.ctx.setLineDash([]);
+          const crossSize = 8 / this.viewport.scale;
+          this.ctx.beginPath();
+          this.ctx.moveTo(p1.x - crossSize, p1.y);
+          this.ctx.lineTo(p1.x + crossSize, p1.y);
+          this.ctx.moveTo(p1.x, p1.y - crossSize);
+          this.ctx.lineTo(p1.x, p1.y + crossSize);
+          this.ctx.stroke();
+          // Petit cercle au centre
+          this.ctx.beginPath();
+          this.ctx.arc(p1.x, p1.y, 3 / this.viewport.scale, 0, Math.PI * 2);
+          this.ctx.fillStyle = "#10B981";
+          this.ctx.fill();
+          this.ctx.restore();
+        } else {
+          // Mode coin: p1 est un coin
+          widthPx = Math.abs(p2.x - p1.x);
+          heightPx = Math.abs(p2.y - p1.y);
+          rectX = p1.x;
+          rectY = p1.y;
+          rectW = p2.x - p1.x;
+          rectH = p2.y - p1.y;
+        }
+
+        // Dessiner le rectangle
         this.ctx.beginPath();
-        this.ctx.rect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
+        if (isCenter) {
+          this.ctx.rect(rectX, rectY, rectW, rectH);
+        } else {
+          this.ctx.rect(p1.x, p1.y, p2.x - p1.x, p2.y - p1.y);
+        }
         this.ctx.stroke();
 
-        // Afficher largeur et hauteur en mm
-        const widthPx = Math.abs(p2.x - p1.x);
-        const heightPx = Math.abs(p2.y - p1.y);
         const widthMm = widthPx / scaleFactor;
         const heightMm = heightPx / scaleFactor;
 
@@ -2014,10 +2060,14 @@ export class CADRenderer {
         this.ctx.fillStyle = "#3B82F6";
         this.ctx.font = `bold ${fontSize}px Arial`;
 
-        // Largeur (en haut ou en bas)
-        const midX = (p1.x + p2.x) / 2;
-        const topY = Math.min(p1.y, p2.y);
-        const bottomY = Math.max(p1.y, p2.y);
+        // Calculer les positions pour les labels
+        const topY = isCenter ? p1.y - Math.abs(p2.y - p1.y) : Math.min(p1.y, p2.y);
+        const leftX = isCenter ? p1.x - Math.abs(p2.x - p1.x) : Math.min(p1.x, p2.x);
+        const rightX = isCenter ? p1.x + Math.abs(p2.x - p1.x) : Math.max(p1.x, p2.x);
+        const bottomY = isCenter ? p1.y + Math.abs(p2.y - p1.y) : Math.max(p1.y, p2.y);
+
+        // Largeur (en haut)
+        const midX = (leftX + rightX) / 2;
         const widthText = `${widthMm.toFixed(1)} mm`;
         const widthTextWidth = this.ctx.measureText(widthText).width;
 
@@ -2035,9 +2085,8 @@ export class CADRenderer {
         this.ctx.fillStyle = "#3B82F6";
         this.ctx.fillText(widthText, midX, topY - 5 / this.viewport.scale);
 
-        // Hauteur (à gauche ou à droite)
-        const leftX = Math.min(p1.x, p2.x);
-        const midY = (p1.y + p2.y) / 2;
+        // Hauteur (à gauche)
+        const midY = (topY + bottomY) / 2;
         const heightText = `${heightMm.toFixed(1)} mm`;
         const heightTextWidth = this.ctx.measureText(heightText).width;
 

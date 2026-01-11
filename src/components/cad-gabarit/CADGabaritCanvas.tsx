@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.29 - Précision au dixième de mm pour les dimensions rectangle
+// VERSION: 6.30 - Rectangle mode centre avec dropdown
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -196,6 +196,7 @@ export function CADGabaritCanvas({
   });
 
   const [activeTool, setActiveTool] = useState<ToolType>("select");
+  const [rectangleMode, setRectangleMode] = useState<"corner" | "center">("corner");
   const [selectedEntities, setSelectedEntities] = useState<Set<string>>(new Set());
   const [hoveredEntity, setHoveredEntity] = useState<string | null>(null);
   const [currentSnapPoint, setCurrentSnapPoint] = useState<SnapPoint | null>(null);
@@ -5719,6 +5720,7 @@ export function CADGabaritCanvas({
 
     const p1 = tempPoints[0];
     const currentSketch = sketchRef.current;
+    const isCenter = tempGeometry.mode === "center";
 
     // Déterminer les dimensions
     let width: number;
@@ -5731,7 +5733,12 @@ export function CADGabaritCanvas({
     if (!isNaN(inputWidth) && inputWidth > 0) {
       width = inputWidth * currentSketch.scaleFactor; // Convertir mm en px
     } else if (tempGeometry.cursor) {
-      width = Math.abs(tempGeometry.cursor.x - p1.x);
+      if (isCenter) {
+        // Mode centre: width = 2 * distance horizontale au curseur
+        width = Math.abs(tempGeometry.cursor.x - p1.x) * 2;
+      } else {
+        width = Math.abs(tempGeometry.cursor.x - p1.x);
+      }
     } else {
       return; // Pas de dimension valide
     }
@@ -5739,24 +5746,54 @@ export function CADGabaritCanvas({
     if (!isNaN(inputHeight) && inputHeight > 0) {
       height = inputHeight * currentSketch.scaleFactor; // Convertir mm en px
     } else if (tempGeometry.cursor) {
-      height = Math.abs(tempGeometry.cursor.y - p1.y);
+      if (isCenter) {
+        // Mode centre: height = 2 * distance verticale au curseur
+        height = Math.abs(tempGeometry.cursor.y - p1.y) * 2;
+      } else {
+        height = Math.abs(tempGeometry.cursor.y - p1.y);
+      }
     } else {
       return; // Pas de dimension valide
     }
 
-    // Déterminer la direction (basée sur le curseur ou par défaut vers le bas-droite)
-    let dirX = 1;
-    let dirY = 1;
-    if (tempGeometry.cursor) {
-      dirX = tempGeometry.cursor.x >= p1.x ? 1 : -1;
-      dirY = tempGeometry.cursor.y >= p1.y ? 1 : -1;
-    }
+    // Calculer les 4 coins selon le mode
+    let corner1: Point, corner2: Point, corner3: Point, corner4: Point;
 
-    // Calculer les 4 coins
-    const p3 = { x: p1.x + width * dirX, y: p1.y + height * dirY };
-    const p2: Point = { id: generateId(), x: p3.x, y: p1.y };
-    const p4: Point = { id: generateId(), x: p1.x, y: p3.y };
-    const p3Pt: Point = { id: generateId(), x: p3.x, y: p3.y };
+    if (isCenter) {
+      // Mode centre: p1 est le centre du rectangle
+      const halfW = width / 2;
+      const halfH = height / 2;
+
+      // Déterminer la direction (basée sur le curseur)
+      let dirX = 1;
+      let dirY = 1;
+      if (tempGeometry.cursor) {
+        dirX = tempGeometry.cursor.x >= p1.x ? 1 : -1;
+        dirY = tempGeometry.cursor.y >= p1.y ? 1 : -1;
+      }
+
+      // Coins dans l'ordre: haut-gauche, haut-droite, bas-droite, bas-gauche
+      corner1 = { id: generateId(), x: p1.x - halfW, y: p1.y - halfH };
+      corner2 = { id: generateId(), x: p1.x + halfW, y: p1.y - halfH };
+      corner3 = { id: generateId(), x: p1.x + halfW, y: p1.y + halfH };
+      corner4 = { id: generateId(), x: p1.x - halfW, y: p1.y + halfH };
+    } else {
+      // Mode coin: p1 est un coin
+      // Déterminer la direction (basée sur le curseur ou par défaut vers le bas-droite)
+      let dirX = 1;
+      let dirY = 1;
+      if (tempGeometry.cursor) {
+        dirX = tempGeometry.cursor.x >= p1.x ? 1 : -1;
+        dirY = tempGeometry.cursor.y >= p1.y ? 1 : -1;
+      }
+
+      // Calculer les 4 coins
+      const p3 = { x: p1.x + width * dirX, y: p1.y + height * dirY };
+      corner1 = p1;
+      corner2 = { id: generateId(), x: p3.x, y: p1.y };
+      corner3 = { id: generateId(), x: p3.x, y: p3.y };
+      corner4 = { id: generateId(), x: p1.x, y: p3.y };
+    }
 
     // Créer le sketch
     const newSketch = { ...currentSketch };
@@ -5764,17 +5801,17 @@ export function CADGabaritCanvas({
     newSketch.geometries = new Map(currentSketch.geometries);
     newSketch.constraints = new Map(currentSketch.constraints);
 
-    newSketch.points.set(p1.id, p1);
-    newSketch.points.set(p2.id, p2);
-    newSketch.points.set(p3Pt.id, p3Pt);
-    newSketch.points.set(p4.id, p4);
+    newSketch.points.set(corner1.id, corner1);
+    newSketch.points.set(corner2.id, corner2);
+    newSketch.points.set(corner3.id, corner3);
+    newSketch.points.set(corner4.id, corner4);
 
     // Créer les 4 lignes avec le calque actif
     const lines = [
-      { id: generateId(), type: "line" as const, p1: p1.id, p2: p2.id, layerId: currentSketch.activeLayerId },
-      { id: generateId(), type: "line" as const, p1: p2.id, p2: p3Pt.id, layerId: currentSketch.activeLayerId },
-      { id: generateId(), type: "line" as const, p1: p3Pt.id, p2: p4.id, layerId: currentSketch.activeLayerId },
-      { id: generateId(), type: "line" as const, p1: p4.id, p2: p1.id, layerId: currentSketch.activeLayerId },
+      { id: generateId(), type: "line" as const, p1: corner1.id, p2: corner2.id, layerId: currentSketch.activeLayerId },
+      { id: generateId(), type: "line" as const, p1: corner2.id, p2: corner3.id, layerId: currentSketch.activeLayerId },
+      { id: generateId(), type: "line" as const, p1: corner3.id, p2: corner4.id, layerId: currentSketch.activeLayerId },
+      { id: generateId(), type: "line" as const, p1: corner4.id, p2: corner1.id, layerId: currentSketch.activeLayerId },
     ];
 
     lines.forEach((l) => newSketch.geometries.set(l.id, l));
@@ -5808,7 +5845,8 @@ export function CADGabaritCanvas({
 
     const wMm = width / currentSketch.scaleFactor;
     const hMm = height / currentSketch.scaleFactor;
-    toast.success(`Rectangle ${wMm.toFixed(1)} × ${hMm.toFixed(1)} mm`);
+    const modeLabel = isCenter ? " (centre)" : "";
+    toast.success(`Rectangle ${wMm.toFixed(1)} × ${hMm.toFixed(1)} mm${modeLabel}`);
   }, [tempPoints, tempGeometry, rectInputs, createIntersectionPoints, solveSketch, addToHistory]);
 
   // === Multi-photos: détection de clic sur une image ===
@@ -7224,7 +7262,8 @@ export function CADGabaritCanvas({
           if (tempPoints.length === 0) {
             const p1: Point = { id: generateId(), x: targetPos.x, y: targetPos.y };
             setTempPoints([p1]);
-            setTempGeometry({ type: "rectangle", p1 });
+            // Stocker le mode dans tempGeometry pour le rendu
+            setTempGeometry({ type: "rectangle", p1, mode: rectangleMode });
             // Initialiser les inputs avec valeurs vides
             setRectInputs({
               active: true,
@@ -8231,13 +8270,36 @@ export function CADGabaritCanvas({
         } else if (tempGeometry.type === "rectangle") {
           setPerpendicularInfo(null);
 
-          // Calculer les positions des inputs en coordonnées écran
+          // Point de référence (coin ou centre selon le mode)
           const p1 = tempGeometry.p1;
+          const isCenter = tempGeometry.mode === "center";
 
           // Calculer les dimensions réelles en mm avec précision au dixième
           const scaleFactor = sketch.scaleFactor || 1; // px/mm
-          const widthPx = Math.abs(targetPos.x - p1.x);
-          const heightPx = Math.abs(targetPos.y - p1.y);
+
+          let widthPx: number, heightPx: number;
+          let rectLeft: number, rectRight: number, rectTop: number, rectBottom: number;
+
+          if (isCenter) {
+            // Mode centre: p1 est le centre, dimensions = 2x distance au curseur
+            const halfWidth = Math.abs(targetPos.x - p1.x);
+            const halfHeight = Math.abs(targetPos.y - p1.y);
+            widthPx = halfWidth * 2;
+            heightPx = halfHeight * 2;
+            rectLeft = p1.x - halfWidth;
+            rectRight = p1.x + halfWidth;
+            rectTop = p1.y - halfHeight;
+            rectBottom = p1.y + halfHeight;
+          } else {
+            // Mode coin: p1 est un coin
+            widthPx = Math.abs(targetPos.x - p1.x);
+            heightPx = Math.abs(targetPos.y - p1.y);
+            rectLeft = Math.min(p1.x, targetPos.x);
+            rectRight = Math.max(p1.x, targetPos.x);
+            rectTop = Math.min(p1.y, targetPos.y);
+            rectBottom = Math.max(p1.y, targetPos.y);
+          }
+
           const widthMm = widthPx / scaleFactor;
           const heightMm = heightPx / scaleFactor;
 
@@ -8245,18 +8307,16 @@ export function CADGabaritCanvas({
           const rect = canvasRef.current?.getBoundingClientRect();
           if (rect) {
             // Position du milieu du côté supérieur (pour largeur)
-            const midTopX = (p1.x + targetPos.x) / 2;
-            const topY = Math.min(p1.y, targetPos.y);
+            const midTopX = (rectLeft + rectRight) / 2;
             const widthScreenPos = {
               x: midTopX * viewport.scale + viewport.offsetX,
-              y: topY * viewport.scale + viewport.offsetY - 35,
+              y: rectTop * viewport.scale + viewport.offsetY - 35,
             };
 
             // Position du milieu du côté gauche (pour hauteur)
-            const leftX = Math.min(p1.x, targetPos.x);
-            const midLeftY = (p1.y + targetPos.y) / 2;
+            const midLeftY = (rectTop + rectBottom) / 2;
             const heightScreenPos = {
-              x: leftX * viewport.scale + viewport.offsetX - 75,
+              x: rectLeft * viewport.scale + viewport.offsetX - 75,
               y: midLeftY * viewport.scale + viewport.offsetY - 12,
             };
 
@@ -10137,7 +10197,57 @@ export function CADGabaritCanvas({
           <ToolButton tool="line" icon={Minus} label="Ligne" shortcut="L" />
           <ToolButton tool="circle" icon={Circle} label="Cercle" shortcut="C" />
           <ToolButton tool="arc3points" icon={CircleDot} label="Arc 3 points" shortcut="A" />
-          <ToolButton tool="rectangle" icon={Square} label="Rectangle" shortcut="R" />
+
+          {/* Rectangle avec dropdown pour le mode */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant={activeTool === "rectangle" ? "default" : "outline"}
+                size="sm"
+                className="h-9 w-9 p-0 relative"
+              >
+                <Square className="h-4 w-4" />
+                {rectangleMode === "center" && (
+                  <div className="absolute bottom-0.5 right-0.5 w-1.5 h-1.5 bg-green-500 rounded-full" />
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuItem
+                onClick={() => {
+                  setRectangleMode("corner");
+                  setActiveTool("rectangle");
+                  setTempPoints([]);
+                  setTempGeometry(null);
+                  setMarkerMode("idle");
+                }}
+                className="flex items-center gap-2"
+              >
+                <Square className="h-4 w-4" />
+                <span>Depuis le coin</span>
+                {rectangleMode === "corner" && <Check className="h-4 w-4 ml-auto text-green-600" />}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  setRectangleMode("center");
+                  setActiveTool("rectangle");
+                  setTempPoints([]);
+                  setTempGeometry(null);
+                  setMarkerMode("idle");
+                }}
+                className="flex items-center gap-2"
+              >
+                {/* Icône rectangle avec point au centre */}
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="5" width="18" height="14" rx="1" />
+                  <circle cx="12" cy="12" r="2" fill="currentColor" />
+                </svg>
+                <span>Depuis le centre</span>
+                {rectangleMode === "center" && <Check className="h-4 w-4 ml-auto text-green-600" />}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <ToolButton tool="bezier" icon={Spline} label="Courbe Bézier" shortcut="B" />
         </div>
 
