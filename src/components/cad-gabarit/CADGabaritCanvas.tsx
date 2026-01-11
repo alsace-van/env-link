@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.27 - Fix Échap + fantôme en pointillé pendant le drag
+// VERSION: 6.28 - Dimensions rectangle temps réel dans les inputs L/H
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -8234,6 +8234,13 @@ export function CADGabaritCanvas({
           // Calculer les positions des inputs en coordonnées écran (mais ne pas modifier les valeurs)
           const p1 = tempGeometry.p1;
 
+          // Calculer les dimensions réelles en mm
+          const scaleFactor = sketch.scaleFactor || 1; // px/mm
+          const widthPx = Math.abs(targetPos.x - p1.x);
+          const heightPx = Math.abs(targetPos.y - p1.y);
+          const widthMm = widthPx / scaleFactor;
+          const heightMm = heightPx / scaleFactor;
+
           // Calculer les positions des inputs en coordonnées écran
           const rect = canvasRef.current?.getBoundingClientRect();
           if (rect) {
@@ -8258,6 +8265,9 @@ export function CADGabaritCanvas({
               active: true,
               widthInputPos: widthScreenPos,
               heightInputPos: heightScreenPos,
+              // Mettre à jour les valeurs en temps réel (arrondi à 1 décimale)
+              widthValue: widthMm > 0.1 ? widthMm.toFixed(1) : "",
+              heightValue: heightMm > 0.1 ? heightMm.toFixed(1) : "",
             }));
           }
 
