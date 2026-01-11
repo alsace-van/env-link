@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.33 - Affichage angle interne quand 2 segments sélectionnés
+// VERSION: 6.34 - Fix Échap et clic droit pour annuler gizmo transformation
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -9291,22 +9291,27 @@ export function CADGabaritCanvas({
     const handleKeyDown = (e: KeyboardEvent) => {
       // Echap - annuler l'action en cours
       if (e.key === "Escape") {
-        // Annuler le drag du gizmo en premier (utiliser ref pour éviter stale closure)
-        if (gizmoDragRef.current) {
-          // Restaurer les positions initiales directement ici
-          const dragData = gizmoDragRef.current;
+        // Annuler le drag du gizmo en premier
+        if (gizmoDrag) {
+          // Restaurer les positions initiales
           setSketch((prev) => {
             const newSketch = { ...prev };
             newSketch.points = new Map(prev.points);
 
-            for (const [pointId, initialPos] of dragData.initialPositions) {
+            for (const [pointId, initialPos] of gizmoDrag.initialPositions) {
               newSketch.points.set(pointId, { id: pointId, x: initialPos.x, y: initialPos.y });
             }
 
             return newSketch;
           });
           setGizmoDrag(null);
-          toast.info("Déplacement annulé");
+          setShowTransformGizmo(false); // Désactiver le gizmo aussi
+          toast.info("Transformation annulée");
+          return;
+        }
+        // Si gizmo affiché mais pas en train de drag, le désactiver
+        if (showTransformGizmo) {
+          setShowTransformGizmo(false);
           return;
         }
         if (isFullscreen) {
@@ -9489,7 +9494,8 @@ export function CADGabaritCanvas({
     redo,
     fitToContent,
     showTransformGizmo,
-    // Note: gizmoDragRef utilisé directement pour éviter stale closure
+    gizmoDrag, // Ajouté pour s'assurer que handleKeyDown est à jour
+    // Note: gizmoDragRef utilisé aussi pour éviter stale closure
   ]);
 
   // === FONCTIONS DE CALIBRATION ===
@@ -11106,6 +11112,32 @@ export function CADGabaritCanvas({
               onDoubleClick={handleDoubleClick}
               onContextMenu={(e) => {
                 e.preventDefault();
+
+                // === PRIORITÉ 1: Annuler le drag du gizmo en cours ===
+                if (gizmoDrag) {
+                  // Restaurer les positions initiales
+                  setSketch((prev) => {
+                    const newSketch = { ...prev };
+                    newSketch.points = new Map(prev.points);
+
+                    for (const [pointId, initialPos] of gizmoDrag.initialPositions) {
+                      newSketch.points.set(pointId, { id: pointId, x: initialPos.x, y: initialPos.y });
+                    }
+
+                    return newSketch;
+                  });
+                  setGizmoDrag(null);
+                  setShowTransformGizmo(false);
+                  toast.info("Transformation annulée");
+                  return;
+                }
+
+                // === PRIORITÉ 2: Désactiver le gizmo si affiché ===
+                if (showTransformGizmo) {
+                  setShowTransformGizmo(false);
+                  return;
+                }
+
                 const rect = canvasRef.current?.getBoundingClientRect();
                 if (!rect) return;
 
