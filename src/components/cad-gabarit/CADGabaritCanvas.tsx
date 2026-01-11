@@ -9408,20 +9408,6 @@ export function CADGabaritCanvas({
     [branches, loadSketchData],
   );
 
-  // Renommer une branche
-  const renameBranch = useCallback(
-    (branchId: string, newName: string) => {
-      const branchIndex = branches.findIndex((b) => b.id === branchId);
-      if (branchIndex === -1) return;
-
-      const newBranches = [...branches];
-      newBranches[branchIndex] = { ...newBranches[branchIndex], name: newName };
-      setBranches(newBranches);
-      branchesRef.current = { ...branchesRef.current, branches: newBranches };
-    },
-    [branches],
-  );
-
   // Supprimer une branche
   const deleteBranch = useCallback(
     (branchId: string) => {
