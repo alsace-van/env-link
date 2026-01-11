@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.53 - Debug mode reveal (logs détaillés)
+// VERSION: 3.54 - Fix mode reveal (gestion contexte canvas)
 // ============================================
 
 import {
@@ -258,16 +258,6 @@ export class CADRenderer {
     this.drawClosedShapes(sketch, highlightOpacity, mouseWorldPos);
 
     // 2.6 Branches de comparaison (avant la branche active pour qu'elle soit au-dessus)
-    console.log(
-      "[Renderer DEBUG] comparisonMode:",
-      comparisonMode,
-      "comparisonStyle:",
-      comparisonStyle,
-      "comparisonBranches:",
-      comparisonBranches.length,
-      "revealBranch:",
-      revealBranch ? revealBranch.branchName : "null",
-    );
     if (comparisonMode && comparisonStyle === "overlay" && comparisonBranches.length > 0) {
       console.log("[Renderer] Dessin overlay de", comparisonBranches.length, "branche(s)");
       const opacity = comparisonOpacity / 100;
@@ -472,65 +462,50 @@ export class CADRenderer {
     }
 
     // 7.5. Mode reveal (rideau avant/après)
-    // La branche active est déjà dessinée sur tout le canvas (sections 3-6)
-    // On va maintenant clipper la partie DROITE et redessiner la branche reveal par-dessus
-    console.log(
-      "[Renderer REVEAL CHECK] comparisonMode:",
-      comparisonMode,
-      "comparisonStyle:",
-      comparisonStyle,
-      "revealBranch:",
-      revealBranch ? "OK" : "NULL",
-    );
+    // IMPORTANT: Ce mode utilise un clipping pour diviser le canvas en deux zones
+    // Gauche = branche active (déjà dessinée), Droite = branche reveal
     if (comparisonMode && comparisonStyle === "reveal" && revealBranch) {
-      console.log(
-        "[Renderer REVEAL] Mode reveal actif, revealBranch:",
-        revealBranch.branchName,
-        "position:",
-        revealPosition,
-      );
-      console.log(
-        "[Renderer REVEAL] revealBranch.sketch geometries:",
-        revealBranch.sketch.geometries.size,
-        "points:",
-        revealBranch.sketch.points.size,
-      );
-
       // Calculer la position X du clipping en coordonnées écran
       const canvasWidth = this.viewport.width - rulerSize;
       const clipX = rulerSize + (canvasWidth * revealPosition) / 100;
-      console.log("[Renderer REVEAL] clipX:", clipX, "canvasWidth:", canvasWidth);
 
-      // Sauvegarder l'état actuel (avec viewport transform)
+      // ÉTAPE 1: Restaurer le contexte pour revenir aux coordonnées écran
+      this.ctx.restore();
+
+      // ÉTAPE 2: Sauvegarder l'état propre (sans transformation)
       this.ctx.save();
 
-      // Revenir aux coordonnées écran pour le clipping
-      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-      // Clip rectangle sur la partie droite du canvas
+      // ÉTAPE 3: Créer le clipping pour la zone DROITE uniquement
       this.ctx.beginPath();
       this.ctx.rect(clipX, rulerSize, this.viewport.width - clipX, this.viewport.height - rulerSize);
       this.ctx.clip();
 
-      // Dessiner un fond pour couvrir la branche active
+      // ÉTAPE 4: Effacer la zone droite avec le fond
       this.ctx.fillStyle = this.styles.backgroundColor;
       this.ctx.fillRect(clipX, rulerSize, this.viewport.width - clipX, this.viewport.height - rulerSize);
 
-      // Réappliquer la transformation du viewport
+      // ÉTAPE 5: Appliquer la transformation du viewport
       this.ctx.translate(this.viewport.offsetX, this.viewport.offsetY);
       this.ctx.scale(this.viewport.scale, this.viewport.scale);
 
-      // Redessiner la grille dans la zone reveal
+      // ÉTAPE 6: Redessiner la grille dans la zone reveal
       if (showGrid) {
         this.drawGrid(sketch.scaleFactor);
       }
 
-      // Dessiner les géométries de la branche reveal
-      console.log("[Renderer REVEAL] Appel drawRevealBranch");
+      // ÉTAPE 7: Dessiner les géométries de la branche reveal
       this.drawRevealBranch(revealBranch.sketch, revealBranch.color);
 
-      // Restaurer l'état (avec le clipping original)
+      // ÉTAPE 8: Restaurer le contexte (enlève le clipping)
       this.ctx.restore();
+
+      // ÉTAPE 9: Recréer le contexte pour le reste du rendu (poignées, etc.)
+      this.ctx.save();
+      this.ctx.beginPath();
+      this.ctx.rect(rulerSize, rulerSize, this.viewport.width - rulerSize, this.viewport.height - rulerSize);
+      this.ctx.clip();
+      this.ctx.translate(this.viewport.offsetX, this.viewport.offsetY);
+      this.ctx.scale(this.viewport.scale, this.viewport.scale);
     }
 
     // 8. Poignées des entités sélectionnées
@@ -3760,16 +3735,6 @@ export class CADRenderer {
    */
   private drawRevealBranch(branchSketch: Sketch, color: string): void {
     const lineWidth = 2 / this.viewport.scale;
-    let drawnCount = 0;
-
-    console.log(
-      "[drawRevealBranch] Début - geometries:",
-      branchSketch.geometries.size,
-      "points:",
-      branchSketch.points.size,
-      "color:",
-      color,
-    );
 
     // Dessiner toutes les géométries de la branche
     branchSketch.geometries.forEach((geo, geoId) => {
@@ -3783,7 +3748,6 @@ export class CADRenderer {
         const p1 = branchSketch.points.get(line.p1);
         const p2 = branchSketch.points.get(line.p2);
         if (p1 && p2) {
-          console.log("[drawRevealBranch] Dessin ligne", geoId, "de", p1.x, p1.y, "à", p2.x, p2.y);
           this.ctx.strokeStyle = color;
           this.ctx.lineWidth = lineWidth;
           this.ctx.setLineDash([]);
@@ -3791,9 +3755,6 @@ export class CADRenderer {
           this.ctx.moveTo(p1.x, p1.y);
           this.ctx.lineTo(p2.x, p2.y);
           this.ctx.stroke();
-          drawnCount++;
-        } else {
-          console.log("[drawRevealBranch] Points manquants pour ligne", geoId, "p1:", line.p1, "p2:", line.p2);
         }
       } else if (geo.type === "circle") {
         const circle = geo as Circle;
@@ -3805,7 +3766,6 @@ export class CADRenderer {
           this.ctx.beginPath();
           this.ctx.arc(center.x, center.y, circle.radius, 0, Math.PI * 2);
           this.ctx.stroke();
-          drawnCount++;
         }
       } else if (geo.type === "arc") {
         const arc = geo as Arc;
@@ -3822,7 +3782,6 @@ export class CADRenderer {
           this.ctx.beginPath();
           this.ctx.arc(center.x, center.y, arc.radius, startAngle, endAngle, arc.counterClockwise);
           this.ctx.stroke();
-          drawnCount++;
         }
       } else if (geo.type === "bezier") {
         const bezier = geo as Bezier;
@@ -3838,12 +3797,9 @@ export class CADRenderer {
           this.ctx.moveTo(p1.x, p1.y);
           this.ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, p2.x, p2.y);
           this.ctx.stroke();
-          drawnCount++;
         }
       }
     });
-
-    console.log("[drawRevealBranch] Fin - géométries dessinées:", drawnCount);
 
     // Dessiner les points de la branche (petits cercles)
     const pointRadius = 3 / this.viewport.scale;
