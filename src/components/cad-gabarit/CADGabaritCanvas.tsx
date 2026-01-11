@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.37 - Historique sidebar overlay transparent
+// VERSION: 6.38 - Désactiver snap grille pour tous les outils de tracé
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -8264,15 +8264,23 @@ export function CADGabaritCanvas({
         if (tempGeometry.type === "line" && tempPoints.length > 0) {
           const startPoint = tempPoints[0];
 
+          // IMPORTANT: Pour la ligne, NE PAS utiliser le snap grille (évite les sauts de 10mm)
+          // On garde le snap sur les points existants (endpoint, midpoint, etc.) mais pas la grille
+          let lineTargetPos = worldPos;
+          if (snapEnabled && currentSnapPoint && currentSnapPoint.type !== "grid") {
+            // Garder le snap sur les points existants (pas la grille)
+            lineTargetPos = { x: currentSnapPoint.x, y: currentSnapPoint.y };
+          }
+
           // Détecter la perpendicularité avec les segments existants
           let perpInfo: typeof perpendicularInfo = null;
           const perpTolerance = 1.5; // degrés de tolérance (plus précis)
           const perpSnapDistance = 8 / viewport.scale; // distance de snap en monde (plus proche)
 
-          // Direction de la ligne en cours
+          // Direction de la ligne en cours (utiliser lineTargetPos sans snap grille)
           const lineDir = {
-            x: targetPos.x - startPoint.x,
-            y: targetPos.y - startPoint.y,
+            x: lineTargetPos.x - startPoint.x,
+            y: lineTargetPos.y - startPoint.y,
           };
           const lineLen = Math.sqrt(lineDir.x * lineDir.x + lineDir.y * lineDir.y);
 
@@ -8337,7 +8345,7 @@ export function CADGabaritCanvas({
 
                     // Distance entre curseur et position snappée
                     const snapDist = Math.sqrt(
-                      (targetPos.x - snappedCursor.x) ** 2 + (targetPos.y - snappedCursor.y) ** 2,
+                      (lineTargetPos.x - snappedCursor.x) ** 2 + (lineTargetPos.y - snappedCursor.y) ** 2,
                     );
 
                     // Si assez proche, activer le snap
@@ -8350,7 +8358,7 @@ export function CADGabaritCanvas({
                       };
 
                       // Appliquer le snap perpendiculaire
-                      targetPos = snappedCursor;
+                      lineTargetPos = snappedCursor;
                     }
                   }
                 }
@@ -8362,11 +8370,16 @@ export function CADGabaritCanvas({
 
           setTempGeometry({
             ...tempGeometry,
-            cursor: targetPos,
+            cursor: lineTargetPos,
           });
         } else if (tempGeometry.type === "circle" && tempPoints.length > 0) {
           setPerpendicularInfo(null);
-          const radius = distance(tempPoints[0], targetPos);
+          // IMPORTANT: Pour le cercle, NE PAS utiliser le snap grille (évite les sauts de 10mm)
+          let circleTargetPos = worldPos;
+          if (snapEnabled && currentSnapPoint && currentSnapPoint.type !== "grid") {
+            circleTargetPos = { x: currentSnapPoint.x, y: currentSnapPoint.y };
+          }
+          const radius = distance(tempPoints[0], circleTargetPos);
           setTempGeometry({
             ...tempGeometry,
             radius,
@@ -8398,15 +8411,25 @@ export function CADGabaritCanvas({
           setRectInputs((prev) => (prev.active ? prev : { ...prev, active: true }));
         } else if (tempGeometry.type === "bezier") {
           setPerpendicularInfo(null);
+          // IMPORTANT: Pour Bézier, NE PAS utiliser le snap grille
+          let bezierTargetPos = worldPos;
+          if (snapEnabled && currentSnapPoint && currentSnapPoint.type !== "grid") {
+            bezierTargetPos = { x: currentSnapPoint.x, y: currentSnapPoint.y };
+          }
           setTempGeometry({
             ...tempGeometry,
-            cursor: targetPos,
+            cursor: bezierTargetPos,
           });
         } else if (tempGeometry.type === "arc3points") {
           setPerpendicularInfo(null);
+          // IMPORTANT: Pour arc 3 points, NE PAS utiliser le snap grille
+          let arc3TargetPos = worldPos;
+          if (snapEnabled && currentSnapPoint && currentSnapPoint.type !== "grid") {
+            arc3TargetPos = { x: currentSnapPoint.x, y: currentSnapPoint.y };
+          }
           setTempGeometry({
             ...tempGeometry,
-            cursor: targetPos,
+            cursor: arc3TargetPos,
           });
         } else if (tempGeometry.type === "mirrorAxis") {
           setPerpendicularInfo(null);
