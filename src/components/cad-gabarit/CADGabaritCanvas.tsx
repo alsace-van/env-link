@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.42 - Fix décalage toolbar (panneau CSS au lieu de conditionnel)
+// VERSION: 6.43 - Fix rectangle: dimensions finales = tracé provisoire
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -5807,140 +5807,170 @@ export function CADGabaritCanvas({
   );
 
   // Création du rectangle avec les dimensions saisies ou le curseur
-  const createRectangleFromInputs = useCallback(() => {
-    if (tempPoints.length === 0 || !tempGeometry?.p1) return;
+  const createRectangleFromInputs = useCallback(
+    (clickPos?: { x: number; y: number }) => {
+      if (tempPoints.length === 0 || !tempGeometry?.p1) return;
 
-    const p1 = tempPoints[0];
-    const currentSketch = sketchRef.current;
-    const isCenter = tempGeometry.mode === "center";
+      const p1 = tempPoints[0];
+      const currentSketch = sketchRef.current;
+      const isCenter = tempGeometry.mode === "center";
 
-    // Déterminer les dimensions
-    let width: number;
-    let height: number;
+      // Utiliser la position du clic si fournie, sinon le curseur stocké
+      const cursorPos = clickPos || tempGeometry.cursor;
 
-    // Si des valeurs sont saisies, les utiliser
-    const inputWidth = parseFloat(rectInputs.widthValue);
-    const inputHeight = parseFloat(rectInputs.heightValue);
+      // Déterminer les dimensions
+      let width: number;
+      let height: number;
 
-    if (!isNaN(inputWidth) && inputWidth > 0) {
-      width = inputWidth * currentSketch.scaleFactor; // Convertir mm en px
-    } else if (tempGeometry.cursor) {
-      if (isCenter) {
-        // Mode centre: width = 2 * distance horizontale au curseur
-        width = Math.abs(tempGeometry.cursor.x - p1.x) * 2;
+      // Si des valeurs sont saisies, les utiliser
+      const inputWidth = parseFloat(rectInputs.widthValue);
+      const inputHeight = parseFloat(rectInputs.heightValue);
+
+      if (!isNaN(inputWidth) && inputWidth > 0) {
+        width = inputWidth * currentSketch.scaleFactor; // Convertir mm en px
+      } else if (cursorPos) {
+        if (isCenter) {
+          // Mode centre: width = 2 * distance horizontale au curseur
+          width = Math.abs(cursorPos.x - p1.x) * 2;
+        } else {
+          width = Math.abs(cursorPos.x - p1.x);
+        }
       } else {
-        width = Math.abs(tempGeometry.cursor.x - p1.x);
+        return; // Pas de dimension valide
       }
-    } else {
-      return; // Pas de dimension valide
-    }
 
-    if (!isNaN(inputHeight) && inputHeight > 0) {
-      height = inputHeight * currentSketch.scaleFactor; // Convertir mm en px
-    } else if (tempGeometry.cursor) {
-      if (isCenter) {
-        // Mode centre: height = 2 * distance verticale au curseur
-        height = Math.abs(tempGeometry.cursor.y - p1.y) * 2;
+      if (!isNaN(inputHeight) && inputHeight > 0) {
+        height = inputHeight * currentSketch.scaleFactor; // Convertir mm en px
+      } else if (cursorPos) {
+        if (isCenter) {
+          // Mode centre: height = 2 * distance verticale au curseur
+          height = Math.abs(cursorPos.y - p1.y) * 2;
+        } else {
+          height = Math.abs(cursorPos.y - p1.y);
+        }
       } else {
-        height = Math.abs(tempGeometry.cursor.y - p1.y);
-      }
-    } else {
-      return; // Pas de dimension valide
-    }
-
-    // Calculer les 4 coins selon le mode
-    let corner1: Point, corner2: Point, corner3: Point, corner4: Point;
-
-    if (isCenter) {
-      // Mode centre: p1 est le centre du rectangle
-      const halfW = width / 2;
-      const halfH = height / 2;
-
-      // Déterminer la direction (basée sur le curseur)
-      let dirX = 1;
-      let dirY = 1;
-      if (tempGeometry.cursor) {
-        dirX = tempGeometry.cursor.x >= p1.x ? 1 : -1;
-        dirY = tempGeometry.cursor.y >= p1.y ? 1 : -1;
+        return; // Pas de dimension valide
       }
 
-      // Coins dans l'ordre: haut-gauche, haut-droite, bas-droite, bas-gauche
-      corner1 = { id: generateId(), x: p1.x - halfW, y: p1.y - halfH };
-      corner2 = { id: generateId(), x: p1.x + halfW, y: p1.y - halfH };
-      corner3 = { id: generateId(), x: p1.x + halfW, y: p1.y + halfH };
-      corner4 = { id: generateId(), x: p1.x - halfW, y: p1.y + halfH };
-    } else {
-      // Mode coin: p1 est un coin
-      // Déterminer la direction (basée sur le curseur ou par défaut vers le bas-droite)
-      let dirX = 1;
-      let dirY = 1;
-      if (tempGeometry.cursor) {
-        dirX = tempGeometry.cursor.x >= p1.x ? 1 : -1;
-        dirY = tempGeometry.cursor.y >= p1.y ? 1 : -1;
+      // Calculer les 4 coins selon le mode
+      let corner1: Point, corner2: Point, corner3: Point, corner4: Point;
+
+      if (isCenter) {
+        // Mode centre: p1 est le centre du rectangle
+        const halfW = width / 2;
+        const halfH = height / 2;
+
+        // Déterminer la direction (basée sur le curseur)
+        let dirX = 1;
+        let dirY = 1;
+        if (cursorPos) {
+          dirX = cursorPos.x >= p1.x ? 1 : -1;
+          dirY = cursorPos.y >= p1.y ? 1 : -1;
+        }
+
+        // Coins dans l'ordre: haut-gauche, haut-droite, bas-droite, bas-gauche
+        corner1 = { id: generateId(), x: p1.x - halfW, y: p1.y - halfH };
+        corner2 = { id: generateId(), x: p1.x + halfW, y: p1.y - halfH };
+        corner3 = { id: generateId(), x: p1.x + halfW, y: p1.y + halfH };
+        corner4 = { id: generateId(), x: p1.x - halfW, y: p1.y + halfH };
+      } else {
+        // Mode coin: p1 est un coin
+        // Déterminer la direction (basée sur le curseur ou par défaut vers le bas-droite)
+        let dirX = 1;
+        let dirY = 1;
+        if (cursorPos) {
+          dirX = cursorPos.x >= p1.x ? 1 : -1;
+          dirY = cursorPos.y >= p1.y ? 1 : -1;
+        }
+
+        // Calculer les 4 coins
+        const p3 = { x: p1.x + width * dirX, y: p1.y + height * dirY };
+        corner1 = p1;
+        corner2 = { id: generateId(), x: p3.x, y: p1.y };
+        corner3 = { id: generateId(), x: p3.x, y: p3.y };
+        corner4 = { id: generateId(), x: p1.x, y: p3.y };
       }
 
-      // Calculer les 4 coins
-      const p3 = { x: p1.x + width * dirX, y: p1.y + height * dirY };
-      corner1 = p1;
-      corner2 = { id: generateId(), x: p3.x, y: p1.y };
-      corner3 = { id: generateId(), x: p3.x, y: p3.y };
-      corner4 = { id: generateId(), x: p1.x, y: p3.y };
-    }
+      // Créer le sketch
+      const newSketch = { ...currentSketch };
+      newSketch.points = new Map(currentSketch.points);
+      newSketch.geometries = new Map(currentSketch.geometries);
+      newSketch.constraints = new Map(currentSketch.constraints);
 
-    // Créer le sketch
-    const newSketch = { ...currentSketch };
-    newSketch.points = new Map(currentSketch.points);
-    newSketch.geometries = new Map(currentSketch.geometries);
-    newSketch.constraints = new Map(currentSketch.constraints);
+      newSketch.points.set(corner1.id, corner1);
+      newSketch.points.set(corner2.id, corner2);
+      newSketch.points.set(corner3.id, corner3);
+      newSketch.points.set(corner4.id, corner4);
 
-    newSketch.points.set(corner1.id, corner1);
-    newSketch.points.set(corner2.id, corner2);
-    newSketch.points.set(corner3.id, corner3);
-    newSketch.points.set(corner4.id, corner4);
+      // Créer les 4 lignes avec le calque actif
+      const lines = [
+        {
+          id: generateId(),
+          type: "line" as const,
+          p1: corner1.id,
+          p2: corner2.id,
+          layerId: currentSketch.activeLayerId,
+        },
+        {
+          id: generateId(),
+          type: "line" as const,
+          p1: corner2.id,
+          p2: corner3.id,
+          layerId: currentSketch.activeLayerId,
+        },
+        {
+          id: generateId(),
+          type: "line" as const,
+          p1: corner3.id,
+          p2: corner4.id,
+          layerId: currentSketch.activeLayerId,
+        },
+        {
+          id: generateId(),
+          type: "line" as const,
+          p1: corner4.id,
+          p2: corner1.id,
+          layerId: currentSketch.activeLayerId,
+        },
+      ];
 
-    // Créer les 4 lignes avec le calque actif
-    const lines = [
-      { id: generateId(), type: "line" as const, p1: corner1.id, p2: corner2.id, layerId: currentSketch.activeLayerId },
-      { id: generateId(), type: "line" as const, p1: corner2.id, p2: corner3.id, layerId: currentSketch.activeLayerId },
-      { id: generateId(), type: "line" as const, p1: corner3.id, p2: corner4.id, layerId: currentSketch.activeLayerId },
-      { id: generateId(), type: "line" as const, p1: corner4.id, p2: corner1.id, layerId: currentSketch.activeLayerId },
-    ];
+      lines.forEach((l) => newSketch.geometries.set(l.id, l));
 
-    lines.forEach((l) => newSketch.geometries.set(l.id, l));
+      // Détecter et créer les points d'intersection
+      for (const line of lines) {
+        createIntersectionPoints(line.id, newSketch);
+      }
 
-    // Détecter et créer les points d'intersection
-    for (const line of lines) {
-      createIntersectionPoints(line.id, newSketch);
-    }
+      // Ajouter contraintes horizontales/verticales
+      newSketch.constraints.set(generateId(), { id: generateId(), type: "horizontal", entities: [lines[0].id] });
+      newSketch.constraints.set(generateId(), { id: generateId(), type: "horizontal", entities: [lines[2].id] });
+      newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[1].id] });
+      newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[3].id] });
 
-    // Ajouter contraintes horizontales/verticales
-    newSketch.constraints.set(generateId(), { id: generateId(), type: "horizontal", entities: [lines[0].id] });
-    newSketch.constraints.set(generateId(), { id: generateId(), type: "horizontal", entities: [lines[2].id] });
-    newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[1].id] });
-    newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[3].id] });
+      const wMm = width / currentSketch.scaleFactor;
+      const hMm = height / currentSketch.scaleFactor;
+      const modeLabel = isCenter ? " (centre)" : "";
 
-    const wMm = width / currentSketch.scaleFactor;
-    const hMm = height / currentSketch.scaleFactor;
-    const modeLabel = isCenter ? " (centre)" : "";
+      setSketch(newSketch);
+      solveSketch(newSketch);
+      addToHistory(newSketch, `Rectangle ${wMm.toFixed(1)}×${hMm.toFixed(1)}mm${modeLabel}`);
 
-    setSketch(newSketch);
-    solveSketch(newSketch);
-    addToHistory(newSketch, `Rectangle ${wMm.toFixed(1)}×${hMm.toFixed(1)}mm${modeLabel}`);
+      // Reset
+      setTempPoints([]);
+      setTempGeometry(null);
+      setRectInputs({
+        active: false,
+        widthValue: "",
+        heightValue: "",
+        activeField: "width",
+        widthInputPos: { x: 0, y: 0 },
+        heightInputPos: { x: 0, y: 0 },
+      });
 
-    // Reset
-    setTempPoints([]);
-    setTempGeometry(null);
-    setRectInputs({
-      active: false,
-      widthValue: "",
-      heightValue: "",
-      activeField: "width",
-      widthInputPos: { x: 0, y: 0 },
-      heightInputPos: { x: 0, y: 0 },
-    });
-
-    toast.success(`Rectangle ${wMm.toFixed(1)} × ${hMm.toFixed(1)} mm${modeLabel}`);
-  }, [tempPoints, tempGeometry, rectInputs, createIntersectionPoints, solveSketch, addToHistory]);
+      toast.success(`Rectangle ${wMm.toFixed(1)} × ${hMm.toFixed(1)} mm${modeLabel}`);
+    },
+    [tempPoints, tempGeometry, rectInputs, createIntersectionPoints, solveSketch, addToHistory],
+  );
 
   // === Multi-photos: détection de clic sur une image ===
   const findImageAtPosition = useCallback(
@@ -7379,8 +7409,9 @@ export function CADGabaritCanvas({
               heightInputPos: { x: 0, y: 0 },
             });
           } else {
-            // Créer le rectangle avec les dimensions (inputs ou curseur)
-            createRectangleFromInputs();
+            // Créer le rectangle avec les dimensions (inputs ou position du clic)
+            // IMPORTANT: Passer worldPos (sans snap grille) pour être cohérent avec le tracé
+            createRectangleFromInputs(worldPos);
           }
           break;
         }
