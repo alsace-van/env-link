@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.49 - Fix mode reveal (gestion contexte canvas)
+// VERSION: 6.50 - Fix sélection pendant drag rideau reveal
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -6690,6 +6690,9 @@ export function CADGabaritCanvas({
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
 
+      // Ignorer si on est en train de drag le rideau reveal
+      if (isDraggingReveal) return;
+
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
       const worldPos = screenToWorld(screenX, screenY);
@@ -8143,6 +8146,8 @@ export function CADGabaritCanvas({
       transformGizmo,
       gizmoDrag,
       startGizmoDrag,
+      // Mode reveal
+      isDraggingReveal,
     ],
   );
 
@@ -8150,6 +8155,9 @@ export function CADGabaritCanvas({
     (e: React.MouseEvent) => {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
+
+      // Ignorer si on est en train de drag le rideau reveal
+      if (isDraggingReveal) return;
 
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
@@ -8688,6 +8696,8 @@ export function CADGabaritCanvas({
       // Gizmo drag
       gizmoDrag,
       updateGizmoDrag,
+      // Mode reveal
+      isDraggingReveal,
     ],
   );
 
