@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.55 - Sidebar historique restaurée + Modales comparaison et vue d'ensemble
+// VERSION: 6.56 - Modale comparaison flottante légère draggable
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -474,6 +474,7 @@ export function CADGabaritCanvas({
   // Modales de gestion des branches
   const [showComparisonModal, setShowComparisonModal] = useState(false);
   const [showOverviewModal, setShowOverviewModal] = useState(false);
+  const [comparisonModalPos, setComparisonModalPos] = useState({ x: window.innerWidth - 320, y: 100 });
   const [renamingBranchId, setRenamingBranchId] = useState<string | null>(null);
   const [renamingValue, setRenamingValue] = useState("");
   const [mergeBranchIds, setMergeBranchIds] = useState<{ source: string | null; target: string | null }>({
@@ -14667,155 +14668,190 @@ export function CADGabaritCanvas({
       </div>
 
       {/* ============================================ */}
-      {/* MODALE PARAMÉTRAGE COMPARAISON */}
+      {/* MODALE FLOTTANTE PARAMÉTRAGE COMPARAISON */}
       {/* ============================================ */}
-      <Dialog open={showComparisonModal} onOpenChange={setShowComparisonModal}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {comparisonStyle === "overlay" ? (
-                <>
-                  <Layers className="h-5 w-5 text-blue-500" /> Mode Superposition
-                </>
-              ) : (
-                <>
-                  <SplitSquareVertical className="h-5 w-5 text-blue-500" /> Mode Rideau
-                </>
-              )}
-            </DialogTitle>
-          </DialogHeader>
+      {showComparisonModal && (
+        <>
+          {/* Modale flottante */}
+          <div
+            className="fixed z-[200] bg-white rounded-lg shadow-xl border"
+            style={{
+              left: comparisonModalPos.x,
+              top: comparisonModalPos.y,
+              width: 280,
+            }}
+          >
+            {/* Header draggable */}
+            <div
+              className="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-t-lg cursor-move select-none"
+              onMouseDown={(e) => {
+                if (e.button !== 0) return;
+                e.preventDefault();
+                const startX = e.clientX - comparisonModalPos.x;
+                const startY = e.clientY - comparisonModalPos.y;
 
-          <div className="space-y-4 py-2">
-            {/* Toggle mode */}
-            <div className="flex gap-2">
-              <Button
-                variant={comparisonStyle === "overlay" ? "default" : "outline"}
-                className="flex-1"
-                onClick={() => {
-                  setComparisonStyle("overlay");
-                  setVisibleBranches(new Set(branches.map((b) => b.id)));
-                }}
-              >
-                <Layers className="h-4 w-4 mr-2" />
-                Superposition
-              </Button>
-              <Button
-                variant={comparisonStyle === "reveal" ? "default" : "outline"}
-                className="flex-1"
-                onClick={() => {
-                  setComparisonStyle("reveal");
-                  const otherBranch = branches.find((b) => b.id !== activeBranchId);
-                  if (otherBranch) setRevealBranchId(otherBranch.id);
-                }}
-              >
-                <SplitSquareVertical className="h-4 w-4 mr-2" />
-                Rideau
-              </Button>
+                const handleMouseMove = (moveEvent: MouseEvent) => {
+                  setComparisonModalPos({
+                    x: Math.max(0, Math.min(moveEvent.clientX - startX, window.innerWidth - 280)),
+                    y: Math.max(0, Math.min(moveEvent.clientY - startY, window.innerHeight - 200)),
+                  });
+                };
+
+                const handleMouseUp = () => {
+                  document.removeEventListener("mousemove", handleMouseMove);
+                  document.removeEventListener("mouseup", handleMouseUp);
+                };
+
+                document.addEventListener("mousemove", handleMouseMove);
+                document.addEventListener("mouseup", handleMouseUp);
+              }}
+            >
+              <div className="flex items-center gap-2">
+                {comparisonStyle === "overlay" ? (
+                  <Layers className="h-4 w-4" />
+                ) : (
+                  <SplitSquareVertical className="h-4 w-4" />
+                )}
+                <span className="font-medium text-sm">
+                  {comparisonStyle === "overlay" ? "Superposition" : "Rideau"}
+                </span>
+              </div>
+              <button className="p-1 hover:bg-white/20 rounded" onClick={() => setShowComparisonModal(false)}>
+                <X className="h-4 w-4" />
+              </button>
             </div>
 
-            {/* Options Superposition */}
-            {comparisonStyle === "overlay" && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <Label className="text-sm w-16">Opacité</Label>
-                  <input
-                    type="range"
-                    min="10"
-                    max="100"
-                    value={comparisonOpacity}
-                    onChange={(e) => setComparisonOpacity(parseInt(e.target.value))}
-                    className="flex-1"
-                  />
-                  <span className="text-sm w-12 text-right">{comparisonOpacity}%</span>
-                </div>
+            {/* Contenu */}
+            <div className="p-3 space-y-3">
+              {/* Toggle mode */}
+              <div className="flex gap-1">
+                <button
+                  className={`flex-1 px-2 py-1.5 text-xs rounded flex items-center justify-center gap-1 ${
+                    comparisonStyle === "overlay" ? "bg-blue-500 text-white" : "bg-gray-100 hover:bg-gray-200"
+                  }`}
+                  onClick={() => {
+                    setComparisonStyle("overlay");
+                    setVisibleBranches(new Set(branches.map((b) => b.id)));
+                  }}
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                  Superpos.
+                </button>
+                <button
+                  className={`flex-1 px-2 py-1.5 text-xs rounded flex items-center justify-center gap-1 ${
+                    comparisonStyle === "reveal" ? "bg-blue-500 text-white" : "bg-gray-100 hover:bg-gray-200"
+                  }`}
+                  onClick={() => {
+                    setComparisonStyle("reveal");
+                    const otherBranch = branches.find((b) => b.id !== activeBranchId);
+                    if (otherBranch) setRevealBranchId(otherBranch.id);
+                  }}
+                >
+                  <SplitSquareVertical className="h-3.5 w-3.5" />
+                  Rideau
+                </button>
+              </div>
 
+              {/* Options Superposition */}
+              {comparisonStyle === "overlay" && (
                 <div className="space-y-2">
-                  <Label className="text-sm">Branches visibles</Label>
-                  <div className="border rounded p-2 space-y-1 max-h-32 overflow-y-auto">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 w-14">Opacité</span>
+                    <input
+                      type="range"
+                      min="10"
+                      max="100"
+                      value={comparisonOpacity}
+                      onChange={(e) => setComparisonOpacity(parseInt(e.target.value))}
+                      className="flex-1 h-1.5"
+                    />
+                    <span className="text-xs w-10 text-right">{comparisonOpacity}%</span>
+                  </div>
+
+                  <div className="border rounded p-2 space-y-1 max-h-32 overflow-y-auto bg-gray-50">
                     {branches.map((branch) => (
-                      <label key={branch.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <label key={branch.id} className="flex items-center gap-2 text-xs cursor-pointer">
                         <input
                           type="checkbox"
                           checked={visibleBranches.has(branch.id)}
                           onChange={() => toggleBranchVisibility(branch.id)}
                           disabled={branch.id === activeBranchId}
-                          className="rounded"
+                          className="rounded w-3 h-3"
                         />
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: branch.color }} />
-                        <span className={branch.id === activeBranchId ? "font-medium" : ""}>{branch.name}</span>
-                        {branch.id === activeBranchId && <span className="text-xs text-gray-400 ml-auto">active</span>}
+                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: branch.color }} />
+                        <span className={`truncate ${branch.id === activeBranchId ? "font-medium" : ""}`}>
+                          {branch.name}
+                        </span>
                       </label>
                     ))}
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Options Rideau */}
-            {comparisonStyle === "reveal" && (
-              <div className="space-y-3">
+              {/* Options Rideau */}
+              {comparisonStyle === "reveal" && (
                 <div className="space-y-2">
-                  <Label className="text-sm">Comparer avec</Label>
-                  <select
-                    className="w-full border rounded px-3 py-2"
-                    value={revealBranchId || ""}
-                    onChange={(e) => setRevealBranchId(e.target.value)}
-                  >
-                    {branches
-                      .filter((b) => b.id !== activeBranchId)
-                      .map((branch) => (
-                        <option key={branch.id} value={branch.id}>
-                          {branch.name}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-
-                <div className="flex items-center justify-center gap-4 py-2">
                   <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded-full" style={{ backgroundColor: activeBranchColor }} />
-                    <span className="text-sm">◀ Gauche</span>
+                    <span className="text-xs text-gray-500 w-14">Branche</span>
+                    <select
+                      className="flex-1 text-xs border rounded px-2 py-1 bg-white"
+                      value={revealBranchId || ""}
+                      onChange={(e) => setRevealBranchId(e.target.value)}
+                    >
+                      {branches
+                        .filter((b) => b.id !== activeBranchId)
+                        .map((branch) => (
+                          <option key={branch.id} value={branch.id}>
+                            {branch.name}
+                          </option>
+                        ))}
+                    </select>
                   </div>
-                  <span className="text-gray-300">|</span>
+
+                  <div className="flex items-center justify-center gap-2 text-xs py-1 bg-gray-50 rounded">
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: activeBranchColor }} />
+                      <span>◀</span>
+                    </div>
+                    <span className="text-gray-300">|</span>
+                    <div className="flex items-center gap-1">
+                      <span>▶</span>
+                      <div
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: revealBranchData?.color || "#888" }}
+                      />
+                    </div>
+                  </div>
+
                   <div className="flex items-center gap-2">
-                    <span className="text-sm">Droite ▶</span>
-                    <div
-                      className="w-4 h-4 rounded-full"
-                      style={{ backgroundColor: revealBranchData?.color || "#888" }}
+                    <span className="text-xs text-gray-500 w-14">Position</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={revealPosition}
+                      onChange={(e) => setRevealPosition(parseInt(e.target.value))}
+                      className="flex-1 h-1.5"
                     />
+                    <span className="text-xs w-10 text-right">{revealPosition}%</span>
                   </div>
                 </div>
+              )}
 
-                <div className="flex items-center gap-3">
-                  <Label className="text-sm w-16">Position</Label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={revealPosition}
-                    onChange={(e) => setRevealPosition(parseInt(e.target.value))}
-                    className="flex-1"
-                  />
-                  <span className="text-sm w-12 text-right">{revealPosition}%</span>
-                </div>
-              </div>
-            )}
+              {/* Bouton désactiver */}
+              <button
+                className="w-full px-3 py-1.5 text-xs rounded bg-gray-100 hover:bg-gray-200 text-gray-600"
+                onClick={() => {
+                  setComparisonMode(false);
+                  setShowComparisonModal(false);
+                }}
+              >
+                Désactiver la comparaison
+              </button>
+            </div>
           </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setComparisonMode(false);
-                setShowComparisonModal(false);
-              }}
-            >
-              Désactiver
-            </Button>
-            <Button onClick={() => setShowComparisonModal(false)}>Fermer</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </>
+      )}
 
       {/* ============================================ */}
       {/* MODALE VUE D'ENSEMBLE - ARBORESCENCE */}
