@@ -714,6 +714,69 @@ export function CADGabaritCanvas({
     return { mm: totalMm, count };
   }, [selectedEntities, sketch]);
 
+  // Calculer le centre et les points de la sélection pour le gizmo
+  const selectionGizmoData = useMemo(() => {
+    if (selectedEntities.size === 0) return null;
+
+    // Collecter tous les points concernés par la sélection
+    const pointIds = new Set<string>();
+
+    for (const entityId of selectedEntities) {
+      // Vérifier si c'est un point directement
+      if (sketch.points.has(entityId)) {
+        pointIds.add(entityId);
+        continue;
+      }
+
+      // Sinon c'est une géométrie - collecter ses points
+      const geo = sketch.geometries.get(entityId);
+      if (geo) {
+        if (geo.type === "line") {
+          const line = geo as Line;
+          pointIds.add(line.p1);
+          pointIds.add(line.p2);
+        } else if (geo.type === "circle") {
+          const circle = geo as CircleType;
+          pointIds.add(circle.center);
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          pointIds.add(arc.center);
+          pointIds.add(arc.startPoint);
+          pointIds.add(arc.endPoint);
+        } else if (geo.type === "bezier") {
+          const bezier = geo as Bezier;
+          pointIds.add(bezier.p1);
+          pointIds.add(bezier.p2);
+          pointIds.add(bezier.cp1);
+          pointIds.add(bezier.cp2);
+        }
+      }
+    }
+
+    if (pointIds.size === 0) return null;
+
+    // Calculer le centre (barycentre)
+    let sumX = 0,
+      sumY = 0;
+    const points: Array<{ id: string; x: number; y: number }> = [];
+
+    for (const pointId of pointIds) {
+      const pt = sketch.points.get(pointId);
+      if (pt) {
+        sumX += pt.x;
+        sumY += pt.y;
+        points.push({ id: pointId, x: pt.x, y: pt.y });
+      }
+    }
+
+    const center = {
+      x: sumX / points.length,
+      y: sumY / points.length,
+    };
+
+    return { center, points, pointIds };
+  }, [selectedEntities, sketch.points, sketch.geometries]);
+
   // Rendu
   const render = useCallback(() => {
     if (!rendererRef.current) return;
@@ -5768,69 +5831,6 @@ export function CADGabaritCanvas({
       adjustments: img.adjustments || DEFAULT_IMAGE_ADJUSTMENTS,
     };
   }, [backgroundImages, selectedImageId]);
-
-  // Calculer le centre et les points de la sélection pour le gizmo
-  const selectionGizmoData = useMemo(() => {
-    if (selectedEntities.size === 0) return null;
-
-    // Collecter tous les points concernés par la sélection
-    const pointIds = new Set<string>();
-
-    for (const entityId of selectedEntities) {
-      // Vérifier si c'est un point directement
-      if (sketch.points.has(entityId)) {
-        pointIds.add(entityId);
-        continue;
-      }
-
-      // Sinon c'est une géométrie - collecter ses points
-      const geo = sketch.geometries.get(entityId);
-      if (geo) {
-        if (geo.type === "line") {
-          const line = geo as Line;
-          pointIds.add(line.p1);
-          pointIds.add(line.p2);
-        } else if (geo.type === "circle") {
-          const circle = geo as CircleType;
-          pointIds.add(circle.center);
-        } else if (geo.type === "arc") {
-          const arc = geo as Arc;
-          pointIds.add(arc.center);
-          pointIds.add(arc.startPoint);
-          pointIds.add(arc.endPoint);
-        } else if (geo.type === "bezier") {
-          const bezier = geo as Bezier;
-          pointIds.add(bezier.p1);
-          pointIds.add(bezier.p2);
-          pointIds.add(bezier.cp1);
-          pointIds.add(bezier.cp2);
-        }
-      }
-    }
-
-    if (pointIds.size === 0) return null;
-
-    // Calculer le centre (barycentre)
-    let sumX = 0,
-      sumY = 0;
-    const points: Array<{ id: string; x: number; y: number }> = [];
-
-    for (const pointId of pointIds) {
-      const pt = sketch.points.get(pointId);
-      if (pt) {
-        sumX += pt.x;
-        sumY += pt.y;
-        points.push({ id: pointId, x: pt.x, y: pt.y });
-      }
-    }
-
-    const center = {
-      x: sumX / points.length,
-      y: sumY / points.length,
-    };
-
-    return { center, points, pointIds };
-  }, [selectedEntities, sketch.points, sketch.geometries]);
 
   // Collecter tous les markers de toutes les images comme points de snap additionnels
   const markerSnapPoints = useMemo((): AdditionalSnapPoint[] => {
