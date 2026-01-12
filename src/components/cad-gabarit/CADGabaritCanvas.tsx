@@ -15181,16 +15181,14 @@ export function CADGabaritCanvas({
                       return (
                         <div
                           key={node.id}
-                          className={`absolute rounded-lg border-2 bg-white shadow-sm cursor-pointer transition-all hover:shadow-md ${
-                            node.isActive ? "ring-2 ring-offset-2" : ""
-                          }`}
+                          className={`absolute rounded-lg border-2 bg-white shadow-sm cursor-pointer transition-all hover:shadow-md`}
                           style={{
                             left: node.x,
                             top: node.y,
                             width: NODE_WIDTH,
                             height: node.height,
                             borderColor: node.branchColor,
-                            ringColor: node.branchColor,
+                            boxShadow: node.isActive ? `0 0 0 2px white, 0 0 0 4px ${node.branchColor}` : undefined,
                           }}
                           onClick={() => switchToBranch(node.branchId)}
                           onDoubleClick={(e) => {
@@ -15258,16 +15256,14 @@ export function CADGabaritCanvas({
                     return (
                       <div
                         key={node.id}
-                        className={`absolute rounded-lg border bg-white shadow-sm cursor-pointer transition-all hover:shadow-md group ${
-                          node.isCurrent ? "ring-2 ring-offset-1" : ""
-                        }`}
+                        className={`absolute rounded-lg border bg-white shadow-sm cursor-pointer transition-all hover:shadow-md group`}
                         style={{
                           left: node.x,
                           top: node.y,
                           width: NODE_WIDTH,
                           height: node.height,
                           borderColor: node.isCurrent ? node.branchColor : "#e5e7eb",
-                          ringColor: node.branchColor,
+                          boxShadow: node.isCurrent ? `0 0 0 1px white, 0 0 0 3px ${node.branchColor}` : undefined,
                         }}
                         onClick={() => {
                           if (node.branchId !== activeBranchId) {
@@ -15330,7 +15326,7 @@ export function CADGabaritCanvas({
                                   switchToBranch(node.branchId);
                                 }
                                 if (node.stateIndex !== undefined && node.stateIndex > 0) {
-                                  truncateHistoryAt(node.stateIndex);
+                                  truncateHistoryAtIndex(node.stateIndex);
                                 }
                               }}
                               title="Tronquer après cet état"
