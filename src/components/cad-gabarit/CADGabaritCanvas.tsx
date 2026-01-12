@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.65 - Ajout dropdown épaisseur de trait (strokeWidth) par figure
+// VERSION: 6.66 - Fix Map au lieu de tableau pour strokeWidth
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -11593,11 +11593,12 @@ export function CADGabaritCanvas({
                               // Si des figures sont sélectionnées, les mettre à jour
                               if (selectedEntities.size > 0) {
                                 setSketch((prev) => {
-                                  const newGeometries = prev.geometries.map((g) => {
-                                    if (selectedEntities.has(g.id)) {
-                                      return { ...g, strokeWidth: width };
+                                  const newGeometries = new Map(prev.geometries);
+                                  selectedEntities.forEach((id) => {
+                                    const geo = newGeometries.get(id);
+                                    if (geo) {
+                                      newGeometries.set(id, { ...geo, strokeWidth: width });
                                     }
-                                    return g;
                                   });
                                   return { ...prev, geometries: newGeometries };
                                 });
