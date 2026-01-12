@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.75 - Symétrie améliorée (pas de snap grille, clic segment = axe, preview, infos)
+// VERSION: 6.76 - Bibliothèque de templates (sauvegarde Supabase, catégories, favoris)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -86,6 +86,7 @@ import {
   GitMerge,
   ChevronDown,
   SplitSquareVertical,
+  Library,
 } from "lucide-react";
 
 import {
@@ -140,6 +141,9 @@ import { exportToDXF } from "./export-dxf";
 
 // Import DXF
 import { loadDXFFile, DXFParseResult } from "./dxf-parser";
+
+// Bibliothèque de templates
+import { TemplateLibrary } from "./TemplateLibrary";
 
 interface CADGabaritCanvasProps {
   imageUrl?: string;
@@ -563,6 +567,7 @@ export function CADGabaritCanvas({
   });
   const [showCalibrationPanel, setShowCalibrationPanel] = useState(false);
   const [showAdjustmentsDialog, setShowAdjustmentsDialog] = useState(false);
+  const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
   const [adjustmentsPanelPos, setAdjustmentsPanelPos] = useState({ x: 100, y: 100 });
   const [adjustmentsPanelDragging, setAdjustmentsPanelDragging] = useState(false);
   const [adjustmentsPanelDragStart, setAdjustmentsPanelDragStart] = useState({ x: 0, y: 0 });
@@ -11188,6 +11193,116 @@ export function CADGabaritCanvas({
     }));
   }, []);
 
+  // Générer une miniature du canvas actuel (pour les templates)
+  const generateThumbnail = useCallback((): string | null => {
+    if (!canvasRef.current) return null;
+
+    try {
+      // Créer un canvas temporaire plus petit
+      const tempCanvas = document.createElement("canvas");
+      const size = 200;
+      tempCanvas.width = size;
+      tempCanvas.height = size;
+      const tempCtx = tempCanvas.getContext("2d");
+      if (!tempCtx) return null;
+
+      // Fond blanc
+      tempCtx.fillStyle = "#ffffff";
+      tempCtx.fillRect(0, 0, size, size);
+
+      // Calculer les bounds des géométries
+      let minX = Infinity,
+        minY = Infinity;
+      let maxX = -Infinity,
+        maxY = -Infinity;
+
+      sketch.points.forEach((pt) => {
+        minX = Math.min(minX, pt.x);
+        minY = Math.min(minY, pt.y);
+        maxX = Math.max(maxX, pt.x);
+        maxY = Math.max(maxY, pt.y);
+      });
+
+      if (minX === Infinity) return null;
+
+      // Ajouter une marge
+      const margin = 20;
+      const width = maxX - minX;
+      const height = maxY - minY;
+      const scale = Math.min((size - 2 * margin) / width, (size - 2 * margin) / height);
+      const offsetX = (size - width * scale) / 2 - minX * scale;
+      const offsetY = (size - height * scale) / 2 - minY * scale;
+
+      // Dessiner les géométries
+      tempCtx.strokeStyle = "#374151";
+      tempCtx.lineWidth = 1.5;
+
+      sketch.geometries.forEach((geo) => {
+        if (geo.type === "line") {
+          const line = geo as Line;
+          const p1 = sketch.points.get(line.p1);
+          const p2 = sketch.points.get(line.p2);
+          if (p1 && p2) {
+            tempCtx.beginPath();
+            tempCtx.moveTo(p1.x * scale + offsetX, p1.y * scale + offsetY);
+            tempCtx.lineTo(p2.x * scale + offsetX, p2.y * scale + offsetY);
+            tempCtx.stroke();
+          }
+        } else if (geo.type === "circle") {
+          const circle = geo as CircleType;
+          const center = sketch.points.get(circle.center);
+          if (center) {
+            tempCtx.beginPath();
+            tempCtx.arc(center.x * scale + offsetX, center.y * scale + offsetY, circle.radius * scale, 0, Math.PI * 2);
+            tempCtx.stroke();
+          }
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          const center = sketch.points.get(arc.center);
+          const startPt = sketch.points.get(arc.startPoint);
+          const endPt = sketch.points.get(arc.endPoint);
+          if (center && startPt && endPt) {
+            const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
+            const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
+            tempCtx.beginPath();
+            tempCtx.arc(
+              center.x * scale + offsetX,
+              center.y * scale + offsetY,
+              arc.radius * scale,
+              startAngle,
+              endAngle,
+              arc.counterClockwise,
+            );
+            tempCtx.stroke();
+          }
+        }
+      });
+
+      return tempCanvas.toDataURL("image/png", 0.8);
+    } catch (err) {
+      console.error("Erreur génération miniature:", err);
+      return null;
+    }
+  }, [sketch]);
+
+  // Charger un template
+  const handleLoadTemplate = useCallback(
+    (templateSketch: Sketch, mode: "replace" | "merge") => {
+      if (mode === "replace") {
+        // Remplacer complètement le sketch
+        setSketch(templateSketch);
+        addToHistory(templateSketch, "Chargement template");
+      } else {
+        // Déjà mergé par la bibliothèque
+        setSketch(templateSketch);
+        addToHistory(templateSketch, "Ajout template");
+      }
+      setSelectedEntities(new Set());
+      setTempGeometry(null);
+    },
+    [addToHistory],
+  );
+
   // Bouton outil
   const ToolButton = ({
     tool,
@@ -12201,6 +12316,14 @@ export function CADGabaritCanvas({
         <Button variant="default" size="sm" onClick={handleExportDXF}>
           <Download className="h-4 w-4 mr-1" />
           DXF
+        </Button>
+
+        <Separator orientation="vertical" className="h-6" />
+
+        {/* Bibliothèque de templates */}
+        <Button variant="outline" size="sm" onClick={() => setShowTemplateLibrary(true)}>
+          <Library className="h-4 w-4 mr-1" />
+          Templates
         </Button>
 
         <div className="flex-1" />
@@ -15956,6 +16079,15 @@ export function CADGabaritCanvas({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bibliothèque de templates */}
+      <TemplateLibrary
+        isOpen={showTemplateLibrary}
+        onClose={() => setShowTemplateLibrary(false)}
+        currentSketch={sketch}
+        onLoadTemplate={handleLoadTemplate}
+        onGenerateThumbnail={generateThumbnail}
+      />
     </div>
   );
 }
