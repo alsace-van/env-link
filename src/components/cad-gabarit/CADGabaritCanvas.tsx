@@ -1131,7 +1131,7 @@ export function CADGabaritCanvas({
 
   // Fonction pour calculer la preview des entités miroir
   const calculateMirrorPreview = useCallback(
-    (axis1: Point, axis2: Point) => {
+    (axis1: { x: number; y: number }, axis2: { x: number; y: number }) => {
       if (mirrorState.entitiesToMirror.size === 0) return [];
 
       const dx = axis2.x - axis1.x;
