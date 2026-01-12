@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.70 - Plus de logs debug pour strokeWidth
+// VERSION: 6.71 - Dropdown sélection branche + bouton nouvelle branche
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -11722,6 +11722,56 @@ export function CADGabaritCanvas({
           >
             <Redo className="h-4 w-4" />
           </Button>
+
+          {/* Sélecteur de branche active + Nouvelle branche */}
+          <div className="flex items-center gap-0.5 ml-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 px-2 gap-1.5" title="Branche active">
+                  <div
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ backgroundColor: branches.find((b) => b.id === activeBranchId)?.color || "#3B82F6" }}
+                  />
+                  <span className="text-xs font-medium max-w-[100px] truncate">
+                    {branches.find((b) => b.id === activeBranchId)?.name || "Principal"}
+                  </span>
+                  <ChevronDown className="h-3 w-3 opacity-50" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-44">
+                <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
+                  Branches ({branches.length}/10)
+                </div>
+                <DropdownMenuSeparator />
+                {branches.map((branch) => (
+                  <DropdownMenuItem key={branch.id} onClick={() => setActiveBranchId(branch.id)} className="gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: branch.color }} />
+                    <span className="truncate flex-1">{branch.name}</span>
+                    {branch.id === activeBranchId && <Check className="h-4 w-4 text-blue-500" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => createBranchFromHistoryIndex(historyIndex)}
+                    disabled={branches.length >= 10}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Nouvelle branche ({branches.length}/10)</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
 
           {/* Dropdown Historique & Branches */}
           <DropdownMenu>
