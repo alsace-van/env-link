@@ -486,6 +486,95 @@ export type Database = {
         }
         Relationships: []
       }
+      cad_template_categories: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          icon: string | null
+          id: string
+          name: string
+          sort_order: number | null
+          user_id: string | null
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          name: string
+          sort_order?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          name?: string
+          sort_order?: number | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      cad_templates: {
+        Row: {
+          category_id: string | null
+          created_at: string | null
+          description: string | null
+          geometry_count: number | null
+          id: string
+          is_favorite: boolean | null
+          is_public: boolean | null
+          name: string
+          point_count: number | null
+          sketch_data: Json
+          tags: string[] | null
+          thumbnail: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          geometry_count?: number | null
+          id?: string
+          is_favorite?: boolean | null
+          is_public?: boolean | null
+          name: string
+          point_count?: number | null
+          sketch_data: Json
+          tags?: string[] | null
+          thumbnail?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          geometry_count?: number | null
+          id?: string
+          is_favorite?: boolean | null
+          is_public?: boolean | null
+          name?: string
+          point_count?: number | null
+          sketch_data?: Json
+          tags?: string[] | null
+          thumbnail?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cad_templates_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "cad_template_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cart_items: {
         Row: {
           cart_id: string
@@ -5438,6 +5527,10 @@ export type Database = {
           count: number
           status: string
         }[]
+      }
+      create_default_cad_categories: {
+        Args: { p_user_id: string }
+        Returns: undefined
       }
       find_similar_products: {
         Args: { p_reference_fabricant: string; p_user_id: string }
