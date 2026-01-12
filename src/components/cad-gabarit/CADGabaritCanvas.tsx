@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.62 - Fix affichage branches: ne montre que les états propres à chaque branche
+// VERSION: 6.63 - Fix noms de branches uniques (évite les doublons)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -9333,11 +9333,18 @@ export function CADGabaritCanvas({
       const nextColor =
         BRANCH_COLORS.find((c) => !usedColors.has(c)) || BRANCH_COLORS[branches.length % BRANCH_COLORS.length];
 
+      // Générer un nom unique pour la branche
+      let branchNumber = branches.length + 1;
+      const existingNames = new Set(branches.map((b) => b.name));
+      while (existingNames.has(`Branche ${branchNumber}`)) {
+        branchNumber++;
+      }
+
       // Créer la nouvelle branche
       const newBranchId = generateId();
       const newBranch: Branch = {
         id: newBranchId,
-        name: branchName || `Branche ${branches.length + 1}`,
+        name: branchName || `Branche ${branchNumber}`,
         color: nextColor,
         history: parentBranch.history.slice(0, targetIndex + 1), // Copier l'historique jusqu'au point de branchement
         historyIndex: targetIndex,
