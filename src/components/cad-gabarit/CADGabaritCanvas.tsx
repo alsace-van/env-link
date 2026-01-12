@@ -12349,22 +12349,12 @@ export function CADGabaritCanvas({
           </div>
 
           {/* Canvas Container - avec support Split View */}
-          <div
-            className="flex-1 overflow-hidden"
-            style={{
-              display: "flex",
-              flexDirection: "row",
-              width: "100%",
-              minHeight: 0, // Important pour que flex-1 fonctionne dans un flex-col parent
-            }}
-          >
+          <div className="flex-1 relative" style={{ minHeight: 0 }}>
             {/* Vue gauche (principale) */}
             <div
-              className="relative overflow-hidden"
+              className="absolute top-0 left-0 bottom-0 overflow-hidden"
               style={{
-                width: splitViewEnabled && !splitViewMinimized ? `${splitPosition}%` : "100%",
-                height: "100%",
-                flexShrink: 0,
+                right: splitViewEnabled && !splitViewMinimized ? `${100 - splitPosition}%` : "0",
               }}
             >
               <canvas
@@ -12775,11 +12765,10 @@ export function CADGabaritCanvas({
           {/* Diviseur Split View */}
           {splitViewEnabled && !splitViewMinimized && (
             <div
-              className="bg-gray-300 hover:bg-blue-500 cursor-col-resize relative z-50"
+              className="absolute top-0 bottom-0 bg-gray-300 hover:bg-blue-500 cursor-col-resize z-50"
               style={{
+                left: `calc(${splitPosition}% - 2px)`,
                 width: "4px",
-                height: "100%",
-                flexShrink: 0,
               }}
               onMouseDown={(e) => {
                 e.preventDefault();
@@ -12814,10 +12803,9 @@ export function CADGabaritCanvas({
           {/* Vue droite (Split View) */}
           {splitViewEnabled && !splitViewMinimized && (
             <div
-              className="relative overflow-hidden border-l border-gray-300"
+              className="absolute top-0 bottom-0 right-0 overflow-hidden border-l border-gray-300"
               style={{
-                flex: "1 1 0%",
-                height: "100%",
+                left: `calc(${splitPosition}% + 2px)`,
                 minWidth: "150px",
               }}
             >
@@ -12870,7 +12858,11 @@ export function CADGabaritCanvas({
                 Lecture seule
               </div>
               {/* Canvas avec hauteur calculée (100% - header 32px) */}
-              <canvas ref={splitCanvasRef} className="w-full bg-gray-50" style={{ height: "calc(100% - 32px)" }} />
+              <canvas
+                ref={splitCanvasRef}
+                className="absolute left-0 right-0 bg-gray-50"
+                style={{ top: "32px", bottom: "0" }}
+              />
             </div>
           )}
 
