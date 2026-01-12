@@ -12353,16 +12353,23 @@ export function CADGabaritCanvas({
 
           {/* Canvas Container - avec support Split View */}
           <div
-            className="flex-1 overflow-hidden h-full"
+            className="flex-1 overflow-hidden"
             style={{
-              display: "grid",
-              gridTemplateColumns: splitViewEnabled && !splitViewMinimized ? `${splitPosition}% 4px 1fr` : "1fr",
+              display: "flex",
+              flexDirection: "row",
               width: "100%",
-              height: "100%",
+              minHeight: 0, // Important pour que flex-1 fonctionne dans un flex-col parent
             }}
           >
             {/* Vue gauche (principale) */}
-            <div className="relative overflow-hidden h-full" style={{ minWidth: 0 }}>
+            <div
+              className="relative overflow-hidden"
+              style={{
+                width: splitViewEnabled && !splitViewMinimized ? `${splitPosition}%` : "100%",
+                height: "100%",
+                flexShrink: 0,
+              }}
+            >
               <canvas
                 ref={canvasRef}
                 className="absolute top-0 left-0 w-full h-full cursor-crosshair"
@@ -12771,7 +12778,12 @@ export function CADGabaritCanvas({
           {/* Diviseur Split View */}
           {splitViewEnabled && !splitViewMinimized && (
             <div
-              className="bg-gray-300 hover:bg-blue-500 cursor-col-resize relative z-50 h-full"
+              className="bg-gray-300 hover:bg-blue-500 cursor-col-resize relative z-50"
+              style={{
+                width: "4px",
+                height: "100%",
+                flexShrink: 0,
+              }}
               onMouseDown={(e) => {
                 e.preventDefault();
                 setIsDraggingSplit(true);
@@ -12804,7 +12816,14 @@ export function CADGabaritCanvas({
 
           {/* Vue droite (Split View) */}
           {splitViewEnabled && !splitViewMinimized && (
-            <div className="relative overflow-hidden border-l border-gray-300 h-full" style={{ minWidth: "150px" }}>
+            <div
+              className="relative overflow-hidden border-l border-gray-300"
+              style={{
+                flex: "1 1 0%",
+                height: "100%",
+                minWidth: "150px",
+              }}
+            >
               {/* Header */}
               <div className="h-8 bg-white/95 backdrop-blur-sm border-b px-2 py-1 flex items-center justify-between">
                 <div className="flex items-center gap-2">
