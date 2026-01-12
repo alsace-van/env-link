@@ -1035,6 +1035,27 @@ export function CADGabaritCanvas({
           splitRightBranchData.sketch.points.size,
           "points",
         );
+
+        // DEBUG: Dessiner quelque chose de visible pour tester
+        const testCtx = canvas.getContext("2d");
+        if (testCtx) {
+          // Fond gris clair
+          testCtx.fillStyle = "#f5f5f5";
+          testCtx.fillRect(0, 0, canvas.width, canvas.height);
+          // Rectangle rouge au centre
+          testCtx.fillStyle = "red";
+          testCtx.fillRect(rect.width / 2 - 50, rect.height / 2 - 50, 100, 100);
+          // Texte
+          testCtx.fillStyle = "black";
+          testCtx.font = "16px sans-serif";
+          testCtx.fillText(`Canvas: ${Math.round(rect.width)}x${Math.round(rect.height)}`, 10, 30);
+          testCtx.fillText(`Geometries: ${splitRightBranchData.sketch.geometries.size}`, 10, 50);
+          testCtx.fillText(`Points: ${splitRightBranchData.sketch.points.size}`, 10, 70);
+          console.log("[SPLIT RENDER] Drew test rectangle - THIS SHOULD BE VISIBLE");
+        }
+
+        // TEMPORAIREMENT COMMENTÉ - pour voir si le test s'affiche
+        /*
         renderer.render(splitRightBranchData.sketch, {
           selectedEntities: new Set(),
           hoveredEntity: null,
@@ -1049,6 +1070,7 @@ export function CADGabaritCanvas({
           selectedEntitiesForGhost: new Set(),
           showGrid: true,
         });
+        */
 
         console.log("[SPLIT RENDER] Render complete!");
         return true;
