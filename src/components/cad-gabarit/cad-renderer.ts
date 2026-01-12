@@ -1281,19 +1281,31 @@ export class CADRenderer {
       : isHovered
         ? this.styles.selectedColor
         : this.styles.lineColor;
-    
+
     // Utiliser le strokeWidth individuel de la géométrie s'il est défini, sinon le style par défaut
     const geoStrokeWidth = (geo as any).strokeWidth;
     const baseWidth = geoStrokeWidth !== undefined ? geoStrokeWidth : this.styles.lineWidth;
-    
-    // DEBUG: Log strokeWidth (une fois par seconde max pour éviter le spam)
+
+    // Calculer la largeur finale
+    const finalWidth = (isSelected ? Math.max(baseWidth, this.styles.selectedWidth) : baseWidth) / this.viewport.scale;
+
+    // DEBUG DÉTAILLÉ: Log pour CHAQUE géométrie avec strokeWidth défini
+    if (geoStrokeWidth !== undefined) {
+      console.log(
+        `[RENDERER] ✓ Geo ${geo.id.slice(0, 8)} type=${geo.type} strokeWidth=${geoStrokeWidth} → baseWidth=${baseWidth} → finalLineWidth=${finalWidth.toFixed(2)} (scale=${this.viewport.scale.toFixed(2)})`,
+      );
+    }
+
+    // DEBUG: Log échantillon pour géométries sans strokeWidth (1x par seconde)
     const now = Date.now();
-    if (!this._lastLogTime || now - this._lastLogTime > 1000) {
-      console.log(`[RENDERER] Sample geo ${geo.id.slice(0,8)} type=${geo.type} geoStrokeWidth=${geoStrokeWidth} baseWidth=${baseWidth} styles.lineWidth=${this.styles.lineWidth}`);
+    if (geoStrokeWidth === undefined && (!this._lastLogTime || now - this._lastLogTime > 1000)) {
+      console.log(
+        `[RENDERER] ✗ Geo ${geo.id.slice(0, 8)} type=${geo.type} NO strokeWidth → using styles.lineWidth=${this.styles.lineWidth} → finalLineWidth=${finalWidth.toFixed(2)}`,
+      );
       this._lastLogTime = now;
     }
-    
-    this.ctx.lineWidth = (isSelected ? Math.max(baseWidth, this.styles.selectedWidth) : baseWidth) / this.viewport.scale;
+
+    this.ctx.lineWidth = finalWidth;
     this.ctx.lineCap = "round";
     this.ctx.lineJoin = "round";
 
