@@ -11372,6 +11372,35 @@ export function CADGabaritCanvas({
 
         <Separator orientation="vertical" className="h-6" />
 
+        {/* Outil Symétrie + Transformation */}
+        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+          <ToolButton tool="mirror" icon={FlipHorizontal2} label="Symétrie" shortcut="S" />
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={showTransformGizmo ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    if (!showTransformGizmo) {
+                      // Activer le gizmo = passer en mode select
+                      setActiveTool("select");
+                      setMarkerMode("idle");
+                    }
+                    setShowTransformGizmo(!showTransformGizmo);
+                  }}
+                  className={`h-9 w-9 p-0 ${showTransformGizmo ? "bg-orange-500 hover:bg-orange-600 text-white" : ""}`}
+                >
+                  <Move className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Déplacer / Rotation (T)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+
         {/* Outils de dessin */}
         <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
           <ToolButton tool="line" icon={Minus} label="Ligne" shortcut="L" />
@@ -11429,35 +11458,6 @@ export function CADGabaritCanvas({
           </DropdownMenu>
 
           <ToolButton tool="bezier" icon={Spline} label="Courbe Bézier" shortcut="B" />
-        </div>
-
-        {/* Outil Symétrie + Transformation */}
-        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
-          <ToolButton tool="mirror" icon={FlipHorizontal2} label="Symétrie" shortcut="S" />
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={showTransformGizmo ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => {
-                    if (!showTransformGizmo) {
-                      // Activer le gizmo = passer en mode select
-                      setActiveTool("select");
-                      setMarkerMode("idle");
-                    }
-                    setShowTransformGizmo(!showTransformGizmo);
-                  }}
-                  className={`h-9 w-9 p-0 ${showTransformGizmo ? "bg-orange-500 hover:bg-orange-600 text-white" : ""}`}
-                >
-                  <Move className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Déplacer / Rotation (T)</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
         </div>
 
         <Separator orientation="vertical" className="h-6" />
