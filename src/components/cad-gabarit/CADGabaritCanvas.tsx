@@ -943,47 +943,44 @@ export function CADGabaritCanvas({
 
     const canvas = splitCanvasRef.current;
     if (!canvas) {
-      console.log("[SPLIT] Canvas not found");
+      console.log("[SPLIT] Canvas ref not found");
       return;
     }
 
-    // Fonction de rendu
-    const doRender = () => {
+    // Attendre que le canvas ait des dimensions
+    const initAndRender = () => {
       const rect = canvas.getBoundingClientRect();
-      console.log("[SPLIT] Canvas rect:", rect.width, rect.height);
+      console.log("[SPLIT] Canvas rect:", rect.width, "x", rect.height);
 
       if (rect.width <= 0 || rect.height <= 0) {
-        console.log("[SPLIT] Canvas has no dimensions, retrying...");
+        console.log("[SPLIT] Canvas has no dimensions, will retry");
         return false;
       }
 
-      // Créer le renderer si nécessaire
-      if (!splitRendererRef.current) {
-        console.log("[SPLIT] Creating new renderer");
-        splitRendererRef.current = new CADRenderer(canvas);
-      }
-
-      const renderer = splitRendererRef.current;
-
-      // Configurer les dimensions du canvas HTML
+      // IMPORTANT: Configurer les dimensions du canvas HTML AVANT de créer le renderer
       const dpr = window.devicePixelRatio || 1;
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
 
-      // Resize le renderer
+      // Créer un nouveau renderer à chaque fois pour éviter les problèmes de scale
+      const renderer = new CADRenderer(canvas);
+      splitRendererRef.current = renderer;
+
+      // Le resize est déjà fait par le constructeur, mais on met à jour les dimensions
       renderer.resize(rect.width, rect.height);
 
-      // Configurer le viewport
-      const vp = {
+      // Configurer le viewport avec les bonnes coordonnées
+      renderer.setViewport({
         scale: splitRightViewport.scale,
         width: rect.width,
         height: rect.height,
-        offsetX: 32,
-        offsetY: rect.height - 32,
-      };
-      renderer.setViewport(vp);
+        offsetX: 32 + (rect.width - 64) / 2, // Centré horizontalement
+        offsetY: rect.height - 32 - (rect.height - 64) / 2, // Centré verticalement
+      });
 
-      // Rendre
+      // Rendre le sketch
       console.log("[SPLIT] Rendering sketch with", splitRightBranchData.sketch.geometries.size, "geometries");
       renderer.render(splitRightBranchData.sketch, {
         selectedEntities: new Set(),
@@ -997,15 +994,22 @@ export function CADGabaritCanvas({
         comparisonOpacity: 100,
         gizmoDrag: null,
         selectedEntitiesForGhost: new Set(),
+        showGrid: true,
       });
 
+      console.log("[SPLIT] Render complete");
       return true;
     };
 
-    // Essayer de rendre immédiatement
-    if (!doRender()) {
-      // Si ça échoue, réessayer après un délai
-      const timeoutId = setTimeout(doRender, 200);
+    // Premier essai immédiat
+    if (!initAndRender()) {
+      // Réessayer après un délai si le canvas n'est pas prêt
+      const timeoutId = setTimeout(() => {
+        if (!initAndRender()) {
+          // Dernier essai
+          setTimeout(initAndRender, 300);
+        }
+      }, 100);
       return () => clearTimeout(timeoutId);
     }
   }, [splitViewEnabled, splitViewMinimized, splitRightBranchData, splitRightViewport.scale, showDimensions]);
@@ -1016,26 +1020,29 @@ export function CADGabaritCanvas({
 
     const timeoutId = setTimeout(() => {
       const canvas = splitCanvasRef.current;
-      const renderer = splitRendererRef.current;
-      if (!canvas || !renderer) return;
+      if (!canvas) return;
 
       const rect = canvas.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
 
+      // Recréer le renderer pour éviter les problèmes de scale accumulé
       const dpr = window.devicePixelRatio || 1;
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
 
+      const renderer = new CADRenderer(canvas);
+      splitRendererRef.current = renderer;
       renderer.resize(rect.width, rect.height);
 
-      const vp = {
+      renderer.setViewport({
         scale: splitRightViewport.scale,
         width: rect.width,
         height: rect.height,
-        offsetX: 32,
-        offsetY: rect.height - 32,
-      };
-      renderer.setViewport(vp);
+        offsetX: 32 + (rect.width - 64) / 2,
+        offsetY: rect.height - 32 - (rect.height - 64) / 2,
+      });
 
       renderer.render(splitRightBranchData.sketch, {
         selectedEntities: new Set(),
@@ -1049,6 +1056,7 @@ export function CADGabaritCanvas({
         comparisonOpacity: 100,
         gizmoDrag: null,
         selectedEntitiesForGhost: new Set(),
+        showGrid: true,
       });
     }, 150);
 
