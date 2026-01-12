@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.61 - Ajout grab/scroll pour navigation dans le flowchart
+// VERSION: 6.62 - Fix affichage branches: ne montre que les états propres à chaque branche
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -14979,13 +14979,14 @@ export function CADGabaritCanvas({
               const PADDING = 30;
 
               // Construire l'arbre d'une branche (chaînage linéaire avec branches enfants)
-              const buildBranchTree = (branch: typeof rootBranch): FlowNode | null => {
-                if (branch.history.length === 0) return null;
+              // startIndex permet de ne pas afficher les états hérités de la branche parente
+              const buildBranchTree = (branch: typeof rootBranch, startIndex: number = 0): FlowNode | null => {
+                if (branch.history.length === 0 || startIndex >= branch.history.length) return null;
 
                 let firstNode: FlowNode | null = null;
                 let prevNode: FlowNode | null = null;
 
-                for (let i = 0; i < branch.history.length; i++) {
+                for (let i = startIndex; i < branch.history.length; i++) {
                   const entry = branch.history[i];
 
                   const node: FlowNode = {
@@ -15014,6 +15015,8 @@ export function CADGabaritCanvas({
 
                   // Créer les nœuds de départ pour chaque branche enfant
                   childBranchesData.forEach((childBranch) => {
+                    // Pour les branches enfants, commencer APRÈS le point de branchement
+                    const childStartIndex = (childBranch.parentHistoryIndex ?? -1) + 1;
                     const branchStartNode: FlowNode = {
                       id: `${childBranch.id}-start`,
                       type: "branch-start",
@@ -15024,7 +15027,7 @@ export function CADGabaritCanvas({
                       timestamp: childBranch.createdAt,
                       isActive: childBranch.id === activeBranchId,
                       isCurrent: false,
-                      nextState: buildBranchTree(childBranch),
+                      nextState: buildBranchTree(childBranch, childStartIndex),
                       childBranches: [],
                       x: 0,
                       y: 0,
