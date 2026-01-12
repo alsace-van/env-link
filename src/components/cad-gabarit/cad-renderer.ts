@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.64 - Ajout logs debug strokeWidth
+// VERSION: 3.65 - Logs détaillés RENDERER pour debug strokeWidth
 // ============================================
 
 import {
