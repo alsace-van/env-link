@@ -1169,9 +1169,6 @@ export function CADGabaritCanvas({
         width: rect.width,
         height: rect.height,
       }));
-
-      // Forcer un re-render
-      setNeedsRender(true);
     }, 150);
 
     return () => clearTimeout(timeoutId);
