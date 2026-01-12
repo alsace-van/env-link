@@ -121,7 +121,7 @@ export function useTemplates(): UseTemplatesReturn {
         .order("sort_order", { ascending: true });
 
       if (fetchError) throw fetchError;
-      setCategories((data || []) as TemplateCategory[]);
+      setCategories((data || []) as unknown as TemplateCategory[]);
     } catch (err: any) {
       console.error("Erreur chargement catégories:", err);
     }
@@ -166,7 +166,7 @@ export function useTemplates(): UseTemplatesReturn {
 
       if (fetchError) throw fetchError;
 
-      let filteredData = (data || []) as CADTemplate[];
+      let filteredData = (data || []) as unknown as CADTemplate[];
       if (filters.search) {
         const searchLower = filters.search.toLowerCase();
         filteredData = filteredData.filter(
@@ -241,7 +241,7 @@ export function useTemplates(): UseTemplatesReturn {
 
         if (insertError) throw insertError;
 
-        const newTemplate = data as CADTemplate;
+        const newTemplate = data as unknown as CADTemplate;
         setTemplates((prev) => [newTemplate, ...prev]);
         toast.success(`Template "${name}" sauvegardé`);
         return newTemplate;
@@ -379,7 +379,7 @@ export function useTemplates(): UseTemplatesReturn {
 
         if (insertError) throw insertError;
 
-        const newCategory = data as TemplateCategory;
+        const newCategory = data as unknown as TemplateCategory;
         setCategories((prev) => [...prev, newCategory]);
         toast.success(`Catégorie "${name}" créée`);
         return newCategory;
