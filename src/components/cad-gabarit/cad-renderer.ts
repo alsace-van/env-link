@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.65 - Logs détaillés RENDERER pour debug strokeWidth
+// VERSION: 3.66 - FIX: Batching des lignes par strokeWidth individuel (le strokeWidth était ignoré avant)
 // ============================================
 
 import {
@@ -271,9 +271,10 @@ export class CADRenderer {
     }
 
     // 3. Geometries (filtrer par visibilité du calque)
-    // OPTIMISATION: Batch des lignes non-sélectionnées pour réduire les appels draw
-    const normalLines: { p1: Point; p2: Point }[] = [];
-    const selectedLines: { p1: Point; p2: Point }[] = [];
+    // OPTIMISATION: Batch des lignes par strokeWidth pour réduire les appels draw
+    // Map: strokeWidth -> array of lines
+    const normalLinesByWidth: Map<number, { p1: Point; p2: Point }[]> = new Map();
+    const selectedLinesByWidth: Map<number, { p1: Point; p2: Point }[]> = new Map();
 
     // Viewport bounds pour culling
     const cullLeft = (rulerSize - this.viewport.offsetX) / this.viewport.scale;
@@ -296,7 +297,7 @@ export class CADRenderer {
       const isSelected = selectedEntities.has(id);
       const isHovered = hoveredEntity === id;
 
-      // Pour les lignes, utiliser le batching
+      // Pour les lignes, utiliser le batching par strokeWidth
       if (geo.type === "line") {
         const line = geo as Line;
         const p1 = sketch.points.get(line.p1);
@@ -309,10 +310,22 @@ export class CADRenderer {
           const maxY = Math.max(p1.y, p2.y);
 
           if (maxX >= cullLeft && minX <= cullRight && maxY >= cullTop && minY <= cullBottom) {
+            // Récupérer le strokeWidth individuel ou utiliser la valeur par défaut
+            const geoStrokeWidth = (geo as any).strokeWidth;
+            const strokeWidth = geoStrokeWidth !== undefined ? geoStrokeWidth : this.styles.lineWidth;
+
             if (isSelected || isHovered) {
-              selectedLines.push({ p1, p2 });
+              // Pour les lignes sélectionnées, utiliser le max entre strokeWidth et selectedWidth
+              const effectiveWidth = Math.max(strokeWidth, this.styles.selectedWidth);
+              if (!selectedLinesByWidth.has(effectiveWidth)) {
+                selectedLinesByWidth.set(effectiveWidth, []);
+              }
+              selectedLinesByWidth.get(effectiveWidth)!.push({ p1, p2 });
             } else {
-              normalLines.push({ p1, p2 });
+              if (!normalLinesByWidth.has(strokeWidth)) {
+                normalLinesByWidth.set(strokeWidth, []);
+              }
+              normalLinesByWidth.get(strokeWidth)!.push({ p1, p2 });
             }
           }
         }
@@ -322,31 +335,37 @@ export class CADRenderer {
       }
     });
 
-    // Dessiner les lignes normales en batch
-    if (normalLines.length > 0) {
-      this.ctx.strokeStyle = this.styles.lineColor;
-      this.ctx.lineWidth = this.styles.lineWidth / this.viewport.scale;
-      this.ctx.lineCap = "round";
-      this.ctx.beginPath();
-      for (const { p1, p2 } of normalLines) {
-        this.ctx.moveTo(p1.x, p1.y);
-        this.ctx.lineTo(p2.x, p2.y);
+    // Dessiner les lignes normales en batch, groupées par strokeWidth
+    this.ctx.strokeStyle = this.styles.lineColor;
+    this.ctx.lineCap = "round";
+    this.ctx.lineJoin = "round";
+    normalLinesByWidth.forEach((lines, strokeWidth) => {
+      if (lines.length > 0) {
+        this.ctx.lineWidth = strokeWidth / this.viewport.scale;
+        this.ctx.beginPath();
+        for (const { p1, p2 } of lines) {
+          this.ctx.moveTo(p1.x, p1.y);
+          this.ctx.lineTo(p2.x, p2.y);
+        }
+        this.ctx.stroke();
       }
-      this.ctx.stroke();
-    }
+    });
 
-    // Dessiner les lignes sélectionnées en batch
-    if (selectedLines.length > 0) {
-      this.ctx.strokeStyle = this.styles.selectedColor;
-      this.ctx.lineWidth = this.styles.selectedWidth / this.viewport.scale;
-      this.ctx.lineCap = "round";
-      this.ctx.beginPath();
-      for (const { p1, p2 } of selectedLines) {
-        this.ctx.moveTo(p1.x, p1.y);
-        this.ctx.lineTo(p2.x, p2.y);
+    // Dessiner les lignes sélectionnées en batch, groupées par strokeWidth
+    this.ctx.strokeStyle = this.styles.selectedColor;
+    this.ctx.lineCap = "round";
+    this.ctx.lineJoin = "round";
+    selectedLinesByWidth.forEach((lines, strokeWidth) => {
+      if (lines.length > 0) {
+        this.ctx.lineWidth = strokeWidth / this.viewport.scale;
+        this.ctx.beginPath();
+        for (const { p1, p2 } of lines) {
+          this.ctx.moveTo(p1.x, p1.y);
+          this.ctx.lineTo(p2.x, p2.y);
+        }
+        this.ctx.stroke();
       }
-      this.ctx.stroke();
-    }
+    });
 
     // 3.5 Marqueurs géométriques (milieux et angles droits) - seulement pour éléments sélectionnés
     this.drawMidpointMarkers(sketch, selectedEntities);
