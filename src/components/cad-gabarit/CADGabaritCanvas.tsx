@@ -1146,6 +1146,37 @@ export function CADGabaritCanvas({
     return () => clearTimeout(timeoutId);
   }, [splitPosition]);
 
+  // Redimensionner le canvas principal quand le split view change
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      const canvas = canvasRef.current;
+      const renderer = rendererRef.current;
+      if (!canvas || !renderer) return;
+
+      const rect = canvas.getBoundingClientRect();
+      console.log("[MAIN CANVAS] Resize triggered - rect:", rect.width, "x", rect.height);
+
+      if (rect.width <= 0 || rect.height <= 0) return;
+
+      // Resize le canvas physique
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+
+      renderer.resize(rect.width, rect.height);
+      setViewport((v) => ({
+        ...v,
+        width: rect.width,
+        height: rect.height,
+      }));
+
+      // Forcer un re-render
+      setNeedsRender(true);
+    }, 150);
+
+    return () => clearTimeout(timeoutId);
+  }, [splitViewEnabled, splitViewMinimized, splitPosition]);
+
   // Données de la branche pour le mode reveal
   const revealBranchData = useMemo(() => {
     if (!comparisonMode || comparisonStyle !== "reveal" || !revealBranchId) {
@@ -12321,18 +12352,20 @@ export function CADGabaritCanvas({
           </div>
 
           {/* Canvas Container - avec support Split View */}
-          <div className="flex-1 overflow-hidden flex flex-row h-full w-full">
+          <div
+            className="flex-1 overflow-hidden h-full"
+            style={{
+              display: "grid",
+              gridTemplateColumns: splitViewEnabled && !splitViewMinimized ? `${splitPosition}% 4px 1fr` : "1fr",
+              width: "100%",
+              height: "100%",
+            }}
+          >
             {/* Vue gauche (principale) */}
-            <div
-              className="relative overflow-hidden h-full"
-              style={{
-                width: splitViewEnabled && !splitViewMinimized ? `calc(${splitPosition}% - 2px)` : "100%",
-                flexShrink: 0,
-              }}
-            >
+            <div className="relative overflow-hidden h-full" style={{ minWidth: 0 }}>
               <canvas
                 ref={canvasRef}
-                className="absolute inset-0 w-full h-full cursor-crosshair"
+                className="absolute top-0 left-0 w-full h-full cursor-crosshair"
                 style={{
                   cursor: isDraggingSelection
                     ? "move"
@@ -12738,7 +12771,7 @@ export function CADGabaritCanvas({
           {/* Diviseur Split View */}
           {splitViewEnabled && !splitViewMinimized && (
             <div
-              className="w-1 bg-gray-300 hover:bg-blue-500 cursor-col-resize relative z-50 flex-shrink-0"
+              className="bg-gray-300 hover:bg-blue-500 cursor-col-resize relative z-50 h-full"
               onMouseDown={(e) => {
                 e.preventDefault();
                 setIsDraggingSplit(true);
@@ -12771,14 +12804,7 @@ export function CADGabaritCanvas({
 
           {/* Vue droite (Split View) */}
           {splitViewEnabled && !splitViewMinimized && (
-            <div
-              className="relative overflow-hidden border-l border-gray-300 h-full"
-              style={{
-                width: `calc(${100 - splitPosition}% - 2px)`,
-                minWidth: "150px",
-                flexShrink: 0,
-              }}
-            >
+            <div className="relative overflow-hidden border-l border-gray-300 h-full" style={{ minWidth: "150px" }}>
               {/* Header */}
               <div className="h-8 bg-white/95 backdrop-blur-sm border-b px-2 py-1 flex items-center justify-between">
                 <div className="flex items-center gap-2">
