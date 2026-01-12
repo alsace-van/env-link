@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.66 - Fix Map au lieu de tableau pour strokeWidth
+// VERSION: 6.67 - Fix strokeWidth avec sketchRef pour mise à jour correcte
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -11592,17 +11592,17 @@ export function CADGabaritCanvas({
                               setDefaultStrokeWidth(width);
                               // Si des figures sont sélectionnées, les mettre à jour
                               if (selectedEntities.size > 0) {
-                                setSketch((prev) => {
-                                  const newGeometries = new Map(prev.geometries);
-                                  selectedEntities.forEach((id) => {
-                                    const geo = newGeometries.get(id);
-                                    if (geo) {
-                                      newGeometries.set(id, { ...geo, strokeWidth: width });
-                                    }
-                                  });
-                                  return { ...prev, geometries: newGeometries };
+                                const currentSketch = sketchRef.current;
+                                const newGeometries = new Map(currentSketch.geometries);
+                                selectedEntities.forEach((id) => {
+                                  const geo = newGeometries.get(id);
+                                  if (geo) {
+                                    newGeometries.set(id, { ...geo, strokeWidth: width });
+                                  }
                                 });
-                                addToHistory(sketch, `Épaisseur → ${width}px`);
+                                const newSketch = { ...currentSketch, geometries: newGeometries };
+                                setSketch(newSketch);
+                                addToHistory(newSketch, `Épaisseur → ${width}px`);
                               }
                             }}
                             className="flex items-center gap-2"
