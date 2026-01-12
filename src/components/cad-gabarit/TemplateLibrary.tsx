@@ -307,22 +307,33 @@ export function TemplateLibrary({
 
           {/* Filtres */}
           <div className="flex gap-2 flex-wrap">
-            <Select
-              value={filters.categoryId || "all"}
-              onValueChange={(v) => setFilters({ categoryId: v === "all" ? null : v })}
-            >
-              <SelectTrigger className="h-7 text-xs flex-1">
-                <SelectValue placeholder="Catégorie" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Toutes les catégories</SelectItem>
-                {categories.map((cat) => (
-                  <SelectItem key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex gap-1 flex-1">
+              <Select
+                value={filters.categoryId || "all"}
+                onValueChange={(v) => setFilters({ categoryId: v === "all" ? null : v })}
+              >
+                <SelectTrigger className="h-7 text-xs flex-1">
+                  <SelectValue placeholder="Catégorie" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Toutes les catégories</SelectItem>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-1.5"
+                onClick={() => setCategoryDialogOpen(true)}
+                title="Nouvelle catégorie"
+              >
+                <Plus className="h-3 w-3" />
+              </Button>
+            </div>
 
             <Button
               size="sm"
@@ -528,22 +539,33 @@ export function TemplateLibrary({
 
             <div className="space-y-2">
               <Label htmlFor="template-category">Catégorie</Label>
-              <Select
-                value={newTemplateCategory || "none"}
-                onValueChange={(v) => setNewTemplateCategory(v === "none" ? null : v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner une catégorie" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Aucune catégorie</SelectItem>
-                  {categories.map((cat) => (
-                    <SelectItem key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Select
+                  value={newTemplateCategory || "none"}
+                  onValueChange={(v) => setNewTemplateCategory(v === "none" ? null : v)}
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Sélectionner une catégorie" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Aucune catégorie</SelectItem>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setCategoryDialogOpen(true)}
+                  title="Nouvelle catégorie"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
             <div className="space-y-2">
