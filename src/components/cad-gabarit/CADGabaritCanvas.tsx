@@ -904,51 +904,23 @@ export function CADGabaritCanvas({
 
   // Données de la branche pour la vue split droite
   const splitRightBranchData = useMemo(() => {
-    console.log("[SPLIT DATA] splitViewEnabled:", splitViewEnabled, "splitRightBranchId:", splitRightBranchId);
-    if (!splitViewEnabled || !splitRightBranchId) {
-      console.log("[SPLIT DATA] Early return - not enabled or no branch id");
-      return null;
-    }
+    if (!splitViewEnabled || !splitRightBranchId) return null;
     const branch = branches.find((b) => b.id === splitRightBranchId);
-    console.log("[SPLIT DATA] Found branch:", branch?.name, "history length:", branch?.history?.length);
-    if (!branch) {
-      console.log("[SPLIT DATA] Branch not found");
-      return null;
-    }
+    if (!branch) return null;
     const entry = branch.history[branch.historyIndex];
-    console.log("[SPLIT DATA] Entry at index", branch.historyIndex, ":", entry ? "found" : "not found");
-    if (!entry) {
-      console.log("[SPLIT DATA] No entry at historyIndex");
-      return null;
-    }
+    if (!entry) return null;
     try {
       const branchSketch = deserializeSketch(entry.sketch);
-      console.log(
-        "[SPLIT DATA] Deserialized sketch - geometries:",
-        branchSketch.geometries.size,
-        "points:",
-        branchSketch.points.size,
-      );
       return { branchId: branch.id, branchName: branch.name, color: branch.color, sketch: branchSketch };
     } catch (e) {
-      console.error("[SPLIT DATA] Error deserializing sketch:", e);
       return null;
     }
   }, [splitViewEnabled, splitRightBranchId, branches]);
 
   // Initialiser la branche split quand on active
   useEffect(() => {
-    console.log(
-      "[SPLIT INIT] splitViewEnabled:",
-      splitViewEnabled,
-      "splitRightBranchId:",
-      splitRightBranchId,
-      "branches.length:",
-      branches.length,
-    );
     if (splitViewEnabled && !splitRightBranchId && branches.length > 1) {
       const otherBranch = branches.find((b) => b.id !== activeBranchId);
-      console.log("[SPLIT INIT] Setting initial branch:", otherBranch?.name);
       if (otherBranch) setSplitRightBranchId(otherBranch.id);
     }
   }, [splitViewEnabled, splitRightBranchId, branches, activeBranchId]);
@@ -967,166 +939,41 @@ export function CADGabaritCanvas({
 
   // Initialiser et render le split view
   useEffect(() => {
-    console.log(
-      "[SPLIT RENDER] Effect triggered - splitViewEnabled:",
-      splitViewEnabled,
-      "splitViewMinimized:",
-      splitViewMinimized,
-      "splitRightBranchData:",
-      splitRightBranchData ? "exists" : "null",
-    );
+    if (!splitViewEnabled || !splitRightBranchData) return;
 
-    if (!splitViewEnabled || !splitRightBranchData || splitViewMinimized) {
-      console.log("[SPLIT RENDER] Early return - conditions not met");
-      return;
-    }
+    // Choisir le bon canvas selon le mode
+    const canvas = splitViewMinimized ? splitMiniCanvasRef.current : splitCanvasRef.current;
+    if (!canvas) return;
 
-    const canvas = splitCanvasRef.current;
-    console.log("[SPLIT RENDER] Canvas ref:", canvas ? "found" : "null");
-    if (!canvas) {
-      console.log("[SPLIT RENDER] Canvas ref not found");
-      return;
-    }
-
-    // Attendre que le canvas ait des dimensions
-    const initAndRender = () => {
-      const rect = canvas.getBoundingClientRect();
-      console.log("[SPLIT RENDER] Canvas rect:", rect.width, "x", rect.height, "top:", rect.top, "left:", rect.left);
-
-      if (rect.width <= 0 || rect.height <= 0) {
-        console.log("[SPLIT RENDER] Canvas has no dimensions, will retry");
-        return false;
-      }
-
-      try {
-        // IMPORTANT: Configurer les dimensions du canvas HTML AVANT de créer le renderer
-        const dpr = window.devicePixelRatio || 1;
-        console.log("[SPLIT RENDER] DPR:", dpr, "Setting canvas to:", rect.width * dpr, "x", rect.height * dpr);
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
-        canvas.style.width = `${rect.width}px`;
-        canvas.style.height = `${rect.height}px`;
-
-        // Créer un nouveau renderer à chaque fois pour éviter les problèmes de scale
-        console.log("[SPLIT RENDER] Creating new CADRenderer");
-        const renderer = new CADRenderer(canvas);
+    // Choisir/créer le bon renderer
+    let renderer = splitViewMinimized ? splitMiniRendererRef.current : splitRendererRef.current;
+    if (!renderer) {
+      renderer = new CADRenderer(canvas);
+      if (splitViewMinimized) {
+        splitMiniRendererRef.current = renderer;
+      } else {
         splitRendererRef.current = renderer;
-
-        // Le resize est déjà fait par le constructeur, mais on met à jour les dimensions
-        console.log("[SPLIT RENDER] Resizing renderer to:", rect.width, "x", rect.height);
-        renderer.resize(rect.width, rect.height);
-
-        // Configurer le viewport avec les bonnes coordonnées
-        const vp = {
-          scale: splitRightViewport.scale,
-          width: rect.width,
-          height: rect.height,
-          offsetX: 32 + (rect.width - 64) / 2, // Centré horizontalement
-          offsetY: rect.height - 32 - (rect.height - 64) / 2, // Centré verticalement
-        };
-        console.log("[SPLIT RENDER] Setting viewport:", vp);
-        renderer.setViewport(vp);
-
-        // Rendre le sketch
-        console.log(
-          "[SPLIT RENDER] Rendering sketch with",
-          splitRightBranchData.sketch.geometries.size,
-          "geometries and",
-          splitRightBranchData.sketch.points.size,
-          "points",
-        );
-
-        // DEBUG: Afficher les coordonnées des géométries
-        splitRightBranchData.sketch.geometries.forEach((geo, id) => {
-          if (geo.type === "line") {
-            const p1 = splitRightBranchData.sketch.points.get(geo.p1);
-            const p2 = splitRightBranchData.sketch.points.get(geo.p2);
-            console.log("[SPLIT GEO] Line:", id, "from", p1, "to", p2);
-          } else if (geo.type === "rectangle") {
-            const p1 = splitRightBranchData.sketch.points.get(geo.p1);
-            const p2 = splitRightBranchData.sketch.points.get(geo.p2);
-            console.log("[SPLIT GEO] Rectangle:", id, "corners", p1, p2);
-          } else if (geo.type === "circle") {
-            const center = splitRightBranchData.sketch.points.get(geo.center);
-            console.log("[SPLIT GEO] Circle:", id, "center", center, "radius", geo.radius);
-          } else {
-            console.log("[SPLIT GEO] Other:", id, "type", geo.type);
-          }
-        });
-
-        // Appeler le vrai renderer
-        renderer.render(splitRightBranchData.sketch, {
-          selectedEntities: new Set(),
-          hoveredEntity: null,
-          tempGeometry: null,
-          currentSnapPoint: null,
-          showConstraints: false,
-          showDimensions: showDimensions,
-          backgroundImages: [],
-          comparisonBranches: [],
-          comparisonOpacity: 100,
-          gizmoDrag: null,
-          selectedEntitiesForGhost: new Set(),
-          showGrid: true,
-        });
-
-        console.log("[SPLIT RENDER] Render complete!");
-        return true;
-      } catch (error) {
-        console.error("[SPLIT RENDER] Error during render:", error);
-        return false;
       }
-    };
-
-    // Premier essai immédiat
-    if (!initAndRender()) {
-      // Réessayer après un délai si le canvas n'est pas prêt
-      console.log("[SPLIT RENDER] First attempt failed, scheduling retry");
-      const timeoutId = setTimeout(() => {
-        console.log("[SPLIT RENDER] Retry attempt 1");
-        if (!initAndRender()) {
-          // Dernier essai
-          console.log("[SPLIT RENDER] Retry 1 failed, scheduling final retry");
-          setTimeout(() => {
-            console.log("[SPLIT RENDER] Final retry attempt");
-            initAndRender();
-          }, 300);
-        }
-      }, 100);
-      return () => clearTimeout(timeoutId);
     }
-  }, [splitViewEnabled, splitViewMinimized, splitRightBranchData, splitRightViewport.scale, showDimensions]);
 
-  // Re-render quand la position du split change
-  useEffect(() => {
-    if (!splitViewEnabled || splitViewMinimized || !splitRightBranchData) return;
-
-    const timeoutId = setTimeout(() => {
-      const canvas = splitCanvasRef.current;
-      if (!canvas) return;
-
-      const rect = canvas.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) return;
-
-      // Recréer le renderer pour éviter les problèmes de scale accumulé
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      canvas.style.width = `${rect.width}px`;
-      canvas.style.height = `${rect.height}px`;
-
-      const renderer = new CADRenderer(canvas);
-      splitRendererRef.current = renderer;
+    // Configurer les dimensions du canvas
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      canvas.width = rect.width * window.devicePixelRatio;
+      canvas.height = rect.height * window.devicePixelRatio;
       renderer.resize(rect.width, rect.height);
 
-      renderer.setViewport({
-        scale: splitRightViewport.scale,
+      // Configurer le viewport
+      const vp = {
+        ...splitRightViewport,
         width: rect.width,
         height: rect.height,
-        offsetX: 32 + (rect.width - 64) / 2,
-        offsetY: rect.height - 32 - (rect.height - 64) / 2,
-      });
+        offsetX: 32,
+        offsetY: rect.height - 32,
+      };
+      renderer.setViewport(vp);
 
+      // Rendre
       renderer.render(splitRightBranchData.sketch, {
         selectedEntities: new Set(),
         hoveredEntity: null,
@@ -1139,40 +986,50 @@ export function CADGabaritCanvas({
         comparisonOpacity: 100,
         gizmoDrag: null,
         selectedEntitiesForGhost: new Set(),
-        showGrid: true,
       });
-    }, 150);
+    }
+  }, [splitViewEnabled, splitViewMinimized, splitRightBranchData, splitRightViewport.scale, showDimensions]);
 
-    return () => clearTimeout(timeoutId);
-  }, [splitPosition]);
-
-  // Redimensionner le canvas principal quand le split view change
+  // Resize du split canvas quand la position change
   useEffect(() => {
+    if (!splitViewEnabled) return;
+
+    const canvas = splitViewMinimized ? splitMiniCanvasRef.current : splitCanvasRef.current;
+    const renderer = splitViewMinimized ? splitMiniRendererRef.current : splitRendererRef.current;
+    if (!canvas || !renderer || !splitRightBranchData) return;
+
     const timeoutId = setTimeout(() => {
-      const canvas = canvasRef.current;
-      const renderer = rendererRef.current;
-      if (!canvas || !renderer) return;
-
       const rect = canvas.getBoundingClientRect();
-      console.log("[MAIN CANVAS] Resize triggered - rect:", rect.width, "x", rect.height);
+      if (rect.width > 0 && rect.height > 0) {
+        canvas.width = rect.width * window.devicePixelRatio;
+        canvas.height = rect.height * window.devicePixelRatio;
+        renderer.resize(rect.width, rect.height);
 
-      if (rect.width <= 0 || rect.height <= 0) return;
+        const vp = {
+          ...splitRightViewport,
+          width: rect.width,
+          height: rect.height,
+        };
+        renderer.setViewport(vp);
 
-      // Resize le canvas physique
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-
-      renderer.resize(rect.width, rect.height);
-      setViewport((v) => ({
-        ...v,
-        width: rect.width,
-        height: rect.height,
-      }));
-    }, 150);
+        renderer.render(splitRightBranchData.sketch, {
+          selectedEntities: new Set(),
+          hoveredEntity: null,
+          tempGeometry: null,
+          currentSnapPoint: null,
+          showConstraints: false,
+          showDimensions: showDimensions,
+          backgroundImages: [],
+          comparisonBranches: [],
+          comparisonOpacity: 100,
+          gizmoDrag: null,
+          selectedEntitiesForGhost: new Set(),
+        });
+      }
+    }, 100);
 
     return () => clearTimeout(timeoutId);
-  }, [splitViewEnabled, splitViewMinimized, splitPosition]);
+  }, [splitPosition, splitViewMinimized]);
 
   // Données de la branche pour le mode reveal
   const revealBranchData = useMemo(() => {
@@ -12349,17 +12206,18 @@ export function CADGabaritCanvas({
           </div>
 
           {/* Canvas Container - avec support Split View */}
-          <div className="flex-1 relative" style={{ minHeight: 0 }}>
+          <div className="flex-1 relative overflow-hidden flex">
             {/* Vue gauche (principale) */}
             <div
-              className="absolute top-0 left-0 bottom-0 overflow-hidden"
+              className="relative overflow-hidden"
               style={{
-                right: splitViewEnabled && !splitViewMinimized ? `${100 - splitPosition}%` : "0",
+                width: splitViewEnabled && !splitViewMinimized ? `${splitPosition}%` : "100%",
+                flex: splitViewEnabled && !splitViewMinimized ? "none" : "1",
               }}
             >
               <canvas
                 ref={canvasRef}
-                className="absolute top-0 left-0 w-full h-full cursor-crosshair"
+                className="absolute inset-0 cursor-crosshair"
                 style={{
                   cursor: isDraggingSelection
                     ? "move"
@@ -12765,11 +12623,7 @@ export function CADGabaritCanvas({
           {/* Diviseur Split View */}
           {splitViewEnabled && !splitViewMinimized && (
             <div
-              className="absolute top-0 bottom-0 bg-gray-300 hover:bg-blue-500 cursor-col-resize z-50"
-              style={{
-                left: `calc(${splitPosition}% - 2px)`,
-                width: "4px",
-              }}
+              className="w-1 bg-gray-300 hover:bg-blue-500 cursor-col-resize relative z-50 flex-shrink-0"
               onMouseDown={(e) => {
                 e.preventDefault();
                 setIsDraggingSplit(true);
@@ -12803,14 +12657,10 @@ export function CADGabaritCanvas({
           {/* Vue droite (Split View) */}
           {splitViewEnabled && !splitViewMinimized && (
             <div
-              className="absolute top-0 bottom-0 right-0 overflow-hidden border-l border-gray-300"
-              style={{
-                left: `calc(${splitPosition}% + 2px)`,
-                minWidth: "150px",
-              }}
+              className="relative overflow-hidden border-l border-gray-300"
+              style={{ width: `${100 - splitPosition}%` }}
             >
-              {/* Header */}
-              <div className="h-8 bg-white/95 backdrop-blur-sm border-b px-2 py-1 flex items-center justify-between">
+              <div className="absolute top-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-sm border-b px-2 py-1 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <select
                     className="text-xs border rounded px-2 py-1 bg-white"
@@ -12853,16 +12703,10 @@ export function CADGabaritCanvas({
                   </button>
                 </div>
               </div>
-              {/* Badge lecture seule */}
               <div className="absolute top-10 left-2 z-40 bg-orange-100 text-orange-700 text-[10px] px-2 py-0.5 rounded">
                 Lecture seule
               </div>
-              {/* Canvas avec hauteur calculée (100% - header 32px) */}
-              <canvas
-                ref={splitCanvasRef}
-                className="absolute left-0 right-0 bg-gray-50"
-                style={{ top: "32px", bottom: "0" }}
-              />
+              <canvas ref={splitCanvasRef} className="absolute left-0 right-0 bottom-0" style={{ top: "32px" }} />
             </div>
           )}
 

@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.67 - FIX: resize() utilise setTransform au lieu de scale() pour éviter l'accumulation
+// VERSION: 3.66 - FIX: Batching des lignes par strokeWidth individuel (le strokeWidth était ignoré avant)
 // ============================================
 
 import {
@@ -60,15 +60,11 @@ export class CADRenderer {
    * Redimensionne le canvas
    */
   resize(width: number, height: number): void {
-    // Reset le contexte en redimensionnant le canvas
     this.canvas.width = width * this.dpr;
     this.canvas.height = height * this.dpr;
     this.canvas.style.width = `${width}px`;
     this.canvas.style.height = `${height}px`;
-
-    // Réinitialiser le contexte (le redimensionnement du canvas le réinitialise automatiquement)
-    // On doit réappliquer le scale
-    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.ctx.scale(this.dpr, this.dpr);
 
     this.viewport.width = width;
     this.viewport.height = height;
