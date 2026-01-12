@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.72 - Fluidité gizmo améliorée (RAF throttle) + dropdown branches
+// VERSION: 6.73 - Fix outil symétrie (capture sélection avant vidage)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -2440,8 +2440,25 @@ export function CADGabaritCanvas({
     };
   }, [render]);
 
-  // Vider la sélection quand on change d'outil (sauf pour select)
+  // Vider la sélection quand on change d'outil (sauf pour select et mirror)
   useEffect(() => {
+    // Pour l'outil mirror, capturer la sélection et passer en mode waitingAxis1
+    if (activeTool === "mirror") {
+      if (selectedEntities.size > 0) {
+        setMirrorState({
+          phase: "waitingAxis1",
+          entitiesToMirror: new Set(selectedEntities),
+        });
+        toast.info("Cliquez le premier point de l'axe de symétrie");
+      }
+      // Ne PAS vider la sélection pour mirror - on garde la visualisation
+      setMarkerMode("idle");
+      setPendingLink(null);
+      setSelectedMarkerId(null);
+      setShowTransformGizmo(false);
+      return; // Sortir tôt pour ne pas vider la sélection
+    }
+
     if (activeTool !== "select") {
       setSelectedEntities(new Set());
       // Désactiver le mode marqueur quand on change d'outil
@@ -8055,19 +8072,11 @@ export function CADGabaritCanvas({
 
         case "mirror": {
           // Outil symétrie : définir l'axe puis dupliquer en miroir
-          if (mirrorState.phase === "idle") {
-            // Première utilisation : on a besoin d'une sélection
-            if (selectedEntities.size === 0) {
-              toast.error("Sélectionnez d'abord les entités à symétriser");
-              setActiveTool("select");
-              break;
-            }
-            // Passer en mode définition de l'axe
-            setMirrorState({
-              phase: "waitingAxis1",
-              entitiesToMirror: new Set(selectedEntities),
-            });
-            toast.info("Cliquez le premier point de l'axe de symétrie");
+          if (mirrorState.phase === "idle" || mirrorState.entitiesToMirror.size === 0) {
+            // Pas de sélection capturée - demander de sélectionner d'abord
+            toast.error("Sélectionnez d'abord les entités à symétriser");
+            setActiveTool("select");
+            break;
           } else if (mirrorState.phase === "waitingAxis1") {
             // Premier point de l'axe
             const axisPoint1: Point = { id: generateId(), x: targetPos.x, y: targetPos.y };
