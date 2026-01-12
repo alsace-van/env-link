@@ -433,7 +433,7 @@ export function CADGabaritCanvas({
 
   // Mode comparaison
   const [comparisonMode, setComparisonMode] = useState(false);
-  const [comparisonStyle, setComparisonStyle] = useState<"overlay" | "reveal" | "split">("overlay"); // overlay = superposition, reveal = rideau, split = vue divisée
+  const [comparisonStyle, setComparisonStyle] = useState<"overlay" | "reveal">("overlay"); // overlay = superposition, reveal = rideau
   const [visibleBranches, setVisibleBranches] = useState<Set<string>>(new Set());
   const [comparisonOpacity, setComparisonOpacity] = useState(70); // 0-100 pour mode overlay
   const [revealPosition, setRevealPosition] = useState(50); // 0-100 position du diviseur pour mode reveal
@@ -444,10 +444,10 @@ export function CADGabaritCanvas({
   // Mode Split View
   const [splitViewEnabled, setSplitViewEnabled] = useState(false);
   const [splitRightBranchId, setSplitRightBranchId] = useState<string | null>(null);
-  const [splitPosition, setSplitPosition] = useState(50); // Position du diviseur 0-100
+  const [splitPosition, setSplitPosition] = useState(50);
   const [isDraggingSplit, setIsDraggingSplit] = useState(false);
-  const [splitViewMinimized, setSplitViewMinimized] = useState(false); // Vue réduite en mini-modale
-  const [splitSyncViewports, setSplitSyncViewports] = useState(false); // Synchroniser zoom/pan
+  const [splitViewMinimized, setSplitViewMinimized] = useState(false);
+  const [splitSyncViewports, setSplitSyncViewports] = useState(false);
   const [splitRightViewport, setSplitRightViewport] = useState<Viewport>({
     scale: 1,
     offsetX: 100,
@@ -903,59 +903,34 @@ export function CADGabaritCanvas({
   // Données de la branche pour la vue split droite
   const splitRightBranchData = useMemo(() => {
     if (!splitViewEnabled || !splitRightBranchId) return null;
-    
     const branch = branches.find((b) => b.id === splitRightBranchId);
     if (!branch) return null;
-    
     const entry = branch.history[branch.historyIndex];
     if (!entry) return null;
-    
     try {
       const branchSketch = deserializeSketch(entry.sketch);
-      return {
-        branchId: branch.id,
-        branchName: branch.name,
-        color: branch.color,
-        sketch: branchSketch,
-      };
+      return { branchId: branch.id, branchName: branch.name, color: branch.color, sketch: branchSketch };
     } catch (e) {
-      console.error("Erreur lors du chargement de la branche split:", e);
       return null;
     }
   }, [splitViewEnabled, splitRightBranchId, branches]);
 
-  // Initialiser la branche de droite quand on active le split view
+  // Initialiser la branche split quand on active
   useEffect(() => {
     if (splitViewEnabled && !splitRightBranchId && branches.length > 1) {
       const otherBranch = branches.find((b) => b.id !== activeBranchId);
-      if (otherBranch) {
-        setSplitRightBranchId(otherBranch.id);
-      }
+      if (otherBranch) setSplitRightBranchId(otherBranch.id);
     }
   }, [splitViewEnabled, splitRightBranchId, branches, activeBranchId]);
 
   // Initialiser le renderer split
   useEffect(() => {
     if (!splitViewEnabled || splitViewMinimized) return;
-    
-    // Attendre un peu que le DOM soit mis à jour
     const timeoutId = setTimeout(() => {
       const canvas = splitCanvasRef.current;
-      if (!canvas) {
-        console.log("[SPLIT] Canvas not found");
-        return;
-      }
-      
-      // Créer le renderer si nécessaire
-      if (!splitRendererRef.current) {
-        console.log("[SPLIT] Creating new renderer");
-        splitRendererRef.current = new CADRenderer(canvas);
-      }
-      
-      // Taille basée sur le canvas
+      if (!canvas) return;
+      if (!splitRendererRef.current) splitRendererRef.current = new CADRenderer(canvas);
       const rect = canvas.getBoundingClientRect();
-      console.log("[SPLIT] Canvas rect:", rect.width, rect.height);
-      
       if (rect.width > 0 && rect.height > 0) {
         splitRendererRef.current.resize(rect.width, rect.height);
         setSplitRightViewport((v) => ({
@@ -967,11 +942,10 @@ export function CADGabaritCanvas({
         }));
       }
     }, 100);
-    
     return () => clearTimeout(timeoutId);
   }, [splitViewEnabled, splitViewMinimized]);
 
-  // Synchroniser les viewports si activé
+  // Synchroniser viewports
   useEffect(() => {
     if (splitSyncViewports && splitViewEnabled) {
       setSplitRightViewport((v) => ({
@@ -983,23 +957,9 @@ export function CADGabaritCanvas({
     }
   }, [splitSyncViewports, splitViewEnabled, viewport.scale, viewport.offsetX, viewport.offsetY]);
 
-  // Render de la vue split droite
+  // Render split view
   useEffect(() => {
-    if (!splitViewEnabled) {
-      console.log("[SPLIT RENDER] Split view not enabled");
-      return;
-    }
-    if (!splitRightBranchData) {
-      console.log("[SPLIT RENDER] No branch data");
-      return;
-    }
-    if (!splitRendererRef.current) {
-      console.log("[SPLIT RENDER] No renderer");
-      return;
-    }
-    
-    console.log("[SPLIT RENDER] Rendering branch:", splitRightBranchData.branchName, "viewport:", splitRightViewport);
-    
+    if (!splitViewEnabled || !splitRightBranchData || !splitRendererRef.current) return;
     splitRendererRef.current.setViewport(splitRightViewport);
     splitRendererRef.current.render(splitRightBranchData.sketch, {
       selectedEntities: new Set(),
@@ -1021,47 +981,18 @@ export function CADGabaritCanvas({
     });
   }, [splitViewEnabled, splitRightBranchData, splitRightViewport, showDimensions]);
 
-  // Resize du split canvas quand la position du diviseur change
+  // Resize split canvas
   useEffect(() => {
     if (!splitViewEnabled || splitViewMinimized) return;
-    
     const canvas = splitCanvasRef.current;
     if (!canvas || !splitRendererRef.current) return;
-    
-    // Attendre que le DOM se mette à jour
     const timeoutId = setTimeout(() => {
       const rect = canvas.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) {
         splitRendererRef.current?.resize(rect.width, rect.height);
-        setSplitRightViewport((v) => ({
-          ...v,
-          width: rect.width,
-          height: rect.height,
-        }));
+        setSplitRightViewport((v) => ({ ...v, width: rect.width, height: rect.height }));
       }
     }, 50);
-    
-    return () => clearTimeout(timeoutId);
-  }, [splitViewEnabled, splitViewMinimized, splitPosition]);
-
-  // Resize du canvas principal quand split view change
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !rendererRef.current) return;
-    
-    // Attendre que le DOM se mette à jour
-    const timeoutId = setTimeout(() => {
-      const rect = canvas.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        rendererRef.current?.resize(rect.width, rect.height);
-        setViewport((v) => ({
-          ...v,
-          width: rect.width,
-          height: rect.height,
-        }));
-      }
-    }, 50);
-    
     return () => clearTimeout(timeoutId);
   }, [splitViewEnabled, splitViewMinimized, splitPosition]);
 
@@ -3506,7 +3437,7 @@ export function CADGabaritCanvas({
         p1: newPoint.id,
         p2: line.p2,
         layerId: line.layerId,
-        strokeWidth: (line as any).strokeWidth, // Copier le strokeWidth de la ligne originale
+        strokeWidth: (line as any).strokeWidth, // Conserver l'épaisseur
       } as Line;
       sketchToModify.geometries.set(newLine.id, newLine);
 
@@ -5833,7 +5764,7 @@ export function CADGabaritCanvas({
             p1: intersectPoint.id,
             p2: existingLine.p2,
             layerId: existingLine.layerId,
-            strokeWidth: (existingLine as any).strokeWidth, // Copier strokeWidth
+            strokeWidth: (existingLine as any).strokeWidth, // Conserver l'épaisseur
           } as Line;
           sketchToModify.geometries.set(newExistingLine.id, newExistingLine);
 
@@ -5854,7 +5785,7 @@ export function CADGabaritCanvas({
             p1: intersectPoint.id,
             p2: currentNewLine.p2,
             layerId: currentNewLine.layerId,
-            strokeWidth: (currentNewLine as any).strokeWidth, // Copier strokeWidth
+            strokeWidth: (currentNewLine as any).strokeWidth, // Conserver l'épaisseur
           } as Line;
           sketchToModify.geometries.set(newNewLine.id, newNewLine);
 
@@ -11895,57 +11826,31 @@ export function CADGabaritCanvas({
 
         <Separator orientation="vertical" className="h-6" />
 
-        {/* Sélecteur de branche active */}
+        {/* Sélecteur de branche */}
         {branches.length > 0 && (
-          <div className="flex items-center gap-1">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 px-2 gap-2 min-w-[120px] justify-between"
-                  title="Branche active"
-                >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="w-3 h-3 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: branches.find((b) => b.id === activeBranchId)?.color || "#3B82F6" }}
-                    />
-                    <span className="truncate max-w-[80px] text-xs">
-                      {branches.find((b) => b.id === activeBranchId)?.name || "main"}
-                    </span>
-                  </div>
-                  <ChevronDown className="h-3 w-3 flex-shrink-0" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                {branches.map((branch) => (
-                  <DropdownMenuItem
-                    key={branch.id}
-                    onClick={() => switchToBranch(branch.id)}
-                    className="gap-2"
-                  >
-                    <div
-                      className="w-3 h-3 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: branch.color }}
-                    />
-                    <span className="truncate flex-1">{branch.name}</span>
-                    <span className="text-xs text-gray-400">{branch.history.length}</span>
-                    {branch.id === activeBranchId && <Check className="h-4 w-4 text-blue-500" />}
-                  </DropdownMenuItem>
-                ))}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => createBranchFromHistoryIndex(historyIndex)}
-                  disabled={branches.length >= 10}
-                  className="gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>Nouvelle branche</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-8 px-2 gap-2 min-w-[100px]">
+                <div
+                  className="w-3 h-3 rounded-full"
+                  style={{ backgroundColor: branches.find((b) => b.id === activeBranchId)?.color || "#3B82F6" }}
+                />
+                <span className="truncate max-w-[60px] text-xs">
+                  {branches.find((b) => b.id === activeBranchId)?.name || "main"}
+                </span>
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-44">
+              {branches.map((branch) => (
+                <DropdownMenuItem key={branch.id} onClick={() => switchToBranch(branch.id)} className="gap-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: branch.color }} />
+                  <span className="truncate flex-1">{branch.name}</span>
+                  {branch.id === activeBranchId && <Check className="h-4 w-4 text-blue-500" />}
                 </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
 
         <Separator orientation="vertical" className="h-6" />
@@ -12268,622 +12173,544 @@ export function CADGabaritCanvas({
           {/* Canvas Container - avec support Split View */}
           <div className="flex-1 relative overflow-hidden flex">
             {/* Vue gauche (principale) */}
-            <div 
+            <div
               className="relative overflow-hidden"
-              style={{ 
-                width: splitViewEnabled && !splitViewMinimized ? `${splitPosition}%` : '100%',
-                transition: isDraggingSplit ? 'none' : 'width 0.2s ease-out'
+              style={{
+                width: splitViewEnabled && !splitViewMinimized ? `${splitPosition}%` : "100%",
+                flex: splitViewEnabled && !splitViewMinimized ? "none" : "1",
               }}
             >
-            <canvas
-              ref={canvasRef}
-              className="absolute inset-0 cursor-crosshair"
-              style={{
-                cursor: isDraggingSelection
-                  ? "move"
-                  : draggingMeasurePoint || draggingCalibrationPoint
+              <canvas
+                ref={canvasRef}
+                className="absolute inset-0 cursor-crosshair"
+                style={{
+                  cursor: isDraggingSelection
                     ? "move"
-                    : activeTool === "pan" || isPanning
-                      ? "grab"
-                      : "crosshair",
-              }}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-              onDoubleClick={handleDoubleClick}
-              onContextMenu={(e) => {
-                e.preventDefault();
+                    : draggingMeasurePoint || draggingCalibrationPoint
+                      ? "move"
+                      : activeTool === "pan" || isPanning
+                        ? "grab"
+                        : "crosshair",
+                }}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                onDoubleClick={handleDoubleClick}
+                onContextMenu={(e) => {
+                  e.preventDefault();
 
-                // === PRIORITÉ 1: Annuler le drag du gizmo en cours ===
-                // Utiliser la ref pour éviter stale closure
-                const currentGizmoDrag = gizmoDragRef.current;
-                if (currentGizmoDrag) {
-                  // Restaurer les positions initiales
-                  setSketch((prev) => {
-                    const newSketch = { ...prev };
-                    newSketch.points = new Map(prev.points);
+                  // === PRIORITÉ 1: Annuler le drag du gizmo en cours ===
+                  // Utiliser la ref pour éviter stale closure
+                  const currentGizmoDrag = gizmoDragRef.current;
+                  if (currentGizmoDrag) {
+                    // Restaurer les positions initiales
+                    setSketch((prev) => {
+                      const newSketch = { ...prev };
+                      newSketch.points = new Map(prev.points);
 
-                    for (const [pointId, initialPos] of currentGizmoDrag.initialPositions) {
-                      newSketch.points.set(pointId, { id: pointId, x: initialPos.x, y: initialPos.y });
-                    }
-
-                    return newSketch;
-                  });
-                  setGizmoDrag(null);
-                  setShowTransformGizmo(false);
-                  toast.info("Transformation annulée");
-                  return;
-                }
-
-                // === PRIORITÉ 2: Désactiver le gizmo si affiché ===
-                if (showTransformGizmo) {
-                  setShowTransformGizmo(false);
-                  return;
-                }
-
-                const rect = canvasRef.current?.getBoundingClientRect();
-                if (!rect) return;
-
-                const screenX = e.clientX - rect.left;
-                const screenY = e.clientY - rect.top;
-                const worldPos = screenToWorld(screenX, screenY);
-                const tolerance = 10 / viewport.scale;
-
-                // D'abord chercher si on est sur un point (coin potentiel)
-                for (const [pointId, point] of sketch.points) {
-                  if (distance(worldPos, point) < tolerance) {
-                    // Compter les lignes connectées à ce point
-                    const connectedLines: Line[] = [];
-                    sketch.geometries.forEach((geo) => {
-                      if (geo.type === "line") {
-                        const line = geo as Line;
-                        if (line.p1 === pointId || line.p2 === pointId) {
-                          connectedLines.push(line);
-                        }
+                      for (const [pointId, initialPos] of currentGizmoDrag.initialPositions) {
+                        newSketch.points.set(pointId, { id: pointId, x: initialPos.x, y: initialPos.y });
                       }
-                    });
 
-                    // Si au moins 2 lignes connectées, c'est un coin/angle
-                    if (connectedLines.length >= 2) {
+                      return newSketch;
+                    });
+                    setGizmoDrag(null);
+                    setShowTransformGizmo(false);
+                    toast.info("Transformation annulée");
+                    return;
+                  }
+
+                  // === PRIORITÉ 2: Désactiver le gizmo si affiché ===
+                  if (showTransformGizmo) {
+                    setShowTransformGizmo(false);
+                    return;
+                  }
+
+                  const rect = canvasRef.current?.getBoundingClientRect();
+                  if (!rect) return;
+
+                  const screenX = e.clientX - rect.left;
+                  const screenY = e.clientY - rect.top;
+                  const worldPos = screenToWorld(screenX, screenY);
+                  const tolerance = 10 / viewport.scale;
+
+                  // D'abord chercher si on est sur un point (coin potentiel)
+                  for (const [pointId, point] of sketch.points) {
+                    if (distance(worldPos, point) < tolerance) {
+                      // Compter les lignes connectées à ce point
+                      const connectedLines: Line[] = [];
+                      sketch.geometries.forEach((geo) => {
+                        if (geo.type === "line") {
+                          const line = geo as Line;
+                          if (line.p1 === pointId || line.p2 === pointId) {
+                            connectedLines.push(line);
+                          }
+                        }
+                      });
+
+                      // Si au moins 2 lignes connectées, c'est un coin/angle
+                      if (connectedLines.length >= 2) {
+                        setContextMenu({
+                          x: e.clientX,
+                          y: e.clientY,
+                          entityId: pointId,
+                          entityType: "corner",
+                        });
+                        return;
+                      }
+                    }
+                  }
+
+                  // Sinon chercher une entité géométrique
+                  const entityId = findEntityAtPosition(worldPos.x, worldPos.y);
+                  if (entityId) {
+                    const geo = sketch.geometries.get(entityId);
+                    if (geo) {
                       setContextMenu({
                         x: e.clientX,
                         y: e.clientY,
-                        entityId: pointId,
-                        entityType: "corner",
+                        entityId,
+                        entityType: geo.type,
                       });
-                      return;
                     }
+                  } else {
+                    setContextMenu(null);
                   }
-                }
+                }}
+              />
 
-                // Sinon chercher une entité géométrique
-                const entityId = findEntityAtPosition(worldPos.x, worldPos.y);
-                if (entityId) {
-                  const geo = sketch.geometries.get(entityId);
-                  if (geo) {
-                    setContextMenu({
-                      x: e.clientX,
-                      y: e.clientY,
-                      entityId,
-                      entityType: geo.type,
-                    });
-                  }
-                } else {
-                  setContextMenu(null);
-                }
-              }}
-            />
-
-            {/* Poignée du mode reveal (rideau) */}
-            {comparisonMode && comparisonStyle === "reveal" && revealBranchData && (
-              <div
-                className="absolute inset-0 pointer-events-none z-40"
-                style={{ left: "32px" }} // Décalage pour la règle
-              >
-                {/* Ligne de division */}
+              {/* Poignée du mode reveal (rideau) */}
+              {comparisonMode && comparisonStyle === "reveal" && revealBranchData && (
                 <div
-                  className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg pointer-events-none"
-                  style={{
-                    left: `${revealPosition}%`,
-                    boxShadow: "0 0 8px rgba(0,0,0,0.5), 0 0 2px rgba(0,0,0,0.3)",
-                  }}
-                />
-
-                {/* Poignée draggable */}
-                <div
-                  className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 pointer-events-auto cursor-ew-resize z-50"
-                  style={{ left: `${revealPosition}%` }}
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    isDraggingRevealRef.current = true;
-                    setIsDraggingReveal(true);
-
-                    const container = e.currentTarget.parentElement;
-                    if (!container) return;
-
-                    const rect = container.getBoundingClientRect();
-
-                    const handleMouseMove = (moveEvent: MouseEvent) => {
-                      moveEvent.preventDefault();
-                      const x = moveEvent.clientX - rect.left;
-                      const percentage = Math.round(Math.max(5, Math.min(95, (x / rect.width) * 100)));
-                      setRevealPosition(percentage);
-                    };
-
-                    const handleMouseUp = () => {
-                      isDraggingRevealRef.current = false;
-                      setIsDraggingReveal(false);
-                      document.removeEventListener("mousemove", handleMouseMove);
-                      document.removeEventListener("mouseup", handleMouseUp);
-                    };
-
-                    document.addEventListener("mousemove", handleMouseMove);
-                    document.addEventListener("mouseup", handleMouseUp);
-                  }}
+                  className="absolute inset-0 pointer-events-none z-40"
+                  style={{ left: "32px" }} // Décalage pour la règle
                 >
-                  {/* Poignée visuelle */}
-                  <div className="w-8 h-12 bg-white rounded-lg shadow-lg border border-gray-300 flex flex-col items-center justify-center gap-0.5">
-                    <div className="flex gap-0.5">
-                      <div className="w-0.5 h-4 bg-gray-400 rounded-full" />
-                      <div className="w-0.5 h-4 bg-gray-400 rounded-full" />
-                    </div>
-                    {/* Flèches */}
-                    <div className="flex items-center text-gray-500 text-[8px] font-bold">◀ ▶</div>
-                  </div>
-                </div>
-
-                {/* Labels des branches */}
-                <div
-                  className="absolute top-2 px-2 py-1 rounded text-[10px] font-medium text-white shadow-md pointer-events-none"
-                  style={{
-                    left: `calc(${revealPosition}% - 60px)`,
-                    backgroundColor: activeBranchColor,
-                  }}
-                >
-                  {branches.find((b) => b.id === activeBranchId)?.name || "Active"}
-                </div>
-                <div
-                  className="absolute top-2 px-2 py-1 rounded text-[10px] font-medium text-white shadow-md pointer-events-none"
-                  style={{
-                    left: `calc(${revealPosition}% + 8px)`,
-                    backgroundColor: revealBranchData.color,
-                  }}
-                >
-                  {revealBranchData.branchName}
-                </div>
-              </div>
-            )}
-
-            {/* Panneau de saisie rectangle FIXE (en bas du canvas) */}
-            {rectInputs.active && tempGeometry?.type === "rectangle" && (
-              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-3 bg-white/95 backdrop-blur-sm border border-gray-300 rounded-lg shadow-lg px-4 py-2">
-                <span className="text-xs text-gray-500 font-medium">Rectangle:</span>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-gray-500">L</span>
-                  <input
-                    ref={widthInputRef}
-                    type="text"
-                    inputMode="decimal"
-                    defaultValue=""
-                    onFocus={(e) => {
-                      setRectInputs((prev) => ({ ...prev, activeField: "width" }));
-                      e.target.select();
+                  {/* Ligne de division */}
+                  <div
+                    className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg pointer-events-none"
+                    style={{
+                      left: `${revealPosition}%`,
+                      boxShadow: "0 0 8px rgba(0,0,0,0.5), 0 0 2px rgba(0,0,0,0.3)",
                     }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Tab") {
-                        e.preventDefault();
-                        setRectInputs((prev) => ({ ...prev, activeField: "height" }));
-                        heightInputRef.current?.focus();
-                        heightInputRef.current?.select();
-                      } else if (e.key === "Enter") {
-                        e.preventDefault();
-                        const wVal = widthInputRef.current?.value || "";
-                        const hVal = heightInputRef.current?.value || "";
-                        setRectInputs((prev) => ({ ...prev, widthValue: wVal, heightValue: hVal }));
-                        setTimeout(() => createRectangleFromInputs(), 0);
-                      } else if (e.key === "Escape") {
-                        e.preventDefault();
-                        setTempPoints([]);
-                        setTempGeometry(null);
-                        setRectInputs({
-                          active: false,
-                          widthValue: "",
-                          heightValue: "",
-                          activeField: "width",
-                          widthInputPos: { x: 0, y: 0 },
-                          heightInputPos: { x: 0, y: 0 },
-                        });
-                      }
-                    }}
-                    className={`w-20 h-7 px-2 text-center text-sm font-medium rounded border-2 outline-none ${
-                      rectInputs.activeField === "width"
-                        ? "border-blue-500 bg-blue-50 text-blue-700"
-                        : "border-gray-300 bg-white text-gray-700"
-                    }`}
-                    placeholder="largeur"
                   />
-                  <span className="text-xs text-gray-500">mm</span>
-                </div>
-                <span className="text-gray-400">×</span>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-gray-500">H</span>
-                  <input
-                    ref={heightInputRef}
-                    type="text"
-                    inputMode="decimal"
-                    defaultValue=""
-                    onFocus={(e) => {
-                      setRectInputs((prev) => ({ ...prev, activeField: "height" }));
-                      e.target.select();
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Tab") {
-                        e.preventDefault();
-                        setRectInputs((prev) => ({ ...prev, activeField: "width" }));
-                        widthInputRef.current?.focus();
-                        widthInputRef.current?.select();
-                      } else if (e.key === "Enter") {
-                        e.preventDefault();
-                        const wVal = widthInputRef.current?.value || "";
-                        const hVal = heightInputRef.current?.value || "";
-                        setRectInputs((prev) => ({ ...prev, widthValue: wVal, heightValue: hVal }));
-                        setTimeout(() => createRectangleFromInputs(), 0);
-                      } else if (e.key === "Escape") {
-                        e.preventDefault();
-                        setTempPoints([]);
-                        setTempGeometry(null);
-                        setRectInputs({
-                          active: false,
-                          widthValue: "",
-                          heightValue: "",
-                          activeField: "width",
-                          widthInputPos: { x: 0, y: 0 },
-                          heightInputPos: { x: 0, y: 0 },
-                        });
-                      }
-                    }}
-                    className={`w-20 h-7 px-2 text-center text-sm font-medium rounded border-2 outline-none ${
-                      rectInputs.activeField === "height"
-                        ? "border-blue-500 bg-blue-50 text-blue-700"
-                        : "border-gray-300 bg-white text-gray-700"
-                    }`}
-                    placeholder="hauteur"
-                  />
-                  <span className="text-xs text-gray-500">mm</span>
-                </div>
-                <span className="text-xs text-gray-400 ml-2">Tab: changer • Entrée: valider</span>
-              </div>
-            )}
 
-            {/* Input inline pour le gizmo de transformation */}
-            {transformGizmo.active && selectionGizmoData && (
-              <div
-                className="absolute z-50 flex items-center gap-1"
-                style={{
-                  left: `${selectionGizmoData.center.x * viewport.scale + viewport.offsetX + (transformGizmo.mode === "translateX" ? 70 : transformGizmo.mode === "rotate" ? 0 : 0)}px`,
-                  top: `${selectionGizmoData.center.y * viewport.scale + viewport.offsetY + (transformGizmo.mode === "translateY" ? -70 : transformGizmo.mode === "rotate" ? 45 : 0)}px`,
-                  transform: "translate(-50%, -50%)",
-                }}
-              >
-                <input
-                  ref={transformInputRef}
-                  type="text"
-                  inputMode="decimal"
-                  value={transformGizmo.inputValue}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
-                    applyGizmoTransform(val);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
+                  {/* Poignée draggable */}
+                  <div
+                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 pointer-events-auto cursor-ew-resize z-50"
+                    style={{ left: `${revealPosition}%` }}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
                       e.preventDefault();
-                      confirmGizmoTransform();
-                    } else if (e.key === "Escape") {
-                      e.preventDefault();
-                      cancelGizmoTransform();
-                    }
-                    e.stopPropagation();
-                  }}
-                  className={`w-20 h-8 px-2 text-center text-sm font-bold rounded border-2 shadow-lg outline-none ${
-                    transformGizmo.mode === "translateX"
-                      ? "border-red-500 bg-red-50 text-red-700"
-                      : transformGizmo.mode === "translateY"
-                        ? "border-green-500 bg-green-50 text-green-700"
-                        : "border-blue-500 bg-blue-50 text-blue-700"
-                  }`}
-                  placeholder="0"
-                  autoFocus
-                />
-                <span
-                  className={`text-xs font-bold px-1 rounded ${
-                    transformGizmo.mode === "translateX"
-                      ? "text-red-600 bg-red-100"
-                      : transformGizmo.mode === "translateY"
-                        ? "text-green-600 bg-green-100"
-                        : "text-blue-600 bg-blue-100"
-                  }`}
-                >
-                  {transformGizmo.mode === "rotate" ? "°" : "mm"}
-                </span>
-              </div>
-            )}
+                      isDraggingRevealRef.current = true;
+                      setIsDraggingReveal(true);
 
-            {/* Indicateur discret pour l'outil de mesure - sous la toolbar */}
-            {activeTool === "measure" && (
-              <div className="absolute top-2 left-1/2 transform -translate-x-1/2 bg-green-50 border border-green-200 rounded px-3 py-1 flex items-center gap-2 text-sm shadow-sm z-10">
-                <Ruler className="h-4 w-4 text-green-600" />
-                <span className="text-green-700">
-                  {measureState.phase === "idle"
-                    ? "1er point"
-                    : measureState.phase === "waitingSecond"
-                      ? "2ème point"
-                      : ""}
-                </span>
-                {measurements.length > 0 && (
-                  <span className="text-green-600 font-medium ml-1">({measurements.length})</span>
-                )}
-              </div>
-            )}
+                      const container = e.currentTarget.parentElement;
+                      if (!container) return;
 
-            {/* Indicateur de longueur des segments sélectionnés - coin supérieur droit */}
-            {selectedLength && (
-              <div className="absolute top-2 right-2 bg-gray-100/90 border border-gray-300 rounded px-2 py-1 text-xs text-gray-600 shadow-sm z-10 flex flex-col gap-0.5">
-                <div>
-                  <span className="font-medium">{selectedLength.mm.toFixed(1)} mm</span>
-                  {selectedLength.count > 1 && <span className="text-gray-400 ml-1">({selectedLength.count})</span>}
-                </div>
-                {selectedLength.internalAngle !== null && (
-                  <div className="text-orange-600 font-medium">∠ {selectedLength.internalAngle.toFixed(1)}°</div>
-                )}
-              </div>
-            )}
+                      const rect = container.getBoundingClientRect();
 
-            {/* Overlay pour arc sélectionné */}
-            {selectedEntities.size === 1 &&
-              (() => {
-                const entityId = Array.from(selectedEntities)[0];
-                const geo = sketch.geometries.get(entityId);
-                if (geo && geo.type === "arc") {
-                  const arc = geo as Arc;
-                  return (
-                    <div
-                      className="absolute bottom-4 right-4 bg-white/95 rounded-lg shadow-lg p-3 border border-blue-300 cursor-pointer hover:bg-blue-50"
-                      onDoubleClick={() => {
-                        setArcEditDialog({
-                          open: true,
-                          arcId: entityId,
-                          currentRadius: arc.radius,
-                        });
-                      }}
-                    >
-                      <div className="flex items-center gap-2 text-blue-700 font-medium">
-                        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
-                        </svg>
-                        <span>Arc</span>
-                      </div>
-                      <p className="text-lg font-bold text-blue-800 mt-1">R{arc.radius.toFixed(1)} mm</p>
-                      <p className="text-xs text-gray-400">Double-clic pour modifier</p>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-            </div>
-
-            {/* Diviseur Split View */}
-            {splitViewEnabled && !splitViewMinimized && (
-              <div
-                className="w-1 bg-gray-300 hover:bg-blue-500 cursor-col-resize relative z-50 flex-shrink-0"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  setIsDraggingSplit(true);
-                  
-                  const container = e.currentTarget.parentElement;
-                  if (!container) return;
-                  
-                  const rect = container.getBoundingClientRect();
-                  
-                  const handleMouseMove = (moveEvent: MouseEvent) => {
-                    moveEvent.preventDefault();
-                    const x = moveEvent.clientX - rect.left;
-                    const percentage = Math.max(20, Math.min(80, (x / rect.width) * 100));
-                    setSplitPosition(percentage);
-                  };
-                  
-                  const handleMouseUp = () => {
-                    setIsDraggingSplit(false);
-                    document.removeEventListener("mousemove", handleMouseMove);
-                    document.removeEventListener("mouseup", handleMouseUp);
-                  };
-                  
-                  document.addEventListener("mousemove", handleMouseMove);
-                  document.addEventListener("mouseup", handleMouseUp);
-                }}
-              >
-                {/* Poignée visuelle */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-8 bg-gray-400 hover:bg-blue-500 rounded flex items-center justify-center">
-                  <div className="flex flex-col gap-0.5">
-                    <div className="w-0.5 h-1 bg-white rounded-full" />
-                    <div className="w-0.5 h-1 bg-white rounded-full" />
-                    <div className="w-0.5 h-1 bg-white rounded-full" />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Vue droite (Split View) */}
-            {splitViewEnabled && !splitViewMinimized && (
-              <div 
-                className="relative overflow-hidden border-l border-gray-300"
-                style={{ 
-                  width: `${100 - splitPosition}%`,
-                  transition: isDraggingSplit ? 'none' : 'width 0.2s ease-out'
-                }}
-              >
-                {/* Header de la vue droite */}
-                <div className="absolute top-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-sm border-b px-2 py-1 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500">Vue:</span>
-                    <select
-                      className="text-xs border rounded px-2 py-1 bg-white min-w-[100px]"
-                      value={splitRightBranchId || ""}
-                      onChange={(e) => setSplitRightBranchId(e.target.value)}
-                    >
-                      {branches.filter(b => b.id !== activeBranchId).map((branch) => (
-                        <option key={branch.id} value={branch.id}>
-                          {branch.name}
-                        </option>
-                      ))}
-                    </select>
-                    {splitRightBranchData && (
-                      <div
-                        className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: splitRightBranchData.color }}
-                      />
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {/* Bouton sync viewports */}
-                    <button
-                      className={`p-1 rounded text-xs ${splitSyncViewports ? 'bg-blue-500 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'}`}
-                      onClick={() => setSplitSyncViewports(!splitSyncViewports)}
-                      title={splitSyncViewports ? "Désynchroniser zoom/pan" : "Synchroniser zoom/pan"}
-                    >
-                      {splitSyncViewports ? <Link2 className="h-3 w-3" /> : <Link2Off className="h-3 w-3" />}
-                    </button>
-                    {/* Bouton minimiser */}
-                    <button
-                      className="p-1 rounded bg-gray-100 hover:bg-gray-200 text-gray-600"
-                      onClick={() => setSplitViewMinimized(true)}
-                      title="Réduire en mini-vue"
-                    >
-                      <Minimize className="h-3 w-3" />
-                    </button>
-                    {/* Bouton fermer */}
-                    <button
-                      className="p-1 rounded bg-gray-100 hover:bg-red-100 text-gray-600 hover:text-red-600"
-                      onClick={() => setSplitViewEnabled(false)}
-                      title="Fermer la vue divisée"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                </div>
-                
-                {/* Badge lecture seule */}
-                <div className="absolute top-10 left-2 z-40 bg-orange-100 text-orange-700 text-[10px] px-2 py-0.5 rounded">
-                  Lecture seule
-                </div>
-                
-                {/* Canvas de droite */}
-                <canvas
-                  ref={splitCanvasRef}
-                  className="absolute left-0 right-0 bottom-0 cursor-default"
-                  style={{ top: '32px' }}
-                  onWheel={(e) => {
-                    if (!splitSyncViewports) {
-                      e.preventDefault();
-                      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-                      setSplitRightViewport((v) => ({
-                        ...v,
-                        scale: Math.max(0.1, Math.min(100, v.scale * delta)),
-                      }));
-                    }
-                  }}
-                  onMouseDown={(e) => {
-                    if (splitSyncViewports) return;
-                    if (e.button === 1 || (e.button === 0 && e.altKey)) {
-                      e.preventDefault();
-                      const startX = e.clientX;
-                      const startY = e.clientY;
-                      const startOffset = { ...splitRightViewport };
-                      
                       const handleMouseMove = (moveEvent: MouseEvent) => {
-                        const dx = moveEvent.clientX - startX;
-                        const dy = moveEvent.clientY - startY;
-                        setSplitRightViewport((v) => ({
-                          ...v,
-                          offsetX: startOffset.offsetX + dx,
-                          offsetY: startOffset.offsetY + dy,
-                        }));
+                        moveEvent.preventDefault();
+                        const x = moveEvent.clientX - rect.left;
+                        const percentage = Math.round(Math.max(5, Math.min(95, (x / rect.width) * 100)));
+                        setRevealPosition(percentage);
                       };
-                      
+
                       const handleMouseUp = () => {
+                        isDraggingRevealRef.current = false;
+                        setIsDraggingReveal(false);
                         document.removeEventListener("mousemove", handleMouseMove);
                         document.removeEventListener("mouseup", handleMouseUp);
                       };
-                      
+
                       document.addEventListener("mousemove", handleMouseMove);
                       document.addEventListener("mouseup", handleMouseUp);
-                    }
-                  }}
-                />
-              </div>
-            )}
+                    }}
+                  >
+                    {/* Poignée visuelle */}
+                    <div className="w-8 h-12 bg-white rounded-lg shadow-lg border border-gray-300 flex flex-col items-center justify-center gap-0.5">
+                      <div className="flex gap-0.5">
+                        <div className="w-0.5 h-4 bg-gray-400 rounded-full" />
+                        <div className="w-0.5 h-4 bg-gray-400 rounded-full" />
+                      </div>
+                      {/* Flèches */}
+                      <div className="flex items-center text-gray-500 text-[8px] font-bold">◀ ▶</div>
+                    </div>
+                  </div>
 
-            {/* Mini-modale (vue réduite) */}
-            {splitViewEnabled && splitViewMinimized && (
-              <div 
-                className="absolute bottom-4 right-4 z-50 bg-white rounded-lg shadow-xl border border-gray-300 overflow-hidden"
-                style={{ width: '20%', minWidth: '200px', maxWidth: '300px', height: '20%', minHeight: '150px', maxHeight: '250px' }}
-              >
-                {/* Header mini-modale */}
-                <div className="bg-gray-100 border-b px-2 py-1 flex items-center justify-between gap-1">
+                  {/* Labels des branches */}
+                  <div
+                    className="absolute top-2 px-2 py-1 rounded text-[10px] font-medium text-white shadow-md pointer-events-none"
+                    style={{
+                      left: `calc(${revealPosition}% - 60px)`,
+                      backgroundColor: activeBranchColor,
+                    }}
+                  >
+                    {branches.find((b) => b.id === activeBranchId)?.name || "Active"}
+                  </div>
+                  <div
+                    className="absolute top-2 px-2 py-1 rounded text-[10px] font-medium text-white shadow-md pointer-events-none"
+                    style={{
+                      left: `calc(${revealPosition}% + 8px)`,
+                      backgroundColor: revealBranchData.color,
+                    }}
+                  >
+                    {revealBranchData.branchName}
+                  </div>
+                </div>
+              )}
+
+              {/* Panneau de saisie rectangle FIXE (en bas du canvas) */}
+              {rectInputs.active && tempGeometry?.type === "rectangle" && (
+                <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-3 bg-white/95 backdrop-blur-sm border border-gray-300 rounded-lg shadow-lg px-4 py-2">
+                  <span className="text-xs text-gray-500 font-medium">Rectangle:</span>
                   <div className="flex items-center gap-1">
-                    <select
-                      className="text-[10px] border rounded px-1 py-0.5 bg-white max-w-[80px]"
-                      value={splitRightBranchId || ""}
-                      onChange={(e) => setSplitRightBranchId(e.target.value)}
-                    >
-                      {branches.filter(b => b.id !== activeBranchId).map((branch) => (
+                    <span className="text-xs text-gray-500">L</span>
+                    <input
+                      ref={widthInputRef}
+                      type="text"
+                      inputMode="decimal"
+                      defaultValue=""
+                      onFocus={(e) => {
+                        setRectInputs((prev) => ({ ...prev, activeField: "width" }));
+                        e.target.select();
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Tab") {
+                          e.preventDefault();
+                          setRectInputs((prev) => ({ ...prev, activeField: "height" }));
+                          heightInputRef.current?.focus();
+                          heightInputRef.current?.select();
+                        } else if (e.key === "Enter") {
+                          e.preventDefault();
+                          const wVal = widthInputRef.current?.value || "";
+                          const hVal = heightInputRef.current?.value || "";
+                          setRectInputs((prev) => ({ ...prev, widthValue: wVal, heightValue: hVal }));
+                          setTimeout(() => createRectangleFromInputs(), 0);
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          setTempPoints([]);
+                          setTempGeometry(null);
+                          setRectInputs({
+                            active: false,
+                            widthValue: "",
+                            heightValue: "",
+                            activeField: "width",
+                            widthInputPos: { x: 0, y: 0 },
+                            heightInputPos: { x: 0, y: 0 },
+                          });
+                        }
+                      }}
+                      className={`w-20 h-7 px-2 text-center text-sm font-medium rounded border-2 outline-none ${
+                        rectInputs.activeField === "width"
+                          ? "border-blue-500 bg-blue-50 text-blue-700"
+                          : "border-gray-300 bg-white text-gray-700"
+                      }`}
+                      placeholder="largeur"
+                    />
+                    <span className="text-xs text-gray-500">mm</span>
+                  </div>
+                  <span className="text-gray-400">×</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-gray-500">H</span>
+                    <input
+                      ref={heightInputRef}
+                      type="text"
+                      inputMode="decimal"
+                      defaultValue=""
+                      onFocus={(e) => {
+                        setRectInputs((prev) => ({ ...prev, activeField: "height" }));
+                        e.target.select();
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Tab") {
+                          e.preventDefault();
+                          setRectInputs((prev) => ({ ...prev, activeField: "width" }));
+                          widthInputRef.current?.focus();
+                          widthInputRef.current?.select();
+                        } else if (e.key === "Enter") {
+                          e.preventDefault();
+                          const wVal = widthInputRef.current?.value || "";
+                          const hVal = heightInputRef.current?.value || "";
+                          setRectInputs((prev) => ({ ...prev, widthValue: wVal, heightValue: hVal }));
+                          setTimeout(() => createRectangleFromInputs(), 0);
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          setTempPoints([]);
+                          setTempGeometry(null);
+                          setRectInputs({
+                            active: false,
+                            widthValue: "",
+                            heightValue: "",
+                            activeField: "width",
+                            widthInputPos: { x: 0, y: 0 },
+                            heightInputPos: { x: 0, y: 0 },
+                          });
+                        }
+                      }}
+                      className={`w-20 h-7 px-2 text-center text-sm font-medium rounded border-2 outline-none ${
+                        rectInputs.activeField === "height"
+                          ? "border-blue-500 bg-blue-50 text-blue-700"
+                          : "border-gray-300 bg-white text-gray-700"
+                      }`}
+                      placeholder="hauteur"
+                    />
+                    <span className="text-xs text-gray-500">mm</span>
+                  </div>
+                  <span className="text-xs text-gray-400 ml-2">Tab: changer • Entrée: valider</span>
+                </div>
+              )}
+
+              {/* Input inline pour le gizmo de transformation */}
+              {transformGizmo.active && selectionGizmoData && (
+                <div
+                  className="absolute z-50 flex items-center gap-1"
+                  style={{
+                    left: `${selectionGizmoData.center.x * viewport.scale + viewport.offsetX + (transformGizmo.mode === "translateX" ? 70 : transformGizmo.mode === "rotate" ? 0 : 0)}px`,
+                    top: `${selectionGizmoData.center.y * viewport.scale + viewport.offsetY + (transformGizmo.mode === "translateY" ? -70 : transformGizmo.mode === "rotate" ? 45 : 0)}px`,
+                    transform: "translate(-50%, -50%)",
+                  }}
+                >
+                  <input
+                    ref={transformInputRef}
+                    type="text"
+                    inputMode="decimal"
+                    value={transformGizmo.inputValue}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
+                      applyGizmoTransform(val);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        confirmGizmoTransform();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        cancelGizmoTransform();
+                      }
+                      e.stopPropagation();
+                    }}
+                    className={`w-20 h-8 px-2 text-center text-sm font-bold rounded border-2 shadow-lg outline-none ${
+                      transformGizmo.mode === "translateX"
+                        ? "border-red-500 bg-red-50 text-red-700"
+                        : transformGizmo.mode === "translateY"
+                          ? "border-green-500 bg-green-50 text-green-700"
+                          : "border-blue-500 bg-blue-50 text-blue-700"
+                    }`}
+                    placeholder="0"
+                    autoFocus
+                  />
+                  <span
+                    className={`text-xs font-bold px-1 rounded ${
+                      transformGizmo.mode === "translateX"
+                        ? "text-red-600 bg-red-100"
+                        : transformGizmo.mode === "translateY"
+                          ? "text-green-600 bg-green-100"
+                          : "text-blue-600 bg-blue-100"
+                    }`}
+                  >
+                    {transformGizmo.mode === "rotate" ? "°" : "mm"}
+                  </span>
+                </div>
+              )}
+
+              {/* Indicateur discret pour l'outil de mesure - sous la toolbar */}
+              {activeTool === "measure" && (
+                <div className="absolute top-2 left-1/2 transform -translate-x-1/2 bg-green-50 border border-green-200 rounded px-3 py-1 flex items-center gap-2 text-sm shadow-sm z-10">
+                  <Ruler className="h-4 w-4 text-green-600" />
+                  <span className="text-green-700">
+                    {measureState.phase === "idle"
+                      ? "1er point"
+                      : measureState.phase === "waitingSecond"
+                        ? "2ème point"
+                        : ""}
+                  </span>
+                  {measurements.length > 0 && (
+                    <span className="text-green-600 font-medium ml-1">({measurements.length})</span>
+                  )}
+                </div>
+              )}
+
+              {/* Indicateur de longueur des segments sélectionnés - coin supérieur droit */}
+              {selectedLength && (
+                <div className="absolute top-2 right-2 bg-gray-100/90 border border-gray-300 rounded px-2 py-1 text-xs text-gray-600 shadow-sm z-10 flex flex-col gap-0.5">
+                  <div>
+                    <span className="font-medium">{selectedLength.mm.toFixed(1)} mm</span>
+                    {selectedLength.count > 1 && <span className="text-gray-400 ml-1">({selectedLength.count})</span>}
+                  </div>
+                  {selectedLength.internalAngle !== null && (
+                    <div className="text-orange-600 font-medium">∠ {selectedLength.internalAngle.toFixed(1)}°</div>
+                  )}
+                </div>
+              )}
+
+              {/* Overlay pour arc sélectionné */}
+              {selectedEntities.size === 1 &&
+                (() => {
+                  const entityId = Array.from(selectedEntities)[0];
+                  const geo = sketch.geometries.get(entityId);
+                  if (geo && geo.type === "arc") {
+                    const arc = geo as Arc;
+                    return (
+                      <div
+                        className="absolute bottom-4 right-4 bg-white/95 rounded-lg shadow-lg p-3 border border-blue-300 cursor-pointer hover:bg-blue-50"
+                        onDoubleClick={() => {
+                          setArcEditDialog({
+                            open: true,
+                            arcId: entityId,
+                            currentRadius: arc.radius,
+                          });
+                        }}
+                      >
+                        <div className="flex items-center gap-2 text-blue-700 font-medium">
+                          <svg
+                            className="h-5 w-5"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          >
+                            <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
+                          </svg>
+                          <span>Arc</span>
+                        </div>
+                        <p className="text-lg font-bold text-blue-800 mt-1">R{arc.radius.toFixed(1)} mm</p>
+                        <p className="text-xs text-gray-400">Double-clic pour modifier</p>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+            </div>
+          </div>
+
+          {/* Diviseur Split View */}
+          {splitViewEnabled && !splitViewMinimized && (
+            <div
+              className="w-1 bg-gray-300 hover:bg-blue-500 cursor-col-resize relative z-50 flex-shrink-0"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIsDraggingSplit(true);
+                const container = e.currentTarget.parentElement;
+                if (!container) return;
+                const rect = container.getBoundingClientRect();
+                const handleMouseMove = (moveEvent: MouseEvent) => {
+                  moveEvent.preventDefault();
+                  const x = moveEvent.clientX - rect.left;
+                  setSplitPosition(Math.max(20, Math.min(80, (x / rect.width) * 100)));
+                };
+                const handleMouseUp = () => {
+                  setIsDraggingSplit(false);
+                  document.removeEventListener("mousemove", handleMouseMove);
+                  document.removeEventListener("mouseup", handleMouseUp);
+                };
+                document.addEventListener("mousemove", handleMouseMove);
+                document.addEventListener("mouseup", handleMouseUp);
+              }}
+            >
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-8 bg-gray-400 hover:bg-blue-500 rounded flex items-center justify-center">
+                <div className="flex flex-col gap-0.5">
+                  <div className="w-0.5 h-1 bg-white rounded-full" />
+                  <div className="w-0.5 h-1 bg-white rounded-full" />
+                  <div className="w-0.5 h-1 bg-white rounded-full" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Vue droite (Split View) */}
+          {splitViewEnabled && !splitViewMinimized && (
+            <div
+              className="relative overflow-hidden border-l border-gray-300"
+              style={{ width: `${100 - splitPosition}%` }}
+            >
+              <div className="absolute top-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-sm border-b px-2 py-1 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <select
+                    className="text-xs border rounded px-2 py-1 bg-white"
+                    value={splitRightBranchId || ""}
+                    onChange={(e) => setSplitRightBranchId(e.target.value)}
+                  >
+                    {branches
+                      .filter((b) => b.id !== activeBranchId)
+                      .map((branch) => (
                         <option key={branch.id} value={branch.id}>
                           {branch.name}
                         </option>
                       ))}
-                    </select>
-                    {splitRightBranchData && (
-                      <div
-                        className="w-2 h-2 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: splitRightBranchData.color }}
-                      />
-                    )}
-                  </div>
-                  <div className="flex items-center gap-0.5">
-                    <button
-                      className={`p-0.5 rounded text-[10px] ${splitSyncViewports ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'}`}
-                      onClick={() => setSplitSyncViewports(!splitSyncViewports)}
-                      title={splitSyncViewports ? "Désynchroniser" : "Synchroniser"}
-                    >
-                      {splitSyncViewports ? <Link2 className="h-2.5 w-2.5" /> : <Link2Off className="h-2.5 w-2.5" />}
-                    </button>
-                    <button
-                      className="p-0.5 rounded bg-gray-200 hover:bg-gray-300 text-gray-600"
-                      onClick={() => setSplitViewMinimized(false)}
-                      title="Agrandir"
-                    >
-                      <Maximize className="h-2.5 w-2.5" />
-                    </button>
-                    <button
-                      className="p-0.5 rounded bg-gray-200 hover:bg-red-100 text-gray-600 hover:text-red-600"
-                      onClick={() => setSplitViewEnabled(false)}
-                      title="Fermer"
-                    >
-                      <X className="h-2.5 w-2.5" />
-                    </button>
-                  </div>
+                  </select>
+                  {splitRightBranchData && (
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: splitRightBranchData.color }} />
+                  )}
                 </div>
-                
-                {/* Canvas mini-modale */}
-                <canvas
-                  ref={splitCanvasRef}
-                  className="w-full h-full"
-                />
+                <div className="flex items-center gap-1">
+                  <button
+                    className={`p-1 rounded text-xs ${splitSyncViewports ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-600"}`}
+                    onClick={() => setSplitSyncViewports(!splitSyncViewports)}
+                    title={splitSyncViewports ? "Désynchroniser" : "Synchroniser"}
+                  >
+                    {splitSyncViewports ? <Link2 className="h-3 w-3" /> : <Link2Off className="h-3 w-3" />}
+                  </button>
+                  <button
+                    className="p-1 rounded bg-gray-100 hover:bg-gray-200"
+                    onClick={() => setSplitViewMinimized(true)}
+                    title="Réduire"
+                  >
+                    <Minimize className="h-3 w-3" />
+                  </button>
+                  <button
+                    className="p-1 rounded bg-gray-100 hover:bg-red-100 hover:text-red-600"
+                    onClick={() => setSplitViewEnabled(false)}
+                    title="Fermer"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
               </div>
-            )}
-          </div>
+              <div className="absolute top-10 left-2 z-40 bg-orange-100 text-orange-700 text-[10px] px-2 py-0.5 rounded">
+                Lecture seule
+              </div>
+              <canvas ref={splitCanvasRef} className="absolute left-0 right-0 bottom-0" style={{ top: "32px" }} />
+            </div>
+          )}
+
+          {/* Mini-modale */}
+          {splitViewEnabled && splitViewMinimized && (
+            <div
+              className="absolute bottom-4 right-4 z-50 bg-white rounded-lg shadow-xl border overflow-hidden"
+              style={{ width: "220px", height: "160px" }}
+            >
+              <div className="bg-gray-100 border-b px-2 py-1 flex items-center justify-between">
+                <select
+                  className="text-[10px] border rounded px-1 py-0.5 bg-white max-w-[70px]"
+                  value={splitRightBranchId || ""}
+                  onChange={(e) => setSplitRightBranchId(e.target.value)}
+                >
+                  {branches
+                    .filter((b) => b.id !== activeBranchId)
+                    .map((branch) => (
+                      <option key={branch.id} value={branch.id}>
+                        {branch.name}
+                      </option>
+                    ))}
+                </select>
+                <div className="flex gap-0.5">
+                  <button className="p-0.5 rounded bg-gray-200" onClick={() => setSplitViewMinimized(false)}>
+                    <Maximize className="h-2.5 w-2.5" />
+                  </button>
+                  <button
+                    className="p-0.5 rounded bg-gray-200 hover:bg-red-100"
+                    onClick={() => setSplitViewEnabled(false)}
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              </div>
+              <canvas ref={splitCanvasRef} className="w-full h-[calc(100%-24px)]" />
+            </div>
+          )}
+        </div>
 
         {/* Panneau de calibration */}
         {showCalibrationPanel && (
