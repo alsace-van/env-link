@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.76 - Bibliothèque de templates (sauvegarde Supabase, catégories, favoris)
+// VERSION: 6.77 - Réorganisation toolbar (Import/Photos en bas, outils dessin regroupés)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -11449,145 +11449,138 @@ export function CADGabaritCanvas({
 
         <Separator orientation="vertical" className="h-6" />
 
-        {/* Import DXF */}
-        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
-          <input ref={dxfInputRef} type="file" accept=".dxf" onChange={handleDXFImport} className="hidden" />
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={() => dxfInputRef.current?.click()} className="h-9 px-2">
-                  <FileUp className="h-4 w-4 mr-1" />
-                  <span className="text-xs">Import DXF</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Importer un fichier DXF</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+        {/* Inputs cachés pour import de fichiers */}
+        <input ref={dxfInputRef} type="file" accept=".dxf" onChange={handleDXFImport} className="hidden" />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={handleImageUpload}
+          className="hidden"
+        />
 
-        <Separator orientation="vertical" className="h-6" />
+        {/* Outils photos (si des images sont chargées) */}
+        {backgroundImages.length > 0 && (
+          <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+            <Button
+              variant={showBackgroundImage ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowBackgroundImage(!showBackgroundImage)}
+              className="h-9 w-9 p-0"
+              title={showBackgroundImage ? "Masquer photos" : "Afficher photos"}
+            >
+              {showBackgroundImage ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            </Button>
 
-        {/* Image de fond (Multi-photos) */}
-        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={handleImageUpload}
-            className="hidden"
-          />
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="h-9 px-2">
-                  <Image className="h-4 w-4 mr-1" />
-                  <span className="text-xs">Photos</span>
-                  {backgroundImages.length > 0 && (
-                    <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
-                      {backgroundImages.length}
-                    </Badge>
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Charger une ou plusieurs photos (multi-sélection possible)</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+            {/* Opacité */}
+            <div className="flex items-center gap-1 px-1">
+              <input
+                type="range"
+                min="0.1"
+                max="1"
+                step="0.1"
+                value={imageOpacity}
+                onChange={(e) => {
+                  const newOpacity = parseFloat(e.target.value);
+                  setImageOpacity(newOpacity);
+                  setBackgroundImages((prev) => prev.map((img) => ({ ...img, opacity: newOpacity })));
+                }}
+                className="w-12 h-1"
+                title={`Opacité: ${Math.round(imageOpacity * 100)}%`}
+              />
+            </div>
 
-          {backgroundImages.length > 0 && (
-            <>
-              <Button
-                variant={showBackgroundImage ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowBackgroundImage(!showBackgroundImage)}
-                className="h-9 w-9 p-0"
-              >
-                {showBackgroundImage ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-              </Button>
-
-              {/* Menu de gestion des photos */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-9 px-2">
-                    <Settings className="h-4 w-4" />
+            {/* Marqueur */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={markerMode === "addMarker" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      if (markerMode === "addMarker") {
+                        setMarkerMode("idle");
+                      } else {
+                        setMarkerMode("addMarker");
+                        toast.info("Cliquez sur une photo pour ajouter un marqueur");
+                      }
+                    }}
+                    className="h-9 w-9 p-0"
+                  >
+                    <MapPin className="h-4 w-4" />
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-64">
-                  <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
-                    Photos ({backgroundImages.length})
-                  </div>
-                  <DropdownMenuSeparator />
-                  {backgroundImages.map((img) => (
-                    <DropdownMenuItem
-                      key={img.id}
-                      className={`flex items-center justify-between ${selectedImageId === img.id ? "bg-blue-50" : ""}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setSelectedImageId(img.id === selectedImageId ? null : img.id);
-                      }}
-                    >
-                      <span className="text-xs truncate max-w-[140px]">{img.name}</span>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setBackgroundImages((prev) =>
-                              prev.map((i) => (i.id === img.id ? { ...i, visible: !i.visible } : i)),
-                            );
-                          }}
-                          title={img.visible ? "Masquer" : "Afficher"}
-                        >
-                          {img.visible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className={`h-6 w-6 p-0 ${img.locked ? "text-yellow-600" : "text-gray-400"}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setBackgroundImages((prev) =>
-                              prev.map((i) => (i.id === img.id ? { ...i, locked: !i.locked } : i)),
-                            );
-                            toast.success(img.locked ? `"${img.name}" déverrouillée` : `"${img.name}" verrouillée`);
-                          }}
-                          title={img.locked ? "Déverrouiller" : "Verrouiller"}
-                        >
-                          {img.locked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0 text-red-500"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Sauvegarder l'état avant de supprimer
-                            addToImageHistory(backgroundImages, markerLinks);
-                            setBackgroundImages((prev) => prev.filter((i) => i.id !== img.id));
-                            // Supprimer les liens qui référencent cette image
-                            setMarkerLinks((links) =>
-                              links.filter(
-                                (link) => link.marker1.imageId !== img.id && link.marker2.imageId !== img.id,
-                              ),
-                            );
-                            if (selectedImageId === img.id) setSelectedImageId(null);
-                            toast.success("Photo supprimée");
-                          }}
-                          title="Supprimer"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Ajouter un marqueur</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {/* Lien */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={markerMode === "linkMarker1" || markerMode === "linkMarker2" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      if (markerMode === "linkMarker1" || markerMode === "linkMarker2") {
+                        setMarkerMode("idle");
+                        setPendingLink(null);
+                      } else {
+                        const imagesWithMarkers = backgroundImages.filter((img) => img.markers.length > 0);
+                        if (imagesWithMarkers.length < 2) {
+                          toast.error("Ajoutez au moins 1 marqueur sur 2 photos différentes");
+                          return;
+                        }
+                        setMarkerMode("linkMarker1");
+                        toast.info("Cliquez sur le premier marqueur");
+                      }
+                    }}
+                    className="h-9 w-9 p-0"
+                  >
+                    <Link2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Lier deux marqueurs</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {/* Calibrer */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={showCalibrationPanel ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      if (!showCalibrationPanel && backgroundImages.length > 0 && !selectedImageId) {
+                        toast.error("Sélectionnez d'abord une photo à calibrer");
+                        return;
+                      }
+                      setShowCalibrationPanel(!showCalibrationPanel);
+                    }}
+                    className="h-9 w-9 p-0"
+                  >
+                    <Target className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Calibration</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {/* Ajuster contours */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => {
                       if (!selectedImageId) {
                         toast.error("Sélectionnez d'abord une photo");
@@ -11596,15 +11589,25 @@ export function CADGabaritCanvas({
                       setShowAdjustmentsDialog(true);
                     }}
                     disabled={!selectedImageId}
+                    className="h-9 w-9 p-0"
                   >
-                    <Contrast className="h-4 w-4 mr-2" />
-                    Ajuster les contours
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="text-red-500"
+                    <Contrast className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Ajuster les contours</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {/* Supprimer toutes les photos */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => {
-                      // Sauvegarder l'état avant de supprimer
                       addToImageHistory(backgroundImages, markerLinks);
                       setBackgroundImages([]);
                       setMarkerLinks([]);
@@ -11612,126 +11615,18 @@ export function CADGabaritCanvas({
                       setSelectedMarkerId(null);
                       toast.success("Toutes les photos supprimées");
                     }}
+                    className="h-9 w-9 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
                   >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Supprimer toutes les photos
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <div className="flex items-center gap-1 ml-1">
-                <span className="text-xs text-muted-foreground">Opacité:</span>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="1"
-                  step="0.1"
-                  value={imageOpacity}
-                  onChange={(e) => {
-                    const newOpacity = parseFloat(e.target.value);
-                    setImageOpacity(newOpacity);
-                    // Appliquer l'opacité à toutes les images
-                    setBackgroundImages((prev) => prev.map((img) => ({ ...img, opacity: newOpacity })));
-                  }}
-                  className="w-16 h-1"
-                />
-              </div>
-
-              {/* Marqueurs inter-photos */}
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant={markerMode === "addMarker" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => {
-                        if (markerMode === "addMarker") {
-                          setMarkerMode("idle");
-                        } else {
-                          setMarkerMode("addMarker");
-                          toast.info("Cliquez sur une photo pour ajouter un marqueur");
-                        }
-                      }}
-                      className="h-9 px-2"
-                    >
-                      <MapPin className="h-4 w-4 mr-1" />
-                      <span className="text-xs">Marqueur</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Ajouter un point de référence sur une photo</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant={markerMode === "linkMarker1" || markerMode === "linkMarker2" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => {
-                        if (markerMode === "linkMarker1" || markerMode === "linkMarker2") {
-                          setMarkerMode("idle");
-                          setPendingLink(null);
-                        } else {
-                          // Vérifier qu'il y a au moins 2 marqueurs sur des photos différentes
-                          const imagesWithMarkers = backgroundImages.filter((img) => img.markers.length > 0);
-                          if (imagesWithMarkers.length < 2) {
-                            toast.error("Ajoutez au moins 1 marqueur sur 2 photos différentes");
-                            return;
-                          }
-                          setMarkerMode("linkMarker1");
-                          toast.info("Cliquez sur le 1er marqueur");
-                        }
-                      }}
-                      className="h-9 px-2"
-                    >
-                      <Link2 className="h-4 w-4 mr-1" />
-                      <span className="text-xs">Lier</span>
-                      {markerLinks.length > 0 && (
-                        <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
-                          {markerLinks.length}
-                        </Badge>
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Lier 2 marqueurs avec une distance connue</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-
-              <Separator orientation="vertical" className="h-6 mx-1" />
-
-              {/* Bouton Calibration */}
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant={showCalibrationPanel ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => {
-                        if (!showCalibrationPanel && backgroundImages.length > 0 && !selectedImageId) {
-                          toast.error("Sélectionnez d'abord une photo à calibrer");
-                          return;
-                        }
-                        setShowCalibrationPanel(!showCalibrationPanel);
-                      }}
-                      className="h-9 px-2"
-                    >
-                      <Target className="h-4 w-4 mr-1" />
-                      <span className="text-xs">Calibrer</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Calibration multi-points (sélectionnez une photo)</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </>
-          )}
-        </div>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Supprimer toutes les photos</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        )}
 
         <Separator orientation="vertical" className="h-6" />
 
@@ -12302,20 +12197,62 @@ export function CADGabaritCanvas({
 
         <Separator orientation="vertical" className="h-6" />
 
+        {/* Import/Export fichiers */}
+        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+          {/* Import DXF */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="sm" onClick={() => dxfInputRef.current?.click()} className="h-9 px-2">
+                  <FileUp className="h-4 w-4 mr-1" />
+                  <span className="text-xs">Import</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Importer un fichier DXF</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Photos */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="h-9 px-2">
+                  <Image className="h-4 w-4 mr-1" />
+                  <span className="text-xs">Photos</span>
+                  {backgroundImages.length > 0 && (
+                    <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
+                      {backgroundImages.length}
+                    </Badge>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Charger des photos de référence</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Export SVG */}
+          <Button variant="outline" size="sm" onClick={handleExportSVG} className="h-9 px-2">
+            <FileDown className="h-4 w-4 mr-1" />
+            <span className="text-xs">SVG</span>
+          </Button>
+
+          {/* Export DXF */}
+          <Button variant="default" size="sm" onClick={handleExportDXF} className="h-9 px-2">
+            <Download className="h-4 w-4 mr-1" />
+            <span className="text-xs">DXF</span>
+          </Button>
+        </div>
+
+        <Separator orientation="vertical" className="h-6" />
+
         {/* Actions */}
         <Button variant="outline" size="sm" onClick={saveSketch}>
           <Save className="h-4 w-4 mr-1" />
           Sauver
-        </Button>
-
-        <Button variant="outline" size="sm" onClick={handleExportSVG}>
-          <FileDown className="h-4 w-4 mr-1" />
-          SVG
-        </Button>
-
-        <Button variant="default" size="sm" onClick={handleExportDXF}>
-          <Download className="h-4 w-4 mr-1" />
-          DXF
         </Button>
 
         <Separator orientation="vertical" className="h-6" />
