@@ -12261,15 +12261,13 @@ export function CADGabaritCanvas({
             <Download className="h-4 w-4 mr-1" />
             <span className="text-xs">DXF</span>
           </Button>
+
+          {/* Bibliothèque de templates */}
+          <Button variant="outline" size="sm" onClick={() => setShowTemplateLibrary(true)} className="h-9 px-2">
+            <Library className="h-4 w-4 mr-1" />
+            <span className="text-xs">Templates</span>
+          </Button>
         </div>
-
-        <Separator orientation="vertical" className="h-6" />
-
-        {/* Bibliothèque de templates */}
-        <Button variant="outline" size="sm" onClick={() => setShowTemplateLibrary(true)}>
-          <Library className="h-4 w-4 mr-1" />
-          Templates
-        </Button>
 
         <div className="flex-1" />
 
