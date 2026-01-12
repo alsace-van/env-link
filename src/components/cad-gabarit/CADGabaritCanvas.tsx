@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.71 - Split View pour comparer les branches
+// VERSION: 6.70 - Plus de logs debug pour strokeWidth
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -86,8 +86,6 @@ import {
   GitMerge,
   ChevronDown,
   SplitSquareVertical,
-  Columns,
-  Link2Off,
 } from "lucide-react";
 
 import {
@@ -440,25 +438,6 @@ export function CADGabaritCanvas({
   const [revealBranchId, setRevealBranchId] = useState<string | null>(null); // Branche à comparer en mode reveal
   const [isDraggingReveal, setIsDraggingReveal] = useState(false); // Drag du diviseur
   const isDraggingRevealRef = useRef(false); // Ref pour éviter stale closure
-
-  // Mode Split View
-  const [splitViewEnabled, setSplitViewEnabled] = useState(false);
-  const [splitRightBranchId, setSplitRightBranchId] = useState<string | null>(null);
-  const [splitPosition, setSplitPosition] = useState(50);
-  const [isDraggingSplit, setIsDraggingSplit] = useState(false);
-  const [splitViewMinimized, setSplitViewMinimized] = useState(false);
-  const [splitSyncViewports, setSplitSyncViewports] = useState(false);
-  const [splitRightViewport, setSplitRightViewport] = useState<Viewport>({
-    scale: 1,
-    offsetX: 100,
-    offsetY: 100,
-    width: 800,
-    height: 600,
-  });
-  const splitCanvasRef = useRef<HTMLCanvasElement>(null);
-  const splitMiniCanvasRef = useRef<HTMLCanvasElement>(null);
-  const splitRendererRef = useRef<CADRenderer | null>(null);
-  const splitMiniRendererRef = useRef<CADRenderer | null>(null);
 
   // Sync ref avec state
   useEffect(() => {
@@ -901,135 +880,6 @@ export function CADGabaritCanvas({
     const branch = branches.find((b) => b.id === activeBranchId);
     return branch?.color || "#3B82F6";
   }, [branches, activeBranchId]);
-
-  // Données de la branche pour la vue split droite
-  const splitRightBranchData = useMemo(() => {
-    if (!splitViewEnabled || !splitRightBranchId) return null;
-    const branch = branches.find((b) => b.id === splitRightBranchId);
-    if (!branch) return null;
-    const entry = branch.history[branch.historyIndex];
-    if (!entry) return null;
-    try {
-      const branchSketch = deserializeSketch(entry.sketch);
-      return { branchId: branch.id, branchName: branch.name, color: branch.color, sketch: branchSketch };
-    } catch (e) {
-      return null;
-    }
-  }, [splitViewEnabled, splitRightBranchId, branches]);
-
-  // Initialiser la branche split quand on active
-  useEffect(() => {
-    if (splitViewEnabled && !splitRightBranchId && branches.length > 1) {
-      const otherBranch = branches.find((b) => b.id !== activeBranchId);
-      if (otherBranch) setSplitRightBranchId(otherBranch.id);
-    }
-  }, [splitViewEnabled, splitRightBranchId, branches, activeBranchId]);
-
-  // Synchroniser viewports si activé
-  useEffect(() => {
-    if (splitSyncViewports && splitViewEnabled) {
-      setSplitRightViewport((v) => ({
-        ...v,
-        scale: viewport.scale,
-        offsetX: viewport.offsetX,
-        offsetY: viewport.offsetY,
-      }));
-    }
-  }, [splitSyncViewports, splitViewEnabled, viewport.scale, viewport.offsetX, viewport.offsetY]);
-
-  // Initialiser et render le split view
-  useEffect(() => {
-    if (!splitViewEnabled || !splitRightBranchData) return;
-
-    // Choisir le bon canvas selon le mode
-    const canvas = splitViewMinimized ? splitMiniCanvasRef.current : splitCanvasRef.current;
-    if (!canvas) return;
-
-    // Choisir/créer le bon renderer
-    let renderer = splitViewMinimized ? splitMiniRendererRef.current : splitRendererRef.current;
-    if (!renderer) {
-      renderer = new CADRenderer(canvas);
-      if (splitViewMinimized) {
-        splitMiniRendererRef.current = renderer;
-      } else {
-        splitRendererRef.current = renderer;
-      }
-    }
-
-    // Configurer les dimensions du canvas
-    const rect = canvas.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      canvas.width = rect.width * window.devicePixelRatio;
-      canvas.height = rect.height * window.devicePixelRatio;
-      renderer.resize(rect.width, rect.height);
-
-      // Configurer le viewport
-      const vp = {
-        ...splitRightViewport,
-        width: rect.width,
-        height: rect.height,
-        offsetX: 32,
-        offsetY: rect.height - 32,
-      };
-      renderer.setViewport(vp);
-
-      // Rendre
-      renderer.render(splitRightBranchData.sketch, {
-        selectedEntities: new Set(),
-        hoveredEntity: null,
-        tempGeometry: null,
-        currentSnapPoint: null,
-        showConstraints: false,
-        showDimensions: showDimensions,
-        backgroundImages: [],
-        comparisonBranches: [],
-        comparisonOpacity: 100,
-        gizmoDrag: null,
-        selectedEntitiesForGhost: new Set(),
-      });
-    }
-  }, [splitViewEnabled, splitViewMinimized, splitRightBranchData, splitRightViewport.scale, showDimensions]);
-
-  // Resize du split canvas quand la position change
-  useEffect(() => {
-    if (!splitViewEnabled) return;
-
-    const canvas = splitViewMinimized ? splitMiniCanvasRef.current : splitCanvasRef.current;
-    const renderer = splitViewMinimized ? splitMiniRendererRef.current : splitRendererRef.current;
-    if (!canvas || !renderer || !splitRightBranchData) return;
-
-    const timeoutId = setTimeout(() => {
-      const rect = canvas.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        canvas.width = rect.width * window.devicePixelRatio;
-        canvas.height = rect.height * window.devicePixelRatio;
-        renderer.resize(rect.width, rect.height);
-
-        const vp = {
-          ...splitRightViewport,
-          width: rect.width,
-          height: rect.height,
-        };
-        renderer.setViewport(vp);
-
-        renderer.render(splitRightBranchData.sketch, {
-          selectedEntities: new Set(),
-          hoveredEntity: null,
-          tempGeometry: null,
-          currentSnapPoint: null,
-          showConstraints: false,
-          showDimensions: showDimensions,
-          backgroundImages: [],
-          comparisonBranches: [],
-          comparisonOpacity: 100,
-          gizmoDrag: null,
-          selectedEntitiesForGhost: new Set(),
-        });
-      }
-    }, 100);
-
-    return () => clearTimeout(timeoutId);
-  }, [splitPosition, splitViewMinimized]);
 
   // Données de la branche pour le mode reveal
   const revealBranchData = useMemo(() => {
@@ -3472,8 +3322,7 @@ export function CADGabaritCanvas({
         p1: newPoint.id,
         p2: line.p2,
         layerId: line.layerId,
-        strokeWidth: (line as any).strokeWidth, // Conserver l'épaisseur
-      } as Line;
+      };
       sketchToModify.geometries.set(newLine.id, newLine);
 
       // Modifier la ligne originale (p1 vers le nouveau point)
@@ -5799,8 +5648,7 @@ export function CADGabaritCanvas({
             p1: intersectPoint.id,
             p2: existingLine.p2,
             layerId: existingLine.layerId,
-            strokeWidth: (existingLine as any).strokeWidth, // Conserver l'épaisseur
-          } as Line;
+          };
           sketchToModify.geometries.set(newExistingLine.id, newExistingLine);
 
           // Modifier le segment existant pour finir au point d'intersection
@@ -5820,8 +5668,7 @@ export function CADGabaritCanvas({
             p1: intersectPoint.id,
             p2: currentNewLine.p2,
             layerId: currentNewLine.layerId,
-            strokeWidth: (currentNewLine as any).strokeWidth, // Conserver l'épaisseur
-          } as Line;
+          };
           sketchToModify.geometries.set(newNewLine.id, newNewLine);
 
           // Modifier le nouveau segment pour finir au point d'intersection
@@ -11861,35 +11708,6 @@ export function CADGabaritCanvas({
 
         <Separator orientation="vertical" className="h-6" />
 
-        {/* Sélecteur de branche */}
-        {branches.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-8 px-2 gap-2 min-w-[100px]">
-                <div
-                  className="w-3 h-3 rounded-full"
-                  style={{ backgroundColor: branches.find((b) => b.id === activeBranchId)?.color || "#3B82F6" }}
-                />
-                <span className="truncate max-w-[60px] text-xs">
-                  {branches.find((b) => b.id === activeBranchId)?.name || "main"}
-                </span>
-                <ChevronDown className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-44">
-              {branches.map((branch) => (
-                <DropdownMenuItem key={branch.id} onClick={() => switchToBranch(branch.id)} className="gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: branch.color }} />
-                  <span className="truncate flex-1">{branch.name}</span>
-                  {branch.id === activeBranchId && <Check className="h-4 w-4 text-blue-500" />}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-
-        <Separator orientation="vertical" className="h-6" />
-
         {/* Undo/Redo + Dropdown Historique */}
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="sm" onClick={undo} disabled={historyIndex <= 0} className="h-8 w-8 p-0">
@@ -11959,23 +11777,6 @@ export function CADGabaritCanvas({
                 <SplitSquareVertical className="h-4 w-4" />
                 <span>Mode Rideau</span>
                 {comparisonMode && comparisonStyle === "reveal" && <Check className="h-4 w-4 ml-auto text-blue-500" />}
-              </DropdownMenuItem>
-
-              {/* Mode Split View */}
-              <DropdownMenuItem
-                onClick={() => {
-                  setSplitViewEnabled(!splitViewEnabled);
-                  if (!splitViewEnabled && branches.length > 1) {
-                    const otherBranch = branches.find((b) => b.id !== activeBranchId);
-                    if (otherBranch) setSplitRightBranchId(otherBranch.id);
-                  }
-                }}
-                className="gap-2"
-                disabled={branches.length <= 1}
-              >
-                <Columns className="h-4 w-4" />
-                <span>Vue divisée</span>
-                {splitViewEnabled && <Check className="h-4 w-4 ml-auto text-blue-500" />}
               </DropdownMenuItem>
 
               <DropdownMenuSeparator />
@@ -12205,546 +12006,405 @@ export function CADGabaritCanvas({
             </button>
           </div>
 
-          {/* Canvas Container - avec support Split View */}
-          <div className="flex-1 relative overflow-hidden flex">
-            {/* Vue gauche (principale) */}
-            <div
-              className="relative overflow-hidden"
+          {/* Canvas */}
+          <div className="flex-1 relative overflow-hidden">
+            <canvas
+              ref={canvasRef}
+              className="absolute inset-0 cursor-crosshair"
               style={{
-                width: splitViewEnabled && !splitViewMinimized ? `${splitPosition}%` : "100%",
-                flex: splitViewEnabled && !splitViewMinimized ? "none" : "1",
-              }}
-            >
-              <canvas
-                ref={canvasRef}
-                className="absolute inset-0 cursor-crosshair"
-                style={{
-                  cursor: isDraggingSelection
+                cursor: isDraggingSelection
+                  ? "move"
+                  : draggingMeasurePoint || draggingCalibrationPoint
                     ? "move"
-                    : draggingMeasurePoint || draggingCalibrationPoint
-                      ? "move"
-                      : activeTool === "pan" || isPanning
-                        ? "grab"
-                        : "crosshair",
-                }}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
-                onDoubleClick={handleDoubleClick}
-                onContextMenu={(e) => {
-                  e.preventDefault();
+                    : activeTool === "pan" || isPanning
+                      ? "grab"
+                      : "crosshair",
+              }}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              onDoubleClick={handleDoubleClick}
+              onContextMenu={(e) => {
+                e.preventDefault();
 
-                  // === PRIORITÉ 1: Annuler le drag du gizmo en cours ===
-                  // Utiliser la ref pour éviter stale closure
-                  const currentGizmoDrag = gizmoDragRef.current;
-                  if (currentGizmoDrag) {
-                    // Restaurer les positions initiales
-                    setSketch((prev) => {
-                      const newSketch = { ...prev };
-                      newSketch.points = new Map(prev.points);
+                // === PRIORITÉ 1: Annuler le drag du gizmo en cours ===
+                // Utiliser la ref pour éviter stale closure
+                const currentGizmoDrag = gizmoDragRef.current;
+                if (currentGizmoDrag) {
+                  // Restaurer les positions initiales
+                  setSketch((prev) => {
+                    const newSketch = { ...prev };
+                    newSketch.points = new Map(prev.points);
 
-                      for (const [pointId, initialPos] of currentGizmoDrag.initialPositions) {
-                        newSketch.points.set(pointId, { id: pointId, x: initialPos.x, y: initialPos.y });
-                      }
-
-                      return newSketch;
-                    });
-                    setGizmoDrag(null);
-                    setShowTransformGizmo(false);
-                    toast.info("Transformation annulée");
-                    return;
-                  }
-
-                  // === PRIORITÉ 2: Désactiver le gizmo si affiché ===
-                  if (showTransformGizmo) {
-                    setShowTransformGizmo(false);
-                    return;
-                  }
-
-                  const rect = canvasRef.current?.getBoundingClientRect();
-                  if (!rect) return;
-
-                  const screenX = e.clientX - rect.left;
-                  const screenY = e.clientY - rect.top;
-                  const worldPos = screenToWorld(screenX, screenY);
-                  const tolerance = 10 / viewport.scale;
-
-                  // D'abord chercher si on est sur un point (coin potentiel)
-                  for (const [pointId, point] of sketch.points) {
-                    if (distance(worldPos, point) < tolerance) {
-                      // Compter les lignes connectées à ce point
-                      const connectedLines: Line[] = [];
-                      sketch.geometries.forEach((geo) => {
-                        if (geo.type === "line") {
-                          const line = geo as Line;
-                          if (line.p1 === pointId || line.p2 === pointId) {
-                            connectedLines.push(line);
-                          }
-                        }
-                      });
-
-                      // Si au moins 2 lignes connectées, c'est un coin/angle
-                      if (connectedLines.length >= 2) {
-                        setContextMenu({
-                          x: e.clientX,
-                          y: e.clientY,
-                          entityId: pointId,
-                          entityType: "corner",
-                        });
-                        return;
-                      }
+                    for (const [pointId, initialPos] of currentGizmoDrag.initialPositions) {
+                      newSketch.points.set(pointId, { id: pointId, x: initialPos.x, y: initialPos.y });
                     }
-                  }
 
-                  // Sinon chercher une entité géométrique
-                  const entityId = findEntityAtPosition(worldPos.x, worldPos.y);
-                  if (entityId) {
-                    const geo = sketch.geometries.get(entityId);
-                    if (geo) {
+                    return newSketch;
+                  });
+                  setGizmoDrag(null);
+                  setShowTransformGizmo(false);
+                  toast.info("Transformation annulée");
+                  return;
+                }
+
+                // === PRIORITÉ 2: Désactiver le gizmo si affiché ===
+                if (showTransformGizmo) {
+                  setShowTransformGizmo(false);
+                  return;
+                }
+
+                const rect = canvasRef.current?.getBoundingClientRect();
+                if (!rect) return;
+
+                const screenX = e.clientX - rect.left;
+                const screenY = e.clientY - rect.top;
+                const worldPos = screenToWorld(screenX, screenY);
+                const tolerance = 10 / viewport.scale;
+
+                // D'abord chercher si on est sur un point (coin potentiel)
+                for (const [pointId, point] of sketch.points) {
+                  if (distance(worldPos, point) < tolerance) {
+                    // Compter les lignes connectées à ce point
+                    const connectedLines: Line[] = [];
+                    sketch.geometries.forEach((geo) => {
+                      if (geo.type === "line") {
+                        const line = geo as Line;
+                        if (line.p1 === pointId || line.p2 === pointId) {
+                          connectedLines.push(line);
+                        }
+                      }
+                    });
+
+                    // Si au moins 2 lignes connectées, c'est un coin/angle
+                    if (connectedLines.length >= 2) {
                       setContextMenu({
                         x: e.clientX,
                         y: e.clientY,
-                        entityId,
-                        entityType: geo.type,
+                        entityId: pointId,
+                        entityType: "corner",
                       });
+                      return;
                     }
-                  } else {
-                    setContextMenu(null);
                   }
-                }}
-              />
+                }
 
-              {/* Poignée du mode reveal (rideau) */}
-              {comparisonMode && comparisonStyle === "reveal" && revealBranchData && (
+                // Sinon chercher une entité géométrique
+                const entityId = findEntityAtPosition(worldPos.x, worldPos.y);
+                if (entityId) {
+                  const geo = sketch.geometries.get(entityId);
+                  if (geo) {
+                    setContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      entityId,
+                      entityType: geo.type,
+                    });
+                  }
+                } else {
+                  setContextMenu(null);
+                }
+              }}
+            />
+
+            {/* Poignée du mode reveal (rideau) */}
+            {comparisonMode && comparisonStyle === "reveal" && revealBranchData && (
+              <div
+                className="absolute inset-0 pointer-events-none z-40"
+                style={{ left: "32px" }} // Décalage pour la règle
+              >
+                {/* Ligne de division */}
                 <div
-                  className="absolute inset-0 pointer-events-none z-40"
-                  style={{ left: "32px" }} // Décalage pour la règle
-                >
-                  {/* Ligne de division */}
-                  <div
-                    className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg pointer-events-none"
-                    style={{
-                      left: `${revealPosition}%`,
-                      boxShadow: "0 0 8px rgba(0,0,0,0.5), 0 0 2px rgba(0,0,0,0.3)",
-                    }}
-                  />
-
-                  {/* Poignée draggable */}
-                  <div
-                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 pointer-events-auto cursor-ew-resize z-50"
-                    style={{ left: `${revealPosition}%` }}
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      isDraggingRevealRef.current = true;
-                      setIsDraggingReveal(true);
-
-                      const container = e.currentTarget.parentElement;
-                      if (!container) return;
-
-                      const rect = container.getBoundingClientRect();
-
-                      const handleMouseMove = (moveEvent: MouseEvent) => {
-                        moveEvent.preventDefault();
-                        const x = moveEvent.clientX - rect.left;
-                        const percentage = Math.round(Math.max(5, Math.min(95, (x / rect.width) * 100)));
-                        setRevealPosition(percentage);
-                      };
-
-                      const handleMouseUp = () => {
-                        isDraggingRevealRef.current = false;
-                        setIsDraggingReveal(false);
-                        document.removeEventListener("mousemove", handleMouseMove);
-                        document.removeEventListener("mouseup", handleMouseUp);
-                      };
-
-                      document.addEventListener("mousemove", handleMouseMove);
-                      document.addEventListener("mouseup", handleMouseUp);
-                    }}
-                  >
-                    {/* Poignée visuelle */}
-                    <div className="w-8 h-12 bg-white rounded-lg shadow-lg border border-gray-300 flex flex-col items-center justify-center gap-0.5">
-                      <div className="flex gap-0.5">
-                        <div className="w-0.5 h-4 bg-gray-400 rounded-full" />
-                        <div className="w-0.5 h-4 bg-gray-400 rounded-full" />
-                      </div>
-                      {/* Flèches */}
-                      <div className="flex items-center text-gray-500 text-[8px] font-bold">◀ ▶</div>
-                    </div>
-                  </div>
-
-                  {/* Labels des branches */}
-                  <div
-                    className="absolute top-2 px-2 py-1 rounded text-[10px] font-medium text-white shadow-md pointer-events-none"
-                    style={{
-                      left: `calc(${revealPosition}% - 60px)`,
-                      backgroundColor: activeBranchColor,
-                    }}
-                  >
-                    {branches.find((b) => b.id === activeBranchId)?.name || "Active"}
-                  </div>
-                  <div
-                    className="absolute top-2 px-2 py-1 rounded text-[10px] font-medium text-white shadow-md pointer-events-none"
-                    style={{
-                      left: `calc(${revealPosition}% + 8px)`,
-                      backgroundColor: revealBranchData.color,
-                    }}
-                  >
-                    {revealBranchData.branchName}
-                  </div>
-                </div>
-              )}
-
-              {/* Panneau de saisie rectangle FIXE (en bas du canvas) */}
-              {rectInputs.active && tempGeometry?.type === "rectangle" && (
-                <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-3 bg-white/95 backdrop-blur-sm border border-gray-300 rounded-lg shadow-lg px-4 py-2">
-                  <span className="text-xs text-gray-500 font-medium">Rectangle:</span>
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-gray-500">L</span>
-                    <input
-                      ref={widthInputRef}
-                      type="text"
-                      inputMode="decimal"
-                      defaultValue=""
-                      onFocus={(e) => {
-                        setRectInputs((prev) => ({ ...prev, activeField: "width" }));
-                        e.target.select();
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Tab") {
-                          e.preventDefault();
-                          setRectInputs((prev) => ({ ...prev, activeField: "height" }));
-                          heightInputRef.current?.focus();
-                          heightInputRef.current?.select();
-                        } else if (e.key === "Enter") {
-                          e.preventDefault();
-                          const wVal = widthInputRef.current?.value || "";
-                          const hVal = heightInputRef.current?.value || "";
-                          setRectInputs((prev) => ({ ...prev, widthValue: wVal, heightValue: hVal }));
-                          setTimeout(() => createRectangleFromInputs(), 0);
-                        } else if (e.key === "Escape") {
-                          e.preventDefault();
-                          setTempPoints([]);
-                          setTempGeometry(null);
-                          setRectInputs({
-                            active: false,
-                            widthValue: "",
-                            heightValue: "",
-                            activeField: "width",
-                            widthInputPos: { x: 0, y: 0 },
-                            heightInputPos: { x: 0, y: 0 },
-                          });
-                        }
-                      }}
-                      className={`w-20 h-7 px-2 text-center text-sm font-medium rounded border-2 outline-none ${
-                        rectInputs.activeField === "width"
-                          ? "border-blue-500 bg-blue-50 text-blue-700"
-                          : "border-gray-300 bg-white text-gray-700"
-                      }`}
-                      placeholder="largeur"
-                    />
-                    <span className="text-xs text-gray-500">mm</span>
-                  </div>
-                  <span className="text-gray-400">×</span>
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-gray-500">H</span>
-                    <input
-                      ref={heightInputRef}
-                      type="text"
-                      inputMode="decimal"
-                      defaultValue=""
-                      onFocus={(e) => {
-                        setRectInputs((prev) => ({ ...prev, activeField: "height" }));
-                        e.target.select();
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Tab") {
-                          e.preventDefault();
-                          setRectInputs((prev) => ({ ...prev, activeField: "width" }));
-                          widthInputRef.current?.focus();
-                          widthInputRef.current?.select();
-                        } else if (e.key === "Enter") {
-                          e.preventDefault();
-                          const wVal = widthInputRef.current?.value || "";
-                          const hVal = heightInputRef.current?.value || "";
-                          setRectInputs((prev) => ({ ...prev, widthValue: wVal, heightValue: hVal }));
-                          setTimeout(() => createRectangleFromInputs(), 0);
-                        } else if (e.key === "Escape") {
-                          e.preventDefault();
-                          setTempPoints([]);
-                          setTempGeometry(null);
-                          setRectInputs({
-                            active: false,
-                            widthValue: "",
-                            heightValue: "",
-                            activeField: "width",
-                            widthInputPos: { x: 0, y: 0 },
-                            heightInputPos: { x: 0, y: 0 },
-                          });
-                        }
-                      }}
-                      className={`w-20 h-7 px-2 text-center text-sm font-medium rounded border-2 outline-none ${
-                        rectInputs.activeField === "height"
-                          ? "border-blue-500 bg-blue-50 text-blue-700"
-                          : "border-gray-300 bg-white text-gray-700"
-                      }`}
-                      placeholder="hauteur"
-                    />
-                    <span className="text-xs text-gray-500">mm</span>
-                  </div>
-                  <span className="text-xs text-gray-400 ml-2">Tab: changer • Entrée: valider</span>
-                </div>
-              )}
-
-              {/* Input inline pour le gizmo de transformation */}
-              {transformGizmo.active && selectionGizmoData && (
-                <div
-                  className="absolute z-50 flex items-center gap-1"
+                  className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg pointer-events-none"
                   style={{
-                    left: `${selectionGizmoData.center.x * viewport.scale + viewport.offsetX + (transformGizmo.mode === "translateX" ? 70 : transformGizmo.mode === "rotate" ? 0 : 0)}px`,
-                    top: `${selectionGizmoData.center.y * viewport.scale + viewport.offsetY + (transformGizmo.mode === "translateY" ? -70 : transformGizmo.mode === "rotate" ? 45 : 0)}px`,
-                    transform: "translate(-50%, -50%)",
+                    left: `${revealPosition}%`,
+                    boxShadow: "0 0 8px rgba(0,0,0,0.5), 0 0 2px rgba(0,0,0,0.3)",
+                  }}
+                />
+
+                {/* Poignée draggable */}
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 pointer-events-auto cursor-ew-resize z-50"
+                  style={{ left: `${revealPosition}%` }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    isDraggingRevealRef.current = true;
+                    setIsDraggingReveal(true);
+
+                    const container = e.currentTarget.parentElement;
+                    if (!container) return;
+
+                    const rect = container.getBoundingClientRect();
+
+                    const handleMouseMove = (moveEvent: MouseEvent) => {
+                      moveEvent.preventDefault();
+                      const x = moveEvent.clientX - rect.left;
+                      const percentage = Math.round(Math.max(5, Math.min(95, (x / rect.width) * 100)));
+                      setRevealPosition(percentage);
+                    };
+
+                    const handleMouseUp = () => {
+                      isDraggingRevealRef.current = false;
+                      setIsDraggingReveal(false);
+                      document.removeEventListener("mousemove", handleMouseMove);
+                      document.removeEventListener("mouseup", handleMouseUp);
+                    };
+
+                    document.addEventListener("mousemove", handleMouseMove);
+                    document.addEventListener("mouseup", handleMouseUp);
                   }}
                 >
+                  {/* Poignée visuelle */}
+                  <div className="w-8 h-12 bg-white rounded-lg shadow-lg border border-gray-300 flex flex-col items-center justify-center gap-0.5">
+                    <div className="flex gap-0.5">
+                      <div className="w-0.5 h-4 bg-gray-400 rounded-full" />
+                      <div className="w-0.5 h-4 bg-gray-400 rounded-full" />
+                    </div>
+                    {/* Flèches */}
+                    <div className="flex items-center text-gray-500 text-[8px] font-bold">◀ ▶</div>
+                  </div>
+                </div>
+
+                {/* Labels des branches */}
+                <div
+                  className="absolute top-2 px-2 py-1 rounded text-[10px] font-medium text-white shadow-md pointer-events-none"
+                  style={{
+                    left: `calc(${revealPosition}% - 60px)`,
+                    backgroundColor: activeBranchColor,
+                  }}
+                >
+                  {branches.find((b) => b.id === activeBranchId)?.name || "Active"}
+                </div>
+                <div
+                  className="absolute top-2 px-2 py-1 rounded text-[10px] font-medium text-white shadow-md pointer-events-none"
+                  style={{
+                    left: `calc(${revealPosition}% + 8px)`,
+                    backgroundColor: revealBranchData.color,
+                  }}
+                >
+                  {revealBranchData.branchName}
+                </div>
+              </div>
+            )}
+
+            {/* Panneau de saisie rectangle FIXE (en bas du canvas) */}
+            {rectInputs.active && tempGeometry?.type === "rectangle" && (
+              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-3 bg-white/95 backdrop-blur-sm border border-gray-300 rounded-lg shadow-lg px-4 py-2">
+                <span className="text-xs text-gray-500 font-medium">Rectangle:</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-gray-500">L</span>
                   <input
-                    ref={transformInputRef}
+                    ref={widthInputRef}
                     type="text"
                     inputMode="decimal"
-                    value={transformGizmo.inputValue}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
-                      applyGizmoTransform(val);
+                    defaultValue=""
+                    onFocus={(e) => {
+                      setRectInputs((prev) => ({ ...prev, activeField: "width" }));
+                      e.target.select();
                     }}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") {
+                      if (e.key === "Tab") {
                         e.preventDefault();
-                        confirmGizmoTransform();
+                        setRectInputs((prev) => ({ ...prev, activeField: "height" }));
+                        heightInputRef.current?.focus();
+                        heightInputRef.current?.select();
+                      } else if (e.key === "Enter") {
+                        e.preventDefault();
+                        const wVal = widthInputRef.current?.value || "";
+                        const hVal = heightInputRef.current?.value || "";
+                        setRectInputs((prev) => ({ ...prev, widthValue: wVal, heightValue: hVal }));
+                        setTimeout(() => createRectangleFromInputs(), 0);
                       } else if (e.key === "Escape") {
                         e.preventDefault();
-                        cancelGizmoTransform();
+                        setTempPoints([]);
+                        setTempGeometry(null);
+                        setRectInputs({
+                          active: false,
+                          widthValue: "",
+                          heightValue: "",
+                          activeField: "width",
+                          widthInputPos: { x: 0, y: 0 },
+                          heightInputPos: { x: 0, y: 0 },
+                        });
                       }
-                      e.stopPropagation();
                     }}
-                    className={`w-20 h-8 px-2 text-center text-sm font-bold rounded border-2 shadow-lg outline-none ${
-                      transformGizmo.mode === "translateX"
-                        ? "border-red-500 bg-red-50 text-red-700"
-                        : transformGizmo.mode === "translateY"
-                          ? "border-green-500 bg-green-50 text-green-700"
-                          : "border-blue-500 bg-blue-50 text-blue-700"
+                    className={`w-20 h-7 px-2 text-center text-sm font-medium rounded border-2 outline-none ${
+                      rectInputs.activeField === "width"
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-gray-300 bg-white text-gray-700"
                     }`}
-                    placeholder="0"
-                    autoFocus
+                    placeholder="largeur"
                   />
-                  <span
-                    className={`text-xs font-bold px-1 rounded ${
-                      transformGizmo.mode === "translateX"
-                        ? "text-red-600 bg-red-100"
-                        : transformGizmo.mode === "translateY"
-                          ? "text-green-600 bg-green-100"
-                          : "text-blue-600 bg-blue-100"
-                    }`}
-                  >
-                    {transformGizmo.mode === "rotate" ? "°" : "mm"}
-                  </span>
+                  <span className="text-xs text-gray-500">mm</span>
                 </div>
-              )}
-
-              {/* Indicateur discret pour l'outil de mesure - sous la toolbar */}
-              {activeTool === "measure" && (
-                <div className="absolute top-2 left-1/2 transform -translate-x-1/2 bg-green-50 border border-green-200 rounded px-3 py-1 flex items-center gap-2 text-sm shadow-sm z-10">
-                  <Ruler className="h-4 w-4 text-green-600" />
-                  <span className="text-green-700">
-                    {measureState.phase === "idle"
-                      ? "1er point"
-                      : measureState.phase === "waitingSecond"
-                        ? "2ème point"
-                        : ""}
-                  </span>
-                  {measurements.length > 0 && (
-                    <span className="text-green-600 font-medium ml-1">({measurements.length})</span>
-                  )}
-                </div>
-              )}
-
-              {/* Indicateur de longueur des segments sélectionnés - coin supérieur droit */}
-              {selectedLength && (
-                <div className="absolute top-2 right-2 bg-gray-100/90 border border-gray-300 rounded px-2 py-1 text-xs text-gray-600 shadow-sm z-10 flex flex-col gap-0.5">
-                  <div>
-                    <span className="font-medium">{selectedLength.mm.toFixed(1)} mm</span>
-                    {selectedLength.count > 1 && <span className="text-gray-400 ml-1">({selectedLength.count})</span>}
-                  </div>
-                  {selectedLength.internalAngle !== null && (
-                    <div className="text-orange-600 font-medium">∠ {selectedLength.internalAngle.toFixed(1)}°</div>
-                  )}
-                </div>
-              )}
-
-              {/* Overlay pour arc sélectionné */}
-              {selectedEntities.size === 1 &&
-                (() => {
-                  const entityId = Array.from(selectedEntities)[0];
-                  const geo = sketch.geometries.get(entityId);
-                  if (geo && geo.type === "arc") {
-                    const arc = geo as Arc;
-                    return (
-                      <div
-                        className="absolute bottom-4 right-4 bg-white/95 rounded-lg shadow-lg p-3 border border-blue-300 cursor-pointer hover:bg-blue-50"
-                        onDoubleClick={() => {
-                          setArcEditDialog({
-                            open: true,
-                            arcId: entityId,
-                            currentRadius: arc.radius,
-                          });
-                        }}
-                      >
-                        <div className="flex items-center gap-2 text-blue-700 font-medium">
-                          <svg
-                            className="h-5 w-5"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                          >
-                            <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
-                          </svg>
-                          <span>Arc</span>
-                        </div>
-                        <p className="text-lg font-bold text-blue-800 mt-1">R{arc.radius.toFixed(1)} mm</p>
-                        <p className="text-xs text-gray-400">Double-clic pour modifier</p>
-                      </div>
-                    );
-                  }
-                  return null;
-                })()}
-            </div>
-          </div>
-
-          {/* Diviseur Split View */}
-          {splitViewEnabled && !splitViewMinimized && (
-            <div
-              className="w-1 bg-gray-300 hover:bg-blue-500 cursor-col-resize relative z-50 flex-shrink-0"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                setIsDraggingSplit(true);
-                const container = e.currentTarget.parentElement;
-                if (!container) return;
-                const rect = container.getBoundingClientRect();
-                const handleMouseMove = (moveEvent: MouseEvent) => {
-                  moveEvent.preventDefault();
-                  const x = moveEvent.clientX - rect.left;
-                  setSplitPosition(Math.max(20, Math.min(80, (x / rect.width) * 100)));
-                };
-                const handleMouseUp = () => {
-                  setIsDraggingSplit(false);
-                  document.removeEventListener("mousemove", handleMouseMove);
-                  document.removeEventListener("mouseup", handleMouseUp);
-                };
-                document.addEventListener("mousemove", handleMouseMove);
-                document.addEventListener("mouseup", handleMouseUp);
-              }}
-            >
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-8 bg-gray-400 hover:bg-blue-500 rounded flex items-center justify-center">
-                <div className="flex flex-col gap-0.5">
-                  <div className="w-0.5 h-1 bg-white rounded-full" />
-                  <div className="w-0.5 h-1 bg-white rounded-full" />
-                  <div className="w-0.5 h-1 bg-white rounded-full" />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Vue droite (Split View) */}
-          {splitViewEnabled && !splitViewMinimized && (
-            <div
-              className="relative overflow-hidden border-l border-gray-300"
-              style={{ width: `${100 - splitPosition}%` }}
-            >
-              <div className="absolute top-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-sm border-b px-2 py-1 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <select
-                    className="text-xs border rounded px-2 py-1 bg-white"
-                    value={splitRightBranchId || ""}
-                    onChange={(e) => setSplitRightBranchId(e.target.value)}
-                  >
-                    {branches
-                      .filter((b) => b.id !== activeBranchId)
-                      .map((branch) => (
-                        <option key={branch.id} value={branch.id}>
-                          {branch.name}
-                        </option>
-                      ))}
-                  </select>
-                  {splitRightBranchData && (
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: splitRightBranchData.color }} />
-                  )}
-                </div>
+                <span className="text-gray-400">×</span>
                 <div className="flex items-center gap-1">
-                  <button
-                    className={`p-1 rounded text-xs ${splitSyncViewports ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-600"}`}
-                    onClick={() => setSplitSyncViewports(!splitSyncViewports)}
-                    title={splitSyncViewports ? "Désynchroniser" : "Synchroniser"}
-                  >
-                    {splitSyncViewports ? <Link2 className="h-3 w-3" /> : <Link2Off className="h-3 w-3" />}
-                  </button>
-                  <button
-                    className="p-1 rounded bg-gray-100 hover:bg-gray-200"
-                    onClick={() => setSplitViewMinimized(true)}
-                    title="Réduire"
-                  >
-                    <Minimize className="h-3 w-3" />
-                  </button>
-                  <button
-                    className="p-1 rounded bg-gray-100 hover:bg-red-100 hover:text-red-600"
-                    onClick={() => setSplitViewEnabled(false)}
-                    title="Fermer"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
+                  <span className="text-xs text-gray-500">H</span>
+                  <input
+                    ref={heightInputRef}
+                    type="text"
+                    inputMode="decimal"
+                    defaultValue=""
+                    onFocus={(e) => {
+                      setRectInputs((prev) => ({ ...prev, activeField: "height" }));
+                      e.target.select();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Tab") {
+                        e.preventDefault();
+                        setRectInputs((prev) => ({ ...prev, activeField: "width" }));
+                        widthInputRef.current?.focus();
+                        widthInputRef.current?.select();
+                      } else if (e.key === "Enter") {
+                        e.preventDefault();
+                        const wVal = widthInputRef.current?.value || "";
+                        const hVal = heightInputRef.current?.value || "";
+                        setRectInputs((prev) => ({ ...prev, widthValue: wVal, heightValue: hVal }));
+                        setTimeout(() => createRectangleFromInputs(), 0);
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setTempPoints([]);
+                        setTempGeometry(null);
+                        setRectInputs({
+                          active: false,
+                          widthValue: "",
+                          heightValue: "",
+                          activeField: "width",
+                          widthInputPos: { x: 0, y: 0 },
+                          heightInputPos: { x: 0, y: 0 },
+                        });
+                      }
+                    }}
+                    className={`w-20 h-7 px-2 text-center text-sm font-medium rounded border-2 outline-none ${
+                      rectInputs.activeField === "height"
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-gray-300 bg-white text-gray-700"
+                    }`}
+                    placeholder="hauteur"
+                  />
+                  <span className="text-xs text-gray-500">mm</span>
                 </div>
+                <span className="text-xs text-gray-400 ml-2">Tab: changer • Entrée: valider</span>
               </div>
-              <div className="absolute top-10 left-2 z-40 bg-orange-100 text-orange-700 text-[10px] px-2 py-0.5 rounded">
-                Lecture seule
-              </div>
-              <canvas ref={splitCanvasRef} className="absolute left-0 right-0 bottom-0" style={{ top: "32px" }} />
-            </div>
-          )}
+            )}
 
-          {/* Mini-modale */}
-          {splitViewEnabled && splitViewMinimized && (
-            <div
-              className="absolute bottom-4 right-4 z-50 bg-white rounded-lg shadow-xl border overflow-hidden"
-              style={{ width: "220px", height: "160px" }}
-            >
-              <div className="bg-gray-100 border-b px-2 py-1 flex items-center justify-between">
-                <select
-                  className="text-[10px] border rounded px-1 py-0.5 bg-white max-w-[70px]"
-                  value={splitRightBranchId || ""}
-                  onChange={(e) => setSplitRightBranchId(e.target.value)}
+            {/* Input inline pour le gizmo de transformation */}
+            {transformGizmo.active && selectionGizmoData && (
+              <div
+                className="absolute z-50 flex items-center gap-1"
+                style={{
+                  left: `${selectionGizmoData.center.x * viewport.scale + viewport.offsetX + (transformGizmo.mode === "translateX" ? 70 : transformGizmo.mode === "rotate" ? 0 : 0)}px`,
+                  top: `${selectionGizmoData.center.y * viewport.scale + viewport.offsetY + (transformGizmo.mode === "translateY" ? -70 : transformGizmo.mode === "rotate" ? 45 : 0)}px`,
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                <input
+                  ref={transformInputRef}
+                  type="text"
+                  inputMode="decimal"
+                  value={transformGizmo.inputValue}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
+                    applyGizmoTransform(val);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      confirmGizmoTransform();
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      cancelGizmoTransform();
+                    }
+                    e.stopPropagation();
+                  }}
+                  className={`w-20 h-8 px-2 text-center text-sm font-bold rounded border-2 shadow-lg outline-none ${
+                    transformGizmo.mode === "translateX"
+                      ? "border-red-500 bg-red-50 text-red-700"
+                      : transformGizmo.mode === "translateY"
+                        ? "border-green-500 bg-green-50 text-green-700"
+                        : "border-blue-500 bg-blue-50 text-blue-700"
+                  }`}
+                  placeholder="0"
+                  autoFocus
+                />
+                <span
+                  className={`text-xs font-bold px-1 rounded ${
+                    transformGizmo.mode === "translateX"
+                      ? "text-red-600 bg-red-100"
+                      : transformGizmo.mode === "translateY"
+                        ? "text-green-600 bg-green-100"
+                        : "text-blue-600 bg-blue-100"
+                  }`}
                 >
-                  {branches
-                    .filter((b) => b.id !== activeBranchId)
-                    .map((branch) => (
-                      <option key={branch.id} value={branch.id}>
-                        {branch.name}
-                      </option>
-                    ))}
-                </select>
-                <div className="flex gap-0.5">
-                  <button className="p-0.5 rounded bg-gray-200" onClick={() => setSplitViewMinimized(false)}>
-                    <Maximize className="h-2.5 w-2.5" />
-                  </button>
-                  <button
-                    className="p-0.5 rounded bg-gray-200 hover:bg-red-100"
-                    onClick={() => setSplitViewEnabled(false)}
-                  >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                </div>
+                  {transformGizmo.mode === "rotate" ? "°" : "mm"}
+                </span>
               </div>
-              <canvas ref={splitMiniCanvasRef} className="w-full h-[calc(100%-24px)]" />
-            </div>
-          )}
+            )}
+
+            {/* Indicateur discret pour l'outil de mesure - sous la toolbar */}
+            {activeTool === "measure" && (
+              <div className="absolute top-2 left-1/2 transform -translate-x-1/2 bg-green-50 border border-green-200 rounded px-3 py-1 flex items-center gap-2 text-sm shadow-sm z-10">
+                <Ruler className="h-4 w-4 text-green-600" />
+                <span className="text-green-700">
+                  {measureState.phase === "idle"
+                    ? "1er point"
+                    : measureState.phase === "waitingSecond"
+                      ? "2ème point"
+                      : ""}
+                </span>
+                {measurements.length > 0 && (
+                  <span className="text-green-600 font-medium ml-1">({measurements.length})</span>
+                )}
+              </div>
+            )}
+
+            {/* Indicateur de longueur des segments sélectionnés - coin supérieur droit */}
+            {selectedLength && (
+              <div className="absolute top-2 right-2 bg-gray-100/90 border border-gray-300 rounded px-2 py-1 text-xs text-gray-600 shadow-sm z-10 flex flex-col gap-0.5">
+                <div>
+                  <span className="font-medium">{selectedLength.mm.toFixed(1)} mm</span>
+                  {selectedLength.count > 1 && <span className="text-gray-400 ml-1">({selectedLength.count})</span>}
+                </div>
+                {selectedLength.internalAngle !== null && (
+                  <div className="text-orange-600 font-medium">∠ {selectedLength.internalAngle.toFixed(1)}°</div>
+                )}
+              </div>
+            )}
+
+            {/* Overlay pour arc sélectionné */}
+            {selectedEntities.size === 1 &&
+              (() => {
+                const entityId = Array.from(selectedEntities)[0];
+                const geo = sketch.geometries.get(entityId);
+                if (geo && geo.type === "arc") {
+                  const arc = geo as Arc;
+                  return (
+                    <div
+                      className="absolute bottom-4 right-4 bg-white/95 rounded-lg shadow-lg p-3 border border-blue-300 cursor-pointer hover:bg-blue-50"
+                      onDoubleClick={() => {
+                        setArcEditDialog({
+                          open: true,
+                          arcId: entityId,
+                          currentRadius: arc.radius,
+                        });
+                      }}
+                    >
+                      <div className="flex items-center gap-2 text-blue-700 font-medium">
+                        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
+                        </svg>
+                        <span>Arc</span>
+                      </div>
+                      <p className="text-lg font-bold text-blue-800 mt-1">R{arc.radius.toFixed(1)} mm</p>
+                      <p className="text-xs text-gray-400">Double-clic pour modifier</p>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+          </div>
         </div>
 
         {/* Panneau de calibration */}
