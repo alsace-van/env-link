@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.71 - Dropdown sélection branche + bouton nouvelle branche
+// VERSION: 6.72 - Fluidité gizmo améliorée (RAF throttle) + dropdown branches
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -304,6 +304,10 @@ export function CADGabaritCanvas({
   useEffect(() => {
     gizmoDragRef.current = gizmoDrag;
   }, [gizmoDrag]);
+
+  // Ref pour throttle du gizmoDrag (fluidité)
+  const gizmoDragRAFRef = useRef<number | null>(null);
+  const pendingGizmoDragPosRef = useRef<{ x: number; y: number } | null>(null);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
@@ -6668,61 +6672,69 @@ export function CADGabaritCanvas({
     [selectionGizmoData, sketch],
   );
 
-  // Mettre à jour pendant le drag
+  // Mettre à jour pendant le drag (avec throttle pour fluidité)
   const updateGizmoDrag = useCallback(
     (worldPos: { x: number; y: number }) => {
       if (!gizmoDrag) return;
 
-      const scaleFactor = sketch.scaleFactor || 1;
-      let currentValue = 0;
+      // Stocker la position en attente
+      pendingGizmoDragPosRef.current = worldPos;
 
-      setSketch((prev) => {
-        const newSketch = { ...prev };
-        newSketch.points = new Map(prev.points);
+      // Si une frame est déjà planifiée, ne rien faire
+      if (gizmoDragRAFRef.current !== null) return;
 
-        if (gizmoDrag.mode === "translateX") {
-          // Déplacement en X
-          const deltaPx = worldPos.x - gizmoDrag.startPos.x;
-          currentValue = deltaPx / scaleFactor; // en mm
+      // Planifier la mise à jour sur la prochaine frame
+      gizmoDragRAFRef.current = requestAnimationFrame(() => {
+        gizmoDragRAFRef.current = null;
+        const pos = pendingGizmoDragPosRef.current;
+        if (!pos || !gizmoDragRef.current) return;
 
-          for (const [pointId, initialPos] of gizmoDrag.initialPositions) {
-            newSketch.points.set(pointId, { id: pointId, x: initialPos.x + deltaPx, y: initialPos.y });
+        const currentGizmoDrag = gizmoDragRef.current;
+        const scaleFactor = sketchRef.current.scaleFactor || 1;
+        let currentValue = 0;
+
+        setSketch((prev) => {
+          const newSketch = { ...prev };
+          newSketch.points = new Map(prev.points);
+
+          if (currentGizmoDrag.mode === "translateX") {
+            const deltaPx = pos.x - currentGizmoDrag.startPos.x;
+            currentValue = deltaPx / scaleFactor;
+            for (const [pointId, initialPos] of currentGizmoDrag.initialPositions) {
+              newSketch.points.set(pointId, { id: pointId, x: initialPos.x + deltaPx, y: initialPos.y });
+            }
+          } else if (currentGizmoDrag.mode === "translateY") {
+            const deltaPx = currentGizmoDrag.startPos.y - pos.y;
+            currentValue = deltaPx / scaleFactor;
+            for (const [pointId, initialPos] of currentGizmoDrag.initialPositions) {
+              newSketch.points.set(pointId, { id: pointId, x: initialPos.x, y: initialPos.y - deltaPx });
+            }
+          } else if (currentGizmoDrag.mode === "rotate") {
+            const currentAngle = Math.atan2(pos.y - currentGizmoDrag.center.y, pos.x - currentGizmoDrag.center.x);
+            const deltaAngle = currentAngle - currentGizmoDrag.startAngle;
+            currentValue = (deltaAngle * 180) / Math.PI;
+
+            const cos = Math.cos(deltaAngle);
+            const sin = Math.sin(deltaAngle);
+            const cx = currentGizmoDrag.center.x;
+            const cy = currentGizmoDrag.center.y;
+
+            for (const [pointId, initialPos] of currentGizmoDrag.initialPositions) {
+              const dx = initialPos.x - cx;
+              const dy = initialPos.y - cy;
+              const newX = cx + dx * cos - dy * sin;
+              const newY = cy + dx * sin + dy * cos;
+              newSketch.points.set(pointId, { id: pointId, x: newX, y: newY });
+            }
           }
-        } else if (gizmoDrag.mode === "translateY") {
-          // Déplacement en Y (inversé car canvas Y est vers le bas)
-          const deltaPx = gizmoDrag.startPos.y - worldPos.y; // Inversé pour que haut = positif
-          currentValue = deltaPx / scaleFactor; // en mm
 
-          for (const [pointId, initialPos] of gizmoDrag.initialPositions) {
-            newSketch.points.set(pointId, { id: pointId, x: initialPos.x, y: initialPos.y - deltaPx });
-          }
-        } else if (gizmoDrag.mode === "rotate") {
-          // Rotation
-          const currentAngle = Math.atan2(worldPos.y - gizmoDrag.center.y, worldPos.x - gizmoDrag.center.x);
-          const deltaAngle = currentAngle - gizmoDrag.startAngle;
-          currentValue = (deltaAngle * 180) / Math.PI; // en degrés
+          return newSketch;
+        });
 
-          const cos = Math.cos(deltaAngle);
-          const sin = Math.sin(deltaAngle);
-          const cx = gizmoDrag.center.x;
-          const cy = gizmoDrag.center.y;
-
-          for (const [pointId, initialPos] of gizmoDrag.initialPositions) {
-            const dx = initialPos.x - cx;
-            const dy = initialPos.y - cy;
-            const newX = cx + dx * cos - dy * sin;
-            const newY = cy + dx * sin + dy * cos;
-            newSketch.points.set(pointId, { id: pointId, x: newX, y: newY });
-          }
-        }
-
-        return newSketch;
+        setGizmoDrag((prev) => (prev ? { ...prev, currentValue } : null));
       });
-
-      // Mettre à jour la valeur affichée
-      setGizmoDrag((prev) => (prev ? { ...prev, currentValue } : null));
     },
-    [gizmoDrag, sketch.scaleFactor],
+    [gizmoDrag],
   );
 
   // Terminer le drag
@@ -6750,6 +6762,12 @@ export function CADGabaritCanvas({
     addToHistory(sketchBeforeDrag, `${modeLabel} ${value}`);
 
     toast.success(`${modeLabel}: ${value}`);
+    // Cleanup RAF
+    if (gizmoDragRAFRef.current !== null) {
+      cancelAnimationFrame(gizmoDragRAFRef.current);
+      gizmoDragRAFRef.current = null;
+    }
+    pendingGizmoDragPosRef.current = null;
     setGizmoDrag(null);
   }, [gizmoDrag, addToHistory]);
 
@@ -6769,6 +6787,12 @@ export function CADGabaritCanvas({
       return newSketch;
     });
 
+    // Cleanup RAF
+    if (gizmoDragRAFRef.current !== null) {
+      cancelAnimationFrame(gizmoDragRAFRef.current);
+      gizmoDragRAFRef.current = null;
+    }
+    pendingGizmoDragPosRef.current = null;
     setGizmoDrag(null);
     toast.info("Déplacement annulé");
   }, [gizmoDrag]);
