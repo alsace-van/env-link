@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.59 - Flowchart vertical avec branches décalées horizontalement
+// VERSION: 6.60 - Fix décalage horizontal des branches enfants
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -15085,19 +15085,24 @@ export function CADGabaritCanvas({
 
                 // Si ce nœud a des branches enfants
                 if (node.childBranches.length > 0) {
-                  let currentX = x;
-
                   // D'abord, positionner la continuation (nextState) à la même colonne
                   if (node.nextState) {
-                    layoutNode(node.nextState, currentX, nextY);
-                    // Calculer la largeur de la continuation pour décaler les branches
-                    currentX += calculateSubtreeWidth(node.nextState) + HORIZONTAL_GAP;
+                    layoutNode(node.nextState, x, nextY);
                   }
 
-                  // Ensuite, positionner les branches enfants à droite
+                  // Les branches enfants sont TOUJOURS décalées à droite
+                  // Calculer le X de départ pour les branches enfants
+                  let branchX = x + NODE_WIDTH + HORIZONTAL_GAP;
+
+                  // Si il y a une continuation, les branches sont à droite de tout le sous-arbre de continuation
+                  if (node.nextState) {
+                    branchX = x + calculateSubtreeWidth(node.nextState) + HORIZONTAL_GAP;
+                  }
+
+                  // Positionner les branches enfants à droite
                   node.childBranches.forEach((childBranch) => {
-                    layoutNode(childBranch, currentX, nextY);
-                    currentX += calculateSubtreeWidth(childBranch) + HORIZONTAL_GAP;
+                    layoutNode(childBranch, branchX, nextY);
+                    branchX += calculateSubtreeWidth(childBranch) + HORIZONTAL_GAP;
                   });
                 } else {
                   // Pas de branches enfants, juste continuer vers le bas
