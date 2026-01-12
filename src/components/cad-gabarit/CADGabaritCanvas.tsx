@@ -1198,298 +1198,6 @@ export function CADGabaritCanvas({
     [mirrorState.entitiesToMirror, sketch.geometries, sketch.points],
   );
 
-  // Appliquer la symétrie avec l'axe et l'offset actuels
-  const applyMirrorSymmetry = useCallback(() => {
-    if (!mirrorState.axisPoint1 || !mirrorState.axisPoint2) {
-      toast.error("Axe de symétrie non défini");
-      return;
-    }
-
-    const axis1 = mirrorState.axisPoint1;
-    const axis2 = mirrorState.axisPoint2;
-    const offset = mirrorState.offset || 0;
-    const scaleFactor = sketch.scaleFactor || 1;
-
-    // Calculer l'axe décalé si offset > 0
-    let effectiveAxis1 = axis1;
-    let effectiveAxis2 = axis2;
-
-    if (offset !== 0) {
-      // Direction perpendiculaire à l'axe
-      const dx = axis2.x - axis1.x;
-      const dy = axis2.y - axis1.y;
-      const len = Math.sqrt(dx * dx + dy * dy);
-      if (len > 0) {
-        // Vecteur perpendiculaire unitaire
-        const perpX = -dy / len;
-        const perpY = dx / len;
-        // Décaler l'axe
-        const offsetPx = offset * scaleFactor;
-        effectiveAxis1 = { ...axis1, x: axis1.x + perpX * offsetPx, y: axis1.y + perpY * offsetPx };
-        effectiveAxis2 = { ...axis2, x: axis2.x + perpX * offsetPx, y: axis2.y + perpY * offsetPx };
-      }
-    }
-
-    // Fonction de réflexion d'un point par rapport à l'axe effectif
-    const reflectPoint = (p: Point): Point => {
-      const dx = effectiveAxis2.x - effectiveAxis1.x;
-      const dy = effectiveAxis2.y - effectiveAxis1.y;
-      const lenSq = dx * dx + dy * dy;
-      if (lenSq === 0) return { ...p };
-
-      const t = ((p.x - effectiveAxis1.x) * dx + (p.y - effectiveAxis1.y) * dy) / lenSq;
-      const projX = effectiveAxis1.x + t * dx;
-      const projY = effectiveAxis1.y + t * dy;
-
-      return {
-        id: generateId(),
-        x: 2 * projX - p.x,
-        y: 2 * projY - p.y,
-      };
-    };
-
-    const currentSketch = sketchRef.current;
-    const newSketch = { ...currentSketch };
-    newSketch.points = new Map(currentSketch.points);
-    newSketch.geometries = new Map(currentSketch.geometries);
-
-    const pointMapping = new Map<string, string>();
-
-    // Créer les points miroir
-    for (const entityId of mirrorState.entitiesToMirror) {
-      const geo = currentSketch.geometries.get(entityId);
-      if (geo) {
-        if (geo.type === "line") {
-          const line = geo as Line;
-          const p1 = currentSketch.points.get(line.p1);
-          const p2 = currentSketch.points.get(line.p2);
-          if (p1 && p2) {
-            if (!pointMapping.has(line.p1)) {
-              const newP1 = reflectPoint(p1);
-              newSketch.points.set(newP1.id, newP1);
-              pointMapping.set(line.p1, newP1.id);
-            }
-            if (!pointMapping.has(line.p2)) {
-              const newP2 = reflectPoint(p2);
-              newSketch.points.set(newP2.id, newP2);
-              pointMapping.set(line.p2, newP2.id);
-            }
-          }
-        } else if (geo.type === "circle") {
-          const circle = geo as CircleType;
-          const center = currentSketch.points.get(circle.center);
-          if (center && !pointMapping.has(circle.center)) {
-            const newCenter = reflectPoint(center);
-            newSketch.points.set(newCenter.id, newCenter);
-            pointMapping.set(circle.center, newCenter.id);
-          }
-        } else if (geo.type === "arc") {
-          const arc = geo as Arc;
-          const center = currentSketch.points.get(arc.center);
-          const startPt = currentSketch.points.get(arc.startPoint);
-          const endPt = currentSketch.points.get(arc.endPoint);
-          if (center && !pointMapping.has(arc.center)) {
-            const newCenter = reflectPoint(center);
-            newSketch.points.set(newCenter.id, newCenter);
-            pointMapping.set(arc.center, newCenter.id);
-          }
-          if (startPt && !pointMapping.has(arc.startPoint)) {
-            const newStart = reflectPoint(startPt);
-            newSketch.points.set(newStart.id, newStart);
-            pointMapping.set(arc.startPoint, newStart.id);
-          }
-          if (endPt && !pointMapping.has(arc.endPoint)) {
-            const newEnd = reflectPoint(endPt);
-            newSketch.points.set(newEnd.id, newEnd);
-            pointMapping.set(arc.endPoint, newEnd.id);
-          }
-        }
-      }
-    }
-
-    // Créer les géométries miroir
-    for (const entityId of mirrorState.entitiesToMirror) {
-      const geo = currentSketch.geometries.get(entityId);
-      if (geo) {
-        if (geo.type === "line") {
-          const line = geo as Line;
-          const newLine: Line = {
-            id: generateId(),
-            type: "line",
-            p1: pointMapping.get(line.p1) || line.p1,
-            p2: pointMapping.get(line.p2) || line.p2,
-            layerId: line.layerId,
-            strokeWidth: (line as any).strokeWidth,
-          };
-          newSketch.geometries.set(newLine.id, newLine);
-        } else if (geo.type === "circle") {
-          const circle = geo as CircleType;
-          const newCircle: CircleType = {
-            id: generateId(),
-            type: "circle",
-            center: pointMapping.get(circle.center) || circle.center,
-            radius: circle.radius,
-            layerId: circle.layerId,
-          };
-          newSketch.geometries.set(newCircle.id, newCircle);
-        } else if (geo.type === "arc") {
-          const arc = geo as Arc;
-          const newArc: Arc = {
-            id: generateId(),
-            type: "arc",
-            center: pointMapping.get(arc.center) || arc.center,
-            startPoint: pointMapping.get(arc.endPoint) || arc.endPoint,
-            endPoint: pointMapping.get(arc.startPoint) || arc.startPoint,
-            radius: arc.radius,
-            counterClockwise: !arc.counterClockwise,
-            layerId: arc.layerId,
-          };
-          newSketch.geometries.set(newArc.id, newArc);
-        }
-      }
-    }
-
-    setSketch(newSketch);
-    addToHistory(newSketch, "Symétrie");
-    setMirrorState({ phase: "idle", entitiesToMirror: new Set(), offset: 0 });
-    setTempGeometry(null);
-    setSelectedEntities(new Set());
-    toast.success(`Symétrie appliquée${offset !== 0 ? ` (décalage: ${offset} mm)` : ""}`);
-  }, [mirrorState, sketch.scaleFactor, sketch.points, sketch.geometries, addToHistory]);
-
-  // Appliquer la symétrie avec un axe donné (2 points)
-  const applyMirrorWithAxis = useCallback(
-    (axis1: Point, axis2: Point) => {
-      if (mirrorState.entitiesToMirror.size === 0) return;
-
-      // Fonction de réflexion d'un point par rapport à l'axe
-      const reflectPoint = (p: Point): Point => {
-        const dx = axis2.x - axis1.x;
-        const dy = axis2.y - axis1.y;
-        const lenSq = dx * dx + dy * dy;
-        if (lenSq === 0) return { ...p };
-
-        const t = ((p.x - axis1.x) * dx + (p.y - axis1.y) * dy) / lenSq;
-        const projX = axis1.x + t * dx;
-        const projY = axis1.y + t * dy;
-
-        return {
-          id: generateId(),
-          x: 2 * projX - p.x,
-          y: 2 * projY - p.y,
-        };
-      };
-
-      const currentSketch = sketchRef.current;
-      const newSketch = { ...currentSketch };
-      newSketch.points = new Map(currentSketch.points);
-      newSketch.geometries = new Map(currentSketch.geometries);
-
-      const pointMapping = new Map<string, string>();
-
-      // Créer les points miroir
-      for (const entityId of mirrorState.entitiesToMirror) {
-        const geo = currentSketch.geometries.get(entityId);
-        if (geo) {
-          if (geo.type === "line") {
-            const line = geo as Line;
-            const p1 = currentSketch.points.get(line.p1);
-            const p2 = currentSketch.points.get(line.p2);
-            if (p1 && p2) {
-              if (!pointMapping.has(line.p1)) {
-                const newP1 = reflectPoint(p1);
-                newSketch.points.set(newP1.id, newP1);
-                pointMapping.set(line.p1, newP1.id);
-              }
-              if (!pointMapping.has(line.p2)) {
-                const newP2 = reflectPoint(p2);
-                newSketch.points.set(newP2.id, newP2);
-                pointMapping.set(line.p2, newP2.id);
-              }
-            }
-          } else if (geo.type === "circle") {
-            const circle = geo as CircleType;
-            const center = currentSketch.points.get(circle.center);
-            if (center && !pointMapping.has(circle.center)) {
-              const newCenter = reflectPoint(center);
-              newSketch.points.set(newCenter.id, newCenter);
-              pointMapping.set(circle.center, newCenter.id);
-            }
-          } else if (geo.type === "arc") {
-            const arc = geo as Arc;
-            const center = currentSketch.points.get(arc.center);
-            const startPt = currentSketch.points.get(arc.startPoint);
-            const endPt = currentSketch.points.get(arc.endPoint);
-            if (center && !pointMapping.has(arc.center)) {
-              const newCenter = reflectPoint(center);
-              newSketch.points.set(newCenter.id, newCenter);
-              pointMapping.set(arc.center, newCenter.id);
-            }
-            if (startPt && !pointMapping.has(arc.startPoint)) {
-              const newStart = reflectPoint(startPt);
-              newSketch.points.set(newStart.id, newStart);
-              pointMapping.set(arc.startPoint, newStart.id);
-            }
-            if (endPt && !pointMapping.has(arc.endPoint)) {
-              const newEnd = reflectPoint(endPt);
-              newSketch.points.set(newEnd.id, newEnd);
-              pointMapping.set(arc.endPoint, newEnd.id);
-            }
-          }
-        }
-      }
-
-      // Créer les géométries miroir
-      for (const entityId of mirrorState.entitiesToMirror) {
-        const geo = currentSketch.geometries.get(entityId);
-        if (geo) {
-          if (geo.type === "line") {
-            const line = geo as Line;
-            const newLine: Line = {
-              id: generateId(),
-              type: "line",
-              p1: pointMapping.get(line.p1) || line.p1,
-              p2: pointMapping.get(line.p2) || line.p2,
-              layerId: line.layerId,
-              strokeWidth: (line as any).strokeWidth,
-            };
-            newSketch.geometries.set(newLine.id, newLine);
-          } else if (geo.type === "circle") {
-            const circle = geo as CircleType;
-            const newCircle: CircleType = {
-              id: generateId(),
-              type: "circle",
-              center: pointMapping.get(circle.center) || circle.center,
-              radius: circle.radius,
-              layerId: circle.layerId,
-            };
-            newSketch.geometries.set(newCircle.id, newCircle);
-          } else if (geo.type === "arc") {
-            const arc = geo as Arc;
-            const newArc: Arc = {
-              id: generateId(),
-              type: "arc",
-              center: pointMapping.get(arc.center) || arc.center,
-              startPoint: pointMapping.get(arc.endPoint) || arc.endPoint,
-              endPoint: pointMapping.get(arc.startPoint) || arc.startPoint,
-              radius: arc.radius,
-              counterClockwise: !arc.counterClockwise,
-              layerId: arc.layerId,
-            };
-            newSketch.geometries.set(newArc.id, newArc);
-          }
-        }
-      }
-
-      setSketch(newSketch);
-      addToHistory(newSketch, "Symétrie");
-      setMirrorState({ phase: "idle", entitiesToMirror: new Set(), offset: 0 });
-      setTempGeometry(null);
-      setSelectedEntities(new Set());
-    },
-    [mirrorState.entitiesToMirror, sketch.points, sketch.geometries, addToHistory],
-  );
-
   // Rendu
   const render = useCallback(() => {
     if (!rendererRef.current) return;
@@ -3084,6 +2792,140 @@ export function CADGabaritCanvas({
     branchesRef.current = { branches: newBranches, activeBranchId: currentActiveBranchId };
     historyRef.current = { history: newHistory, index: newIndex };
   }, []);
+
+  // Appliquer la symétrie avec un axe donné (2 points)
+  const applyMirrorWithAxis = useCallback(
+    (axis1: Point, axis2: Point) => {
+      if (mirrorState.entitiesToMirror.size === 0) return;
+
+      // Fonction de réflexion d'un point par rapport à l'axe
+      const reflectPoint = (p: Point): Point => {
+        const dx = axis2.x - axis1.x;
+        const dy = axis2.y - axis1.y;
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq === 0) return { ...p };
+
+        const t = ((p.x - axis1.x) * dx + (p.y - axis1.y) * dy) / lenSq;
+        const projX = axis1.x + t * dx;
+        const projY = axis1.y + t * dy;
+
+        return {
+          id: generateId(),
+          x: 2 * projX - p.x,
+          y: 2 * projY - p.y,
+        };
+      };
+
+      const currentSketch = sketchRef.current;
+      const newSketch = { ...currentSketch };
+      newSketch.points = new Map(currentSketch.points);
+      newSketch.geometries = new Map(currentSketch.geometries);
+
+      const pointMapping = new Map<string, string>();
+
+      // Créer les points miroir
+      for (const entityId of mirrorState.entitiesToMirror) {
+        const geo = currentSketch.geometries.get(entityId);
+        if (geo) {
+          if (geo.type === "line") {
+            const line = geo as Line;
+            const p1 = currentSketch.points.get(line.p1);
+            const p2 = currentSketch.points.get(line.p2);
+            if (p1 && p2) {
+              if (!pointMapping.has(line.p1)) {
+                const newP1 = reflectPoint(p1);
+                newSketch.points.set(newP1.id, newP1);
+                pointMapping.set(line.p1, newP1.id);
+              }
+              if (!pointMapping.has(line.p2)) {
+                const newP2 = reflectPoint(p2);
+                newSketch.points.set(newP2.id, newP2);
+                pointMapping.set(line.p2, newP2.id);
+              }
+            }
+          } else if (geo.type === "circle") {
+            const circle = geo as CircleType;
+            const center = currentSketch.points.get(circle.center);
+            if (center && !pointMapping.has(circle.center)) {
+              const newCenter = reflectPoint(center);
+              newSketch.points.set(newCenter.id, newCenter);
+              pointMapping.set(circle.center, newCenter.id);
+            }
+          } else if (geo.type === "arc") {
+            const arc = geo as Arc;
+            const center = currentSketch.points.get(arc.center);
+            const startPt = currentSketch.points.get(arc.startPoint);
+            const endPt = currentSketch.points.get(arc.endPoint);
+            if (center && !pointMapping.has(arc.center)) {
+              const newCenter = reflectPoint(center);
+              newSketch.points.set(newCenter.id, newCenter);
+              pointMapping.set(arc.center, newCenter.id);
+            }
+            if (startPt && !pointMapping.has(arc.startPoint)) {
+              const newStart = reflectPoint(startPt);
+              newSketch.points.set(newStart.id, newStart);
+              pointMapping.set(arc.startPoint, newStart.id);
+            }
+            if (endPt && !pointMapping.has(arc.endPoint)) {
+              const newEnd = reflectPoint(endPt);
+              newSketch.points.set(newEnd.id, newEnd);
+              pointMapping.set(arc.endPoint, newEnd.id);
+            }
+          }
+        }
+      }
+
+      // Créer les géométries miroir
+      for (const entityId of mirrorState.entitiesToMirror) {
+        const geo = currentSketch.geometries.get(entityId);
+        if (geo) {
+          if (geo.type === "line") {
+            const line = geo as Line;
+            const newLine: Line = {
+              id: generateId(),
+              type: "line",
+              p1: pointMapping.get(line.p1) || line.p1,
+              p2: pointMapping.get(line.p2) || line.p2,
+              layerId: line.layerId,
+              strokeWidth: (line as any).strokeWidth,
+            };
+            newSketch.geometries.set(newLine.id, newLine);
+          } else if (geo.type === "circle") {
+            const circle = geo as CircleType;
+            const newCircle: CircleType = {
+              id: generateId(),
+              type: "circle",
+              center: pointMapping.get(circle.center) || circle.center,
+              radius: circle.radius,
+              layerId: circle.layerId,
+            };
+            newSketch.geometries.set(newCircle.id, newCircle);
+          } else if (geo.type === "arc") {
+            const arc = geo as Arc;
+            const newArc: Arc = {
+              id: generateId(),
+              type: "arc",
+              center: pointMapping.get(arc.center) || arc.center,
+              startPoint: pointMapping.get(arc.endPoint) || arc.endPoint,
+              endPoint: pointMapping.get(arc.startPoint) || arc.startPoint,
+              radius: arc.radius,
+              counterClockwise: !arc.counterClockwise,
+              layerId: arc.layerId,
+            };
+            newSketch.geometries.set(newArc.id, newArc);
+          }
+        }
+      }
+
+      setSketch(newSketch);
+      addToHistory(newSketch, "Symétrie");
+      setMirrorState({ phase: "idle", entitiesToMirror: new Set(), offset: 0 });
+      setTempGeometry(null);
+      setSelectedEntities(new Set());
+      toast.success("Symétrie appliquée");
+    },
+    [mirrorState.entitiesToMirror, addToHistory],
+  );
 
   // Historique des images - empiler l'état avant suppression
   const addToImageHistory = useCallback((images: BackgroundImage[], links: ImageMarkerLink[]) => {
