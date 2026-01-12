@@ -5649,7 +5649,8 @@ export function CADGabaritCanvas({
             p1: intersectPoint.id,
             p2: existingLine.p2,
             layerId: existingLine.layerId,
-          };
+            strokeWidth: (existingLine as any).strokeWidth, // Copier strokeWidth
+          } as Line;
           sketchToModify.geometries.set(newExistingLine.id, newExistingLine);
 
           // Modifier le segment existant pour finir au point d'intersection
@@ -5669,7 +5670,8 @@ export function CADGabaritCanvas({
             p1: intersectPoint.id,
             p2: currentNewLine.p2,
             layerId: currentNewLine.layerId,
-          };
+            strokeWidth: (currentNewLine as any).strokeWidth, // Copier strokeWidth
+          } as Line;
           sketchToModify.geometries.set(newNewLine.id, newNewLine);
 
           // Modifier le nouveau segment pour finir au point d'intersection
