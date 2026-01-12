@@ -11738,16 +11738,36 @@ export function CADGabaritCanvas({
                   <ChevronDown className="h-3 w-3 opacity-50" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-44">
+              <DropdownMenuContent align="start" className="w-48">
                 <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
                   Branches ({branches.length}/10)
                 </div>
                 <DropdownMenuSeparator />
-                {branches.map((branch) => (
-                  <DropdownMenuItem key={branch.id} onClick={() => setActiveBranchId(branch.id)} className="gap-2">
+                {branches.map((branch, index) => (
+                  <DropdownMenuItem key={branch.id} onClick={() => setActiveBranchId(branch.id)} className="gap-2 pr-1">
                     <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: branch.color }} />
                     <span className="truncate flex-1">{branch.name}</span>
-                    {branch.id === activeBranchId && <Check className="h-4 w-4 text-blue-500" />}
+                    {branch.id === activeBranchId && <Check className="h-4 w-4 text-blue-500 flex-shrink-0" />}
+                    {/* Bouton supprimer - pas sur la branche Principal (index 0) */}
+                    {index > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 ml-1 hover:bg-red-100 hover:text-red-600 flex-shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Si on supprime la branche active, basculer sur Principal
+                          if (branch.id === activeBranchId) {
+                            setActiveBranchId(branches[0].id);
+                          }
+                          setBranches((prev) => prev.filter((b) => b.id !== branch.id));
+                          toast.success(`Branche "${branch.name}" supprimée`);
+                        }}
+                        title={`Supprimer "${branch.name}"`}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    )}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
