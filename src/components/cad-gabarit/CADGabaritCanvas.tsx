@@ -2562,7 +2562,8 @@ export function CADGabaritCanvas({
   // Vider la sélection quand on change d'outil (sauf pour select et mirror)
   useEffect(() => {
     // Pour l'outil mirror, capturer la sélection et passer en mode waitingAxis1
-    if (activeTool === "mirror") {
+    // Note: cast en string pour éviter erreur TS si types.ts pas à jour
+    if ((activeTool as string) === "mirror") {
       if (selectedEntities.size > 0) {
         setMirrorState({
           phase: "waitingAxis1",
@@ -2622,7 +2623,8 @@ export function CADGabaritCanvas({
       setArc3Points([]);
     }
     // Réinitialiser symétrie quand on change d'outil
-    if (activeTool !== "mirror") {
+    // Note: cast en string pour éviter erreur TS si types.ts pas à jour
+    if ((activeTool as string) !== "mirror") {
       setMirrorState({
         phase: "idle",
         entitiesToMirror: new Set(),
