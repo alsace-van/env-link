@@ -11351,8 +11351,20 @@ export function CADGabaritCanvas({
     >
       {/* Toolbar - flex-nowrap pour éviter les recalculs */}
       <div className="flex items-center gap-2 p-2 bg-gray-100 border-b flex-wrap flex-shrink-0">
-        {/* Outils de sélection/navigation */}
+        {/* Sauvegarder + Outils de sélection/navigation */}
         <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="sm" onClick={saveSketch} className="h-9 w-9 p-0">
+                  <Save className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Sauvegarder (Ctrl+S)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <ToolButton tool="select" icon={MousePointer} label="Sélection" shortcut="V" />
           <ToolButton tool="pan" icon={Hand} label="Déplacer" shortcut="H" />
         </div>
@@ -12250,22 +12262,6 @@ export function CADGabaritCanvas({
             <span className="text-xs">DXF</span>
           </Button>
         </div>
-
-        <Separator orientation="vertical" className="h-6" />
-
-        {/* Actions */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="outline" size="sm" onClick={saveSketch} className="h-9 w-9 p-0">
-                <Save className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Sauvegarder</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
 
         <Separator orientation="vertical" className="h-6" />
 
