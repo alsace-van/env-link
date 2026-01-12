@@ -87,6 +87,7 @@ import {
   ChevronDown,
   SplitSquareVertical,
   Library,
+  Scan,
 } from "lucide-react";
 
 import {
@@ -11995,7 +11996,7 @@ export function CADGabaritCanvas({
             <ZoomIn className="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="sm" onClick={fitToContent} title="Ajuster au contenu" className="h-8 w-8 p-0">
-            <Maximize className="h-4 w-4" />
+            <Scan className="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="sm" onClick={resetView} title="Reset vue">
             <RotateCcw className="h-4 w-4" />
