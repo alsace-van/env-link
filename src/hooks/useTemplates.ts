@@ -128,27 +128,6 @@ export function useTemplates(): UseTemplatesReturn {
         .order("sort_order", { ascending: true });
 
       if (fetchError) throw fetchError;
-
-      // Si aucune catégorie, créer les catégories par défaut
-      if (!data || data.length === 0) {
-        const { error: rpcError } = await supabase.rpc("create_default_cad_categories", {
-          p_user_id: userId,
-        });
-        
-        if (rpcError) {
-          console.warn("Erreur création catégories par défaut:", rpcError);
-        } else {
-          // Recharger
-          const { data: newData } = await supabase
-            .from("cad_template_categories")
-            .select("*")
-            .eq("user_id", userId)
-            .order("sort_order", { ascending: true });
-          setCategories(newData || []);
-          return;
-        }
-      }
-
       setCategories(data || []);
     } catch (err: any) {
       console.error("Erreur chargement catégories:", err);
