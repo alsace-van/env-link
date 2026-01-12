@@ -19,6 +19,7 @@ export interface Line {
   p1: string; // ID du point de départ
   p2: string; // ID du point d'arrivée
   layerId?: string; // Calque (défaut: 'default')
+  strokeWidth?: number; // Épaisseur du trait (défaut: styles.lineWidth)
 }
 
 export interface Circle {
@@ -27,6 +28,7 @@ export interface Circle {
   center: string; // ID du point central
   radius: number;
   layerId?: string;
+  strokeWidth?: number; // Épaisseur du trait
 }
 
 export interface Arc {
@@ -39,6 +41,7 @@ export interface Arc {
   layerId?: string;
   counterClockwise?: boolean; // Si true, dessiner dans le sens anti-horaire (grand arc si nécessaire)
   isFillet?: boolean; // Si true, cet arc est un congé (peut être supprimé pour restaurer le coin)
+  strokeWidth?: number; // Épaisseur du trait
 }
 
 export interface Rectangle {
@@ -49,6 +52,7 @@ export interface Rectangle {
   p3: string; // coin inférieur droit
   p4: string; // coin inférieur gauche
   layerId?: string;
+  strokeWidth?: number; // Épaisseur du trait
 }
 
 export interface Bezier {
@@ -59,6 +63,7 @@ export interface Bezier {
   cp1: string; // Point de contrôle 1
   cp2: string; // Point de contrôle 2
   layerId?: string;
+  strokeWidth?: number; // Épaisseur du trait
 }
 
 export type Geometry = Line | Circle | Arc | Rectangle | Bezier;

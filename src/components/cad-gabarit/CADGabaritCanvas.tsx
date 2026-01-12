@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.64 - Ajout fonction supprimer état (deleteStateAndAfter) dans flowchart
+// VERSION: 6.65 - Ajout dropdown épaisseur de trait (strokeWidth) par figure
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -213,6 +213,10 @@ export function CADGabaritCanvas({
   const [selectedEntities, setSelectedEntities] = useState<Set<string>>(new Set());
   const [hoveredEntity, setHoveredEntity] = useState<string | null>(null);
   const [currentSnapPoint, setCurrentSnapPoint] = useState<SnapPoint | null>(null);
+
+  // Épaisseur de trait par défaut pour les nouvelles figures
+  const [defaultStrokeWidth, setDefaultStrokeWidth] = useState<number>(1.5);
+  const STROKE_WIDTH_OPTIONS = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5];
 
   const [tempGeometry, setTempGeometry] = useState<any>(null);
   const [tempPoints, setTempPoints] = useState<Point[]>([]);
@@ -6122,7 +6126,7 @@ export function CADGabaritCanvas({
       newSketch.points.set(corner3.id, corner3);
       newSketch.points.set(corner4.id, corner4);
 
-      // Créer les 4 lignes avec le calque actif
+      // Créer les 4 lignes avec le calque actif et l'épaisseur de trait
       const lines = [
         {
           id: generateId(),
@@ -6130,6 +6134,7 @@ export function CADGabaritCanvas({
           p1: corner1.id,
           p2: corner2.id,
           layerId: currentSketch.activeLayerId,
+          strokeWidth: defaultStrokeWidth,
         },
         {
           id: generateId(),
@@ -6137,6 +6142,7 @@ export function CADGabaritCanvas({
           p1: corner2.id,
           p2: corner3.id,
           layerId: currentSketch.activeLayerId,
+          strokeWidth: defaultStrokeWidth,
         },
         {
           id: generateId(),
@@ -6144,6 +6150,7 @@ export function CADGabaritCanvas({
           p1: corner3.id,
           p2: corner4.id,
           layerId: currentSketch.activeLayerId,
+          strokeWidth: defaultStrokeWidth,
         },
         {
           id: generateId(),
@@ -6151,6 +6158,7 @@ export function CADGabaritCanvas({
           p1: corner4.id,
           p2: corner1.id,
           layerId: currentSketch.activeLayerId,
+          strokeWidth: defaultStrokeWidth,
         },
       ];
 
@@ -7457,6 +7465,7 @@ export function CADGabaritCanvas({
               p1: p1.id,
               p2: p2.id,
               layerId: currentSketch.activeLayerId,
+              strokeWidth: defaultStrokeWidth,
             };
             newSketch.geometries.set(line.id, line);
 
@@ -7501,6 +7510,7 @@ export function CADGabaritCanvas({
               center: center.id,
               radius,
               layerId: currentSketch.activeLayerId,
+              strokeWidth: defaultStrokeWidth,
             };
             newSketch.geometries.set(circle.id, circle);
 
@@ -7600,6 +7610,7 @@ export function CADGabaritCanvas({
               radius,
               counterClockwise,
               layerId: currentSketch.activeLayerId,
+              strokeWidth: defaultStrokeWidth,
             };
             newSketch.geometries.set(arc.id, arc);
 
@@ -11544,6 +11555,75 @@ export function CADGabaritCanvas({
               </TooltipTrigger>
               <TooltipContent>
                 <p>Offset - Copie parallèle à distance</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <Separator orientation="vertical" className="h-6 mx-1" />
+
+          {/* Épaisseur de trait */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-9 px-2 gap-1">
+                        <svg
+                          className="h-4 w-4"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={defaultStrokeWidth * 1.5}
+                        >
+                          <line x1="4" y1="12" x2="20" y2="12" />
+                        </svg>
+                        <span className="text-xs">{defaultStrokeWidth}</span>
+                        <ChevronDown className="h-3 w-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <div className="p-1">
+                        <div className="text-xs text-gray-500 px-2 py-1 mb-1">Épaisseur du trait</div>
+                        {STROKE_WIDTH_OPTIONS.map((width) => (
+                          <DropdownMenuItem
+                            key={width}
+                            onClick={() => {
+                              setDefaultStrokeWidth(width);
+                              // Si des figures sont sélectionnées, les mettre à jour
+                              if (selectedEntities.size > 0) {
+                                setSketch((prev) => {
+                                  const newGeometries = prev.geometries.map((g) => {
+                                    if (selectedEntities.has(g.id)) {
+                                      return { ...g, strokeWidth: width };
+                                    }
+                                    return g;
+                                  });
+                                  return { ...prev, geometries: newGeometries };
+                                });
+                                addToHistory(sketch, `Épaisseur → ${width}px`);
+                              }
+                            }}
+                            className="flex items-center gap-2"
+                          >
+                            <svg className="w-8 h-4" viewBox="0 0 32 16">
+                              <line x1="2" y1="8" x2="30" y2="8" stroke="currentColor" strokeWidth={width * 2} />
+                            </svg>
+                            <span className={`text-sm ${defaultStrokeWidth === width ? "font-bold" : ""}`}>
+                              {width}px
+                            </span>
+                            {defaultStrokeWidth === width && <Check className="h-3 w-3 ml-auto" />}
+                          </DropdownMenuItem>
+                        ))}
+                      </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>
+                  Épaisseur du trait {selectedEntities.size > 0 ? "(modifie la sélection)" : "(pour nouvelles figures)"}
+                </p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

@@ -1280,7 +1280,11 @@ export class CADRenderer {
       : isHovered
         ? this.styles.selectedColor
         : this.styles.lineColor;
-    this.ctx.lineWidth = (isSelected ? this.styles.selectedWidth : this.styles.lineWidth) / this.viewport.scale;
+
+    // Utiliser le strokeWidth individuel de la géométrie s'il est défini, sinon le style par défaut
+    const baseWidth = (geo as any).strokeWidth ?? this.styles.lineWidth;
+    this.ctx.lineWidth =
+      (isSelected ? Math.max(baseWidth, this.styles.selectedWidth) : baseWidth) / this.viewport.scale;
     this.ctx.lineCap = "round";
     this.ctx.lineJoin = "round";
 
