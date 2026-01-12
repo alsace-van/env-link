@@ -939,33 +939,43 @@ export function CADGabaritCanvas({
 
   // Initialiser et render le split view
   useEffect(() => {
-    if (!splitViewEnabled || !splitRightBranchData) return;
+    if (!splitViewEnabled || !splitRightBranchData || splitViewMinimized) return;
 
-    // Choisir le bon canvas selon le mode
-    const canvas = splitViewMinimized ? splitMiniCanvasRef.current : splitCanvasRef.current;
-    if (!canvas) return;
-
-    // Choisir/créer le bon renderer
-    let renderer = splitViewMinimized ? splitMiniRendererRef.current : splitRendererRef.current;
-    if (!renderer) {
-      renderer = new CADRenderer(canvas);
-      if (splitViewMinimized) {
-        splitMiniRendererRef.current = renderer;
-      } else {
-        splitRendererRef.current = renderer;
-      }
+    const canvas = splitCanvasRef.current;
+    if (!canvas) {
+      console.log("[SPLIT] Canvas not found");
+      return;
     }
 
-    // Configurer les dimensions du canvas
-    const rect = canvas.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      canvas.width = rect.width * window.devicePixelRatio;
-      canvas.height = rect.height * window.devicePixelRatio;
+    // Fonction de rendu
+    const doRender = () => {
+      const rect = canvas.getBoundingClientRect();
+      console.log("[SPLIT] Canvas rect:", rect.width, rect.height);
+
+      if (rect.width <= 0 || rect.height <= 0) {
+        console.log("[SPLIT] Canvas has no dimensions, retrying...");
+        return false;
+      }
+
+      // Créer le renderer si nécessaire
+      if (!splitRendererRef.current) {
+        console.log("[SPLIT] Creating new renderer");
+        splitRendererRef.current = new CADRenderer(canvas);
+      }
+
+      const renderer = splitRendererRef.current;
+
+      // Configurer les dimensions du canvas HTML
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+
+      // Resize le renderer
       renderer.resize(rect.width, rect.height);
 
       // Configurer le viewport
       const vp = {
-        ...splitRightViewport,
+        scale: splitRightViewport.scale,
         width: rect.width,
         height: rect.height,
         offsetX: 32,
@@ -974,6 +984,7 @@ export function CADGabaritCanvas({
       renderer.setViewport(vp);
 
       // Rendre
+      console.log("[SPLIT] Rendering sketch with", splitRightBranchData.sketch.geometries.size, "geometries");
       renderer.render(splitRightBranchData.sketch, {
         selectedEntities: new Set(),
         hoveredEntity: null,
@@ -987,49 +998,62 @@ export function CADGabaritCanvas({
         gizmoDrag: null,
         selectedEntitiesForGhost: new Set(),
       });
+
+      return true;
+    };
+
+    // Essayer de rendre immédiatement
+    if (!doRender()) {
+      // Si ça échoue, réessayer après un délai
+      const timeoutId = setTimeout(doRender, 200);
+      return () => clearTimeout(timeoutId);
     }
   }, [splitViewEnabled, splitViewMinimized, splitRightBranchData, splitRightViewport.scale, showDimensions]);
 
-  // Resize du split canvas quand la position change
+  // Re-render quand la position du split change
   useEffect(() => {
-    if (!splitViewEnabled) return;
-
-    const canvas = splitViewMinimized ? splitMiniCanvasRef.current : splitCanvasRef.current;
-    const renderer = splitViewMinimized ? splitMiniRendererRef.current : splitRendererRef.current;
-    if (!canvas || !renderer || !splitRightBranchData) return;
+    if (!splitViewEnabled || splitViewMinimized || !splitRightBranchData) return;
 
     const timeoutId = setTimeout(() => {
+      const canvas = splitCanvasRef.current;
+      const renderer = splitRendererRef.current;
+      if (!canvas || !renderer) return;
+
       const rect = canvas.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        canvas.width = rect.width * window.devicePixelRatio;
-        canvas.height = rect.height * window.devicePixelRatio;
-        renderer.resize(rect.width, rect.height);
+      if (rect.width <= 0 || rect.height <= 0) return;
 
-        const vp = {
-          ...splitRightViewport,
-          width: rect.width,
-          height: rect.height,
-        };
-        renderer.setViewport(vp);
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
 
-        renderer.render(splitRightBranchData.sketch, {
-          selectedEntities: new Set(),
-          hoveredEntity: null,
-          tempGeometry: null,
-          currentSnapPoint: null,
-          showConstraints: false,
-          showDimensions: showDimensions,
-          backgroundImages: [],
-          comparisonBranches: [],
-          comparisonOpacity: 100,
-          gizmoDrag: null,
-          selectedEntitiesForGhost: new Set(),
-        });
-      }
-    }, 100);
+      renderer.resize(rect.width, rect.height);
+
+      const vp = {
+        scale: splitRightViewport.scale,
+        width: rect.width,
+        height: rect.height,
+        offsetX: 32,
+        offsetY: rect.height - 32,
+      };
+      renderer.setViewport(vp);
+
+      renderer.render(splitRightBranchData.sketch, {
+        selectedEntities: new Set(),
+        hoveredEntity: null,
+        tempGeometry: null,
+        currentSnapPoint: null,
+        showConstraints: false,
+        showDimensions: showDimensions,
+        backgroundImages: [],
+        comparisonBranches: [],
+        comparisonOpacity: 100,
+        gizmoDrag: null,
+        selectedEntitiesForGhost: new Set(),
+      });
+    }, 150);
 
     return () => clearTimeout(timeoutId);
-  }, [splitPosition, splitViewMinimized]);
+  }, [splitPosition]);
 
   // Données de la branche pour le mode reveal
   const revealBranchData = useMemo(() => {
@@ -12206,13 +12230,13 @@ export function CADGabaritCanvas({
           </div>
 
           {/* Canvas Container - avec support Split View */}
-          <div className="flex-1 relative overflow-hidden flex">
+          <div className="flex-1 relative overflow-hidden flex h-full">
             {/* Vue gauche (principale) */}
             <div
-              className="relative overflow-hidden"
+              className="relative overflow-hidden h-full"
               style={{
                 width: splitViewEnabled && !splitViewMinimized ? `${splitPosition}%` : "100%",
-                flex: splitViewEnabled && !splitViewMinimized ? "none" : "1",
+                flexShrink: 0,
               }}
             >
               <canvas
@@ -12657,10 +12681,11 @@ export function CADGabaritCanvas({
           {/* Vue droite (Split View) */}
           {splitViewEnabled && !splitViewMinimized && (
             <div
-              className="relative overflow-hidden border-l border-gray-300"
-              style={{ width: `${100 - splitPosition}%` }}
+              className="relative overflow-hidden border-l border-gray-300 flex flex-col h-full"
+              style={{ width: `${100 - splitPosition}%`, minWidth: "150px" }}
             >
-              <div className="absolute top-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-sm border-b px-2 py-1 flex items-center justify-between">
+              {/* Header */}
+              <div className="h-8 bg-white/95 backdrop-blur-sm border-b px-2 py-1 flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-2">
                   <select
                     className="text-xs border rounded px-2 py-1 bg-white"
@@ -12703,10 +12728,14 @@ export function CADGabaritCanvas({
                   </button>
                 </div>
               </div>
+              {/* Badge lecture seule */}
               <div className="absolute top-10 left-2 z-40 bg-orange-100 text-orange-700 text-[10px] px-2 py-0.5 rounded">
                 Lecture seule
               </div>
-              <canvas ref={splitCanvasRef} className="absolute left-0 right-0 bottom-0" style={{ top: "32px" }} />
+              {/* Canvas container avec flex-1 pour prendre toute la hauteur */}
+              <div className="flex-1 relative">
+                <canvas ref={splitCanvasRef} className="absolute inset-0 w-full h-full" />
+              </div>
             </div>
           )}
 
