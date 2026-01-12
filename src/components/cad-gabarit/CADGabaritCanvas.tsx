@@ -3322,7 +3322,8 @@ export function CADGabaritCanvas({
         p1: newPoint.id,
         p2: line.p2,
         layerId: line.layerId,
-      };
+        strokeWidth: (line as any).strokeWidth, // Copier le strokeWidth de la ligne originale
+      } as Line;
       sketchToModify.geometries.set(newLine.id, newLine);
 
       // Modifier la ligne originale (p1 vers le nouveau point)
