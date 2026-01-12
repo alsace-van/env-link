@@ -1,7 +1,7 @@
 // ============================================
 // TYPES: CAD Gabarit Types
 // Types pour le système CAO
-// VERSION: 3.0 - Ajout ImageMarker et ImageMarkerLink pour alignement multi-photos
+// VERSION: 3.1 - Ajout strokeWidth optionnel sur toutes les géométries
 // ============================================
 
 // === GÉOMÉTRIE DE BASE ===

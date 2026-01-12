@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.62 - Mode reveal: reveal en dessous, actif au-dessus
+// VERSION: 3.63 - Support strokeWidth individuel par géométrie
 // ============================================
 
 import {

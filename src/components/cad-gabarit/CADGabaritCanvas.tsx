@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.67 - Fix strokeWidth avec sketchRef pour mise à jour correcte
+// VERSION: 6.68 - Fix strokeWidth avec ref pour éviter closures stales
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -216,7 +216,13 @@ export function CADGabaritCanvas({
 
   // Épaisseur de trait par défaut pour les nouvelles figures
   const [defaultStrokeWidth, setDefaultStrokeWidth] = useState<number>(1.5);
+  const defaultStrokeWidthRef = useRef<number>(1.5);
   const STROKE_WIDTH_OPTIONS = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5];
+
+  // Synchroniser la ref avec l'état
+  useEffect(() => {
+    defaultStrokeWidthRef.current = defaultStrokeWidth;
+  }, [defaultStrokeWidth]);
 
   const [tempGeometry, setTempGeometry] = useState<any>(null);
   const [tempPoints, setTempPoints] = useState<Point[]>([]);
@@ -6134,7 +6140,7 @@ export function CADGabaritCanvas({
           p1: corner1.id,
           p2: corner2.id,
           layerId: currentSketch.activeLayerId,
-          strokeWidth: defaultStrokeWidth,
+          strokeWidth: defaultStrokeWidthRef.current,
         },
         {
           id: generateId(),
@@ -6142,7 +6148,7 @@ export function CADGabaritCanvas({
           p1: corner2.id,
           p2: corner3.id,
           layerId: currentSketch.activeLayerId,
-          strokeWidth: defaultStrokeWidth,
+          strokeWidth: defaultStrokeWidthRef.current,
         },
         {
           id: generateId(),
@@ -6150,7 +6156,7 @@ export function CADGabaritCanvas({
           p1: corner3.id,
           p2: corner4.id,
           layerId: currentSketch.activeLayerId,
-          strokeWidth: defaultStrokeWidth,
+          strokeWidth: defaultStrokeWidthRef.current,
         },
         {
           id: generateId(),
@@ -6158,7 +6164,7 @@ export function CADGabaritCanvas({
           p1: corner4.id,
           p2: corner1.id,
           layerId: currentSketch.activeLayerId,
-          strokeWidth: defaultStrokeWidth,
+          strokeWidth: defaultStrokeWidthRef.current,
         },
       ];
 
@@ -7465,7 +7471,7 @@ export function CADGabaritCanvas({
               p1: p1.id,
               p2: p2.id,
               layerId: currentSketch.activeLayerId,
-              strokeWidth: defaultStrokeWidth,
+              strokeWidth: defaultStrokeWidthRef.current,
             };
             newSketch.geometries.set(line.id, line);
 
@@ -7510,7 +7516,7 @@ export function CADGabaritCanvas({
               center: center.id,
               radius,
               layerId: currentSketch.activeLayerId,
-              strokeWidth: defaultStrokeWidth,
+              strokeWidth: defaultStrokeWidthRef.current,
             };
             newSketch.geometries.set(circle.id, circle);
 
@@ -7610,7 +7616,7 @@ export function CADGabaritCanvas({
               radius,
               counterClockwise,
               layerId: currentSketch.activeLayerId,
-              strokeWidth: defaultStrokeWidth,
+              strokeWidth: defaultStrokeWidthRef.current,
             };
             newSketch.geometries.set(arc.id, arc);
 
@@ -11590,6 +11596,7 @@ export function CADGabaritCanvas({
                             key={width}
                             onClick={() => {
                               setDefaultStrokeWidth(width);
+                              defaultStrokeWidthRef.current = width; // Mettre à jour la ref immédiatement
                               // Si des figures sont sélectionnées, les mettre à jour
                               if (selectedEntities.size > 0) {
                                 const currentSketch = sketchRef.current;
