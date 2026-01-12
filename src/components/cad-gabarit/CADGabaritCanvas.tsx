@@ -12321,18 +12321,18 @@ export function CADGabaritCanvas({
           </div>
 
           {/* Canvas Container - avec support Split View */}
-          <div className="flex-1 relative overflow-hidden flex h-full">
+          <div className="flex-1 overflow-hidden flex flex-row h-full w-full">
             {/* Vue gauche (principale) */}
             <div
               className="relative overflow-hidden h-full"
               style={{
-                width: splitViewEnabled && !splitViewMinimized ? `${splitPosition}%` : "100%",
+                width: splitViewEnabled && !splitViewMinimized ? `calc(${splitPosition}% - 2px)` : "100%",
                 flexShrink: 0,
               }}
             >
               <canvas
                 ref={canvasRef}
-                className="absolute inset-0 cursor-crosshair"
+                className="absolute inset-0 w-full h-full cursor-crosshair"
                 style={{
                   cursor: isDraggingSelection
                     ? "move"
@@ -12773,7 +12773,11 @@ export function CADGabaritCanvas({
           {splitViewEnabled && !splitViewMinimized && (
             <div
               className="relative overflow-hidden border-l border-gray-300 h-full"
-              style={{ width: `${100 - splitPosition}%`, minWidth: "150px" }}
+              style={{
+                width: `calc(${100 - splitPosition}% - 2px)`,
+                minWidth: "150px",
+                flexShrink: 0,
+              }}
             >
               {/* Header */}
               <div className="h-8 bg-white/95 backdrop-blur-sm border-b px-2 py-1 flex items-center justify-between">
