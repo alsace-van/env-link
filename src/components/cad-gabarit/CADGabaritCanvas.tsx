@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.60 - Fix décalage horizontal des branches enfants
+// VERSION: 6.61 - Ajout grab/scroll pour navigation dans le flowchart
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -481,6 +481,11 @@ export function CADGabaritCanvas({
     source: null,
     target: null,
   });
+
+  // Panning pour le flowchart de vue d'ensemble
+  const flowchartContainerRef = useRef<HTMLDivElement>(null);
+  const [isGrabbing, setIsGrabbing] = useState(false);
+  const [grabStart, setGrabStart] = useState({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
 
   // Historique séparé pour les images (car HTMLImageElement ne peut pas être sérialisé)
   // Fonctionne comme une PILE : on empile avant suppression, on dépile pour restaurer
@@ -14869,7 +14874,31 @@ export function CADGabaritCanvas({
             </DialogDescription>
           </DialogHeader>
 
-          <ScrollArea className="flex-1 py-4">
+          <div
+            ref={flowchartContainerRef}
+            className={`flex-1 overflow-auto py-4 ${isGrabbing ? "cursor-grabbing" : "cursor-grab"}`}
+            style={{ maxHeight: "calc(90vh - 200px)" }}
+            onMouseDown={(e) => {
+              // Ne pas activer le grab si on clique sur un élément interactif
+              if ((e.target as HTMLElement).closest('button, input, [role="button"]')) return;
+              setIsGrabbing(true);
+              setGrabStart({
+                x: e.clientX,
+                y: e.clientY,
+                scrollLeft: flowchartContainerRef.current?.scrollLeft || 0,
+                scrollTop: flowchartContainerRef.current?.scrollTop || 0,
+              });
+            }}
+            onMouseMove={(e) => {
+              if (!isGrabbing || !flowchartContainerRef.current) return;
+              const dx = e.clientX - grabStart.x;
+              const dy = e.clientY - grabStart.y;
+              flowchartContainerRef.current.scrollLeft = grabStart.scrollLeft - dx;
+              flowchartContainerRef.current.scrollTop = grabStart.scrollTop - dy;
+            }}
+            onMouseUp={() => setIsGrabbing(false)}
+            onMouseLeave={() => setIsGrabbing(false)}
+          >
             {/* Flowchart vertical */}
             {(() => {
               // === Construire l'arbre de nœuds ===
@@ -15354,7 +15383,7 @@ export function CADGabaritCanvas({
                 </div>
               );
             })()}
-          </ScrollArea>
+          </div>
 
           {/* Section Fusion */}
           {branches.length > 1 && (
