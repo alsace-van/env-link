@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.77 - Réorganisation toolbar (Import/Photos en bas, outils dessin regroupés)
+// VERSION: 6.78 - Toolbar 2 lignes (Fichiers en haut, Outils en bas)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -11350,9 +11350,9 @@ export function CADGabaritCanvas({
       ref={containerRef}
       className={`flex flex-col overflow-hidden ${isFullscreen ? "fixed inset-0 z-50 bg-white" : "h-[700px]"}`}
     >
-      {/* Toolbar - flex-nowrap pour éviter les recalculs */}
-      <div className="flex items-center gap-2 p-2 bg-gray-100 border-b flex-wrap flex-shrink-0">
-        {/* Sauvegarder + Outils de sélection/navigation */}
+      {/* Toolbar Ligne 1 - Fichiers */}
+      <div className="flex items-center gap-2 p-2 bg-gray-100 border-b flex-shrink-0">
+        {/* Sauvegarder */}
         <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
           <TooltipProvider>
             <Tooltip>
@@ -11366,6 +11366,97 @@ export function CADGabaritCanvas({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+        </div>
+
+        <Separator orientation="vertical" className="h-6" />
+
+        {/* Import/Export fichiers */}
+        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+          {/* Import DXF */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="sm" onClick={() => dxfInputRef.current?.click()} className="h-9 px-2">
+                  <FileUp className="h-4 w-4 mr-1" />
+                  <span className="text-xs">Import</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Importer un fichier DXF</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Photos */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="h-9 w-9 p-0 relative"
+                >
+                  <Image className="h-4 w-4" />
+                  {backgroundImages.length > 0 && (
+                    <Badge variant="secondary" className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-xs">
+                      {backgroundImages.length}
+                    </Badge>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Charger des photos de référence</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Export SVG */}
+          <Button variant="outline" size="sm" onClick={handleExportSVG} className="h-9 px-2">
+            <FileDown className="h-4 w-4 mr-1" />
+            <span className="text-xs">SVG</span>
+          </Button>
+
+          {/* Export DXF */}
+          <Button variant="default" size="sm" onClick={handleExportDXF} className="h-9 px-2">
+            <Download className="h-4 w-4 mr-1" />
+            <span className="text-xs">DXF</span>
+          </Button>
+
+          {/* Bibliothèque de templates */}
+          <Button variant="outline" size="sm" onClick={() => setShowTemplateLibrary(true)} className="h-9 px-2">
+            <Library className="h-4 w-4 mr-1" />
+            <span className="text-xs">Templates</span>
+          </Button>
+        </div>
+
+        <div className="flex-1" />
+
+        {/* Status */}
+        <Badge
+          variant={
+            sketch.status === "fully-constrained"
+              ? "default"
+              : sketch.status === "under-constrained"
+                ? "secondary"
+                : "destructive"
+          }
+        >
+          {sketch.status === "fully-constrained" && "✓ Contraint"}
+          {sketch.status === "under-constrained" && `DOF: ${sketch.dof}`}
+          {sketch.status === "over-constrained" && "⚠ Sur-contraint"}
+          {sketch.status === "conflicting" && "✕ Conflit"}
+        </Badge>
+
+        <Button variant="ghost" size="sm" onClick={() => setIsFullscreen(!isFullscreen)}>
+          {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+        </Button>
+      </div>
+
+      {/* Toolbar Ligne 2 - Outils */}
+      <div className="flex items-center gap-2 p-2 bg-gray-100 border-b flex-wrap flex-shrink-0">
+        {/* Outils de sélection/navigation */}
+        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
           <ToolButton tool="select" icon={MousePointer} label="Sélection" shortcut="V" />
           <ToolButton tool="pan" icon={Hand} label="Déplacer" shortcut="H" />
         </div>
@@ -11383,7 +11474,6 @@ export function CADGabaritCanvas({
                   size="sm"
                   onClick={() => {
                     if (!showTransformGizmo) {
-                      // Activer le gizmo = passer en mode select
                       setActiveTool("select");
                       setMarkerMode("idle");
                     }
@@ -11446,7 +11536,6 @@ export function CADGabaritCanvas({
                 }}
                 className="flex items-center gap-2"
               >
-                {/* Icône rectangle avec point au centre */}
                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <rect x="3" y="5" width="18" height="14" rx="1" />
                   <circle cx="12" cy="12" r="2" fill="currentColor" />
@@ -12207,90 +12296,6 @@ export function CADGabaritCanvas({
             <span className="text-xs text-blue-500 w-6">{Math.round(highlightOpacity * 100)}%</span>
           </div>
         </div>
-
-        <Separator orientation="vertical" className="h-6" />
-
-        {/* Import/Export fichiers */}
-        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
-          {/* Import DXF */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={() => dxfInputRef.current?.click()} className="h-9 px-2">
-                  <FileUp className="h-4 w-4 mr-1" />
-                  <span className="text-xs">Import</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Importer un fichier DXF</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Photos */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="h-9 w-9 p-0 relative"
-                >
-                  <Image className="h-4 w-4" />
-                  {backgroundImages.length > 0 && (
-                    <Badge variant="secondary" className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-xs">
-                      {backgroundImages.length}
-                    </Badge>
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Charger des photos de référence</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Export SVG */}
-          <Button variant="outline" size="sm" onClick={handleExportSVG} className="h-9 px-2">
-            <FileDown className="h-4 w-4 mr-1" />
-            <span className="text-xs">SVG</span>
-          </Button>
-
-          {/* Export DXF */}
-          <Button variant="default" size="sm" onClick={handleExportDXF} className="h-9 px-2">
-            <Download className="h-4 w-4 mr-1" />
-            <span className="text-xs">DXF</span>
-          </Button>
-
-          {/* Bibliothèque de templates */}
-          <Button variant="outline" size="sm" onClick={() => setShowTemplateLibrary(true)} className="h-9 px-2">
-            <Library className="h-4 w-4 mr-1" />
-            <span className="text-xs">Templates</span>
-          </Button>
-        </div>
-
-        <div className="flex-1" />
-
-        {/* Status */}
-        <Badge
-          variant={
-            sketch.status === "fully-constrained"
-              ? "default"
-              : sketch.status === "under-constrained"
-                ? "secondary"
-                : "destructive"
-          }
-        >
-          {sketch.status === "fully-constrained" && "✓ Contraint"}
-          {sketch.status === "under-constrained" && `DOF: ${sketch.dof}`}
-          {sketch.status === "over-constrained" && "⚠ Sur-contraint"}
-          {sketch.status === "conflicting" && "✕ Conflit"}
-        </Badge>
-
-        <Button variant="ghost" size="sm" onClick={() => setIsFullscreen(!isFullscreen)}>
-          {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
-        </Button>
       </div>
 
       {/* Zone principale avec Canvas + Panneau latéral */}
