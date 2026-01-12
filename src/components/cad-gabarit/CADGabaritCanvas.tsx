@@ -12218,11 +12218,15 @@ export function CADGabaritCanvas({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="h-9 px-2">
-                  <Image className="h-4 w-4 mr-1" />
-                  <span className="text-xs">Photos</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="h-9 w-9 p-0 relative"
+                >
+                  <Image className="h-4 w-4" />
                   {backgroundImages.length > 0 && (
-                    <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
+                    <Badge variant="secondary" className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-xs">
                       {backgroundImages.length}
                     </Badge>
                   )}
@@ -12250,10 +12254,18 @@ export function CADGabaritCanvas({
         <Separator orientation="vertical" className="h-6" />
 
         {/* Actions */}
-        <Button variant="outline" size="sm" onClick={saveSketch}>
-          <Save className="h-4 w-4 mr-1" />
-          Sauver
-        </Button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="sm" onClick={saveSketch} className="h-9 w-9 p-0">
+                <Save className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Sauvegarder</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
 
         <Separator orientation="vertical" className="h-6" />
 
