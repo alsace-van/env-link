@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.63 - Fix noms de branches uniques (évite les doublons)
+// VERSION: 6.64 - Ajout fonction supprimer état (deleteStateAndAfter) dans flowchart
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -9370,7 +9370,7 @@ export function CADGabaritCanvas({
     [branches, activeBranchId, loadSketchData],
   );
 
-  // Supprimer l'historique après un point (ancien comportement)
+  // Supprimer l'historique après un point (garde l'état cliqué, supprime ce qui est après)
   const truncateHistoryAtIndex = useCallback(
     (targetIndex: number) => {
       const branch = branches.find((b) => b.id === activeBranchId);
@@ -9394,6 +9394,36 @@ export function CADGabaritCanvas({
       setPreviewHistoryIndex(null);
 
       toast.success(`Historique tronqué: ${deletedCount} entrée(s) supprimée(s)`);
+    },
+    [branches, activeBranchId, loadSketchData],
+  );
+
+  // Supprimer un état ET tout ce qui suit (revient à l'état précédent)
+  const deleteStateAndAfter = useCallback(
+    (targetIndex: number) => {
+      const branch = branches.find((b) => b.id === activeBranchId);
+      if (!branch || targetIndex <= 0 || targetIndex >= branch.history.length) return;
+
+      // Revenir à l'état précédent
+      const previousIndex = targetIndex - 1;
+      const entry = branch.history[previousIndex];
+      loadSketchData(entry.sketch);
+
+      // Couper l'historique (garder jusqu'à l'état précédent)
+      const newHistory = branch.history.slice(0, targetIndex);
+      const deletedCount = branch.history.length - targetIndex;
+
+      // Mettre à jour la branche
+      const branchIndex = branches.findIndex((b) => b.id === activeBranchId);
+      const updatedBranch = { ...branch, history: newHistory, historyIndex: previousIndex };
+      const newBranches = [...branches];
+      newBranches[branchIndex] = updatedBranch;
+      setBranches(newBranches);
+      branchesRef.current = { branches: newBranches, activeBranchId };
+      historyRef.current = { history: newHistory, index: previousIndex };
+      setPreviewHistoryIndex(null);
+
+      toast.success(`${deletedCount} état(s) supprimé(s)`);
     },
     [branches, activeBranchId, loadSketchData],
   );
@@ -15377,13 +15407,13 @@ export function CADGabaritCanvas({
                                   switchToBranch(node.branchId);
                                 }
                                 if (node.stateIndex !== undefined && node.stateIndex > 0) {
-                                  truncateHistoryAtIndex(node.stateIndex);
+                                  deleteStateAndAfter(node.stateIndex);
                                 }
                               }}
-                              title="Tronquer après cet état"
+                              title="Supprimer cet état et les suivants"
                               disabled={node.stateIndex === 0}
                             >
-                              <Scissors className="h-3 w-3" />
+                              <TrashIcon className="h-3 w-3" />
                             </Button>
                           </div>
                         </div>
