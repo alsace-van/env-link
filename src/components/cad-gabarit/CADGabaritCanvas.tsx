@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.58 - Nouvelle vue d'ensemble flowchart vertical avec détails
+// VERSION: 6.59 - Flowchart vertical avec branches décalées horizontalement
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -14884,7 +14884,8 @@ export function CADGabaritCanvas({
                 timestamp: number;
                 isActive: boolean;
                 isCurrent: boolean;
-                children: FlowNode[];
+                nextState: FlowNode | null; // État suivant dans la même branche
+                childBranches: FlowNode[]; // Branches qui partent de cet état
                 x: number;
                 y: number;
                 width: number;
@@ -14929,7 +14930,7 @@ export function CADGabaritCanvas({
                   return { icon: "⊕", label: "Fusion", details: "" };
                 }
                 if (lower.includes("initial")) {
-                  return { icon: "◉", label: "Initial", details: "" };
+                  return { icon: "◉", label: "Initial", details: "État initial" };
                 }
                 if (lower.includes("suppression") || lower.includes("delete")) {
                   return { icon: "✕", label: "Suppression", details: "" };
@@ -14940,14 +14941,23 @@ export function CADGabaritCanvas({
                 return { icon: "●", label: desc.slice(0, 20), details: "" };
               };
 
-              // Construire l'arbre récursivement
-              const buildTree = (branch: typeof rootBranch, startIndex: number = 0): FlowNode[] => {
-                const nodes: FlowNode[] = [];
+              // Constantes de dimensions
+              const NODE_WIDTH = 220;
+              const NODE_HEIGHT_STATE = 70;
+              const NODE_HEIGHT_BRANCH = 50;
+              const VERTICAL_GAP = 25;
+              const HORIZONTAL_GAP = 50;
+              const PADDING = 30;
 
-                // Pour chaque état de la branche à partir de startIndex
-                for (let i = startIndex; i < branch.history.length; i++) {
+              // Construire l'arbre d'une branche (chaînage linéaire avec branches enfants)
+              const buildBranchTree = (branch: typeof rootBranch): FlowNode | null => {
+                if (branch.history.length === 0) return null;
+
+                let firstNode: FlowNode | null = null;
+                let prevNode: FlowNode | null = null;
+
+                for (let i = 0; i < branch.history.length; i++) {
                   const entry = branch.history[i];
-                  const parsed = parseDescription(entry.description);
 
                   const node: FlowNode = {
                     id: `${branch.id}-state-${i}`,
@@ -14960,49 +14970,54 @@ export function CADGabaritCanvas({
                     timestamp: entry.timestamp,
                     isActive: branch.id === activeBranchId,
                     isCurrent: branch.id === activeBranchId && i === branch.historyIndex,
-                    children: [],
+                    nextState: null,
+                    childBranches: [],
                     x: 0,
                     y: 0,
-                    width: 180,
-                    height: 70,
+                    width: NODE_WIDTH,
+                    height: NODE_HEIGHT_STATE,
                   };
 
                   // Chercher les branches enfants qui partent de cet état
-                  const childBranches = branches.filter(
+                  const childBranchesData = branches.filter(
                     (b) => b.parentBranchId === branch.id && b.parentHistoryIndex === i,
                   );
 
-                  if (childBranches.length > 0) {
-                    // Ajouter les branches enfants comme enfants de ce nœud
-                    childBranches.forEach((childBranch) => {
-                      // Créer un nœud de départ de branche
-                      const branchStartNode: FlowNode = {
-                        id: `${childBranch.id}-start`,
-                        type: "branch-start",
-                        branchId: childBranch.id,
-                        branchName: childBranch.name,
-                        branchColor: childBranch.color,
-                        description: childBranch.name,
-                        timestamp: childBranch.createdAt,
-                        isActive: childBranch.id === activeBranchId,
-                        isCurrent: false,
-                        children: buildTree(childBranch, 0),
-                        x: 0,
-                        y: 0,
-                        width: 180,
-                        height: 50,
-                      };
-                      node.children.push(branchStartNode);
-                    });
-                  }
+                  // Créer les nœuds de départ pour chaque branche enfant
+                  childBranchesData.forEach((childBranch) => {
+                    const branchStartNode: FlowNode = {
+                      id: `${childBranch.id}-start`,
+                      type: "branch-start",
+                      branchId: childBranch.id,
+                      branchName: childBranch.name,
+                      branchColor: childBranch.color,
+                      description: childBranch.name,
+                      timestamp: childBranch.createdAt,
+                      isActive: childBranch.id === activeBranchId,
+                      isCurrent: false,
+                      nextState: buildBranchTree(childBranch),
+                      childBranches: [],
+                      x: 0,
+                      y: 0,
+                      width: NODE_WIDTH,
+                      height: NODE_HEIGHT_BRANCH,
+                    };
+                    node.childBranches.push(branchStartNode);
+                  });
 
-                  nodes.push(node);
+                  // Chaîner avec le nœud précédent
+                  if (prevNode) {
+                    prevNode.nextState = node;
+                  } else {
+                    firstNode = node;
+                  }
+                  prevNode = node;
                 }
 
-                return nodes;
+                return firstNode;
               };
 
-              // Construire l'arbre à partir de la racine
+              // Créer le nœud racine
               const rootNode: FlowNode = {
                 id: `${rootBranch.id}-start`,
                 type: "branch-start",
@@ -15013,58 +15028,52 @@ export function CADGabaritCanvas({
                 timestamp: rootBranch.createdAt,
                 isActive: rootBranch.id === activeBranchId,
                 isCurrent: false,
-                children: buildTree(rootBranch, 0),
+                nextState: buildBranchTree(rootBranch),
+                childBranches: [],
                 x: 0,
                 y: 0,
-                width: 180,
-                height: 50,
+                width: NODE_WIDTH,
+                height: NODE_HEIGHT_BRANCH,
               };
 
               // === Calculer le layout ===
-              const NODE_WIDTH = 180;
-              const NODE_HEIGHT_STATE = 70;
-              const NODE_HEIGHT_BRANCH = 50;
-              const VERTICAL_GAP = 20;
-              const HORIZONTAL_GAP = 40;
-              const PADDING = 20;
-
-              // Calculer la largeur totale d'un sous-arbre
-              const calculateSubtreeWidth = (nodes: FlowNode[]): number => {
-                if (nodes.length === 0) return NODE_WIDTH;
-
-                let maxWidth = NODE_WIDTH;
-                nodes.forEach((node) => {
-                  if (node.children.length > 0) {
-                    // Si ce nœud a des enfants qui sont des branches (pas juste la suite)
-                    const branchChildren = node.children.filter((c) => c.type === "branch-start");
-                    const stateChildren = node.children.filter((c) => c.type === "state");
-
-                    if (branchChildren.length > 0) {
-                      // Calculer la largeur des branches
-                      let branchesWidth = 0;
-                      branchChildren.forEach((bc) => {
-                        branchesWidth += calculateSubtreeWidth([bc]) + HORIZONTAL_GAP;
-                      });
-                      branchesWidth -= HORIZONTAL_GAP;
-
-                      // Ajouter aussi la continuation de la branche actuelle
-                      if (stateChildren.length > 0) {
-                        branchesWidth += HORIZONTAL_GAP + calculateSubtreeWidth(stateChildren);
-                      }
-
-                      maxWidth = Math.max(maxWidth, branchesWidth);
-                    }
-                  }
-                });
-
-                return maxWidth;
-              };
-
-              // Calculer les positions
               let totalWidth = 0;
               let totalHeight = 0;
 
-              const layoutNode = (node: FlowNode, x: number, y: number): void => {
+              // Calculer la largeur totale d'un sous-arbre à partir d'un nœud
+              const calculateSubtreeWidth = (node: FlowNode | null): number => {
+                if (!node) return 0;
+
+                // Si pas de branches enfants, la largeur est juste celle du nœud
+                if (node.childBranches.length === 0) {
+                  // Mais il faut aussi considérer les états suivants
+                  const nextWidth = node.nextState ? calculateSubtreeWidth(node.nextState) : NODE_WIDTH;
+                  return Math.max(NODE_WIDTH, nextWidth);
+                }
+
+                // Calculer la largeur de la continuation + des branches enfants
+                let totalW = 0;
+
+                // Largeur de la continuation (états suivants de cette branche)
+                if (node.nextState) {
+                  totalW += calculateSubtreeWidth(node.nextState);
+                }
+
+                // Largeur des branches enfants
+                node.childBranches.forEach((childBranch, idx) => {
+                  if (node.nextState || idx > 0) {
+                    totalW += HORIZONTAL_GAP;
+                  }
+                  totalW += calculateSubtreeWidth(childBranch);
+                });
+
+                return Math.max(NODE_WIDTH, totalW);
+              };
+
+              // Positionner les nœuds récursivement
+              const layoutNode = (node: FlowNode | null, x: number, y: number): void => {
+                if (!node) return;
+
                 node.x = x;
                 node.y = y;
                 node.height = node.type === "branch-start" ? NODE_HEIGHT_BRANCH : NODE_HEIGHT_STATE;
@@ -15072,53 +15081,51 @@ export function CADGabaritCanvas({
                 totalWidth = Math.max(totalWidth, x + NODE_WIDTH);
                 totalHeight = Math.max(totalHeight, y + node.height);
 
-                if (node.children.length === 0) return;
+                const nextY = y + node.height + VERTICAL_GAP;
 
-                const branchChildren = node.children.filter((c) => c.type === "branch-start");
-                const stateChildren = node.children.filter((c) => c.type === "state");
-
-                let nextY = y + node.height + VERTICAL_GAP;
-
-                if (branchChildren.length > 0) {
-                  // Calculer les largeurs de chaque branche
-                  const branchWidths = branchChildren.map((bc) => calculateSubtreeWidth([bc, ...bc.children]));
-
-                  // Position de départ pour les branches (continuation + nouvelles branches)
+                // Si ce nœud a des branches enfants
+                if (node.childBranches.length > 0) {
                   let currentX = x;
 
-                  // D'abord continuer la branche actuelle (états suivants)
-                  if (stateChildren.length > 0) {
-                    stateChildren.forEach((child, idx) => {
-                      layoutNode(child, currentX, nextY + idx * (NODE_HEIGHT_STATE + VERTICAL_GAP));
-                    });
-                    currentX += NODE_WIDTH + HORIZONTAL_GAP;
+                  // D'abord, positionner la continuation (nextState) à la même colonne
+                  if (node.nextState) {
+                    layoutNode(node.nextState, currentX, nextY);
+                    // Calculer la largeur de la continuation pour décaler les branches
+                    currentX += calculateSubtreeWidth(node.nextState) + HORIZONTAL_GAP;
                   }
 
-                  // Ensuite les nouvelles branches
-                  branchChildren.forEach((bc, idx) => {
-                    layoutNode(bc, currentX, nextY);
-                    currentX += branchWidths[idx] + HORIZONTAL_GAP;
+                  // Ensuite, positionner les branches enfants à droite
+                  node.childBranches.forEach((childBranch) => {
+                    layoutNode(childBranch, currentX, nextY);
+                    currentX += calculateSubtreeWidth(childBranch) + HORIZONTAL_GAP;
                   });
                 } else {
-                  // Juste des états enfants, les mettre en dessous
-                  stateChildren.forEach((child, idx) => {
-                    layoutNode(child, x, nextY + idx * (NODE_HEIGHT_STATE + VERTICAL_GAP));
-                  });
+                  // Pas de branches enfants, juste continuer vers le bas
+                  if (node.nextState) {
+                    layoutNode(node.nextState, x, nextY);
+                  }
                 }
               };
 
               layoutNode(rootNode, PADDING, PADDING);
 
-              // Collecter tous les nœuds aplatis pour le rendu
+              // Collecter tous les nœuds et connexions pour le rendu
               const allNodes: FlowNode[] = [];
-              const connections: { from: FlowNode; to: FlowNode }[] = [];
+              const connections: { from: FlowNode; to: FlowNode; type: "next" | "branch" }[] = [];
 
-              const collectNodes = (node: FlowNode, parent?: FlowNode) => {
+              const collectNodes = (node: FlowNode | null) => {
+                if (!node) return;
                 allNodes.push(node);
-                if (parent) {
-                  connections.push({ from: parent, to: node });
+
+                if (node.nextState) {
+                  connections.push({ from: node, to: node.nextState, type: "next" });
+                  collectNodes(node.nextState);
                 }
-                node.children.forEach((child) => collectNodes(child, node));
+
+                node.childBranches.forEach((childBranch) => {
+                  connections.push({ from: node, to: childBranch, type: "branch" });
+                  collectNodes(childBranch);
+                });
               };
               collectNodes(rootNode);
 
