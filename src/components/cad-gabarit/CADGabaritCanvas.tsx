@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.57 - Fix double handle rideau + arrondi pourcentage position
+// VERSION: 6.58 - Nouvelle vue d'ensemble flowchart vertical avec détails
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -14854,230 +14854,535 @@ export function CADGabaritCanvas({
       )}
 
       {/* ============================================ */}
-      {/* MODALE VUE D'ENSEMBLE - ARBORESCENCE */}
+      {/* MODALE VUE D'ENSEMBLE - FLOWCHART VERTICAL */}
       {/* ============================================ */}
       <Dialog open={showOverviewModal} onOpenChange={setShowOverviewModal}>
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <GitBranch className="h-5 w-5" />
               Vue d'ensemble des branches
             </DialogTitle>
             <DialogDescription>
-              Arborescence des branches avec leurs états. Cliquez sur une branche pour la sélectionner.
+              Flowchart de l'historique. Cliquez sur un état pour y revenir, double-cliquez sur un nom de branche pour
+              le modifier.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 overflow-auto py-4">
-            {/* Arborescence SVG */}
-            <div className="relative min-h-[400px]">
-              <svg
-                className="absolute inset-0 w-full h-full pointer-events-none"
-                style={{ minHeight: branches.length * 120 + 50 }}
-              >
-                {/* Lignes de connexion entre branches */}
-                {branches.map((branch, idx) => {
-                  if (branch.parentBranchId) {
-                    const parentIdx = branches.findIndex((b) => b.id === branch.parentBranchId);
-                    if (parentIdx !== -1) {
-                      const startY = parentIdx * 120 + 40;
-                      const endY = idx * 120 + 40;
-                      const startX = 180;
-                      const endX = 40;
-                      return (
-                        <g key={`line-${branch.id}`}>
-                          <path
-                            d={`M ${startX} ${startY} C ${startX + 30} ${startY}, ${endX - 30} ${endY}, ${endX} ${endY}`}
-                            fill="none"
-                            stroke={branch.color}
-                            strokeWidth="2"
-                            strokeDasharray="4 2"
-                            opacity="0.6"
-                          />
-                          {/* Flèche */}
-                          <polygon
-                            points={`${endX},${endY} ${endX + 8},${endY - 4} ${endX + 8},${endY + 4}`}
-                            fill={branch.color}
-                          />
-                        </g>
-                      );
+          <ScrollArea className="flex-1 py-4">
+            {/* Flowchart vertical */}
+            {(() => {
+              // === Construire l'arbre de nœuds ===
+              interface FlowNode {
+                id: string;
+                type: "branch-start" | "state";
+                branchId: string;
+                branchName: string;
+                branchColor: string;
+                stateIndex?: number;
+                description: string;
+                timestamp: number;
+                isActive: boolean;
+                isCurrent: boolean;
+                children: FlowNode[];
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+              }
+
+              // Trouver la branche racine (sans parent)
+              const rootBranch = branches.find((b) => !b.parentBranchId) || branches[0];
+              if (!rootBranch) return <div className="text-center text-gray-500 py-8">Aucune branche</div>;
+
+              // Fonction pour extraire les détails d'une description
+              const parseDescription = (desc: string): { icon: string; label: string; details: string } => {
+                const lower = desc.toLowerCase();
+                if (lower.includes("rectangle")) {
+                  const match = desc.match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)/i);
+                  return { icon: "▭", label: "Rectangle", details: match ? `${match[1]}×${match[2]}mm` : "" };
+                }
+                if (lower.includes("ligne") || lower.includes("line")) {
+                  const match = desc.match(/L\s*=?\s*(\d+(?:\.\d+)?)/i);
+                  return { icon: "╱", label: "Ligne", details: match ? `L=${match[1]}mm` : "" };
+                }
+                if (lower.includes("cercle") || lower.includes("circle")) {
+                  const match = desc.match(/R\s*=?\s*(\d+(?:\.\d+)?)/i);
+                  return { icon: "○", label: "Cercle", details: match ? `R=${match[1]}mm` : "" };
+                }
+                if (lower.includes("arc")) {
+                  return { icon: "⌒", label: "Arc", details: "" };
+                }
+                if (lower.includes("polyligne") || lower.includes("polyline")) {
+                  return { icon: "⟋", label: "Polyligne", details: "" };
+                }
+                if (lower.includes("bézier") || lower.includes("bezier") || lower.includes("courbe")) {
+                  return { icon: "∿", label: "Courbe", details: "" };
+                }
+                if (lower.includes("annotation") || lower.includes("texte") || lower.includes("text")) {
+                  return { icon: "T", label: "Annotation", details: "" };
+                }
+                if (lower.includes("dimension") || lower.includes("cote")) {
+                  return { icon: "↔", label: "Dimension", details: "" };
+                }
+                if (lower.includes("fusion")) {
+                  return { icon: "⊕", label: "Fusion", details: "" };
+                }
+                if (lower.includes("initial")) {
+                  return { icon: "◉", label: "Initial", details: "" };
+                }
+                if (lower.includes("suppression") || lower.includes("delete")) {
+                  return { icon: "✕", label: "Suppression", details: "" };
+                }
+                if (lower.includes("déplacement") || lower.includes("move")) {
+                  return { icon: "↗", label: "Déplacement", details: "" };
+                }
+                return { icon: "●", label: desc.slice(0, 20), details: "" };
+              };
+
+              // Construire l'arbre récursivement
+              const buildTree = (branch: typeof rootBranch, startIndex: number = 0): FlowNode[] => {
+                const nodes: FlowNode[] = [];
+
+                // Pour chaque état de la branche à partir de startIndex
+                for (let i = startIndex; i < branch.history.length; i++) {
+                  const entry = branch.history[i];
+                  const parsed = parseDescription(entry.description);
+
+                  const node: FlowNode = {
+                    id: `${branch.id}-state-${i}`,
+                    type: "state",
+                    branchId: branch.id,
+                    branchName: branch.name,
+                    branchColor: branch.color,
+                    stateIndex: i,
+                    description: entry.description,
+                    timestamp: entry.timestamp,
+                    isActive: branch.id === activeBranchId,
+                    isCurrent: branch.id === activeBranchId && i === branch.historyIndex,
+                    children: [],
+                    x: 0,
+                    y: 0,
+                    width: 180,
+                    height: 70,
+                  };
+
+                  // Chercher les branches enfants qui partent de cet état
+                  const childBranches = branches.filter(
+                    (b) => b.parentBranchId === branch.id && b.parentHistoryIndex === i,
+                  );
+
+                  if (childBranches.length > 0) {
+                    // Ajouter les branches enfants comme enfants de ce nœud
+                    childBranches.forEach((childBranch) => {
+                      // Créer un nœud de départ de branche
+                      const branchStartNode: FlowNode = {
+                        id: `${childBranch.id}-start`,
+                        type: "branch-start",
+                        branchId: childBranch.id,
+                        branchName: childBranch.name,
+                        branchColor: childBranch.color,
+                        description: childBranch.name,
+                        timestamp: childBranch.createdAt,
+                        isActive: childBranch.id === activeBranchId,
+                        isCurrent: false,
+                        children: buildTree(childBranch, 0),
+                        x: 0,
+                        y: 0,
+                        width: 180,
+                        height: 50,
+                      };
+                      node.children.push(branchStartNode);
+                    });
+                  }
+
+                  nodes.push(node);
+                }
+
+                return nodes;
+              };
+
+              // Construire l'arbre à partir de la racine
+              const rootNode: FlowNode = {
+                id: `${rootBranch.id}-start`,
+                type: "branch-start",
+                branchId: rootBranch.id,
+                branchName: rootBranch.name,
+                branchColor: rootBranch.color,
+                description: rootBranch.name,
+                timestamp: rootBranch.createdAt,
+                isActive: rootBranch.id === activeBranchId,
+                isCurrent: false,
+                children: buildTree(rootBranch, 0),
+                x: 0,
+                y: 0,
+                width: 180,
+                height: 50,
+              };
+
+              // === Calculer le layout ===
+              const NODE_WIDTH = 180;
+              const NODE_HEIGHT_STATE = 70;
+              const NODE_HEIGHT_BRANCH = 50;
+              const VERTICAL_GAP = 20;
+              const HORIZONTAL_GAP = 40;
+              const PADDING = 20;
+
+              // Calculer la largeur totale d'un sous-arbre
+              const calculateSubtreeWidth = (nodes: FlowNode[]): number => {
+                if (nodes.length === 0) return NODE_WIDTH;
+
+                let maxWidth = NODE_WIDTH;
+                nodes.forEach((node) => {
+                  if (node.children.length > 0) {
+                    // Si ce nœud a des enfants qui sont des branches (pas juste la suite)
+                    const branchChildren = node.children.filter((c) => c.type === "branch-start");
+                    const stateChildren = node.children.filter((c) => c.type === "state");
+
+                    if (branchChildren.length > 0) {
+                      // Calculer la largeur des branches
+                      let branchesWidth = 0;
+                      branchChildren.forEach((bc) => {
+                        branchesWidth += calculateSubtreeWidth([bc]) + HORIZONTAL_GAP;
+                      });
+                      branchesWidth -= HORIZONTAL_GAP;
+
+                      // Ajouter aussi la continuation de la branche actuelle
+                      if (stateChildren.length > 0) {
+                        branchesWidth += HORIZONTAL_GAP + calculateSubtreeWidth(stateChildren);
+                      }
+
+                      maxWidth = Math.max(maxWidth, branchesWidth);
                     }
                   }
-                  return null;
-                })}
-              </svg>
+                });
 
-              {/* Branches */}
-              <div className="relative space-y-4 pl-12">
-                {branches.map((branch, branchIdx) => (
-                  <div
-                    key={branch.id}
-                    className={`relative border rounded-lg overflow-hidden transition-shadow ${
-                      branch.id === activeBranchId ? "ring-2 ring-blue-500 shadow-lg" : "shadow"
-                    }`}
-                    style={{ marginLeft: branch.parentBranchId ? 40 : 0 }}
+                return maxWidth;
+              };
+
+              // Calculer les positions
+              let totalWidth = 0;
+              let totalHeight = 0;
+
+              const layoutNode = (node: FlowNode, x: number, y: number): void => {
+                node.x = x;
+                node.y = y;
+                node.height = node.type === "branch-start" ? NODE_HEIGHT_BRANCH : NODE_HEIGHT_STATE;
+
+                totalWidth = Math.max(totalWidth, x + NODE_WIDTH);
+                totalHeight = Math.max(totalHeight, y + node.height);
+
+                if (node.children.length === 0) return;
+
+                const branchChildren = node.children.filter((c) => c.type === "branch-start");
+                const stateChildren = node.children.filter((c) => c.type === "state");
+
+                let nextY = y + node.height + VERTICAL_GAP;
+
+                if (branchChildren.length > 0) {
+                  // Calculer les largeurs de chaque branche
+                  const branchWidths = branchChildren.map((bc) => calculateSubtreeWidth([bc, ...bc.children]));
+
+                  // Position de départ pour les branches (continuation + nouvelles branches)
+                  let currentX = x;
+
+                  // D'abord continuer la branche actuelle (états suivants)
+                  if (stateChildren.length > 0) {
+                    stateChildren.forEach((child, idx) => {
+                      layoutNode(child, currentX, nextY + idx * (NODE_HEIGHT_STATE + VERTICAL_GAP));
+                    });
+                    currentX += NODE_WIDTH + HORIZONTAL_GAP;
+                  }
+
+                  // Ensuite les nouvelles branches
+                  branchChildren.forEach((bc, idx) => {
+                    layoutNode(bc, currentX, nextY);
+                    currentX += branchWidths[idx] + HORIZONTAL_GAP;
+                  });
+                } else {
+                  // Juste des états enfants, les mettre en dessous
+                  stateChildren.forEach((child, idx) => {
+                    layoutNode(child, x, nextY + idx * (NODE_HEIGHT_STATE + VERTICAL_GAP));
+                  });
+                }
+              };
+
+              layoutNode(rootNode, PADDING, PADDING);
+
+              // Collecter tous les nœuds aplatis pour le rendu
+              const allNodes: FlowNode[] = [];
+              const connections: { from: FlowNode; to: FlowNode }[] = [];
+
+              const collectNodes = (node: FlowNode, parent?: FlowNode) => {
+                allNodes.push(node);
+                if (parent) {
+                  connections.push({ from: parent, to: node });
+                }
+                node.children.forEach((child) => collectNodes(child, node));
+              };
+              collectNodes(rootNode);
+
+              // Rendu
+              const svgWidth = totalWidth + PADDING * 2;
+              const svgHeight = totalHeight + PADDING * 2;
+
+              return (
+                <div className="relative" style={{ minWidth: svgWidth, minHeight: svgHeight }}>
+                  {/* SVG pour les connexions */}
+                  <svg
+                    className="absolute inset-0 pointer-events-none"
+                    width={svgWidth}
+                    height={svgHeight}
+                    style={{ overflow: "visible" }}
                   >
-                    {/* Header de la branche */}
-                    <div
-                      className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:brightness-95 transition-all"
-                      style={{ backgroundColor: `${branch.color}20` }}
-                      onClick={() => switchToBranch(branch.id)}
-                    >
-                      <div
-                        className="w-5 h-5 rounded-full border-2 border-white shadow"
-                        style={{ backgroundColor: branch.color }}
-                      />
+                    {connections.map((conn, idx) => {
+                      const fromX = conn.from.x + NODE_WIDTH / 2;
+                      const fromY = conn.from.y + conn.from.height;
+                      const toX = conn.to.x + NODE_WIDTH / 2;
+                      const toY = conn.to.y;
 
-                      {renamingBranchId === branch.id ? (
-                        <div className="flex items-center gap-2 flex-1" onClick={(e) => e.stopPropagation()}>
-                          <Input
-                            value={renamingValue}
-                            onChange={(e) => setRenamingValue(e.target.value)}
-                            className="h-7 text-sm"
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                renameBranch(branch.id, renamingValue);
-                                setRenamingBranchId(null);
-                              } else if (e.key === "Escape") {
-                                setRenamingBranchId(null);
-                              }
-                            }}
+                      // Ligne en L si décalage horizontal
+                      const midY = fromY + (toY - fromY) / 2;
+
+                      let path: string;
+                      if (Math.abs(fromX - toX) < 5) {
+                        // Ligne droite
+                        path = `M ${fromX} ${fromY} L ${toX} ${toY - 6}`;
+                      } else {
+                        // Ligne en L
+                        path = `M ${fromX} ${fromY} L ${fromX} ${midY} L ${toX} ${midY} L ${toX} ${toY - 6}`;
+                      }
+
+                      return (
+                        <g key={idx}>
+                          <path d={path} fill="none" stroke={conn.to.branchColor} strokeWidth="2" />
+                          {/* Flèche */}
+                          <polygon
+                            points={`${toX},${toY} ${toX - 5},${toY - 8} ${toX + 5},${toY - 8}`}
+                            fill={conn.to.branchColor}
                           />
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              renameBranch(branch.id, renamingValue);
-                              setRenamingBranchId(null);
-                            }}
-                          >
-                            <Check className="h-4 w-4 text-green-600" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <>
-                          <span className="font-medium flex-1">{branch.name}</span>
-                          <span className="text-sm text-gray-500">{branch.history.length} états</span>
-                          {branch.id === activeBranchId && <Badge className="bg-blue-500">Active</Badge>}
-                        </>
-                      )}
+                          {/* Point de départ */}
+                          <circle cx={fromX} cy={fromY} r="4" fill={conn.from.branchColor} />
+                        </g>
+                      );
+                    })}
+                  </svg>
 
-                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            setRenamingBranchId(branch.id);
-                            setRenamingValue(branch.name);
+                  {/* Nœuds */}
+                  {allNodes.map((node) => {
+                    const parsed = parseDescription(node.description);
+                    const timeStr = new Date(node.timestamp).toLocaleTimeString("fr-FR", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+
+                    if (node.type === "branch-start") {
+                      // Carte de branche
+                      return (
+                        <div
+                          key={node.id}
+                          className={`absolute rounded-lg border-2 bg-white shadow-sm cursor-pointer transition-all hover:shadow-md ${
+                            node.isActive ? "ring-2 ring-offset-2" : ""
+                          }`}
+                          style={{
+                            left: node.x,
+                            top: node.y,
+                            width: NODE_WIDTH,
+                            height: node.height,
+                            borderColor: node.branchColor,
+                            ringColor: node.branchColor,
                           }}
-                          title="Renommer"
+                          onClick={() => switchToBranch(node.branchId)}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            setRenamingBranchId(node.branchId);
+                            setRenamingValue(node.branchName);
+                          }}
                         >
-                          <Edit3 className="h-4 w-4" />
-                        </Button>
-                        {branches.length > 1 && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => deleteBranch(branch.id)}
-                            title="Supprimer"
-                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <TrashIcon className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Timeline des états */}
-                    <div className="px-4 py-3 bg-gray-50 flex items-center gap-1 overflow-x-auto">
-                      {branch.history.map((entry, entryIdx) => {
-                        const isCurrentInBranch = entryIdx === branch.historyIndex;
-                        return (
                           <div
-                            key={entryIdx}
-                            className={`
-                              relative flex-shrink-0 w-8 h-8 rounded-full cursor-pointer 
-                              flex items-center justify-center text-xs font-medium
-                              transition-transform hover:scale-110
-                              ${isCurrentInBranch ? "text-white ring-2 ring-offset-2" : "bg-white border-2 text-gray-600 hover:border-gray-400"}
-                            `}
-                            style={
-                              isCurrentInBranch
-                                ? {
-                                    backgroundColor: branch.color,
-                                    ringColor: branch.color,
-                                  }
-                                : {
-                                    borderColor: `${branch.color}60`,
-                                  }
-                            }
-                            title={`${entry.description}\n${new Date(entry.timestamp).toLocaleString("fr-FR")}`}
-                            onClick={() => {
-                              if (branch.id !== activeBranchId) {
-                                switchToBranch(branch.id);
-                              }
-                              goToHistoryIndex(entryIdx);
-                            }}
+                            className="flex items-center gap-2 px-3 py-2 h-full"
+                            style={{ backgroundColor: `${node.branchColor}15` }}
                           >
-                            {entryIdx + 1}
+                            <div
+                              className="w-4 h-4 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: node.branchColor }}
+                            />
+                            {renamingBranchId === node.branchId ? (
+                              <Input
+                                value={renamingValue}
+                                onChange={(e) => setRenamingValue(e.target.value)}
+                                className="h-6 text-sm flex-1"
+                                autoFocus
+                                onClick={(e) => e.stopPropagation()}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    renameBranch(node.branchId, renamingValue);
+                                    setRenamingBranchId(null);
+                                  } else if (e.key === "Escape") {
+                                    setRenamingBranchId(null);
+                                  }
+                                }}
+                                onBlur={() => {
+                                  renameBranch(node.branchId, renamingValue);
+                                  setRenamingBranchId(null);
+                                }}
+                              />
+                            ) : (
+                              <span className="font-medium text-sm truncate flex-1">{node.branchName}</span>
+                            )}
+                            {node.isActive && (
+                              <Badge className="text-xs px-1.5 py-0" style={{ backgroundColor: node.branchColor }}>
+                                Active
+                              </Badge>
+                            )}
+                            {branches.length > 1 && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 w-6 p-0 opacity-50 hover:opacity-100 hover:text-red-500"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteBranch(node.branchId);
+                                }}
+                                title="Supprimer la branche"
+                              >
+                                <TrashIcon className="h-3 w-3" />
+                              </Button>
+                            )}
                           </div>
-                        );
-                      })}
-                      {/* Connecteur ligne */}
-                      <div
-                        className="absolute top-1/2 left-4 right-4 h-0.5 -z-10"
-                        style={{ backgroundColor: `${branch.color}30` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+                        </div>
+                      );
+                    }
 
-            {/* Section Fusion */}
-            {branches.length > 1 && (
-              <div className="mt-6 border rounded-lg p-4 bg-purple-50">
-                <h3 className="font-medium text-sm flex items-center gap-2 mb-3">
-                  <GitMerge className="h-4 w-4 text-purple-600" />
-                  Fusionner des branches
-                </h3>
-                <div className="flex items-center gap-3">
-                  <div className="flex-1">
-                    <label className="text-xs text-gray-500 mb-1 block">Source (à copier)</label>
-                    <select
-                      className="w-full text-sm border rounded px-2 py-1.5 bg-white"
-                      value={mergeBranchIds.source || ""}
-                      onChange={(e) => setMergeBranchIds((prev) => ({ ...prev, source: e.target.value || null }))}
-                    >
-                      <option value="">Sélectionner...</option>
-                      {branches.map((b) => (
+                    // Carte d'état
+                    return (
+                      <div
+                        key={node.id}
+                        className={`absolute rounded-lg border bg-white shadow-sm cursor-pointer transition-all hover:shadow-md group ${
+                          node.isCurrent ? "ring-2 ring-offset-1" : ""
+                        }`}
+                        style={{
+                          left: node.x,
+                          top: node.y,
+                          width: NODE_WIDTH,
+                          height: node.height,
+                          borderColor: node.isCurrent ? node.branchColor : "#e5e7eb",
+                          ringColor: node.branchColor,
+                        }}
+                        onClick={() => {
+                          if (node.branchId !== activeBranchId) {
+                            switchToBranch(node.branchId);
+                          }
+                          if (node.stateIndex !== undefined) {
+                            goToHistoryIndex(node.stateIndex);
+                          }
+                        }}
+                        title={`${node.description}\n${new Date(node.timestamp).toLocaleString("fr-FR")}\nCliquez pour revenir à cet état`}
+                      >
+                        {/* Barre de couleur en haut */}
+                        <div className="h-1 rounded-t-lg" style={{ backgroundColor: node.branchColor }} />
+
+                        <div className="px-3 py-2 flex flex-col justify-between h-[calc(100%-4px)]">
+                          {/* Ligne 1: Icône + Label */}
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg" style={{ color: node.branchColor }}>
+                              {parsed.icon}
+                            </span>
+                            <span className="font-medium text-sm truncate flex-1">{parsed.label}</span>
+                            {node.isCurrent && (
+                              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: node.branchColor }} />
+                            )}
+                          </div>
+
+                          {/* Ligne 2: Détails + Heure */}
+                          <div className="flex items-center justify-between text-xs text-gray-500">
+                            <span>{parsed.details || node.description.slice(0, 25)}</span>
+                            <span>{timeStr}</span>
+                          </div>
+
+                          {/* Actions au survol */}
+                          <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-5 w-5 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (node.branchId !== activeBranchId) {
+                                  switchToBranch(node.branchId);
+                                }
+                                if (node.stateIndex !== undefined) {
+                                  createBranchFromHistoryIndex(node.stateIndex);
+                                }
+                              }}
+                              title="Créer une branche ici"
+                              disabled={branches.length >= 10}
+                            >
+                              <GitBranch className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-5 w-5 p-0 hover:text-red-500"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (node.branchId !== activeBranchId) {
+                                  switchToBranch(node.branchId);
+                                }
+                                if (node.stateIndex !== undefined && node.stateIndex > 0) {
+                                  truncateHistoryAt(node.stateIndex);
+                                }
+                              }}
+                              title="Tronquer après cet état"
+                              disabled={node.stateIndex === 0}
+                            >
+                              <Scissors className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </ScrollArea>
+
+          {/* Section Fusion */}
+          {branches.length > 1 && (
+            <div className="border-t pt-4 mt-2">
+              <div className="flex items-center gap-3 px-1">
+                <GitMerge className="h-4 w-4 text-purple-600 flex-shrink-0" />
+                <div className="flex items-center gap-2 flex-1">
+                  <select
+                    className="text-sm border rounded px-2 py-1.5 bg-white flex-1"
+                    value={mergeBranchIds.source || ""}
+                    onChange={(e) => setMergeBranchIds((prev) => ({ ...prev, source: e.target.value || null }))}
+                  >
+                    <option value="">Source...</option>
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-gray-400">→</span>
+                  <select
+                    className="text-sm border rounded px-2 py-1.5 bg-white flex-1"
+                    value={mergeBranchIds.target || ""}
+                    onChange={(e) => setMergeBranchIds((prev) => ({ ...prev, target: e.target.value || null }))}
+                  >
+                    <option value="">Cible...</option>
+                    {branches
+                      .filter((b) => b.id !== mergeBranchIds.source)
+                      .map((b) => (
                         <option key={b.id} value={b.id}>
                           {b.name}
                         </option>
                       ))}
-                    </select>
-                  </div>
-                  <div className="text-gray-400 pt-5">→</div>
-                  <div className="flex-1">
-                    <label className="text-xs text-gray-500 mb-1 block">Cible (destination)</label>
-                    <select
-                      className="w-full text-sm border rounded px-2 py-1.5 bg-white"
-                      value={mergeBranchIds.target || ""}
-                      onChange={(e) => setMergeBranchIds((prev) => ({ ...prev, target: e.target.value || null }))}
-                    >
-                      <option value="">Sélectionner...</option>
-                      {branches
-                        .filter((b) => b.id !== mergeBranchIds.source)
-                        .map((b) => (
-                          <option key={b.id} value={b.id}>
-                            {b.name}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
+                  </select>
                   <Button
-                    className="mt-5"
+                    size="sm"
                     disabled={!mergeBranchIds.source || !mergeBranchIds.target}
                     onClick={() => {
                       if (mergeBranchIds.source && mergeBranchIds.target) {
@@ -15086,18 +15391,14 @@ export function CADGabaritCanvas({
                       }
                     }}
                   >
-                    <GitMerge className="h-4 w-4 mr-2" />
                     Fusionner
                   </Button>
                 </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  Les géométries de la branche source seront copiées vers la branche cible.
-                </p>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
-          <DialogFooter>
+          <DialogFooter className="mt-2">
             <Button variant="outline" onClick={() => setShowOverviewModal(false)}>
               Fermer
             </Button>
