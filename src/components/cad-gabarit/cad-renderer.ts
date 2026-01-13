@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.68 - Rendu des remplissages et hachures (ShapeFill)
+// VERSION: 3.69 - Fix sens arc indicateur d'angle
 // ============================================
 
 import {
@@ -2953,11 +2953,11 @@ export class CADRenderer {
     this.ctx.strokeStyle = "#F97316"; // Orange
     this.ctx.lineWidth = 1.5 / this.viewport.scale;
 
-    // Déterminer le sens de l'arc (le plus court)
+    // Déterminer le sens de l'arc (arc intérieur)
     let deltaAngle = endAngle - startAngle;
     while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
     while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
-    const counterClockwise = deltaAngle < 0;
+    const counterClockwise = deltaAngle > 0;
 
     this.ctx.beginPath();
     this.ctx.arc(p1.x, p1.y, arcRadius, startAngle, endAngle, counterClockwise);

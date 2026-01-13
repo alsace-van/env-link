@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.87 - Remplissages et hachures pour formes fermées
+// VERSION: 6.88 - Fix sens arc indicateur d'angle (dessine côté intérieur)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -1872,10 +1872,16 @@ export function CADGabaritCanvas({
             ctx.setLineDash([]);
             ctx.beginPath();
 
+            // Calculer le delta angle et normaliser entre -π et +π
             let deltaAngle = endAngle - startAngle;
             while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
             while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
-            const counterClockwise = deltaAngle < 0;
+
+            // Pour dessiner le PETIT arc (angle intérieur):
+            // - Si deltaAngle > 0 → on va de start à end dans le sens HORAIRE (counterClockwise=false)
+            // - Si deltaAngle < 0 → on va de start à end dans le sens ANTI-HORAIRE (counterClockwise=true)
+            // Mais on veut l'arc OPPOSÉ pour avoir l'angle intérieur, donc on inverse
+            const counterClockwise = deltaAngle > 0;
 
             ctx.arc(cornerScreen.x, cornerScreen.y, arcRadius, startAngle, endAngle, counterClockwise);
             ctx.stroke();
@@ -2425,11 +2431,11 @@ export function CADGabaritCanvas({
             ctx.setLineDash([]);
             ctx.beginPath();
 
-            // Déterminer le sens de l'arc (prendre le plus court)
+            // Déterminer le sens de l'arc (prendre l'arc intérieur)
             let deltaAngle = endAngle - startAngle;
             while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
             while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
-            const counterClockwise = deltaAngle < 0;
+            const counterClockwise = deltaAngle > 0;
 
             ctx.arc(cornerScreen.x, cornerScreen.y, arcRadius, startAngle, endAngle, counterClockwise);
             ctx.stroke();
