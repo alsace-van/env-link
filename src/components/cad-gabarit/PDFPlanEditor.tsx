@@ -250,7 +250,8 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
   // Sélection pour cotation cercle-cercle
   const [circleSelection, setCircleSelection] = useState<{
     circle1Id: string | null;
-  }>({ circle1Id: null });
+    mode: "center" | "edge" | null;
+  }>({ circle1Id: null, mode: null });
 
   // Multi-page
   const [currentPage, setCurrentPage] = useState(0);
@@ -418,6 +419,73 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
         }
       }
       return null;
+    },
+    [sketch, viewport.scale, pageTransform],
+  );
+
+  // Trouver un cercle/arc en cliquant n'importe où dessus (surface ou bord)
+  const findCircleAtPosition = useCallback(
+    (worldX: number, worldY: number): string | null => {
+      const tolerance = pageTransform
+        ? (15 * pageTransform.planScale * pageTransform.scaleFactor) / pageTransform.mmToPixels
+        : 15 / viewport.scale;
+
+      let closestId: string | null = null;
+      let closestDist = Infinity;
+
+      for (const [id, geo] of sketch.geometries) {
+        if (geo.type === "circle") {
+          const circle = geo as CircleType;
+          const center = sketch.points.get(circle.center);
+          if (center) {
+            const distToCenter = Math.sqrt((worldX - center.x) ** 2 + (worldY - center.y) ** 2);
+            // Clic à l'intérieur ou sur le bord (avec tolérance)
+            if (distToCenter <= circle.radius + tolerance) {
+              // Priorité au plus proche du centre
+              if (distToCenter < closestDist) {
+                closestDist = distToCenter;
+                closestId = id;
+              }
+            }
+          }
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          const center = sketch.points.get(arc.center);
+          if (center) {
+            const distToCenter = Math.sqrt((worldX - center.x) ** 2 + (worldY - center.y) ** 2);
+            // Pour les arcs, on vérifie aussi l'angle
+            const angle = Math.atan2(worldY - center.y, worldX - center.x);
+            let startAngle = arc.startAngle;
+            let endAngle = arc.endAngle;
+
+            // Normaliser
+            while (startAngle < 0) startAngle += 2 * Math.PI;
+            while (endAngle < 0) endAngle += 2 * Math.PI;
+            let checkAngle = angle;
+            while (checkAngle < 0) checkAngle += 2 * Math.PI;
+
+            // Vérifier si dans l'arc
+            let inArc = false;
+            if (arc.counterClockwise) {
+              inArc = checkAngle >= endAngle || checkAngle <= startAngle;
+            } else {
+              if (startAngle <= endAngle) {
+                inArc = checkAngle >= startAngle && checkAngle <= endAngle;
+              } else {
+                inArc = checkAngle >= startAngle || checkAngle <= endAngle;
+              }
+            }
+
+            if (inArc && distToCenter <= arc.radius + tolerance) {
+              if (distToCenter < closestDist) {
+                closestDist = distToCenter;
+                closestId = id;
+              }
+            }
+          }
+        }
+      }
+      return closestId;
     },
     [sketch, viewport.scale, pageTransform],
   );
@@ -1064,17 +1132,42 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
 
       // Cotation cercle à cercle
       if (activeTool === "circle-distance") {
-        const entityId = findEntityAtPosition(sketchPos.x, sketchPos.y);
+        // Utiliser findCircleAtPosition pour pouvoir cliquer sur le centre aussi
+        const entityId = findCircleAtPosition(sketchPos.x, sketchPos.y);
         if (entityId) {
           const geo = sketch.geometries.get(entityId);
           if (geo?.type === "circle" || geo?.type === "arc") {
-            if (!circleSelection.circle1Id) {
-              setCircleSelection({ circle1Id: entityId });
-              toast.info("Cliquez sur le 2ème cercle/arc (Shift = bord à bord)");
+            // Déterminer si le clic est près du centre ou du bord
+            let center: Point | undefined;
+            let radius = 0;
+
+            if (geo.type === "circle") {
+              const c = geo as CircleType;
+              center = sketch.points.get(c.center);
+              radius = c.radius;
             } else {
-              const mode = e.shiftKey ? "edge" : "center";
+              const a = geo as Arc;
+              center = sketch.points.get(a.center);
+              radius = a.radius;
+            }
+
+            let clickMode: "center" | "edge" = "edge";
+            if (center) {
+              const distToCenter = Math.sqrt((sketchPos.x - center.x) ** 2 + (sketchPos.y - center.y) ** 2);
+              // Si clic dans le tiers central du rayon = mode centre
+              clickMode = distToCenter < radius * 0.4 ? "center" : "edge";
+            }
+
+            if (!circleSelection.circle1Id) {
+              setCircleSelection({ circle1Id: entityId, mode: clickMode });
+              toast.info(
+                `1er cercle sélectionné (${clickMode === "center" ? "centre" : "bord"}). Cliquez sur le 2ème cercle.`,
+              );
+            } else {
+              // Utiliser le mode du premier clic
+              const mode = circleSelection.mode || clickMode;
               addCircleDistanceDimension(circleSelection.circle1Id, entityId, mode);
-              setCircleSelection({ circle1Id: null });
+              setCircleSelection({ circle1Id: null, mode: null });
             }
           }
         }
@@ -1093,6 +1186,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
       activeTool,
       screenToSketch,
       findEntityAtPosition,
+      findCircleAtPosition,
       findPointAtPosition,
       dimensionSelection,
       angleSelection,
@@ -2932,7 +3026,9 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
                     <span>
                       {dim.type === "angle"
                         ? `∠ ${dim.value.toFixed(1)}°`
-                        : `${dim.prefix || ""}${dim.value.toFixed(1)} mm`}
+                        : dim.type === "circle-distance"
+                          ? `⊙ ${dim.value.toFixed(1)} mm (${dim.circleDistanceMode === "center" ? "C-C" : "B-B"})`
+                          : `${dim.prefix || ""}${dim.value.toFixed(1)} mm`}
                     </span>
                     <Button
                       size="sm"
@@ -3192,7 +3288,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
             size="sm"
             onClick={() => {
               setActiveTool("circle-distance");
-              setCircleSelection({ circle1Id: null });
+              setCircleSelection({ circle1Id: null, mode: null });
             }}
           >
             <Circle className="h-4 w-4 mr-1" />
@@ -3256,7 +3352,9 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
             {activeTool === "angle" &&
               (angleSelection.line1Id ? "Cliquez sur la 2ème ligne" : "Cliquez sur 2 lignes adjacentes")}
             {activeTool === "circle-distance" &&
-              (circleSelection.circle1Id ? "Cliquez sur le 2ème cercle (Shift = bord)" : "Cliquez sur 2 cercles/arcs")}
+              (circleSelection.circle1Id
+                ? `2ème cercle (mode: ${circleSelection.mode === "center" ? "centre-centre" : "bord-bord"})`
+                : "Clic centre = centre-centre, clic bord = bord-bord")}
             {activeTool === "note" && "Cliquez pour ajouter une note"}
             {activeTool === "select" &&
               (selectedDimension
