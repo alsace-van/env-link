@@ -838,18 +838,19 @@ export function CADGabaritCanvas({
   const [arrayPanelDragging, setArrayPanelDragging] = useState(false);
   const [arrayPanelDragStart, setArrayPanelDragStart] = useState({ x: 0, y: 0 });
 
-  // Modale pour texte/annotation
-  const [textDialog, setTextDialog] = useState<{
-    open: boolean;
-    position: { x: number; y: number }; // Position en coordonnées monde
+  // Modale pour texte/annotation - Input inline sur le canvas
+  const [textInput, setTextInput] = useState<{
+    active: boolean;
+    position: { x: number; y: number }; // Position monde
+    screenPos: { x: number; y: number }; // Position écran pour l'input
     content: string;
-    fontSize: number; // en mm
-    color: string;
-    alignment: "left" | "center" | "right";
+    editingId: string | null; // Si on édite un texte existant
   } | null>(null);
-  const [textPanelPos, setTextPanelPos] = useState({ x: 100, y: 100 });
-  const [textPanelDragging, setTextPanelDragging] = useState(false);
-  const [textPanelDragStart, setTextPanelDragStart] = useState({ x: 0, y: 0 });
+  // Paramètres de texte (dans la toolbar)
+  const [textFontSize, setTextFontSize] = useState(5); // mm
+  const [textColor, setTextColor] = useState("#000000");
+  const [textAlignment, setTextAlignment] = useState<"left" | "center" | "right">("left");
+  const textInputRef = useRef<HTMLInputElement>(null);
 
   // Aliases pour compatibilité avec le rendu
   const measureStart = measureState.start;
@@ -8555,22 +8556,18 @@ export function CADGabaritCanvas({
         }
 
         case "text": {
-          // Outil texte : ouvrir le dialogue pour saisir le texte à cette position
-          setTextDialog({
-            open: true,
-            position: worldPos,
-            content: "",
-            fontSize: 5, // 5mm par défaut
-            color: defaultStrokeColorRef.current || "#000000",
-            alignment: "left",
-          });
-          // Positionner le panneau près du clic
+          // Outil texte : ouvrir un input inline à la position du clic
           const rect = canvasRef.current?.getBoundingClientRect();
           if (rect) {
-            setTextPanelPos({
-              x: Math.min(e.clientX - rect.left + 20, window.innerWidth - 300),
-              y: Math.min(e.clientY - rect.top, window.innerHeight - 300),
+            setTextInput({
+              active: true,
+              position: worldPos,
+              screenPos: { x: e.clientX - rect.left, y: e.clientY - rect.top },
+              content: "",
+              editingId: null,
             });
+            // Focus sur l'input après le render
+            setTimeout(() => textInputRef.current?.focus(), 10);
           }
           break;
         }
@@ -9498,6 +9495,34 @@ export function CADGabaritCanvas({
             return;
           }
 
+          if (geo.type === "text") {
+            // Double-clic sur texte → ouvrir l'édition inline
+            const textGeo = geo as TextAnnotation;
+            const position = sketch.points.get(textGeo.position);
+            if (position) {
+              const rect = canvasRef.current?.getBoundingClientRect();
+              if (rect) {
+                const screenPos = worldToScreen(position.x, position.y);
+                setTextInput({
+                  active: true,
+                  position: { x: position.x, y: position.y },
+                  screenPos: { x: screenPos.x, y: screenPos.y },
+                  content: textGeo.content,
+                  editingId: entityId,
+                });
+                // Charger les paramètres du texte existant
+                setTextFontSize(textGeo.fontSize);
+                setTextColor(textGeo.color || "#000000");
+                setTextAlignment(textGeo.alignment || "left");
+                setTimeout(() => {
+                  textInputRef.current?.focus();
+                  textInputRef.current?.select();
+                }, 10);
+              }
+            }
+            return;
+          }
+
           if (geo.type === "arc" || geo.type === "line" || geo.type === "bezier") {
             // Double-clic → sélectionner toute la figure connectée
             const connectedGeos = findConnectedGeometries(entityId);
@@ -9524,9 +9549,11 @@ export function CADGabaritCanvas({
     },
     [
       screenToWorld,
+      worldToScreen,
       findEntityAtPosition,
       findPointAtPosition,
       sketch.geometries,
+      sketch.points,
       findConnectedGeometries,
       offsetDialog,
       selectContourForOffset,
@@ -10172,6 +10199,9 @@ export function CADGabaritCanvas({
         } else if (geo.type === "bezier") {
           const bezier = geo as Bezier;
           [bezier.p1, bezier.p2, bezier.cp1, bezier.cp2].forEach((pid) => pointsUsed.add(pid));
+        } else if (geo.type === "text") {
+          const text = geo as TextAnnotation;
+          pointsUsed.add(text.position);
         }
       }
       // Copier aussi les points sélectionnés directement
@@ -10285,6 +10315,13 @@ export function CADGabaritCanvas({
             cp1: pointIdMapping.get(bezier.cp1) || bezier.cp1,
             cp2: pointIdMapping.get(bezier.cp2) || bezier.cp2,
           });
+        } else if (geo.type === "text") {
+          const text = geo as TextAnnotation;
+          newSketch.geometries.set(newId, {
+            ...text,
+            id: newId,
+            position: pointIdMapping.get(text.position) || text.position,
+          });
         }
       });
 
@@ -10331,6 +10368,9 @@ export function CADGabaritCanvas({
         } else if (geo.type === "bezier") {
           const bezier = geo as Bezier;
           [bezier.p1, bezier.p2, bezier.cp1, bezier.cp2].forEach((pid) => pointsUsed.add(pid));
+        } else if (geo.type === "text") {
+          const text = geo as TextAnnotation;
+          pointsUsed.add(text.position);
         }
       }
     });
@@ -10408,6 +10448,13 @@ export function CADGabaritCanvas({
           p2: pointIdMapping.get(bezier.p2) || bezier.p2,
           cp1: pointIdMapping.get(bezier.cp1) || bezier.cp1,
           cp2: pointIdMapping.get(bezier.cp2) || bezier.cp2,
+        });
+      } else if (geo.type === "text") {
+        const text = geo as TextAnnotation;
+        newSketch.geometries.set(newId, {
+          ...text,
+          id: newId,
+          position: pointIdMapping.get(text.position) || text.position,
         });
       }
     });
@@ -10635,6 +10682,9 @@ export function CADGabaritCanvas({
         } else if (geo.type === "bezier") {
           const bezier = geo as Bezier;
           [bezier.p1, bezier.p2, bezier.cp1, bezier.cp2].forEach((pid) => pointsUsed.add(pid));
+        } else if (geo.type === "text") {
+          const text = geo as TextAnnotation;
+          pointsUsed.add(text.position);
         }
       }
     });
@@ -10743,6 +10793,13 @@ export function CADGabaritCanvas({
             cp1: pointIdMapping.get(bezier.cp1) || bezier.cp1,
             cp2: pointIdMapping.get(bezier.cp2) || bezier.cp2,
           });
+        } else if (geo.type === "text") {
+          const text = geo as TextAnnotation;
+          newSketch.geometries.set(newId, {
+            ...text,
+            id: newId,
+            position: pointIdMapping.get(text.position) || text.position,
+          });
         }
       });
     };
@@ -10782,10 +10839,10 @@ export function CADGabaritCanvas({
     toast.success(`${totalCopies} copie(s) créée(s)`);
   }, [arrayDialog, selectedEntities, sketch, addToHistory]);
 
-  // Créer un texte/annotation
-  const createText = useCallback(() => {
-    if (!textDialog || !textDialog.content.trim()) {
-      toast.error("Entrez du texte");
+  // Créer ou modifier un texte/annotation
+  const commitTextInput = useCallback(() => {
+    if (!textInput || !textInput.content.trim()) {
+      setTextInput(null);
       return;
     }
 
@@ -10793,33 +10850,47 @@ export function CADGabaritCanvas({
     newSketch.points = new Map(sketch.points);
     newSketch.geometries = new Map(sketch.geometries);
 
-    // Créer le point d'ancrage
-    const pointId = generateId();
-    newSketch.points.set(pointId, {
-      id: pointId,
-      x: textDialog.position.x,
-      y: textDialog.position.y,
-    });
+    if (textInput.editingId) {
+      // Mode édition : mettre à jour le texte existant
+      const existingText = sketch.geometries.get(textInput.editingId) as TextAnnotation;
+      if (existingText) {
+        newSketch.geometries.set(textInput.editingId, {
+          ...existingText,
+          content: textInput.content,
+          fontSize: textFontSize,
+          color: textColor,
+          alignment: textAlignment,
+        });
+        toast.success("Texte modifié");
+      }
+    } else {
+      // Mode création : nouveau texte
+      const pointId = generateId();
+      newSketch.points.set(pointId, {
+        id: pointId,
+        x: textInput.position.x,
+        y: textInput.position.y,
+      });
 
-    // Créer l'annotation texte
-    const textId = generateId();
-    const textGeo: TextAnnotation = {
-      id: textId,
-      type: "text",
-      position: pointId,
-      content: textDialog.content,
-      fontSize: textDialog.fontSize,
-      color: textDialog.color,
-      alignment: textDialog.alignment,
-      layerId: sketch.activeLayerId,
-    };
-    newSketch.geometries.set(textId, textGeo);
+      const textId = generateId();
+      const textGeo: TextAnnotation = {
+        id: textId,
+        type: "text",
+        position: pointId,
+        content: textInput.content,
+        fontSize: textFontSize,
+        color: textColor,
+        alignment: textAlignment,
+        layerId: sketch.activeLayerId,
+      };
+      newSketch.geometries.set(textId, textGeo);
+      toast.success("Texte ajouté");
+    }
 
     setSketch(newSketch);
     addToHistory(newSketch);
-    setTextDialog(null);
-    toast.success("Texte ajouté");
-  }, [textDialog, sketch, addToHistory]);
+    setTextInput(null);
+  }, [textInput, sketch, addToHistory, textFontSize, textColor, textAlignment]);
 
   // Gestion clavier (DOIT être après les fonctions copySelectedEntities, pasteEntities, duplicateSelectedEntities)
   useEffect(() => {
@@ -12381,7 +12452,82 @@ export function CADGabaritCanvas({
           </DropdownMenu>
 
           <ToolButton tool="bezier" icon={Spline} label="Courbe Bézier" shortcut="B" />
+
+          {/* Outil Texte avec paramètres */}
           <ToolButton tool="text" icon={Type} label="Texte / Annotation" shortcut="Shift+T" />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`h-9 w-5 p-0 ${activeTool === "text" ? "bg-emerald-100" : ""}`}
+                title="Paramètres texte"
+              >
+                <Settings className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48 p-2">
+              <div className="space-y-2">
+                {/* Taille */}
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs w-14">Taille:</Label>
+                  <Input
+                    type="number"
+                    value={textFontSize}
+                    onChange={(e) => setTextFontSize(Math.max(1, parseFloat(e.target.value) || 5))}
+                    className="h-7 w-16 text-xs"
+                    min="1"
+                    max="100"
+                    onKeyDown={(e) => e.stopPropagation()}
+                  />
+                  <span className="text-xs text-gray-500">mm</span>
+                </div>
+
+                {/* Couleur */}
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs w-14">Couleur:</Label>
+                  <input
+                    type="color"
+                    value={textColor}
+                    onChange={(e) => setTextColor(e.target.value)}
+                    className="h-7 w-8 cursor-pointer rounded border"
+                  />
+                  <span className="text-[10px] text-gray-500 font-mono">{textColor}</span>
+                </div>
+
+                {/* Alignement */}
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs w-14">Align:</Label>
+                  <div className="flex gap-0.5">
+                    <Button
+                      variant={textAlignment === "left" ? "default" : "outline"}
+                      size="sm"
+                      className="h-6 w-6 p-0 text-xs"
+                      onClick={() => setTextAlignment("left")}
+                    >
+                      ←
+                    </Button>
+                    <Button
+                      variant={textAlignment === "center" ? "default" : "outline"}
+                      size="sm"
+                      className="h-6 w-6 p-0 text-xs"
+                      onClick={() => setTextAlignment("center")}
+                    >
+                      ↔
+                    </Button>
+                    <Button
+                      variant={textAlignment === "right" ? "default" : "outline"}
+                      size="sm"
+                      className="h-6 w-6 p-0 text-xs"
+                      onClick={() => setTextAlignment("right")}
+                    >
+                      →
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <Separator orientation="vertical" className="h-6" />
@@ -15278,6 +15424,10 @@ export function CADGabaritCanvas({
                       <span>Transformation</span>
                       <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">T</kbd>
                     </div>
+                    <div className="flex justify-between">
+                      <span>Texte / Annotation</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Shift+T</kbd>
+                    </div>
                   </div>
                 </div>
 
@@ -16218,145 +16368,39 @@ export function CADGabaritCanvas({
         </div>
       )}
 
-      {/* Panneau Texte / Annotation - draggable */}
-      {textDialog?.open && (
-        <div
-          className="fixed bg-white rounded-lg shadow-xl border z-50 select-none"
-          style={{
-            left: textPanelPos.x,
-            top: textPanelPos.y,
-            width: 260,
-          }}
-          onMouseDown={(e) => {
-            if (
-              (e.target as HTMLElement).tagName === "INPUT" ||
-              (e.target as HTMLElement).tagName === "BUTTON" ||
-              (e.target as HTMLElement).tagName === "TEXTAREA"
-            )
-              return;
-            setTextPanelDragging(true);
-            setTextPanelDragStart({ x: e.clientX - textPanelPos.x, y: e.clientY - textPanelPos.y });
-          }}
-          onMouseMove={(e) => {
-            if (textPanelDragging) {
-              setTextPanelPos({
-                x: e.clientX - textPanelDragStart.x,
-                y: e.clientY - textPanelDragStart.y,
-              });
+      {/* Input texte inline sur le canvas */}
+      {textInput?.active && (
+        <input
+          ref={textInputRef}
+          type="text"
+          value={textInput.content}
+          onChange={(e) => setTextInput({ ...textInput, content: e.target.value })}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Enter") {
+              commitTextInput();
+            } else if (e.key === "Escape") {
+              setTextInput(null);
             }
           }}
-          onMouseUp={() => setTextPanelDragging(false)}
-          onMouseLeave={() => setTextPanelDragging(false)}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-3 py-2 bg-emerald-500 text-white rounded-t-lg cursor-move">
-            <span className="text-sm font-medium">
-              <Type className="h-4 w-4 inline mr-2" />
-              Texte / Annotation
-            </span>
-            <button onClick={() => setTextDialog(null)}>
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-
-          {/* Contenu */}
-          <div className="p-3 space-y-3">
-            {/* Texte */}
-            <div>
-              <Label className="text-xs mb-1 block">Texte :</Label>
-              <textarea
-                value={textDialog.content}
-                onChange={(e) => setTextDialog({ ...textDialog, content: e.target.value })}
-                className="w-full h-16 text-sm p-2 border rounded resize-none"
-                placeholder="Entrez votre texte..."
-                autoFocus
-                onKeyDown={(e) => {
-                  e.stopPropagation();
-                  if (e.key === "Enter" && e.ctrlKey) {
-                    createText();
-                  }
-                }}
-              />
-            </div>
-
-            {/* Taille */}
-            <div className="flex items-center gap-2">
-              <Label className="text-xs w-16">Taille :</Label>
-              <Input
-                type="number"
-                value={textDialog.fontSize}
-                onChange={(e) =>
-                  setTextDialog({ ...textDialog, fontSize: Math.max(1, parseFloat(e.target.value) || 5) })
-                }
-                className="h-7 w-20 text-xs"
-                min="1"
-                max="100"
-                step="1"
-                onKeyDown={(e) => e.stopPropagation()}
-              />
-              <span className="text-xs text-gray-500">mm</span>
-            </div>
-
-            {/* Couleur */}
-            <div className="flex items-center gap-2">
-              <Label className="text-xs w-16">Couleur :</Label>
-              <input
-                type="color"
-                value={textDialog.color}
-                onChange={(e) => setTextDialog({ ...textDialog, color: e.target.value })}
-                className="h-7 w-10 cursor-pointer rounded border"
-              />
-              <span className="text-xs text-gray-500">{textDialog.color}</span>
-            </div>
-
-            {/* Alignement */}
-            <div className="flex items-center gap-2">
-              <Label className="text-xs w-16">Align :</Label>
-              <div className="flex gap-1">
-                <Button
-                  variant={textDialog.alignment === "left" ? "default" : "outline"}
-                  size="sm"
-                  className="h-7 w-8 p-0"
-                  onClick={() => setTextDialog({ ...textDialog, alignment: "left" })}
-                >
-                  ←
-                </Button>
-                <Button
-                  variant={textDialog.alignment === "center" ? "default" : "outline"}
-                  size="sm"
-                  className="h-7 w-8 p-0"
-                  onClick={() => setTextDialog({ ...textDialog, alignment: "center" })}
-                >
-                  ↔
-                </Button>
-                <Button
-                  variant={textDialog.alignment === "right" ? "default" : "outline"}
-                  size="sm"
-                  className="h-7 w-8 p-0"
-                  onClick={() => setTextDialog({ ...textDialog, alignment: "right" })}
-                >
-                  →
-                </Button>
-              </div>
-            </div>
-
-            {/* Boutons */}
-            <div className="flex gap-2 pt-2">
-              <Button variant="outline" size="sm" className="flex-1 h-8" onClick={() => setTextDialog(null)}>
-                Annuler
-              </Button>
-              <Button
-                size="sm"
-                className="flex-1 h-8 bg-emerald-500 hover:bg-emerald-600"
-                onClick={createText}
-                disabled={!textDialog.content.trim()}
-              >
-                <Check className="h-3 w-3 mr-1" />
-                Créer (Ctrl+↵)
-              </Button>
-            </div>
-          </div>
-        </div>
+          onBlur={() => {
+            // Commit quand on perd le focus (sauf si vide)
+            if (textInput.content.trim()) {
+              commitTextInput();
+            } else {
+              setTextInput(null);
+            }
+          }}
+          className="absolute bg-white border-2 border-emerald-500 rounded px-2 py-1 text-sm shadow-lg z-50 min-w-[120px] outline-none"
+          style={{
+            left: textInput.screenPos.x,
+            top: textInput.screenPos.y,
+            fontSize: `${Math.max(12, textFontSize * viewport.scale)}px`,
+            color: textColor,
+          }}
+          placeholder="Entrez votre texte..."
+          autoFocus
+        />
       )}
 
       {/* Menu contextuel */}
