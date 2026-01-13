@@ -76,6 +76,18 @@ export interface Bezier {
   isConstruction?: boolean; // Ligne de construction
 }
 
+export interface Spline {
+  id: string;
+  type: "spline";
+  points: string[]; // IDs des points de passage (minimum 2)
+  closed: boolean; // Spline fermée ou ouverte
+  tension?: number; // Tension de la courbe (0-1, défaut 0.5)
+  layerId?: string;
+  strokeWidth?: number; // Épaisseur du trait
+  strokeColor?: string; // Couleur du trait
+  isConstruction?: boolean; // Ligne de construction
+}
+
 export interface TextAnnotation {
   id: string;
   type: "text";
@@ -89,7 +101,7 @@ export interface TextAnnotation {
   layerId?: string;
 }
 
-export type Geometry = Line | Circle | Arc | Rectangle | Bezier | TextAnnotation;
+export type Geometry = Line | Circle | Arc | Rectangle | Bezier | Spline | TextAnnotation;
 
 // === GROUPES ===
 
@@ -199,6 +211,8 @@ export type ToolType =
   | "arc"
   | "arc3points"
   | "bezier"
+  | "spline"
+  | "polygon"
   | "text"
   | "dimension"
   | "constraint"

@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.80 - Lignes construction, snap calque, tags templates
+// VERSION: 6.85 - Outil polygone régulier
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -104,6 +104,7 @@ import {
   Arc,
   Rectangle,
   Bezier,
+  Spline as SplineType,
   TextAnnotation,
   Constraint,
   Dimension,
@@ -225,6 +226,7 @@ export function CADGabaritCanvas({
 
   const [activeTool, setActiveTool] = useState<ToolType>("select");
   const [rectangleMode, setRectangleMode] = useState<"corner" | "center">("corner");
+  const [polygonSides, setPolygonSides] = useState<number>(6); // Nombre de côtés pour polygone régulier
   const [selectedEntities, setSelectedEntities] = useState<Set<string>>(new Set());
   const [hoveredEntity, setHoveredEntity] = useState<string | null>(null);
   const [referenceHighlight, setReferenceHighlight] = useState<string | null>(null); // Géométrie de référence (vert)
@@ -8262,6 +8264,82 @@ export function CADGabaritCanvas({
           break;
         }
 
+        case "spline": {
+          // Outil spline : ajouter des points jusqu'à double-clic pour terminer
+          const newPoint = getOrCreatePoint(targetPos, currentSnapPoint);
+          const newTempPoints = [...tempPoints, newPoint];
+          setTempPoints(newTempPoints);
+          setTempGeometry({ type: "spline", points: newTempPoints });
+          break;
+        }
+
+        case "polygon": {
+          // Outil polygone régulier : centre puis rayon
+          if (tempPoints.length === 0) {
+            // Premier clic : définir le centre
+            const center: Point = { id: generateId(), x: targetPos.x, y: targetPos.y };
+            setTempPoints([center]);
+            setTempGeometry({ type: "polygon", center, radius: 0, sides: polygonSides });
+          } else {
+            // Deuxième clic : définir le rayon et créer le polygone
+            const center = tempPoints[0];
+            const radius = distance(center, targetPos);
+
+            if (radius < 1) {
+              toast.error("Rayon trop petit");
+              setTempPoints([]);
+              setTempGeometry(null);
+              break;
+            }
+
+            const currentSketch = sketchRef.current;
+            const newSketch = { ...currentSketch };
+            newSketch.points = new Map(currentSketch.points);
+            newSketch.geometries = new Map(currentSketch.geometries);
+
+            // Calculer l'angle vers le point cliqué pour orienter le polygone
+            const baseAngle = Math.atan2(targetPos.y - center.y, targetPos.x - center.x);
+
+            // Créer les sommets du polygone
+            const vertices: Point[] = [];
+            for (let i = 0; i < polygonSides; i++) {
+              const angle = baseAngle + (i * 2 * Math.PI) / polygonSides;
+              const vertex: Point = {
+                id: generateId(),
+                x: center.x + radius * Math.cos(angle),
+                y: center.y + radius * Math.sin(angle),
+              };
+              vertices.push(vertex);
+              newSketch.points.set(vertex.id, vertex);
+            }
+
+            // Créer les lignes entre les sommets
+            for (let i = 0; i < polygonSides; i++) {
+              const nextI = (i + 1) % polygonSides;
+              const line: Line = {
+                id: generateId(),
+                type: "line",
+                p1: vertices[i].id,
+                p2: vertices[nextI].id,
+                layerId: currentSketch.activeLayerId,
+                strokeWidth: defaultStrokeWidthRef.current,
+                strokeColor: defaultStrokeColorRef.current,
+                isConstruction: isConstructionModeRef.current,
+              };
+              newSketch.geometries.set(line.id, line);
+            }
+
+            setSketch(newSketch);
+            const radiusMm = radius / (currentSketch.scaleFactor || 1);
+            addToHistory(newSketch, `Polygone ${polygonSides} côtés R${radiusMm.toFixed(1)}mm`);
+
+            setTempPoints([]);
+            setTempGeometry(null);
+            toast.success(`Polygone régulier à ${polygonSides} côtés créé`);
+          }
+          break;
+        }
+
         case "dimension": {
           const entityId = findEntityAtPosition(worldPos.x, worldPos.y);
           if (entityId) {
@@ -9254,6 +9332,29 @@ export function CADGabaritCanvas({
             ...tempGeometry,
             cursor: arc3TargetPos,
           });
+        } else if (tempGeometry.type === "polygon" && tempPoints.length > 0) {
+          setPerpendicularInfo(null);
+          // Pour le polygone, utiliser worldPos sans snap grille
+          let polygonTargetPos = worldPos;
+          if (snapEnabled && currentSnapPoint && currentSnapPoint.type !== "grid") {
+            polygonTargetPos = { x: currentSnapPoint.x, y: currentSnapPoint.y };
+          }
+          setTempGeometry({
+            ...tempGeometry,
+            cursor: polygonTargetPos,
+            scaleFactor: sketchRef.current.scaleFactor,
+          });
+        } else if (tempGeometry.type === "spline") {
+          setPerpendicularInfo(null);
+          // Pour la spline, mettre à jour le curseur
+          let splineTargetPos = worldPos;
+          if (snapEnabled && currentSnapPoint && currentSnapPoint.type !== "grid") {
+            splineTargetPos = { x: currentSnapPoint.x, y: currentSnapPoint.y };
+          }
+          setTempGeometry({
+            ...tempGeometry,
+            cursor: splineTargetPos,
+          });
         } else if (tempGeometry.type === "mirrorAxis" && tempGeometry.p1) {
           setPerpendicularInfo(null);
 
@@ -9631,6 +9732,40 @@ export function CADGabaritCanvas({
       const screenY = e.clientY - rect.top;
       const worldPos = screenToWorld(screenX, screenY);
 
+      // Double-clic pour terminer la spline
+      if (activeTool === "spline" && tempPoints.length >= 2) {
+        // Créer la spline avec les points collectés
+        const currentSketch = sketchRef.current;
+        const newSketch = { ...currentSketch };
+        newSketch.points = new Map(currentSketch.points);
+        newSketch.geometries = new Map(currentSketch.geometries);
+
+        const pointIds: string[] = [];
+        for (const pt of tempPoints) {
+          if (!currentSketch.points.has(pt.id)) {
+            newSketch.points.set(pt.id, pt);
+          }
+          pointIds.push(pt.id);
+        }
+
+        const spline: SplineType = {
+          id: generateId(),
+          type: "spline",
+          points: pointIds,
+          closed: false,
+          tension: 0.5,
+          layerId: currentSketch.activeLayerId,
+        };
+        newSketch.geometries.set(spline.id, spline);
+
+        setSketch(newSketch);
+        addToHistory(newSketch, "Spline");
+        setTempPoints([]);
+        setTempGeometry(null);
+        toast.success(`Spline créée (${pointIds.length} points)`);
+        return;
+      }
+
       // Vérifier d'abord si on a cliqué sur un point (coin potentiel)
       const pointId = findPointAtPosition(worldPos.x, worldPos.y);
       if (pointId) {
@@ -9721,6 +9856,7 @@ export function CADGabaritCanvas({
       openFilletDialogForPoint,
       activeTool,
       addToHistory,
+      tempPoints,
     ],
   );
 
@@ -11191,6 +11327,18 @@ export function CADGabaritCanvas({
               resetMarkerMode();
             }
             break;
+          case "S":
+            // Shift+S pour l'outil spline
+            if (e.shiftKey) {
+              setActiveTool("spline");
+              resetMarkerMode();
+            }
+            break;
+          case "p":
+            // P pour l'outil polygone
+            setActiveTool("polygon");
+            resetMarkerMode();
+            break;
           case "t":
             // T pour activer/désactiver le gizmo de transformation
             if (!showTransformGizmo) {
@@ -11921,6 +12069,120 @@ export function CADGabaritCanvas({
     [angleConstraintDialog, addConstraint],
   );
 
+  // Appliquer la contrainte tangente (ligne + cercle/arc)
+  const applyTangentConstraint = useCallback(() => {
+    if (selectedEntities.size !== 2) {
+      toast.error("Sélectionnez une ligne et un cercle/arc");
+      return;
+    }
+
+    const ids = Array.from(selectedEntities);
+    const geo1 = sketch.geometries.get(ids[0]);
+    const geo2 = sketch.geometries.get(ids[1]);
+
+    if (!geo1 || !geo2) {
+      toast.error("Géométries non trouvées");
+      return;
+    }
+
+    // Identifier la ligne et le cercle/arc
+    let line: Line | null = null;
+    let circleOrArc: CircleType | Arc | null = null;
+    let lineId: string = "";
+    let circleId: string = "";
+
+    if (geo1.type === "line" && (geo2.type === "circle" || geo2.type === "arc")) {
+      line = geo1 as Line;
+      circleOrArc = geo2 as CircleType | Arc;
+      lineId = ids[0];
+      circleId = ids[1];
+    } else if (geo2.type === "line" && (geo1.type === "circle" || geo1.type === "arc")) {
+      line = geo2 as Line;
+      circleOrArc = geo1 as CircleType | Arc;
+      lineId = ids[1];
+      circleId = ids[0];
+    } else {
+      toast.error("Sélectionnez une ligne et un cercle/arc");
+      return;
+    }
+
+    const p1 = sketch.points.get(line.p1);
+    const p2 = sketch.points.get(line.p2);
+    const centerPoint = sketch.points.get(circleOrArc.center);
+
+    if (!p1 || !p2 || !centerPoint) {
+      toast.error("Points non trouvés");
+      return;
+    }
+
+    const radius = circleOrArc.radius;
+
+    // Calculer la projection du centre sur la ligne
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const lineLength = Math.sqrt(dx * dx + dy * dy);
+    if (lineLength < 1e-10) {
+      toast.error("Ligne trop courte");
+      return;
+    }
+
+    // Vecteur unitaire de la ligne
+    const ux = dx / lineLength;
+    const uy = dy / lineLength;
+
+    // Vecteur du point P1 vers le centre
+    const fx = centerPoint.x - p1.x;
+    const fy = centerPoint.y - p1.y;
+
+    // Projection du centre sur la ligne (paramètre t)
+    const t = fx * ux + fy * uy;
+
+    // Point projeté sur la ligne
+    const projX = p1.x + t * ux;
+    const projY = p1.y + t * uy;
+
+    // Direction perpendiculaire (du projeté vers le centre)
+    let perpX = centerPoint.x - projX;
+    let perpY = centerPoint.y - projY;
+    const perpLen = Math.sqrt(perpX * perpX + perpY * perpY);
+
+    if (perpLen < 1e-10) {
+      // Le centre est sur la ligne, choisir une direction perpendiculaire arbitraire
+      perpX = -uy;
+      perpY = ux;
+    } else {
+      perpX /= perpLen;
+      perpY /= perpLen;
+    }
+
+    // Nouvelle position du centre pour être tangent
+    const newCenterX = projX + perpX * radius;
+    const newCenterY = projY + perpY * radius;
+
+    // Appliquer le déplacement
+    const newSketch = { ...sketch };
+    newSketch.points = new Map(sketch.points);
+    newSketch.points.set(circleOrArc.center, {
+      ...centerPoint,
+      x: newCenterX,
+      y: newCenterY,
+    });
+
+    // Ajouter la contrainte
+    const constraint: Constraint = {
+      id: generateId(),
+      type: "tangent",
+      entities: [lineId, circleId],
+      driving: true,
+    };
+    newSketch.constraints = new Map(sketch.constraints);
+    newSketch.constraints.set(constraint.id, constraint);
+
+    setSketch(newSketch);
+    addToHistory(newSketch, "Contrainte tangente");
+    toast.success("Cercle rendu tangent à la ligne");
+  }, [selectedEntities, sketch, addToHistory]);
+
   // Ajouter cotation
   const addDimension = useCallback(
     (type: Dimension["type"], entities: string[], value: number) => {
@@ -12619,6 +12881,125 @@ export function CADGabaritCanvas({
 
           <ToolButton tool="bezier" icon={Spline} label="Courbe Bézier" shortcut="B" />
 
+          {/* Outil Spline (courbe libre) */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={activeTool === "spline" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setActiveTool("spline");
+                    setTempPoints([]);
+                    setTempGeometry(null);
+                    setFilletFirstLine(null);
+                  }}
+                  className="h-9 w-9 p-0"
+                >
+                  {/* Icône spline: courbe passant par plusieurs points */}
+                  <svg
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  >
+                    <path d="M4 18 Q 8 6, 12 12 T 20 6" />
+                    <circle cx="4" cy="18" r="1.5" fill="currentColor" />
+                    <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+                    <circle cx="20" cy="6" r="1.5" fill="currentColor" />
+                  </svg>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Spline (S) - Double-clic pour terminer</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Outil Polygone régulier */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={activeTool === "polygon" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setActiveTool("polygon");
+                    setTempPoints([]);
+                    setTempGeometry(null);
+                    setFilletFirstLine(null);
+                  }}
+                  className="h-9 w-9 p-0"
+                >
+                  {/* Icône polygone: hexagone */}
+                  <svg
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polygon points="12,2 22,8 22,16 12,22 2,16 2,8" />
+                  </svg>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Polygone régulier (P) - {polygonSides} côtés</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`h-9 w-5 p-0 ${activeTool === "polygon" ? "bg-emerald-100" : ""}`}
+                title="Nombre de côtés"
+              >
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-40 p-2">
+              <div className="space-y-2">
+                <Label className="text-xs">Nombre de côtés:</Label>
+                <div className="flex gap-1 flex-wrap">
+                  {[3, 4, 5, 6, 8, 10, 12].map((n) => (
+                    <Button
+                      key={n}
+                      variant={polygonSides === n ? "default" : "outline"}
+                      size="sm"
+                      className="h-7 w-8 p-0 text-xs"
+                      onClick={() => {
+                        setPolygonSides(n);
+                        setActiveTool("polygon");
+                      }}
+                    >
+                      {n}
+                    </Button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-1 mt-1">
+                  <Input
+                    type="number"
+                    min={3}
+                    max={100}
+                    value={polygonSides}
+                    onChange={(e) => {
+                      const n = Math.max(3, Math.min(100, parseInt(e.target.value) || 6));
+                      setPolygonSides(n);
+                    }}
+                    className="h-7 w-14 text-xs"
+                  />
+                  <span className="text-xs text-muted-foreground">côtés</span>
+                </div>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           {/* Outil Texte avec paramètres */}
           <ToolButton tool="text" icon={Type} label="Texte / Annotation" shortcut="Shift+T" />
           <DropdownMenu>
@@ -13103,6 +13484,18 @@ export function CADGabaritCanvas({
                 }}
               >
                 ∠ Angle entre 2 lignes
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => {
+                  if (selectedEntities.size === 2) {
+                    applyTangentConstraint();
+                  } else {
+                    toast.error("Sélectionnez une ligne et un cercle/arc");
+                  }
+                }}
+              >
+                ○ Tangent (ligne + cercle)
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

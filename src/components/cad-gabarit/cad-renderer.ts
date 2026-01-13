@@ -12,6 +12,7 @@ import {
   Arc,
   Rectangle,
   Bezier,
+  Spline,
   TextAnnotation,
   Constraint,
   Dimension,
@@ -1483,6 +1484,9 @@ export class CADRenderer {
       case "bezier":
         this.drawBezier(geo as Bezier, sketch, isSelected);
         break;
+      case "spline":
+        this.drawSpline(geo as Spline, sketch, isSelected);
+        break;
       case "text":
         this.drawText(geo as TextAnnotation, sketch, isSelected, isReference);
         break;
@@ -1643,6 +1647,77 @@ export class CADRenderer {
       this.ctx.beginPath();
       this.ctx.arc(cp2.x, cp2.y, handleSize, 0, Math.PI * 2);
       this.ctx.fill();
+    }
+  }
+
+  /**
+   * Dessine une spline (courbe Catmull-Rom passant par les points)
+   */
+  private drawSpline(spline: Spline, sketch: Sketch, isSelected: boolean): void {
+    const points: Point[] = [];
+    for (const pointId of spline.points) {
+      const pt = sketch.points.get(pointId);
+      if (pt) points.push(pt);
+    }
+
+    if (points.length < 2) return;
+
+    const tension = spline.tension ?? 0.5;
+
+    // Dessiner la courbe Catmull-Rom
+    this.ctx.beginPath();
+
+    if (points.length === 2) {
+      // Juste une ligne
+      this.ctx.moveTo(points[0].x, points[0].y);
+      this.ctx.lineTo(points[1].x, points[1].y);
+    } else {
+      // Courbe Catmull-Rom
+      this.ctx.moveTo(points[0].x, points[0].y);
+
+      for (let i = 0; i < points.length - 1; i++) {
+        const p0 = points[i === 0 ? (spline.closed ? points.length - 1 : 0) : i - 1];
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const p3 = points[i === points.length - 2 ? (spline.closed ? 0 : i + 1) : i + 2];
+
+        // Calculer les points de contrôle pour la courbe de Bézier
+        const cp1x = p1.x + ((p2.x - p0.x) * tension) / 3;
+        const cp1y = p1.y + ((p2.y - p0.y) * tension) / 3;
+        const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3;
+        const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3;
+
+        this.ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+      }
+
+      // Fermer la spline si nécessaire
+      if (spline.closed && points.length >= 3) {
+        const p0 = points[points.length - 2];
+        const p1 = points[points.length - 1];
+        const p2 = points[0];
+        const p3 = points[1];
+
+        const cp1x = p1.x + ((p2.x - p0.x) * tension) / 3;
+        const cp1y = p1.y + ((p2.y - p0.y) * tension) / 3;
+        const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3;
+        const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3;
+
+        this.ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+      }
+    }
+
+    this.ctx.stroke();
+
+    // Si sélectionné, afficher les points de passage
+    if (isSelected) {
+      const handleSize = 4 / this.viewport.scale;
+
+      this.ctx.fillStyle = "#3B82F6";
+      for (const pt of points) {
+        this.ctx.beginPath();
+        this.ctx.arc(pt.x, pt.y, handleSize, 0, Math.PI * 2);
+        this.ctx.fill();
+      }
     }
   }
 
@@ -2665,6 +2740,140 @@ export class CADRenderer {
         this.ctx.fillStyle = "#8B5CF6";
         this.ctx.fillText(text, midX, midY - 20 / this.viewport.scale);
 
+        this.ctx.restore();
+      }
+    } else if (temp.type === "spline" && temp.points?.length >= 1) {
+      // Spline temporaire
+      const points = temp.points;
+      const cursor = temp.cursor;
+
+      // Dessiner les points déjà cliqués
+      this.ctx.save();
+      this.ctx.setLineDash([]);
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        this.ctx.fillStyle = "#3B82F6";
+        this.ctx.beginPath();
+        this.ctx.arc(p.x, p.y, 5 / this.viewport.scale, 0, Math.PI * 2);
+        this.ctx.fill();
+
+        // Numéro du point
+        this.ctx.fillStyle = "white";
+        this.ctx.font = `bold ${10 / this.viewport.scale}px Arial`;
+        this.ctx.textAlign = "center";
+        this.ctx.textBaseline = "middle";
+        this.ctx.fillText(String(i + 1), p.x, p.y);
+      }
+      this.ctx.restore();
+
+      // Dessiner la courbe prévisualisation
+      const allPoints = cursor ? [...points, cursor] : points;
+      if (allPoints.length >= 2) {
+        this.ctx.strokeStyle = this.styles.selectedColor;
+        this.ctx.lineWidth = this.styles.lineWidth / this.viewport.scale;
+        this.ctx.setLineDash([5 / this.viewport.scale, 5 / this.viewport.scale]);
+
+        const tension = 0.5;
+        this.ctx.beginPath();
+        this.ctx.moveTo(allPoints[0].x, allPoints[0].y);
+
+        if (allPoints.length === 2) {
+          this.ctx.lineTo(allPoints[1].x, allPoints[1].y);
+        } else {
+          for (let i = 0; i < allPoints.length - 1; i++) {
+            const p0 = allPoints[i === 0 ? 0 : i - 1];
+            const p1 = allPoints[i];
+            const p2 = allPoints[i + 1];
+            const p3 = allPoints[i === allPoints.length - 2 ? i + 1 : i + 2];
+
+            const cp1x = p1.x + ((p2.x - p0.x) * tension) / 3;
+            const cp1y = p1.y + ((p2.y - p0.y) * tension) / 3;
+            const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3;
+            const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3;
+
+            this.ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+          }
+        }
+        this.ctx.stroke();
+      }
+
+      // Indicateur "Double-clic pour terminer"
+      if (points.length >= 2) {
+        this.ctx.save();
+        this.ctx.setLineDash([]);
+        const lastPt = points[points.length - 1];
+        this.ctx.font = `${12 / this.viewport.scale}px Arial`;
+        this.ctx.fillStyle = "rgba(0,0,0,0.6)";
+        this.ctx.textAlign = "left";
+        this.ctx.textBaseline = "top";
+        this.ctx.fillText(
+          "Double-clic pour terminer",
+          lastPt.x + 10 / this.viewport.scale,
+          lastPt.y + 10 / this.viewport.scale,
+        );
+        this.ctx.restore();
+      }
+    } else if (temp.type === "polygon" && temp.center) {
+      // Polygone régulier temporaire
+      const center = temp.center;
+      const radius = temp.radius || 0;
+      const sides = temp.sides || 6;
+      const cursor = temp.cursor;
+
+      // Calculer le rayon basé sur le curseur si disponible
+      let actualRadius = radius;
+      let baseAngle = 0;
+      if (cursor) {
+        actualRadius = Math.sqrt((cursor.x - center.x) ** 2 + (cursor.y - center.y) ** 2);
+        baseAngle = Math.atan2(cursor.y - center.y, cursor.x - center.x);
+      }
+
+      // Dessiner le centre
+      this.ctx.fillStyle = "#3B82F6";
+      this.ctx.beginPath();
+      this.ctx.arc(center.x, center.y, 4 / this.viewport.scale, 0, Math.PI * 2);
+      this.ctx.fill();
+
+      if (actualRadius > 1) {
+        // Dessiner le polygone
+        this.ctx.strokeStyle = this.styles.selectedColor;
+        this.ctx.lineWidth = this.styles.lineWidth / this.viewport.scale;
+        this.ctx.setLineDash([5 / this.viewport.scale, 5 / this.viewport.scale]);
+
+        this.ctx.beginPath();
+        for (let i = 0; i <= sides; i++) {
+          const angle = baseAngle + (i * 2 * Math.PI) / sides;
+          const x = center.x + actualRadius * Math.cos(angle);
+          const y = center.y + actualRadius * Math.sin(angle);
+          if (i === 0) {
+            this.ctx.moveTo(x, y);
+          } else {
+            this.ctx.lineTo(x, y);
+          }
+        }
+        this.ctx.stroke();
+
+        // Dessiner le rayon (ligne du centre vers le curseur)
+        this.ctx.setLineDash([3 / this.viewport.scale, 3 / this.viewport.scale]);
+        this.ctx.strokeStyle = "rgba(59, 130, 246, 0.5)";
+        this.ctx.beginPath();
+        this.ctx.moveTo(center.x, center.y);
+        this.ctx.lineTo(center.x + actualRadius * Math.cos(baseAngle), center.y + actualRadius * Math.sin(baseAngle));
+        this.ctx.stroke();
+
+        // Afficher le nombre de côtés et le rayon
+        this.ctx.save();
+        this.ctx.setLineDash([]);
+        this.ctx.font = `${12 / this.viewport.scale}px Arial`;
+        this.ctx.fillStyle = "rgba(0,0,0,0.8)";
+        this.ctx.textAlign = "left";
+        this.ctx.textBaseline = "top";
+        const radiusMm = actualRadius / (temp.scaleFactor || 1);
+        this.ctx.fillText(
+          `${sides} côtés, R=${radiusMm.toFixed(1)}mm`,
+          center.x + 10 / this.viewport.scale,
+          center.y + 10 / this.viewport.scale,
+        );
         this.ctx.restore();
       }
     }
