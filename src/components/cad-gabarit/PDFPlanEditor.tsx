@@ -1414,32 +1414,73 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     toast.success("PDF exporté avec succès");
   }, [sketch, dimensions, options, calculateBounds, viewport.scale]);
 
-  // Initialiser
+  // Initialiser le canvas
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // Attendre que le DOM soit prêt
+    const initCanvas = () => {
+      const canvas = canvasRef.current;
+      const container = containerRef.current;
+      if (canvas && container && container.clientWidth > 0) {
+        canvas.width = container.clientWidth;
+        canvas.height = container.clientHeight;
+
+        // Calculer le viewport initial
+        const bounds = calculateBounds();
+        if (bounds) {
+          const canvasWidth = canvas.width;
+          const canvasHeight = canvas.height;
+          const drawingHeight = canvasHeight * 0.85;
+
+          const sketchWidth = bounds.maxX - bounds.minX;
+          const sketchHeight = bounds.maxY - bounds.minY;
+
+          const scaleX = (canvasWidth * 0.8) / sketchWidth;
+          const scaleY = (drawingHeight * 0.8) / sketchHeight;
+          const scale = Math.min(scaleX, scaleY);
+
+          const centerX = (bounds.minX + bounds.maxX) / 2;
+          const centerY = (bounds.minY + bounds.maxY) / 2;
+
+          setViewport({
+            scale,
+            offsetX: canvasWidth / 2 - centerX * scale,
+            offsetY: drawingHeight / 2 - centerY * scale,
+          });
+        }
+        return true;
+      }
+      return false;
+    };
+
+    // Essayer immédiatement puis avec délais croissants
+    if (!initCanvas()) {
+      const timer1 = setTimeout(() => {
+        if (!initCanvas()) {
+          const timer2 = setTimeout(initCanvas, 200);
+          return () => clearTimeout(timer2);
+        }
+      }, 50);
+      return () => clearTimeout(timer1);
+    }
+  }, [isOpen, calculateBounds]);
+
+  // Redessiner quand les dépendances changent
   useEffect(() => {
     if (isOpen) {
-      setTimeout(() => {
-        const canvas = canvasRef.current;
-        const container = containerRef.current;
-        if (canvas && container) {
-          canvas.width = container.clientWidth;
-          canvas.height = container.clientHeight;
-          initViewport();
-        }
-      }, 100);
+      draw();
     }
-  }, [isOpen, initViewport]);
-
-  // Redessiner
-  useEffect(() => {
-    draw();
-  }, [draw]);
+  }, [draw, isOpen]);
 
   // Resize handler
   useEffect(() => {
+    if (!isOpen) return;
+
     const handleResize = () => {
       const canvas = canvasRef.current;
       const container = containerRef.current;
-      if (canvas && container) {
+      if (canvas && container && container.clientWidth > 0) {
         canvas.width = container.clientWidth;
         canvas.height = container.clientHeight;
         draw();
@@ -1448,12 +1489,22 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
 
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, [draw]);
+  }, [draw, isOpen]);
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex">
+      {/* Bouton flottant pour rouvrir les options si fermé */}
+      {!showOptionsPanel && (
+        <button
+          onClick={() => setShowOptionsPanel(true)}
+          className="fixed top-4 left-4 z-[60] bg-white hover:bg-gray-100 text-gray-800 px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 border"
+        >
+          <Maximize2 className="h-4 w-4" />
+          <span className="font-medium">Options</span>
+        </button>
+      )}
       {/* Panneau latéral des options */}
       {showOptionsPanel && (
         <div className="w-80 bg-white border-r flex flex-col h-full overflow-hidden">
