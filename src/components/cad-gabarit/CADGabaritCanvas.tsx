@@ -16780,38 +16780,91 @@ export function CADGabaritCanvas({
                 </div>
               </div>
 
-              {/* Aperçu miniature */}
+              {/* Aperçu du plan */}
               <div className="space-y-2 pt-2 border-t">
-                <Label>Aperçu du format</Label>
-                <div className="flex justify-center">
+                <Label>Aperçu du plan</Label>
+                <div className="flex justify-center bg-gray-50 p-4 rounded-lg">
                   <div
-                    className="border-2 border-gray-300 bg-white relative"
+                    className="border-2 border-gray-400 bg-white relative shadow-md"
                     style={{
-                      width:
-                        pdfExportDialog.options.orientation === "landscape"
-                          ? pdfExportDialog.options.format === "a4"
-                            ? 148
-                            : 210
-                          : pdfExportDialog.options.format === "a4"
-                            ? 105
-                            : 148,
-                      height:
-                        pdfExportDialog.options.orientation === "landscape"
-                          ? pdfExportDialog.options.format === "a4"
-                            ? 105
-                            : 148
-                          : pdfExportDialog.options.format === "a4"
-                            ? 148
-                            : 210,
+                      width: pdfExportDialog.options.orientation === "landscape" ? 280 : 200,
+                      height: pdfExportDialog.options.orientation === "landscape" ? 200 : 280,
                     }}
                   >
-                    {/* Zone de dessin */}
-                    <div className="absolute inset-2 bottom-8 border border-dashed border-gray-300 flex items-center justify-center">
-                      <span className="text-[8px] text-gray-400">Zone dessin</span>
-                    </div>
-                    {/* Cartouche */}
-                    <div className="absolute bottom-2 left-2 right-2 h-5 bg-gray-100 border border-gray-300 flex items-center justify-center">
-                      <span className="text-[6px] text-gray-500">Cartouche</span>
+                    {/* Cadre intérieur */}
+                    <div className="absolute inset-1 border border-gray-300">
+                      {/* Zone de dessin */}
+                      <div
+                        className="absolute left-1 right-1 top-1 border border-dashed border-blue-300 bg-blue-50/30 flex items-center justify-center"
+                        style={{ bottom: 50 }}
+                      >
+                        <div className="text-center">
+                          <div className="text-xs text-blue-400 font-medium">Zone de dessin</div>
+                          <div className="text-[10px] text-gray-400 mt-1">
+                            {pdfExportDialog.options.format.toUpperCase()}{" "}
+                            {pdfExportDialog.options.orientation === "landscape" ? "Paysage" : "Portrait"}
+                          </div>
+                          {pdfExportDialog.options.showScale && (
+                            <div className="text-[9px] text-gray-400 mt-1">
+                              Échelle 1:{pdfExportDialog.options.scale}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Cartouche détaillé */}
+                      <div className="absolute bottom-1 left-1 right-1 h-11 border border-gray-400 bg-gray-50 flex">
+                        {/* Colonne Logo */}
+                        <div className="w-16 border-r border-gray-300 flex flex-col items-center justify-center p-0.5">
+                          <span className="text-[7px] font-bold text-gray-700">VAN PROJECT</span>
+                          <span className="text-[6px] text-gray-500">BUDDY</span>
+                        </div>
+                        {/* Colonne Titre/Projet */}
+                        <div className="flex-1 border-r border-gray-300 flex flex-col">
+                          <div className="flex-1 border-b border-gray-200 px-1 py-0.5">
+                            <div className="text-[5px] text-gray-400">PROJET</div>
+                            <div className="text-[7px] text-gray-700 truncate">
+                              {pdfExportDialog.options.projectName || "-"}
+                            </div>
+                          </div>
+                          <div className="flex-1 px-1 py-0.5">
+                            <div className="text-[5px] text-gray-400">TITRE</div>
+                            <div className="text-[7px] font-medium text-gray-800 truncate">
+                              {pdfExportDialog.options.title || "-"}
+                            </div>
+                          </div>
+                        </div>
+                        {/* Colonnes infos */}
+                        <div className="w-12 border-r border-gray-300 flex flex-col">
+                          <div className="flex-1 border-b border-gray-200 px-0.5 py-0.5">
+                            <div className="text-[5px] text-gray-400">ÉCHELLE</div>
+                            <div className="text-[7px] text-gray-700 text-center">
+                              1:{pdfExportDialog.options.scale}
+                            </div>
+                          </div>
+                          <div className="flex-1 px-0.5 py-0.5">
+                            <div className="text-[5px] text-gray-400">AUTEUR</div>
+                            <div className="text-[6px] text-gray-700 truncate text-center">
+                              {pdfExportDialog.options.author || "-"}
+                            </div>
+                          </div>
+                        </div>
+                        {/* Colonne Rév/Date */}
+                        <div className="w-10 flex flex-col">
+                          <div className="flex-1 border-b border-gray-200 px-0.5 py-0.5">
+                            <div className="text-[5px] text-gray-400">RÉV</div>
+                            <div className="text-[8px] font-bold text-gray-700 text-center">
+                              {pdfExportDialog.options.revision || "A"}
+                            </div>
+                          </div>
+                          <div className="flex-1 px-0.5 py-0.5">
+                            <div className="text-[5px] text-gray-400">DATE</div>
+                            <div className="text-[5px] text-gray-700 text-center">
+                              {pdfExportDialog.options.date || "-"}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
