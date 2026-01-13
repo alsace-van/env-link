@@ -10414,6 +10414,64 @@ export function CADGabaritCanvas({
     });
   }, [sketch]);
 
+  // === GROUPES === (déplacé avant useEffect clavier car utilisé dedans)
+
+  // Grouper les entités sélectionnées
+  const handleGroupSelection = useCallback(() => {
+    if (selectedEntities.size < 2) {
+      toast.error("Sélectionnez au moins 2 éléments à grouper");
+      return;
+    }
+
+    const groupId = generateId();
+    const groupName = `Groupe ${sketch.groups.size + 1}`;
+
+    const newGroup: GeometryGroup = {
+      id: groupId,
+      name: groupName,
+      entityIds: Array.from(selectedEntities),
+      color: `hsl(${Math.random() * 360}, 70%, 50%)`,
+    };
+
+    const newSketch = { ...sketch };
+    newSketch.groups = new Map(sketch.groups);
+    newSketch.groups.set(groupId, newGroup);
+
+    setSketch(newSketch);
+    addToHistory(newSketch);
+    toast.success(`${selectedEntities.size} éléments groupés`);
+  }, [sketch, selectedEntities, addToHistory]);
+
+  // Dégrouper (dissoudre le groupe des entités sélectionnées)
+  const handleUngroupSelection = useCallback(() => {
+    if (selectedEntities.size === 0) {
+      toast.error("Sélectionnez des éléments à dégrouper");
+      return;
+    }
+
+    // Trouver les groupes qui contiennent des éléments sélectionnés
+    const groupsToRemove: string[] = [];
+    sketch.groups.forEach((group, groupId) => {
+      const hasSelectedEntity = group.entityIds.some((id) => selectedEntities.has(id));
+      if (hasSelectedEntity) {
+        groupsToRemove.push(groupId);
+      }
+    });
+
+    if (groupsToRemove.length === 0) {
+      toast.warning("Les éléments sélectionnés ne font partie d'aucun groupe");
+      return;
+    }
+
+    const newSketch = { ...sketch };
+    newSketch.groups = new Map(sketch.groups);
+    groupsToRemove.forEach((id) => newSketch.groups.delete(id));
+
+    setSketch(newSketch);
+    addToHistory(newSketch);
+    toast.success(`${groupsToRemove.length} groupe(s) dissous`);
+  }, [sketch, selectedEntities, addToHistory]);
+
   // Gestion clavier (DOIT être après les fonctions copySelectedEntities, pasteEntities, duplicateSelectedEntities)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -11146,64 +11204,6 @@ export function CADGabaritCanvas({
     },
     [sketch, solveSketch, addToHistory],
   );
-
-  // === GROUPES ===
-
-  // Grouper les entités sélectionnées
-  const handleGroupSelection = useCallback(() => {
-    if (selectedEntities.size < 2) {
-      toast.error("Sélectionnez au moins 2 éléments à grouper");
-      return;
-    }
-
-    const groupId = generateId();
-    const groupName = `Groupe ${sketch.groups.size + 1}`;
-
-    const newGroup: GeometryGroup = {
-      id: groupId,
-      name: groupName,
-      entityIds: Array.from(selectedEntities),
-      color: `hsl(${Math.random() * 360}, 70%, 50%)`,
-    };
-
-    const newSketch = { ...sketch };
-    newSketch.groups = new Map(sketch.groups);
-    newSketch.groups.set(groupId, newGroup);
-
-    setSketch(newSketch);
-    addToHistory(newSketch);
-    toast.success(`${selectedEntities.size} éléments groupés`);
-  }, [sketch, selectedEntities, addToHistory]);
-
-  // Dégrouper (dissoudre le groupe des entités sélectionnées)
-  const handleUngroupSelection = useCallback(() => {
-    if (selectedEntities.size === 0) {
-      toast.error("Sélectionnez des éléments à dégrouper");
-      return;
-    }
-
-    // Trouver les groupes qui contiennent des éléments sélectionnés
-    const groupsToRemove: string[] = [];
-    sketch.groups.forEach((group, groupId) => {
-      const hasSelectedEntity = group.entityIds.some((id) => selectedEntities.has(id));
-      if (hasSelectedEntity) {
-        groupsToRemove.push(groupId);
-      }
-    });
-
-    if (groupsToRemove.length === 0) {
-      toast.warning("Les éléments sélectionnés ne font partie d'aucun groupe");
-      return;
-    }
-
-    const newSketch = { ...sketch };
-    newSketch.groups = new Map(sketch.groups);
-    groupsToRemove.forEach((id) => newSketch.groups.delete(id));
-
-    setSketch(newSketch);
-    addToHistory(newSketch);
-    toast.success(`${groupsToRemove.length} groupe(s) dissous`);
-  }, [sketch, selectedEntities, addToHistory]);
 
   // Sélectionner tout le groupe quand on clique sur un élément du groupe
   const selectGroup = useCallback(
