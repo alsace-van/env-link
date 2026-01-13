@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.85 - Outil polygone régulier
+// VERSION: 6.86 - Fix lignes construction intersections + perf pointillés
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -3799,12 +3799,16 @@ export function CADGabaritCanvas({
       sketchToModify.points.set(newPoint.id, newPoint);
 
       // Créer la deuxième ligne (du nouveau point vers p2)
+      // IMPORTANT: Copier toutes les propriétés de la ligne originale
       const newLine: Line = {
         id: generateId(),
         type: "line",
         p1: newPoint.id,
         p2: line.p2,
         layerId: line.layerId,
+        strokeWidth: line.strokeWidth,
+        strokeColor: line.strokeColor,
+        isConstruction: line.isConstruction,
       };
       sketchToModify.geometries.set(newLine.id, newLine);
 
@@ -6125,12 +6129,16 @@ export function CADGabaritCanvas({
         const existingLine = sketchToModify.geometries.get(lineId) as Line;
         if (existingLine) {
           // Créer la deuxième partie du segment existant
+          // IMPORTANT: Copier toutes les propriétés
           const newExistingLine: Line = {
             id: generateId(),
             type: "line",
             p1: intersectPoint.id,
             p2: existingLine.p2,
             layerId: existingLine.layerId,
+            strokeWidth: existingLine.strokeWidth,
+            strokeColor: existingLine.strokeColor,
+            isConstruction: existingLine.isConstruction,
           };
           sketchToModify.geometries.set(newExistingLine.id, newExistingLine);
 
@@ -6145,12 +6153,16 @@ export function CADGabaritCanvas({
         const currentNewLine = sketchToModify.geometries.get(newLineId) as Line;
         if (currentNewLine) {
           // Créer la deuxième partie du nouveau segment
+          // IMPORTANT: Copier toutes les propriétés
           const newNewLine: Line = {
             id: generateId(),
             type: "line",
             p1: intersectPoint.id,
             p2: currentNewLine.p2,
             layerId: currentNewLine.layerId,
+            strokeWidth: currentNewLine.strokeWidth,
+            strokeColor: currentNewLine.strokeColor,
+            isConstruction: currentNewLine.isConstruction,
           };
           sketchToModify.geometries.set(newNewLine.id, newNewLine);
 

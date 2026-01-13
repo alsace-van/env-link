@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.66 - FIX: Batching des lignes par strokeWidth individuel (le strokeWidth était ignoré avant)
+// VERSION: 3.67 - PERF: Cache du dash pattern pour lignes construction
 // ============================================
 
 import {
@@ -291,6 +291,10 @@ export class CADRenderer {
       { p1: Point; p2: Point; isConstruction?: boolean; isReference?: boolean }[]
     > = new Map();
 
+    // OPTIMISATION PERFORMANCE: Pré-calculer le dash pattern une seule fois par frame
+    // Évite de recalculer .map() à chaque appel setLineDash
+    const constructionDash = this.styles.constructionStyle.map((v) => v / this.viewport.scale);
+
     // Viewport bounds pour culling
     const cullLeft = (rulerSize - this.viewport.offsetX) / this.viewport.scale;
     const cullRight = (this.viewport.width - this.viewport.offsetX) / this.viewport.scale;
@@ -381,9 +385,9 @@ export class CADRenderer {
         this.ctx.strokeStyle = first.color || this.styles.lineColor;
         this.ctx.lineWidth = (first.width || this.styles.lineWidth) / this.viewport.scale;
 
-        // Style pointillé pour les lignes de construction
+        // Style pointillé pour les lignes de construction (utiliser le cache)
         if (first.isConstruction) {
-          this.ctx.setLineDash(this.styles.constructionStyle.map((v) => v / this.viewport.scale));
+          this.ctx.setLineDash(constructionDash);
         } else {
           this.ctx.setLineDash([]);
         }
@@ -424,10 +428,10 @@ export class CADRenderer {
           this.ctx.stroke();
         }
 
-        // Lignes de construction sélectionnées (pointillées bleu)
+        // Lignes de construction sélectionnées (pointillées bleu) - utiliser le cache
         if (constructionLines.length > 0) {
           this.ctx.strokeStyle = this.styles.selectedColor;
-          this.ctx.setLineDash(this.styles.constructionStyle.map((v) => v / this.viewport.scale));
+          this.ctx.setLineDash(constructionDash);
           this.ctx.beginPath();
           for (const { p1, p2 } of constructionLines) {
             this.ctx.moveTo(p1.x, p1.y);
