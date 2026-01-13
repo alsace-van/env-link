@@ -1195,9 +1195,9 @@ export class CADRenderer {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
 
     const rulerSize = 32;
-    const tickSmall = 5;
-    const tickMedium = 9;
-    const tickLarge = 13;
+    const tickSmall = 4;
+    const tickMedium = 7;
+    const tickLarge = 12;
 
     // Échelle effective en mm: combien de mm par pixel écran
     // viewport.scale = zoom (px écran par px monde)
@@ -1205,16 +1205,23 @@ export class CADRenderer {
     // => mm par px écran = 1 / (viewport.scale * sf)
     const mmPerScreenPx = 1 / (this.viewport.scale * sf);
 
-    // Espacement adaptatif en mm (viser ~35-50 px entre graduations)
+    // Espacement adaptatif en mm (viser ~25-40 px entre graduations majeures)
+    // On va aussi afficher des graduations mineures entre les majeures
     const spacingsMm = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
     let spacingMm = 50;
     for (const s of spacingsMm) {
       // s mm * sf px/mm * scale = pixels écran
-      if (s * sf * this.viewport.scale >= 35) {
+      if (s * sf * this.viewport.scale >= 25) {
         spacingMm = s;
         break;
       }
     }
+
+    // Espacement mineur (subdivisions)
+    // On divise par 5 ou 10 selon l'espacement majeur
+    let minorSpacing = spacingMm / 5;
+    if (spacingMm >= 100) minorSpacing = spacingMm / 10;
+    else if (spacingMm <= 2) minorSpacing = spacingMm / 2;
 
     // ===== FOND DES RÈGLES =====
     ctx.fillStyle = "#f0f0f0";
@@ -1245,11 +1252,37 @@ export class CADRenderer {
     // Convertir en mm
     const leftMm = leftWorldPx / sf;
     const rightMm = rightWorldPx / sf;
+
+    // Dessiner les graduations mineures d'abord
+    const startXminor = Math.floor(leftMm / minorSpacing) * minorSpacing;
+    const endXminor = Math.ceil(rightMm / minorSpacing) * minorSpacing;
+
+    ctx.strokeStyle = "#aaa";
+    for (let xMm = startXminor; xMm <= endXminor; xMm += minorSpacing) {
+      // Ne pas dessiner si c'est une graduation majeure
+      if (Math.abs(xMm % spacingMm) < 0.001) continue;
+
+      const worldPx = xMm * sf;
+      const screenX = worldPx * this.viewport.scale + this.viewport.offsetX;
+      if (screenX < rulerSize || screenX > w) continue;
+
+      // Déterminer si c'est une graduation moyenne (milieu entre deux majeures)
+      const isMid = Math.abs((xMm % spacingMm) - spacingMm / 2) < 0.001;
+      const tickH = isMid ? tickMedium : tickSmall;
+
+      ctx.beginPath();
+      ctx.moveTo(screenX, rulerSize);
+      ctx.lineTo(screenX, rulerSize - tickH);
+      ctx.stroke();
+    }
+
+    // Dessiner les graduations majeures avec labels
     const startXmm = Math.floor(leftMm / spacingMm) * spacingMm;
     const endXmm = Math.ceil(rightMm / spacingMm) * spacingMm;
 
     ctx.textAlign = "center";
     ctx.textBaseline = "bottom";
+    ctx.strokeStyle = "#666";
 
     for (let xMm = startXmm; xMm <= endXmm; xMm += spacingMm) {
       // Convertir mm en position écran
@@ -1258,14 +1291,12 @@ export class CADRenderer {
       if (screenX < rulerSize || screenX > w) continue;
 
       const idx = Math.round(Math.abs(xMm) / spacingMm);
-      // Major = tous les 5, ou si spacing >= 50
-      const isMajor = idx % 5 === 0 || spacingMm >= 50;
-      // Semi-major = tous les autres pairs
-      const isSemiMajor = idx % 2 === 0 && !isMajor;
-      // Minor avec chiffre = tous les impairs si spacing <= 10
-      const isMinorWithLabel = spacingMm <= 10 && idx % 2 !== 0;
+      // Major = tous les 5, ou si spacing >= 100
+      const isMajor = idx % 5 === 0 || spacingMm >= 100;
+      // Semi-major = tous les autres
+      const isSemiMajor = !isMajor;
 
-      const tickH = isMajor ? tickLarge : isSemiMajor ? tickMedium : tickSmall;
+      const tickH = isMajor ? tickLarge : tickMedium;
 
       ctx.beginPath();
       ctx.moveTo(screenX, rulerSize);
@@ -1274,17 +1305,13 @@ export class CADRenderer {
 
       // Afficher les chiffres
       if (isMajor) {
-        ctx.font = "11px Arial, sans-serif";
+        ctx.font = "10px Arial, sans-serif";
         ctx.fillStyle = "#333";
-        ctx.fillText(`${xMm}`, screenX, rulerSize - tickLarge - 2);
-      } else if (isSemiMajor && spacingMm <= 20) {
-        ctx.font = "9px Arial, sans-serif";
+        ctx.fillText(`${xMm}`, screenX, rulerSize - tickLarge - 1);
+      } else if (isSemiMajor && spacingMm <= 50) {
+        ctx.font = "8px Arial, sans-serif";
         ctx.fillStyle = "#666";
         ctx.fillText(`${xMm}`, screenX, rulerSize - tickMedium - 1);
-      } else if (isMinorWithLabel) {
-        ctx.font = "8px Arial, sans-serif";
-        ctx.fillStyle = "#999";
-        ctx.fillText(`${xMm}`, screenX, rulerSize - tickSmall - 1);
       }
     }
 
@@ -1293,8 +1320,32 @@ export class CADRenderer {
     const bottomWorldPx = (h - this.viewport.offsetY) / this.viewport.scale;
     const topMm = topWorldPx / sf;
     const bottomMm = bottomWorldPx / sf;
+
+    // Graduations mineures verticales
+    const startYminor = Math.floor(topMm / minorSpacing) * minorSpacing;
+    const endYminor = Math.ceil(bottomMm / minorSpacing) * minorSpacing;
+
+    ctx.strokeStyle = "#aaa";
+    for (let yMm = startYminor; yMm <= endYminor; yMm += minorSpacing) {
+      if (Math.abs(yMm % spacingMm) < 0.001) continue;
+
+      const worldPx = yMm * sf;
+      const screenY = worldPx * this.viewport.scale + this.viewport.offsetY;
+      if (screenY < rulerSize || screenY > h) continue;
+
+      const isMid = Math.abs((yMm % spacingMm) - spacingMm / 2) < 0.001;
+      const tickW = isMid ? tickMedium : tickSmall;
+
+      ctx.beginPath();
+      ctx.moveTo(rulerSize, screenY);
+      ctx.lineTo(rulerSize - tickW, screenY);
+      ctx.stroke();
+    }
+
+    // Graduations majeures verticales
     const startYmm = Math.floor(topMm / spacingMm) * spacingMm;
     const endYmm = Math.ceil(bottomMm / spacingMm) * spacingMm;
+    ctx.strokeStyle = "#666";
 
     // Pour la règle verticale, on tourne le texte à 90° pour éviter le rognage
     for (let yMm = startYmm; yMm <= endYmm; yMm += spacingMm) {
@@ -1303,11 +1354,10 @@ export class CADRenderer {
       if (screenY < rulerSize || screenY > h) continue;
 
       const idx = Math.round(Math.abs(yMm) / spacingMm);
-      const isMajor = idx % 5 === 0 || spacingMm >= 50;
-      const isSemiMajor = idx % 2 === 0 && !isMajor;
-      const isMinorWithLabel = spacingMm <= 10 && idx % 2 !== 0;
+      const isMajor = idx % 5 === 0 || spacingMm >= 100;
+      const isSemiMajor = !isMajor;
 
-      const tickW = isMajor ? tickLarge : isSemiMajor ? tickMedium : tickSmall;
+      const tickW = isMajor ? tickLarge : tickMedium;
 
       ctx.beginPath();
       ctx.moveTo(rulerSize, screenY);
@@ -1316,22 +1366,18 @@ export class CADRenderer {
 
       // Texte tourné à 90° pour les valeurs
       ctx.save();
-      ctx.translate(rulerSize - tickW - 3, screenY);
+      ctx.translate(rulerSize - tickW - 2, screenY);
       ctx.rotate(-Math.PI / 2);
       ctx.textAlign = "center";
       ctx.textBaseline = "bottom";
 
       if (isMajor) {
-        ctx.font = "11px Arial, sans-serif";
+        ctx.font = "10px Arial, sans-serif";
         ctx.fillStyle = "#333";
         ctx.fillText(`${yMm}`, 0, 0);
-      } else if (isSemiMajor && spacingMm <= 20) {
-        ctx.font = "9px Arial, sans-serif";
-        ctx.fillStyle = "#666";
-        ctx.fillText(`${yMm}`, 0, 0);
-      } else if (isMinorWithLabel) {
+      } else if (isSemiMajor && spacingMm <= 50) {
         ctx.font = "8px Arial, sans-serif";
-        ctx.fillStyle = "#999";
+        ctx.fillStyle = "#666";
         ctx.fillText(`${yMm}`, 0, 0);
       }
       ctx.restore();
