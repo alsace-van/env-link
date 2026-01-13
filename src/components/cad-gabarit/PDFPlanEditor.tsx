@@ -143,6 +143,9 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
   // Cotation en cours de déplacement
   const [draggingDimension, setDraggingDimension] = useState<string | null>(null);
 
+  // Cotation sélectionnée (pour suppression)
+  const [selectedDimension, setSelectedDimension] = useState<string | null>(null);
+
   // Sélection pour cotation entre 2 points
   const [dimensionSelection, setDimensionSelection] = useState<{
     p1Id: string | null;
@@ -652,9 +655,10 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
       }
 
       if (activeTool === "select") {
-        // Vérifier si on clique sur une cotation pour la déplacer
+        // Vérifier si on clique sur une cotation pour la sélectionner/déplacer
         const clickedDim = findDimensionAtPosition(screenX, screenY);
         if (clickedDim) {
+          setSelectedDimension(clickedDim);
           setDraggingDimension(clickedDim);
           setMouseState({
             isDragging: true,
@@ -662,6 +666,9 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
             lastPos: { x: screenX, y: screenY },
           });
           return;
+        } else {
+          // Clic ailleurs = désélectionner
+          setSelectedDimension(null);
         }
       }
 
@@ -796,6 +803,60 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     setMouseState((prev) => ({ ...prev, isDragging: false }));
     setDraggingDimension(null);
   }, []);
+
+  // Gestion des touches clavier
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      // Empêcher Ctrl+Z de propager au sketch parent
+      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+        e.preventDefault();
+        e.stopPropagation();
+        // Annuler la dernière cotation ajoutée
+        if (dimensions.length > 0) {
+          setDimensions((prev) => prev.slice(0, -1));
+          toast.info("Dernière cotation annulée");
+        }
+        return;
+      }
+
+      // Supprimer la cotation sélectionnée avec Delete ou Backspace
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedDimension) {
+        e.preventDefault();
+        e.stopPropagation();
+        setDimensions((prev) => prev.filter((d) => d.id !== selectedDimension));
+        setSelectedDimension(null);
+        toast.success("Cotation supprimée");
+        return;
+      }
+
+      // Échap pour désélectionner
+      if (e.key === "Escape") {
+        setSelectedDimension(null);
+        setAngleSelection({ line1Id: null });
+        setDimensionSelection({ p1Id: null, p1Pos: null });
+      }
+    },
+    [dimensions, selectedDimension],
+  );
+
+  // Clic droit pour supprimer une cotation
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+
+      const clickedDim = findDimensionAtPosition(screenX, screenY);
+      if (clickedDim) {
+        setDimensions((prev) => prev.filter((d) => d.id !== clickedDim));
+        toast.success("Cotation supprimée");
+      }
+    },
+    [findDimensionAtPosition],
+  );
 
   const handleWheel = useCallback(
     (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -1174,9 +1235,11 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     // ===== DESSINER LES COTATIONS =====
     dimensions.forEach((dim) => {
       const isDragging = draggingDimension === dim.id;
-      ctx.strokeStyle = isDragging ? "#FF0000" : dim.color;
-      ctx.fillStyle = isDragging ? "#FF0000" : dim.color;
-      ctx.lineWidth = 1;
+      const isSelected = selectedDimension === dim.id;
+      const highlightColor = isDragging ? "#FF0000" : isSelected ? "#10B981" : dim.color;
+      ctx.strokeStyle = highlightColor;
+      ctx.fillStyle = highlightColor;
+      ctx.lineWidth = isSelected ? 2 : 1;
       ctx.font = `bold ${dim.fontSize}px Arial`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -1385,7 +1448,17 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     });
 
     ctx.restore();
-  }, [sketch, options, dimensions, hoveredEntity, draggingDimension, angleSelection, calculateBounds, pageTransform]);
+  }, [
+    sketch,
+    options,
+    dimensions,
+    hoveredEntity,
+    draggingDimension,
+    selectedDimension,
+    angleSelection,
+    calculateBounds,
+    pageTransform,
+  ]);
 
   // Export PDF
   const handleExportPDF = useCallback(() => {
@@ -1857,7 +1930,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 flex">
+    <div className="fixed inset-0 z-50 bg-black/80 flex outline-none" tabIndex={0} onKeyDown={handleKeyDown} autoFocus>
       {/* Bouton flottant pour rouvrir les options si fermé */}
       {!showOptionsPanel && (
         <button
@@ -2057,12 +2130,29 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
               {/* Liste des cotations */}
               <div className="max-h-40 overflow-y-auto space-y-1">
                 {dimensions.map((dim) => (
-                  <div key={dim.id} className="flex items-center justify-between text-sm bg-gray-50 px-2 py-1 rounded">
+                  <div
+                    key={dim.id}
+                    className={`flex items-center justify-between text-sm px-2 py-1 rounded cursor-pointer ${
+                      selectedDimension === dim.id
+                        ? "bg-green-100 border border-green-500"
+                        : "bg-gray-50 hover:bg-gray-100"
+                    }`}
+                    onClick={() => setSelectedDimension(dim.id)}
+                  >
                     <span>
-                      {dim.prefix || ""}
-                      {dim.value.toFixed(1)} mm
+                      {dim.type === "angle"
+                        ? `∠ ${dim.value.toFixed(1)}°`
+                        : `${dim.prefix || ""}${dim.value.toFixed(1)} mm`}
                     </span>
-                    <Button size="sm" variant="ghost" onClick={() => removeDimension(dim.id)} className="h-6 w-6 p-0">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeDimension(dim.id);
+                      }}
+                      className="h-6 w-6 p-0"
+                    >
                       <X className="h-3 w-3" />
                     </Button>
                   </div>
@@ -2157,8 +2247,12 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
           <div className="text-sm text-gray-500">
             {activeTool === "dimension" && "Cliquez sur une ligne ou 2 points"}
             {activeTool === "radius" && "Cliquez sur un cercle (Shift = diamètre)"}
-            {activeTool === "angle" && "Cliquez sur 2 lignes adjacentes"}
-            {activeTool === "select" && "Glissez les cotations pour les repositionner"}
+            {activeTool === "angle" &&
+              (angleSelection.line1Id ? "Cliquez sur la 2ème ligne" : "Cliquez sur 2 lignes adjacentes")}
+            {activeTool === "select" &&
+              (selectedDimension
+                ? "Delete/Suppr ou clic droit pour supprimer"
+                : "Cliquez sur une cotation pour la sélectionner")}
           </div>
 
           <div className="flex-1" />
@@ -2179,6 +2273,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
             onWheel={handleWheel}
+            onContextMenu={handleContextMenu}
             style={{
               cursor:
                 activeTool === "pan"
