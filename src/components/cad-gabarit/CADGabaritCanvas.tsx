@@ -3350,14 +3350,41 @@ export function CADGabaritCanvas({
             }
           }
         } else if (geo.type === "text") {
-          // Texte : vérifier si on clique près du point d'ancrage
+          // Texte : vérifier si on clique dans la zone du texte
           const text = geo as TextAnnotation;
           const position = sketch.points.get(text.position);
           if (position) {
-            // Zone de clic approximative basée sur la taille du texte
-            const textTolerance = Math.max(tolerance, text.fontSize * 2);
-            const d = distance({ x: worldX, y: worldY }, position);
-            if (d < textTolerance) return id;
+            // Estimer la taille du texte (approximation)
+            const charWidth = text.fontSize * 0.6; // Largeur moyenne d'un caractère
+            const textWidth = text.content.length * charWidth;
+            const textHeight = text.fontSize * 1.2;
+
+            // Zone de détection basée sur l'alignement
+            let minX: number, maxX: number;
+            if (text.alignment === "center") {
+              minX = position.x - textWidth / 2;
+              maxX = position.x + textWidth / 2;
+            } else if (text.alignment === "right") {
+              minX = position.x - textWidth;
+              maxX = position.x;
+            } else {
+              // left
+              minX = position.x;
+              maxX = position.x + textWidth;
+            }
+            const minY = position.y - textHeight;
+            const maxY = position.y + textHeight / 2;
+
+            // Vérifier si le clic est dans la bounding box (avec tolérance)
+            const expandedTolerance = tolerance / 2;
+            if (
+              worldX >= minX - expandedTolerance &&
+              worldX <= maxX + expandedTolerance &&
+              worldY >= minY - expandedTolerance &&
+              worldY <= maxY + expandedTolerance
+            ) {
+              return id;
+            }
           }
         }
       }
@@ -3528,11 +3555,40 @@ export function CADGabaritCanvas({
               return { type: "point", id: bezier.cp2, handleType: "control" };
             }
           } else if (geo.type === "text") {
-            // Texte : poignée sur le point d'ancrage pour déplacer
+            // Texte : poignée sur toute la zone du texte pour déplacer
             const text = geo as TextAnnotation;
             const position = sketch.points.get(text.position);
-            if (position && distance({ x: worldX, y: worldY }, position) < tolerance) {
-              return { type: "point", id: text.position };
+            if (position) {
+              // Estimer la taille du texte (approximation)
+              const charWidth = text.fontSize * 0.6;
+              const textWidth = text.content.length * charWidth;
+              const textHeight = text.fontSize * 1.2;
+
+              // Zone de détection basée sur l'alignement
+              let minX: number, maxX: number;
+              if (text.alignment === "center") {
+                minX = position.x - textWidth / 2;
+                maxX = position.x + textWidth / 2;
+              } else if (text.alignment === "right") {
+                minX = position.x - textWidth;
+                maxX = position.x;
+              } else {
+                // left
+                minX = position.x;
+                maxX = position.x + textWidth;
+              }
+              const minY = position.y - textHeight;
+              const maxY = position.y + textHeight / 2;
+
+              // Vérifier si le clic est dans la bounding box
+              if (
+                worldX >= minX - tolerance &&
+                worldX <= maxX + tolerance &&
+                worldY >= minY - tolerance &&
+                worldY <= maxY + tolerance
+              ) {
+                return { type: "point", id: text.position };
+              }
             }
           }
         }
@@ -8586,7 +8642,22 @@ export function CADGabaritCanvas({
         }
 
         case "text": {
-          // Outil texte : ouvrir un input inline à la position du clic
+          // Outil texte : vérifier si on clique sur un texte existant
+          const clickedEntity = findEntityAtPosition(worldPos.x, worldPos.y);
+          if (clickedEntity) {
+            const geo = sketch.geometries.get(clickedEntity);
+            if (geo?.type === "text") {
+              // Clic sur un texte existant → le sélectionner
+              setSelectedEntities(new Set([clickedEntity]));
+              // Charger ses paramètres
+              const textGeo = geo as TextAnnotation;
+              setTextFontSize(textGeo.fontSize);
+              setTextColor(textGeo.color || "#000000");
+              setTextAlignment(textGeo.alignment || "left");
+              break;
+            }
+          }
+          // Clic ailleurs → créer un nouveau texte
           setTextInput({
             active: true,
             position: worldPos,
@@ -9415,11 +9486,38 @@ export function CADGabaritCanvas({
               }
             }
           } else if (geo.type === "text") {
-            // Texte : vérifier si le point d'ancrage est dans la zone
+            // Texte : vérifier si la bounding box du texte intersecte la zone de sélection
             const text = geo as TextAnnotation;
             const position = sketch.points.get(text.position);
             if (position) {
-              isSelected = position.x >= minX && position.x <= maxX && position.y >= minY && position.y <= maxY;
+              // Estimer la taille du texte
+              const charWidth = text.fontSize * 0.6;
+              const textWidth = text.content.length * charWidth;
+              const textHeight = text.fontSize * 1.2;
+
+              // Bounding box du texte selon l'alignement
+              let textMinX: number, textMaxX: number;
+              if (text.alignment === "center") {
+                textMinX = position.x - textWidth / 2;
+                textMaxX = position.x + textWidth / 2;
+              } else if (text.alignment === "right") {
+                textMinX = position.x - textWidth;
+                textMaxX = position.x;
+              } else {
+                // left
+                textMinX = position.x;
+                textMaxX = position.x + textWidth;
+              }
+              const textMinY = position.y - textHeight;
+              const textMaxY = position.y + textHeight / 2;
+
+              if (isWindowMode) {
+                // Mode Fenêtre : le texte entier doit être dans la zone
+                isSelected = textMinX >= minX && textMaxX <= maxX && textMinY >= minY && textMaxY <= maxY;
+              } else {
+                // Mode Capture : le texte touche la zone (intersection des bounding boxes)
+                isSelected = !(textMaxX < minX || textMinX > maxX || textMaxY < minY || textMinY > maxY);
+              }
             }
           }
 
