@@ -13356,10 +13356,12 @@ export function CADGabaritCanvas({
       // Dessiner les images de fond d'abord
       backgroundImages.forEach((img) => {
         // Vérifier si l'image intersecte cette cellule
-        const imgMinX = img.x - (img.width * img.scale) / 2;
-        const imgMaxX = img.x + (img.width * img.scale) / 2;
-        const imgMinY = img.y - (img.height * img.scale) / 2;
-        const imgMaxY = img.y + (img.height * img.scale) / 2;
+        const imgWidth = img.image.width * img.scale;
+        const imgHeight = img.image.height * img.scale;
+        const imgMinX = img.x - imgWidth / 2;
+        const imgMaxX = img.x + imgWidth / 2;
+        const imgMinY = img.y - imgHeight / 2;
+        const imgMaxY = img.y + imgHeight / 2;
 
         if (imgMaxX < cellMinX || imgMinX > cellMaxX || imgMaxY < cellMinY || imgMinY > cellMaxY) {
           return; // Pas d'intersection
@@ -13432,14 +13434,19 @@ export function CADGabaritCanvas({
               return;
             }
 
+            // Calculer les angles à partir des points
+            let startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
+            let endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
+
             // Dessiner l'arc (approximation avec des segments)
             const steps = 32;
-            let startAngle = arc.startAngle;
-            let endAngle = arc.endAngle;
 
             if (arc.counterClockwise) {
               [startAngle, endAngle] = [endAngle, startAngle];
             }
+
+            // Normaliser pour que endAngle > startAngle
+            while (endAngle <= startAngle) endAngle += 2 * Math.PI;
 
             const angleStep = (endAngle - startAngle) / steps;
             for (let i = 0; i < steps; i++) {

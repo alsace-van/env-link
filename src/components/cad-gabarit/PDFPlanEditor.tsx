@@ -456,12 +456,16 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
         } else if (geo.type === "arc") {
           const arc = geo as Arc;
           const center = sketch.points.get(arc.center);
-          if (center) {
+          const startPt = sketch.points.get(arc.startPoint);
+          const endPt = sketch.points.get(arc.endPoint);
+          if (center && startPt && endPt) {
             const distToCenter = Math.sqrt((worldX - center.x) ** 2 + (worldY - center.y) ** 2);
             // Pour les arcs, on vérifie aussi l'angle
             const angle = Math.atan2(worldY - center.y, worldX - center.x);
-            let startAngle = arc.startAngle;
-            let endAngle = arc.endAngle;
+
+            // Calculer les angles à partir des points
+            let startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
+            let endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
 
             // Normaliser
             while (startAngle < 0) startAngle += 2 * Math.PI;
