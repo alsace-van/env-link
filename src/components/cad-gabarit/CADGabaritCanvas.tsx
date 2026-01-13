@@ -8723,7 +8723,18 @@ export function CADGabaritCanvas({
             }
           });
 
-          // Déplacer tous les points
+          // Vérifier si des points verrouillés sont dans la sélection
+          const lockedInSelection = Array.from(pointsToMove).filter((pid) => lockedPoints.has(pid));
+          if (lockedInSelection.length > 0) {
+            // Exclure les points verrouillés du déplacement
+            lockedInSelection.forEach((pid) => pointsToMove.delete(pid));
+            // Afficher un message une seule fois au début du drag
+            if (!isDraggingSelection) {
+              toast.warning(`${lockedInSelection.length} point(s) verrouillé(s) non déplacé(s)`);
+            }
+          }
+
+          // Déplacer tous les points (sauf les verrouillés)
           const newSketch = { ...currentSketch };
           newSketch.points = new Map(currentSketch.points);
 
