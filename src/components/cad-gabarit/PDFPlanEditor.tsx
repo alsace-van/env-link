@@ -839,25 +839,6 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     [dimensions, selectedDimension],
   );
 
-  // Clic droit pour supprimer une cotation
-  const handleContextMenu = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      e.preventDefault();
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-
-      const screenX = e.clientX - rect.left;
-      const screenY = e.clientY - rect.top;
-
-      const clickedDim = findDimensionAtPosition(screenX, screenY);
-      if (clickedDim) {
-        setDimensions((prev) => prev.filter((d) => d.id !== clickedDim));
-        toast.success("Cotation supprimée");
-      }
-    },
-    [findDimensionAtPosition],
-  );
-
   const handleWheel = useCallback(
     (e: React.WheelEvent<HTMLCanvasElement>) => {
       e.preventDefault();
@@ -935,6 +916,25 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
       return null;
     },
     [dimensions, sketch, worldToScreen, viewport.scale],
+  );
+
+  // Clic droit pour supprimer une cotation
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      e.preventDefault();
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+
+      const clickedDim = findDimensionAtPosition(screenX, screenY);
+      if (clickedDim) {
+        setDimensions((prev) => prev.filter((d) => d.id !== clickedDim));
+        toast.success("Cotation supprimée");
+      }
+    },
+    [findDimensionAtPosition],
   );
 
   // Dessiner le canvas
