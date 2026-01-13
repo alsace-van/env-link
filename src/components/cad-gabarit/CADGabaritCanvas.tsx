@@ -13057,9 +13057,10 @@ export function CADGabaritCanvas({
                                 const newGeometries = new Map(currentSketch.geometries);
                                 selectedEntities.forEach((id) => {
                                   const geo = newGeometries.get(id);
-                                  if (geo) {
+                                  // Ne pas appliquer strokeWidth aux textes
+                                  if (geo && geo.type !== "text") {
                                     console.log("[CAD] Updating geo", id.slice(0, 8), "strokeWidth to", width);
-                                    newGeometries.set(id, { ...geo, strokeWidth: width });
+                                    newGeometries.set(id, { ...geo, strokeWidth: width } as typeof geo);
                                   }
                                 });
                                 const newSketch = { ...currentSketch, geometries: newGeometries };
@@ -13118,7 +13119,12 @@ export function CADGabaritCanvas({
                         selectedEntities.forEach((id) => {
                           const geo = newGeometries.get(id);
                           if (geo) {
-                            newGeometries.set(id, { ...geo, strokeColor: newColor });
+                            // Pour les textes, utiliser 'color', pour les autres 'strokeColor'
+                            if (geo.type === "text") {
+                              newGeometries.set(id, { ...geo, color: newColor } as typeof geo);
+                            } else {
+                              newGeometries.set(id, { ...geo, strokeColor: newColor } as typeof geo);
+                            }
                           }
                         });
                         const newSketch = { ...currentSketch, geometries: newGeometries };
