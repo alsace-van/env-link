@@ -7761,8 +7761,6 @@ export function CADGabaritCanvas({
         targetPos = { x: currentSnapPoint.x, y: currentSnapPoint.y };
       }
 
-      console.log("[MOUSEDOWN] About to switch, activeTool:", activeTool);
-
       switch (activeTool) {
         case "select": {
           // Vérifier d'abord si on clique sur une poignée d'une entité sélectionnée
@@ -8559,9 +8557,6 @@ export function CADGabaritCanvas({
 
         case "text": {
           // Outil texte : ouvrir un input inline à la position du clic
-          console.log("[TEXT] Case text triggered, worldPos:", worldPos);
-          console.log("[TEXT] e.clientX:", e.clientX, "e.clientY:", e.clientY);
-          // Utiliser clientX/clientY directement pour position fixed
           setTextInput({
             active: true,
             position: worldPos,
@@ -8569,12 +8564,15 @@ export function CADGabaritCanvas({
             content: "",
             editingId: null,
           });
-          console.log("[TEXT] setTextInput called");
-          // Focus sur l'input après le render
-          setTimeout(() => {
-            console.log("[TEXT] setTimeout callback, textInputRef:", textInputRef.current);
-            textInputRef.current?.focus();
-          }, 10);
+          // Focus sur l'input après le render - plusieurs tentatives
+          const focusInput = () => {
+            if (textInputRef.current) {
+              textInputRef.current.focus();
+            } else {
+              setTimeout(focusInput, 50);
+            }
+          };
+          setTimeout(focusInput, 50);
           break;
         }
       }
@@ -16383,40 +16381,34 @@ export function CADGabaritCanvas({
 
       {/* Input texte inline sur le canvas */}
       {textInput?.active && (
-        <>
-          {console.log("[TEXT RENDER] textInput:", textInput)}
-          <input
-            ref={textInputRef}
-            type="text"
-            value={textInput.content}
-            onChange={(e) => setTextInput({ ...textInput, content: e.target.value })}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === "Enter") {
-                commitTextInput();
-              } else if (e.key === "Escape") {
-                setTextInput(null);
-              }
-            }}
-            onBlur={() => {
-              // Commit quand on perd le focus (sauf si vide)
+        <input
+          ref={textInputRef}
+          type="text"
+          value={textInput.content}
+          onChange={(e) => setTextInput({ ...textInput, content: e.target.value })}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Enter") {
               if (textInput.content.trim()) {
                 commitTextInput();
               } else {
                 setTextInput(null);
               }
-            }}
-            className="fixed bg-white border-2 border-emerald-500 rounded px-2 py-1 text-sm shadow-lg z-50 min-w-[120px] outline-none"
-            style={{
-              left: textInput.screenPos.x,
-              top: textInput.screenPos.y,
-              fontSize: `${Math.max(12, textFontSize * viewport.scale)}px`,
-              color: textColor,
-            }}
-            placeholder="Entrez votre texte..."
-            autoFocus
-          />
-        </>
+            } else if (e.key === "Escape") {
+              setTextInput(null);
+            }
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          className="fixed bg-white border-2 border-emerald-500 rounded px-2 py-1 text-sm shadow-lg z-[9999] min-w-[150px] outline-none"
+          style={{
+            left: textInput.screenPos.x,
+            top: textInput.screenPos.y,
+            fontSize: `${Math.max(14, textFontSize * viewport.scale)}px`,
+            color: textColor,
+          }}
+          placeholder="Texte... (Entrée pour valider)"
+        />
       )}
 
       {/* Menu contextuel */}
