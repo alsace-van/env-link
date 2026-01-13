@@ -1131,6 +1131,9 @@ export function CADGabaritCanvas({
           pointIds.add(bezier.p2);
           pointIds.add(bezier.cp1);
           pointIds.add(bezier.cp2);
+        } else if (geo.type === "text") {
+          const text = geo as TextAnnotation;
+          pointIds.add(text.position);
         }
       }
     }
@@ -1187,6 +1190,10 @@ export function CADGabaritCanvas({
           if (center) points.push({ x: center.x, y: center.y });
           if (startPt) points.push({ x: startPt.x, y: startPt.y });
           if (endPt) points.push({ x: endPt.x, y: endPt.y });
+        } else if (geo.type === "text") {
+          const text = geo as TextAnnotation;
+          const position = sketch.points.get(text.position);
+          if (position) points.push({ x: position.x, y: position.y });
         }
       }
     }
@@ -8829,6 +8836,9 @@ export function CADGabaritCanvas({
                 pointsToMove.add(bezier.p2);
                 pointsToMove.add(bezier.cp1);
                 pointsToMove.add(bezier.cp2);
+              } else if (geo.type === "text") {
+                const text = geo as TextAnnotation;
+                pointsToMove.add(text.position);
               }
             }
           });
@@ -9403,6 +9413,13 @@ export function CADGabaritCanvas({
                   centerInBox ||
                   arcIntersectsBox(center, arc.radius, startPt, endPt, minX, minY, maxX, maxY);
               }
+            }
+          } else if (geo.type === "text") {
+            // Texte : vérifier si le point d'ancrage est dans la zone
+            const text = geo as TextAnnotation;
+            const position = sketch.points.get(text.position);
+            if (position) {
+              isSelected = position.x >= minX && position.x <= maxX && position.y >= minY && position.y <= maxY;
             }
           }
 
