@@ -225,6 +225,7 @@ export function CADGabaritCanvas({
   const [rectangleMode, setRectangleMode] = useState<"corner" | "center">("corner");
   const [selectedEntities, setSelectedEntities] = useState<Set<string>>(new Set());
   const [hoveredEntity, setHoveredEntity] = useState<string | null>(null);
+  const [referenceHighlight, setReferenceHighlight] = useState<string | null>(null); // Géométrie de référence (vert)
   const [currentSnapPoint, setCurrentSnapPoint] = useState<SnapPoint | null>(null);
 
   // Épaisseur de trait par défaut pour les nouvelles figures
@@ -1262,6 +1263,7 @@ export function CADGabaritCanvas({
     rendererRef.current.render(sketch, {
       selectedEntities,
       hoveredEntity,
+      referenceHighlight, // Géométrie de référence en vert
       currentSnapPoint,
       tempGeometry,
       showGrid,
@@ -2561,6 +2563,7 @@ export function CADGabaritCanvas({
     viewport,
     selectedEntities,
     hoveredEntity,
+    referenceHighlight,
     currentSnapPoint,
     tempGeometry,
     showGrid,
@@ -7788,6 +7791,7 @@ export function CADGabaritCanvas({
             // Clic dans le vide : commencer une sélection rectangulaire
             if (!e.shiftKey) {
               setSelectedEntities(new Set());
+              setReferenceHighlight(null); // Réinitialiser le highlight vert
             }
             setPotentialSelectionDrag(false);
             setSelectionBox({ start: worldPos, end: worldPos });
@@ -11209,6 +11213,8 @@ export function CADGabaritCanvas({
           const p2 = sketch.points.get(line.p2);
           if (p1 && p2) {
             const refLength = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+            // Mettre en évidence la ligne de référence en vert
+            setReferenceHighlight(entities[0]);
             toast.success(`Contrainte "égal" : longueur de référence = ${refLength.toFixed(1)} mm`);
             return;
           }

@@ -163,11 +163,14 @@ export class CADRenderer {
       revealPosition?: number; // 0-100
       // Lignes de construction
       showConstruction?: boolean;
+      // Highlight de référence (vert)
+      referenceHighlight?: string | null;
     } = {},
   ): void {
     const {
       selectedEntities = new Set(),
       hoveredEntity = null,
+      referenceHighlight = null,
       currentSnapPoint = null,
       tempGeometry = null,
       showGrid = true,
@@ -281,7 +284,10 @@ export class CADRenderer {
       string,
       { p1: Point; p2: Point; color?: string; width?: number; isConstruction?: boolean }[]
     > = new Map();
-    const selectedLinesByWidth: Map<number, { p1: Point; p2: Point; isConstruction?: boolean }[]> = new Map();
+    const selectedLinesByWidth: Map<
+      number,
+      { p1: Point; p2: Point; isConstruction?: boolean; isReference?: boolean }[]
+    > = new Map();
 
     // Viewport bounds pour culling
     const cullLeft = (rulerSize - this.viewport.offsetX) / this.viewport.scale;
@@ -307,6 +313,7 @@ export class CADRenderer {
 
       const isSelected = selectedEntities.has(id);
       const isHovered = hoveredEntity === id;
+      const isReference = referenceHighlight === id; // Ligne de référence en vert
 
       // Pour les lignes, utiliser le batching par strokeWidth ET couleur
       if (geo.type === "line") {
@@ -332,7 +339,14 @@ export class CADRenderer {
             // Clé combinée pour le batching (inclure construction pour séparer les batches)
             const batchKey = `${strokeWidth}-${geoStrokeColor}-${isConstruction ? "c" : "n"}`;
 
-            if (isSelected || isHovered) {
+            if (isReference) {
+              // Ligne de référence : dessiner en vert avec épaisseur augmentée
+              const effectiveWidth = Math.max(strokeWidth, this.styles.selectedWidth);
+              if (!selectedLinesByWidth.has(effectiveWidth)) {
+                selectedLinesByWidth.set(effectiveWidth, []);
+              }
+              selectedLinesByWidth.get(effectiveWidth)!.push({ p1, p2, isConstruction, isReference: true });
+            } else if (isSelected || isHovered) {
               // Pour les lignes sélectionnées, utiliser le max entre strokeWidth et selectedWidth
               const effectiveWidth = Math.max(strokeWidth, this.styles.selectedWidth);
               if (!selectedLinesByWidth.has(effectiveWidth)) {
@@ -351,7 +365,7 @@ export class CADRenderer {
         }
       } else {
         // Autres géométries: dessin individuel
-        this.drawGeometry(geo, sketch, isSelected, isHovered, showConstruction);
+        this.drawGeometry(geo, sketch, isSelected, isHovered, showConstruction, isReference);
       }
     });
 
@@ -385,19 +399,20 @@ export class CADRenderer {
     this.ctx.setLineDash([]);
 
     // Dessiner les lignes sélectionnées en batch, groupées par strokeWidth
-    this.ctx.strokeStyle = this.styles.selectedColor;
     this.ctx.lineCap = "round";
     this.ctx.lineJoin = "round";
     selectedLinesByWidth.forEach((lines, strokeWidth) => {
       if (lines.length > 0) {
         this.ctx.lineWidth = strokeWidth / this.viewport.scale;
 
-        // Séparer les lignes de construction des lignes normales
-        const normalLines = lines.filter((l: any) => !l.isConstruction);
-        const constructionLines = lines.filter((l: any) => l.isConstruction);
+        // Séparer les lignes de construction des lignes normales et les références
+        const normalLines = lines.filter((l: any) => !l.isConstruction && !l.isReference);
+        const constructionLines = lines.filter((l: any) => l.isConstruction && !l.isReference);
+        const referenceLines = lines.filter((l: any) => l.isReference);
 
-        // Lignes normales
+        // Lignes normales sélectionnées (bleu)
         if (normalLines.length > 0) {
+          this.ctx.strokeStyle = this.styles.selectedColor;
           this.ctx.setLineDash([]);
           this.ctx.beginPath();
           for (const { p1, p2 } of normalLines) {
@@ -407,8 +422,9 @@ export class CADRenderer {
           this.ctx.stroke();
         }
 
-        // Lignes de construction (pointillées)
+        // Lignes de construction sélectionnées (pointillées bleu)
         if (constructionLines.length > 0) {
+          this.ctx.strokeStyle = this.styles.selectedColor;
           this.ctx.setLineDash(this.styles.constructionStyle.map((v) => v / this.viewport.scale));
           this.ctx.beginPath();
           for (const { p1, p2 } of constructionLines) {
@@ -417,6 +433,18 @@ export class CADRenderer {
           }
           this.ctx.stroke();
           this.ctx.setLineDash([]);
+        }
+
+        // Lignes de référence (VERT)
+        if (referenceLines.length > 0) {
+          this.ctx.strokeStyle = "#22C55E"; // Vert vif
+          this.ctx.setLineDash([]);
+          this.ctx.beginPath();
+          for (const { p1, p2 } of referenceLines) {
+            this.ctx.moveTo(p1.x, p1.y);
+            this.ctx.lineTo(p2.x, p2.y);
+          }
+          this.ctx.stroke();
         }
       }
     });
@@ -1354,6 +1382,7 @@ export class CADRenderer {
     isSelected: boolean,
     isHovered: boolean,
     showConstruction: boolean = true,
+    isReference: boolean = false,
   ): void {
     // Vérifier si c'est une ligne de construction
     const isConstruction = (geo as any).isConstruction === true;
@@ -1363,18 +1392,22 @@ export class CADRenderer {
       ? this.styles.constructionColor
       : (geo as any).strokeColor || this.styles.lineColor;
 
-    this.ctx.strokeStyle = isSelected
-      ? this.styles.selectedColor
-      : isHovered
+    // Couleur : vert si référence, bleu si sélectionné/hover, sinon couleur normale
+    this.ctx.strokeStyle = isReference
+      ? "#22C55E" // Vert vif pour la référence
+      : isSelected
         ? this.styles.selectedColor
-        : geoStrokeColor;
+        : isHovered
+          ? this.styles.selectedColor
+          : geoStrokeColor;
 
     // Utiliser le strokeWidth individuel de la géométrie s'il est défini, sinon le style par défaut
     const geoStrokeWidth = (geo as any).strokeWidth;
     const baseWidth = geoStrokeWidth !== undefined ? geoStrokeWidth : this.styles.lineWidth;
 
-    // Calculer la largeur finale
-    const finalWidth = (isSelected ? Math.max(baseWidth, this.styles.selectedWidth) : baseWidth) / this.viewport.scale;
+    // Calculer la largeur finale (augmentée si sélectionné ou référence)
+    const finalWidth =
+      (isSelected || isReference ? Math.max(baseWidth, this.styles.selectedWidth) : baseWidth) / this.viewport.scale;
 
     this.ctx.lineWidth = finalWidth;
     this.ctx.lineCap = "round";
