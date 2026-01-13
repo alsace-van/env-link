@@ -11200,6 +11200,21 @@ export function CADGabaritCanvas({
       await solveSketch(newSketch);
       addToHistory(newSketch);
 
+      // Message spécial pour la contrainte "equal"
+      if (type === "equal" && entities.length === 2) {
+        const refGeo = sketch.geometries.get(entities[0]);
+        if (refGeo && refGeo.type === "line") {
+          const line = refGeo as Line;
+          const p1 = sketch.points.get(line.p1);
+          const p2 = sketch.points.get(line.p2);
+          if (p1 && p2) {
+            const refLength = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+            toast.success(`Contrainte "égal" : longueur de référence = ${refLength.toFixed(1)} mm`);
+            return;
+          }
+        }
+      }
+
       toast.success(`Contrainte "${type}" ajoutée`);
     },
     [sketch, solveSketch, addToHistory],

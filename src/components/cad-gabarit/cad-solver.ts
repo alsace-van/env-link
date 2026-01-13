@@ -586,6 +586,8 @@ class SimplifiedSolver {
 
       case "equal": {
         // Contrainte d'égalité de longueur entre deux lignes
+        // La ligne 1 (première sélectionnée) sert de RÉFÉRENCE
+        // Seule la ligne 2 est ajustée pour correspondre
         const line1 = this.primitives.find((p) => p.id === constraint.e1_id && p.type === "line") as
           | GcsLine
           | undefined;
@@ -609,25 +611,10 @@ class SimplifiedSolver {
         const error = Math.abs(len1 - len2);
         if (error < 0.001) return 0; // Déjà égales
 
-        // Longueur cible = moyenne des deux
-        const targetLen = (len1 + len2) / 2;
+        // Longueur cible = longueur de la ligne 1 (référence)
+        const targetLen = len1;
 
-        // Ajuster la ligne 1 si possible
-        if (!l1p2.fixed) {
-          const ratio1 = targetLen / len1;
-          const dx1 = l1p2.x - l1p1.x;
-          const dy1 = l1p2.y - l1p1.y;
-          l1p2.x = l1p1.x + dx1 * ratio1;
-          l1p2.y = l1p1.y + dy1 * ratio1;
-        } else if (!l1p1.fixed) {
-          const ratio1 = targetLen / len1;
-          const dx1 = l1p1.x - l1p2.x;
-          const dy1 = l1p1.y - l1p2.y;
-          l1p1.x = l1p2.x + dx1 * ratio1;
-          l1p1.y = l1p2.y + dy1 * ratio1;
-        }
-
-        // Ajuster la ligne 2 si possible
+        // Ajuster UNIQUEMENT la ligne 2 pour correspondre à la ligne 1
         if (!l2p2.fixed) {
           const ratio2 = targetLen / len2;
           const dx2 = l2p2.x - l2p1.x;
