@@ -8557,18 +8557,16 @@ export function CADGabaritCanvas({
 
         case "text": {
           // Outil texte : ouvrir un input inline à la position du clic
-          const rect = canvasRef.current?.getBoundingClientRect();
-          if (rect) {
-            setTextInput({
-              active: true,
-              position: worldPos,
-              screenPos: { x: e.clientX - rect.left, y: e.clientY - rect.top },
-              content: "",
-              editingId: null,
-            });
-            // Focus sur l'input après le render
-            setTimeout(() => textInputRef.current?.focus(), 10);
-          }
+          // Utiliser clientX/clientY directement pour position fixed
+          setTextInput({
+            active: true,
+            position: worldPos,
+            screenPos: { x: e.clientX, y: e.clientY },
+            content: "",
+            editingId: null,
+          });
+          // Focus sur l'input après le render
+          setTimeout(() => textInputRef.current?.focus(), 10);
           break;
         }
       }
@@ -9503,10 +9501,11 @@ export function CADGabaritCanvas({
               const rect = canvasRef.current?.getBoundingClientRect();
               if (rect) {
                 const screenPos = worldToScreen(position.x, position.y);
+                // Convertir en coordonnées fixed (relatives à la fenêtre)
                 setTextInput({
                   active: true,
                   position: { x: position.x, y: position.y },
-                  screenPos: { x: screenPos.x, y: screenPos.y },
+                  screenPos: { x: rect.left + screenPos.x, y: rect.top + screenPos.y },
                   content: textGeo.content,
                   editingId: entityId,
                 });
@@ -16397,7 +16396,7 @@ export function CADGabaritCanvas({
               setTextInput(null);
             }
           }}
-          className="absolute bg-white border-2 border-emerald-500 rounded px-2 py-1 text-sm shadow-lg z-50 min-w-[120px] outline-none"
+          className="fixed bg-white border-2 border-emerald-500 rounded px-2 py-1 text-sm shadow-lg z-50 min-w-[120px] outline-none"
           style={{
             left: textInput.screenPos.x,
             top: textInput.screenPos.y,
