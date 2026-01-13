@@ -64,6 +64,19 @@ const PAGE_SIZES = {
 
 const CARTOUCHE_HEIGHT = 30;
 
+// Formater l'échelle pour l'affichage
+const formatScale = (scale: number): string => {
+  if (scale < 1) {
+    // Agrandissement: 0.5 → "2:1", 0.2 → "5:1"
+    const factor = Math.round(1 / scale);
+    return `${factor}:1`;
+  } else if (scale > 1) {
+    // Réduction: 2 → "1:2", 10 → "1:10"
+    return `1:${scale}`;
+  }
+  return "1:1";
+};
+
 // Génère un ID unique
 const generateId = () => `dim_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -805,7 +818,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     ctx.font = `${(10 * pageScale) / 3}px Arial`;
     ctx.fillText(options.title, pageX + options.margin * pageScale + 60 * pageScale, cartoucheY + cartoucheH * 0.4);
     ctx.fillText(
-      `Échelle 1:${options.scale}`,
+      `Échelle ${formatScale(options.scale)}`,
       pageX + pageScreenWidth - options.margin * pageScale - 50 * pageScale,
       cartoucheY + cartoucheH * 0.4,
     );
@@ -836,7 +849,8 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     const sketchHeightMm = sketchHeight / sketch.scaleFactor;
 
     // Avec l'échelle du plan, taille sur le papier (en mm)
-    // Échelle 1:10 = le dessin fait 10x plus petit sur le papier
+    // scale > 1: réduction (1:10 = dessin 10x plus petit)
+    // scale < 1: agrandissement (0.5 = 2:1 = dessin 2x plus grand)
     const onPaperWidthMm = sketchWidthMm / options.scale;
     const onPaperHeightMm = sketchHeightMm / options.scale;
 
@@ -1388,7 +1402,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     doc.setFont("helvetica", "bold");
     doc.text(options.title, col2 + 2, midY + 12);
     doc.setFont("helvetica", "normal");
-    doc.text(`1:${options.scale}`, col3 + 14, cartoucheY + 11, { align: "center" });
+    doc.text(formatScale(options.scale), col3 + 14, cartoucheY + 11, { align: "center" });
     doc.text(options.revision || "A", col4 + 12.5, cartoucheY + 11, { align: "center" });
     doc.setFontSize(8);
     doc.text(options.date || "", col5 + 12.5, cartoucheY + 11, { align: "center" });
@@ -1557,19 +1571,40 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
 
             {/* Échelle */}
             <div className="space-y-2">
-              <Label>Échelle 1:</Label>
-              <div className="flex gap-1 flex-wrap">
-                {[1, 2, 5, 10, 20, 50].map((s) => (
-                  <Button
-                    key={s}
-                    variant={options.scale === s ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setOptions((o) => ({ ...o, scale: s }))}
-                    className="px-3"
-                  >
-                    {s}
-                  </Button>
-                ))}
+              <Label>Échelle</Label>
+              {/* Agrandissement */}
+              <div className="space-y-1">
+                <span className="text-xs text-gray-500">Agrandissement (petits dessins)</span>
+                <div className="flex gap-1 flex-wrap">
+                  {[10, 5, 2].map((s) => (
+                    <Button
+                      key={`up-${s}`}
+                      variant={options.scale === 1 / s ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setOptions((o) => ({ ...o, scale: 1 / s }))}
+                      className="px-3"
+                    >
+                      {s}:1
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              {/* Réduction */}
+              <div className="space-y-1">
+                <span className="text-xs text-gray-500">Réduction (grands dessins)</span>
+                <div className="flex gap-1 flex-wrap">
+                  {[1, 2, 5, 10, 20, 50].map((s) => (
+                    <Button
+                      key={`down-${s}`}
+                      variant={options.scale === s ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setOptions((o) => ({ ...o, scale: s }))}
+                      className="px-3"
+                    >
+                      1:{s}
+                    </Button>
+                  ))}
+                </div>
               </div>
             </div>
 
