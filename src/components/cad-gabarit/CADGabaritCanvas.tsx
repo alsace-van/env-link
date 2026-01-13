@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.78 - Toolbar 2 lignes (Fichiers en haut, Outils en bas)
+// VERSION: 6.79 - Raccourcis clavier, verrouillage points, couleur géométrie, export PNG
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -88,6 +88,9 @@ import {
   SplitSquareVertical,
   Library,
   Scan,
+  HelpCircle,
+  Palette,
+  FileImage,
 } from "lucide-react";
 
 import {
@@ -225,10 +228,18 @@ export function CADGabaritCanvas({
   const defaultStrokeWidthRef = useRef<number>(1.5);
   const STROKE_WIDTH_OPTIONS = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5];
 
+  // Couleur de trait par défaut
+  const defaultStrokeColorRef = useRef<string>("#000000");
+
   // Synchroniser la ref avec l'état
   useEffect(() => {
     defaultStrokeWidthRef.current = defaultStrokeWidth;
   }, [defaultStrokeWidth]);
+
+  // Synchroniser la ref couleur avec l'état
+  useEffect(() => {
+    defaultStrokeColorRef.current = defaultStrokeColor;
+  }, [defaultStrokeColor]);
 
   const [tempGeometry, setTempGeometry] = useState<any>(null);
   const [tempPoints, setTempPoints] = useState<Point[]>([]);
@@ -325,6 +336,12 @@ export function CADGabaritCanvas({
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [showBackgroundImage, setShowBackgroundImage] = useState(true);
   const [imageOpacity, setImageOpacity] = useState(0.5);
+
+  // === Nouveaux états v6.79 ===
+  const [showShortcutsPanel, setShowShortcutsPanel] = useState(false);
+  const [lockedPoints, setLockedPoints] = useState<Set<string>>(new Set());
+  const [defaultStrokeColor, setDefaultStrokeColor] = useState("#000000");
+  const [showExportDialog, setShowExportDialog] = useState<"png" | "pdf" | null>(null);
 
   // === Multi-photos ===
   const [backgroundImages, setBackgroundImages] = useState<BackgroundImage[]>([]);
@@ -1282,6 +1299,36 @@ export function CADGabaritCanvas({
       revealBranch: revealBranchData,
       revealPosition,
     });
+
+    // Dessiner les indicateurs de points verrouillés
+    if (lockedPoints.size > 0 && canvasRef.current) {
+      const ctx = canvasRef.current.getContext("2d");
+      if (ctx) {
+        ctx.save();
+        lockedPoints.forEach((pointId) => {
+          const point = sketch.points.get(pointId);
+          if (point) {
+            const screenX = point.x * viewport.scale + viewport.offsetX;
+            const screenY = point.y * viewport.scale + viewport.offsetY;
+
+            // Dessiner un cadenas autour du point
+            ctx.strokeStyle = "#F97316"; // Orange
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(screenX, screenY, 8, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Petit verrou au centre
+            ctx.fillStyle = "#F97316";
+            ctx.beginPath();
+            ctx.arc(screenX, screenY - 2, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillRect(screenX - 4, screenY, 8, 5);
+          }
+        });
+        ctx.restore();
+      }
+    }
 
     // Dessiner le rectangle de sélection (après le render du sketch)
     if (selectionBox && canvasRef.current) {
@@ -6445,6 +6492,7 @@ export function CADGabaritCanvas({
           p2: corner2.id,
           layerId: currentSketch.activeLayerId,
           strokeWidth: defaultStrokeWidthRef.current,
+          strokeColor: defaultStrokeColorRef.current,
         },
         {
           id: generateId(),
@@ -6453,6 +6501,7 @@ export function CADGabaritCanvas({
           p2: corner3.id,
           layerId: currentSketch.activeLayerId,
           strokeWidth: defaultStrokeWidthRef.current,
+          strokeColor: defaultStrokeColorRef.current,
         },
         {
           id: generateId(),
@@ -6461,6 +6510,7 @@ export function CADGabaritCanvas({
           p2: corner4.id,
           layerId: currentSketch.activeLayerId,
           strokeWidth: defaultStrokeWidthRef.current,
+          strokeColor: defaultStrokeColorRef.current,
         },
         {
           id: generateId(),
@@ -6469,6 +6519,7 @@ export function CADGabaritCanvas({
           p2: corner1.id,
           layerId: currentSketch.activeLayerId,
           strokeWidth: defaultStrokeWidthRef.current,
+          strokeColor: defaultStrokeColorRef.current,
         },
       ];
 
@@ -7654,6 +7705,11 @@ export function CADGabaritCanvas({
           // Vérifier d'abord si on clique sur une poignée d'une entité sélectionnée
           const handleHit = findHandleAtPosition(worldPos.x, worldPos.y);
           if (handleHit) {
+            // Vérifier si le point est verrouillé
+            if (handleHit.type === "point" && lockedPoints.has(handleHit.id)) {
+              toast.error("Ce point est verrouillé");
+              return;
+            }
             // Vérifier si l'entité est sur un calque verrouillé
             const entityIdToCheck = handleHit.type === "point" ? handleHit.id : handleHit.id; // Pour les handles, l'id est celui de la géométrie
             if (isEntityOnLockedLayer(entityIdToCheck)) {
@@ -7801,6 +7857,7 @@ export function CADGabaritCanvas({
               p2: p2.id,
               layerId: currentSketch.activeLayerId,
               strokeWidth: defaultStrokeWidthRef.current,
+              strokeColor: defaultStrokeColorRef.current,
             };
             newSketch.geometries.set(line.id, line);
 
@@ -7846,6 +7903,7 @@ export function CADGabaritCanvas({
               radius,
               layerId: currentSketch.activeLayerId,
               strokeWidth: defaultStrokeWidthRef.current,
+              strokeColor: defaultStrokeColorRef.current,
             };
             newSketch.geometries.set(circle.id, circle);
 
@@ -7946,6 +8004,7 @@ export function CADGabaritCanvas({
               counterClockwise,
               layerId: currentSketch.activeLayerId,
               strokeWidth: defaultStrokeWidthRef.current,
+              strokeColor: defaultStrokeColorRef.current,
             };
             newSketch.geometries.set(arc.id, arc);
 
@@ -10509,6 +10568,12 @@ export function CADGabaritCanvas({
         e.preventDefault();
         duplicateSelectedEntities();
       }
+
+      // ? ou F1 - Afficher les raccourcis clavier
+      if (e.key === "?" || e.key === "F1") {
+        e.preventDefault();
+        setShowShortcutsPanel(true);
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -11183,6 +11248,194 @@ export function CADGabaritCanvas({
     toast.success("SVG exporté !");
   }, [sketch, templateId]);
 
+  // Export PNG
+  const handleExportPNG = useCallback(
+    (transparent: boolean = false) => {
+      if (!canvasRef.current) {
+        toast.error("Canvas non disponible");
+        return;
+      }
+
+      // Créer un canvas temporaire pour l'export
+      const tempCanvas = document.createElement("canvas");
+      const padding = 50;
+
+      // Calculer les bounds
+      let minX = Infinity,
+        minY = Infinity;
+      let maxX = -Infinity,
+        maxY = -Infinity;
+
+      sketch.points.forEach((pt) => {
+        minX = Math.min(minX, pt.x);
+        minY = Math.min(minY, pt.y);
+        maxX = Math.max(maxX, pt.x);
+        maxY = Math.max(maxY, pt.y);
+      });
+
+      if (!isFinite(minX)) {
+        toast.error("Aucune géométrie à exporter");
+        return;
+      }
+
+      const width = maxX - minX;
+      const height = maxY - minY;
+      const scale = 4; // 4 pixels par mm
+
+      tempCanvas.width = Math.max(200, width * scale + padding * 2);
+      tempCanvas.height = Math.max(200, height * scale + padding * 2);
+
+      const ctx = tempCanvas.getContext("2d");
+      if (!ctx) return;
+
+      // Fond blanc ou transparent
+      if (!transparent) {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+      }
+
+      // Dessiner les géométries
+      ctx.save();
+      ctx.translate(padding - minX * scale, padding - minY * scale);
+      ctx.scale(scale, scale);
+
+      // Lignes
+      sketch.geometries.forEach((geo) => {
+        ctx.strokeStyle = (geo as any).strokeColor || "#000000";
+        ctx.lineWidth = ((geo as any).strokeWidth || 1) / scale;
+        ctx.beginPath();
+
+        if (geo.type === "line") {
+          const line = geo as Line;
+          const p1 = sketch.points.get(line.p1);
+          const p2 = sketch.points.get(line.p2);
+          if (p1 && p2) {
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+          }
+        } else if (geo.type === "circle") {
+          const circle = geo as CircleType;
+          const center = sketch.points.get(circle.center);
+          if (center) {
+            ctx.arc(center.x, center.y, circle.radius, 0, Math.PI * 2);
+          }
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          const center = sketch.points.get(arc.center);
+          const startPt = sketch.points.get(arc.startPoint);
+          const endPt = sketch.points.get(arc.endPoint);
+          if (center && startPt && endPt) {
+            const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
+            const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
+            ctx.arc(center.x, center.y, arc.radius, startAngle, endAngle, arc.counterClockwise);
+          }
+        }
+        ctx.stroke();
+      });
+
+      ctx.restore();
+
+      // Télécharger
+      const dataUrl = tempCanvas.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = `gabarit-${templateId}${transparent ? "-transparent" : ""}.png`;
+      a.click();
+
+      toast.success(`PNG exporté${transparent ? " (fond transparent)" : ""} !`);
+      setShowExportDialog(null);
+    },
+    [sketch, templateId],
+  );
+
+  // Export PDF
+  const handleExportPDF = useCallback(async () => {
+    if (!canvasRef.current) {
+      toast.error("Canvas non disponible");
+      return;
+    }
+
+    // Calculer les bounds
+    let minX = Infinity,
+      minY = Infinity;
+    let maxX = -Infinity,
+      maxY = -Infinity;
+
+    sketch.points.forEach((pt) => {
+      minX = Math.min(minX, pt.x);
+      minY = Math.min(minY, pt.y);
+      maxX = Math.max(maxX, pt.x);
+      maxY = Math.max(maxY, pt.y);
+    });
+
+    if (!isFinite(minX)) {
+      toast.error("Aucune géométrie à exporter");
+      return;
+    }
+
+    const width = maxX - minX;
+    const height = maxY - minY;
+    const padding = 20;
+    const scale = 2.83465; // 72 DPI / 25.4 mm par inch
+
+    // Créer le SVG pour le PDF
+    const svgWidth = width * scale + padding * 2;
+    const svgHeight = height * scale + padding * 2;
+
+    let svgContent = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}">
+  <rect width="100%" height="100%" fill="white"/>
+  <g transform="translate(${padding - minX * scale}, ${padding - minY * scale}) scale(${scale})">`;
+
+    // Ajouter les géométries
+    sketch.geometries.forEach((geo) => {
+      const color = (geo as any).strokeColor || "#000000";
+      const strokeWidth = (geo as any).strokeWidth || 1;
+
+      if (geo.type === "line") {
+        const line = geo as Line;
+        const p1 = sketch.points.get(line.p1);
+        const p2 = sketch.points.get(line.p2);
+        if (p1 && p2) {
+          svgContent += `\n    <line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${color}" stroke-width="${strokeWidth / scale}" fill="none"/>`;
+        }
+      } else if (geo.type === "circle") {
+        const circle = geo as CircleType;
+        const center = sketch.points.get(circle.center);
+        if (center) {
+          svgContent += `\n    <circle cx="${center.x}" cy="${center.y}" r="${circle.radius}" stroke="${color}" stroke-width="${strokeWidth / scale}" fill="none"/>`;
+        }
+      } else if (geo.type === "arc") {
+        const arc = geo as Arc;
+        const center = sketch.points.get(arc.center);
+        const startPt = sketch.points.get(arc.startPoint);
+        const endPt = sketch.points.get(arc.endPoint);
+        if (center && startPt && endPt) {
+          const largeArc = 0;
+          const sweep = arc.counterClockwise ? 0 : 1;
+          svgContent += `\n    <path d="M ${startPt.x} ${startPt.y} A ${arc.radius} ${arc.radius} 0 ${largeArc} ${sweep} ${endPt.x} ${endPt.y}" stroke="${color}" stroke-width="${strokeWidth / scale}" fill="none"/>`;
+        }
+      }
+    });
+
+    svgContent += `\n  </g>\n</svg>`;
+
+    // Pour un vrai PDF, on utilise le SVG comme base
+    // On pourrait utiliser jsPDF mais pour simplifier, on exporte en SVG avec extension .pdf
+    // L'utilisateur peut l'ouvrir avec un viewer PDF ou le convertir
+
+    const blob = new Blob([svgContent], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `gabarit-${templateId}.svg`; // SVG car on n'a pas jsPDF
+    a.click();
+    URL.revokeObjectURL(url);
+
+    toast.success("Plan exporté en SVG (ouvrir avec un viewer pour convertir en PDF)");
+    setShowExportDialog(null);
+  }, [sketch, templateId]);
+
   // Reset view - origine en bas à gauche
   const resetView = useCallback(() => {
     const rulerSize = 32;
@@ -11417,6 +11670,27 @@ export function CADGabaritCanvas({
             <span className="text-xs">SVG</span>
           </Button>
 
+          {/* Export PNG */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9 px-2">
+                <FileImage className="h-4 w-4 mr-1" />
+                <span className="text-xs">PNG</span>
+                <ChevronDown className="h-3 w-3 ml-1" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onClick={() => handleExportPNG(false)}>
+                <FileImage className="h-4 w-4 mr-2" />
+                PNG (fond blanc)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportPNG(true)}>
+                <FileImage className="h-4 w-4 mr-2 opacity-50" />
+                PNG (fond transparent)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           {/* Export DXF */}
           <Button variant="default" size="sm" onClick={handleExportDXF} className="h-9 px-2">
             <Download className="h-4 w-4 mr-1" />
@@ -11429,6 +11703,20 @@ export function CADGabaritCanvas({
             <span className="text-xs">Templates</span>
           </Button>
         </div>
+
+        {/* Bouton raccourcis clavier */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="sm" onClick={() => setShowShortcutsPanel(true)} className="h-9 w-9 p-0">
+                <HelpCircle className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Raccourcis clavier</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
 
         <div className="flex-1" />
 
@@ -12059,11 +12347,48 @@ export function CADGabaritCanvas({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+
+          {/* Couleur du trait */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="relative">
+                  <input
+                    type="color"
+                    value={defaultStrokeColor}
+                    onChange={(e) => {
+                      const newColor = e.target.value;
+                      setDefaultStrokeColor(newColor);
+                      // Si des figures sont sélectionnées, les mettre à jour
+                      if (selectedEntities.size > 0) {
+                        const currentSketch = sketchRef.current;
+                        const newGeometries = new Map(currentSketch.geometries);
+                        selectedEntities.forEach((id) => {
+                          const geo = newGeometries.get(id);
+                          if (geo) {
+                            newGeometries.set(id, { ...geo, strokeColor: newColor });
+                          }
+                        });
+                        const newSketch = { ...currentSketch, geometries: newGeometries };
+                        setSketch(newSketch);
+                        addToHistory(newSketch, `Couleur → ${newColor}`);
+                      }
+                    }}
+                    className="w-9 h-9 p-1 rounded border border-gray-300 cursor-pointer"
+                    title="Couleur du trait"
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>
+                  Couleur du trait {selectedEntities.size > 0 ? "(modifie la sélection)" : "(pour nouvelles figures)"}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
 
         <Separator orientation="vertical" className="h-6" />
-
-        {/* Zoom */}
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
@@ -12479,7 +12804,7 @@ export function CADGabaritCanvas({
                 const worldPos = screenToWorld(screenX, screenY);
                 const tolerance = 10 / viewport.scale;
 
-                // D'abord chercher si on est sur un point (coin potentiel)
+                // D'abord chercher si on est sur un point (coin potentiel ou point simple)
                 for (const [pointId, point] of sketch.points) {
                   if (distance(worldPos, point) < tolerance) {
                     // Compter les lignes connectées à ce point
@@ -12503,6 +12828,15 @@ export function CADGabaritCanvas({
                       });
                       return;
                     }
+
+                    // Sinon c'est un point simple (on peut le verrouiller)
+                    setContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      entityId: pointId,
+                      entityType: "point",
+                    });
+                    return;
                   }
                 }
 
@@ -14190,6 +14524,174 @@ export function CADGabaritCanvas({
         </Dialog>
       )}
 
+      {/* Panneau des raccourcis clavier */}
+      {showShortcutsPanel && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <HelpCircle className="h-5 w-5 text-blue-500" />
+                Raccourcis clavier
+              </h2>
+              <Button variant="ghost" size="sm" onClick={() => setShowShortcutsPanel(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[60vh]">
+              <div className="grid grid-cols-2 gap-6">
+                {/* Outils */}
+                <div>
+                  <h3 className="font-semibold text-sm text-gray-700 mb-2 flex items-center gap-1">
+                    <MousePointer className="h-4 w-4" /> Outils
+                  </h3>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span>Sélection</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">V</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Déplacer (Pan)</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">H</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Ligne</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">L</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Cercle</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">C</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Arc 3 points</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">A</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Rectangle</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">R</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Courbe Bézier</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">B</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Symétrie</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">S</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Mesurer</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">M</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Transformation</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">T</kbd>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div>
+                  <h3 className="font-semibold text-sm text-gray-700 mb-2 flex items-center gap-1">
+                    <Settings className="h-4 w-4" /> Actions
+                  </h3>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span>Sauvegarder</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Ctrl+S</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Annuler</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Ctrl+Z</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Rétablir</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Ctrl+Y</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Copier</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Ctrl+C</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Coller</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Ctrl+V</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Supprimer</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Suppr / Backspace</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Tout sélectionner</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Ctrl+A</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Annuler action</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Echap</kbd>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Navigation */}
+                <div>
+                  <h3 className="font-semibold text-sm text-gray-700 mb-2 flex items-center gap-1">
+                    <ZoomIn className="h-4 w-4" /> Navigation
+                  </h3>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span>Zoom avant/arrière</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Molette</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Déplacer la vue</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Clic molette</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Reset vue</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">0</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Ajuster au contenu</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">F</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Plein écran</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Ctrl+F</kbd>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Modificateurs */}
+                <div>
+                  <h3 className="font-semibold text-sm text-gray-700 mb-2 flex items-center gap-1">
+                    <Grid3X3 className="h-4 w-4" /> Modificateurs
+                  </h3>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span>Désactiver le snap</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Ctrl (maintenu)</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Contrainte horizontale</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Shift (maintenu)</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Contrainte verticale</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Shift (maintenu)</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Multi-sélection</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Ctrl+Clic</kbd>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="p-3 border-t bg-gray-50 text-center text-xs text-gray-500">
+              Appuyez sur <kbd className="px-1.5 py-0.5 bg-gray-200 rounded">?</kbd> ou{" "}
+              <kbd className="px-1.5 py-0.5 bg-gray-200 rounded">F1</kbd> pour afficher ce panneau
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Panneau flottant ajustements d'image */}
       {showAdjustmentsDialog && selectedImageData && (
         <div
@@ -14924,6 +15426,38 @@ export function CADGabaritCanvas({
             >
               <Trash2 className="h-4 w-4" />
               Supprimer
+            </button>
+          )}
+          {contextMenu.entityType === "point" && (
+            <button
+              className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+              onClick={() => {
+                const pointId = contextMenu.entityId;
+                setLockedPoints((prev) => {
+                  const newSet = new Set(prev);
+                  if (newSet.has(pointId)) {
+                    newSet.delete(pointId);
+                    toast.success("Point déverrouillé");
+                  } else {
+                    newSet.add(pointId);
+                    toast.success("Point verrouillé");
+                  }
+                  return newSet;
+                });
+                setContextMenu(null);
+              }}
+            >
+              {lockedPoints.has(contextMenu.entityId) ? (
+                <>
+                  <Unlock className="h-4 w-4 text-green-500" />
+                  Déverrouiller le point
+                </>
+              ) : (
+                <>
+                  <Lock className="h-4 w-4 text-orange-500" />
+                  Verrouiller le point
+                </>
+              )}
             </button>
           )}
           {contextMenu.entityType === "corner" &&

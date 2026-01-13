@@ -273,7 +273,7 @@ export class CADRenderer {
     // 3. Geometries (filtrer par visibilité du calque)
     // OPTIMISATION: Batch des lignes par strokeWidth pour réduire les appels draw
     // Map: strokeWidth -> array of lines
-    const normalLinesByWidth: Map<number, { p1: Point; p2: Point }[]> = new Map();
+    const normalLinesByWidth: Map<string, { p1: Point; p2: Point; color?: string; width?: number }[]> = new Map();
     const selectedLinesByWidth: Map<number, { p1: Point; p2: Point }[]> = new Map();
 
     // Viewport bounds pour culling
@@ -297,7 +297,7 @@ export class CADRenderer {
       const isSelected = selectedEntities.has(id);
       const isHovered = hoveredEntity === id;
 
-      // Pour les lignes, utiliser le batching par strokeWidth
+      // Pour les lignes, utiliser le batching par strokeWidth ET couleur
       if (geo.type === "line") {
         const line = geo as Line;
         const p1 = sketch.points.get(line.p1);
@@ -313,6 +313,10 @@ export class CADRenderer {
             // Récupérer le strokeWidth individuel ou utiliser la valeur par défaut
             const geoStrokeWidth = (geo as any).strokeWidth;
             const strokeWidth = geoStrokeWidth !== undefined ? geoStrokeWidth : this.styles.lineWidth;
+            // Récupérer la couleur individuelle ou utiliser la valeur par défaut
+            const geoStrokeColor = (geo as any).strokeColor || this.styles.lineColor;
+            // Clé combinée pour le batching
+            const batchKey = `${strokeWidth}-${geoStrokeColor}`;
 
             if (isSelected || isHovered) {
               // Pour les lignes sélectionnées, utiliser le max entre strokeWidth et selectedWidth
@@ -322,10 +326,10 @@ export class CADRenderer {
               }
               selectedLinesByWidth.get(effectiveWidth)!.push({ p1, p2 });
             } else {
-              if (!normalLinesByWidth.has(strokeWidth)) {
-                normalLinesByWidth.set(strokeWidth, []);
+              if (!normalLinesByWidth.has(batchKey)) {
+                normalLinesByWidth.set(batchKey, []);
               }
-              normalLinesByWidth.get(strokeWidth)!.push({ p1, p2 });
+              normalLinesByWidth.get(batchKey)!.push({ p1, p2, color: geoStrokeColor, width: strokeWidth });
             }
           }
         }
@@ -335,17 +339,19 @@ export class CADRenderer {
       }
     });
 
-    // Dessiner les lignes normales en batch, groupées par strokeWidth
-    this.ctx.strokeStyle = this.styles.lineColor;
+    // Dessiner les lignes normales en batch, groupées par strokeWidth ET couleur
     this.ctx.lineCap = "round";
     this.ctx.lineJoin = "round";
-    normalLinesByWidth.forEach((lines, strokeWidth) => {
+    normalLinesByWidth.forEach((lines) => {
       if (lines.length > 0) {
-        this.ctx.lineWidth = strokeWidth / this.viewport.scale;
+        // Utiliser la couleur et largeur du premier élément (tous pareils dans ce batch)
+        const first = lines[0] as any;
+        this.ctx.strokeStyle = first.color || this.styles.lineColor;
+        this.ctx.lineWidth = (first.width || this.styles.lineWidth) / this.viewport.scale;
         this.ctx.beginPath();
-        for (const { p1, p2 } of lines) {
-          this.ctx.moveTo(p1.x, p1.y);
-          this.ctx.lineTo(p2.x, p2.y);
+        for (const line of lines) {
+          this.ctx.moveTo(line.p1.x, line.p1.y);
+          this.ctx.lineTo(line.p2.x, line.p2.y);
         }
         this.ctx.stroke();
       }
@@ -1295,11 +1301,14 @@ export class CADRenderer {
    * Dessine une géométrie
    */
   private drawGeometry(geo: Geometry, sketch: Sketch, isSelected: boolean, isHovered: boolean): void {
+    // Récupérer la couleur individuelle de la géométrie ou utiliser la valeur par défaut
+    const geoStrokeColor = (geo as any).strokeColor || this.styles.lineColor;
+
     this.ctx.strokeStyle = isSelected
       ? this.styles.selectedColor
       : isHovered
         ? this.styles.selectedColor
-        : this.styles.lineColor;
+        : geoStrokeColor;
 
     // Utiliser le strokeWidth individuel de la géométrie s'il est défini, sinon le style par défaut
     const geoStrokeWidth = (geo as any).strokeWidth;
@@ -1307,22 +1316,6 @@ export class CADRenderer {
 
     // Calculer la largeur finale
     const finalWidth = (isSelected ? Math.max(baseWidth, this.styles.selectedWidth) : baseWidth) / this.viewport.scale;
-
-    // DEBUG DÉTAILLÉ: Log pour CHAQUE géométrie avec strokeWidth défini
-    if (geoStrokeWidth !== undefined) {
-      console.log(
-        `[RENDERER] ✓ Geo ${geo.id.slice(0, 8)} type=${geo.type} strokeWidth=${geoStrokeWidth} → baseWidth=${baseWidth} → finalLineWidth=${finalWidth.toFixed(2)} (scale=${this.viewport.scale.toFixed(2)})`,
-      );
-    }
-
-    // DEBUG: Log échantillon pour géométries sans strokeWidth (1x par seconde)
-    const now = Date.now();
-    if (geoStrokeWidth === undefined && (!this._lastLogTime || now - this._lastLogTime > 1000)) {
-      console.log(
-        `[RENDERER] ✗ Geo ${geo.id.slice(0, 8)} type=${geo.type} NO strokeWidth → using styles.lineWidth=${this.styles.lineWidth} → finalLineWidth=${finalWidth.toFixed(2)}`,
-      );
-      this._lastLogTime = now;
-    }
 
     this.ctx.lineWidth = finalWidth;
     this.ctx.lineCap = "round";
