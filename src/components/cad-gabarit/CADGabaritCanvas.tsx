@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.86 - Fix lignes construction intersections + perf pointillés
+// VERSION: 6.87 - Remplissages et hachures pour formes fermées
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -94,6 +94,7 @@ import {
   Group,
   Ungroup,
   Type,
+  PaintBucket,
 } from "lucide-react";
 
 import {
@@ -115,6 +116,8 @@ import {
   ToolType,
   Layer,
   GeometryGroup,
+  ShapeFill,
+  HatchPattern,
   DEFAULT_LAYERS,
   CalibrationData,
   CalibrationPoint,
@@ -180,6 +183,7 @@ function createEmptySketch(scaleFactor: number = 1): Sketch {
     dimensions: new Map(),
     layers,
     groups: new Map(), // Groupes de géométries
+    shapeFills: new Map(), // Remplissages des formes fermées
     activeLayerId: "trace",
     scaleFactor,
     dof: 0,
@@ -261,6 +265,19 @@ export function CADGabaritCanvas({
   useEffect(() => {
     isConstructionModeRef.current = isConstructionMode;
   }, [isConstructionMode]);
+
+  // === États v6.87 - Remplissages/Hachures ===
+  const [fillDialogOpen, setFillDialogOpen] = useState(false);
+  const [fillDialogTarget, setFillDialogTarget] = useState<{
+    geoIds: string[];
+    path: Path2D;
+  } | null>(null);
+  const [fillColor, setFillColor] = useState("#3B82F6");
+  const [fillOpacity, setFillOpacity] = useState(0.3);
+  const [fillType, setFillType] = useState<"solid" | "hatch">("solid");
+  const [hatchPattern, setHatchPattern] = useState<HatchPattern>("lines");
+  const [hatchAngle, setHatchAngle] = useState(45);
+  const [hatchSpacing, setHatchSpacing] = useState(5);
 
   const [tempGeometry, setTempGeometry] = useState<any>(null);
   const [tempPoints, setTempPoints] = useState<Point[]>([]);
@@ -782,6 +799,8 @@ export function CADGabaritCanvas({
     y: number;
     entityId: string;
     entityType: string;
+    shapeGeoIds?: string[]; // Pour les formes fermées (remplissage)
+    shapePath?: Path2D; // Path de la forme pour le fill
   } | null>(null);
 
   // Modale pour modifier le rayon d'un arc existant
@@ -3446,6 +3465,160 @@ export function CADGabaritCanvas({
       return null;
     },
     [sketch, viewport.scale],
+  );
+
+  // Trouver une forme fermée à une position donnée (pour remplissage)
+  const findClosedShapeAtPosition = useCallback(
+    (worldX: number, worldY: number): { geoIds: string[]; path: Path2D } | null => {
+      // Collecter les formes fermées (cercles et polygones)
+      const closedShapes: Array<{
+        geoIds: string[];
+        path: Path2D;
+        area: number;
+      }> = [];
+
+      // 1. Cercles
+      sketch.geometries.forEach((geo, geoId) => {
+        if (geo.type !== "circle") return;
+        const circle = geo as CircleType;
+        const center = sketch.points.get(circle.center);
+        if (!center) return;
+
+        const path = new Path2D();
+        path.arc(center.x, center.y, circle.radius, 0, Math.PI * 2);
+        path.closePath();
+
+        closedShapes.push({
+          geoIds: [geoId],
+          path,
+          area: Math.PI * circle.radius * circle.radius,
+        });
+      });
+
+      // 2. Polygones (formes fermées par des lignes/arcs)
+      const pointToGeos = new Map<string, Array<{ geoId: string; otherPointId: string }>>();
+
+      sketch.geometries.forEach((geo, geoId) => {
+        let p1Id: string | null = null;
+        let p2Id: string | null = null;
+
+        if (geo.type === "line") {
+          const line = geo as Line;
+          p1Id = line.p1;
+          p2Id = line.p2;
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          p1Id = arc.startPoint;
+          p2Id = arc.endPoint;
+        }
+
+        if (p1Id && p2Id) {
+          if (!pointToGeos.has(p1Id)) pointToGeos.set(p1Id, []);
+          if (!pointToGeos.has(p2Id)) pointToGeos.set(p2Id, []);
+          pointToGeos.get(p1Id)!.push({ geoId, otherPointId: p2Id });
+          pointToGeos.get(p2Id)!.push({ geoId, otherPointId: p1Id });
+        }
+      });
+
+      // DFS pour trouver les cycles (polygones fermés)
+      const foundCycles = new Set<string>();
+
+      const findCycle = (
+        startPoint: string,
+        currentPoint: string,
+        visited: Set<string>,
+        pathGeoIds: string[],
+        depth: number,
+      ): string[] | null => {
+        if (depth > 20) return null; // Limite de profondeur
+
+        const connections = pointToGeos.get(currentPoint);
+        if (!connections) return null;
+
+        for (const { geoId, otherPointId } of connections) {
+          if (pathGeoIds.includes(geoId)) continue;
+
+          if (otherPointId === startPoint && pathGeoIds.length >= 3) {
+            return [...pathGeoIds, geoId];
+          }
+
+          if (!visited.has(otherPointId)) {
+            const newVisited = new Set(visited);
+            newVisited.add(otherPointId);
+            const result = findCycle(startPoint, otherPointId, newVisited, [...pathGeoIds, geoId], depth + 1);
+            if (result) return result;
+          }
+        }
+        return null;
+      };
+
+      // Trouver tous les cycles
+      for (const startPoint of pointToGeos.keys()) {
+        const cycle = findCycle(startPoint, startPoint, new Set([startPoint]), [], 0);
+        if (cycle) {
+          const cycleKey = [...cycle].sort().join("-");
+          if (!foundCycles.has(cycleKey)) {
+            foundCycles.add(cycleKey);
+
+            // Construire le path pour ce polygone
+            const path = new Path2D();
+            const orderedPoints: { x: number; y: number }[] = [];
+
+            let currentPointId = startPoint;
+            for (const geoId of cycle) {
+              const geo = sketch.geometries.get(geoId);
+              const pt = sketch.points.get(currentPointId);
+              if (pt) orderedPoints.push({ x: pt.x, y: pt.y });
+
+              if (geo?.type === "line") {
+                const line = geo as Line;
+                currentPointId = line.p1 === currentPointId ? line.p2 : line.p1;
+              } else if (geo?.type === "arc") {
+                const arc = geo as Arc;
+                currentPointId = arc.startPoint === currentPointId ? arc.endPoint : arc.startPoint;
+              }
+            }
+
+            if (orderedPoints.length >= 3) {
+              path.moveTo(orderedPoints[0].x, orderedPoints[0].y);
+              for (let i = 1; i < orderedPoints.length; i++) {
+                path.lineTo(orderedPoints[i].x, orderedPoints[i].y);
+              }
+              path.closePath();
+
+              // Calculer l'aire
+              let area = 0;
+              for (let i = 0; i < orderedPoints.length; i++) {
+                const j = (i + 1) % orderedPoints.length;
+                area += orderedPoints[i].x * orderedPoints[j].y;
+                area -= orderedPoints[j].x * orderedPoints[i].y;
+              }
+              area = Math.abs(area) / 2;
+
+              closedShapes.push({ geoIds: cycle, path, area });
+            }
+          }
+        }
+      }
+
+      // Trier par aire croissante (petites formes d'abord pour priorité)
+      closedShapes.sort((a, b) => a.area - b.area);
+
+      // Créer un canvas temporaire pour tester isPointInPath
+      const tempCanvas = document.createElement("canvas");
+      const tempCtx = tempCanvas.getContext("2d");
+      if (!tempCtx) return null;
+
+      // Trouver la forme la plus petite qui contient le point
+      for (const shape of closedShapes) {
+        if (tempCtx.isPointInPath(shape.path, worldX, worldY)) {
+          return { geoIds: shape.geoIds, path: shape.path };
+        }
+      }
+
+      return null;
+    },
+    [sketch],
   );
 
   // Vérifier si une entité (géométrie ou point) est sur un calque verrouillé
@@ -11934,6 +12107,125 @@ export function CADGabaritCanvas({
     toast.success("Points de calibration supprimés");
   }, [calibrationData.applied]);
 
+  // === REMPLISSAGES / HACHURES ===
+
+  // Générer une clé unique pour une forme basée sur ses geoIds triés
+  const getShapeFillKey = useCallback((geoIds: string[]): string => {
+    return [...geoIds].sort().join("-");
+  }, []);
+
+  // Ajouter ou mettre à jour un remplissage
+  const addOrUpdateShapeFill = useCallback(
+    (
+      geoIds: string[],
+      options: {
+        fillType: "solid" | "hatch";
+        color: string;
+        opacity: number;
+        hatchPattern?: HatchPattern;
+        hatchAngle?: number;
+        hatchSpacing?: number;
+      },
+    ) => {
+      const key = getShapeFillKey(geoIds);
+      const existingFill = sketch.shapeFills.get(key);
+
+      const fill: ShapeFill = {
+        id: existingFill?.id || generateId(),
+        geoIds: [...geoIds].sort(),
+        fillType: options.fillType,
+        color: options.color,
+        opacity: options.opacity,
+        hatchPattern: options.hatchPattern,
+        hatchAngle: options.hatchAngle,
+        hatchSpacing: options.hatchSpacing,
+      };
+
+      const newSketch = { ...sketch };
+      newSketch.shapeFills = new Map(sketch.shapeFills);
+      newSketch.shapeFills.set(key, fill);
+
+      setSketch(newSketch);
+      addToHistory(newSketch, existingFill ? "Modifier remplissage" : "Ajouter remplissage");
+      toast.success(existingFill ? "Remplissage modifié" : "Remplissage ajouté");
+    },
+    [sketch, getShapeFillKey, addToHistory],
+  );
+
+  // Supprimer un remplissage
+  const removeShapeFill = useCallback(
+    (geoIds: string[]) => {
+      const key = getShapeFillKey(geoIds);
+      if (!sketch.shapeFills.has(key)) return;
+
+      const newSketch = { ...sketch };
+      newSketch.shapeFills = new Map(sketch.shapeFills);
+      newSketch.shapeFills.delete(key);
+
+      setSketch(newSketch);
+      addToHistory(newSketch, "Supprimer remplissage");
+      toast.success("Remplissage supprimé");
+    },
+    [sketch, getShapeFillKey, addToHistory],
+  );
+
+  // Ouvrir le dialogue de remplissage pour une forme
+  const openFillDialog = useCallback(
+    (geoIds: string[], path: Path2D) => {
+      // Vérifier si un remplissage existe déjà
+      const key = getShapeFillKey(geoIds);
+      const existingFill = sketch.shapeFills.get(key);
+
+      if (existingFill) {
+        // Charger les paramètres existants
+        setFillColor(existingFill.color);
+        setFillOpacity(existingFill.opacity);
+        setFillType(existingFill.fillType);
+        setHatchPattern(existingFill.hatchPattern || "lines");
+        setHatchAngle(existingFill.hatchAngle || 45);
+        setHatchSpacing(existingFill.hatchSpacing || 5);
+      } else {
+        // Valeurs par défaut
+        setFillColor("#3B82F6");
+        setFillOpacity(0.3);
+        setFillType("solid");
+        setHatchPattern("lines");
+        setHatchAngle(45);
+        setHatchSpacing(5);
+      }
+
+      setFillDialogTarget({ geoIds, path });
+      setFillDialogOpen(true);
+    },
+    [sketch.shapeFills, getShapeFillKey],
+  );
+
+  // Confirmer le remplissage depuis le dialogue
+  const confirmFillDialog = useCallback(() => {
+    if (!fillDialogTarget) return;
+
+    addOrUpdateShapeFill(fillDialogTarget.geoIds, {
+      fillType,
+      color: fillColor,
+      opacity: fillOpacity,
+      hatchPattern: fillType === "hatch" ? hatchPattern : undefined,
+      hatchAngle: fillType === "hatch" ? hatchAngle : undefined,
+      hatchSpacing: fillType === "hatch" ? hatchSpacing : undefined,
+    });
+
+    setFillDialogOpen(false);
+    setFillDialogTarget(null);
+  }, [
+    fillDialogTarget,
+    fillType,
+    fillColor,
+    fillOpacity,
+    hatchPattern,
+    hatchAngle,
+    hatchSpacing,
+    addOrUpdateShapeFill,
+  ]);
+
   // Ajouter contrainte
   const addConstraint = useCallback(
     async (type: Constraint["type"], entities: string[], value?: number) => {
@@ -14372,7 +14664,20 @@ export function CADGabaritCanvas({
                     });
                   }
                 } else {
-                  setContextMenu(null);
+                  // Chercher une forme fermée (pour remplissage)
+                  const closedShape = findClosedShapeAtPosition(worldPos.x, worldPos.y);
+                  if (closedShape) {
+                    setContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      entityId: closedShape.geoIds[0], // Premier geoId comme référence
+                      entityType: "closedShape",
+                      shapeGeoIds: closedShape.geoIds,
+                      shapePath: closedShape.path,
+                    });
+                  } else {
+                    setContextMenu(null);
+                  }
                 }
               }}
             />
@@ -15970,6 +16275,193 @@ export function CADGabaritCanvas({
         </Dialog>
       )}
 
+      {/* Dialogue remplissage / hachures */}
+      {fillDialogOpen && fillDialogTarget && (
+        <Dialog
+          open={fillDialogOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              setFillDialogOpen(false);
+              setFillDialogTarget(null);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-[360px]">
+            <DialogHeader>
+              <DialogTitle>Remplissage de forme</DialogTitle>
+              <DialogDescription>Choisissez le type de remplissage et les paramètres</DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+              {/* Type de remplissage */}
+              <div className="space-y-2">
+                <Label>Type de remplissage</Label>
+                <div className="flex gap-2">
+                  <Button
+                    variant={fillType === "solid" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setFillType("solid")}
+                    className="flex-1"
+                  >
+                    Solide
+                  </Button>
+                  <Button
+                    variant={fillType === "hatch" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setFillType("hatch")}
+                    className="flex-1"
+                  >
+                    Hachures
+                  </Button>
+                </div>
+              </div>
+
+              {/* Couleur */}
+              <div className="space-y-2">
+                <Label htmlFor="fill-color">Couleur</Label>
+                <div className="flex gap-2 items-center">
+                  <input
+                    id="fill-color"
+                    type="color"
+                    value={fillColor}
+                    onChange={(e) => setFillColor(e.target.value)}
+                    className="w-10 h-10 rounded border cursor-pointer"
+                  />
+                  <Input
+                    value={fillColor}
+                    onChange={(e) => setFillColor(e.target.value)}
+                    className="flex-1"
+                    onKeyDown={(e) => e.stopPropagation()}
+                  />
+                </div>
+                {/* Couleurs prédéfinies */}
+                <div className="flex gap-1 flex-wrap">
+                  {["#3B82F6", "#EF4444", "#22C55E", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4", "#6B7280"].map((c) => (
+                    <button
+                      key={c}
+                      className={`w-6 h-6 rounded border-2 ${fillColor === c ? "border-gray-800" : "border-transparent"}`}
+                      style={{ backgroundColor: c }}
+                      onClick={() => setFillColor(c)}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Opacité */}
+              <div className="space-y-2">
+                <Label>Opacité: {Math.round(fillOpacity * 100)}%</Label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={fillOpacity * 100}
+                  onChange={(e) => setFillOpacity(parseInt(e.target.value) / 100)}
+                  className="w-full"
+                />
+              </div>
+
+              {/* Options hachures */}
+              {fillType === "hatch" && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Motif</Label>
+                    <div className="flex gap-2">
+                      <Button
+                        variant={hatchPattern === "lines" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setHatchPattern("lines")}
+                        className="flex-1"
+                      >
+                        Lignes
+                      </Button>
+                      <Button
+                        variant={hatchPattern === "cross" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setHatchPattern("cross")}
+                        className="flex-1"
+                      >
+                        Croisé
+                      </Button>
+                      <Button
+                        variant={hatchPattern === "dots" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setHatchPattern("dots")}
+                        className="flex-1"
+                      >
+                        Points
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="hatch-angle">Angle (°)</Label>
+                      <Input
+                        id="hatch-angle"
+                        type="number"
+                        value={hatchAngle}
+                        onChange={(e) => setHatchAngle(parseInt(e.target.value) || 0)}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="hatch-spacing">Espacement (mm)</Label>
+                      <Input
+                        id="hatch-spacing"
+                        type="number"
+                        value={hatchSpacing}
+                        onChange={(e) => setHatchSpacing(parseFloat(e.target.value) || 5)}
+                        min="1"
+                        step="0.5"
+                        onKeyDown={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Aperçu */}
+              <div className="space-y-2">
+                <Label>Aperçu</Label>
+                <div
+                  className="w-full h-16 rounded border"
+                  style={{
+                    backgroundColor: fillType === "solid" ? fillColor : "transparent",
+                    opacity: fillOpacity,
+                    backgroundImage:
+                      fillType === "hatch" && hatchPattern === "lines"
+                        ? `repeating-linear-gradient(${hatchAngle}deg, ${fillColor} 0px, ${fillColor} 1px, transparent 1px, transparent ${hatchSpacing}px)`
+                        : fillType === "hatch" && hatchPattern === "cross"
+                          ? `repeating-linear-gradient(${hatchAngle}deg, ${fillColor} 0px, ${fillColor} 1px, transparent 1px, transparent ${hatchSpacing}px), repeating-linear-gradient(${hatchAngle + 90}deg, ${fillColor} 0px, ${fillColor} 1px, transparent 1px, transparent ${hatchSpacing}px)`
+                          : fillType === "hatch" && hatchPattern === "dots"
+                            ? `radial-gradient(circle, ${fillColor} 1px, transparent 1px)`
+                            : "none",
+                    backgroundSize:
+                      fillType === "hatch" && hatchPattern === "dots"
+                        ? `${hatchSpacing}px ${hatchSpacing}px`
+                        : undefined,
+                  }}
+                />
+              </div>
+            </div>
+            <DialogFooter className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setFillDialogOpen(false);
+                  setFillDialogTarget(null);
+                }}
+              >
+                Annuler
+              </Button>
+              <Button onClick={confirmFillDialog}>
+                <Check className="h-4 w-4 mr-2" />
+                Appliquer
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Dialogue distance entre marqueurs de photos */}
       {linkDistanceDialog && (
         <Dialog open={linkDistanceDialog.open} onOpenChange={() => setLinkDistanceDialog(null)}>
@@ -17348,6 +17840,45 @@ export function CADGabaritCanvas({
                 </>
               );
             })()}
+          {/* Menu pour formes fermées (remplissage/hachures) */}
+          {contextMenu.entityType === "closedShape" && contextMenu.shapeGeoIds && contextMenu.shapePath && (
+            <>
+              <button
+                className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                onClick={() => {
+                  if (contextMenu.shapeGeoIds && contextMenu.shapePath) {
+                    openFillDialog(contextMenu.shapeGeoIds, contextMenu.shapePath);
+                  }
+                  setContextMenu(null);
+                }}
+              >
+                <PaintBucket className="h-4 w-4 text-blue-500" />
+                Remplir / Hachurer
+              </button>
+              {/* Option pour supprimer le remplissage si existant */}
+              {(() => {
+                const key = [...contextMenu.shapeGeoIds].sort().join("-");
+                const existingFill = sketch.shapeFills.get(key);
+                if (existingFill) {
+                  return (
+                    <button
+                      className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                      onClick={() => {
+                        if (contextMenu.shapeGeoIds) {
+                          removeShapeFill(contextMenu.shapeGeoIds);
+                        }
+                        setContextMenu(null);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                      Supprimer le remplissage
+                    </button>
+                  );
+                }
+                return null;
+              })()}
+            </>
+          )}
         </div>
       )}
       {/* Fermer le menu contextuel en cliquant ailleurs */}
@@ -18460,6 +18991,7 @@ function serializeSketch(sketch: Sketch): any {
     scaleFactor: sketch.scaleFactor,
     layers: sketch.layers ? Object.fromEntries(sketch.layers) : undefined,
     groups: sketch.groups ? Object.fromEntries(sketch.groups) : undefined,
+    shapeFills: sketch.shapeFills ? Object.fromEntries(sketch.shapeFills) : undefined,
     activeLayerId: sketch.activeLayerId,
     dof: sketch.dof,
     status: sketch.status,
@@ -18477,6 +19009,7 @@ function deserializeSketch(data: any): Sketch {
     scaleFactor: data.scaleFactor || 1,
     layers: data.layers ? new Map(Object.entries(data.layers)) : new Map(),
     groups: data.groups ? new Map(Object.entries(data.groups)) : new Map(),
+    shapeFills: data.shapeFills ? new Map(Object.entries(data.shapeFills)) : new Map(),
     activeLayerId: data.activeLayerId || "trace",
     dof: data.dof ?? 0,
     status: data.status || "under-constrained",

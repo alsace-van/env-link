@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.67 - PERF: Cache du dash pattern pour lignes construction
+// VERSION: 3.68 - Rendu des remplissages et hachures (ShapeFill)
 // ============================================
 
 import {
@@ -26,6 +26,8 @@ import {
   CalibrationPair,
   BackgroundImage,
   ImageMarkerLink,
+  ShapeFill,
+  HatchPattern,
   distance,
   midpoint,
   angle,
@@ -3635,6 +3637,42 @@ export class CADRenderer {
       this.ctx.restore();
     }
 
+    // === DESSINER LES REMPLISSAGES PERSONNALISÉS (ShapeFills) ===
+    // Les formes avec un fill personnalisé sont rendues avec leurs paramètres
+    if (sketch.shapeFills && sketch.shapeFills.size > 0) {
+      sketch.shapeFills.forEach((fill) => {
+        // Trouver la forme correspondante
+        const fillKey = [...fill.geoIds].sort().join("-");
+        const matchingShape = closedShapes.find((shape) => {
+          const shapeKey = [...shape.geoIds].sort().join("-");
+          return shapeKey === fillKey;
+        });
+
+        if (matchingShape) {
+          this.ctx.save();
+
+          if (fill.fillType === "solid") {
+            // Remplissage solide
+            this.ctx.fillStyle = fill.color;
+            this.ctx.globalAlpha = fill.opacity;
+            this.ctx.fill(matchingShape.path);
+          } else if (fill.fillType === "hatch") {
+            // Hachures - dessiner dans un pattern
+            this.ctx.globalAlpha = fill.opacity;
+            this.drawHatchPattern(
+              matchingShape.path,
+              fill.color,
+              fill.hatchPattern || "lines",
+              fill.hatchAngle || 45,
+              (fill.hatchSpacing || 5) * (sketch.scaleFactor || 1),
+            );
+          }
+
+          this.ctx.restore();
+        }
+      });
+    }
+
     // Créer un canvas offscreen pour éviter la superposition
     const offscreenCanvas = document.createElement("canvas");
     offscreenCanvas.width = this.canvas.width;
@@ -3717,6 +3755,108 @@ export class CADRenderer {
       this.ctx.stroke(hoveredShape.path);
       this.ctx.restore();
     }
+  }
+
+  /**
+   * Dessine un motif de hachures dans une forme
+   */
+  private drawHatchPattern(
+    path: Path2D,
+    color: string,
+    pattern: HatchPattern,
+    angleDeg: number,
+    spacing: number,
+  ): void {
+    // Obtenir les bounds de la forme (approximatif via le viewport)
+    const bounds = {
+      minX: -5000,
+      maxX: 5000,
+      minY: -5000,
+      maxY: 5000,
+    };
+
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+
+    this.ctx.save();
+    this.ctx.clip(path);
+    this.ctx.strokeStyle = color;
+    this.ctx.lineWidth = 1 / this.viewport.scale;
+
+    // Calculer la distance maximale pour couvrir toute la zone
+    const diagonal = Math.sqrt((bounds.maxX - bounds.minX) ** 2 + (bounds.maxY - bounds.minY) ** 2);
+    const numLines = Math.ceil(diagonal / spacing) * 2;
+
+    // Centre de rotation
+    const centerX = (bounds.minX + bounds.maxX) / 2;
+    const centerY = (bounds.minY + bounds.maxY) / 2;
+
+    if (pattern === "lines" || pattern === "cross") {
+      // Dessiner les lignes parallèles
+      this.ctx.beginPath();
+      for (let i = -numLines; i <= numLines; i++) {
+        const offset = i * spacing;
+        // Point sur la ligne perpendiculaire (direction de l'offset)
+        const perpX = -sin * offset;
+        const perpY = cos * offset;
+
+        // Points de la ligne (très longue pour couvrir toute la zone)
+        const x1 = centerX + perpX - cos * diagonal;
+        const y1 = centerY + perpY - sin * diagonal;
+        const x2 = centerX + perpX + cos * diagonal;
+        const y2 = centerY + perpY + sin * diagonal;
+
+        this.ctx.moveTo(x1, y1);
+        this.ctx.lineTo(x2, y2);
+      }
+      this.ctx.stroke();
+
+      // Pour le motif croisé, dessiner une seconde série perpendiculaire
+      if (pattern === "cross") {
+        const angle2Rad = angleRad + Math.PI / 2;
+        const cos2 = Math.cos(angle2Rad);
+        const sin2 = Math.sin(angle2Rad);
+
+        this.ctx.beginPath();
+        for (let i = -numLines; i <= numLines; i++) {
+          const offset = i * spacing;
+          const perpX = -sin2 * offset;
+          const perpY = cos2 * offset;
+
+          const x1 = centerX + perpX - cos2 * diagonal;
+          const y1 = centerY + perpY - sin2 * diagonal;
+          const x2 = centerX + perpX + cos2 * diagonal;
+          const y2 = centerY + perpY + sin2 * diagonal;
+
+          this.ctx.moveTo(x1, y1);
+          this.ctx.lineTo(x2, y2);
+        }
+        this.ctx.stroke();
+      }
+    } else if (pattern === "dots") {
+      // Dessiner des points
+      const dotRadius = spacing / 6;
+      this.ctx.fillStyle = color;
+
+      for (let i = -numLines; i <= numLines; i++) {
+        for (let j = -numLines; j <= numLines; j++) {
+          // Position en coordonnées grille
+          const gridX = i * spacing;
+          const gridY = j * spacing;
+
+          // Rotation
+          const x = centerX + gridX * cos - gridY * sin;
+          const y = centerY + gridX * sin + gridY * cos;
+
+          this.ctx.beginPath();
+          this.ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
+          this.ctx.fill();
+        }
+      }
+    }
+
+    this.ctx.restore();
   }
 
   /**

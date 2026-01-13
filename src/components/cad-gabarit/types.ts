@@ -1,7 +1,7 @@
 // ============================================
 // TYPES: CAD Gabarit Types
 // Types pour le système CAO
-// VERSION: 3.1 - Ajout strokeWidth optionnel sur toutes les géométries
+// VERSION: 3.2 - Ajout ShapeFill et HatchPattern pour remplissages
 // ============================================
 
 // === GÉOMÉTRIE DE BASE ===
@@ -271,6 +271,21 @@ export const DEFAULT_LAYERS: Layer[] = [
   { id: "trace", name: "Tracé", color: "#EF4444", visible: true, locked: false, order: 1 },
 ];
 
+// === REMPLISSAGES DE FORMES FERMÉES ===
+
+export type HatchPattern = "lines" | "cross" | "dots";
+
+export interface ShapeFill {
+  id: string;
+  geoIds: string[]; // IDs des géométries formant la forme (triés pour identification unique)
+  fillType: "solid" | "hatch"; // Type de remplissage
+  color: string; // Couleur du remplissage
+  opacity: number; // Opacité (0-1)
+  hatchPattern?: HatchPattern; // Motif de hachures (si type = hatch)
+  hatchAngle?: number; // Angle des hachures en degrés (défaut 45)
+  hatchSpacing?: number; // Espacement des hachures en mm (défaut 5)
+}
+
 // === SKETCH (Document) ===
 
 export interface Sketch {
@@ -282,6 +297,7 @@ export interface Sketch {
   dimensions: Map<string, Dimension>;
   layers: Map<string, Layer>;
   groups: Map<string, GeometryGroup>; // Groupes de géométries
+  shapeFills: Map<string, ShapeFill>; // Remplissages des formes fermées
   activeLayerId: string; // Calque actif pour les nouvelles entités
   scaleFactor: number; // px to mm
   dof: number; // Degrees of Freedom
