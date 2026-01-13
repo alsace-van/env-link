@@ -3342,6 +3342,16 @@ export function CADGabaritCanvas({
               if (onArc) return id;
             }
           }
+        } else if (geo.type === "text") {
+          // Texte : vérifier si on clique près du point d'ancrage
+          const text = geo as TextAnnotation;
+          const position = sketch.points.get(text.position);
+          if (position) {
+            // Zone de clic approximative basée sur la taille du texte
+            const textTolerance = Math.max(tolerance, text.fontSize * 2);
+            const d = distance({ x: worldX, y: worldY }, position);
+            if (d < textTolerance) return id;
+          }
         }
       }
 
@@ -3372,6 +3382,12 @@ export function CADGabaritCanvas({
             } else if (geo.type === "arc") {
               const arc = geo as Arc;
               if (arc.center === id || arc.startPoint === id || arc.endPoint === id) {
+                isUsedByGeometry = true;
+                break;
+              }
+            } else if (geo.type === "text") {
+              const text = geo as TextAnnotation;
+              if (text.position === id) {
                 isUsedByGeometry = true;
                 break;
               }
@@ -3503,6 +3519,13 @@ export function CADGabaritCanvas({
             }
             if (cp2 && distance({ x: worldX, y: worldY }, cp2) < tolerance) {
               return { type: "point", id: bezier.cp2, handleType: "control" };
+            }
+          } else if (geo.type === "text") {
+            // Texte : poignée sur le point d'ancrage pour déplacer
+            const text = geo as TextAnnotation;
+            const position = sketch.points.get(text.position);
+            if (position && distance({ x: worldX, y: worldY }, position) < tolerance) {
+              return { type: "point", id: text.position };
             }
           }
         }
