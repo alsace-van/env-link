@@ -864,7 +864,23 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
   // Trouver une cotation à une position écran
   const findDimensionAtPosition = useCallback(
     (screenX: number, screenY: number): string | null => {
-      const tolerance = 15;
+      const tolerance = 20;
+
+      // Fonction pour convertir coordonnées sketch en écran (comme sketchToPage dans draw)
+      const sketchToScreen = (x: number, y: number) => {
+        if (!pageTransform) return worldToScreen(x, y);
+
+        const { drawCenterX, drawCenterY, sketchCenterX, sketchCenterY, mmToPixels, scaleFactor, planScale } =
+          pageTransform;
+        const relXmm = (x - sketchCenterX) / scaleFactor;
+        const relYmm = (y - sketchCenterY) / scaleFactor;
+        const onPaperXmm = relXmm / planScale;
+        const onPaperYmm = relYmm / planScale;
+        return {
+          x: drawCenterX + onPaperXmm * mmToPixels,
+          y: drawCenterY + onPaperYmm * mmToPixels,
+        };
+      };
 
       for (const dim of dimensions) {
         if (dim.type === "length") {
@@ -885,8 +901,8 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
           }
 
           if (p1 && p2) {
-            const t1 = worldToScreen(p1.x, p1.y);
-            const t2 = worldToScreen(p2.x, p2.y);
+            const t1 = sketchToScreen(p1.x, p1.y);
+            const t2 = sketchToScreen(p2.x, p2.y);
             const midX = (t1.x + t2.x) / 2;
             const midY = (t1.y + t2.y) / 2;
 
@@ -897,16 +913,74 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
             if (len > 0) {
               const perpX = -dy / len;
               const perpY = dx / len;
-              const textX = midX + perpX * dim.offset * viewport.scale;
-              const textY = midY + perpY * dim.offset * viewport.scale;
+              const textX = midX + perpX * dim.offset;
+              const textY = midY + perpY * dim.offset;
 
               if (Math.abs(screenX - textX) < tolerance * 2 && Math.abs(screenY - textY) < tolerance) {
                 return dim.id;
               }
             }
           }
+        } else if (dim.type === "angle" && dim.line1Id && dim.line2Id && dim.vertexId) {
+          // Cotation d'angle
+          const line1 = sketch.geometries.get(dim.line1Id) as Line;
+          const line2 = sketch.geometries.get(dim.line2Id) as Line;
+          const vertex = sketch.points.get(dim.vertexId);
+          if (!line1 || !line2 || !vertex) continue;
+
+          // Trouver les autres extrémités
+          const otherP1Id = line1.p1 === dim.vertexId ? line1.p2 : line1.p1;
+          const otherP2Id = line2.p1 === dim.vertexId ? line2.p2 : line2.p1;
+          const otherP1 = sketch.points.get(otherP1Id);
+          const otherP2 = sketch.points.get(otherP2Id);
+          if (!otherP1 || !otherP2) continue;
+
+          // Convertir en coordonnées écran
+          const tv = sketchToScreen(vertex.x, vertex.y);
+          const tp1 = sketchToScreen(otherP1.x, otherP1.y);
+          const tp2 = sketchToScreen(otherP2.x, otherP2.y);
+
+          // Calculer les angles
+          const angle1 = Math.atan2(tp1.y - tv.y, tp1.x - tv.x);
+          const angle2 = Math.atan2(tp2.y - tv.y, tp2.x - tv.x);
+
+          let startAngle = angle1;
+          let endAngle = angle2;
+          let diff = endAngle - startAngle;
+          while (diff < -Math.PI) diff += 2 * Math.PI;
+          while (diff > Math.PI) diff -= 2 * Math.PI;
+          if (diff < 0) [startAngle, endAngle] = [endAngle, startAngle];
+
+          const arcRadius = dim.offset;
+          const midAngle = (startAngle + endAngle) / 2;
+          const textRadius = arcRadius + 15;
+          const textX = tv.x + textRadius * Math.cos(midAngle);
+          const textY = tv.y + textRadius * Math.sin(midAngle);
+
+          // Vérifier clic sur le texte
+          if (Math.abs(screenX - textX) < tolerance * 2 && Math.abs(screenY - textY) < tolerance) {
+            return dim.id;
+          }
+
+          // Vérifier clic sur l'arc
+          const distToVertex = Math.sqrt((screenX - tv.x) ** 2 + (screenY - tv.y) ** 2);
+          if (Math.abs(distToVertex - arcRadius) < tolerance) {
+            // Vérifier si on est dans l'angle de l'arc
+            const clickAngle = Math.atan2(screenY - tv.y, screenX - tv.x);
+            let normalizedClick = clickAngle - startAngle;
+            while (normalizedClick < 0) normalizedClick += 2 * Math.PI;
+            while (normalizedClick > 2 * Math.PI) normalizedClick -= 2 * Math.PI;
+
+            let arcSpan = endAngle - startAngle;
+            while (arcSpan < 0) arcSpan += 2 * Math.PI;
+
+            if (normalizedClick <= arcSpan + 0.2) {
+              return dim.id;
+            }
+          }
         } else if (dim.position) {
-          const screenPos = worldToScreen(dim.position.x, dim.position.y);
+          // Rayon / Diamètre
+          const screenPos = sketchToScreen(dim.position.x, dim.position.y);
           if (Math.abs(screenX - screenPos.x) < tolerance * 2 && Math.abs(screenY - screenPos.y) < tolerance) {
             return dim.id;
           }
@@ -915,7 +989,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
 
       return null;
     },
-    [dimensions, sketch, worldToScreen, viewport.scale],
+    [dimensions, sketch, worldToScreen, viewport.scale, pageTransform],
   );
 
   // Clic droit pour supprimer une cotation
