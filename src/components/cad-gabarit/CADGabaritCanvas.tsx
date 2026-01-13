@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.89 - Export PDF professionnel avec cartouche
+// VERSION: 6.90 - Éditeur de mise en plan PDF interactif (plein écran, cotations cliquables)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -151,7 +151,7 @@ import {
 
 // Export DXF
 import { exportToDXF } from "./export-dxf";
-import { exportToPDF, PDFExportOptions, DEFAULT_PDF_OPTIONS } from "./export-pdf";
+import PDFPlanEditor from "./PDFPlanEditor";
 
 // Import DXF
 import { loadDXFFile, DXFParseResult } from "./dxf-parser";
@@ -891,11 +891,8 @@ export function CADGabaritCanvas({
   const [arrayPanelDragging, setArrayPanelDragging] = useState(false);
   const [arrayPanelDragStart, setArrayPanelDragStart] = useState({ x: 0, y: 0 });
 
-  // Dialogue pour export PDF professionnel
-  const [pdfExportDialog, setPdfExportDialog] = useState<{
-    open: boolean;
-    options: PDFExportOptions;
-  } | null>(null);
+  // Dialogue pour export PDF professionnel (éditeur plein écran)
+  const [pdfPlanEditorOpen, setPdfPlanEditorOpen] = useState(false);
 
   // Modale pour texte/annotation - Input inline sur le canvas
   const [textInput, setTextInput] = useState<{
@@ -13097,16 +13094,7 @@ export function CADGabaritCanvas({
           <Button
             variant="default"
             size="sm"
-            onClick={() =>
-              setPdfExportDialog({
-                open: true,
-                options: {
-                  ...DEFAULT_PDF_OPTIONS,
-                  title: sketch.name || "Plan",
-                  date: new Date().toLocaleDateString("fr-FR"),
-                },
-              })
-            }
+            onClick={() => setPdfPlanEditorOpen(true)}
             className="h-9 px-2 bg-red-600 hover:bg-red-700"
           >
             <FileDown className="h-4 w-4 mr-1" />
@@ -16529,366 +16517,8 @@ export function CADGabaritCanvas({
         </Dialog>
       )}
 
-      {/* Dialogue Export PDF Professionnel */}
-      {pdfExportDialog?.open && (
-        <Dialog
-          open={pdfExportDialog.open}
-          onOpenChange={(open) => {
-            if (!open) setPdfExportDialog(null);
-          }}
-        >
-          <DialogContent className="sm:max-w-[480px]">
-            <DialogHeader>
-              <DialogTitle>Export PDF Professionnel</DialogTitle>
-              <DialogDescription>Configurez les options du plan PDF avec cartouche</DialogDescription>
-            </DialogHeader>
-            <div className="py-4 space-y-4 max-h-[60vh] overflow-y-auto">
-              {/* Format et orientation */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Format</Label>
-                  <div className="flex gap-2">
-                    <Button
-                      variant={pdfExportDialog.options.format === "a4" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() =>
-                        setPdfExportDialog({
-                          ...pdfExportDialog,
-                          options: { ...pdfExportDialog.options, format: "a4" },
-                        })
-                      }
-                      className="flex-1"
-                    >
-                      A4
-                    </Button>
-                    <Button
-                      variant={pdfExportDialog.options.format === "a3" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() =>
-                        setPdfExportDialog({
-                          ...pdfExportDialog,
-                          options: { ...pdfExportDialog.options, format: "a3" },
-                        })
-                      }
-                      className="flex-1"
-                    >
-                      A3
-                    </Button>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Orientation</Label>
-                  <div className="flex gap-2">
-                    <Button
-                      variant={pdfExportDialog.options.orientation === "landscape" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() =>
-                        setPdfExportDialog({
-                          ...pdfExportDialog,
-                          options: { ...pdfExportDialog.options, orientation: "landscape" },
-                        })
-                      }
-                      className="flex-1"
-                    >
-                      Paysage
-                    </Button>
-                    <Button
-                      variant={pdfExportDialog.options.orientation === "portrait" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() =>
-                        setPdfExportDialog({
-                          ...pdfExportDialog,
-                          options: { ...pdfExportDialog.options, orientation: "portrait" },
-                        })
-                      }
-                      className="flex-1"
-                    >
-                      Portrait
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Titre et projet */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="pdf-title">Titre du plan</Label>
-                  <Input
-                    id="pdf-title"
-                    value={pdfExportDialog.options.title}
-                    onChange={(e) =>
-                      setPdfExportDialog({
-                        ...pdfExportDialog,
-                        options: { ...pdfExportDialog.options, title: e.target.value },
-                      })
-                    }
-                    onKeyDown={(e) => e.stopPropagation()}
-                    placeholder="Plan de découpe"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pdf-project">Nom du projet</Label>
-                  <Input
-                    id="pdf-project"
-                    value={pdfExportDialog.options.projectName || ""}
-                    onChange={(e) =>
-                      setPdfExportDialog({
-                        ...pdfExportDialog,
-                        options: { ...pdfExportDialog.options, projectName: e.target.value },
-                      })
-                    }
-                    onKeyDown={(e) => e.stopPropagation()}
-                    placeholder="Van Sprinter 2024"
-                  />
-                </div>
-              </div>
-
-              {/* Auteur et révision */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="pdf-author">Auteur</Label>
-                  <Input
-                    id="pdf-author"
-                    value={pdfExportDialog.options.author || ""}
-                    onChange={(e) =>
-                      setPdfExportDialog({
-                        ...pdfExportDialog,
-                        options: { ...pdfExportDialog.options, author: e.target.value },
-                      })
-                    }
-                    onKeyDown={(e) => e.stopPropagation()}
-                    placeholder="Stéphane"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pdf-revision">Révision</Label>
-                  <Input
-                    id="pdf-revision"
-                    value={pdfExportDialog.options.revision || ""}
-                    onChange={(e) =>
-                      setPdfExportDialog({
-                        ...pdfExportDialog,
-                        options: { ...pdfExportDialog.options, revision: e.target.value },
-                      })
-                    }
-                    onKeyDown={(e) => e.stopPropagation()}
-                    placeholder="A"
-                    maxLength={3}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="pdf-date">Date</Label>
-                  <Input
-                    id="pdf-date"
-                    value={pdfExportDialog.options.date || ""}
-                    onChange={(e) =>
-                      setPdfExportDialog({
-                        ...pdfExportDialog,
-                        options: { ...pdfExportDialog.options, date: e.target.value },
-                      })
-                    }
-                    onKeyDown={(e) => e.stopPropagation()}
-                  />
-                </div>
-              </div>
-
-              {/* Échelle */}
-              <div className="space-y-2">
-                <Label>Échelle du dessin</Label>
-                <div className="flex gap-2 items-center">
-                  <span className="text-sm text-gray-500">1 :</span>
-                  <Input
-                    type="number"
-                    value={pdfExportDialog.options.scale}
-                    onChange={(e) =>
-                      setPdfExportDialog({
-                        ...pdfExportDialog,
-                        options: { ...pdfExportDialog.options, scale: Math.max(1, parseInt(e.target.value) || 1) },
-                      })
-                    }
-                    onKeyDown={(e) => e.stopPropagation()}
-                    className="w-20"
-                    min="1"
-                  />
-                  <div className="flex gap-1 ml-2">
-                    {[1, 2, 5, 10, 20].map((s) => (
-                      <Button
-                        key={s}
-                        variant={pdfExportDialog.options.scale === s ? "default" : "outline"}
-                        size="sm"
-                        onClick={() =>
-                          setPdfExportDialog({
-                            ...pdfExportDialog,
-                            options: { ...pdfExportDialog.options, scale: s },
-                          })
-                        }
-                        className="px-2"
-                      >
-                        1:{s}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Options */}
-              <div className="space-y-3 pt-2 border-t">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="pdf-dimensions" className="cursor-pointer">
-                    Afficher les cotations
-                  </Label>
-                  <Switch
-                    id="pdf-dimensions"
-                    checked={pdfExportDialog.options.showDimensions}
-                    onCheckedChange={(checked) =>
-                      setPdfExportDialog({
-                        ...pdfExportDialog,
-                        options: { ...pdfExportDialog.options, showDimensions: checked },
-                      })
-                    }
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="pdf-scale" className="cursor-pointer">
-                    Afficher l'échelle graphique
-                  </Label>
-                  <Switch
-                    id="pdf-scale"
-                    checked={pdfExportDialog.options.showScale}
-                    onCheckedChange={(checked) =>
-                      setPdfExportDialog({
-                        ...pdfExportDialog,
-                        options: { ...pdfExportDialog.options, showScale: checked },
-                      })
-                    }
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="pdf-grid" className="cursor-pointer">
-                    Afficher la grille de fond
-                  </Label>
-                  <Switch
-                    id="pdf-grid"
-                    checked={pdfExportDialog.options.showGrid}
-                    onCheckedChange={(checked) =>
-                      setPdfExportDialog({
-                        ...pdfExportDialog,
-                        options: { ...pdfExportDialog.options, showGrid: checked },
-                      })
-                    }
-                  />
-                </div>
-              </div>
-
-              {/* Aperçu du plan */}
-              <div className="space-y-2 pt-2 border-t">
-                <Label>Aperçu du plan</Label>
-                <div className="flex justify-center bg-gray-50 p-4 rounded-lg">
-                  <div
-                    className="border-2 border-gray-400 bg-white relative shadow-md"
-                    style={{
-                      width: pdfExportDialog.options.orientation === "landscape" ? 280 : 200,
-                      height: pdfExportDialog.options.orientation === "landscape" ? 200 : 280,
-                    }}
-                  >
-                    {/* Cadre intérieur */}
-                    <div className="absolute inset-1 border border-gray-300">
-                      {/* Zone de dessin */}
-                      <div
-                        className="absolute left-1 right-1 top-1 border border-dashed border-blue-300 bg-blue-50/30 flex items-center justify-center"
-                        style={{ bottom: 50 }}
-                      >
-                        <div className="text-center">
-                          <div className="text-xs text-blue-400 font-medium">Zone de dessin</div>
-                          <div className="text-[10px] text-gray-400 mt-1">
-                            {pdfExportDialog.options.format.toUpperCase()}{" "}
-                            {pdfExportDialog.options.orientation === "landscape" ? "Paysage" : "Portrait"}
-                          </div>
-                          {pdfExportDialog.options.showScale && (
-                            <div className="text-[9px] text-gray-400 mt-1">
-                              Échelle 1:{pdfExportDialog.options.scale}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Cartouche détaillé */}
-                      <div className="absolute bottom-1 left-1 right-1 h-11 border border-gray-400 bg-gray-50 flex">
-                        {/* Colonne Logo */}
-                        <div className="w-16 border-r border-gray-300 flex flex-col items-center justify-center p-0.5">
-                          <span className="text-[7px] font-bold text-gray-700">VAN PROJECT</span>
-                          <span className="text-[6px] text-gray-500">BUDDY</span>
-                        </div>
-                        {/* Colonne Titre/Projet */}
-                        <div className="flex-1 border-r border-gray-300 flex flex-col">
-                          <div className="flex-1 border-b border-gray-200 px-1 py-0.5">
-                            <div className="text-[5px] text-gray-400">PROJET</div>
-                            <div className="text-[7px] text-gray-700 truncate">
-                              {pdfExportDialog.options.projectName || "-"}
-                            </div>
-                          </div>
-                          <div className="flex-1 px-1 py-0.5">
-                            <div className="text-[5px] text-gray-400">TITRE</div>
-                            <div className="text-[7px] font-medium text-gray-800 truncate">
-                              {pdfExportDialog.options.title || "-"}
-                            </div>
-                          </div>
-                        </div>
-                        {/* Colonnes infos */}
-                        <div className="w-12 border-r border-gray-300 flex flex-col">
-                          <div className="flex-1 border-b border-gray-200 px-0.5 py-0.5">
-                            <div className="text-[5px] text-gray-400">ÉCHELLE</div>
-                            <div className="text-[7px] text-gray-700 text-center">
-                              1:{pdfExportDialog.options.scale}
-                            </div>
-                          </div>
-                          <div className="flex-1 px-0.5 py-0.5">
-                            <div className="text-[5px] text-gray-400">AUTEUR</div>
-                            <div className="text-[6px] text-gray-700 truncate text-center">
-                              {pdfExportDialog.options.author || "-"}
-                            </div>
-                          </div>
-                        </div>
-                        {/* Colonne Rév/Date */}
-                        <div className="w-10 flex flex-col">
-                          <div className="flex-1 border-b border-gray-200 px-0.5 py-0.5">
-                            <div className="text-[5px] text-gray-400">RÉV</div>
-                            <div className="text-[8px] font-bold text-gray-700 text-center">
-                              {pdfExportDialog.options.revision || "A"}
-                            </div>
-                          </div>
-                          <div className="flex-1 px-0.5 py-0.5">
-                            <div className="text-[5px] text-gray-400">DATE</div>
-                            <div className="text-[5px] text-gray-700 text-center">
-                              {pdfExportDialog.options.date || "-"}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <DialogFooter className="flex gap-2">
-              <Button variant="outline" onClick={() => setPdfExportDialog(null)}>
-                Annuler
-              </Button>
-              <Button
-                onClick={() => {
-                  exportToPDF(sketch, pdfExportDialog.options);
-                  setPdfExportDialog(null);
-                  toast.success("PDF exporté avec succès");
-                }}
-                className="bg-red-600 hover:bg-red-700"
-              >
-                <FileDown className="h-4 w-4 mr-2" />
-                Exporter PDF
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
+      {/* Éditeur de mise en plan PDF */}
+      <PDFPlanEditor sketch={sketch} isOpen={pdfPlanEditorOpen} onClose={() => setPdfPlanEditorOpen(false)} />
 
       {/* Dialogue distance entre marqueurs de photos */}
       {linkDistanceDialog && (
