@@ -481,6 +481,7 @@ export function deserializeSketchData(sketchData: any): Sketch {
     dimensions: new Map(sketchData.dimensions || []),
     layers: new Map(sketchData.layers || []),
     groups: new Map(sketchData.groups || []),
+    shapeFills: new Map(sketchData.shapeFills || []),
     scaleFactor: sketchData.scaleFactor || 1,
     activeLayerId: "trace",
     dof: 0,
