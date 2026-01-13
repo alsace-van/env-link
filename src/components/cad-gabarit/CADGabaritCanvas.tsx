@@ -12519,7 +12519,27 @@ export function CADGabaritCanvas({
                   <Input
                     type="number"
                     value={textFontSize}
-                    onChange={(e) => setTextFontSize(Math.max(1, parseFloat(e.target.value) || 5))}
+                    onChange={(e) => {
+                      const newSize = Math.max(1, parseFloat(e.target.value) || 5);
+                      setTextFontSize(newSize);
+                      // Appliquer aux textes sélectionnés
+                      const selectedTexts = Array.from(selectedEntities).filter((id) => {
+                        const geo = sketch.geometries.get(id);
+                        return geo?.type === "text";
+                      });
+                      if (selectedTexts.length > 0) {
+                        const newGeometries = new Map(sketch.geometries);
+                        selectedTexts.forEach((id) => {
+                          const geo = newGeometries.get(id) as TextAnnotation;
+                          if (geo) {
+                            newGeometries.set(id, { ...geo, fontSize: newSize });
+                          }
+                        });
+                        const newSketch = { ...sketch, geometries: newGeometries };
+                        setSketch(newSketch);
+                        addToHistory(newSketch, `Taille texte → ${newSize}mm`);
+                      }
+                    }}
                     className="h-7 w-16 text-xs"
                     min="1"
                     max="100"
@@ -12534,7 +12554,27 @@ export function CADGabaritCanvas({
                   <input
                     type="color"
                     value={textColor}
-                    onChange={(e) => setTextColor(e.target.value)}
+                    onChange={(e) => {
+                      const newColor = e.target.value;
+                      setTextColor(newColor);
+                      // Appliquer aux textes sélectionnés
+                      const selectedTexts = Array.from(selectedEntities).filter((id) => {
+                        const geo = sketch.geometries.get(id);
+                        return geo?.type === "text";
+                      });
+                      if (selectedTexts.length > 0) {
+                        const newGeometries = new Map(sketch.geometries);
+                        selectedTexts.forEach((id) => {
+                          const geo = newGeometries.get(id) as TextAnnotation;
+                          if (geo) {
+                            newGeometries.set(id, { ...geo, color: newColor });
+                          }
+                        });
+                        const newSketch = { ...sketch, geometries: newGeometries };
+                        setSketch(newSketch);
+                        addToHistory(newSketch, `Couleur texte → ${newColor}`);
+                      }
+                    }}
                     className="h-7 w-8 cursor-pointer rounded border"
                   />
                   <span className="text-[10px] text-gray-500 font-mono">{textColor}</span>
@@ -12548,7 +12588,26 @@ export function CADGabaritCanvas({
                       variant={textAlignment === "left" ? "default" : "outline"}
                       size="sm"
                       className="h-6 w-6 p-0 text-xs"
-                      onClick={() => setTextAlignment("left")}
+                      onClick={() => {
+                        setTextAlignment("left");
+                        // Appliquer aux textes sélectionnés
+                        const selectedTexts = Array.from(selectedEntities).filter((id) => {
+                          const geo = sketch.geometries.get(id);
+                          return geo?.type === "text";
+                        });
+                        if (selectedTexts.length > 0) {
+                          const newGeometries = new Map(sketch.geometries);
+                          selectedTexts.forEach((id) => {
+                            const geo = newGeometries.get(id) as TextAnnotation;
+                            if (geo) {
+                              newGeometries.set(id, { ...geo, alignment: "left" });
+                            }
+                          });
+                          const newSketch = { ...sketch, geometries: newGeometries };
+                          setSketch(newSketch);
+                          addToHistory(newSketch, "Alignement texte → gauche");
+                        }
+                      }}
                     >
                       ←
                     </Button>
@@ -12556,7 +12615,26 @@ export function CADGabaritCanvas({
                       variant={textAlignment === "center" ? "default" : "outline"}
                       size="sm"
                       className="h-6 w-6 p-0 text-xs"
-                      onClick={() => setTextAlignment("center")}
+                      onClick={() => {
+                        setTextAlignment("center");
+                        // Appliquer aux textes sélectionnés
+                        const selectedTexts = Array.from(selectedEntities).filter((id) => {
+                          const geo = sketch.geometries.get(id);
+                          return geo?.type === "text";
+                        });
+                        if (selectedTexts.length > 0) {
+                          const newGeometries = new Map(sketch.geometries);
+                          selectedTexts.forEach((id) => {
+                            const geo = newGeometries.get(id) as TextAnnotation;
+                            if (geo) {
+                              newGeometries.set(id, { ...geo, alignment: "center" });
+                            }
+                          });
+                          const newSketch = { ...sketch, geometries: newGeometries };
+                          setSketch(newSketch);
+                          addToHistory(newSketch, "Alignement texte → centré");
+                        }
+                      }}
                     >
                       ↔
                     </Button>
@@ -12564,7 +12642,26 @@ export function CADGabaritCanvas({
                       variant={textAlignment === "right" ? "default" : "outline"}
                       size="sm"
                       className="h-6 w-6 p-0 text-xs"
-                      onClick={() => setTextAlignment("right")}
+                      onClick={() => {
+                        setTextAlignment("right");
+                        // Appliquer aux textes sélectionnés
+                        const selectedTexts = Array.from(selectedEntities).filter((id) => {
+                          const geo = sketch.geometries.get(id);
+                          return geo?.type === "text";
+                        });
+                        if (selectedTexts.length > 0) {
+                          const newGeometries = new Map(sketch.geometries);
+                          selectedTexts.forEach((id) => {
+                            const geo = newGeometries.get(id) as TextAnnotation;
+                            if (geo) {
+                              newGeometries.set(id, { ...geo, alignment: "right" });
+                            }
+                          });
+                          const newSketch = { ...sketch, geometries: newGeometries };
+                          setSketch(newSketch);
+                          addToHistory(newSketch, "Alignement texte → droite");
+                        }
+                      }}
                     >
                       →
                     </Button>
