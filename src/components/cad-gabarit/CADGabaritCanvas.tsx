@@ -229,6 +229,7 @@ export function CADGabaritCanvas({
   const STROKE_WIDTH_OPTIONS = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5];
 
   // Couleur de trait par défaut
+  const [defaultStrokeColor, setDefaultStrokeColor] = useState("#000000");
   const defaultStrokeColorRef = useRef<string>("#000000");
 
   // Synchroniser la ref avec l'état
@@ -340,7 +341,6 @@ export function CADGabaritCanvas({
   // === Nouveaux états v6.79 ===
   const [showShortcutsPanel, setShowShortcutsPanel] = useState(false);
   const [lockedPoints, setLockedPoints] = useState<Set<string>>(new Set());
-  const [defaultStrokeColor, setDefaultStrokeColor] = useState("#000000");
   const [showExportDialog, setShowExportDialog] = useState<"png" | "pdf" | null>(null);
 
   // === Multi-photos ===
