@@ -852,6 +852,13 @@ export function CADGabaritCanvas({
   const [textAlignment, setTextAlignment] = useState<"left" | "center" | "right">("left");
   const textInputRef = useRef<HTMLInputElement>(null);
 
+  // Fermer l'input texte quand on change d'outil
+  useEffect(() => {
+    if (activeTool !== "text" && textInput?.active) {
+      setTextInput(null);
+    }
+  }, [activeTool]);
+
   // Aliases pour compatibilité avec le rendu
   const measureStart = measureState.start;
   const measureEnd = measureState.phase === "complete" ? measureState.end : measurePreviewEnd;
@@ -8642,6 +8649,16 @@ export function CADGabaritCanvas({
         }
 
         case "text": {
+          // Si un input est déjà ouvert
+          if (textInput?.active) {
+            // Si l'input a du contenu, le valider d'abord
+            if (textInput.content.trim()) {
+              commitTextInput();
+            }
+            // Fermer l'input actuel
+            setTextInput(null);
+          }
+
           // Outil texte : vérifier si on clique sur un texte existant
           const clickedEntity = findEntityAtPosition(worldPos.x, worldPos.y);
           if (clickedEntity) {
@@ -11040,7 +11057,12 @@ export function CADGabaritCanvas({
     const handleKeyDown = (e: KeyboardEvent) => {
       // Echap - annuler l'action en cours
       if (e.key === "Escape") {
-        // Annuler le drag du gizmo en premier
+        // Fermer l'input texte en premier
+        if (textInput?.active) {
+          setTextInput(null);
+          return;
+        }
+        // Annuler le drag du gizmo
         if (gizmoDrag) {
           // Restaurer les positions initiales
           setSketch((prev) => {
@@ -11275,6 +11297,7 @@ export function CADGabaritCanvas({
     fitToContent,
     showTransformGizmo,
     gizmoDrag, // Ajouté pour s'assurer que handleKeyDown est à jour
+    textInput, // Pour fermer l'input texte avec Echap
     // Note: gizmoDragRef utilisé aussi pour éviter stale closure
   ]);
 
@@ -13853,6 +13876,12 @@ export function CADGabaritCanvas({
               onDoubleClick={handleDoubleClick}
               onContextMenu={(e) => {
                 e.preventDefault();
+
+                // === PRIORITÉ 0: Fermer l'input texte ===
+                if (textInput?.active) {
+                  setTextInput(null);
+                  return;
+                }
 
                 // === PRIORITÉ 1: Annuler le drag du gizmo en cours ===
                 // Utiliser la ref pour éviter stale closure
