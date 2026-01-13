@@ -378,7 +378,7 @@ export interface RenderStyles {
 
 export const DEFAULT_STYLES: RenderStyles = {
   lineColor: "#000000",
-  lineWidth: 1.5,
+  lineWidth: 1,
   selectedColor: "#0066FF",
   selectedWidth: 2,
   constructionColor: "#888888",

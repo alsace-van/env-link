@@ -913,7 +913,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
       const isConstruction = (geo as any).isConstruction;
 
       ctx.strokeStyle = isHovered ? "#FF6600" : isConstruction ? "#9CA3AF" : "#000000";
-      ctx.lineWidth = isHovered ? 2.5 : isConstruction ? 1 : 1.5;
+      ctx.lineWidth = isHovered ? 2.5 : isConstruction ? 0.5 : 1;
 
       if (isConstruction) {
         ctx.setLineDash([5, 5]);
