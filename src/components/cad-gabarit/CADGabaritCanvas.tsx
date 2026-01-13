@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.79 - Raccourcis clavier, verrouillage points, couleur géométrie, export PNG
+// VERSION: 6.80 - Lignes construction, snap calque, tags templates
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -91,6 +91,8 @@ import {
   HelpCircle,
   Palette,
   FileImage,
+  Group,
+  Ungroup,
 } from "lucide-react";
 
 import {
@@ -109,6 +111,7 @@ import {
   SnapType,
   ToolType,
   Layer,
+  GeometryGroup,
   DEFAULT_LAYERS,
   CalibrationData,
   CalibrationPoint,
@@ -173,6 +176,7 @@ function createEmptySketch(scaleFactor: number = 1): Sketch {
     constraints: new Map(),
     dimensions: new Map(),
     layers,
+    groups: new Map(), // Groupes de géométries
     activeLayerId: "trace",
     scaleFactor,
     dof: 0,
@@ -241,6 +245,12 @@ export function CADGabaritCanvas({
   useEffect(() => {
     defaultStrokeColorRef.current = defaultStrokeColor;
   }, [defaultStrokeColor]);
+
+  // Ref pour le mode construction (évite stale closure)
+  const isConstructionModeRef = useRef(false);
+  useEffect(() => {
+    isConstructionModeRef.current = isConstructionMode;
+  }, [isConstructionMode]);
 
   const [tempGeometry, setTempGeometry] = useState<any>(null);
   const [tempPoints, setTempPoints] = useState<Point[]>([]);
@@ -342,6 +352,11 @@ export function CADGabaritCanvas({
   const [showShortcutsPanel, setShowShortcutsPanel] = useState(false);
   const [lockedPoints, setLockedPoints] = useState<Set<string>>(new Set());
   const [showExportDialog, setShowExportDialog] = useState<"png" | "pdf" | null>(null);
+
+  // === Nouveaux états v6.80 ===
+  const [isConstructionMode, setIsConstructionMode] = useState(false); // Mode lignes de construction
+  const [showConstruction, setShowConstruction] = useState(true); // Afficher les lignes de construction
+  const [snapToActiveLayerOnly, setSnapToActiveLayerOnly] = useState(false); // Snap uniquement calque actif
 
   // === Multi-photos ===
   const [backgroundImages, setBackgroundImages] = useState<BackgroundImage[]>([]);
@@ -1298,6 +1313,8 @@ export function CADGabaritCanvas({
       // Mode reveal (rideau)
       revealBranch: revealBranchData,
       revealPosition,
+      // Lignes de construction
+      showConstruction,
     });
 
     // Dessiner les indicateurs de points verrouillés
@@ -6493,6 +6510,7 @@ export function CADGabaritCanvas({
           layerId: currentSketch.activeLayerId,
           strokeWidth: defaultStrokeWidthRef.current,
           strokeColor: defaultStrokeColorRef.current,
+          isConstruction: isConstructionModeRef.current,
         },
         {
           id: generateId(),
@@ -6502,6 +6520,7 @@ export function CADGabaritCanvas({
           layerId: currentSketch.activeLayerId,
           strokeWidth: defaultStrokeWidthRef.current,
           strokeColor: defaultStrokeColorRef.current,
+          isConstruction: isConstructionModeRef.current,
         },
         {
           id: generateId(),
@@ -6511,6 +6530,7 @@ export function CADGabaritCanvas({
           layerId: currentSketch.activeLayerId,
           strokeWidth: defaultStrokeWidthRef.current,
           strokeColor: defaultStrokeColorRef.current,
+          isConstruction: isConstructionModeRef.current,
         },
         {
           id: generateId(),
@@ -6520,6 +6540,7 @@ export function CADGabaritCanvas({
           layerId: currentSketch.activeLayerId,
           strokeWidth: defaultStrokeWidthRef.current,
           strokeColor: defaultStrokeColorRef.current,
+          isConstruction: isConstructionModeRef.current,
         },
       ];
 
@@ -7858,6 +7879,7 @@ export function CADGabaritCanvas({
               layerId: currentSketch.activeLayerId,
               strokeWidth: defaultStrokeWidthRef.current,
               strokeColor: defaultStrokeColorRef.current,
+              isConstruction: isConstructionModeRef.current,
             };
             newSketch.geometries.set(line.id, line);
 
@@ -7904,6 +7926,7 @@ export function CADGabaritCanvas({
               layerId: currentSketch.activeLayerId,
               strokeWidth: defaultStrokeWidthRef.current,
               strokeColor: defaultStrokeColorRef.current,
+              isConstruction: isConstructionModeRef.current,
             };
             newSketch.geometries.set(circle.id, circle);
 
@@ -8005,6 +8028,7 @@ export function CADGabaritCanvas({
               layerId: currentSketch.activeLayerId,
               strokeWidth: defaultStrokeWidthRef.current,
               strokeColor: defaultStrokeColorRef.current,
+              isConstruction: isConstructionModeRef.current,
             };
             newSketch.geometries.set(arc.id, arc);
 
@@ -8643,6 +8667,7 @@ export function CADGabaritCanvas({
             viewport,
             [],
             markerSnapPoints,
+            { activeLayerOnly: snapToActiveLayerOnly, activeLayerId: sketchRef.current.activeLayerId },
           );
           if (snap) {
             targetPos = { x: snap.x, y: snap.y };
@@ -8776,6 +8801,7 @@ export function CADGabaritCanvas({
             viewport,
             [dragTarget.id],
             markerSnapPoints,
+            { activeLayerOnly: snapToActiveLayerOnly, activeLayerId: sketchRef.current.activeLayerId },
           );
           if (snap) {
             targetPos = { x: snap.x, y: snap.y };
@@ -8857,6 +8883,7 @@ export function CADGabaritCanvas({
           viewport,
           [],
           markerSnapPoints,
+          { activeLayerOnly: snapToActiveLayerOnly, activeLayerId: sketchRef.current.activeLayerId },
         );
         setCurrentSnapPoint(snap);
       } else {
@@ -10580,6 +10607,22 @@ export function CADGabaritCanvas({
         duplicateSelectedEntities();
       }
 
+      // Ctrl+G - Grouper
+      if ((e.ctrlKey || e.metaKey) && e.key === "g" && !e.shiftKey) {
+        e.preventDefault();
+        if (selectedEntities.size >= 2) {
+          handleGroupSelection();
+        }
+      }
+
+      // Ctrl+Shift+G - Dégrouper
+      if ((e.ctrlKey || e.metaKey) && e.key === "G" && e.shiftKey) {
+        e.preventDefault();
+        if (selectedEntities.size > 0) {
+          handleUngroupSelection();
+        }
+      }
+
       // ? ou F1 - Afficher les raccourcis clavier
       if (e.key === "?" || e.key === "F1") {
         e.preventDefault();
@@ -10597,6 +10640,8 @@ export function CADGabaritCanvas({
     pasteEntities,
     duplicateSelectedEntities,
     deleteSelectedEntities,
+    handleGroupSelection,
+    handleUngroupSelection,
     undo,
     redo,
     fitToContent,
@@ -11102,6 +11147,85 @@ export function CADGabaritCanvas({
     [sketch, solveSketch, addToHistory],
   );
 
+  // === GROUPES ===
+
+  // Grouper les entités sélectionnées
+  const handleGroupSelection = useCallback(() => {
+    if (selectedEntities.size < 2) {
+      toast.error("Sélectionnez au moins 2 éléments à grouper");
+      return;
+    }
+
+    const groupId = generateId();
+    const groupName = `Groupe ${sketch.groups.size + 1}`;
+
+    const newGroup: GeometryGroup = {
+      id: groupId,
+      name: groupName,
+      entityIds: Array.from(selectedEntities),
+      color: `hsl(${Math.random() * 360}, 70%, 50%)`,
+    };
+
+    const newSketch = { ...sketch };
+    newSketch.groups = new Map(sketch.groups);
+    newSketch.groups.set(groupId, newGroup);
+
+    setSketch(newSketch);
+    addToHistory(newSketch);
+    toast.success(`${selectedEntities.size} éléments groupés`);
+  }, [sketch, selectedEntities, addToHistory]);
+
+  // Dégrouper (dissoudre le groupe des entités sélectionnées)
+  const handleUngroupSelection = useCallback(() => {
+    if (selectedEntities.size === 0) {
+      toast.error("Sélectionnez des éléments à dégrouper");
+      return;
+    }
+
+    // Trouver les groupes qui contiennent des éléments sélectionnés
+    const groupsToRemove: string[] = [];
+    sketch.groups.forEach((group, groupId) => {
+      const hasSelectedEntity = group.entityIds.some((id) => selectedEntities.has(id));
+      if (hasSelectedEntity) {
+        groupsToRemove.push(groupId);
+      }
+    });
+
+    if (groupsToRemove.length === 0) {
+      toast.warning("Les éléments sélectionnés ne font partie d'aucun groupe");
+      return;
+    }
+
+    const newSketch = { ...sketch };
+    newSketch.groups = new Map(sketch.groups);
+    groupsToRemove.forEach((id) => newSketch.groups.delete(id));
+
+    setSketch(newSketch);
+    addToHistory(newSketch);
+    toast.success(`${groupsToRemove.length} groupe(s) dissous`);
+  }, [sketch, selectedEntities, addToHistory]);
+
+  // Sélectionner tout le groupe quand on clique sur un élément du groupe
+  const selectGroup = useCallback(
+    (entityId: string) => {
+      // Trouver le groupe qui contient cette entité
+      let groupEntityIds: string[] | null = null;
+      sketch.groups.forEach((group) => {
+        if (group.entityIds.includes(entityId)) {
+          groupEntityIds = group.entityIds;
+        }
+      });
+
+      if (groupEntityIds) {
+        setSelectedEntities(new Set(groupEntityIds));
+        toast.info(`Groupe sélectionné (${groupEntityIds.length} éléments)`);
+        return true;
+      }
+      return false;
+    },
+    [sketch.groups],
+  );
+
   // === CONTRAINTE D'ANGLE ===
 
   // Calculer l'angle entre 2 lignes (en degrés)
@@ -11271,17 +11395,55 @@ export function CADGabaritCanvas({
       const tempCanvas = document.createElement("canvas");
       const padding = 50;
 
-      // Calculer les bounds
+      // Filtrer les géométries (exclure construction)
+      const exportGeometries: Geometry[] = [];
+      sketch.geometries.forEach((geo) => {
+        if (!(geo as any).isConstruction) {
+          exportGeometries.push(geo);
+        }
+      });
+
+      if (exportGeometries.length === 0) {
+        toast.error("Aucune géométrie à exporter (hors construction)");
+        return;
+      }
+
+      // Calculer les bounds (uniquement sur géométries exportables)
       let minX = Infinity,
         minY = Infinity;
       let maxX = -Infinity,
         maxY = -Infinity;
 
-      sketch.points.forEach((pt) => {
-        minX = Math.min(minX, pt.x);
-        minY = Math.min(minY, pt.y);
-        maxX = Math.max(maxX, pt.x);
-        maxY = Math.max(maxY, pt.y);
+      exportGeometries.forEach((geo) => {
+        if (geo.type === "line") {
+          const line = geo as Line;
+          const p1 = sketch.points.get(line.p1);
+          const p2 = sketch.points.get(line.p2);
+          if (p1 && p2) {
+            minX = Math.min(minX, p1.x, p2.x);
+            minY = Math.min(minY, p1.y, p2.y);
+            maxX = Math.max(maxX, p1.x, p2.x);
+            maxY = Math.max(maxY, p1.y, p2.y);
+          }
+        } else if (geo.type === "circle") {
+          const circle = geo as CircleType;
+          const center = sketch.points.get(circle.center);
+          if (center) {
+            minX = Math.min(minX, center.x - circle.radius);
+            minY = Math.min(minY, center.y - circle.radius);
+            maxX = Math.max(maxX, center.x + circle.radius);
+            maxY = Math.max(maxY, center.y + circle.radius);
+          }
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          const center = sketch.points.get(arc.center);
+          if (center) {
+            minX = Math.min(minX, center.x - arc.radius);
+            minY = Math.min(minY, center.y - arc.radius);
+            maxX = Math.max(maxX, center.x + arc.radius);
+            maxY = Math.max(maxY, center.y + arc.radius);
+          }
+        }
       });
 
       if (!isFinite(minX)) {
@@ -11305,13 +11467,13 @@ export function CADGabaritCanvas({
         ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
       }
 
-      // Dessiner les géométries
+      // Dessiner les géométries (sans construction)
       ctx.save();
       ctx.translate(padding - minX * scale, padding - minY * scale);
       ctx.scale(scale, scale);
 
       // Lignes
-      sketch.geometries.forEach((geo) => {
+      exportGeometries.forEach((geo) => {
         ctx.strokeStyle = (geo as any).strokeColor || "#000000";
         ctx.lineWidth = ((geo as any).strokeWidth || 1) / scale;
         ctx.beginPath();
@@ -12161,6 +12323,45 @@ export function CADGabaritCanvas({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Grouper / Dégrouper */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-2"
+                  onClick={handleGroupSelection}
+                  disabled={selectedEntities.size < 2}
+                >
+                  <Group className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Grouper (Ctrl+G)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-2"
+                  onClick={handleUngroupSelection}
+                  disabled={selectedEntities.size === 0}
+                >
+                  <Ungroup className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Dégrouper (Ctrl+Shift+G)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
 
         <Separator orientation="vertical" className="h-6" />
@@ -12597,22 +12798,109 @@ export function CADGabaritCanvas({
 
         {/* Toggles */}
         <div className="flex items-center gap-1">
-          <Button
-            variant={showGrid ? "default" : "outline"}
-            size="sm"
-            onClick={() => setShowGrid(!showGrid)}
-            className="h-8 px-2"
-          >
-            <Grid3X3 className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={snapEnabled ? "default" : "outline"}
-            size="sm"
-            onClick={() => setSnapEnabled(!snapEnabled)}
-            className="h-8 px-2"
-          >
-            <Magnet className="h-4 w-4" />
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={showGrid ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowGrid(!showGrid)}
+                  className="h-8 px-2"
+                >
+                  <Grid3X3 className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Grille</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={snapEnabled ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSnapEnabled(!snapEnabled)}
+                  className="h-8 px-2"
+                >
+                  <Magnet className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Snap (aimantation)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Toggle snap calque actif uniquement */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={snapToActiveLayerOnly ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSnapToActiveLayerOnly(!snapToActiveLayerOnly)}
+                  className={`h-8 px-2 ${snapToActiveLayerOnly ? "bg-purple-500 hover:bg-purple-600" : ""}`}
+                >
+                  <Layers className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Snap calque actif uniquement</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <Separator orientation="vertical" className="h-6 mx-1" />
+
+          {/* Toggle mode construction */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={isConstructionMode ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setIsConstructionMode(!isConstructionMode)}
+                  className={`h-8 px-2 ${isConstructionMode ? "bg-amber-500 hover:bg-amber-600" : ""}`}
+                >
+                  <svg
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeDasharray="4 2"
+                  >
+                    <line x1="4" y1="20" x2="20" y2="4" />
+                  </svg>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Mode construction (lignes pointillées)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Toggle afficher/masquer construction */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={showConstruction ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowConstruction(!showConstruction)}
+                  className="h-8 px-2"
+                >
+                  {showConstruction ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{showConstruction ? "Masquer" : "Afficher"} lignes construction</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
           {/* Slider opacité surbrillance */}
           <div className="flex items-center gap-1 ml-2 px-2 py-1 bg-blue-50 rounded">
@@ -14624,6 +14912,14 @@ export function CADGabaritCanvas({
                     <div className="flex justify-between">
                       <span>Coller</span>
                       <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Ctrl+V</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Grouper</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Ctrl+G</kbd>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Dégrouper</span>
+                      <kbd className="px-2 py-0.5 bg-gray-100 rounded text-xs">Ctrl+Shift+G</kbd>
                     </div>
                     <div className="flex justify-between">
                       <span>Supprimer</span>
