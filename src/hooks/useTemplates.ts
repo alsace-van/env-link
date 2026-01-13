@@ -480,6 +480,7 @@ export function deserializeSketchData(sketchData: any): Sketch {
     constraints: new Map(sketchData.constraints || []),
     dimensions: new Map(sketchData.dimensions || []),
     layers: new Map(sketchData.layers || []),
+    groups: new Map(sketchData.groups || []),
     scaleFactor: sketchData.scaleFactor || 1,
     activeLayerId: "trace",
     dof: 0,
