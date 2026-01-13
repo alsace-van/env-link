@@ -12,6 +12,7 @@ import {
   Arc,
   Rectangle,
   Bezier,
+  TextAnnotation,
   Constraint,
   Dimension,
   Sketch,
@@ -1436,6 +1437,9 @@ export class CADRenderer {
       case "bezier":
         this.drawBezier(geo as Bezier, sketch, isSelected);
         break;
+      case "text":
+        this.drawText(geo as TextAnnotation, sketch, isSelected, isReference);
+        break;
     }
 
     // Reset le dash
@@ -1594,6 +1598,75 @@ export class CADRenderer {
       this.ctx.arc(cp2.x, cp2.y, handleSize, 0, Math.PI * 2);
       this.ctx.fill();
     }
+  }
+
+  /**
+   * Dessine un texte/annotation
+   */
+  private drawText(text: TextAnnotation, sketch: Sketch, isSelected: boolean, isReference: boolean = false): void {
+    const position = sketch.points.get(text.position);
+    if (!position) return;
+
+    // Sauvegarder le contexte car on va appliquer des transformations
+    this.ctx.save();
+
+    // Configurer le style du texte
+    const fontSize = text.fontSize; // En mm (unités monde)
+    const fontFamily = text.fontFamily || "Arial, sans-serif";
+
+    // Couleur : vert si référence, bleu si sélectionné, sinon couleur définie
+    const textColor = isReference ? "#22C55E" : isSelected ? this.styles.selectedColor : text.color || "#000000";
+
+    this.ctx.fillStyle = textColor;
+    this.ctx.font = `${fontSize}px ${fontFamily}`;
+
+    // Alignement
+    this.ctx.textAlign = text.alignment || "left";
+    this.ctx.textBaseline = "top";
+
+    // Rotation si définie
+    if (text.rotation) {
+      this.ctx.translate(position.x, position.y);
+      this.ctx.rotate((text.rotation * Math.PI) / 180);
+      this.ctx.translate(-position.x, -position.y);
+    }
+
+    // Gérer le texte multiligne
+    const lines = text.content.split("\n");
+    const lineHeight = fontSize * 1.2;
+
+    lines.forEach((line, index) => {
+      this.ctx.fillText(line, position.x, position.y + index * lineHeight);
+    });
+
+    // Si sélectionné, dessiner un cadre autour
+    if (isSelected) {
+      // Mesurer la largeur du texte
+      let maxWidth = 0;
+      lines.forEach((line) => {
+        const metrics = this.ctx.measureText(line);
+        maxWidth = Math.max(maxWidth, metrics.width);
+      });
+
+      const padding = fontSize * 0.2;
+      const boxHeight = lines.length * lineHeight + padding * 2;
+      const boxWidth = maxWidth + padding * 2;
+
+      let boxX = position.x - padding;
+      if (text.alignment === "center") {
+        boxX = position.x - boxWidth / 2;
+      } else if (text.alignment === "right") {
+        boxX = position.x - boxWidth + padding;
+      }
+
+      this.ctx.strokeStyle = this.styles.selectedColor;
+      this.ctx.lineWidth = 1 / this.viewport.scale;
+      this.ctx.setLineDash([3 / this.viewport.scale, 3 / this.viewport.scale]);
+      this.ctx.strokeRect(boxX, position.y - padding, boxWidth, boxHeight);
+      this.ctx.setLineDash([]);
+    }
+
+    this.ctx.restore();
   }
 
   /**

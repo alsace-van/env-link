@@ -93,6 +93,7 @@ import {
   FileImage,
   Group,
   Ungroup,
+  Type,
 } from "lucide-react";
 
 import {
@@ -103,6 +104,7 @@ import {
   Arc,
   Rectangle,
   Bezier,
+  TextAnnotation,
   Constraint,
   Dimension,
   Sketch,
@@ -814,6 +816,40 @@ export function CADGabaritCanvas({
   const [anglePanelPos, setAnglePanelPos] = useState({ x: 100, y: 100 });
   const [anglePanelDragging, setAnglePanelDragging] = useState(false);
   const [anglePanelDragStart, setAnglePanelDragStart] = useState({ x: 0, y: 0 });
+
+  // Modale pour répétition/array
+  const [arrayDialog, setArrayDialog] = useState<{
+    open: boolean;
+    type: "linear" | "grid" | "circular";
+    // Linéaire
+    countX: number;
+    spacingX: number; // mm
+    countY: number;
+    spacingY: number; // mm
+    // Grille (utilise countX, countY, spacingX, spacingY)
+    // Circulaire
+    circularCount: number;
+    circularAngle: number; // angle total en degrés (360 = cercle complet)
+    circularCenter: { x: number; y: number } | null;
+    // Général
+    includeOriginal: boolean; // Inclure l'original dans le compte
+  } | null>(null);
+  const [arrayPanelPos, setArrayPanelPos] = useState({ x: 100, y: 100 });
+  const [arrayPanelDragging, setArrayPanelDragging] = useState(false);
+  const [arrayPanelDragStart, setArrayPanelDragStart] = useState({ x: 0, y: 0 });
+
+  // Modale pour texte/annotation
+  const [textDialog, setTextDialog] = useState<{
+    open: boolean;
+    position: { x: number; y: number }; // Position en coordonnées monde
+    content: string;
+    fontSize: number; // en mm
+    color: string;
+    alignment: "left" | "center" | "right";
+  } | null>(null);
+  const [textPanelPos, setTextPanelPos] = useState({ x: 100, y: 100 });
+  const [textPanelDragging, setTextPanelDragging] = useState(false);
+  const [textPanelDragStart, setTextPanelDragStart] = useState({ x: 0, y: 0 });
 
   // Aliases pour compatibilité avec le rendu
   const measureStart = measureState.start;
@@ -8517,6 +8553,27 @@ export function CADGabaritCanvas({
           }
           break;
         }
+
+        case "text": {
+          // Outil texte : ouvrir le dialogue pour saisir le texte à cette position
+          setTextDialog({
+            open: true,
+            position: worldPos,
+            content: "",
+            fontSize: 5, // 5mm par défaut
+            color: defaultStrokeColorRef.current || "#000000",
+            alignment: "left",
+          });
+          // Positionner le panneau près du clic
+          const rect = canvasRef.current?.getBoundingClientRect();
+          if (rect) {
+            setTextPanelPos({
+              x: Math.min(e.clientX - rect.left + 20, window.innerWidth - 300),
+              y: Math.min(e.clientY - rect.top, window.innerHeight - 300),
+            });
+          }
+          break;
+        }
       }
     },
     [
@@ -10484,6 +10541,286 @@ export function CADGabaritCanvas({
     toast.success(`${groupsToRemove.length} groupe(s) dissous`);
   }, [sketch, selectedEntities, addToHistory]);
 
+  // === RÉPÉTITION/ARRAY ===
+
+  // Ouvrir la modale de répétition
+  const openArrayDialog = useCallback(() => {
+    if (selectedEntities.size === 0) {
+      toast.error("Sélectionnez des éléments à répéter");
+      return;
+    }
+
+    // Calculer le centre de la sélection pour le mode circulaire
+    let sumX = 0,
+      sumY = 0,
+      count = 0;
+    selectedEntities.forEach((id) => {
+      const geo = sketch.geometries.get(id);
+      if (geo) {
+        if (geo.type === "line") {
+          const line = geo as Line;
+          const p1 = sketch.points.get(line.p1);
+          const p2 = sketch.points.get(line.p2);
+          if (p1 && p2) {
+            sumX += (p1.x + p2.x) / 2;
+            sumY += (p1.y + p2.y) / 2;
+            count++;
+          }
+        } else if (geo.type === "circle") {
+          const circle = geo as CircleType;
+          const center = sketch.points.get(circle.center);
+          if (center) {
+            sumX += center.x;
+            sumY += center.y;
+            count++;
+          }
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          const center = sketch.points.get(arc.center);
+          if (center) {
+            sumX += center.x;
+            sumY += center.y;
+            count++;
+          }
+        }
+      }
+    });
+
+    const selectionCenter = count > 0 ? { x: sumX / count, y: sumY / count } : { x: 0, y: 0 };
+
+    setArrayDialog({
+      open: true,
+      type: "linear",
+      countX: 3,
+      spacingX: 50,
+      countY: 1,
+      spacingY: 50,
+      circularCount: 6,
+      circularAngle: 360,
+      circularCenter: selectionCenter,
+      includeOriginal: true,
+    });
+  }, [selectedEntities, sketch]);
+
+  // Exécuter la répétition
+  const executeArray = useCallback(() => {
+    if (!arrayDialog || selectedEntities.size === 0) return;
+
+    const { type, countX, spacingX, countY, spacingY, circularCount, circularAngle, circularCenter, includeOriginal } =
+      arrayDialog;
+
+    // Collecter les points et géométries sélectionnés
+    const copiedPoints = new Map<string, Point>();
+    const copiedGeometries = new Map<string, Geometry>();
+    const pointsUsed = new Set<string>();
+
+    selectedEntities.forEach((id) => {
+      const geo = sketch.geometries.get(id);
+      if (geo) {
+        copiedGeometries.set(id, { ...geo });
+        if (geo.type === "line") {
+          const line = geo as Line;
+          pointsUsed.add(line.p1);
+          pointsUsed.add(line.p2);
+        } else if (geo.type === "circle") {
+          pointsUsed.add((geo as CircleType).center);
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          pointsUsed.add(arc.center);
+          pointsUsed.add(arc.startPoint);
+          pointsUsed.add(arc.endPoint);
+        } else if (geo.type === "rectangle") {
+          const rect = geo as Rectangle;
+          [rect.p1, rect.p2, rect.p3, rect.p4].forEach((pid) => pointsUsed.add(pid));
+        } else if (geo.type === "bezier") {
+          const bezier = geo as Bezier;
+          [bezier.p1, bezier.p2, bezier.cp1, bezier.cp2].forEach((pid) => pointsUsed.add(pid));
+        }
+      }
+    });
+
+    pointsUsed.forEach((pointId) => {
+      const point = sketch.points.get(pointId);
+      if (point) {
+        copiedPoints.set(pointId, { ...point });
+      }
+    });
+
+    // Calculer le centre de la sélection pour la rotation
+    let centerX = 0,
+      centerY = 0;
+    copiedPoints.forEach((p) => {
+      centerX += p.x;
+      centerY += p.y;
+    });
+    centerX /= copiedPoints.size || 1;
+    centerY /= copiedPoints.size || 1;
+
+    // Utiliser le centre personnalisé pour circulaire
+    if (type === "circular" && circularCenter) {
+      centerX = circularCenter.x;
+      centerY = circularCenter.y;
+    }
+
+    const newSketch = { ...sketch };
+    newSketch.points = new Map(sketch.points);
+    newSketch.geometries = new Map(sketch.geometries);
+
+    // Fonction pour créer une copie avec offset/rotation
+    const createCopy = (offsetX: number, offsetY: number, rotation: number = 0) => {
+      const pointIdMapping = new Map<string, string>();
+
+      copiedPoints.forEach((point, oldId) => {
+        const newId = generateId();
+        pointIdMapping.set(oldId, newId);
+
+        let newX = point.x;
+        let newY = point.y;
+
+        if (rotation !== 0) {
+          // Rotation autour du centre
+          const dx = point.x - centerX;
+          const dy = point.y - centerY;
+          const cos = Math.cos(rotation);
+          const sin = Math.sin(rotation);
+          newX = centerX + dx * cos - dy * sin;
+          newY = centerY + dx * sin + dy * cos;
+        }
+
+        newSketch.points.set(newId, {
+          ...point,
+          id: newId,
+          x: newX + offsetX,
+          y: newY + offsetY,
+          fixed: false, // Les copies ne sont pas fixes
+        });
+      });
+
+      copiedGeometries.forEach((geo) => {
+        const newId = generateId();
+
+        if (geo.type === "line") {
+          const line = geo as Line;
+          newSketch.geometries.set(newId, {
+            ...line,
+            id: newId,
+            p1: pointIdMapping.get(line.p1) || line.p1,
+            p2: pointIdMapping.get(line.p2) || line.p2,
+          });
+        } else if (geo.type === "circle") {
+          const circle = geo as CircleType;
+          newSketch.geometries.set(newId, {
+            ...circle,
+            id: newId,
+            center: pointIdMapping.get(circle.center) || circle.center,
+          });
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          newSketch.geometries.set(newId, {
+            ...arc,
+            id: newId,
+            center: pointIdMapping.get(arc.center) || arc.center,
+            startPoint: pointIdMapping.get(arc.startPoint) || arc.startPoint,
+            endPoint: pointIdMapping.get(arc.endPoint) || arc.endPoint,
+          });
+        } else if (geo.type === "rectangle") {
+          const rect = geo as Rectangle;
+          newSketch.geometries.set(newId, {
+            ...rect,
+            id: newId,
+            p1: pointIdMapping.get(rect.p1) || rect.p1,
+            p2: pointIdMapping.get(rect.p2) || rect.p2,
+            p3: pointIdMapping.get(rect.p3) || rect.p3,
+            p4: pointIdMapping.get(rect.p4) || rect.p4,
+          });
+        } else if (geo.type === "bezier") {
+          const bezier = geo as Bezier;
+          newSketch.geometries.set(newId, {
+            ...bezier,
+            id: newId,
+            p1: pointIdMapping.get(bezier.p1) || bezier.p1,
+            p2: pointIdMapping.get(bezier.p2) || bezier.p2,
+            cp1: pointIdMapping.get(bezier.cp1) || bezier.cp1,
+            cp2: pointIdMapping.get(bezier.cp2) || bezier.cp2,
+          });
+        }
+      });
+    };
+
+    let totalCopies = 0;
+
+    if (type === "linear") {
+      // Répétition linéaire (uniquement sur X avec countX copies)
+      const startIdx = includeOriginal ? 1 : 0;
+      for (let i = startIdx; i < countX; i++) {
+        createCopy(i * spacingX, 0);
+        totalCopies++;
+      }
+    } else if (type === "grid") {
+      // Répétition en grille
+      for (let row = 0; row < countY; row++) {
+        for (let col = 0; col < countX; col++) {
+          if (row === 0 && col === 0 && includeOriginal) continue; // Skip l'original
+          createCopy(col * spacingX, row * spacingY);
+          totalCopies++;
+        }
+      }
+    } else if (type === "circular") {
+      // Répétition circulaire
+      const angleStep = (circularAngle * Math.PI) / 180 / circularCount;
+      const startIdx = includeOriginal ? 1 : 0;
+      for (let i = startIdx; i < circularCount; i++) {
+        const rotation = angleStep * i;
+        createCopy(0, 0, rotation);
+        totalCopies++;
+      }
+    }
+
+    setSketch(newSketch);
+    addToHistory(newSketch);
+    setArrayDialog(null);
+    toast.success(`${totalCopies} copie(s) créée(s)`);
+  }, [arrayDialog, selectedEntities, sketch, addToHistory]);
+
+  // Créer un texte/annotation
+  const createText = useCallback(() => {
+    if (!textDialog || !textDialog.content.trim()) {
+      toast.error("Entrez du texte");
+      return;
+    }
+
+    const newSketch = { ...sketch };
+    newSketch.points = new Map(sketch.points);
+    newSketch.geometries = new Map(sketch.geometries);
+
+    // Créer le point d'ancrage
+    const pointId = generateId();
+    newSketch.points.set(pointId, {
+      id: pointId,
+      x: textDialog.position.x,
+      y: textDialog.position.y,
+    });
+
+    // Créer l'annotation texte
+    const textId = generateId();
+    const textGeo: TextAnnotation = {
+      id: textId,
+      type: "text",
+      position: pointId,
+      content: textDialog.content,
+      fontSize: textDialog.fontSize,
+      color: textDialog.color,
+      alignment: textDialog.alignment,
+      layerId: sketch.activeLayerId,
+    };
+    newSketch.geometries.set(textId, textGeo);
+
+    setSketch(newSketch);
+    addToHistory(newSketch);
+    setTextDialog(null);
+    toast.success("Texte ajouté");
+  }, [textDialog, sketch, addToHistory]);
+
   // Gestion clavier (DOIT être après les fonctions copySelectedEntities, pasteEntities, duplicateSelectedEntities)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -10626,6 +10963,13 @@ export function CADGabaritCanvas({
               resetMarkerMode();
             }
             setShowTransformGizmo(!showTransformGizmo);
+            break;
+          case "T":
+            // Shift+T pour l'outil texte
+            if (e.shiftKey) {
+              setActiveTool("text");
+              resetMarkerMode();
+            }
             break;
           case "d":
             setActiveTool("dimension");
@@ -12037,6 +12381,7 @@ export function CADGabaritCanvas({
           </DropdownMenu>
 
           <ToolButton tool="bezier" icon={Spline} label="Courbe Bézier" shortcut="B" />
+          <ToolButton tool="text" icon={Type} label="Texte / Annotation" shortcut="Shift+T" />
         </div>
 
         <Separator orientation="vertical" className="h-6" />
@@ -12388,6 +12733,26 @@ export function CADGabaritCanvas({
               </TooltipTrigger>
               <TooltipContent>
                 <p>Dégrouper (Ctrl+Shift+G)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Répétition / Array */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-2"
+                  onClick={openArrayDialog}
+                  disabled={selectedEntities.size === 0}
+                >
+                  <Grid3X3 className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Répétition / Array</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -15622,6 +15987,374 @@ export function CADGabaritCanvas({
               <Check className="h-3 w-3 mr-1" />
               Appliquer
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Panneau Répétition / Array - draggable */}
+      {arrayDialog?.open && (
+        <div
+          className="fixed bg-white rounded-lg shadow-xl border z-50 select-none"
+          style={{
+            left: arrayPanelPos.x,
+            top: arrayPanelPos.y,
+            width: 280,
+          }}
+          onMouseDown={(e) => {
+            if (
+              (e.target as HTMLElement).tagName === "INPUT" ||
+              (e.target as HTMLElement).tagName === "BUTTON" ||
+              (e.target as HTMLElement).tagName === "SELECT"
+            )
+              return;
+            setArrayPanelDragging(true);
+            setArrayPanelDragStart({ x: e.clientX - arrayPanelPos.x, y: e.clientY - arrayPanelPos.y });
+          }}
+          onMouseMove={(e) => {
+            if (arrayPanelDragging) {
+              setArrayPanelPos({
+                x: e.clientX - arrayPanelDragStart.x,
+                y: e.clientY - arrayPanelDragStart.y,
+              });
+            }
+          }}
+          onMouseUp={() => setArrayPanelDragging(false)}
+          onMouseLeave={() => setArrayPanelDragging(false)}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-3 py-2 bg-purple-500 text-white rounded-t-lg cursor-move">
+            <span className="text-sm font-medium">
+              <Grid3X3 className="h-4 w-4 inline mr-2" />
+              Répétition / Array
+            </span>
+            <button onClick={() => setArrayDialog(null)}>
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Type de répétition */}
+          <div className="px-3 py-2 border-b">
+            <div className="flex gap-1">
+              <Button
+                variant={arrayDialog.type === "linear" ? "default" : "outline"}
+                size="sm"
+                className="flex-1 h-7 text-xs"
+                onClick={() => setArrayDialog({ ...arrayDialog, type: "linear" })}
+              >
+                Linéaire
+              </Button>
+              <Button
+                variant={arrayDialog.type === "grid" ? "default" : "outline"}
+                size="sm"
+                className="flex-1 h-7 text-xs"
+                onClick={() => setArrayDialog({ ...arrayDialog, type: "grid" })}
+              >
+                Grille
+              </Button>
+              <Button
+                variant={arrayDialog.type === "circular" ? "default" : "outline"}
+                size="sm"
+                className="flex-1 h-7 text-xs"
+                onClick={() => setArrayDialog({ ...arrayDialog, type: "circular" })}
+              >
+                Circulaire
+              </Button>
+            </div>
+          </div>
+
+          {/* Contenu selon le type */}
+          <div className="p-3 space-y-3">
+            {arrayDialog.type === "linear" && (
+              <>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs w-20">Nombre :</Label>
+                  <Input
+                    type="number"
+                    value={arrayDialog.countX}
+                    onChange={(e) =>
+                      setArrayDialog({ ...arrayDialog, countX: Math.max(2, parseInt(e.target.value) || 2) })
+                    }
+                    className="h-7 flex-1 text-xs"
+                    min="2"
+                    max="100"
+                    onKeyDown={(e) => e.stopPropagation()}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs w-20">Espacement :</Label>
+                  <Input
+                    type="number"
+                    value={arrayDialog.spacingX}
+                    onChange={(e) => setArrayDialog({ ...arrayDialog, spacingX: parseFloat(e.target.value) || 10 })}
+                    className="h-7 flex-1 text-xs"
+                    step="5"
+                    onKeyDown={(e) => e.stopPropagation()}
+                  />
+                  <span className="text-xs text-gray-500">mm</span>
+                </div>
+              </>
+            )}
+
+            {arrayDialog.type === "grid" && (
+              <>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs w-20">Colonnes :</Label>
+                  <Input
+                    type="number"
+                    value={arrayDialog.countX}
+                    onChange={(e) =>
+                      setArrayDialog({ ...arrayDialog, countX: Math.max(1, parseInt(e.target.value) || 1) })
+                    }
+                    className="h-7 w-16 text-xs"
+                    min="1"
+                    max="50"
+                    onKeyDown={(e) => e.stopPropagation()}
+                  />
+                  <Label className="text-xs">× esp.</Label>
+                  <Input
+                    type="number"
+                    value={arrayDialog.spacingX}
+                    onChange={(e) => setArrayDialog({ ...arrayDialog, spacingX: parseFloat(e.target.value) || 10 })}
+                    className="h-7 w-16 text-xs"
+                    step="5"
+                    onKeyDown={(e) => e.stopPropagation()}
+                  />
+                  <span className="text-xs text-gray-500">mm</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs w-20">Lignes :</Label>
+                  <Input
+                    type="number"
+                    value={arrayDialog.countY}
+                    onChange={(e) =>
+                      setArrayDialog({ ...arrayDialog, countY: Math.max(1, parseInt(e.target.value) || 1) })
+                    }
+                    className="h-7 w-16 text-xs"
+                    min="1"
+                    max="50"
+                    onKeyDown={(e) => e.stopPropagation()}
+                  />
+                  <Label className="text-xs">× esp.</Label>
+                  <Input
+                    type="number"
+                    value={arrayDialog.spacingY}
+                    onChange={(e) => setArrayDialog({ ...arrayDialog, spacingY: parseFloat(e.target.value) || 10 })}
+                    className="h-7 w-16 text-xs"
+                    step="5"
+                    onKeyDown={(e) => e.stopPropagation()}
+                  />
+                  <span className="text-xs text-gray-500">mm</span>
+                </div>
+                <div className="text-xs text-gray-500 text-center">
+                  Total: {arrayDialog.countX * arrayDialog.countY} éléments
+                </div>
+              </>
+            )}
+
+            {arrayDialog.type === "circular" && (
+              <>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs w-20">Nombre :</Label>
+                  <Input
+                    type="number"
+                    value={arrayDialog.circularCount}
+                    onChange={(e) =>
+                      setArrayDialog({ ...arrayDialog, circularCount: Math.max(2, parseInt(e.target.value) || 2) })
+                    }
+                    className="h-7 flex-1 text-xs"
+                    min="2"
+                    max="100"
+                    onKeyDown={(e) => e.stopPropagation()}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs w-20">Angle total :</Label>
+                  <Input
+                    type="number"
+                    value={arrayDialog.circularAngle}
+                    onChange={(e) =>
+                      setArrayDialog({ ...arrayDialog, circularAngle: parseFloat(e.target.value) || 360 })
+                    }
+                    className="h-7 flex-1 text-xs"
+                    min="1"
+                    max="360"
+                    onKeyDown={(e) => e.stopPropagation()}
+                  />
+                  <span className="text-xs text-gray-500">°</span>
+                </div>
+                <div className="text-xs text-gray-500">
+                  Pas angulaire: {(arrayDialog.circularAngle / arrayDialog.circularCount).toFixed(1)}°
+                </div>
+                {arrayDialog.circularCenter && (
+                  <div className="text-xs text-gray-400">
+                    Centre: ({arrayDialog.circularCenter.x.toFixed(0)}, {arrayDialog.circularCenter.y.toFixed(0)})
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Option: inclure l'original */}
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={arrayDialog.includeOriginal}
+                onChange={(e) => setArrayDialog({ ...arrayDialog, includeOriginal: e.target.checked })}
+                className="h-3 w-3"
+              />
+              Inclure l'original dans le compte
+            </label>
+
+            {/* Boutons */}
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" size="sm" className="flex-1 h-8" onClick={() => setArrayDialog(null)}>
+                Annuler
+              </Button>
+              <Button size="sm" className="flex-1 h-8 bg-purple-500 hover:bg-purple-600" onClick={executeArray}>
+                <Check className="h-3 w-3 mr-1" />
+                Appliquer
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Panneau Texte / Annotation - draggable */}
+      {textDialog?.open && (
+        <div
+          className="fixed bg-white rounded-lg shadow-xl border z-50 select-none"
+          style={{
+            left: textPanelPos.x,
+            top: textPanelPos.y,
+            width: 260,
+          }}
+          onMouseDown={(e) => {
+            if (
+              (e.target as HTMLElement).tagName === "INPUT" ||
+              (e.target as HTMLElement).tagName === "BUTTON" ||
+              (e.target as HTMLElement).tagName === "TEXTAREA"
+            )
+              return;
+            setTextPanelDragging(true);
+            setTextPanelDragStart({ x: e.clientX - textPanelPos.x, y: e.clientY - textPanelPos.y });
+          }}
+          onMouseMove={(e) => {
+            if (textPanelDragging) {
+              setTextPanelPos({
+                x: e.clientX - textPanelDragStart.x,
+                y: e.clientY - textPanelDragStart.y,
+              });
+            }
+          }}
+          onMouseUp={() => setTextPanelDragging(false)}
+          onMouseLeave={() => setTextPanelDragging(false)}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-3 py-2 bg-emerald-500 text-white rounded-t-lg cursor-move">
+            <span className="text-sm font-medium">
+              <Type className="h-4 w-4 inline mr-2" />
+              Texte / Annotation
+            </span>
+            <button onClick={() => setTextDialog(null)}>
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Contenu */}
+          <div className="p-3 space-y-3">
+            {/* Texte */}
+            <div>
+              <Label className="text-xs mb-1 block">Texte :</Label>
+              <textarea
+                value={textDialog.content}
+                onChange={(e) => setTextDialog({ ...textDialog, content: e.target.value })}
+                className="w-full h-16 text-sm p-2 border rounded resize-none"
+                placeholder="Entrez votre texte..."
+                autoFocus
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter" && e.ctrlKey) {
+                    createText();
+                  }
+                }}
+              />
+            </div>
+
+            {/* Taille */}
+            <div className="flex items-center gap-2">
+              <Label className="text-xs w-16">Taille :</Label>
+              <Input
+                type="number"
+                value={textDialog.fontSize}
+                onChange={(e) =>
+                  setTextDialog({ ...textDialog, fontSize: Math.max(1, parseFloat(e.target.value) || 5) })
+                }
+                className="h-7 w-20 text-xs"
+                min="1"
+                max="100"
+                step="1"
+                onKeyDown={(e) => e.stopPropagation()}
+              />
+              <span className="text-xs text-gray-500">mm</span>
+            </div>
+
+            {/* Couleur */}
+            <div className="flex items-center gap-2">
+              <Label className="text-xs w-16">Couleur :</Label>
+              <input
+                type="color"
+                value={textDialog.color}
+                onChange={(e) => setTextDialog({ ...textDialog, color: e.target.value })}
+                className="h-7 w-10 cursor-pointer rounded border"
+              />
+              <span className="text-xs text-gray-500">{textDialog.color}</span>
+            </div>
+
+            {/* Alignement */}
+            <div className="flex items-center gap-2">
+              <Label className="text-xs w-16">Align :</Label>
+              <div className="flex gap-1">
+                <Button
+                  variant={textDialog.alignment === "left" ? "default" : "outline"}
+                  size="sm"
+                  className="h-7 w-8 p-0"
+                  onClick={() => setTextDialog({ ...textDialog, alignment: "left" })}
+                >
+                  ←
+                </Button>
+                <Button
+                  variant={textDialog.alignment === "center" ? "default" : "outline"}
+                  size="sm"
+                  className="h-7 w-8 p-0"
+                  onClick={() => setTextDialog({ ...textDialog, alignment: "center" })}
+                >
+                  ↔
+                </Button>
+                <Button
+                  variant={textDialog.alignment === "right" ? "default" : "outline"}
+                  size="sm"
+                  className="h-7 w-8 p-0"
+                  onClick={() => setTextDialog({ ...textDialog, alignment: "right" })}
+                >
+                  →
+                </Button>
+              </div>
+            </div>
+
+            {/* Boutons */}
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" size="sm" className="flex-1 h-8" onClick={() => setTextDialog(null)}>
+                Annuler
+              </Button>
+              <Button
+                size="sm"
+                className="flex-1 h-8 bg-emerald-500 hover:bg-emerald-600"
+                onClick={createText}
+                disabled={!textDialog.content.trim()}
+              >
+                <Check className="h-3 w-3 mr-1" />
+                Créer (Ctrl+↵)
+              </Button>
+            </div>
           </div>
         </div>
       )}

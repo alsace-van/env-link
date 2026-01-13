@@ -76,7 +76,20 @@ export interface Bezier {
   isConstruction?: boolean; // Ligne de construction
 }
 
-export type Geometry = Line | Circle | Arc | Rectangle | Bezier;
+export interface TextAnnotation {
+  id: string;
+  type: "text";
+  position: string; // ID du point d'ancrage
+  content: string; // Texte à afficher
+  fontSize: number; // Taille en mm
+  fontFamily?: string; // Police (défaut: Arial)
+  color?: string; // Couleur du texte
+  rotation?: number; // Rotation en degrés
+  alignment?: "left" | "center" | "right"; // Alignement horizontal
+  layerId?: string;
+}
+
+export type Geometry = Line | Circle | Arc | Rectangle | Bezier | TextAnnotation;
 
 // === GROUPES ===
 
@@ -186,6 +199,7 @@ export type ToolType =
   | "arc"
   | "arc3points"
   | "bezier"
+  | "text"
   | "dimension"
   | "constraint"
   | "measure"
