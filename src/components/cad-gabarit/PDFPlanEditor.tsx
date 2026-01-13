@@ -157,6 +157,17 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
   // Panneau latéral ouvert
   const [showOptionsPanel, setShowOptionsPanel] = useState(true);
 
+  // Paramètres de transformation pour convertir écran ↔ sketch dans l'aperçu PDF
+  const [pageTransform, setPageTransform] = useState<{
+    drawCenterX: number;
+    drawCenterY: number;
+    sketchCenterX: number;
+    sketchCenterY: number;
+    mmToPixels: number;
+    scaleFactor: number;
+    planScale: number;
+  } | null>(null);
+
   // Calculer les bounds du sketch
   const calculateBounds = useCallback(() => {
     let minX = Infinity,
@@ -249,10 +260,40 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     [viewport],
   );
 
+  // Conversion coordonnées écran → coordonnées sketch (pour l'aperçu PDF)
+  const screenToSketch = useCallback(
+    (screenX: number, screenY: number) => {
+      if (!pageTransform) return { x: 0, y: 0 };
+
+      const { drawCenterX, drawCenterY, sketchCenterX, sketchCenterY, mmToPixels, scaleFactor, planScale } =
+        pageTransform;
+
+      // Inverse de sketchToPage:
+      // screenX = drawCenterX + onPaperXmm * mmToPixels
+      // onPaperXmm = relXmm / planScale
+      // relXmm = (x - sketchCenterX) / scaleFactor
+
+      const onPaperXmm = (screenX - drawCenterX) / mmToPixels;
+      const onPaperYmm = (screenY - drawCenterY) / mmToPixels;
+
+      const relXmm = onPaperXmm * planScale;
+      const relYmm = onPaperYmm * planScale;
+
+      const x = sketchCenterX + relXmm * scaleFactor;
+      const y = sketchCenterY + relYmm * scaleFactor;
+
+      return { x, y };
+    },
+    [pageTransform],
+  );
+
   // Trouver l'entité sous le curseur
   const findEntityAtPosition = useCallback(
     (worldX: number, worldY: number): string | null => {
-      const tolerance = 8 / viewport.scale;
+      // Tolérance adaptée à l'échelle de la page
+      const tolerance = pageTransform
+        ? (10 * pageTransform.planScale * pageTransform.scaleFactor) / pageTransform.mmToPixels
+        : 8 / viewport.scale;
 
       // Chercher d'abord les lignes
       for (const [id, geo] of sketch.geometries) {
@@ -282,13 +323,15 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
       }
       return null;
     },
-    [sketch, viewport.scale],
+    [sketch, viewport.scale, pageTransform],
   );
 
   // Trouver le point sous le curseur
   const findPointAtPosition = useCallback(
     (worldX: number, worldY: number): string | null => {
-      const tolerance = 10 / viewport.scale;
+      const tolerance = pageTransform
+        ? (12 * pageTransform.planScale * pageTransform.scaleFactor) / pageTransform.mmToPixels
+        : 10 / viewport.scale;
 
       for (const [id, point] of sketch.points) {
         const dist = Math.sqrt((worldX - point.x) ** 2 + (worldY - point.y) ** 2);
@@ -296,7 +339,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
       }
       return null;
     },
-    [sketch, viewport.scale],
+    [sketch, viewport.scale, pageTransform],
   );
 
   // Distance point à segment
@@ -596,7 +639,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
 
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
-      const worldPos = screenToWorld(screenX, screenY);
+      const sketchPos = screenToSketch(screenX, screenY);
 
       if (activeTool === "pan" || e.button === 1) {
         // Pan avec le bouton du milieu ou outil pan
@@ -624,7 +667,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
 
       if (activeTool === "dimension") {
         // Ajouter une cotation sur une ligne
-        const entityId = findEntityAtPosition(worldPos.x, worldPos.y);
+        const entityId = findEntityAtPosition(sketchPos.x, sketchPos.y);
         if (entityId) {
           const geo = sketch.geometries.get(entityId);
           if (geo?.type === "line") {
@@ -634,7 +677,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
         }
 
         // Sinon, cotation entre 2 points
-        const pointId = findPointAtPosition(worldPos.x, worldPos.y);
+        const pointId = findPointAtPosition(sketchPos.x, sketchPos.y);
         if (pointId) {
           if (!dimensionSelection.p1Id) {
             const pt = sketch.points.get(pointId);
@@ -650,7 +693,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
       }
 
       if (activeTool === "radius") {
-        const entityId = findEntityAtPosition(worldPos.x, worldPos.y);
+        const entityId = findEntityAtPosition(sketchPos.x, sketchPos.y);
         if (entityId) {
           const geo = sketch.geometries.get(entityId);
           if (geo?.type === "circle" || geo?.type === "arc") {
@@ -661,7 +704,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
       }
 
       if (activeTool === "angle") {
-        const entityId = findEntityAtPosition(worldPos.x, worldPos.y);
+        const entityId = findEntityAtPosition(sketchPos.x, sketchPos.y);
         if (entityId) {
           const geo = sketch.geometries.get(entityId);
           if (geo?.type === "line") {
@@ -678,7 +721,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     },
     [
       activeTool,
-      screenToWorld,
+      screenToSketch,
       findEntityAtPosition,
       findPointAtPosition,
       dimensionSelection,
@@ -698,7 +741,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
 
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
-      const worldPos = screenToWorld(screenX, screenY);
+      const sketchPos = screenToSketch(screenX, screenY);
 
       // Pan
       if (mouseState.isDragging && (activeTool === "pan" || draggingDimension === null)) {
@@ -743,10 +786,10 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
       }
 
       // Hover
-      const entityId = findEntityAtPosition(worldPos.x, worldPos.y);
+      const entityId = findEntityAtPosition(sketchPos.x, sketchPos.y);
       setHoveredEntity(entityId);
     },
-    [mouseState, activeTool, viewport.scale, draggingDimension, dimensions, screenToWorld, findEntityAtPosition],
+    [mouseState, activeTool, viewport.scale, draggingDimension, dimensions, screenToSketch, findEntityAtPosition],
   );
 
   const handleMouseUp = useCallback(() => {
@@ -1002,6 +1045,31 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     // Facteur d'échelle pour les rayons (pixels par unité sketch)
     const radiusToPixels = mmToPixels / sketch.scaleFactor / options.scale;
 
+    // Stocker les paramètres de transformation pour la détection de clic
+    // (uniquement si changé pour éviter les re-renders infinis)
+    const newTransform = {
+      drawCenterX,
+      drawCenterY,
+      sketchCenterX,
+      sketchCenterY,
+      mmToPixels,
+      scaleFactor: sketch.scaleFactor,
+      planScale: options.scale,
+    };
+    if (
+      !pageTransform ||
+      pageTransform.drawCenterX !== newTransform.drawCenterX ||
+      pageTransform.drawCenterY !== newTransform.drawCenterY ||
+      pageTransform.sketchCenterX !== newTransform.sketchCenterX ||
+      pageTransform.sketchCenterY !== newTransform.sketchCenterY ||
+      pageTransform.mmToPixels !== newTransform.mmToPixels ||
+      pageTransform.scaleFactor !== newTransform.scaleFactor ||
+      pageTransform.planScale !== newTransform.planScale
+    ) {
+      // Utiliser setTimeout pour éviter l'update pendant le rendu
+      setTimeout(() => setPageTransform(newTransform), 0);
+    }
+
     // ===== DESSINER LES GÉOMÉTRIES =====
     ctx.save();
 
@@ -1023,10 +1091,11 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     // Lignes
     sketch.geometries.forEach((geo, id) => {
       const isHovered = hoveredEntity === id;
+      const isAngleFirstLine = angleSelection.line1Id === id;
       const isConstruction = (geo as any).isConstruction;
 
-      ctx.strokeStyle = isHovered ? "#FF6600" : isConstruction ? "#9CA3AF" : "#000000";
-      ctx.lineWidth = isHovered ? 2.5 : isConstruction ? 0.5 : 1;
+      ctx.strokeStyle = isAngleFirstLine ? "#10B981" : isHovered ? "#FF6600" : isConstruction ? "#9CA3AF" : "#000000";
+      ctx.lineWidth = isHovered || isAngleFirstLine ? 2.5 : isConstruction ? 0.5 : 1;
 
       if (isConstruction) {
         ctx.setLineDash([5, 5]);
@@ -1316,7 +1385,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     });
 
     ctx.restore();
-  }, [sketch, options, dimensions, hoveredEntity, draggingDimension, calculateBounds]);
+  }, [sketch, options, dimensions, hoveredEntity, draggingDimension, angleSelection, calculateBounds, pageTransform]);
 
   // Export PDF
   const handleExportPDF = useCallback(() => {
