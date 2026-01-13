@@ -63,8 +63,11 @@ export class SnapSystem {
     viewport: Viewport,
     excludeIds: string[] = [],
     additionalPoints: AdditionalSnapPoint[] = [],
+    options: { activeLayerOnly?: boolean; activeLayerId?: string } = {},
   ): SnapPoint | null {
     if (!this.settings.enabled) return null;
+
+    const { activeLayerOnly = false, activeLayerId } = options;
 
     // Convertir la position souris en coordonnées sketch
     const worldPos = this.screenToWorld(mouseX, mouseY, viewport);
@@ -83,10 +86,38 @@ export class SnapSystem {
       });
     }
 
+    // Collecter les IDs des points des géométries du calque actif (si filtrage activé)
+    const activeLayerPointIds = new Set<string>();
+    if (activeLayerOnly && activeLayerId) {
+      sketch.geometries.forEach((geo) => {
+        const layerId = geo.layerId || "trace";
+        if (layerId === activeLayerId) {
+          // Collecter les points de cette géométrie
+          if (geo.type === "line") {
+            activeLayerPointIds.add((geo as any).p1);
+            activeLayerPointIds.add((geo as any).p2);
+          } else if (geo.type === "circle") {
+            activeLayerPointIds.add((geo as any).center);
+          } else if (geo.type === "arc") {
+            activeLayerPointIds.add((geo as any).center);
+            activeLayerPointIds.add((geo as any).startPoint);
+            activeLayerPointIds.add((geo as any).endPoint);
+          } else if (geo.type === "bezier") {
+            activeLayerPointIds.add((geo as any).p1);
+            activeLayerPointIds.add((geo as any).p2);
+            activeLayerPointIds.add((geo as any).cp1);
+            activeLayerPointIds.add((geo as any).cp2);
+          }
+        }
+      });
+    }
+
     // 1. Points existants (endpoints)
     if (this.settings.types.has("endpoint")) {
       sketch.points.forEach((point, id) => {
         if (excludeIds.includes(id)) return;
+        // Filtrer par calque si activé
+        if (activeLayerOnly && activeLayerId && !activeLayerPointIds.has(id)) return;
         snapPoints.push({
           x: point.x,
           y: point.y,
@@ -100,6 +131,11 @@ export class SnapSystem {
     // 2. Points sur les géométries
     sketch.geometries.forEach((geo, id) => {
       if (excludeIds.includes(id)) return;
+      // Filtrer par calque si activé
+      if (activeLayerOnly && activeLayerId) {
+        const layerId = geo.layerId || "trace";
+        if (layerId !== activeLayerId) return;
+      }
 
       const geoSnapPoints = this.getGeometrySnapPoints(geo, sketch, worldPos);
       snapPoints.push(...geoSnapPoints);

@@ -277,7 +277,10 @@ export class CADRenderer {
     // 3. Geometries (filtrer par visibilité du calque)
     // OPTIMISATION: Batch des lignes par strokeWidth pour réduire les appels draw
     // Map: strokeWidth -> array of lines
-    const normalLinesByWidth: Map<string, { p1: Point; p2: Point; color?: string; width?: number }[]> = new Map();
+    const normalLinesByWidth: Map<
+      string,
+      { p1: Point; p2: Point; color?: string; width?: number; isConstruction?: boolean }[]
+    > = new Map();
     const selectedLinesByWidth: Map<number, { p1: Point; p2: Point; isConstruction?: boolean }[]> = new Map();
 
     // Viewport bounds pour culling

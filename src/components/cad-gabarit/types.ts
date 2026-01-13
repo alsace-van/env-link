@@ -20,6 +20,8 @@ export interface Line {
   p2: string; // ID du point d'arrivée
   layerId?: string; // Calque (défaut: 'default')
   strokeWidth?: number; // Épaisseur du trait (défaut: styles.lineWidth)
+  strokeColor?: string; // Couleur du trait (défaut: styles.lineColor)
+  isConstruction?: boolean; // Ligne de construction (non exportée, style pointillé)
 }
 
 export interface Circle {
@@ -29,6 +31,8 @@ export interface Circle {
   radius: number;
   layerId?: string;
   strokeWidth?: number; // Épaisseur du trait
+  strokeColor?: string; // Couleur du trait
+  isConstruction?: boolean; // Ligne de construction
 }
 
 export interface Arc {
@@ -42,6 +46,8 @@ export interface Arc {
   counterClockwise?: boolean; // Si true, dessiner dans le sens anti-horaire (grand arc si nécessaire)
   isFillet?: boolean; // Si true, cet arc est un congé (peut être supprimé pour restaurer le coin)
   strokeWidth?: number; // Épaisseur du trait
+  strokeColor?: string; // Couleur du trait
+  isConstruction?: boolean; // Ligne de construction
 }
 
 export interface Rectangle {
@@ -53,6 +59,8 @@ export interface Rectangle {
   p4: string; // coin inférieur gauche
   layerId?: string;
   strokeWidth?: number; // Épaisseur du trait
+  strokeColor?: string; // Couleur du trait
+  isConstruction?: boolean; // Ligne de construction
 }
 
 export interface Bezier {
@@ -64,9 +72,22 @@ export interface Bezier {
   cp2: string; // Point de contrôle 2
   layerId?: string;
   strokeWidth?: number; // Épaisseur du trait
+  strokeColor?: string; // Couleur du trait
+  isConstruction?: boolean; // Ligne de construction
 }
 
 export type Geometry = Line | Circle | Arc | Rectangle | Bezier;
+
+// === GROUPES ===
+
+export interface GeometryGroup {
+  id: string;
+  name: string;
+  entityIds: string[]; // IDs des géométries dans ce groupe
+  color?: string; // Couleur optionnelle pour identifier le groupe
+  locked?: boolean; // Groupe verrouillé (ne peut pas être modifié)
+  visible?: boolean; // Visibilité du groupe (défaut: true)
+}
 
 // === HANDLES (Poignées de manipulation) ===
 
@@ -232,6 +253,7 @@ export interface Sketch {
   constraints: Map<string, Constraint>;
   dimensions: Map<string, Dimension>;
   layers: Map<string, Layer>;
+  groups: Map<string, GeometryGroup>; // Groupes de géométries
   activeLayerId: string; // Calque actif pour les nouvelles entités
   scaleFactor: number; // px to mm
   dof: number; // Degrees of Freedom
