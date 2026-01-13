@@ -584,6 +584,67 @@ class SimplifiedSolver {
         return error;
       }
 
+      case "equal": {
+        // Contrainte d'égalité de longueur entre deux lignes
+        const line1 = this.primitives.find((p) => p.id === constraint.e1_id && p.type === "line") as
+          | GcsLine
+          | undefined;
+        const line2 = this.primitives.find((p) => p.id === constraint.e2_id && p.type === "line") as
+          | GcsLine
+          | undefined;
+        if (!line1 || !line2) return 0;
+
+        const l1p1 = this.points.get(line1.p1_id);
+        const l1p2 = this.points.get(line1.p2_id);
+        const l2p1 = this.points.get(line2.p1_id);
+        const l2p2 = this.points.get(line2.p2_id);
+        if (!l1p1 || !l1p2 || !l2p1 || !l2p2) return 0;
+
+        // Calculer les longueurs actuelles
+        const len1 = Math.sqrt((l1p2.x - l1p1.x) ** 2 + (l1p2.y - l1p1.y) ** 2);
+        const len2 = Math.sqrt((l2p2.x - l2p1.x) ** 2 + (l2p2.y - l2p1.y) ** 2);
+
+        if (len1 < 0.001 || len2 < 0.001) return 0;
+
+        const error = Math.abs(len1 - len2);
+        if (error < 0.001) return 0; // Déjà égales
+
+        // Longueur cible = moyenne des deux
+        const targetLen = (len1 + len2) / 2;
+
+        // Ajuster la ligne 1 si possible
+        if (!l1p2.fixed) {
+          const ratio1 = targetLen / len1;
+          const dx1 = l1p2.x - l1p1.x;
+          const dy1 = l1p2.y - l1p1.y;
+          l1p2.x = l1p1.x + dx1 * ratio1;
+          l1p2.y = l1p1.y + dy1 * ratio1;
+        } else if (!l1p1.fixed) {
+          const ratio1 = targetLen / len1;
+          const dx1 = l1p1.x - l1p2.x;
+          const dy1 = l1p1.y - l1p2.y;
+          l1p1.x = l1p2.x + dx1 * ratio1;
+          l1p1.y = l1p2.y + dy1 * ratio1;
+        }
+
+        // Ajuster la ligne 2 si possible
+        if (!l2p2.fixed) {
+          const ratio2 = targetLen / len2;
+          const dx2 = l2p2.x - l2p1.x;
+          const dy2 = l2p2.y - l2p1.y;
+          l2p2.x = l2p1.x + dx2 * ratio2;
+          l2p2.y = l2p1.y + dy2 * ratio2;
+        } else if (!l2p1.fixed) {
+          const ratio2 = targetLen / len2;
+          const dx2 = l2p1.x - l2p2.x;
+          const dy2 = l2p1.y - l2p2.y;
+          l2p1.x = l2p2.x + dx2 * ratio2;
+          l2p1.y = l2p2.y + dy2 * ratio2;
+        }
+
+        return error;
+      }
+
       default:
         return 0;
     }
@@ -637,6 +698,9 @@ class SimplifiedSolver {
           dof -= 1;
           break;
         case "l2l_angle":
+          dof -= 1;
+          break;
+        case "equal":
           dof -= 1;
           break;
         default:
