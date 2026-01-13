@@ -4,7 +4,19 @@
 // ============================================
 
 import React, { useRef, useEffect, useState, useCallback } from "react";
-import { X, ZoomIn, ZoomOut, Move, Ruler, Circle, RotateCcw, Download, MousePointer, Maximize2 } from "lucide-react";
+import {
+  X,
+  ZoomIn,
+  ZoomOut,
+  Move,
+  Ruler,
+  Circle,
+  RotateCcw,
+  Download,
+  MousePointer,
+  Maximize2,
+  Triangle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,10 +33,14 @@ export interface PlanDimension {
   entityId?: string; // ID de la géométrie (ligne, cercle, arc)
   p1Id?: string; // Point 1 pour cotation entre 2 points
   p2Id?: string; // Point 2
-  // Valeur en mm (calculée automatiquement)
+  // Pour angle: référence à 2 lignes adjacentes
+  line1Id?: string;
+  line2Id?: string;
+  vertexId?: string; // Point commun aux 2 lignes
+  // Valeur en mm ou degrés (calculée automatiquement)
   value: number;
   // Position de la cotation (offset par rapport à la géométrie)
-  offset: number; // Distance perpendiculaire pour les longueurs
+  offset: number; // Distance perpendiculaire pour les longueurs, rayon de l'arc pour les angles
   position?: { x: number; y: number }; // Position absolue pour rayon/diamètre
   // Style
   color: string;
@@ -105,7 +121,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
   const [dimensions, setDimensions] = useState<PlanDimension[]>([]);
 
   // Outil actif
-  const [activeTool, setActiveTool] = useState<"select" | "dimension" | "radius" | "pan">("select");
+  const [activeTool, setActiveTool] = useState<"select" | "dimension" | "radius" | "angle" | "pan">("select");
 
   // Viewport pour le canvas
   const [viewport, setViewport] = useState({
@@ -132,6 +148,11 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     p1Id: string | null;
     p1Pos: { x: number; y: number } | null;
   }>({ p1Id: null, p1Pos: null });
+
+  // Sélection pour cotation d'angle (2 lignes adjacentes)
+  const [angleSelection, setAngleSelection] = useState<{
+    line1Id: string | null;
+  }>({ line1Id: null });
 
   // Panneau latéral ouvert
   const [showOptionsPanel, setShowOptionsPanel] = useState(true);
@@ -415,6 +436,80 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     [sketch, viewport.scale],
   );
 
+  // Ajouter une cotation d'angle entre 2 lignes adjacentes
+  const addAngleDimension = useCallback(
+    (line1Id: string, line2Id: string) => {
+      const geo1 = sketch.geometries.get(line1Id);
+      const geo2 = sketch.geometries.get(line2Id);
+      if (!geo1 || !geo2 || geo1.type !== "line" || geo2.type !== "line") return;
+
+      const line1 = geo1 as Line;
+      const line2 = geo2 as Line;
+
+      // Trouver le point commun
+      let vertexId: string | null = null;
+      if (line1.p1 === line2.p1 || line1.p1 === line2.p2) vertexId = line1.p1;
+      else if (line1.p2 === line2.p1 || line1.p2 === line2.p2) vertexId = line1.p2;
+
+      if (!vertexId) {
+        toast.error("Les lignes doivent être adjacentes (avoir un point commun)");
+        return;
+      }
+
+      const vertex = sketch.points.get(vertexId);
+      if (!vertex) return;
+
+      // Trouver les autres extrémités
+      const otherP1Id = line1.p1 === vertexId ? line1.p2 : line1.p1;
+      const otherP2Id = line2.p1 === vertexId ? line2.p2 : line2.p1;
+      const otherP1 = sketch.points.get(otherP1Id);
+      const otherP2 = sketch.points.get(otherP2Id);
+      if (!otherP1 || !otherP2) return;
+
+      // Calculer les angles
+      const angle1 = Math.atan2(otherP1.y - vertex.y, otherP1.x - vertex.x);
+      const angle2 = Math.atan2(otherP2.y - vertex.y, otherP2.x - vertex.x);
+
+      // Calculer l'angle entre les deux lignes
+      let angleDiff = angle2 - angle1;
+      // Normaliser entre 0 et 2*PI
+      while (angleDiff < 0) angleDiff += 2 * Math.PI;
+      while (angleDiff > 2 * Math.PI) angleDiff -= 2 * Math.PI;
+      // Prendre le plus petit angle
+      if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+
+      const angleInDegrees = (angleDiff * 180) / Math.PI;
+
+      // Vérifier si une cotation existe déjà
+      const existing = dimensions.find(
+        (d) =>
+          d.type === "angle" &&
+          ((d.line1Id === line1Id && d.line2Id === line2Id) || (d.line1Id === line2Id && d.line2Id === line1Id)),
+      );
+      if (existing) {
+        toast.info("Cet angle est déjà coté");
+        return;
+      }
+
+      const newDim: PlanDimension = {
+        id: generateId(),
+        type: "angle",
+        line1Id,
+        line2Id,
+        vertexId,
+        value: angleInDegrees,
+        offset: 30, // Rayon de l'arc de cotation en pixels
+        color: "#0066CC",
+        fontSize: 10,
+        showValue: true,
+      };
+
+      setDimensions((prev) => [...prev, newDim]);
+      toast.success(`Cotation d'angle ajoutée: ${angleInDegrees.toFixed(1)}°`);
+    },
+    [sketch, dimensions],
+  );
+
   // Coter automatiquement toutes les lignes
   const autoAddAllDimensions = useCallback(() => {
     let count = 0;
@@ -564,6 +659,22 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
           }
         }
       }
+
+      if (activeTool === "angle") {
+        const entityId = findEntityAtPosition(worldPos.x, worldPos.y);
+        if (entityId) {
+          const geo = sketch.geometries.get(entityId);
+          if (geo?.type === "line") {
+            if (!angleSelection.line1Id) {
+              setAngleSelection({ line1Id: entityId });
+              toast.info("Cliquez sur la 2ème ligne adjacente");
+            } else {
+              addAngleDimension(angleSelection.line1Id, entityId);
+              setAngleSelection({ line1Id: null });
+            }
+          }
+        }
+      }
     },
     [
       activeTool,
@@ -571,9 +682,11 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
       findEntityAtPosition,
       findPointAtPosition,
       dimensionSelection,
+      angleSelection,
       addLengthDimension,
       addRadiusDimension,
       addPointToPointDimension,
+      addAngleDimension,
       sketch,
     ],
   );
@@ -1117,6 +1230,88 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
 
         ctx.fillStyle = isDragging ? "#FF0000" : dim.color;
         ctx.fillText(text, tp.x, tp.y);
+      } else if (dim.type === "angle" && dim.line1Id && dim.line2Id && dim.vertexId) {
+        // Cotation d'angle
+        const line1 = sketch.geometries.get(dim.line1Id) as Line;
+        const line2 = sketch.geometries.get(dim.line2Id) as Line;
+        const vertex = sketch.points.get(dim.vertexId);
+        if (!line1 || !line2 || !vertex) return;
+
+        // Trouver les autres extrémités
+        const otherP1Id = line1.p1 === dim.vertexId ? line1.p2 : line1.p1;
+        const otherP2Id = line2.p1 === dim.vertexId ? line2.p2 : line2.p1;
+        const otherP1 = sketch.points.get(otherP1Id);
+        const otherP2 = sketch.points.get(otherP2Id);
+        if (!otherP1 || !otherP2) return;
+
+        // Convertir en coordonnées écran
+        const tv = sketchToPage(vertex.x, vertex.y);
+        const tp1 = sketchToPage(otherP1.x, otherP1.y);
+        const tp2 = sketchToPage(otherP2.x, otherP2.y);
+
+        // Calculer les angles à l'écran
+        const angle1 = Math.atan2(tp1.y - tv.y, tp1.x - tv.x);
+        const angle2 = Math.atan2(tp2.y - tv.y, tp2.x - tv.x);
+
+        // Déterminer l'angle de départ et de fin
+        let startAngle = angle1;
+        let endAngle = angle2;
+
+        // S'assurer de dessiner le plus petit arc
+        let diff = endAngle - startAngle;
+        while (diff < -Math.PI) diff += 2 * Math.PI;
+        while (diff > Math.PI) diff -= 2 * Math.PI;
+
+        if (diff < 0) {
+          [startAngle, endAngle] = [endAngle, startAngle];
+        }
+
+        const arcRadius = dim.offset; // Rayon de l'arc en pixels
+
+        // Dessiner l'arc
+        ctx.beginPath();
+        ctx.arc(tv.x, tv.y, arcRadius, startAngle, endAngle);
+        ctx.stroke();
+
+        // Flèches aux extrémités
+        const arrowSize = 6;
+
+        // Flèche 1 (au début de l'arc)
+        const arrow1X = tv.x + arcRadius * Math.cos(startAngle);
+        const arrow1Y = tv.y + arcRadius * Math.sin(startAngle);
+        const arrow1Dir = startAngle + Math.PI / 2;
+        ctx.beginPath();
+        ctx.moveTo(arrow1X, arrow1Y);
+        ctx.lineTo(arrow1X + arrowSize * Math.cos(arrow1Dir - 0.4), arrow1Y + arrowSize * Math.sin(arrow1Dir - 0.4));
+        ctx.moveTo(arrow1X, arrow1Y);
+        ctx.lineTo(arrow1X + arrowSize * Math.cos(arrow1Dir + 0.4), arrow1Y + arrowSize * Math.sin(arrow1Dir + 0.4));
+        ctx.stroke();
+
+        // Flèche 2 (à la fin de l'arc)
+        const arrow2X = tv.x + arcRadius * Math.cos(endAngle);
+        const arrow2Y = tv.y + arcRadius * Math.sin(endAngle);
+        const arrow2Dir = endAngle - Math.PI / 2;
+        ctx.beginPath();
+        ctx.moveTo(arrow2X, arrow2Y);
+        ctx.lineTo(arrow2X + arrowSize * Math.cos(arrow2Dir - 0.4), arrow2Y + arrowSize * Math.sin(arrow2Dir - 0.4));
+        ctx.moveTo(arrow2X, arrow2Y);
+        ctx.lineTo(arrow2X + arrowSize * Math.cos(arrow2Dir + 0.4), arrow2Y + arrowSize * Math.sin(arrow2Dir + 0.4));
+        ctx.stroke();
+
+        // Texte au milieu de l'arc
+        const midAngle = (startAngle + endAngle) / 2;
+        const textRadius = arcRadius + 15;
+        const textX = tv.x + textRadius * Math.cos(midAngle);
+        const textY = tv.y + textRadius * Math.sin(midAngle);
+
+        const text = `${dim.value.toFixed(1)}°`;
+        const textWidth = ctx.measureText(text).width;
+
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(textX - textWidth / 2 - 4, textY - 8, textWidth + 8, 16);
+
+        ctx.fillStyle = isDragging ? "#FF0000" : dim.color;
+        ctx.fillText(text, textX, textY);
       }
     });
 
@@ -1355,6 +1550,105 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
 
         doc.line(tc.x, tc.y, tp.x, tp.y);
         doc.text(`${dim.prefix || ""}${dim.value.toFixed(1)}`, tp.x + 2, tp.y);
+      } else if (dim.type === "angle" && dim.line1Id && dim.line2Id && dim.vertexId) {
+        // Cotation d'angle
+        const line1 = sketch.geometries.get(dim.line1Id) as Line;
+        const line2 = sketch.geometries.get(dim.line2Id) as Line;
+        const vertex = sketch.points.get(dim.vertexId);
+        if (!line1 || !line2 || !vertex) return;
+
+        // Trouver les autres extrémités
+        const otherP1Id = line1.p1 === dim.vertexId ? line1.p2 : line1.p1;
+        const otherP2Id = line2.p1 === dim.vertexId ? line2.p2 : line2.p1;
+        const otherP1 = sketch.points.get(otherP1Id);
+        const otherP2 = sketch.points.get(otherP2Id);
+        if (!otherP1 || !otherP2) return;
+
+        // Convertir en coordonnées PDF
+        const tv = transform(vertex.x, vertex.y);
+        const tp1 = transform(otherP1.x, otherP1.y);
+        const tp2 = transform(otherP2.x, otherP2.y);
+
+        // Calculer les angles
+        const angle1 = Math.atan2(tp1.y - tv.y, tp1.x - tv.x);
+        const angle2 = Math.atan2(tp2.y - tv.y, tp2.x - tv.x);
+
+        // Déterminer l'angle de départ et de fin
+        let startAngle = angle1;
+        let endAngle = angle2;
+
+        // S'assurer de dessiner le plus petit arc
+        let diff = endAngle - startAngle;
+        while (diff < -Math.PI) diff += 2 * Math.PI;
+        while (diff > Math.PI) diff -= 2 * Math.PI;
+
+        if (diff < 0) {
+          [startAngle, endAngle] = [endAngle, startAngle];
+        }
+
+        // Rayon de l'arc en mm (proportionnel à l'offset)
+        const arcRadius = 8;
+
+        // Dessiner l'arc (approximation avec des segments)
+        const segments = 20;
+        const angleSpan = endAngle - startAngle;
+        let prevX = tv.x + arcRadius * Math.cos(startAngle);
+        let prevY = tv.y + arcRadius * Math.sin(startAngle);
+
+        for (let i = 1; i <= segments; i++) {
+          const a = startAngle + (angleSpan * i) / segments;
+          const x = tv.x + arcRadius * Math.cos(a);
+          const y = tv.y + arcRadius * Math.sin(a);
+          doc.line(prevX, prevY, x, y);
+          prevX = x;
+          prevY = y;
+        }
+
+        // Flèches aux extrémités
+        const arrowLen = 2;
+        const arrowAngle = Math.PI / 6;
+
+        // Flèche au début
+        const arrow1X = tv.x + arcRadius * Math.cos(startAngle);
+        const arrow1Y = tv.y + arcRadius * Math.sin(startAngle);
+        const arrow1Dir = startAngle + Math.PI / 2;
+        doc.line(
+          arrow1X,
+          arrow1Y,
+          arrow1X + arrowLen * Math.cos(arrow1Dir - arrowAngle),
+          arrow1Y + arrowLen * Math.sin(arrow1Dir - arrowAngle),
+        );
+        doc.line(
+          arrow1X,
+          arrow1Y,
+          arrow1X + arrowLen * Math.cos(arrow1Dir + arrowAngle),
+          arrow1Y + arrowLen * Math.sin(arrow1Dir + arrowAngle),
+        );
+
+        // Flèche à la fin
+        const arrow2X = tv.x + arcRadius * Math.cos(endAngle);
+        const arrow2Y = tv.y + arcRadius * Math.sin(endAngle);
+        const arrow2Dir = endAngle - Math.PI / 2;
+        doc.line(
+          arrow2X,
+          arrow2Y,
+          arrow2X + arrowLen * Math.cos(arrow2Dir - arrowAngle),
+          arrow2Y + arrowLen * Math.sin(arrow2Dir - arrowAngle),
+        );
+        doc.line(
+          arrow2X,
+          arrow2Y,
+          arrow2X + arrowLen * Math.cos(arrow2Dir + arrowAngle),
+          arrow2Y + arrowLen * Math.sin(arrow2Dir + arrowAngle),
+        );
+
+        // Texte au milieu de l'arc
+        const midAngle = (startAngle + endAngle) / 2;
+        const textRadius = arcRadius + 4;
+        const textX = tv.x + textRadius * Math.cos(midAngle);
+        const textY = tv.y + textRadius * Math.sin(midAngle);
+
+        doc.text(`${dim.value.toFixed(1)}°`, textX, textY);
       }
     });
 
@@ -1763,6 +2057,17 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
             <Circle className="h-4 w-4 mr-1" />
             Rayon
           </Button>
+          <Button
+            variant={activeTool === "angle" ? "default" : "outline"}
+            size="sm"
+            onClick={() => {
+              setActiveTool("angle");
+              setAngleSelection({ line1Id: null });
+            }}
+          >
+            <Triangle className="h-4 w-4 mr-1" />
+            Angle
+          </Button>
 
           <div className="h-6 w-px bg-gray-300 mx-2" />
 
@@ -1783,6 +2088,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
           <div className="text-sm text-gray-500">
             {activeTool === "dimension" && "Cliquez sur une ligne ou 2 points"}
             {activeTool === "radius" && "Cliquez sur un cercle (Shift = diamètre)"}
+            {activeTool === "angle" && "Cliquez sur 2 lignes adjacentes"}
             {activeTool === "select" && "Glissez les cotations pour les repositionner"}
           </div>
 
@@ -1808,7 +2114,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
               cursor:
                 activeTool === "pan"
                   ? "grab"
-                  : activeTool === "dimension" || activeTool === "radius"
+                  : activeTool === "dimension" || activeTool === "radius" || activeTool === "angle"
                     ? "crosshair"
                     : draggingDimension
                       ? "grabbing"
