@@ -9441,18 +9441,26 @@ export function CADGabaritCanvas({
             return;
           }
 
-          if (geo.type === "arc") {
-            // Double-clic sur arc → sélectionner toute la figure connectée (comme les lignes)
+          if (geo.type === "arc" || geo.type === "line" || geo.type === "bezier") {
+            // Double-clic → sélectionner toute la figure connectée
             const connectedGeos = findConnectedGeometries(entityId);
-            setSelectedEntities(connectedGeos);
-            if (connectedGeos.size > 1) {
-              toast.success(`${connectedGeos.size} élément(s) sélectionné(s)`);
+
+            // Si Shift est enfoncé, AJOUTER à la sélection existante
+            if (e.shiftKey) {
+              setSelectedEntities((prev) => {
+                const newSelection = new Set(prev);
+                connectedGeos.forEach((id) => newSelection.add(id));
+                return newSelection;
+              });
+              toast.success(`${connectedGeos.size} élément(s) ajouté(s) à la sélection`);
+            } else {
+              // Sans Shift, REMPLACER la sélection
+              setSelectedEntities(connectedGeos);
+              setReferenceHighlight(null); // Reset le highlight vert
+              if (connectedGeos.size > 1) {
+                toast.success(`${connectedGeos.size} élément(s) sélectionné(s)`);
+              }
             }
-          } else if (geo.type === "line" || geo.type === "bezier") {
-            // Double-clic sur ligne/bezier → sélectionner toute la figure connectée
-            const connectedGeos = findConnectedGeometries(entityId);
-            setSelectedEntities(connectedGeos);
-            toast.success(`${connectedGeos.size} élément(s) sélectionné(s)`);
           }
         }
       }
