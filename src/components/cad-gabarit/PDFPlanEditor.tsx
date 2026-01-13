@@ -831,44 +831,49 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     const sketchCenterX = (bounds.minX + bounds.maxX) / 2;
     const sketchCenterY = (bounds.minY + bounds.maxY) / 2;
 
-    // Calculer l'échelle pour que le dessin tienne dans la zone
-    // options.scale = échelle du plan (ex: 10 signifie 1:10, donc le dessin est 10x plus petit sur le papier)
-    // En mm sur le papier: taille_réelle / options.scale
-    const sketchWidthOnPaper = sketchWidth / sketch.scaleFactor / options.scale; // mm
-    const sketchHeightOnPaper = sketchHeight / sketch.scaleFactor / options.scale; // mm
+    // Taille du dessin en mm réels
+    const sketchWidthMm = sketchWidth / sketch.scaleFactor;
+    const sketchHeightMm = sketchHeight / sketch.scaleFactor;
 
-    // Échelle pour faire tenir le dessin dans la zone (avec marge de 10%)
-    const drawingAreaWmm = drawingAreaW / pageScale; // largeur zone en mm
-    const drawingAreaHmm = drawingAreaH / pageScale; // hauteur zone en mm
+    // Avec l'échelle du plan, taille sur le papier (en mm)
+    // Échelle 1:10 = le dessin fait 10x plus petit sur le papier
+    const onPaperWidthMm = sketchWidthMm / options.scale;
+    const onPaperHeightMm = sketchHeightMm / options.scale;
 
-    const fitScaleX = (drawingAreaWmm * 0.9) / sketchWidthOnPaper;
-    const fitScaleY = (drawingAreaHmm * 0.9) / sketchHeightOnPaper;
-    const drawFitScale = Math.min(fitScaleX, fitScaleY);
+    // Zone disponible en mm
+    const drawingAreaWmm = drawingAreaW / pageScale;
+    const drawingAreaHmm = drawingAreaH / pageScale;
+
+    // Vérifier si le dessin tient dans la zone
+    const fitsInPage = onPaperWidthMm <= drawingAreaWmm * 0.95 && onPaperHeightMm <= drawingAreaHmm * 0.95;
+
+    // Facteur pour convertir mm papier → pixels écran
+    // 1 mm sur le papier = pageScale pixels à l'écran
+    const mmToPixels = pageScale;
 
     // Centre de la zone de dessin à l'écran
     const drawCenterX = drawingAreaX + drawingAreaW / 2;
     const drawCenterY = drawingAreaY + drawingAreaH / 2;
 
     // Fonction de transformation: coordonnées sketch → coordonnées écran (dans la page)
-    // Applique l'échelle du plan + le zoom pour tenir dans la zone
     const sketchToPage = (x: number, y: number) => {
-      // Position relative au centre du sketch, en mm
+      // Position relative au centre du sketch, en mm réels
       const relXmm = (x - sketchCenterX) / sketch.scaleFactor;
       const relYmm = (y - sketchCenterY) / sketch.scaleFactor;
 
-      // Appliquer l'échelle du plan
+      // Appliquer l'échelle du plan (mm sur le papier)
       const onPaperXmm = relXmm / options.scale;
       const onPaperYmm = relYmm / options.scale;
 
       // Convertir en pixels écran
       return {
-        x: drawCenterX + onPaperXmm * pageScale * drawFitScale,
-        y: drawCenterY + onPaperYmm * pageScale * drawFitScale,
+        x: drawCenterX + onPaperXmm * mmToPixels,
+        y: drawCenterY + onPaperYmm * mmToPixels,
       };
     };
 
-    // Facteur d'échelle pour les rayons
-    const radiusScale = (pageScale * drawFitScale) / sketch.scaleFactor / options.scale;
+    // Facteur d'échelle pour les rayons (pixels par unité sketch)
+    const radiusToPixels = mmToPixels / sketch.scaleFactor / options.scale;
 
     // ===== DESSINER LES GÉOMÉTRIES =====
     ctx.save();
@@ -877,6 +882,16 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     ctx.beginPath();
     ctx.rect(drawingAreaX, drawingAreaY, drawingAreaW, drawingAreaH);
     ctx.clip();
+
+    // Indicateur si le dessin ne tient pas
+    if (!fitsInPage) {
+      ctx.fillStyle = "rgba(255, 200, 200, 0.3)";
+      ctx.fillRect(drawingAreaX, drawingAreaY, drawingAreaW, drawingAreaH);
+      ctx.fillStyle = "#CC0000";
+      ctx.font = "bold 14px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText("⚠ Dessin trop grand pour cette échelle", drawCenterX, drawingAreaY + 20);
+    }
 
     // Lignes
     sketch.geometries.forEach((geo, id) => {
@@ -909,7 +924,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
         const center = sketch.points.get(circle.center);
         if (center) {
           const tc = sketchToPage(center.x, center.y);
-          const radius = circle.radius * radiusScale;
+          const radius = circle.radius * radiusToPixels;
           ctx.beginPath();
           ctx.arc(tc.x, tc.y, radius, 0, Math.PI * 2);
           ctx.stroke();
@@ -921,7 +936,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
         const endPt = sketch.points.get(arc.endPoint);
         if (center && startPt && endPt) {
           const tc = sketchToPage(center.x, center.y);
-          const radius = arc.radius * radiusScale;
+          const radius = arc.radius * radiusToPixels;
           const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
           const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
           ctx.beginPath();
@@ -966,7 +981,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
       ctx.strokeStyle = isDragging ? "#FF0000" : dim.color;
       ctx.fillStyle = isDragging ? "#FF0000" : dim.color;
       ctx.lineWidth = 1;
-      ctx.font = `bold ${Math.max(8, dim.fontSize * drawFitScale)}px Arial`;
+      ctx.font = `bold ${dim.fontSize}px Arial`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
@@ -998,7 +1013,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
 
           const perpX = -dy / len;
           const perpY = dx / len;
-          const offset = Math.max(15, dim.offset * radiusScale * sketch.scaleFactor);
+          const offset = 20; // Offset fixe en pixels
 
           // Points de la ligne de cote
           const d1 = { x: t1.x + perpX * offset, y: t1.y + perpY * offset };
