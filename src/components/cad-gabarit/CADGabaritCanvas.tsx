@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.92 - PDF Editor v2.0: Notes, cotation cercle-cercle, échelle custom, templates
+// VERSION: 6.93 - PDF Editor v2.1: Cotation cercle-ligne avec drag point
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";

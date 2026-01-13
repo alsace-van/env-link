@@ -1,6 +1,6 @@
 // ============================================
 // PDF PLAN EDITOR: Éditeur de mise en plan interactif
-// VERSION: 2.0 - Notes, multi-page, templates, nomenclature
+// VERSION: 2.1 - Cotation cercle-ligne avec point déplaçable
 // ============================================
 
 import React, { useRef, useEffect, useState, useCallback } from "react";
@@ -36,7 +36,7 @@ import { jsPDF } from "jspdf";
 // Types pour les cotations du plan
 export interface PlanDimension {
   id: string;
-  type: "length" | "radius" | "diameter" | "angle" | "circle-distance";
+  type: "length" | "radius" | "diameter" | "angle" | "circle-distance" | "circle-to-line";
   // Pour length: référence à 2 points ou 1 ligne
   entityId?: string; // ID de la géométrie (ligne, cercle, arc)
   p1Id?: string; // Point 1 pour cotation entre 2 points
@@ -49,6 +49,11 @@ export interface PlanDimension {
   circle1Id?: string;
   circle2Id?: string;
   circleDistanceMode?: "center" | "edge"; // centre à centre ou bord à bord
+  // Pour circle-to-line: cercle vers ligne
+  circleId?: string;
+  targetLineId?: string;
+  circleMode?: "center" | "edge"; // depuis le centre ou le bord du cercle
+  lineT?: number; // Paramètre t (0-1) pour position sur la ligne, déplaçable
   // Valeur en mm ou degrés (calculée automatiquement)
   value: number;
   // Position de la cotation (offset par rapport à la géométrie)
@@ -247,11 +252,11 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
   // Style des cotations
   const [dimensionStyle, setDimensionStyle] = useState<DimensionStyle>(DEFAULT_DIMENSION_STYLE);
 
-  // Sélection pour cotation cercle-cercle
+  // Sélection pour cotation cercle-cercle ou cercle-ligne
   const [circleSelection, setCircleSelection] = useState<{
-    circle1Id: string | null;
+    circleId: string | null;
     mode: "center" | "edge" | null;
-  }>({ circle1Id: null, mode: null });
+  }>({ circleId: null, mode: null });
 
   // Multi-page
   const [currentPage, setCurrentPage] = useState(0);
@@ -862,6 +867,83 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     [sketch, dimensionStyle],
   );
 
+  // Cotation cercle vers ligne
+  const addCircleToLineDimension = useCallback(
+    (circleId: string, lineId: string, mode: "center" | "edge", clickX: number, clickY: number) => {
+      const circleGeo = sketch.geometries.get(circleId);
+      const lineGeo = sketch.geometries.get(lineId);
+      if (!circleGeo || !lineGeo || lineGeo.type !== "line") return;
+
+      // Obtenir le centre et rayon du cercle
+      let center: Point | undefined;
+      let radius = 0;
+
+      if (circleGeo.type === "circle") {
+        const c = circleGeo as CircleType;
+        center = sketch.points.get(c.center);
+        radius = c.radius;
+      } else if (circleGeo.type === "arc") {
+        const a = circleGeo as Arc;
+        center = sketch.points.get(a.center);
+        radius = a.radius;
+      }
+
+      if (!center) return;
+
+      // Obtenir les points de la ligne
+      const line = lineGeo as Line;
+      const p1 = sketch.points.get(line.p1);
+      const p2 = sketch.points.get(line.p2);
+      if (!p1 || !p2) return;
+
+      // Calculer le point le plus proche sur la ligne du clic
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const lenSq = dx * dx + dy * dy;
+
+      let t = 0.5; // Par défaut au milieu
+      if (lenSq > 0) {
+        t = ((clickX - p1.x) * dx + (clickY - p1.y) * dy) / lenSq;
+        t = Math.max(0, Math.min(1, t)); // Clamp entre 0 et 1
+      }
+
+      // Point sur la ligne
+      const linePointX = p1.x + t * dx;
+      const linePointY = p1.y + t * dy;
+
+      // Calculer la distance
+      const distX = linePointX - center.x;
+      const distY = linePointY - center.y;
+      const centerDistance = Math.sqrt(distX * distX + distY * distY) / sketch.scaleFactor;
+
+      let value: number;
+      if (mode === "center") {
+        value = centerDistance;
+      } else {
+        value = centerDistance - radius / sketch.scaleFactor;
+        if (value < 0) value = Math.abs(value);
+      }
+
+      const newDim: PlanDimension = {
+        id: generateId(),
+        type: "circle-to-line",
+        circleId,
+        targetLineId: lineId,
+        circleMode: mode,
+        lineT: t,
+        value,
+        offset: 15,
+        color: dimensionStyle.color,
+        fontSize: dimensionStyle.fontSize,
+        showValue: true,
+      };
+
+      setDimensions((prev) => [...prev, newDim]);
+      toast.success(`Distance cercle-ligne (${mode === "center" ? "centre" : "bord"}): ${value.toFixed(1)} mm`);
+    },
+    [sketch, dimensionStyle],
+  );
+
   // ========== ANNOTATIONS ==========
   const addAnnotation = useCallback((x: number, y: number, text: string) => {
     const newAnnotation: PlanAnnotation = {
@@ -1130,44 +1212,66 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
         }
       }
 
-      // Cotation cercle à cercle
+      // Cotation cercle à cercle ou cercle à ligne
       if (activeTool === "circle-distance") {
-        // Utiliser findCircleAtPosition pour pouvoir cliquer sur le centre aussi
-        const entityId = findCircleAtPosition(sketchPos.x, sketchPos.y);
-        if (entityId) {
-          const geo = sketch.geometries.get(entityId);
-          if (geo?.type === "circle" || geo?.type === "arc") {
-            // Déterminer si le clic est près du centre ou du bord
-            let center: Point | undefined;
-            let radius = 0;
+        const sketchPos = screenToSketch(screenX, screenY);
 
-            if (geo.type === "circle") {
-              const c = geo as CircleType;
-              center = sketch.points.get(c.center);
-              radius = c.radius;
-            } else {
-              const a = geo as Arc;
-              center = sketch.points.get(a.center);
-              radius = a.radius;
-            }
+        // Première sélection: doit être un cercle
+        if (!circleSelection.circleId) {
+          const circleEntityId = findCircleAtPosition(sketchPos.x, sketchPos.y);
+          if (circleEntityId) {
+            const geo = sketch.geometries.get(circleEntityId);
+            if (geo?.type === "circle" || geo?.type === "arc") {
+              // Déterminer si le clic est près du centre ou du bord
+              let center: Point | undefined;
+              let radius = 0;
 
-            let clickMode: "center" | "edge" = "edge";
-            if (center) {
-              const distToCenter = Math.sqrt((sketchPos.x - center.x) ** 2 + (sketchPos.y - center.y) ** 2);
-              // Si clic dans le tiers central du rayon = mode centre
-              clickMode = distToCenter < radius * 0.4 ? "center" : "edge";
-            }
+              if (geo.type === "circle") {
+                const c = geo as CircleType;
+                center = sketch.points.get(c.center);
+                radius = c.radius;
+              } else {
+                const a = geo as Arc;
+                center = sketch.points.get(a.center);
+                radius = a.radius;
+              }
 
-            if (!circleSelection.circle1Id) {
-              setCircleSelection({ circle1Id: entityId, mode: clickMode });
+              let clickMode: "center" | "edge" = "edge";
+              if (center) {
+                const distToCenter = Math.sqrt((sketchPos.x - center.x) ** 2 + (sketchPos.y - center.y) ** 2);
+                clickMode = distToCenter < radius * 0.4 ? "center" : "edge";
+              }
+
+              setCircleSelection({ circleId: circleEntityId, mode: clickMode });
               toast.info(
-                `1er cercle sélectionné (${clickMode === "center" ? "centre" : "bord"}). Cliquez sur le 2ème cercle.`,
+                `Cercle sélectionné (${clickMode === "center" ? "centre" : "bord"}). Cliquez sur un cercle ou une ligne.`,
               );
-            } else {
-              // Utiliser le mode du premier clic
-              const mode = circleSelection.mode || clickMode;
-              addCircleDistanceDimension(circleSelection.circle1Id, entityId, mode);
-              setCircleSelection({ circle1Id: null, mode: null });
+            }
+          }
+        } else {
+          // Deuxième sélection: cercle OU ligne
+          // D'abord chercher un cercle
+          const circleEntityId = findCircleAtPosition(sketchPos.x, sketchPos.y);
+          if (circleEntityId) {
+            const geo = sketch.geometries.get(circleEntityId);
+            if (geo?.type === "circle" || geo?.type === "arc") {
+              // Cotation cercle à cercle
+              const mode = circleSelection.mode || "center";
+              addCircleDistanceDimension(circleSelection.circleId, circleEntityId, mode);
+              setCircleSelection({ circleId: null, mode: null });
+              return;
+            }
+          }
+
+          // Sinon chercher une ligne
+          const lineEntityId = findEntityAtPosition(sketchPos.x, sketchPos.y);
+          if (lineEntityId) {
+            const geo = sketch.geometries.get(lineEntityId);
+            if (geo?.type === "line") {
+              // Cotation cercle à ligne
+              const mode = circleSelection.mode || "center";
+              addCircleToLineDimension(circleSelection.circleId, lineEntityId, mode, sketchPos.x, sketchPos.y);
+              setCircleSelection({ circleId: null, mode: null });
             }
           }
         }
@@ -1196,6 +1300,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
       addPointToPointDimension,
       addAngleDimension,
       addCircleDistanceDimension,
+      addCircleToLineDimension,
       addAnnotation,
       sketch,
     ],
@@ -1221,6 +1326,57 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
             // Modifier l'offset perpendiculaire
             const newOffset = dim.offset + deltaY * 0.3;
             setDimensions((prev) => prev.map((d) => (d.id === draggingDimension ? { ...d, offset: newOffset } : d)));
+          } else if (dim.type === "circle-to-line" && dim.targetLineId && dim.circleId) {
+            // Déplacer le point sur la ligne (modifier lineT) + recalculer la valeur
+            const lineGeo = sketch.geometries.get(dim.targetLineId);
+            const circleGeo = sketch.geometries.get(dim.circleId);
+            if (lineGeo?.type === "line" && circleGeo) {
+              const line = lineGeo as Line;
+              const p1 = sketch.points.get(line.p1);
+              const p2 = sketch.points.get(line.p2);
+
+              let center: Point | undefined;
+              let radius = 0;
+              if (circleGeo.type === "circle") {
+                const c = circleGeo as CircleType;
+                center = sketch.points.get(c.center);
+                radius = c.radius;
+              } else if (circleGeo.type === "arc") {
+                const a = circleGeo as Arc;
+                center = sketch.points.get(a.center);
+                radius = a.radius;
+              }
+
+              if (p1 && p2 && center) {
+                // Calculer le nouveau t basé sur la position de la souris
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const lenSq = dx * dx + dy * dy;
+
+                let newT = dim.lineT || 0.5;
+                if (lenSq > 0) {
+                  newT = ((sketchPos.x - p1.x) * dx + (sketchPos.y - p1.y) * dy) / lenSq;
+                  newT = Math.max(0, Math.min(1, newT));
+                }
+
+                // Recalculer la valeur
+                const linePointX = p1.x + newT * dx;
+                const linePointY = p1.y + newT * dy;
+                const distX = linePointX - center.x;
+                const distY = linePointY - center.y;
+                const centerDistance = Math.sqrt(distX * distX + distY * distY) / sketch.scaleFactor;
+
+                let newValue = centerDistance;
+                if (dim.circleMode === "edge") {
+                  newValue = centerDistance - radius / sketch.scaleFactor;
+                  if (newValue < 0) newValue = Math.abs(newValue);
+                }
+
+                setDimensions((prev) =>
+                  prev.map((d) => (d.id === draggingDimension ? { ...d, lineT: newT, value: newValue } : d)),
+                );
+              }
+            }
           } else if (dim.type === "angle") {
             // Modifier le rayon de l'arc de cotation d'angle
             // Calculer la distance au vertex
@@ -1471,6 +1627,45 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
             if (normalizedClick <= arcSpan + 0.2) {
               return dim.id;
             }
+          }
+        } else if (dim.type === "circle-to-line" && dim.circleId && dim.targetLineId) {
+          // Cotation cercle vers ligne - vérifier clic sur le point de la ligne
+          const circleGeo = sketch.geometries.get(dim.circleId);
+          const lineGeo = sketch.geometries.get(dim.targetLineId);
+          if (!circleGeo || !lineGeo || lineGeo.type !== "line") continue;
+
+          let center: Point | undefined;
+          if (circleGeo.type === "circle") {
+            center = sketch.points.get((circleGeo as CircleType).center);
+          } else if (circleGeo.type === "arc") {
+            center = sketch.points.get((circleGeo as Arc).center);
+          }
+          if (!center) continue;
+
+          const line = lineGeo as Line;
+          const p1 = sketch.points.get(line.p1);
+          const p2 = sketch.points.get(line.p2);
+          if (!p1 || !p2) continue;
+
+          const tc = sketchToScreen(center.x, center.y);
+          const t1 = sketchToScreen(p1.x, p1.y);
+          const t2 = sketchToScreen(p2.x, p2.y);
+
+          const t = dim.lineT ?? 0.5;
+          const linePointX = t1.x + t * (t2.x - t1.x);
+          const linePointY = t1.y + t * (t2.y - t1.y);
+
+          // Vérifier clic sur le point orange
+          const distToPoint = Math.sqrt((screenX - linePointX) ** 2 + (screenY - linePointY) ** 2);
+          if (distToPoint < tolerance) {
+            return dim.id;
+          }
+
+          // Vérifier clic sur la ligne de cotation
+          const midX = (tc.x + linePointX) / 2;
+          const midY = (tc.y + linePointY) / 2;
+          if (Math.abs(screenX - midX) < tolerance * 2 && Math.abs(screenY - midY) < tolerance) {
+            return dim.id;
           }
         } else if (dim.position) {
           // Rayon / Diamètre
@@ -2118,6 +2313,109 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
 
         ctx.fillStyle = isSelected ? "#10B981" : isDragging ? "#FF0000" : dim.color;
         ctx.fillText(text, midX, midY);
+      } else if (dim.type === "circle-to-line" && dim.circleId && dim.targetLineId) {
+        // Cotation cercle vers ligne
+        const circleGeo = sketch.geometries.get(dim.circleId);
+        const lineGeo = sketch.geometries.get(dim.targetLineId);
+        if (!circleGeo || !lineGeo || lineGeo.type !== "line") return;
+
+        let center: Point | undefined;
+        let radius = 0;
+
+        if (circleGeo.type === "circle") {
+          const c = circleGeo as CircleType;
+          center = sketch.points.get(c.center);
+          radius = c.radius;
+        } else if (circleGeo.type === "arc") {
+          const a = circleGeo as Arc;
+          center = sketch.points.get(a.center);
+          radius = a.radius;
+        }
+
+        if (!center) return;
+
+        const line = lineGeo as Line;
+        const p1 = sketch.points.get(line.p1);
+        const p2 = sketch.points.get(line.p2);
+        if (!p1 || !p2) return;
+
+        // Convertir en coordonnées écran
+        const tc = sketchToPage(center.x, center.y);
+        const t1 = sketchToPage(p1.x, p1.y);
+        const t2 = sketchToPage(p2.x, p2.y);
+
+        // Point sur la ligne basé sur lineT
+        const t = dim.lineT ?? 0.5;
+        const linePointX = t1.x + t * (t2.x - t1.x);
+        const linePointY = t1.y + t * (t2.y - t1.y);
+
+        // Point de départ (centre ou bord du cercle)
+        let startX = tc.x,
+          startY = tc.y;
+        if (dim.circleMode === "edge") {
+          const dx = linePointX - tc.x;
+          const dy = linePointY - tc.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          if (len > 0) {
+            const radiusScreen = radius * radiusToPixels;
+            startX = tc.x + (dx / len) * radiusScreen;
+            startY = tc.y + (dy / len) * radiusScreen;
+          }
+        }
+
+        // Dessiner la ligne de cotation
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(linePointX, linePointY);
+        ctx.stroke();
+
+        // Dessiner un point sur la ligne (déplaçable)
+        ctx.beginPath();
+        ctx.arc(linePointX, linePointY, 5, 0, Math.PI * 2);
+        ctx.fillStyle = isSelected ? "#10B981" : "#FF6600";
+        ctx.fill();
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.lineWidth = dimensionStyle.lineWidth;
+        ctx.strokeStyle = highlightColor;
+
+        // Flèches aux extrémités
+        const arrowLen = dimensionStyle.arrowSize;
+        const arrowAngle = Math.PI / 6;
+        const angle = Math.atan2(linePointY - startY, linePointX - startX);
+
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(startX + arrowLen * Math.cos(angle + arrowAngle), startY + arrowLen * Math.sin(angle + arrowAngle));
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(startX + arrowLen * Math.cos(angle - arrowAngle), startY + arrowLen * Math.sin(angle - arrowAngle));
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(linePointX, linePointY);
+        ctx.lineTo(
+          linePointX - arrowLen * Math.cos(angle + arrowAngle),
+          linePointY - arrowLen * Math.sin(angle + arrowAngle),
+        );
+        ctx.moveTo(linePointX, linePointY);
+        ctx.lineTo(
+          linePointX - arrowLen * Math.cos(angle - arrowAngle),
+          linePointY - arrowLen * Math.sin(angle - arrowAngle),
+        );
+        ctx.stroke();
+
+        // Texte au milieu
+        const textX = (startX + linePointX) / 2;
+        const textY = (startY + linePointY) / 2 - 10;
+        const text = `${dim.value.toFixed(1)}`;
+        const textWidth = ctx.measureText(text).width;
+
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(textX - textWidth / 2 - 4, textY - 8, textWidth + 8, 16);
+
+        ctx.fillStyle = isSelected ? "#10B981" : isDragging ? "#FF0000" : dim.color;
+        ctx.fillText(text, textX, textY);
       }
     });
 
@@ -2587,6 +2885,61 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
         const midX = (d1.x + d2.x) / 2;
         const midY = (d1.y + d2.y) / 2;
         doc.text(`${dim.value.toFixed(1)}`, midX, midY - 1, { align: "center" });
+      } else if (dim.type === "circle-to-line" && dim.circleId && dim.targetLineId) {
+        // Cotation cercle vers ligne
+        const circleGeo = sketch.geometries.get(dim.circleId);
+        const lineGeo = sketch.geometries.get(dim.targetLineId);
+        if (!circleGeo || !lineGeo || lineGeo.type !== "line") return;
+
+        let center: Point | undefined;
+        let radius = 0;
+
+        if (circleGeo.type === "circle") {
+          const c = circleGeo as CircleType;
+          center = sketch.points.get(c.center);
+          radius = c.radius;
+        } else if (circleGeo.type === "arc") {
+          const a = circleGeo as Arc;
+          center = sketch.points.get(a.center);
+          radius = a.radius;
+        }
+
+        if (!center) return;
+
+        const line = lineGeo as Line;
+        const p1 = sketch.points.get(line.p1);
+        const p2 = sketch.points.get(line.p2);
+        if (!p1 || !p2) return;
+
+        const tc = transform(center.x, center.y);
+        const t1 = transform(p1.x, p1.y);
+        const t2 = transform(p2.x, p2.y);
+
+        const t = dim.lineT ?? 0.5;
+        const linePointX = t1.x + t * (t2.x - t1.x);
+        const linePointY = t1.y + t * (t2.y - t1.y);
+
+        // Point de départ
+        let startX = tc.x,
+          startY = tc.y;
+        if (dim.circleMode === "edge") {
+          const dx = linePointX - tc.x;
+          const dy = linePointY - tc.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          if (len > 0) {
+            const radiusMm = ((radius / sketch.scaleFactor) * fitScale) / options.scale;
+            startX = tc.x + (dx / len) * radiusMm;
+            startY = tc.y + (dy / len) * radiusMm;
+          }
+        }
+
+        // Dessiner la ligne
+        doc.line(startX, startY, linePointX, linePointY);
+
+        // Texte
+        const textX = (startX + linePointX) / 2;
+        const textY = (startY + linePointY) / 2 - 2;
+        doc.text(`${dim.value.toFixed(1)}`, textX, textY, { align: "center" });
       }
     });
 
@@ -3027,8 +3380,10 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
                       {dim.type === "angle"
                         ? `∠ ${dim.value.toFixed(1)}°`
                         : dim.type === "circle-distance"
-                          ? `⊙ ${dim.value.toFixed(1)} mm (${dim.circleDistanceMode === "center" ? "C-C" : "B-B"})`
-                          : `${dim.prefix || ""}${dim.value.toFixed(1)} mm`}
+                          ? `⊙⊙ ${dim.value.toFixed(1)} mm (${dim.circleDistanceMode === "center" ? "C-C" : "B-B"})`
+                          : dim.type === "circle-to-line"
+                            ? `⊙─ ${dim.value.toFixed(1)} mm (${dim.circleMode === "center" ? "C" : "B"})`
+                            : `${dim.prefix || ""}${dim.value.toFixed(1)} mm`}
                     </span>
                     <Button
                       size="sm"
@@ -3288,7 +3643,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
             size="sm"
             onClick={() => {
               setActiveTool("circle-distance");
-              setCircleSelection({ circle1Id: null, mode: null });
+              setCircleSelection({ circleId: null, mode: null });
             }}
           >
             <Circle className="h-4 w-4 mr-1" />
@@ -3352,14 +3707,12 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
             {activeTool === "angle" &&
               (angleSelection.line1Id ? "Cliquez sur la 2ème ligne" : "Cliquez sur 2 lignes adjacentes")}
             {activeTool === "circle-distance" &&
-              (circleSelection.circle1Id
-                ? `2ème cercle (mode: ${circleSelection.mode === "center" ? "centre-centre" : "bord-bord"})`
-                : "Clic centre = centre-centre, clic bord = bord-bord")}
+              (circleSelection.circleId
+                ? `Cliquez sur cercle ou ligne (mode: ${circleSelection.mode === "center" ? "centre" : "bord"})`
+                : "Clic centre = depuis centre, clic bord = depuis bord")}
             {activeTool === "note" && "Cliquez pour ajouter une note"}
             {activeTool === "select" &&
-              (selectedDimension
-                ? "Delete/Suppr ou clic droit pour supprimer"
-                : "Cliquez sur une cotation pour la sélectionner")}
+              (selectedDimension ? "Drag point orange pour déplacer" : "Cliquez sur une cotation")}
           </div>
 
           <div className="flex-1" />
