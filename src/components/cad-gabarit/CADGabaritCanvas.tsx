@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.91 - Prévisualisation temps réel de l'outil Répétition
+// VERSION: 6.92 - PDF Editor v2.0: Notes, cotation cercle-cercle, échelle custom, templates
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";

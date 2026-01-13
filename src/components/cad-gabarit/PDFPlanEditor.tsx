@@ -1,6 +1,6 @@
 // ============================================
 // PDF PLAN EDITOR: Éditeur de mise en plan interactif
-// VERSION: 1.0 - Aperçu plein écran, cotations interactives
+// VERSION: 2.0 - Notes, multi-page, templates, nomenclature
 // ============================================
 
 import React, { useRef, useEffect, useState, useCallback } from "react";
@@ -16,6 +16,14 @@ import {
   MousePointer,
   Maximize2,
   Triangle,
+  Type,
+  Save,
+  FolderOpen,
+  ChevronLeft,
+  ChevronRight,
+  Palette,
+  List,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,7 +36,7 @@ import { jsPDF } from "jspdf";
 // Types pour les cotations du plan
 export interface PlanDimension {
   id: string;
-  type: "length" | "radius" | "diameter" | "angle";
+  type: "length" | "radius" | "diameter" | "angle" | "circle-distance";
   // Pour length: référence à 2 points ou 1 ligne
   entityId?: string; // ID de la géométrie (ligne, cercle, arc)
   p1Id?: string; // Point 1 pour cotation entre 2 points
@@ -37,6 +45,10 @@ export interface PlanDimension {
   line1Id?: string;
   line2Id?: string;
   vertexId?: string; // Point commun aux 2 lignes
+  // Pour circle-distance: 2 cercles
+  circle1Id?: string;
+  circle2Id?: string;
+  circleDistanceMode?: "center" | "edge"; // centre à centre ou bord à bord
   // Valeur en mm ou degrés (calculée automatiquement)
   value: number;
   // Position de la cotation (offset par rapport à la géométrie)
@@ -49,11 +61,47 @@ export interface PlanDimension {
   prefix?: string; // "R" pour rayon, "Ø" pour diamètre
 }
 
+// Annotation/Note sur le plan
+export interface PlanAnnotation {
+  id: string;
+  text: string;
+  position: { x: number; y: number }; // Position en coordonnées sketch
+  fontSize: number;
+  color: string;
+  backgroundColor?: string;
+  borderColor?: string;
+  maxWidth?: number; // Largeur max pour retour à la ligne
+}
+
+// Style global des cotations
+export interface DimensionStyle {
+  color: string;
+  fontSize: number;
+  lineWidth: number;
+  arrowStyle: "open" | "closed" | "dot" | "none";
+  arrowSize: number;
+  textBackground: boolean;
+  textBackgroundColor: string;
+}
+
+// Template de mise en plan
+export interface PlanTemplate {
+  id: string;
+  name: string;
+  createdAt: string;
+  options: PDFExportOptions;
+  dimensionStyle: DimensionStyle;
+  annotations: PlanAnnotation[];
+}
+
 // Options d'export PDF
 export interface PDFExportOptions {
-  format: "a4" | "a3";
+  format: "a4" | "a3" | "custom";
+  customWidth?: number; // mm
+  customHeight?: number; // mm
   orientation: "portrait" | "landscape";
   scale: number;
+  customScale?: number; // Pour échelle personnalisée
   title: string;
   projectName: string;
   author: string;
@@ -61,6 +109,8 @@ export interface PDFExportOptions {
   revision: string;
   showGrid: boolean;
   showFrame: boolean;
+  showNomenclature: boolean;
+  nomenclaturePosition: "bottom-right" | "bottom-left" | "top-right" | "top-left";
   lineWidth: number;
   margin: number;
 }
@@ -76,9 +126,21 @@ interface PDFPlanEditorProps {
 const PAGE_SIZES = {
   a4: { width: 210, height: 297 },
   a3: { width: 297, height: 420 },
+  custom: { width: 210, height: 297 }, // Par défaut
 };
 
 const CARTOUCHE_HEIGHT = 30;
+
+// Style par défaut des cotations
+const DEFAULT_DIMENSION_STYLE: DimensionStyle = {
+  color: "#0066CC",
+  fontSize: 10,
+  lineWidth: 1,
+  arrowStyle: "open",
+  arrowSize: 6,
+  textBackground: true,
+  textBackgroundColor: "#FFFFFF",
+};
 
 // Formater l'échelle pour l'affichage
 const formatScale = (scale: number): string => {
@@ -105,6 +167,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     format: "a4",
     orientation: "landscape",
     scale: 1,
+    customScale: undefined,
     title: sketch.name || "Plan",
     projectName: "",
     author: "",
@@ -112,6 +175,8 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     revision: "A",
     showGrid: false,
     showFrame: true,
+    showNomenclature: false,
+    nomenclaturePosition: "bottom-right",
     lineWidth: 0.5,
     margin: 10,
     ...initialOptions,
@@ -121,7 +186,9 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
   const [dimensions, setDimensions] = useState<PlanDimension[]>([]);
 
   // Outil actif
-  const [activeTool, setActiveTool] = useState<"select" | "dimension" | "radius" | "angle" | "pan">("select");
+  const [activeTool, setActiveTool] = useState<
+    "select" | "dimension" | "radius" | "angle" | "circle-distance" | "note" | "pan"
+  >("select");
 
   // Viewport pour le canvas
   const [viewport, setViewport] = useState({
@@ -170,6 +237,32 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     scaleFactor: number;
     planScale: number;
   } | null>(null);
+
+  // Annotations/Notes
+  const [annotations, setAnnotations] = useState<PlanAnnotation[]>([]);
+  const [selectedAnnotation, setSelectedAnnotation] = useState<string | null>(null);
+  const [editingAnnotation, setEditingAnnotation] = useState<string | null>(null);
+  const [annotationText, setAnnotationText] = useState("");
+
+  // Style des cotations
+  const [dimensionStyle, setDimensionStyle] = useState<DimensionStyle>(DEFAULT_DIMENSION_STYLE);
+
+  // Sélection pour cotation cercle-cercle
+  const [circleSelection, setCircleSelection] = useState<{
+    circle1Id: string | null;
+  }>({ circle1Id: null });
+
+  // Multi-page
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+
+  // Panneau style ouvert
+  const [showStylePanel, setShowStylePanel] = useState(false);
+
+  // Templates
+  const [savedTemplates, setSavedTemplates] = useState<PlanTemplate[]>([]);
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const [templateName, setTemplateName] = useState("");
 
   // Calculer les bounds du sketch
   const calculateBounds = useCallback(() => {
@@ -634,6 +727,249 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     toast.success("Toutes les cotations supprimées");
   }, []);
 
+  // ========== COTATION CERCLE À CERCLE ==========
+  const addCircleDistanceDimension = useCallback(
+    (circle1Id: string, circle2Id: string, mode: "center" | "edge") => {
+      const geo1 = sketch.geometries.get(circle1Id);
+      const geo2 = sketch.geometries.get(circle2Id);
+      if (!geo1 || !geo2) return;
+
+      // Supporter cercles et arcs
+      let center1: Point | undefined, center2: Point | undefined;
+      let radius1 = 0,
+        radius2 = 0;
+
+      if (geo1.type === "circle") {
+        const c = geo1 as CircleType;
+        center1 = sketch.points.get(c.center);
+        radius1 = c.radius;
+      } else if (geo1.type === "arc") {
+        const a = geo1 as Arc;
+        center1 = sketch.points.get(a.center);
+        radius1 = a.radius;
+      }
+
+      if (geo2.type === "circle") {
+        const c = geo2 as CircleType;
+        center2 = sketch.points.get(c.center);
+        radius2 = c.radius;
+      } else if (geo2.type === "arc") {
+        const a = geo2 as Arc;
+        center2 = sketch.points.get(a.center);
+        radius2 = a.radius;
+      }
+
+      if (!center1 || !center2) return;
+
+      // Calculer la distance
+      const dx = center2.x - center1.x;
+      const dy = center2.y - center1.y;
+      const centerDistance = Math.sqrt(dx * dx + dy * dy) / sketch.scaleFactor;
+
+      let value: number;
+      if (mode === "center") {
+        value = centerDistance;
+      } else {
+        // Bord à bord = distance centres - rayon1 - rayon2
+        value = centerDistance - (radius1 + radius2) / sketch.scaleFactor;
+        if (value < 0) value = Math.abs(value); // Si cercles se chevauchent
+      }
+
+      const newDim: PlanDimension = {
+        id: generateId(),
+        type: "circle-distance",
+        circle1Id,
+        circle2Id,
+        circleDistanceMode: mode,
+        value,
+        offset: 20,
+        color: dimensionStyle.color,
+        fontSize: dimensionStyle.fontSize,
+        showValue: true,
+      };
+
+      setDimensions((prev) => [...prev, newDim]);
+      toast.success(`Distance ${mode === "center" ? "centre-centre" : "bord-bord"}: ${value.toFixed(1)} mm`);
+    },
+    [sketch, dimensionStyle],
+  );
+
+  // ========== ANNOTATIONS ==========
+  const addAnnotation = useCallback((x: number, y: number, text: string) => {
+    const newAnnotation: PlanAnnotation = {
+      id: generateId(),
+      text,
+      position: { x, y },
+      fontSize: 12,
+      color: "#333333",
+      backgroundColor: "#FFFFCC",
+      borderColor: "#CCCC00",
+      maxWidth: 150,
+    };
+    setAnnotations((prev) => [...prev, newAnnotation]);
+    toast.success("Note ajoutée");
+  }, []);
+
+  const updateAnnotation = useCallback((id: string, updates: Partial<PlanAnnotation>) => {
+    setAnnotations((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
+  }, []);
+
+  const removeAnnotation = useCallback(
+    (id: string) => {
+      setAnnotations((prev) => prev.filter((a) => a.id !== id));
+      if (selectedAnnotation === id) setSelectedAnnotation(null);
+      toast.success("Note supprimée");
+    },
+    [selectedAnnotation],
+  );
+
+  // ========== TEMPLATES ==========
+  // Charger les templates au démarrage
+  useEffect(() => {
+    const stored = localStorage.getItem("pdfPlanTemplates");
+    if (stored) {
+      try {
+        setSavedTemplates(JSON.parse(stored));
+      } catch (e) {
+        console.error("Erreur chargement templates:", e);
+      }
+    }
+  }, []);
+
+  const saveTemplate = useCallback(
+    (name: string) => {
+      const template: PlanTemplate = {
+        id: generateId(),
+        name,
+        createdAt: new Date().toISOString(),
+        options,
+        dimensionStyle,
+        annotations,
+      };
+
+      const updated = [...savedTemplates, template];
+      setSavedTemplates(updated);
+      localStorage.setItem("pdfPlanTemplates", JSON.stringify(updated));
+      toast.success(`Template "${name}" sauvegardé`);
+    },
+    [options, dimensionStyle, annotations, savedTemplates],
+  );
+
+  const loadTemplate = useCallback((template: PlanTemplate) => {
+    setOptions(template.options);
+    setDimensionStyle(template.dimensionStyle);
+    setAnnotations(template.annotations);
+    toast.success(`Template "${template.name}" chargé`);
+  }, []);
+
+  const deleteTemplate = useCallback(
+    (id: string) => {
+      const updated = savedTemplates.filter((t) => t.id !== id);
+      setSavedTemplates(updated);
+      localStorage.setItem("pdfPlanTemplates", JSON.stringify(updated));
+      toast.success("Template supprimé");
+    },
+    [savedTemplates],
+  );
+
+  // ========== MULTI-PAGE ==========
+  const calculateTotalPages = useCallback(() => {
+    const bounds = calculateBounds();
+    if (!bounds) return 1;
+
+    const pageWidth =
+      options.orientation === "landscape" ? PAGE_SIZES[options.format].height : PAGE_SIZES[options.format].width;
+    const pageHeight =
+      options.orientation === "landscape" ? PAGE_SIZES[options.format].width : PAGE_SIZES[options.format].height;
+
+    const drawableWidth = pageWidth - 2 * options.margin;
+    const drawableHeight = pageHeight - 2 * options.margin - CARTOUCHE_HEIGHT;
+
+    const sketchWidthMm = (bounds.maxX - bounds.minX) / sketch.scaleFactor;
+    const sketchHeightMm = (bounds.maxY - bounds.minY) / sketch.scaleFactor;
+
+    const effectiveScale = options.customScale || options.scale;
+    const onPaperWidth = sketchWidthMm / effectiveScale;
+    const onPaperHeight = sketchHeightMm / effectiveScale;
+
+    const pagesX = Math.ceil(onPaperWidth / drawableWidth);
+    const pagesY = Math.ceil(onPaperHeight / drawableHeight);
+
+    return Math.max(1, pagesX * pagesY);
+  }, [options, sketch, calculateBounds]);
+
+  // Mettre à jour le nombre de pages
+  useEffect(() => {
+    const pages = calculateTotalPages();
+    setTotalPages(pages);
+    if (currentPage >= pages) {
+      setCurrentPage(Math.max(0, pages - 1));
+    }
+  }, [calculateTotalPages, currentPage]);
+
+  // ========== NOMENCLATURE ==========
+  const generateNomenclature = useCallback(() => {
+    const items: Array<{
+      ref: string;
+      type: string;
+      dimension: string;
+      count: number;
+    }> = [];
+
+    // Compter les lignes
+    let lineCount = 0;
+    let totalLineLength = 0;
+    sketch.geometries.forEach((geo) => {
+      if (geo.type === "line") {
+        lineCount++;
+        const line = geo as Line;
+        const p1 = sketch.points.get(line.p1);
+        const p2 = sketch.points.get(line.p2);
+        if (p1 && p2) {
+          totalLineLength += Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2) / sketch.scaleFactor;
+        }
+      }
+    });
+    if (lineCount > 0) {
+      items.push({
+        ref: "L",
+        type: "Lignes",
+        dimension: `${totalLineLength.toFixed(1)} mm total`,
+        count: lineCount,
+      });
+    }
+
+    // Compter les cercles
+    let circleCount = 0;
+    sketch.geometries.forEach((geo) => {
+      if (geo.type === "circle") circleCount++;
+    });
+    if (circleCount > 0) {
+      items.push({
+        ref: "C",
+        type: "Cercles",
+        dimension: "-",
+        count: circleCount,
+      });
+    }
+
+    // Compter les arcs
+    let arcCount = 0;
+    sketch.geometries.forEach((geo) => {
+      if (geo.type === "arc") arcCount++;
+    });
+    if (arcCount > 0) {
+      items.push({
+        ref: "A",
+        type: "Arcs",
+        dimension: "-",
+        count: arcCount,
+      });
+    }
+
+    return items;
+  }, [sketch]);
+
   // Gestion des événements souris
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -725,6 +1061,33 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
           }
         }
       }
+
+      // Cotation cercle à cercle
+      if (activeTool === "circle-distance") {
+        const entityId = findEntityAtPosition(sketchPos.x, sketchPos.y);
+        if (entityId) {
+          const geo = sketch.geometries.get(entityId);
+          if (geo?.type === "circle" || geo?.type === "arc") {
+            if (!circleSelection.circle1Id) {
+              setCircleSelection({ circle1Id: entityId });
+              toast.info("Cliquez sur le 2ème cercle/arc (Shift = bord à bord)");
+            } else {
+              const mode = e.shiftKey ? "edge" : "center";
+              addCircleDistanceDimension(circleSelection.circle1Id, entityId, mode);
+              setCircleSelection({ circle1Id: null });
+            }
+          }
+        }
+      }
+
+      // Outil Note
+      if (activeTool === "note") {
+        // Ajouter une note à la position cliquée
+        const text = prompt("Entrez le texte de la note:");
+        if (text && text.trim()) {
+          addAnnotation(sketchPos.x, sketchPos.y, text.trim());
+        }
+      }
     },
     [
       activeTool,
@@ -733,10 +1096,13 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
       findPointAtPosition,
       dimensionSelection,
       angleSelection,
+      circleSelection,
       addLengthDimension,
       addRadiusDimension,
       addPointToPointDimension,
       addAngleDimension,
+      addCircleDistanceDimension,
+      addAnnotation,
       sketch,
     ],
   );
@@ -750,44 +1116,68 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
       const screenY = e.clientY - rect.top;
       const sketchPos = screenToSketch(screenX, screenY);
 
-      // Pan
-      if (mouseState.isDragging && (activeTool === "pan" || draggingDimension === null)) {
-        if (draggingDimension) {
-          // Déplacer la cotation
-          const dim = dimensions.find((d) => d.id === draggingDimension);
-          if (dim) {
-            const deltaX = (screenX - mouseState.lastPos.x) / viewport.scale;
-            const deltaY = (screenY - mouseState.lastPos.y) / viewport.scale;
+      // Déplacement d'une cotation
+      if (mouseState.isDragging && draggingDimension) {
+        const dim = dimensions.find((d) => d.id === draggingDimension);
+        if (dim) {
+          const deltaX = screenX - mouseState.lastPos.x;
+          const deltaY = screenY - mouseState.lastPos.y;
 
-            if (dim.type === "length") {
-              // Calculer la nouvelle distance perpendiculaire
-              const newOffset = dim.offset + deltaY * 0.5;
-              setDimensions((prev) => prev.map((d) => (d.id === draggingDimension ? { ...d, offset: newOffset } : d)));
-            } else if (dim.position) {
-              setDimensions((prev) =>
-                prev.map((d) =>
-                  d.id === draggingDimension && d.position
-                    ? {
-                        ...d,
-                        position: {
-                          x: d.position.x + deltaX,
-                          y: d.position.y + deltaY,
-                        },
-                      }
-                    : d,
-                ),
-              );
+          if (dim.type === "length" || dim.type === "circle-distance") {
+            // Modifier l'offset perpendiculaire
+            const newOffset = dim.offset + deltaY * 0.3;
+            setDimensions((prev) => prev.map((d) => (d.id === draggingDimension ? { ...d, offset: newOffset } : d)));
+          } else if (dim.type === "angle") {
+            // Modifier le rayon de l'arc de cotation d'angle
+            // Calculer la distance au vertex
+            if (dim.vertexId) {
+              const vertex = sketch.points.get(dim.vertexId);
+              if (vertex && pageTransform) {
+                const { drawCenterX, drawCenterY, sketchCenterX, sketchCenterY, mmToPixels, scaleFactor, planScale } =
+                  pageTransform;
+                const relXmm = (vertex.x - sketchCenterX) / scaleFactor;
+                const relYmm = (vertex.y - sketchCenterY) / scaleFactor;
+                const vertexScreenX = drawCenterX + (relXmm / planScale) * mmToPixels;
+                const vertexScreenY = drawCenterY + (relYmm / planScale) * mmToPixels;
+
+                const newRadius = Math.sqrt((screenX - vertexScreenX) ** 2 + (screenY - vertexScreenY) ** 2);
+                setDimensions((prev) =>
+                  prev.map((d) => (d.id === draggingDimension ? { ...d, offset: Math.max(15, newRadius) } : d)),
+                );
+              }
             }
+          } else if (dim.position) {
+            // Rayon/Diamètre - déplacer la position
+            const sketchDelta = {
+              x: sketchPos.x - (dim.position.x || 0),
+              y: sketchPos.y - (dim.position.y || 0),
+            };
+            setDimensions((prev) =>
+              prev.map((d) =>
+                d.id === draggingDimension && d.position
+                  ? {
+                      ...d,
+                      position: {
+                        x: sketchPos.x,
+                        y: sketchPos.y,
+                      },
+                    }
+                  : d,
+              ),
+            );
           }
-        } else if (activeTool === "pan") {
-          // Pan du viewport
-          setViewport((prev) => ({
-            ...prev,
-            offsetX: prev.offsetX + (screenX - mouseState.lastPos.x),
-            offsetY: prev.offsetY + (screenY - mouseState.lastPos.y),
-          }));
         }
+        setMouseState((prev) => ({ ...prev, lastPos: { x: screenX, y: screenY } }));
+        return;
+      }
 
+      // Pan du viewport
+      if (mouseState.isDragging && activeTool === "pan") {
+        setViewport((prev) => ({
+          ...prev,
+          offsetX: prev.offsetX + (screenX - mouseState.lastPos.x),
+          offsetY: prev.offsetY + (screenY - mouseState.lastPos.y),
+        }));
         setMouseState((prev) => ({ ...prev, lastPos: { x: screenX, y: screenY } }));
         return;
       }
@@ -796,7 +1186,17 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
       const entityId = findEntityAtPosition(sketchPos.x, sketchPos.y);
       setHoveredEntity(entityId);
     },
-    [mouseState, activeTool, viewport.scale, draggingDimension, dimensions, screenToSketch, findEntityAtPosition],
+    [
+      mouseState,
+      activeTool,
+      viewport.scale,
+      draggingDimension,
+      dimensions,
+      screenToSketch,
+      findEntityAtPosition,
+      sketch,
+      pageTransform,
+    ],
   );
 
   const handleMouseUp = useCallback(() => {
@@ -1518,6 +1918,159 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
 
         ctx.fillStyle = isDragging ? "#FF0000" : dim.color;
         ctx.fillText(text, textX, textY);
+      } else if (dim.type === "circle-distance" && dim.circle1Id && dim.circle2Id) {
+        // Cotation cercle à cercle
+        const geo1 = sketch.geometries.get(dim.circle1Id);
+        const geo2 = sketch.geometries.get(dim.circle2Id);
+        if (!geo1 || !geo2) return;
+
+        let center1: Point | undefined, center2: Point | undefined;
+        let radius1 = 0,
+          radius2 = 0;
+
+        if (geo1.type === "circle") {
+          const c = geo1 as CircleType;
+          center1 = sketch.points.get(c.center);
+          radius1 = c.radius;
+        } else if (geo1.type === "arc") {
+          const a = geo1 as Arc;
+          center1 = sketch.points.get(a.center);
+          radius1 = a.radius;
+        }
+
+        if (geo2.type === "circle") {
+          const c = geo2 as CircleType;
+          center2 = sketch.points.get(c.center);
+          radius2 = c.radius;
+        } else if (geo2.type === "arc") {
+          const a = geo2 as Arc;
+          center2 = sketch.points.get(a.center);
+          radius2 = a.radius;
+        }
+
+        if (!center1 || !center2) return;
+
+        const t1 = sketchToPage(center1.x, center1.y);
+        const t2 = sketchToPage(center2.x, center2.y);
+
+        // Points de départ/arrivée selon le mode
+        let p1x = t1.x,
+          p1y = t1.y,
+          p2x = t2.x,
+          p2y = t2.y;
+
+        if (dim.circleDistanceMode === "edge") {
+          const dx = t2.x - t1.x;
+          const dy = t2.y - t1.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          if (len > 0) {
+            const r1Screen = radius1 * radiusToPixels;
+            const r2Screen = radius2 * radiusToPixels;
+            p1x = t1.x + (dx / len) * r1Screen;
+            p1y = t1.y + (dy / len) * r1Screen;
+            p2x = t2.x - (dx / len) * r2Screen;
+            p2y = t2.y - (dy / len) * r2Screen;
+          }
+        }
+
+        // Ligne de cotation avec offset
+        const dx = p2x - p1x;
+        const dy = p2y - p1y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const perpX = -dy / len;
+        const perpY = dx / len;
+
+        const d1 = { x: p1x + perpX * dim.offset, y: p1y + perpY * dim.offset };
+        const d2 = { x: p2x + perpX * dim.offset, y: p2y + perpY * dim.offset };
+
+        // Lignes d'attache
+        ctx.beginPath();
+        ctx.moveTo(p1x, p1y);
+        ctx.lineTo(d1.x, d1.y);
+        ctx.moveTo(p2x, p2y);
+        ctx.lineTo(d2.x, d2.y);
+        ctx.stroke();
+
+        // Ligne de cote
+        ctx.beginPath();
+        ctx.moveTo(d1.x, d1.y);
+        ctx.lineTo(d2.x, d2.y);
+        ctx.stroke();
+
+        // Flèches
+        const arrowLen = dimensionStyle.arrowSize;
+        const arrowAngle = Math.PI / 6;
+        const angle = Math.atan2(dy, dx);
+
+        ctx.beginPath();
+        ctx.moveTo(d1.x, d1.y);
+        ctx.lineTo(d1.x + arrowLen * Math.cos(angle + arrowAngle), d1.y + arrowLen * Math.sin(angle + arrowAngle));
+        ctx.moveTo(d1.x, d1.y);
+        ctx.lineTo(d1.x + arrowLen * Math.cos(angle - arrowAngle), d1.y + arrowLen * Math.sin(angle - arrowAngle));
+        ctx.moveTo(d2.x, d2.y);
+        ctx.lineTo(d2.x - arrowLen * Math.cos(angle + arrowAngle), d2.y - arrowLen * Math.sin(angle + arrowAngle));
+        ctx.moveTo(d2.x, d2.y);
+        ctx.lineTo(d2.x - arrowLen * Math.cos(angle - arrowAngle), d2.y - arrowLen * Math.sin(angle - arrowAngle));
+        ctx.stroke();
+
+        // Texte
+        const midX = (d1.x + d2.x) / 2;
+        const midY = (d1.y + d2.y) / 2;
+        const text = `${dim.value.toFixed(1)}`;
+        const textWidth = ctx.measureText(text).width;
+
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(midX - textWidth / 2 - 4, midY - 8, textWidth + 8, 16);
+
+        ctx.fillStyle = isSelected ? "#10B981" : isDragging ? "#FF0000" : dim.color;
+        ctx.fillText(text, midX, midY);
+      }
+    });
+
+    // ===== DESSINER LES ANNOTATIONS =====
+    annotations.forEach((ann) => {
+      const pos = sketchToPage(ann.position.x, ann.position.y);
+
+      // Mesurer le texte
+      ctx.font = `${ann.fontSize}px Arial`;
+      const lines = ann.text.split("\n");
+      const lineHeight = ann.fontSize * 1.2;
+      let maxWidth = 0;
+      lines.forEach((line) => {
+        const w = ctx.measureText(line).width;
+        if (w > maxWidth) maxWidth = w;
+      });
+
+      const padding = 6;
+      const boxWidth = maxWidth + padding * 2;
+      const boxHeight = lines.length * lineHeight + padding * 2;
+
+      // Fond
+      if (ann.backgroundColor) {
+        ctx.fillStyle = ann.backgroundColor;
+        ctx.fillRect(pos.x - padding, pos.y - padding, boxWidth, boxHeight);
+      }
+
+      // Bordure
+      if (ann.borderColor) {
+        ctx.strokeStyle = ann.borderColor;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(pos.x - padding, pos.y - padding, boxWidth, boxHeight);
+      }
+
+      // Texte
+      ctx.fillStyle = ann.color;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      lines.forEach((line, i) => {
+        ctx.fillText(line, pos.x, pos.y + i * lineHeight);
+      });
+
+      // Indicateur de sélection
+      if (selectedAnnotation === ann.id) {
+        ctx.strokeStyle = "#10B981";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(pos.x - padding - 2, pos.y - padding - 2, boxWidth + 4, boxHeight + 4);
       }
     });
 
@@ -1526,10 +2079,14 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     sketch,
     options,
     dimensions,
+    annotations,
     hoveredEntity,
     draggingDimension,
     selectedDimension,
+    selectedAnnotation,
     angleSelection,
+    circleSelection,
+    dimensionStyle,
     calculateBounds,
     pageTransform,
   ]);
@@ -1865,8 +2422,135 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
         const textY = tv.y + textRadius * Math.sin(midAngle);
 
         doc.text(`${dim.value.toFixed(1)}°`, textX, textY);
+      } else if (dim.type === "circle-distance" && dim.circle1Id && dim.circle2Id) {
+        // Cotation cercle à cercle
+        const geo1 = sketch.geometries.get(dim.circle1Id);
+        const geo2 = sketch.geometries.get(dim.circle2Id);
+        if (!geo1 || !geo2) return;
+
+        let center1: Point | undefined, center2: Point | undefined;
+        let radius1 = 0,
+          radius2 = 0;
+
+        if (geo1.type === "circle") {
+          const c = geo1 as CircleType;
+          center1 = sketch.points.get(c.center);
+          radius1 = c.radius;
+        } else if (geo1.type === "arc") {
+          const a = geo1 as Arc;
+          center1 = sketch.points.get(a.center);
+          radius1 = a.radius;
+        }
+
+        if (geo2.type === "circle") {
+          const c = geo2 as CircleType;
+          center2 = sketch.points.get(c.center);
+          radius2 = c.radius;
+        } else if (geo2.type === "arc") {
+          const a = geo2 as Arc;
+          center2 = sketch.points.get(a.center);
+          radius2 = a.radius;
+        }
+
+        if (!center1 || !center2) return;
+
+        const t1 = transform(center1.x, center1.y);
+        const t2 = transform(center2.x, center2.y);
+
+        let p1x = t1.x,
+          p1y = t1.y,
+          p2x = t2.x,
+          p2y = t2.y;
+
+        if (dim.circleDistanceMode === "edge") {
+          const dx = t2.x - t1.x;
+          const dy = t2.y - t1.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          if (len > 0) {
+            const r1mm = ((radius1 / sketch.scaleFactor) * fitScale) / options.scale;
+            const r2mm = ((radius2 / sketch.scaleFactor) * fitScale) / options.scale;
+            p1x = t1.x + (dx / len) * r1mm;
+            p1y = t1.y + (dy / len) * r1mm;
+            p2x = t2.x - (dx / len) * r2mm;
+            p2y = t2.y - (dy / len) * r2mm;
+          }
+        }
+
+        const dx = p2x - p1x;
+        const dy = p2y - p1y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const perpX = -dy / len;
+        const perpY = dx / len;
+        const offset = 5;
+
+        const d1 = { x: p1x + perpX * offset, y: p1y + perpY * offset };
+        const d2 = { x: p2x + perpX * offset, y: p2y + perpY * offset };
+
+        doc.line(p1x, p1y, d1.x, d1.y);
+        doc.line(p2x, p2y, d2.x, d2.y);
+        doc.line(d1.x, d1.y, d2.x, d2.y);
+
+        const midX = (d1.x + d2.x) / 2;
+        const midY = (d1.y + d2.y) / 2;
+        doc.text(`${dim.value.toFixed(1)}`, midX, midY - 1, { align: "center" });
       }
     });
+
+    // Annotations
+    annotations.forEach((ann) => {
+      const pos = transform(ann.position.x, ann.position.y);
+      doc.setFontSize(ann.fontSize * 0.35);
+      doc.setTextColor(51, 51, 51);
+
+      const lines = ann.text.split("\n");
+      lines.forEach((line, i) => {
+        doc.text(line, pos.x, pos.y + i * (ann.fontSize * 0.4));
+      });
+    });
+
+    // Nomenclature
+    if (options.showNomenclature) {
+      const nomenclature = generateNomenclature();
+      if (nomenclature.length > 0) {
+        const nomWidth = 50;
+        const nomRowHeight = 5;
+        const nomHeight = (nomenclature.length + 1) * nomRowHeight;
+
+        let nomX = options.margin;
+        let nomY = options.margin;
+
+        if (options.nomenclaturePosition === "bottom-right") {
+          nomX = pageWidth - options.margin - nomWidth;
+          nomY = pageHeight - options.margin - CARTOUCHE_HEIGHT - nomHeight - 5;
+        } else if (options.nomenclaturePosition === "bottom-left") {
+          nomY = pageHeight - options.margin - CARTOUCHE_HEIGHT - nomHeight - 5;
+        } else if (options.nomenclaturePosition === "top-right") {
+          nomX = pageWidth - options.margin - nomWidth;
+        }
+
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.2);
+        doc.rect(nomX, nomY, nomWidth, nomHeight);
+
+        // En-tête
+        doc.setFillColor(240, 240, 240);
+        doc.rect(nomX, nomY, nomWidth, nomRowHeight, "F");
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "bold");
+        doc.text("REF", nomX + 2, nomY + 3.5);
+        doc.text("TYPE", nomX + 12, nomY + 3.5);
+        doc.text("QTÉ", nomX + 42, nomY + 3.5);
+
+        doc.setFont("helvetica", "normal");
+        nomenclature.forEach((item, i) => {
+          const rowY = nomY + (i + 1) * nomRowHeight;
+          doc.line(nomX, rowY, nomX + nomWidth, rowY);
+          doc.text(item.ref, nomX + 2, rowY + 3.5);
+          doc.text(item.type, nomX + 12, rowY + 3.5);
+          doc.text(String(item.count), nomX + 42, rowY + 3.5);
+        });
+      }
+    }
 
     // Cartouche
     const cartoucheY = pageHeight - options.margin - CARTOUCHE_HEIGHT;
@@ -1922,7 +2606,7 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
     doc.save(filename);
 
     toast.success("PDF exporté avec succès");
-  }, [sketch, dimensions, options, calculateBounds, viewport.scale]);
+  }, [sketch, dimensions, annotations, options, calculateBounds, viewport.scale, generateNomenclature]);
 
   // Initialiser le canvas
   useEffect(() => {
@@ -2140,9 +2824,9 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
                   {[10, 5, 2].map((s) => (
                     <Button
                       key={`up-${s}`}
-                      variant={options.scale === 1 / s ? "default" : "outline"}
+                      variant={options.scale === 1 / s && !options.customScale ? "default" : "outline"}
                       size="sm"
-                      onClick={() => setOptions((o) => ({ ...o, scale: 1 / s }))}
+                      onClick={() => setOptions((o) => ({ ...o, scale: 1 / s, customScale: undefined }))}
                       className="px-3"
                     >
                       {s}:1
@@ -2157,14 +2841,46 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
                   {[1, 2, 5, 10, 20, 50].map((s) => (
                     <Button
                       key={`down-${s}`}
-                      variant={options.scale === s ? "default" : "outline"}
+                      variant={options.scale === s && !options.customScale ? "default" : "outline"}
                       size="sm"
-                      onClick={() => setOptions((o) => ({ ...o, scale: s }))}
+                      onClick={() => setOptions((o) => ({ ...o, scale: s, customScale: undefined }))}
                       className="px-3"
                     >
                       1:{s}
                     </Button>
                   ))}
+                </div>
+              </div>
+              {/* Échelle personnalisée */}
+              <div className="space-y-1">
+                <span className="text-xs text-gray-500">Échelle personnalisée (1:X)</span>
+                <div className="flex gap-2 items-center">
+                  <span className="text-sm">1:</span>
+                  <Input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={options.customScale || ""}
+                    placeholder="ex: 7.5"
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (!isNaN(val) && val > 0) {
+                        setOptions((o) => ({ ...o, customScale: val, scale: val }));
+                      } else if (e.target.value === "") {
+                        setOptions((o) => ({ ...o, customScale: undefined }));
+                      }
+                    }}
+                    className="w-20 h-8"
+                  />
+                  {options.customScale && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setOptions((o) => ({ ...o, customScale: undefined }))}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
@@ -2232,6 +2948,176 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* Style des cotations */}
+            <div className="space-y-2 pt-2 border-t">
+              <div className="flex items-center justify-between">
+                <Label className="font-semibold">Style des cotations</Label>
+                <Button size="sm" variant="ghost" onClick={() => setShowStylePanel(!showStylePanel)}>
+                  <Palette className="h-4 w-4" />
+                </Button>
+              </div>
+              {showStylePanel && (
+                <div className="space-y-2 p-2 bg-gray-50 rounded">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs w-16">Couleur</Label>
+                    <input
+                      type="color"
+                      value={dimensionStyle.color}
+                      onChange={(e) => setDimensionStyle((s) => ({ ...s, color: e.target.value }))}
+                      className="w-8 h-6 rounded cursor-pointer"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs w-16">Police</Label>
+                    <Input
+                      type="number"
+                      min="6"
+                      max="24"
+                      value={dimensionStyle.fontSize}
+                      onChange={(e) => setDimensionStyle((s) => ({ ...s, fontSize: parseInt(e.target.value) || 10 }))}
+                      className="w-16 h-6"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs w-16">Flèches</Label>
+                    <select
+                      value={dimensionStyle.arrowStyle}
+                      onChange={(e) => setDimensionStyle((s) => ({ ...s, arrowStyle: e.target.value as any }))}
+                      className="h-6 text-xs rounded border px-1"
+                    >
+                      <option value="open">Ouvertes</option>
+                      <option value="closed">Fermées</option>
+                      <option value="dot">Points</option>
+                      <option value="none">Aucune</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Notes/Annotations */}
+            <div className="space-y-2 pt-2 border-t">
+              <Label className="font-semibold">Notes ({annotations.length})</Label>
+              <div className="max-h-32 overflow-y-auto space-y-1">
+                {annotations.map((ann) => (
+                  <div
+                    key={ann.id}
+                    className={`flex items-center justify-between text-sm px-2 py-1 rounded cursor-pointer ${
+                      selectedAnnotation === ann.id
+                        ? "bg-green-100 border border-green-500"
+                        : "bg-gray-50 hover:bg-gray-100"
+                    }`}
+                    onClick={() => setSelectedAnnotation(ann.id)}
+                  >
+                    <span className="truncate flex-1">{ann.text.substring(0, 20)}...</span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeAnnotation(ann.id);
+                      }}
+                      className="h-6 w-6 p-0"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              {annotations.length === 0 && (
+                <p className="text-xs text-gray-400 italic">Utilisez l'outil Note pour ajouter des annotations</p>
+              )}
+            </div>
+
+            {/* Nomenclature */}
+            <div className="space-y-2 pt-2 border-t">
+              <div className="flex items-center justify-between">
+                <Label className="font-semibold">Nomenclature</Label>
+                <Switch
+                  checked={options.showNomenclature}
+                  onCheckedChange={(c) => setOptions((o) => ({ ...o, showNomenclature: c }))}
+                />
+              </div>
+              {options.showNomenclature && (
+                <div className="space-y-2">
+                  <select
+                    value={options.nomenclaturePosition}
+                    onChange={(e) => setOptions((o) => ({ ...o, nomenclaturePosition: e.target.value as any }))}
+                    className="w-full h-8 text-sm rounded border px-2"
+                  >
+                    <option value="bottom-right">Bas droite</option>
+                    <option value="bottom-left">Bas gauche</option>
+                    <option value="top-right">Haut droite</option>
+                    <option value="top-left">Haut gauche</option>
+                  </select>
+                  <div className="text-xs bg-gray-50 p-2 rounded">
+                    {generateNomenclature().map((item, i) => (
+                      <div key={i} className="flex justify-between">
+                        <span>
+                          {item.ref}: {item.type}
+                        </span>
+                        <span>{item.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Templates */}
+            <div className="space-y-2 pt-2 border-t">
+              <Label className="font-semibold">Templates</Label>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    const name = prompt("Nom du template:");
+                    if (name) saveTemplate(name);
+                  }}
+                >
+                  <Save className="h-3 w-3 mr-1" />
+                  Sauver
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowTemplateDialog(!showTemplateDialog)}
+                >
+                  <FolderOpen className="h-3 w-3 mr-1" />
+                  Charger
+                </Button>
+              </div>
+              {showTemplateDialog && savedTemplates.length > 0 && (
+                <div className="max-h-32 overflow-y-auto space-y-1">
+                  {savedTemplates.map((tpl) => (
+                    <div
+                      key={tpl.id}
+                      className="flex items-center justify-between text-sm px-2 py-1 bg-gray-50 rounded hover:bg-gray-100"
+                    >
+                      <span
+                        className="cursor-pointer flex-1 truncate"
+                        onClick={() => {
+                          loadTemplate(tpl);
+                          setShowTemplateDialog(false);
+                        }}
+                      >
+                        {tpl.name}
+                      </span>
+                      <Button size="sm" variant="ghost" onClick={() => deleteTemplate(tpl.id)} className="h-6 w-6 p-0">
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {showTemplateDialog && savedTemplates.length === 0 && (
+                <p className="text-xs text-gray-400 italic">Aucun template sauvegardé</p>
+              )}
             </div>
           </div>
 
@@ -2301,6 +3187,25 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
             <Triangle className="h-4 w-4 mr-1" />
             Angle
           </Button>
+          <Button
+            variant={activeTool === "circle-distance" ? "default" : "outline"}
+            size="sm"
+            onClick={() => {
+              setActiveTool("circle-distance");
+              setCircleSelection({ circle1Id: null });
+            }}
+          >
+            <Circle className="h-4 w-4 mr-1" />
+            Dist.
+          </Button>
+          <Button
+            variant={activeTool === "note" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveTool("note")}
+          >
+            <Type className="h-4 w-4 mr-1" />
+            Note
+          </Button>
 
           <div className="h-6 w-px bg-gray-300 mx-2" />
 
@@ -2315,14 +3220,44 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
             Recadrer
           </Button>
 
+          <div className="h-6 w-px bg-gray-300 mx-2" />
+
+          {/* Multi-page */}
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                disabled={currentPage === 0}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm px-2">
+                {currentPage + 1}/{totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages - 1, p + 1))}
+                disabled={currentPage === totalPages - 1}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+
           <div className="flex-1" />
 
           {/* Info outil */}
           <div className="text-sm text-gray-500">
             {activeTool === "dimension" && "Cliquez sur une ligne ou 2 points"}
-            {activeTool === "radius" && "Cliquez sur un cercle (Shift = diamètre)"}
+            {activeTool === "radius" && "Cliquez sur un cercle/arc (Shift = diamètre)"}
             {activeTool === "angle" &&
               (angleSelection.line1Id ? "Cliquez sur la 2ème ligne" : "Cliquez sur 2 lignes adjacentes")}
+            {activeTool === "circle-distance" &&
+              (circleSelection.circle1Id ? "Cliquez sur le 2ème cercle (Shift = bord)" : "Cliquez sur 2 cercles/arcs")}
+            {activeTool === "note" && "Cliquez pour ajouter une note"}
             {activeTool === "select" &&
               (selectedDimension
                 ? "Delete/Suppr ou clic droit pour supprimer"
@@ -2352,7 +3287,11 @@ export default function PDFPlanEditor({ sketch, isOpen, onClose, initialOptions 
               cursor:
                 activeTool === "pan"
                   ? "grab"
-                  : activeTool === "dimension" || activeTool === "radius" || activeTool === "angle"
+                  : activeTool === "dimension" ||
+                      activeTool === "radius" ||
+                      activeTool === "angle" ||
+                      activeTool === "circle-distance" ||
+                      activeTool === "note"
                     ? "crosshair"
                     : draggingDimension
                       ? "grabbing"
