@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.88 - Fix sens arc indicateur d'angle (dessine côté intérieur)
+// VERSION: 6.88 - Fermeture automatique des panneaux d'édition conflictuels
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -837,6 +837,37 @@ export function CADGabaritCanvas({
   const [anglePanelPos, setAnglePanelPos] = useState({ x: 100, y: 100 });
   const [anglePanelDragging, setAnglePanelDragging] = useState(false);
   const [anglePanelDragStart, setAnglePanelDragStart] = useState({ x: 0, y: 0 });
+
+  // === FONCTION POUR FERMER TOUS LES PANNEAUX D'ÉDITION ===
+  // Évite la confusion quand plusieurs panneaux sont ouverts
+  const closeAllEditPanels = useCallback(
+    (except?: string) => {
+      if (except !== "fillet") setFilletDialog(null);
+      if (except !== "chamfer") setChamferDialog(null);
+      if (except !== "arcEdit") setArcEditDialog(null);
+      if (except !== "lineLength") {
+        // Si on ferme le panneau longueur, restaurer le sketch original si nécessaire
+        if (lineLengthDialog?.originalSketch) {
+          setSketch(lineLengthDialog.originalSketch);
+        }
+        setLineLengthDialog(null);
+      }
+      if (except !== "angle") {
+        // Si on ferme le panneau angle, restaurer le sketch original si nécessaire
+        if (angleEditDialog?.originalSketch) {
+          setSketch(angleEditDialog.originalSketch);
+        }
+        setAngleEditDialog(null);
+      }
+      if (except !== "fill") {
+        setFillDialogOpen(false);
+        setFillDialogTarget(null);
+      }
+      if (except !== "text") setTextInput(null);
+      if (except !== "context") setContextMenu(null);
+    },
+    [lineLengthDialog, angleEditDialog],
+  );
 
   // Modale pour répétition/array
   const [arrayDialog, setArrayDialog] = useState<{
@@ -1877,11 +1908,8 @@ export function CADGabaritCanvas({
             while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
             while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
 
-            // Pour dessiner le PETIT arc (angle intérieur):
-            // - Si deltaAngle > 0 → on va de start à end dans le sens HORAIRE (counterClockwise=false)
-            // - Si deltaAngle < 0 → on va de start à end dans le sens ANTI-HORAIRE (counterClockwise=true)
-            // Mais on veut l'arc OPPOSÉ pour avoir l'angle intérieur, donc on inverse
-            const counterClockwise = deltaAngle > 0;
+            // Pour dessiner le PETIT arc (angle mesuré):
+            const counterClockwise = deltaAngle < 0;
 
             ctx.arc(cornerScreen.x, cornerScreen.y, arcRadius, startAngle, endAngle, counterClockwise);
             ctx.stroke();
@@ -2431,11 +2459,11 @@ export function CADGabaritCanvas({
             ctx.setLineDash([]);
             ctx.beginPath();
 
-            // Déterminer le sens de l'arc (prendre l'arc intérieur)
+            // Déterminer le sens de l'arc (prendre le plus court)
             let deltaAngle = endAngle - startAngle;
             while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
             while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
-            const counterClockwise = deltaAngle > 0;
+            const counterClockwise = deltaAngle < 0;
 
             ctx.arc(cornerScreen.x, cornerScreen.y, arcRadius, startAngle, endAngle, counterClockwise);
             ctx.stroke();
@@ -4747,6 +4775,9 @@ export function CADGabaritCanvas({
       const len2Mm = params.len2 / sketch.scaleFactor;
       const suggestedRadius = Math.min(filletRadius, Math.floor(maxRadiusMm));
 
+      // Fermer les autres panneaux d'édition avant d'ouvrir celui-ci
+      closeAllEditPanels("fillet");
+
       setFilletDialog({
         open: true,
         corners: [
@@ -4771,7 +4802,7 @@ export function CADGabaritCanvas({
         repeatMode: false,
       });
     },
-    [sketch.scaleFactor, filletRadius, findLinesConnectedToPoint, calculateCornerParams],
+    [sketch.scaleFactor, filletRadius, findLinesConnectedToPoint, calculateCornerParams, closeAllEditPanels],
   );
 
   const openFilletDialog = useCallback(() => {
@@ -12178,6 +12209,9 @@ export function CADGabaritCanvas({
   // Ouvrir le dialogue de remplissage pour une forme
   const openFillDialog = useCallback(
     (geoIds: string[], path: Path2D) => {
+      // Fermer les autres panneaux d'édition
+      closeAllEditPanels("fill");
+
       // Vérifier si un remplissage existe déjà
       const key = getShapeFillKey(geoIds);
       const existingFill = sketch.shapeFills.get(key);
@@ -12203,7 +12237,7 @@ export function CADGabaritCanvas({
       setFillDialogTarget({ geoIds, path });
       setFillDialogOpen(true);
     },
-    [sketch.shapeFills, getShapeFillKey],
+    [sketch.shapeFills, getShapeFillKey, closeAllEditPanels],
   );
 
   // Confirmer le remplissage depuis le dialogue
@@ -17667,6 +17701,8 @@ export function CADGabaritCanvas({
                   <button
                     className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
                     onClick={() => {
+                      // Fermer les autres panneaux d'édition
+                      closeAllEditPanels("lineLength");
                       setLineLengthPanelPos({ x: contextMenu.x + 10, y: contextMenu.y });
                       setLineLengthDialog({
                         open: true,
@@ -17819,6 +17855,8 @@ export function CADGabaritCanvas({
                   <button
                     className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
                     onClick={() => {
+                      // Fermer les autres panneaux d'édition
+                      closeAllEditPanels("angle");
                       setAnglePanelPos({ x: contextMenu.x + 10, y: contextMenu.y });
                       setAngleEditDialog({
                         open: true,
