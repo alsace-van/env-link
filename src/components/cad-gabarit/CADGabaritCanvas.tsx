@@ -15496,33 +15496,66 @@ export function CADGabaritCanvas({
               const currentAngle = (Math.acos(Math.max(-1, Math.min(1, dot))) * 180) / Math.PI;
 
               return (
-                <button
-                  className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                  onClick={() => {
-                    setAnglePanelPos({ x: contextMenu.x + 10, y: contextMenu.y });
-                    setAngleEditDialog({
-                      open: true,
-                      pointId: pointId,
-                      line1Id: line1.id,
-                      line2Id: line2.id,
-                      currentAngle: currentAngle,
-                      newAngle: currentAngle.toFixed(1),
-                      anchorMode: "symmetric",
-                      // Utiliser sketchRef.current pour éviter les closures stales
-                      originalSketch: {
-                        ...sketchRef.current,
-                        points: new Map(sketchRef.current.points),
-                        geometries: new Map(sketchRef.current.geometries),
-                        layers: new Map(sketchRef.current.layers),
-                        constraints: new Map(sketchRef.current.constraints),
-                      },
-                    });
-                    setContextMenu(null);
-                  }}
-                >
-                  <Sliders className="h-4 w-4 text-orange-500" />
-                  Modifier l'angle ({currentAngle.toFixed(1)}°)
-                </button>
+                <>
+                  {/* Option verrouillage du point */}
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      setLockedPoints((prev) => {
+                        const newSet = new Set(prev);
+                        if (newSet.has(pointId)) {
+                          newSet.delete(pointId);
+                          toast.success("Point déverrouillé");
+                        } else {
+                          newSet.add(pointId);
+                          toast.success("Point verrouillé");
+                        }
+                        return newSet;
+                      });
+                      setContextMenu(null);
+                    }}
+                  >
+                    {lockedPoints.has(pointId) ? (
+                      <>
+                        <Unlock className="h-4 w-4 text-green-500" />
+                        Déverrouiller le point
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="h-4 w-4 text-orange-500" />
+                        Verrouiller le point
+                      </>
+                    )}
+                  </button>
+                  {/* Option modifier l'angle */}
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      setAnglePanelPos({ x: contextMenu.x + 10, y: contextMenu.y });
+                      setAngleEditDialog({
+                        open: true,
+                        pointId: pointId,
+                        line1Id: line1.id,
+                        line2Id: line2.id,
+                        currentAngle: currentAngle,
+                        newAngle: currentAngle.toFixed(1),
+                        anchorMode: "symmetric",
+                        // Utiliser sketchRef.current pour éviter les closures stales
+                        originalSketch: {
+                          ...sketchRef.current,
+                          points: new Map(sketchRef.current.points),
+                          geometries: new Map(sketchRef.current.geometries),
+                          layers: new Map(sketchRef.current.layers),
+                          constraints: new Map(sketchRef.current.constraints),
+                        },
+                      });
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Sliders className="h-4 w-4 text-orange-500" />
+                    Modifier l'angle ({currentAngle.toFixed(1)}°)
+                  </button>
+                </>
               );
             })()}
         </div>
