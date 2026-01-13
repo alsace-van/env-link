@@ -246,6 +246,11 @@ export function CADGabaritCanvas({
     defaultStrokeColorRef.current = defaultStrokeColor;
   }, [defaultStrokeColor]);
 
+  // === États v6.80 - construction et snap calque ===
+  const [isConstructionMode, setIsConstructionMode] = useState(false); // Mode lignes de construction
+  const [showConstruction, setShowConstruction] = useState(true); // Afficher les lignes de construction
+  const [snapToActiveLayerOnly, setSnapToActiveLayerOnly] = useState(false); // Snap uniquement calque actif
+
   // Ref pour le mode construction (évite stale closure)
   const isConstructionModeRef = useRef(false);
   useEffect(() => {
@@ -352,11 +357,6 @@ export function CADGabaritCanvas({
   const [showShortcutsPanel, setShowShortcutsPanel] = useState(false);
   const [lockedPoints, setLockedPoints] = useState<Set<string>>(new Set());
   const [showExportDialog, setShowExportDialog] = useState<"png" | "pdf" | null>(null);
-
-  // === Nouveaux états v6.80 ===
-  const [isConstructionMode, setIsConstructionMode] = useState(false); // Mode lignes de construction
-  const [showConstruction, setShowConstruction] = useState(true); // Afficher les lignes de construction
-  const [snapToActiveLayerOnly, setSnapToActiveLayerOnly] = useState(false); // Snap uniquement calque actif
 
   // === Multi-photos ===
   const [backgroundImages, setBackgroundImages] = useState<BackgroundImage[]>([]);
