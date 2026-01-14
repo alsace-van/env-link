@@ -11869,7 +11869,7 @@ export function CADGabaritCanvas({
 
   // Coller les entités du presse-papier
   const pasteEntities = useCallback(
-    (offset = { x: 20, y: 20 }) => {
+    (offset = { x: 0, y: 0 }) => {
       if (!clipboard) {
         toast.info("Presse-papier vide");
         return;
