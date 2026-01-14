@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.95 - Grille A4 améliorée: chevauchement, mode découpe, export par lot, sauvegarde template
+// VERSION: 6.96 - Corrections calibration: drag points, calcul échelle, bouton annuler mode
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -8436,19 +8436,29 @@ export function CADGabaritCanvas({
 
       // Vérifier si on clique sur un point de calibration pour le déplacer
       if (showCalibrationPanel && calibrationMode === "idle") {
-        const tolerance = 15 / viewport.scale;
-        let clickedPoint: CalibrationPoint | null = null;
+        const selectedImage = getSelectedImage();
+        if (selectedImage) {
+          const tolerance = 15 / viewport.scale;
+          let clickedPoint: CalibrationPoint | null = null;
 
-        calibrationData.points.forEach((point) => {
-          const d = distance(worldPos, point);
-          if (d < tolerance) {
-            clickedPoint = point;
+          // Utiliser les points de l'image sélectionnée
+          const imageCalib = getSelectedImageCalibration();
+
+          // Convertir la position du clic en coordonnées relatives à l'image
+          const relativeX = worldPos.x - selectedImage.x;
+          const relativeY = worldPos.y - selectedImage.y;
+
+          imageCalib.points.forEach((point) => {
+            const d = distance({ x: relativeX, y: relativeY }, point);
+            if (d < tolerance) {
+              clickedPoint = point;
+            }
+          });
+
+          if (clickedPoint) {
+            setDraggingCalibrationPoint(clickedPoint.id);
+            return;
           }
-        });
-
-        if (clickedPoint) {
-          setDraggingCalibrationPoint(clickedPoint.id);
-          return;
         }
       }
 
@@ -9685,18 +9695,25 @@ export function CADGabaritCanvas({
 
       // Drag d'un point de calibration
       if (draggingCalibrationPoint) {
-        setCalibrationData((prev) => {
-          const newPoints = new Map(prev.points);
-          const point = newPoints.get(draggingCalibrationPoint);
-          if (point) {
-            newPoints.set(draggingCalibrationPoint, {
-              ...point,
-              x: worldPos.x,
-              y: worldPos.y,
-            });
-          }
-          return { ...prev, points: newPoints };
-        });
+        const selectedImage = getSelectedImage();
+        if (selectedImage) {
+          // Convertir en coordonnées relatives à l'image
+          const relativeX = worldPos.x - selectedImage.x;
+          const relativeY = worldPos.y - selectedImage.y;
+
+          updateSelectedImageCalibration((prev) => {
+            const newPoints = new Map(prev.points);
+            const point = newPoints.get(draggingCalibrationPoint);
+            if (point) {
+              newPoints.set(draggingCalibrationPoint, {
+                ...point,
+                x: relativeX,
+                y: relativeY,
+              });
+            }
+            return { ...prev, points: newPoints };
+          });
+        }
         return;
       }
 
@@ -16183,6 +16200,12 @@ export function CADGabaritCanvas({
                       size="sm"
                       className="flex-1"
                       onClick={() => {
+                        // Toggle: si déjà en mode paire, retourner en idle
+                        if (calibrationMode === "selectPair1" || calibrationMode === "selectPair2") {
+                          setCalibrationMode("idle");
+                          setSelectedCalibrationPoint(null);
+                          return;
+                        }
                         const imgCalib = getSelectedImageCalibration();
                         if (imgCalib.points.size < 2) {
                           toast.error("Ajoutez au moins 2 points");
@@ -16197,12 +16220,25 @@ export function CADGabaritCanvas({
                     </Button>
                   </div>
 
-                  {/* Mode actif */}
+                  {/* Mode actif avec bouton Annuler */}
                   {calibrationMode !== "idle" && calibrationMode !== "selectRect" && (
-                    <div className="p-2 bg-blue-50 rounded text-sm text-blue-700">
-                      {calibrationMode === "addPoint" && "📍 Cliquez sur l'image pour placer un point"}
-                      {calibrationMode === "selectPair1" && "1️⃣ Cliquez sur le 1er point"}
-                      {calibrationMode === "selectPair2" && "2️⃣ Cliquez sur le 2ème point"}
+                    <div className="p-2 bg-blue-50 rounded text-sm text-blue-700 flex items-center justify-between">
+                      <span>
+                        {calibrationMode === "addPoint" && "📍 Cliquez sur l'image pour placer un point"}
+                        {calibrationMode === "selectPair1" && "1️⃣ Cliquez sur le 1er point"}
+                        {calibrationMode === "selectPair2" && "2️⃣ Cliquez sur le 2ème point"}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => {
+                          setCalibrationMode("idle");
+                          setSelectedCalibrationPoint(null);
+                        }}
+                      >
+                        ✕ Annuler
+                      </Button>
                     </div>
                   )}
 
