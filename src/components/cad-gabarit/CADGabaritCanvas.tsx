@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.0 - Fix drag poignées segments avec images de fond
+// VERSION: 7.01 - Alt pour désactiver snap temporairement (drag fluide)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -9880,8 +9880,8 @@ export function CADGabaritCanvas({
       if (isDragging && dragTarget) {
         let targetPos = worldPos;
 
-        // Snap pendant le drag
-        if (snapEnabled) {
+        // Snap pendant le drag (désactivé si Alt est maintenu)
+        if (snapEnabled && !e.altKey) {
           const snap = snapSystemRef.current.findSnapPoint(
             screenX,
             screenY,
@@ -9897,6 +9897,9 @@ export function CADGabaritCanvas({
           } else {
             setCurrentSnapPoint(null);
           }
+        } else {
+          // Alt maintenu ou snap désactivé = mouvement libre
+          setCurrentSnapPoint(null);
         }
 
         // Mettre à jour la position du point - utiliser sketchRef.current pour éviter closures stales
@@ -9962,8 +9965,8 @@ export function CADGabaritCanvas({
         return;
       }
 
-      // Snap
-      if (snapEnabled) {
+      // Snap (désactivé si Alt est maintenu)
+      if (snapEnabled && !e.altKey) {
         const snap = snapSystemRef.current.findSnapPoint(
           screenX,
           screenY,
