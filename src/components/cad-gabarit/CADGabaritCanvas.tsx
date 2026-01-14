@@ -16144,7 +16144,7 @@ export function CADGabaritCanvas({
 
         {/* Panneau de calibration */}
         {showCalibrationPanel && (
-          <div className="w-80 border-l bg-white flex flex-col">
+          <div className="w-80 min-w-[320px] border-l bg-white flex flex-col overflow-hidden">
             {/* En-tête */}
             <div className="p-3 border-b flex flex-col gap-1 bg-gray-50">
               <div className="flex items-center justify-between">
@@ -16784,12 +16784,12 @@ export function CADGabaritCanvas({
                                 }
                               });
 
-                              toast.success(`${count} paires mises à jour avec les valeurs estimées`);
+                              toast.success(`${count} paires mises à jour`);
                               // Recalculer après pour ajuster l'erreur
                               setTimeout(() => calculateCalibration(), 100);
                             }}
                           >
-                            ✓ Appliquer valeurs estimées à toutes les paires
+                            ✓ Appliquer estimations
                           </Button>
                         </div>
                       )}
