@@ -13726,7 +13726,7 @@ export function CADGabaritCanvas({
 
       // Créer un canvas temporaire pour l'export
       const tempCanvas = document.createElement("canvas");
-      const padding = 50;
+      const padding = 20; // Padding en pixels (réduit)
 
       // Filtrer les géométries (exclure construction)
       const exportGeometries: Geometry[] = [];
@@ -13784,12 +13784,21 @@ export function CADGabaritCanvas({
         return;
       }
 
-      const width = maxX - minX;
-      const height = maxY - minY;
-      const scale = 4; // 4 pixels par mm
+      // Dimensions en mm (sketch units sont en pixels, diviser par scaleFactor)
+      const widthMm = (maxX - minX) / sketch.scaleFactor;
+      const heightMm = (maxY - minY) / sketch.scaleFactor;
 
-      tempCanvas.width = Math.max(200, width * scale + padding * 2);
-      tempCanvas.height = Math.max(200, height * scale + padding * 2);
+      // 300 DPI pour impression de qualité
+      // 300 pixels/inch ÷ 25.4 mm/inch = 11.811 pixels/mm
+      const DPI = 300;
+      const pixelsPerMm = DPI / 25.4;
+
+      // Calculer la taille en pixels pour 300 DPI
+      const canvasWidth = Math.ceil(widthMm * pixelsPerMm) + padding * 2;
+      const canvasHeight = Math.ceil(heightMm * pixelsPerMm) + padding * 2;
+
+      tempCanvas.width = Math.max(100, canvasWidth);
+      tempCanvas.height = Math.max(100, canvasHeight);
 
       const ctx = tempCanvas.getContext("2d");
       if (!ctx) return;
@@ -13799,6 +13808,10 @@ export function CADGabaritCanvas({
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
       }
+
+      // Échelle pour convertir des coordonnées sketch vers pixels canvas
+      // sketch coords → mm → pixels
+      const scale = pixelsPerMm / sketch.scaleFactor;
 
       // Dessiner les géométries (sans construction)
       ctx.save();
@@ -13889,15 +13902,97 @@ export function CADGabaritCanvas({
 
       ctx.restore();
 
-      // Télécharger
-      const dataUrl = tempCanvas.toDataURL("image/png");
-      const a = document.createElement("a");
-      a.href = dataUrl;
-      a.download = `gabarit-${templateId}${transparent ? "-transparent" : ""}.png`;
-      a.click();
+      // Fonction pour ajouter les métadonnées pHYs (DPI) au PNG
+      const addPngDpiMetadata = async (dataUrl: string, dpi: number): Promise<string> => {
+        // Convertir dataURL en ArrayBuffer
+        const base64 = dataUrl.split(",")[1];
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
 
-      toast.success(`PNG exporté${transparent ? " (fond transparent)" : ""} !`);
-      setShowExportDialog(null);
+        // Calculer pixels par mètre (DPI * 39.3701)
+        const pixelsPerMeter = Math.round(dpi * 39.3701);
+
+        // Créer le chunk pHYs
+        // Structure: [length (4)] [type "pHYs" (4)] [x pixels/unit (4)] [y pixels/unit (4)] [unit (1)] [CRC (4)]
+        const pHYsData = new Uint8Array(21);
+        const dataView = new DataView(pHYsData.buffer);
+
+        // Length = 9 (données seulement)
+        dataView.setUint32(0, 9, false);
+
+        // Type = "pHYs"
+        pHYsData[4] = 0x70; // p
+        pHYsData[5] = 0x48; // H
+        pHYsData[6] = 0x59; // Y
+        pHYsData[7] = 0x73; // s
+
+        // X pixels per unit
+        dataView.setUint32(8, pixelsPerMeter, false);
+
+        // Y pixels per unit
+        dataView.setUint32(12, pixelsPerMeter, false);
+
+        // Unit = 1 (meter)
+        pHYsData[16] = 1;
+
+        // Calculer CRC32 sur type + data
+        const crcData = pHYsData.slice(4, 17);
+        let crc = 0xffffffff;
+        const crcTable: number[] = [];
+        for (let n = 0; n < 256; n++) {
+          let c = n;
+          for (let k = 0; k < 8; k++) {
+            c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+          }
+          crcTable[n] = c;
+        }
+        for (let i = 0; i < crcData.length; i++) {
+          crc = crcTable[(crc ^ crcData[i]) & 0xff] ^ (crc >>> 8);
+        }
+        crc = (crc ^ 0xffffffff) >>> 0;
+        dataView.setUint32(17, crc, false);
+
+        // Trouver la position après IHDR (signature PNG = 8 bytes, IHDR = 25 bytes)
+        // Le chunk pHYs doit être inséré après IHDR
+        const insertPos = 33; // 8 (signature) + 25 (IHDR chunk complet)
+
+        // Créer le nouveau PNG avec pHYs inséré
+        const newPng = new Uint8Array(bytes.length + 21);
+        newPng.set(bytes.slice(0, insertPos), 0);
+        newPng.set(pHYsData, insertPos);
+        newPng.set(bytes.slice(insertPos), insertPos + 21);
+
+        // Convertir en blob et retourner l'URL
+        const blob = new Blob([newPng], { type: "image/png" });
+        return URL.createObjectURL(blob);
+      };
+
+      // Ajouter les métadonnées DPI et télécharger
+      const dataUrl = tempCanvas.toDataURL("image/png");
+
+      addPngDpiMetadata(dataUrl, DPI)
+        .then((blobUrl) => {
+          const a = document.createElement("a");
+          a.href = blobUrl;
+          a.download = `gabarit-${templateId}${transparent ? "-transparent" : ""}-${widthMm.toFixed(0)}x${heightMm.toFixed(0)}mm.png`;
+          a.click();
+          URL.revokeObjectURL(blobUrl);
+
+          toast.success(`PNG exporté à 300 DPI (${widthMm.toFixed(1)} × ${heightMm.toFixed(1)} mm)`);
+          setShowExportDialog(null);
+        })
+        .catch(() => {
+          // Fallback si l'ajout des métadonnées échoue
+          const a = document.createElement("a");
+          a.href = dataUrl;
+          a.download = `gabarit-${templateId}${transparent ? "-transparent" : ""}.png`;
+          a.click();
+          toast.success(`PNG exporté${transparent ? " (fond transparent)" : ""} !`);
+          setShowExportDialog(null);
+        });
     },
     [sketch, templateId],
   );
