@@ -120,7 +120,7 @@ export function InlineToolbarEditor({
   // État pour création de groupe
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
-  const [newGroupColor, setNewGroupColor] = useState(GROUP_COLORS[0]);
+  const [newGroupColor, setNewGroupColor] = useState<(typeof GROUP_COLORS)[number]>(GROUP_COLORS[0]);
 
   // État pour édition de groupe
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
