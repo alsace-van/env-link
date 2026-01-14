@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.10 - Intégration système toolbar drag & drop configurable
+// VERSION: 7.11 - Fix: bouton reset rotation toujours visible pour éviter décalage icônes
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -15886,25 +15886,25 @@ export function CADGabaritCanvas({
                   </Tooltip>
                 </TooltipProvider>
 
-                {getSelectedImageRotation() !== 0 && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 text-red-500"
-                          onClick={() => updateSelectedImageRotation(0)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Reset rotation</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
+                {/* MODIFICATION v7.11: Bouton toujours présent pour éviter le décalage des icônes */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={`h-7 w-7 p-0 ${getSelectedImageRotation() !== 0 ? "text-red-500" : "text-gray-300 cursor-default"}`}
+                        onClick={() => getSelectedImageRotation() !== 0 && updateSelectedImageRotation(0)}
+                        disabled={getSelectedImageRotation() === 0}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Reset rotation</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
             )}
 

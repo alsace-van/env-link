@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: ToolbarEditor
 // Éditeur de toolbar drag & drop multi-lignes
-// VERSION: 2.0 - Support multi-lignes dynamiques
+// VERSION: 2.1 - Fix: synchronisation uniquement à l'ouverture (évite reset pendant drag)
 // ============================================
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
@@ -98,12 +98,17 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
   const [dragStartPos, setDragStartPos] = useState({ x: 0, y: 0 });
   const modalRef = useRef<HTMLDivElement>(null);
 
-  // Synchroniser avec la config parente
+  // Synchroniser avec la config parente UNIQUEMENT à l'ouverture
+  // MODIFICATION v2.1: Utiliser un ref pour éviter la réinitialisation pendant le drag
+  const prevIsOpenRef = useRef(false);
+
   useEffect(() => {
-    if (isOpen) {
+    // Ne synchroniser que quand on OUVRE la modale (passage de false à true)
+    if (isOpen && !prevIsOpenRef.current) {
       setLocalConfig(JSON.parse(JSON.stringify(config)));
       setSelectedTools(new Set());
     }
+    prevIsOpenRef.current = isOpen;
   }, [isOpen, config]);
 
   // ============================================
