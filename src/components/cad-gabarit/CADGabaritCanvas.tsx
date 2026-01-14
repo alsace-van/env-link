@@ -8070,7 +8070,13 @@ export function CADGabaritCanvas({
 
   // Appliquer le crop à l'image sélectionnée
   const applyCrop = useCallback(() => {
-    if (!selectedImageId) return;
+    if (!selectedImageId) {
+      console.error("[CROP] No image selected");
+      return;
+    }
+
+    console.log("[CROP] Applying crop to image:", selectedImageId);
+    console.log("[CROP] Crop selection:", cropSelection);
 
     setBackgroundImages((prev) =>
       prev.map((img) => {
@@ -8081,26 +8087,45 @@ export function CADGabaritCanvas({
         const srcWidth = sourceImage.width;
         const srcHeight = sourceImage.height;
 
+        console.log("[CROP] Source image size:", srcWidth, "x", srcHeight);
+
         // Calculer les coordonnées en pixels
         const cropX = Math.round((cropSelection.x / 100) * srcWidth);
         const cropY = Math.round((cropSelection.y / 100) * srcHeight);
         const cropW = Math.round((cropSelection.width / 100) * srcWidth);
         const cropH = Math.round((cropSelection.height / 100) * srcHeight);
 
-        if (cropW <= 0 || cropH <= 0) return img;
+        console.log("[CROP] Crop coords:", { cropX, cropY, cropW, cropH });
+
+        if (cropW <= 0 || cropH <= 0) {
+          console.error("[CROP] Invalid crop dimensions");
+          return img;
+        }
 
         const croppedCanvas = document.createElement("canvas");
         croppedCanvas.width = cropW;
         croppedCanvas.height = cropH;
         const ctx = croppedCanvas.getContext("2d");
-        if (!ctx) return img;
+        if (!ctx) {
+          console.error("[CROP] Could not get canvas context");
+          return img;
+        }
 
         ctx.drawImage(sourceImage, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+        console.log("[CROP] Created cropped canvas:", cropW, "x", cropH);
+
+        // Calculer le nouveau scale pour garder la même taille visuelle
+        const scaleAdjustment = srcWidth / cropW;
+        const newScale = img.scale * scaleAdjustment;
+
+        console.log("[CROP] Scale adjustment:", scaleAdjustment, "new scale:", newScale);
 
         return {
           ...img,
           crop: { ...cropSelection },
           croppedCanvas,
+          scale: newScale, // Ajuster le scale pour garder la taille visuelle
         };
       }),
     );
