@@ -16946,7 +16946,7 @@ export function CADGabaritCanvas({
         </ToolbarGroupWrapper>
 
         <Separator orientation="vertical" className="h-6" />
-        <div className="flex items-center gap-1">
+        <ToolbarGroupWrapper groupId="grp_view" groupName="Vue" groupColor="#8B5CF6" lineIndex={1}>
           <Button
             variant="ghost"
             size="sm"
@@ -16972,12 +16972,12 @@ export function CADGabaritCanvas({
           <Button variant="ghost" size="sm" onClick={resetView} title="Reset vue">
             <RotateCcw className="h-4 w-4" />
           </Button>
-        </div>
+        </ToolbarGroupWrapper>
 
         <Separator orientation="vertical" className="h-6" />
 
         {/* Undo/Redo + Dropdown Historique */}
-        <div className="flex items-center gap-1">
+        <ToolbarGroupWrapper groupId="grp_history" groupName="Historique" groupColor="#F59E0B" lineIndex={1}>
           <Button variant="ghost" size="sm" onClick={undo} disabled={historyIndex <= 0} className="h-8 w-8 p-0">
             <Undo className="h-4 w-4" />
           </Button>
@@ -17137,12 +17137,12 @@ export function CADGabaritCanvas({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
+        </ToolbarGroupWrapper>
 
         <Separator orientation="vertical" className="h-6" />
 
         {/* Toggles */}
-        <div className="flex items-center gap-1">
+        <ToolbarGroupWrapper groupId="grp_display" groupName="Affichage" groupColor="#06B6D4" lineIndex={1}>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -17283,7 +17283,7 @@ export function CADGabaritCanvas({
             />
             <span className="text-xs text-blue-500 w-6">{Math.round(highlightOpacity * 100)}%</span>
           </div>
-        </div>
+        </ToolbarGroupWrapper>
       </div>
 
       {/* Zone principale avec Canvas + Panneau latéral */}
