@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.98 - Bouton appliquer valeurs estimées (par paire et global)
+// VERSION: 7.0 - Fix drag poignées segments avec images de fond
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -8361,7 +8361,58 @@ export function CADGabaritCanvas({
       }
 
       if (activeTool === "select" && backgroundImages.length > 0 && markerMode === "idle" && !isCalibrationActive) {
-        // IMPORTANT: Vérifier d'abord s'il y a une entité géométrique sous le curseur
+        // IMPORTANT: Si le panneau de calibration est ouvert, vérifier d'abord les points de calibration
+        // Ils ont la priorité sur tout le reste
+        if (showCalibrationPanel && calibrationMode === "idle") {
+          const selectedImage = getSelectedImage();
+          if (selectedImage) {
+            const imageCalib = selectedImage.calibrationData || { points: new Map() };
+            const tolerance = 15 / viewport.scale;
+            let clickedCalibPoint: CalibrationPoint | null = null;
+
+            // Convertir la position du clic en coordonnées relatives à l'image
+            const relativeX = worldPos.x - selectedImage.x;
+            const relativeY = worldPos.y - selectedImage.y;
+
+            imageCalib.points.forEach((point: CalibrationPoint) => {
+              const d = distance({ x: relativeX, y: relativeY }, point);
+              if (d < tolerance) {
+                clickedCalibPoint = point;
+              }
+            });
+
+            if (clickedCalibPoint) {
+              setDraggingCalibrationPoint(clickedCalibPoint.id);
+              setSelectedEntities(new Set());
+              return; // Ne pas continuer - drag du point de calibration
+            }
+          }
+        }
+
+        // PRIORITÉ 2: Vérifier d'abord les poignées des entités sélectionnées
+        // Ceci permet de drag les points d'extrémité des lignes
+        if (selectedEntities.size > 0) {
+          const handleHit = findHandleAtPosition(worldPos.x, worldPos.y);
+          if (handleHit) {
+            // Vérifier si le point est verrouillé
+            if (handleHit.type === "point" && lockedPoints.has(handleHit.id)) {
+              toast.error("Ce point est verrouillé");
+              return;
+            }
+            // Vérifier si l'entité est sur un calque verrouillé
+            if (isEntityOnLockedLayer(handleHit.id)) {
+              toast.error("Cette entité est sur un calque verrouillé");
+              return;
+            }
+            setIsDragging(true);
+            setDragTarget(handleHit);
+            setDragStart(worldPos);
+            setLastDragPos(worldPos);
+            return;
+          }
+        }
+
+        // PRIORITÉ 3: Vérifier s'il y a une entité géométrique sous le curseur
         // Les entités ont la priorité sur les photos
         const entityUnderCursor = findEntityAtPosition(worldPos.x, worldPos.y);
 
@@ -8389,30 +8440,6 @@ export function CADGabaritCanvas({
             // Sélectionner l'image
             setSelectedImageId(clickedImage.id);
             setSelectedMarkerId(null); // Désélectionner le marker
-
-            // IMPORTANT: Vérifier d'abord si on clique sur un point de calibration
-            if (showCalibrationPanel && calibrationMode === "idle") {
-              const imageCalib = clickedImage.calibrationData || { points: new Map() };
-              const tolerance = 15 / viewport.scale;
-              let clickedCalibPoint: CalibrationPoint | null = null;
-
-              // Convertir la position du clic en coordonnées relatives à l'image
-              const relativeX = worldPos.x - clickedImage.x;
-              const relativeY = worldPos.y - clickedImage.y;
-
-              imageCalib.points.forEach((point: CalibrationPoint) => {
-                const d = distance({ x: relativeX, y: relativeY }, point);
-                if (d < tolerance) {
-                  clickedCalibPoint = point;
-                }
-              });
-
-              if (clickedCalibPoint) {
-                setDraggingCalibrationPoint(clickedCalibPoint.id);
-                setSelectedEntities(new Set());
-                return; // Ne pas déclencher le drag de l'image
-              }
-            }
 
             // Préparer le drag seulement si l'image n'est pas verrouillée
             if (!clickedImage.locked) {
