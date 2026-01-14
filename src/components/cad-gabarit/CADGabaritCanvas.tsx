@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.03 - Toolbar configurable avec bouton ⋮ (3 points) pour masquer/afficher les groupes
+// VERSION: 7.10 - Intégration système toolbar drag & drop configurable
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -162,6 +162,10 @@ import { loadDXFFile, DXFParseResult } from "./dxf-parser";
 
 // Bibliothèque de templates
 import { TemplateLibrary } from "./TemplateLibrary";
+
+// Système de toolbar configurable (drag & drop)
+import { useToolbarConfig } from "./useToolbarConfig";
+import { ToolbarEditor } from "./ToolbarEditor";
 
 interface CADGabaritCanvasProps {
   imageUrl?: string;
@@ -643,63 +647,57 @@ export function CADGabaritCanvas({
   const [showAdjustmentsDialog, setShowAdjustmentsDialog] = useState(false);
   const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
 
-  // Configuration de la toolbar - quels outils afficher dans chaque groupe
-  // Chargé depuis localStorage pour persister les préférences
-  const [toolbarConfig, setToolbarConfig] = useState<{
-    line1: { [key: string]: boolean };
-    line2: { [key: string]: boolean };
-  }>(() => {
-    const saved = localStorage.getItem("cad-toolbar-config");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        // Ignore
-      }
-    }
-    // Config par défaut - tout visible
-    return {
+  // ============================================
+  // NOUVEAU SYSTÈME DE TOOLBAR CONFIGURABLE (v7.10)
+  // Remplace l'ancien système de booléens par drag & drop
+  // ============================================
+  const {
+    config: newToolbarConfig,
+    toolDefinitions,
+    isEditorOpen: isToolbarEditorOpen,
+    setEditorOpen: setToolbarEditorOpen,
+    updateConfig: updateToolbarConfig,
+    isToolVisible,
+  } = useToolbarConfig();
+
+  // Compatibilité avec l'ancien code - convertir la nouvelle config vers l'ancien format
+  const toolbarConfig = useMemo(() => {
+    const result: {
+      line1: { [key: string]: boolean };
+      line2: { [key: string]: boolean };
+    } = {
       line1: {
-        save: true,
-        import: true,
-        photos: true,
-        exportSvg: true,
-        exportPng: true,
-        exportDxf: true,
-        exportPdf: true,
-        templates: true,
-        help: true,
+        save: isToolVisible("save"),
+        import: isToolVisible("import"),
+        photos: isToolVisible("photos"),
+        exportSvg: isToolVisible("exportSvg"),
+        exportPng: isToolVisible("exportPng"),
+        exportDxf: isToolVisible("exportDxf"),
+        exportPdf: isToolVisible("exportPdf"),
+        templates: isToolVisible("templates"),
+        help: isToolVisible("help"),
       },
       line2: {
-        selectPan: true,
-        transform: true,
-        drawBasic: true,
-        drawAdvanced: true,
-        modifications: true,
-        photoTools: true,
-        dimensions: true,
-        viewControls: true,
-        history: true,
-        branches: true,
+        selectPan: isToolVisible("select") || isToolVisible("pan"),
+        transform: isToolVisible("mirror") || isToolVisible("moveRotate"),
+        drawBasic: isToolVisible("line") || isToolVisible("circle") || isToolVisible("rectangle"),
+        drawAdvanced: isToolVisible("spline") || isToolVisible("polygon"),
+        modifications: isToolVisible("fillet") || isToolVisible("chamfer") || isToolVisible("offset"),
+        photoTools: isToolVisible("showBackground") || isToolVisible("addMarker"),
+        dimensions: isToolVisible("dimension") || isToolVisible("measure"),
+        viewControls: isToolVisible("zoomIn") || isToolVisible("toggleGrid"),
+        history: isToolVisible("undo") || isToolVisible("redo"),
+        branches: isToolVisible("branchSelect") || isToolVisible("branchCreate"),
       },
     };
-  });
+    return result;
+  }, [isToolVisible]);
 
-  // Sauvegarder la config toolbar quand elle change
-  useEffect(() => {
-    localStorage.setItem("cad-toolbar-config", JSON.stringify(toolbarConfig));
-  }, [toolbarConfig]);
-
-  // Toggle un outil dans la config
+  // Fonction de compatibilité - ne fait plus rien car géré par le nouveau système
   const toggleToolbarItem = useCallback((line: "line1" | "line2", item: string) => {
-    setToolbarConfig((prev) => ({
-      ...prev,
-      [line]: {
-        ...prev[line],
-        [item]: !prev[line][item],
-      },
-    }));
-  }, []);
+    // Ouvrir l'éditeur de toolbar à la place
+    setToolbarEditorOpen(true);
+  }, [setToolbarEditorOpen]);
 
   const [adjustmentsPanelPos, setAdjustmentsPanelPos] = useState({ x: 100, y: 100 });
   const [adjustmentsPanelDragging, setAdjustmentsPanelDragging] = useState(false);
@@ -14356,73 +14354,24 @@ export function CADGabaritCanvas({
           {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
         </Button>
 
-        {/* Bouton configuration ligne 1 */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-9 w-6 p-0">
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <div className="px-2 py-1.5 text-xs font-semibold text-gray-500">Afficher/Masquer</div>
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line1.save}
-              onCheckedChange={() => toggleToolbarItem("line1", "save")}
-            >
-              💾 Sauvegarder
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line1.import}
-              onCheckedChange={() => toggleToolbarItem("line1", "import")}
-            >
-              📥 Import DXF
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line1.photos}
-              onCheckedChange={() => toggleToolbarItem("line1", "photos")}
-            >
-              🖼️ Photos
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line1.exportSvg}
-              onCheckedChange={() => toggleToolbarItem("line1", "exportSvg")}
-            >
-              📤 Export SVG
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line1.exportPng}
-              onCheckedChange={() => toggleToolbarItem("line1", "exportPng")}
-            >
-              📤 Export PNG
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line1.exportDxf}
-              onCheckedChange={() => toggleToolbarItem("line1", "exportDxf")}
-            >
-              📤 Export DXF
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line1.exportPdf}
-              onCheckedChange={() => toggleToolbarItem("line1", "exportPdf")}
-            >
-              📤 Export PDF
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line1.templates}
-              onCheckedChange={() => toggleToolbarItem("line1", "templates")}
-            >
-              📚 Templates
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line1.help}
-              onCheckedChange={() => toggleToolbarItem("line1", "help")}
-            >
-              ❓ Aide
-            </DropdownMenuCheckboxItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {/* Bouton configuration toolbar (drag & drop) */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9 w-9 p-0"
+                onClick={() => setToolbarEditorOpen(true)}
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Configurer la toolbar (drag & drop)</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       {/* Toolbar Ligne 2 - Outils */}
@@ -15790,80 +15739,6 @@ export function CADGabaritCanvas({
           </div>
         </div>
 
-        {/* Bouton configuration ligne 2 */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-9 w-6 p-0 ml-auto">
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <div className="px-2 py-1.5 text-xs font-semibold text-gray-500">Afficher/Masquer</div>
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line2.selectPan}
-              onCheckedChange={() => toggleToolbarItem("line2", "selectPan")}
-            >
-              🖱️ Sélection / Pan
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line2.transform}
-              onCheckedChange={() => toggleToolbarItem("line2", "transform")}
-            >
-              ↔️ Symétrie / Transform
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line2.drawBasic}
-              onCheckedChange={() => toggleToolbarItem("line2", "drawBasic")}
-            >
-              ✏️ Dessin (ligne, cercle, arc...)
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line2.drawAdvanced}
-              onCheckedChange={() => toggleToolbarItem("line2", "drawAdvanced")}
-            >
-              🔷 Avancé (spline, polygone)
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line2.modifications}
-              onCheckedChange={() => toggleToolbarItem("line2", "modifications")}
-            >
-              🔧 Modifications (congé, chanfrein...)
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line2.photoTools}
-              onCheckedChange={() => toggleToolbarItem("line2", "photoTools")}
-            >
-              📷 Outils photos
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line2.dimensions}
-              onCheckedChange={() => toggleToolbarItem("line2", "dimensions")}
-            >
-              📏 Cotations / Contraintes
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line2.viewControls}
-              onCheckedChange={() => toggleToolbarItem("line2", "viewControls")}
-            >
-              👁️ Vue (grille, snap, zoom)
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line2.history}
-              onCheckedChange={() => toggleToolbarItem("line2", "history")}
-            >
-              ⏪ Historique
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem
-              checked={toolbarConfig.line2.branches}
-              onCheckedChange={() => toggleToolbarItem("line2", "branches")}
-            >
-              🌿 Branches
-            </DropdownMenuCheckboxItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
 
       {/* Zone principale avec Canvas + Panneau latéral */}
@@ -20649,6 +20524,15 @@ export function CADGabaritCanvas({
         onLoadTemplate={handleLoadTemplate}
         onGenerateThumbnail={generateThumbnail}
       />
+
+      {/* Éditeur de toolbar configurable (drag & drop) */}
+      <ToolbarEditor
+        isOpen={isToolbarEditorOpen}
+        onClose={() => setToolbarEditorOpen(false)}
+        config={newToolbarConfig}
+        onConfigChange={updateToolbarConfig}
+        toolDefinitions={toolDefinitions}
+      />
     </div>
   );
 }
@@ -20798,3 +20682,5 @@ function exportToSVG(sketch: Sketch): string {
 }
 
 export default CADGabaritCanvas;
+
+Claude
