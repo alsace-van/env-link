@@ -16,6 +16,9 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
   DropdownMenuCheckboxItem,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -99,6 +102,7 @@ import {
   Crop,
   Maximize2,
   GripVertical,
+  ArrowRight,
 } from "lucide-react";
 
 import {
@@ -15415,26 +15419,67 @@ export function CADGabaritCanvas({
                 {/* Liste des outils du groupe */}
                 <div className="px-2 py-1 text-xs text-gray-500">Outils ({group.items.length})</div>
                 <div className="max-h-48 overflow-y-auto">
+                  {/* MOD: Menu amélioré avec option "Déplacer vers" */}
                   {group.items.map((toolId) => {
                     const def = toolDefinitions.get(toolId);
+                    const otherGroups = newToolbarConfig.groups.filter((g) => g.id !== groupId);
                     return (
-                      <DropdownMenuCheckboxItem
-                        key={toolId}
-                        checked={true}
-                        onCheckedChange={() => {
-                          // Retirer l'outil du groupe
-                          updateToolbarConfig({
-                            ...newToolbarConfig,
-                            groups: newToolbarConfig.groups.map((g) => {
-                              if (g.id !== groupId) return g;
-                              return { ...g, items: g.items.filter((id) => id !== toolId) };
-                            }),
-                            hidden: [...newToolbarConfig.hidden, toolId],
-                          });
-                        }}
-                      >
-                        {def?.label || toolId}
-                      </DropdownMenuCheckboxItem>
+                      <DropdownMenuSub key={toolId}>
+                        <DropdownMenuSubTrigger className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-1">
+                            <span>{def?.label || toolId}</span>
+                          </div>
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="w-48">
+                          {/* Masquer l'outil */}
+                          <DropdownMenuItem
+                            onClick={() => {
+                              updateToolbarConfig({
+                                ...newToolbarConfig,
+                                groups: newToolbarConfig.groups.map((g) => {
+                                  if (g.id !== groupId) return g;
+                                  return { ...g, items: g.items.filter((id) => id !== toolId) };
+                                }),
+                                hidden: [...newToolbarConfig.hidden, toolId],
+                              });
+                              toast.success(`"${def?.label || toolId}" masqué`);
+                            }}
+                          >
+                            <EyeOff className="h-4 w-4 mr-2" />
+                            Masquer
+                          </DropdownMenuItem>
+
+                          {otherGroups.length > 0 && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <div className="px-2 py-1 text-xs text-gray-500">Déplacer vers</div>
+                              {otherGroups.map((targetGroup) => (
+                                <DropdownMenuItem
+                                  key={targetGroup.id}
+                                  onClick={() => {
+                                    updateToolbarConfig({
+                                      ...newToolbarConfig,
+                                      groups: newToolbarConfig.groups.map((g) => {
+                                        if (g.id === groupId) {
+                                          return { ...g, items: g.items.filter((id) => id !== toolId) };
+                                        }
+                                        if (g.id === targetGroup.id) {
+                                          return { ...g, items: [...g.items, toolId] };
+                                        }
+                                        return g;
+                                      }),
+                                    });
+                                    toast.success(`"${def?.label || toolId}" déplacé vers "${targetGroup.name}"`);
+                                  }}
+                                >
+                                  <ArrowRight className="h-4 w-4 mr-2" />
+                                  {targetGroup.name}
+                                </DropdownMenuItem>
+                              ))}
+                            </>
+                          )}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
                     );
                   })}
                 </div>
@@ -16157,7 +16202,7 @@ export function CADGabaritCanvas({
 
         {/* Outils photos (si des images sont chargées) */}
         {toolbarConfig.line2.photoTools && backgroundImages.length > 0 && (
-          <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+          <ToolbarGroupWrapper groupId="grp_photo" groupName="Photos" groupColor="#EC4899" lineIndex={1}>
             <Button
               variant={showBackgroundImage ? "default" : "outline"}
               size="sm"
@@ -16456,13 +16501,13 @@ export function CADGabaritCanvas({
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-          </div>
+          </ToolbarGroupWrapper>
         )}
 
         <Separator orientation="vertical" className="h-6" />
 
         {/* Cotations et contraintes */}
-        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+        <ToolbarGroupWrapper groupId="grp_dimension" groupName="Cotations" groupColor="#06B6D4" lineIndex={1}>
           {/* Cotation avec icône personnalisée */}
           <TooltipProvider>
             <Tooltip>
@@ -16656,12 +16701,12 @@ export function CADGabaritCanvas({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-        </div>
+        </ToolbarGroupWrapper>
 
         <Separator orientation="vertical" className="h-6" />
 
         {/* Modifications: Fillet et Chamfer */}
-        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+        <ToolbarGroupWrapper groupId="grp_modify" groupName="Modifications" groupColor="#EF4444" lineIndex={1}>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -16898,7 +16943,7 @@ export function CADGabaritCanvas({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-        </div>
+        </ToolbarGroupWrapper>
 
         <Separator orientation="vertical" className="h-6" />
         <div className="flex items-center gap-1">
