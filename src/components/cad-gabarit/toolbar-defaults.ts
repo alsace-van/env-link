@@ -701,7 +701,15 @@ export const DEFAULT_GROUPS: ToolbarGroup[] = [
     id: "grp_display",
     name: "Affichage",
     color: "#06B6D4",
-    items: ["toggleGrid", "toggleA4Grid", "toggleSnap", "snapActiveLayer", "constructionMode", "showConstruction", "highlightOpacity"],
+    items: [
+      "toggleGrid",
+      "toggleA4Grid",
+      "toggleSnap",
+      "snapActiveLayer",
+      "constructionMode",
+      "showConstruction",
+      "highlightOpacity",
+    ],
   },
 ];
 
@@ -767,18 +775,18 @@ export function mergeWithDefaults(savedConfig: ToolbarConfig): ToolbarConfig {
   const defaultConfig = getDefaultToolbarConfig();
 
   // Vérifier si de nouveaux outils ont été ajoutés
-  const allToolIds = new Set(ALL_TOOL_DEFINITIONS.map(t => t.id));
+  const allToolIds = new Set(ALL_TOOL_DEFINITIONS.map((t) => t.id));
   const configToolIds = new Set<string>();
 
   // Collecter tous les IDs présents dans la config
   const collectIds = (items: ToolbarItem[], groups: ToolbarGroup[]) => {
-    items.forEach(item => {
+    items.forEach((item) => {
       if (item.type === "tool") {
         configToolIds.add(item.id);
       } else {
-        const group = groups.find(g => g.id === item.id);
+        const group = groups.find((g) => g.id === item.id);
         if (group) {
-          group.items.forEach(id => configToolIds.add(id));
+          group.items.forEach((id) => configToolIds.add(id));
         }
       }
     });
@@ -786,7 +794,35 @@ export function mergeWithDefaults(savedConfig: ToolbarConfig): ToolbarConfig {
 
   collectIds(savedConfig.line1, savedConfig.groups);
   collectIds(savedConfig.line2, savedConfig.groups);
-  savedConfig.hidden.forEach(id => configToolIds.add(id));
+  savedConfig.hidden.forEach((id) => configToolIds.add(id));
 
   // Ajouter les nouveaux outils à la fin de la ligne 2 (masqués par défaut)
-  const newTools
+  const newTools: string[] = [];
+  allToolIds.forEach((id) => {
+    if (!configToolIds.has(id)) {
+      newTools.push(id);
+    }
+  });
+
+  if (newTools.length > 0) {
+    savedConfig.hidden = [...savedConfig.hidden, ...newTools];
+  }
+
+  return savedConfig;
+}
+
+// Labels des catégories pour l'UI
+export const CATEGORY_LABELS: Record<ToolCategory, string> = {
+  file: "Fichiers",
+  draw: "Dessin",
+  transform: "Transformation",
+  modify: "Modifications",
+  dimension: "Cotations",
+  photo: "Photos",
+  view: "Vue",
+  history: "Historique",
+  display: "Affichage",
+  style: "Style",
+  help: "Aide",
+};
+s;
