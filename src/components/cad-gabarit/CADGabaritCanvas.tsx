@@ -8051,6 +8051,36 @@ export function CADGabaritCanvas({
     toast.success("Ajustements réinitialisés");
   }, [selectedImageId]);
 
+  // Mettre à jour la rotation de l'image sélectionnée
+  const updateSelectedImageRotation = useCallback(
+    (rotation: number) => {
+      if (!selectedImageId) return;
+
+      // Normaliser la rotation entre -180 et 180
+      let normalizedRotation = rotation % 360;
+      if (normalizedRotation > 180) normalizedRotation -= 360;
+      if (normalizedRotation < -180) normalizedRotation += 360;
+
+      setBackgroundImages((prev) =>
+        prev.map((img) => {
+          if (img.id !== selectedImageId) return img;
+          return {
+            ...img,
+            rotation: normalizedRotation,
+          };
+        }),
+      );
+    },
+    [selectedImageId],
+  );
+
+  // Obtenir la rotation de l'image sélectionnée
+  const getSelectedImageRotation = useCallback(() => {
+    if (!selectedImageId) return 0;
+    const img = backgroundImages.find((i) => i.id === selectedImageId);
+    return img?.rotation || 0;
+  }, [selectedImageId, backgroundImages]);
+
   // Ouvrir le dialogue de crop pour l'image sélectionnée
   const openCropDialog = useCallback(() => {
     if (!selectedImageId) return;
@@ -15708,6 +15738,115 @@ export function CADGabaritCanvas({
                 title={`Opacité: ${Math.round(imageOpacity * 100)}%`}
               />
             </div>
+
+            {/* Rotation de l'image sélectionnée */}
+            {selectedImageId && (
+              <div className="flex items-center gap-0.5 px-1 border-l border-gray-200 ml-1">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        onClick={() => updateSelectedImageRotation(getSelectedImageRotation() - 90)}
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>-90°</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        onClick={() => updateSelectedImageRotation(getSelectedImageRotation() - 1)}
+                      >
+                        <span className="text-xs">-1</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>-1°</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                <input
+                  type="number"
+                  value={Math.round(getSelectedImageRotation() * 10) / 10}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) updateSelectedImageRotation(val);
+                  }}
+                  className="w-12 h-7 text-xs text-center border rounded px-1"
+                  title="Rotation (degrés)"
+                  step="0.1"
+                />
+
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        onClick={() => updateSelectedImageRotation(getSelectedImageRotation() + 1)}
+                      >
+                        <span className="text-xs">+1</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>+1°</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        onClick={() => updateSelectedImageRotation(getSelectedImageRotation() + 90)}
+                      >
+                        <RotateCw className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>+90°</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                {getSelectedImageRotation() !== 0 && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-red-500"
+                          onClick={() => updateSelectedImageRotation(0)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Reset rotation</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+              </div>
+            )}
 
             {/* Marqueur */}
             <TooltipProvider>

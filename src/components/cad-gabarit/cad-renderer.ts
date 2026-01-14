@@ -724,27 +724,16 @@ export class CADRenderer {
       // Positionner l'image à sa position (x, y)
       this.ctx.translate(bgImage.x, bgImage.y);
 
+      // Appliquer la rotation (en degrés, autour du centre de l'image)
+      if (bgImage.rotation) {
+        this.ctx.rotate((bgImage.rotation * Math.PI) / 180);
+      }
+
       // Appliquer l'opacité
       this.ctx.globalAlpha = bgImage.opacity;
 
       // Utiliser l'image croppée si disponible, puis ajustée, puis transformée, sinon l'originale
       const imageToDraw = bgImage.croppedCanvas || bgImage.adjustedCanvas || bgImage.transformedCanvas || bgImage.image;
-
-      // Debug: vérifier quelle image est utilisée
-      if (bgImage.croppedCanvas) {
-        console.log(
-          "[RENDER] Using croppedCanvas for image:",
-          bgImage.id,
-          "size:",
-          bgImage.croppedCanvas.width,
-          "x",
-          bgImage.croppedCanvas.height,
-        );
-      } else if (bgImage.adjustedCanvas) {
-        console.log("[RENDER] Using adjustedCanvas for image:", bgImage.id);
-      } else {
-        console.log("[RENDER] Using original image for:", bgImage.id);
-      }
 
       const width = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.width : imageToDraw.width;
       const height = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.height : imageToDraw.height;
