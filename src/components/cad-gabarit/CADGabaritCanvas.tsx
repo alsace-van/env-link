@@ -954,13 +954,15 @@ export function CADGabaritCanvas({
     type: "linear" | "grid" | "circular";
     // Linéaire
     countX: number;
-    spacingX: number; // mm
+    spacingX: string; // mm - string pour permettre la saisie
+    spacingModeX: "spacing" | "distance"; // espacement entre éléments OU distance totale
     countY: number;
-    spacingY: number; // mm
+    spacingY: string; // mm - string pour permettre la saisie
+    spacingModeY: "spacing" | "distance";
     // Grille (utilise countX, countY, spacingX, spacingY)
     // Circulaire
     circularCount: number;
-    circularAngle: number; // angle total en degrés (360 = cercle complet)
+    circularAngle: string; // angle total en degrés (360 = cercle complet) - string
     circularCenter: { x: number; y: number } | null;
     // Général
     includeOriginal: boolean; // Inclure l'original dans le compte
@@ -1007,8 +1009,30 @@ export function CADGabaritCanvas({
       return;
     }
 
-    const { type, countX, spacingX, countY, spacingY, circularCount, circularAngle, circularCenter, includeOriginal } =
-      arrayDialog;
+    const {
+      type,
+      countX,
+      spacingX,
+      spacingModeX,
+      countY,
+      spacingY,
+      spacingModeY,
+      circularCount,
+      circularAngle,
+      circularCenter,
+      includeOriginal,
+    } = arrayDialog;
+
+    // Parser les valeurs string
+    const spacingXNum = parseFloat(spacingX.replace(",", ".")) || 0;
+    const spacingYNum = parseFloat(spacingY.replace(",", ".")) || 0;
+    const circularAngleNum = parseFloat(circularAngle.replace(",", ".")) || 360;
+
+    // Calculer l'espacement réel selon le mode
+    // Mode "distance" = distance totale, donc espacement = distance / (count - 1)
+    // Mode "spacing" = espacement entre chaque élément
+    const realSpacingX = spacingModeX === "distance" && countX > 1 ? spacingXNum / (countX - 1) : spacingXNum;
+    const realSpacingY = spacingModeY === "distance" && countY > 1 ? spacingYNum / (countY - 1) : spacingYNum;
 
     // Calculer le centre de la sélection
     const selectedPoints: Point[] = [];
@@ -1063,7 +1087,7 @@ export function CADGabaritCanvas({
     if (type === "linear") {
       const startIdx = includeOriginal ? 1 : 0;
       for (let i = startIdx; i < countX; i++) {
-        transforms.push({ offsetX: i * spacingX * sketch.scaleFactor, offsetY: 0, rotation: 0 });
+        transforms.push({ offsetX: i * realSpacingX * sketch.scaleFactor, offsetY: 0, rotation: 0 });
       }
     } else if (type === "grid") {
       for (let row = 0; row < countY; row++) {
@@ -1071,14 +1095,14 @@ export function CADGabaritCanvas({
           if (row === 0 && col === 0 && !includeOriginal) continue;
           if (row === 0 && col === 0) continue; // Ne pas afficher l'original en preview
           transforms.push({
-            offsetX: col * spacingX * sketch.scaleFactor,
-            offsetY: row * spacingY * sketch.scaleFactor,
+            offsetX: col * realSpacingX * sketch.scaleFactor,
+            offsetY: row * realSpacingY * sketch.scaleFactor,
             rotation: 0,
           });
         }
       }
     } else if (type === "circular") {
-      const angleStep = (circularAngle / circularCount) * (Math.PI / 180);
+      const angleStep = (circularAngleNum / circularCount) * (Math.PI / 180);
       const startIdx = includeOriginal ? 1 : 0;
       for (let i = startIdx; i < circularCount; i++) {
         const rotation = i * angleStep;
@@ -11856,11 +11880,13 @@ export function CADGabaritCanvas({
       open: true,
       type: "linear",
       countX: 3,
-      spacingX: 50,
+      spacingX: "50",
+      spacingModeX: "spacing",
       countY: 1,
-      spacingY: 50,
+      spacingY: "50",
+      spacingModeY: "spacing",
       circularCount: 6,
-      circularAngle: 360,
+      circularAngle: "360",
       circularCenter: selectionCenter,
       includeOriginal: true,
     });
@@ -11870,8 +11896,28 @@ export function CADGabaritCanvas({
   const executeArray = useCallback(() => {
     if (!arrayDialog || selectedEntities.size === 0) return;
 
-    const { type, countX, spacingX, countY, spacingY, circularCount, circularAngle, circularCenter, includeOriginal } =
-      arrayDialog;
+    const {
+      type,
+      countX,
+      spacingX,
+      spacingModeX,
+      countY,
+      spacingY,
+      spacingModeY,
+      circularCount,
+      circularAngle,
+      circularCenter,
+      includeOriginal,
+    } = arrayDialog;
+
+    // Parser les valeurs string
+    const spacingXNum = parseFloat(spacingX.replace(",", ".")) || 0;
+    const spacingYNum = parseFloat(spacingY.replace(",", ".")) || 0;
+    const circularAngleNum = parseFloat(circularAngle.replace(",", ".")) || 360;
+
+    // Calculer l'espacement réel selon le mode
+    const realSpacingX = spacingModeX === "distance" && countX > 1 ? spacingXNum / (countX - 1) : spacingXNum;
+    const realSpacingY = spacingModeY === "distance" && countY > 1 ? spacingYNum / (countY - 1) : spacingYNum;
 
     // Collecter les points et géométries sélectionnés
     const copiedPoints = new Map<string, Point>();
@@ -12027,7 +12073,7 @@ export function CADGabaritCanvas({
       // Répétition linéaire (uniquement sur X avec countX copies)
       const startIdx = includeOriginal ? 1 : 0;
       for (let i = startIdx; i < countX; i++) {
-        createCopy(i * spacingX, 0);
+        createCopy(i * realSpacingX * sketch.scaleFactor, 0);
         totalCopies++;
       }
     } else if (type === "grid") {
@@ -12035,13 +12081,13 @@ export function CADGabaritCanvas({
       for (let row = 0; row < countY; row++) {
         for (let col = 0; col < countX; col++) {
           if (row === 0 && col === 0 && includeOriginal) continue; // Skip l'original
-          createCopy(col * spacingX, row * spacingY);
+          createCopy(col * realSpacingX * sketch.scaleFactor, row * realSpacingY * sketch.scaleFactor);
           totalCopies++;
         }
       }
     } else if (type === "circular") {
       // Répétition circulaire
-      const angleStep = (circularAngle * Math.PI) / 180 / circularCount;
+      const angleStep = (circularAngleNum * Math.PI) / 180 / circularCount;
       const startIdx = includeOriginal ? 1 : 0;
       for (let i = startIdx; i < circularCount; i++) {
         const rotation = angleStep * i;
@@ -18787,81 +18833,193 @@ export function CADGabaritCanvas({
                   <Input
                     type="number"
                     value={arrayDialog.countX}
-                    onChange={(e) =>
-                      setArrayDialog({ ...arrayDialog, countX: Math.max(2, parseInt(e.target.value) || 2) })
-                    }
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      if (!isNaN(val) && val >= 1) {
+                        setArrayDialog({ ...arrayDialog, countX: val });
+                      }
+                    }}
                     className="h-7 flex-1 text-xs"
                     min="2"
                     max="100"
                     onKeyDown={(e) => e.stopPropagation()}
                   />
                 </div>
+
+                {/* Toggle espacement / distance */}
+                <div className="flex gap-1 bg-gray-100 p-1 rounded">
+                  <button
+                    className={`flex-1 text-xs py-1 px-2 rounded transition-colors ${
+                      arrayDialog.spacingModeX === "spacing"
+                        ? "bg-white shadow text-purple-600 font-medium"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                    onClick={() => setArrayDialog({ ...arrayDialog, spacingModeX: "spacing" })}
+                  >
+                    Espacement
+                  </button>
+                  <button
+                    className={`flex-1 text-xs py-1 px-2 rounded transition-colors ${
+                      arrayDialog.spacingModeX === "distance"
+                        ? "bg-white shadow text-purple-600 font-medium"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                    onClick={() => setArrayDialog({ ...arrayDialog, spacingModeX: "distance" })}
+                  >
+                    Distance totale
+                  </button>
+                </div>
+
                 <div className="flex items-center gap-2">
-                  <Label className="text-xs w-20">Espacement :</Label>
+                  <Label className="text-xs w-20">
+                    {arrayDialog.spacingModeX === "spacing" ? "Espacement :" : "Distance :"}
+                  </Label>
                   <Input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     value={arrayDialog.spacingX}
-                    onChange={(e) => setArrayDialog({ ...arrayDialog, spacingX: parseFloat(e.target.value) || 10 })}
+                    onChange={(e) =>
+                      setArrayDialog({ ...arrayDialog, spacingX: e.target.value.replace(/[^0-9.,\-]/g, "") })
+                    }
                     className="h-7 flex-1 text-xs"
-                    step="5"
                     onKeyDown={(e) => e.stopPropagation()}
                   />
                   <span className="text-xs text-gray-500">mm</span>
                 </div>
+
+                {/* Affichage de l'espacement calculé en mode distance */}
+                {arrayDialog.spacingModeX === "distance" && arrayDialog.countX > 1 && (
+                  <div className="text-xs text-gray-500 text-center bg-gray-50 py-1 rounded">
+                    Espacement réel :{" "}
+                    {((parseFloat(arrayDialog.spacingX.replace(",", ".")) || 0) / (arrayDialog.countX - 1)).toFixed(1)}{" "}
+                    mm
+                  </div>
+                )}
+
+                {/* Affichage de la distance totale en mode espacement */}
+                {arrayDialog.spacingModeX === "spacing" && arrayDialog.countX > 1 && (
+                  <div className="text-xs text-gray-500 text-center bg-gray-50 py-1 rounded">
+                    Distance totale :{" "}
+                    {((parseFloat(arrayDialog.spacingX.replace(",", ".")) || 0) * (arrayDialog.countX - 1)).toFixed(1)}{" "}
+                    mm
+                  </div>
+                )}
               </>
             )}
 
             {arrayDialog.type === "grid" && (
               <>
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs w-20">Colonnes :</Label>
-                  <Input
-                    type="number"
-                    value={arrayDialog.countX}
-                    onChange={(e) =>
-                      setArrayDialog({ ...arrayDialog, countX: Math.max(1, parseInt(e.target.value) || 1) })
-                    }
-                    className="h-7 w-16 text-xs"
-                    min="1"
-                    max="50"
-                    onKeyDown={(e) => e.stopPropagation()}
-                  />
-                  <Label className="text-xs">× esp.</Label>
-                  <Input
-                    type="number"
-                    value={arrayDialog.spacingX}
-                    onChange={(e) => setArrayDialog({ ...arrayDialog, spacingX: parseFloat(e.target.value) || 10 })}
-                    className="h-7 w-16 text-xs"
-                    step="5"
-                    onKeyDown={(e) => e.stopPropagation()}
-                  />
-                  <span className="text-xs text-gray-500">mm</span>
+                {/* Colonnes (X) */}
+                <div className="space-y-2 p-2 bg-gray-50 rounded">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs w-20">Colonnes :</Label>
+                    <Input
+                      type="number"
+                      value={arrayDialog.countX}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        if (!isNaN(val) && val >= 1) {
+                          setArrayDialog({ ...arrayDialog, countX: val });
+                        }
+                      }}
+                      className="h-7 w-16 text-xs"
+                      min="1"
+                      max="50"
+                      onKeyDown={(e) => e.stopPropagation()}
+                    />
+                    <div className="flex gap-1 flex-1">
+                      <button
+                        className={`flex-1 text-[10px] py-0.5 px-1 rounded ${
+                          arrayDialog.spacingModeX === "spacing" ? "bg-purple-500 text-white" : "bg-gray-200"
+                        }`}
+                        onClick={() => setArrayDialog({ ...arrayDialog, spacingModeX: "spacing" })}
+                      >
+                        Esp.
+                      </button>
+                      <button
+                        className={`flex-1 text-[10px] py-0.5 px-1 rounded ${
+                          arrayDialog.spacingModeX === "distance" ? "bg-purple-500 text-white" : "bg-gray-200"
+                        }`}
+                        onClick={() => setArrayDialog({ ...arrayDialog, spacingModeX: "distance" })}
+                      >
+                        Dist.
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs w-20">
+                      {arrayDialog.spacingModeX === "spacing" ? "Esp. X :" : "Dist. X :"}
+                    </Label>
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={arrayDialog.spacingX}
+                      onChange={(e) =>
+                        setArrayDialog({ ...arrayDialog, spacingX: e.target.value.replace(/[^0-9.,\-]/g, "") })
+                      }
+                      className="h-7 flex-1 text-xs"
+                      onKeyDown={(e) => e.stopPropagation()}
+                    />
+                    <span className="text-xs text-gray-500">mm</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs w-20">Lignes :</Label>
-                  <Input
-                    type="number"
-                    value={arrayDialog.countY}
-                    onChange={(e) =>
-                      setArrayDialog({ ...arrayDialog, countY: Math.max(1, parseInt(e.target.value) || 1) })
-                    }
-                    className="h-7 w-16 text-xs"
-                    min="1"
-                    max="50"
-                    onKeyDown={(e) => e.stopPropagation()}
-                  />
-                  <Label className="text-xs">× esp.</Label>
-                  <Input
-                    type="number"
-                    value={arrayDialog.spacingY}
-                    onChange={(e) => setArrayDialog({ ...arrayDialog, spacingY: parseFloat(e.target.value) || 10 })}
-                    className="h-7 w-16 text-xs"
-                    step="5"
-                    onKeyDown={(e) => e.stopPropagation()}
-                  />
-                  <span className="text-xs text-gray-500">mm</span>
+
+                {/* Lignes (Y) */}
+                <div className="space-y-2 p-2 bg-gray-50 rounded">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs w-20">Lignes :</Label>
+                    <Input
+                      type="number"
+                      value={arrayDialog.countY}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        if (!isNaN(val) && val >= 1) {
+                          setArrayDialog({ ...arrayDialog, countY: val });
+                        }
+                      }}
+                      className="h-7 w-16 text-xs"
+                      min="1"
+                      max="50"
+                      onKeyDown={(e) => e.stopPropagation()}
+                    />
+                    <div className="flex gap-1 flex-1">
+                      <button
+                        className={`flex-1 text-[10px] py-0.5 px-1 rounded ${
+                          arrayDialog.spacingModeY === "spacing" ? "bg-purple-500 text-white" : "bg-gray-200"
+                        }`}
+                        onClick={() => setArrayDialog({ ...arrayDialog, spacingModeY: "spacing" })}
+                      >
+                        Esp.
+                      </button>
+                      <button
+                        className={`flex-1 text-[10px] py-0.5 px-1 rounded ${
+                          arrayDialog.spacingModeY === "distance" ? "bg-purple-500 text-white" : "bg-gray-200"
+                        }`}
+                        onClick={() => setArrayDialog({ ...arrayDialog, spacingModeY: "distance" })}
+                      >
+                        Dist.
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs w-20">
+                      {arrayDialog.spacingModeY === "spacing" ? "Esp. Y :" : "Dist. Y :"}
+                    </Label>
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={arrayDialog.spacingY}
+                      onChange={(e) =>
+                        setArrayDialog({ ...arrayDialog, spacingY: e.target.value.replace(/[^0-9.,\-]/g, "") })
+                      }
+                      className="h-7 flex-1 text-xs"
+                      onKeyDown={(e) => e.stopPropagation()}
+                    />
+                    <span className="text-xs text-gray-500">mm</span>
+                  </div>
                 </div>
-                <div className="text-xs text-gray-500 text-center">
+
+                <div className="text-xs text-gray-500 text-center bg-purple-50 py-1 rounded">
                   Total: {arrayDialog.countX * arrayDialog.countY} éléments
                 </div>
               </>
@@ -18874,9 +19032,12 @@ export function CADGabaritCanvas({
                   <Input
                     type="number"
                     value={arrayDialog.circularCount}
-                    onChange={(e) =>
-                      setArrayDialog({ ...arrayDialog, circularCount: Math.max(2, parseInt(e.target.value) || 2) })
-                    }
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      if (!isNaN(val) && val >= 2) {
+                        setArrayDialog({ ...arrayDialog, circularCount: val });
+                      }
+                    }}
                     className="h-7 flex-1 text-xs"
                     min="2"
                     max="100"
@@ -18886,20 +19047,23 @@ export function CADGabaritCanvas({
                 <div className="flex items-center gap-2">
                   <Label className="text-xs w-20">Angle total :</Label>
                   <Input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     value={arrayDialog.circularAngle}
                     onChange={(e) =>
-                      setArrayDialog({ ...arrayDialog, circularAngle: parseFloat(e.target.value) || 360 })
+                      setArrayDialog({ ...arrayDialog, circularAngle: e.target.value.replace(/[^0-9.,\-]/g, "") })
                     }
                     className="h-7 flex-1 text-xs"
-                    min="1"
-                    max="360"
                     onKeyDown={(e) => e.stopPropagation()}
                   />
                   <span className="text-xs text-gray-500">°</span>
                 </div>
-                <div className="text-xs text-gray-500">
-                  Pas angulaire: {(arrayDialog.circularAngle / arrayDialog.circularCount).toFixed(1)}°
+                <div className="text-xs text-gray-500 bg-gray-50 py-1 px-2 rounded">
+                  Pas angulaire:{" "}
+                  {(
+                    (parseFloat(arrayDialog.circularAngle.replace(",", ".")) || 360) / arrayDialog.circularCount
+                  ).toFixed(1)}
+                  °
                 </div>
                 {arrayDialog.circularCenter && (
                   <div className="text-xs text-gray-400">
