@@ -12360,10 +12360,17 @@ export function CADGabaritCanvas({
     });
     const avgError = totalError / count;
 
+    // Mettre à jour la calibration de l'image
     updateSelectedImageCalibration((prev) => ({
       ...prev,
       scale: avgScale,
       error: avgError,
+    }));
+
+    // IMPORTANT: Aussi mettre à jour calibrationData.scale pour activer le bouton "Appliquer"
+    setCalibrationData((prev) => ({
+      ...prev,
+      scale: avgScale,
     }));
 
     toast.success(`Échelle calculée : ${avgScale.toFixed(4)} mm/px (erreur : ${avgError.toFixed(1)}%)`);
@@ -16420,6 +16427,11 @@ export function CADGabaritCanvas({
                                         scale: pairScale,
                                         error: 0,
                                       }));
+                                      // Aussi mettre à jour calibrationData.scale
+                                      setCalibrationData((prev) => ({
+                                        ...prev,
+                                        scale: pairScale,
+                                      }));
                                       toast.success(
                                         `Échelle définie: ${pairScale.toFixed(4)} mm/px (paire ${p1?.label}-${p2?.label})`,
                                       );
@@ -16690,43 +16702,51 @@ export function CADGabaritCanvas({
                 <Separator />
 
                 {/* Résultats et actions */}
-                <div className="space-y-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={calculateCalibration}
-                    disabled={calibrationData.pairs.size === 0}
-                  >
-                    Calculer l'échelle
-                  </Button>
+                {(() => {
+                  const imgCalib = getSelectedImageCalibration();
+                  const hasPairs = imgCalib.pairs.size > 0;
+                  return (
+                    <div className="space-y-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        onClick={calculateCalibration}
+                        disabled={!hasPairs}
+                      >
+                        Calculer l'échelle
+                      </Button>
 
-                  {calibrationData.scale && (
-                    <div className="p-2 bg-green-50 rounded space-y-1">
-                      <p className="text-sm font-medium text-green-700">
-                        Échelle: {calibrationData.scale.toFixed(4)} mm/px
-                      </p>
-                      {calibrationData.error !== undefined && (
-                        <p className="text-xs text-green-600">Erreur moyenne: {calibrationData.error.toFixed(1)}%</p>
+                      {calibrationData.scale && (
+                        <div className="p-2 bg-green-50 rounded space-y-1">
+                          <p className="text-sm font-medium text-green-700">
+                            Échelle: {calibrationData.scale.toFixed(4)} mm/px
+                          </p>
+                          {calibrationData.error !== undefined && (
+                            <p className="text-xs text-green-600">
+                              Erreur moyenne: {calibrationData.error.toFixed(1)}%
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="w-full"
+                        onClick={applyCalibration}
+                        disabled={!calibrationData.scale}
+                      >
+                        <Check className="h-4 w-4 mr-1" />
+                        Appliquer la calibration
+                      </Button>
+
+                      {calibrationData.applied && (
+                        <p className="text-xs text-center text-green-600 font-medium">✓ Calibration appliquée</p>
                       )}
                     </div>
-                  )}
-
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="w-full"
-                    onClick={applyCalibration}
-                    disabled={!calibrationData.scale}
-                  >
-                    <Check className="h-4 w-4 mr-1" />
-                    Appliquer la calibration
-                  </Button>
-
-                  {calibrationData.applied && (
-                    <p className="text-xs text-center text-green-600 font-medium">✓ Calibration appliquée</p>
-                  )}
-                </div>
+                  );
+                })()}
               </div>
             </ScrollArea>
           </div>
