@@ -3618,6 +3618,23 @@ export class CADRenderer {
     // Trier par aire décroissante (grandes formes d'abord)
     closedShapes.sort((a, b) => b.area - a.area);
 
+    // Calculer l'aire moyenne des formes (excluant la plus grande si beaucoup de formes)
+    // Cela permet d'exclure le contour extérieur des grilles
+    let maxAllowedArea = Infinity;
+    if (closedShapes.length > 3) {
+      // Si on a plus de 3 formes, la plus grande est probablement le contour extérieur
+      // On calcule l'aire médiane des autres formes
+      const smallerShapes = closedShapes.slice(1); // Exclure la plus grande
+      if (smallerShapes.length > 0) {
+        const medianIdx = Math.floor(smallerShapes.length / 2);
+        const medianArea = smallerShapes[medianIdx].area;
+        // Si la plus grande forme est plus de 4x l'aire médiane, l'exclure du survol
+        if (closedShapes[0].area > medianArea * 4) {
+          maxAllowedArea = closedShapes[0].area - 1; // Exclure la plus grande
+        }
+      }
+    }
+
     // Détecter quelle forme est survolée (la plus petite qui contient la souris)
     let hoveredShapeIndex = -1;
     if (mouseWorldPos) {
@@ -3627,6 +3644,9 @@ export class CADRenderer {
 
       // Parcourir du plus petit au plus grand pour trouver la forme la plus spécifique
       for (let i = closedShapes.length - 1; i >= 0; i--) {
+        // Ignorer les formes trop grandes (contour extérieur probable)
+        if (closedShapes[i].area > maxAllowedArea) continue;
+
         // Tester le point en coordonnées monde (le path est en coordonnées monde)
         if (this.ctx.isPointInPath(closedShapes[i].path, mouseWorldPos.x, mouseWorldPos.y)) {
           hoveredShapeIndex = i;

@@ -978,8 +978,57 @@ export function CADGabaritCanvas({
   const [arrayPanelDragStart, setArrayPanelDragStart] = useState({ x: 0, y: 0 });
 
   // Prévisualisation de la répétition en temps réel (useMemo pour performance)
-  const arrayPreview = useMemo(() => {
+  // Extraire uniquement les valeurs nécessaires pour éviter les recalculs inutiles
+  const arrayPreviewData = useMemo(() => {
     if (!arrayDialog?.open || selectedEntities.size === 0) {
+      return null;
+    }
+
+    // Extraire les points des entités sélectionnées une seule fois
+    const selectedPoints: Array<{ x: number; y: number }> = [];
+    selectedEntities.forEach((id) => {
+      const geo = sketch.geometries.get(id);
+      if (geo) {
+        if (geo.type === "line") {
+          const line = geo as Line;
+          const p1 = sketch.points.get(line.p1);
+          const p2 = sketch.points.get(line.p2);
+          if (p1) selectedPoints.push({ x: p1.x, y: p1.y });
+          if (p2) selectedPoints.push({ x: p2.x, y: p2.y });
+        } else if (geo.type === "circle") {
+          const center = sketch.points.get((geo as CircleType).center);
+          if (center) selectedPoints.push({ x: center.x, y: center.y });
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          const center = sketch.points.get(arc.center);
+          if (center) selectedPoints.push({ x: center.x, y: center.y });
+        } else if (geo.type === "rectangle") {
+          const rect = geo as Rectangle;
+          [rect.p1, rect.p2, rect.p3, rect.p4].forEach((pid) => {
+            const p = sketch.points.get(pid);
+            if (p) selectedPoints.push({ x: p.x, y: p.y });
+          });
+        }
+      }
+    });
+
+    if (selectedPoints.length === 0) return null;
+
+    let centerX = 0,
+      centerY = 0;
+    selectedPoints.forEach((p) => {
+      centerX += p.x;
+      centerY += p.y;
+    });
+    centerX /= selectedPoints.length;
+    centerY /= selectedPoints.length;
+
+    return { centerX, centerY, scaleFactor: sketch.scaleFactor };
+  }, [arrayDialog?.open, selectedEntities, sketch.geometries, sketch.points, sketch.scaleFactor]);
+
+  // Calcul du preview séparé (ne dépend que de arrayDialog et des données extraites)
+  const arrayPreview = useMemo(() => {
+    if (!arrayDialog?.open || !arrayPreviewData) {
       return null;
     }
 
@@ -1002,6 +1051,8 @@ export function CADGabaritCanvas({
       includeOriginal,
     } = arrayDialog;
 
+    const { centerX: baseCenterX, centerY: baseCenterY, scaleFactor } = arrayPreviewData;
+
     // Parser les valeurs (peuvent être string ou number pour compatibilité)
     const linearSpacingStr = typeof linearSpacing === "string" ? linearSpacing : String(linearSpacing || "50");
     const spacingXStr = typeof spacingX === "string" ? spacingX : String(spacingX || "50");
@@ -1023,48 +1074,9 @@ export function CADGabaritCanvas({
     const realSpacingX = spacingModeX === "distance" && countX > 1 ? spacingXNum / (countX - 1) : spacingXNum;
     const realSpacingY = spacingModeY === "distance" && countY > 1 ? spacingYNum / (countY - 1) : spacingYNum;
 
-    // Calculer le centre de la sélection
-    const selectedPoints: Point[] = [];
-    selectedEntities.forEach((id) => {
-      const geo = sketch.geometries.get(id);
-      if (geo) {
-        if (geo.type === "line") {
-          const line = geo as Line;
-          const p1 = sketch.points.get(line.p1);
-          const p2 = sketch.points.get(line.p2);
-          if (p1) selectedPoints.push(p1);
-          if (p2) selectedPoints.push(p2);
-        } else if (geo.type === "circle") {
-          const center = sketch.points.get((geo as CircleType).center);
-          if (center) selectedPoints.push(center);
-        } else if (geo.type === "arc") {
-          const arc = geo as Arc;
-          const center = sketch.points.get(arc.center);
-          if (center) selectedPoints.push(center);
-        } else if (geo.type === "rectangle") {
-          const rect = geo as Rectangle;
-          [rect.p1, rect.p2, rect.p3, rect.p4].forEach((pid) => {
-            const p = sketch.points.get(pid);
-            if (p) selectedPoints.push(p);
-          });
-        }
-      }
-    });
-
-    if (selectedPoints.length === 0) {
-      return null;
-    }
-
-    let centerX = 0,
-      centerY = 0;
-    selectedPoints.forEach((p) => {
-      centerX += p.x;
-      centerY += p.y;
-    });
-    centerX /= selectedPoints.length;
-    centerY /= selectedPoints.length;
-
     // Utiliser le centre personnalisé pour circulaire
+    let centerX = baseCenterX;
+    let centerY = baseCenterY;
     if (type === "circular" && circularCenter) {
       centerX = circularCenter.x;
       centerY = circularCenter.y;
@@ -1087,7 +1099,7 @@ export function CADGabaritCanvas({
       const startIdx = includeOriginal ? 1 : 0;
       const count = linearCount || 3;
       for (let i = startIdx; i < count; i++) {
-        const dist = i * realLinearSpacing * sketch.scaleFactor;
+        const dist = i * realLinearSpacing * scaleFactor;
         transforms.push({
           offsetX: dist * dirX,
           offsetY: dist * dirY,
@@ -1099,8 +1111,8 @@ export function CADGabaritCanvas({
         for (let col = 0; col < countX; col++) {
           if (row === 0 && col === 0) continue; // Ne pas afficher l'original en preview
           transforms.push({
-            offsetX: col * realSpacingX * sketch.scaleFactor,
-            offsetY: row * realSpacingY * sketch.scaleFactor,
+            offsetX: col * realSpacingX * scaleFactor,
+            offsetY: row * realSpacingY * scaleFactor,
             rotation: 0,
           });
         }
@@ -1115,7 +1127,7 @@ export function CADGabaritCanvas({
     }
 
     return { transforms, centerX, centerY };
-  }, [arrayDialog, selectedEntities, sketch]);
+  }, [arrayDialog, arrayPreviewData]);
 
   // Dialogue pour export PDF professionnel (éditeur plein écran)
   const [pdfPlanEditorOpen, setPdfPlanEditorOpen] = useState(false);
