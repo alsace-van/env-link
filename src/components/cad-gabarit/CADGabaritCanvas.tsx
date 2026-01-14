@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.96 - Corrections calibration: drag points, calcul échelle, bouton annuler mode
+// VERSION: 6.97 - Fix drag points calibration (priorité sur drag image)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -8390,6 +8390,30 @@ export function CADGabaritCanvas({
             setSelectedImageId(clickedImage.id);
             setSelectedMarkerId(null); // Désélectionner le marker
 
+            // IMPORTANT: Vérifier d'abord si on clique sur un point de calibration
+            if (showCalibrationPanel && calibrationMode === "idle") {
+              const imageCalib = clickedImage.calibrationData || { points: new Map() };
+              const tolerance = 15 / viewport.scale;
+              let clickedCalibPoint: CalibrationPoint | null = null;
+
+              // Convertir la position du clic en coordonnées relatives à l'image
+              const relativeX = worldPos.x - clickedImage.x;
+              const relativeY = worldPos.y - clickedImage.y;
+
+              imageCalib.points.forEach((point: CalibrationPoint) => {
+                const d = distance({ x: relativeX, y: relativeY }, point);
+                if (d < tolerance) {
+                  clickedCalibPoint = point;
+                }
+              });
+
+              if (clickedCalibPoint) {
+                setDraggingCalibrationPoint(clickedCalibPoint.id);
+                setSelectedEntities(new Set());
+                return; // Ne pas déclencher le drag de l'image
+              }
+            }
+
             // Préparer le drag seulement si l'image n'est pas verrouillée
             if (!clickedImage.locked) {
               setIsDraggingImage(true);
@@ -8429,34 +8453,6 @@ export function CADGabaritCanvas({
           }
           if (distToEnd < tolerance) {
             setDraggingMeasurePoint({ measureId: m.id, pointType: "end" });
-            return;
-          }
-        }
-      }
-
-      // Vérifier si on clique sur un point de calibration pour le déplacer
-      if (showCalibrationPanel && calibrationMode === "idle") {
-        const selectedImage = getSelectedImage();
-        if (selectedImage) {
-          const tolerance = 15 / viewport.scale;
-          let clickedPoint: CalibrationPoint | null = null;
-
-          // Utiliser les points de l'image sélectionnée
-          const imageCalib = getSelectedImageCalibration();
-
-          // Convertir la position du clic en coordonnées relatives à l'image
-          const relativeX = worldPos.x - selectedImage.x;
-          const relativeY = worldPos.y - selectedImage.y;
-
-          imageCalib.points.forEach((point) => {
-            const d = distance({ x: relativeX, y: relativeY }, point);
-            if (d < tolerance) {
-              clickedPoint = point;
-            }
-          });
-
-          if (clickedPoint) {
-            setDraggingCalibrationPoint(clickedPoint.id);
             return;
           }
         }
