@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.02 - Ctrl+Z fonctionne pour le déplacement des photos
+// VERSION: 7.03 - Toolbar configurable avec bouton ⋮ (3 points) pour masquer/afficher les groupes
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -95,6 +95,7 @@ import {
   Ungroup,
   Type,
   PaintBucket,
+  MoreVertical,
 } from "lucide-react";
 
 import {
@@ -641,6 +642,65 @@ export function CADGabaritCanvas({
   const [showCalibrationPanel, setShowCalibrationPanel] = useState(false);
   const [showAdjustmentsDialog, setShowAdjustmentsDialog] = useState(false);
   const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
+
+  // Configuration de la toolbar - quels outils afficher dans chaque groupe
+  // Chargé depuis localStorage pour persister les préférences
+  const [toolbarConfig, setToolbarConfig] = useState<{
+    line1: { [key: string]: boolean };
+    line2: { [key: string]: boolean };
+  }>(() => {
+    const saved = localStorage.getItem("cad-toolbar-config");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        // Ignore
+      }
+    }
+    // Config par défaut - tout visible
+    return {
+      line1: {
+        save: true,
+        import: true,
+        photos: true,
+        exportSvg: true,
+        exportPng: true,
+        exportDxf: true,
+        exportPdf: true,
+        templates: true,
+        help: true,
+      },
+      line2: {
+        selectPan: true,
+        transform: true,
+        drawBasic: true,
+        drawAdvanced: true,
+        modifications: true,
+        photoTools: true,
+        dimensions: true,
+        viewControls: true,
+        history: true,
+        branches: true,
+      },
+    };
+  });
+
+  // Sauvegarder la config toolbar quand elle change
+  useEffect(() => {
+    localStorage.setItem("cad-toolbar-config", JSON.stringify(toolbarConfig));
+  }, [toolbarConfig]);
+
+  // Toggle un outil dans la config
+  const toggleToolbarItem = useCallback((line: "line1" | "line2", item: string) => {
+    setToolbarConfig((prev) => ({
+      ...prev,
+      [line]: {
+        ...prev[line],
+        [item]: !prev[line][item],
+      },
+    }));
+  }, []);
+
   const [adjustmentsPanelPos, setAdjustmentsPanelPos] = useState({ x: 100, y: 100 });
   const [adjustmentsPanelDragging, setAdjustmentsPanelDragging] = useState(false);
   const [adjustmentsPanelDragStart, setAdjustmentsPanelDragStart] = useState({ x: 0, y: 0 });
@@ -14133,128 +14193,146 @@ export function CADGabaritCanvas({
       {/* Toolbar Ligne 1 - Fichiers */}
       <div className="flex items-center gap-2 p-2 bg-gray-100 border-b flex-shrink-0">
         {/* Sauvegarder */}
-        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={saveSketch} className="h-9 w-9 p-0">
-                  <Save className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Sauvegarder (Ctrl+S)</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+        {toolbarConfig.line1.save && (
+          <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="sm" onClick={saveSketch} className="h-9 w-9 p-0">
+                    <Save className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Sauvegarder (Ctrl+S)</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        )}
 
-        <Separator orientation="vertical" className="h-6" />
+        {toolbarConfig.line1.save && <Separator orientation="vertical" className="h-6" />}
 
         {/* Import/Export fichiers */}
         <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
           {/* Import DXF */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={() => dxfInputRef.current?.click()} className="h-9 px-2">
-                  <FileUp className="h-4 w-4 mr-1" />
-                  <span className="text-xs">Import</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Importer un fichier DXF</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          {toolbarConfig.line1.import && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="sm" onClick={() => dxfInputRef.current?.click()} className="h-9 px-2">
+                    <FileUp className="h-4 w-4 mr-1" />
+                    <span className="text-xs">Import</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Importer un fichier DXF</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
 
           {/* Photos */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="h-9 w-9 p-0 relative"
-                >
-                  <Image className="h-4 w-4" />
-                  {backgroundImages.length > 0 && (
-                    <Badge variant="secondary" className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-xs">
-                      {backgroundImages.length}
-                    </Badge>
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Charger des photos de référence</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          {toolbarConfig.line1.photos && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="h-9 w-9 p-0 relative"
+                  >
+                    <Image className="h-4 w-4" />
+                    {backgroundImages.length > 0 && (
+                      <Badge variant="secondary" className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-xs">
+                        {backgroundImages.length}
+                      </Badge>
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Charger des photos de référence</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
 
           {/* Export SVG */}
-          <Button variant="outline" size="sm" onClick={handleExportSVG} className="h-9 px-2">
-            <FileDown className="h-4 w-4 mr-1" />
-            <span className="text-xs">SVG</span>
-          </Button>
+          {toolbarConfig.line1.exportSvg && (
+            <Button variant="outline" size="sm" onClick={handleExportSVG} className="h-9 px-2">
+              <FileDown className="h-4 w-4 mr-1" />
+              <span className="text-xs">SVG</span>
+            </Button>
+          )}
 
           {/* Export PNG */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 px-2">
-                <FileImage className="h-4 w-4 mr-1" />
-                <span className="text-xs">PNG</span>
-                <ChevronDown className="h-3 w-3 ml-1" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem onClick={() => handleExportPNG(false)}>
-                <FileImage className="h-4 w-4 mr-2" />
-                PNG (fond blanc)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExportPNG(true)}>
-                <FileImage className="h-4 w-4 mr-2 opacity-50" />
-                PNG (fond transparent)
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {toolbarConfig.line1.exportPng && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 px-2">
+                  <FileImage className="h-4 w-4 mr-1" />
+                  <span className="text-xs">PNG</span>
+                  <ChevronDown className="h-3 w-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => handleExportPNG(false)}>
+                  <FileImage className="h-4 w-4 mr-2" />
+                  PNG (fond blanc)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportPNG(true)}>
+                  <FileImage className="h-4 w-4 mr-2 opacity-50" />
+                  PNG (fond transparent)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           {/* Export DXF */}
-          <Button variant="default" size="sm" onClick={handleExportDXF} className="h-9 px-2">
-            <Download className="h-4 w-4 mr-1" />
-            <span className="text-xs">DXF</span>
-          </Button>
+          {toolbarConfig.line1.exportDxf && (
+            <Button variant="default" size="sm" onClick={handleExportDXF} className="h-9 px-2">
+              <Download className="h-4 w-4 mr-1" />
+              <span className="text-xs">DXF</span>
+            </Button>
+          )}
 
           {/* Export PDF Professionnel */}
-          <Button
-            variant="default"
-            size="sm"
-            onClick={() => setPdfPlanEditorOpen(true)}
-            className="h-9 px-2 bg-red-600 hover:bg-red-700"
-          >
-            <FileDown className="h-4 w-4 mr-1" />
-            <span className="text-xs">PDF</span>
-          </Button>
+          {toolbarConfig.line1.exportPdf && (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => setPdfPlanEditorOpen(true)}
+              className="h-9 px-2 bg-red-600 hover:bg-red-700"
+            >
+              <FileDown className="h-4 w-4 mr-1" />
+              <span className="text-xs">PDF</span>
+            </Button>
+          )}
 
           {/* Bibliothèque de templates */}
-          <Button variant="outline" size="sm" onClick={() => setShowTemplateLibrary(true)} className="h-9 px-2">
-            <Library className="h-4 w-4 mr-1" />
-            <span className="text-xs">Templates</span>
-          </Button>
+          {toolbarConfig.line1.templates && (
+            <Button variant="outline" size="sm" onClick={() => setShowTemplateLibrary(true)} className="h-9 px-2">
+              <Library className="h-4 w-4 mr-1" />
+              <span className="text-xs">Templates</span>
+            </Button>
+          )}
         </div>
 
         {/* Bouton raccourcis clavier */}
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" onClick={() => setShowShortcutsPanel(true)} className="h-9 w-9 p-0">
-                <HelpCircle className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Raccourcis clavier</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        {toolbarConfig.line1.help && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" onClick={() => setShowShortcutsPanel(true)} className="h-9 w-9 p-0">
+                  <HelpCircle className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Raccourcis clavier</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
 
         <div className="flex-1" />
 
@@ -14277,395 +14355,472 @@ export function CADGabaritCanvas({
         <Button variant="ghost" size="sm" onClick={() => setIsFullscreen(!isFullscreen)}>
           {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
         </Button>
+
+        {/* Bouton configuration ligne 1 */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-9 w-6 p-0">
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <div className="px-2 py-1.5 text-xs font-semibold text-gray-500">Afficher/Masquer</div>
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line1.save}
+              onCheckedChange={() => toggleToolbarItem("line1", "save")}
+            >
+              💾 Sauvegarder
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line1.import}
+              onCheckedChange={() => toggleToolbarItem("line1", "import")}
+            >
+              📥 Import DXF
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line1.photos}
+              onCheckedChange={() => toggleToolbarItem("line1", "photos")}
+            >
+              🖼️ Photos
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line1.exportSvg}
+              onCheckedChange={() => toggleToolbarItem("line1", "exportSvg")}
+            >
+              📤 Export SVG
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line1.exportPng}
+              onCheckedChange={() => toggleToolbarItem("line1", "exportPng")}
+            >
+              📤 Export PNG
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line1.exportDxf}
+              onCheckedChange={() => toggleToolbarItem("line1", "exportDxf")}
+            >
+              📤 Export DXF
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line1.exportPdf}
+              onCheckedChange={() => toggleToolbarItem("line1", "exportPdf")}
+            >
+              📤 Export PDF
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line1.templates}
+              onCheckedChange={() => toggleToolbarItem("line1", "templates")}
+            >
+              📚 Templates
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line1.help}
+              onCheckedChange={() => toggleToolbarItem("line1", "help")}
+            >
+              ❓ Aide
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Toolbar Ligne 2 - Outils */}
       <div className="flex items-center gap-2 p-2 bg-gray-100 border-b flex-wrap flex-shrink-0">
         {/* Outils de sélection/navigation */}
-        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
-          <ToolButton tool="select" icon={MousePointer} label="Sélection" shortcut="V" />
-          <ToolButton tool="pan" icon={Hand} label="Déplacer" shortcut="H" />
-        </div>
-
-        <Separator orientation="vertical" className="h-6" />
+        {toolbarConfig.line2.selectPan && (
+          <>
+            <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+              <ToolButton tool="select" icon={MousePointer} label="Sélection" shortcut="V" />
+              <ToolButton tool="pan" icon={Hand} label="Déplacer" shortcut="H" />
+            </div>
+            <Separator orientation="vertical" className="h-6" />
+          </>
+        )}
 
         {/* Outil Symétrie + Transformation */}
-        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
-          <ToolButton tool="mirror" icon={FlipHorizontal2} label="Symétrie" shortcut="S" />
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={showTransformGizmo ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => {
-                    if (!showTransformGizmo) {
-                      setActiveTool("select");
-                      setMarkerMode("idle");
-                    }
-                    setShowTransformGizmo(!showTransformGizmo);
-                  }}
-                  className={`h-9 w-9 p-0 ${showTransformGizmo ? "bg-orange-500 hover:bg-orange-600 text-white" : ""}`}
-                >
-                  <Move className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Déplacer / Rotation (T)</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+        {toolbarConfig.line2.transform && (
+          <>
+            <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+              <ToolButton tool="mirror" icon={FlipHorizontal2} label="Symétrie" shortcut="S" />
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={showTransformGizmo ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => {
+                        if (!showTransformGizmo) {
+                          setActiveTool("select");
+                          setMarkerMode("idle");
+                        }
+                        setShowTransformGizmo(!showTransformGizmo);
+                      }}
+                      className={`h-9 w-9 p-0 ${showTransformGizmo ? "bg-orange-500 hover:bg-orange-600 text-white" : ""}`}
+                    >
+                      <Move className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Déplacer / Rotation (T)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </>
+        )}
 
         {/* Outils de dessin */}
-        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
-          <ToolButton tool="line" icon={Minus} label="Ligne" shortcut="L" />
-          <ToolButton tool="circle" icon={Circle} label="Cercle" shortcut="C" />
-          <ToolButton tool="arc3points" icon={CircleDot} label="Arc 3 points" shortcut="A" />
+        {toolbarConfig.line2.drawBasic && (
+          <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+            <ToolButton tool="line" icon={Minus} label="Ligne" shortcut="L" />
+            <ToolButton tool="circle" icon={Circle} label="Cercle" shortcut="C" />
+            <ToolButton tool="arc3points" icon={CircleDot} label="Arc 3 points" shortcut="A" />
 
-          {/* Rectangle avec dropdown pour le mode */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant={activeTool === "rectangle" ? "default" : "outline"}
-                size="sm"
-                className="h-9 w-9 p-0 relative"
-              >
-                <Square className="h-4 w-4" />
-                {rectangleMode === "center" && (
-                  <div className="absolute bottom-0.5 right-0.5 w-1.5 h-1.5 bg-green-500 rounded-full" />
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-48">
-              <DropdownMenuItem
-                onClick={() => {
-                  setRectangleMode("corner");
-                  setActiveTool("rectangle");
-                  setTempPoints([]);
-                  setTempGeometry(null);
-                  setMarkerMode("idle");
-                }}
-                className="flex items-center gap-2"
-              >
-                <Square className="h-4 w-4" />
-                <span>Depuis le coin</span>
-                {rectangleMode === "corner" && <Check className="h-4 w-4 ml-auto text-green-600" />}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => {
-                  setRectangleMode("center");
-                  setActiveTool("rectangle");
-                  setTempPoints([]);
-                  setTempGeometry(null);
-                  setMarkerMode("idle");
-                }}
-                className="flex items-center gap-2"
-              >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="5" width="18" height="14" rx="1" />
-                  <circle cx="12" cy="12" r="2" fill="currentColor" />
-                </svg>
-                <span>Depuis le centre</span>
-                {rectangleMode === "center" && <Check className="h-4 w-4 ml-auto text-green-600" />}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <ToolButton tool="bezier" icon={Spline} label="Courbe Bézier" shortcut="B" />
-
-          {/* Outil Spline (courbe libre) */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
+            {/* Rectangle avec dropdown pour le mode */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
                 <Button
-                  variant={activeTool === "spline" ? "default" : "outline"}
+                  variant={activeTool === "rectangle" ? "default" : "outline"}
                   size="sm"
+                  className="h-9 w-9 p-0 relative"
+                >
+                  <Square className="h-4 w-4" />
+                  {rectangleMode === "center" && (
+                    <div className="absolute bottom-0.5 right-0.5 w-1.5 h-1.5 bg-green-500 rounded-full" />
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                <DropdownMenuItem
                   onClick={() => {
-                    setActiveTool("spline");
+                    setRectangleMode("corner");
+                    setActiveTool("rectangle");
                     setTempPoints([]);
                     setTempGeometry(null);
-                    setFilletFirstLine(null);
+                    setMarkerMode("idle");
                   }}
-                  className="h-9 w-9 p-0"
+                  className="flex items-center gap-2"
                 >
-                  {/* Icône spline: courbe passant par plusieurs points */}
-                  <svg
-                    className="h-4 w-4"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  >
-                    <path d="M4 18 Q 8 6, 12 12 T 20 6" />
-                    <circle cx="4" cy="18" r="1.5" fill="currentColor" />
-                    <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-                    <circle cx="20" cy="6" r="1.5" fill="currentColor" />
-                  </svg>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Spline (S) - Double-clic pour terminer</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Outil Polygone régulier */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={activeTool === "polygon" ? "default" : "outline"}
-                  size="sm"
+                  <Square className="h-4 w-4" />
+                  <span>Depuis le coin</span>
+                  {rectangleMode === "corner" && <Check className="h-4 w-4 ml-auto text-green-600" />}
+                </DropdownMenuItem>
+                <DropdownMenuItem
                   onClick={() => {
-                    setActiveTool("polygon");
+                    setRectangleMode("center");
+                    setActiveTool("rectangle");
                     setTempPoints([]);
                     setTempGeometry(null);
-                    setFilletFirstLine(null);
+                    setMarkerMode("idle");
                   }}
-                  className="h-9 w-9 p-0"
+                  className="flex items-center gap-2"
                 >
-                  {/* Icône polygone: hexagone */}
-                  <svg
-                    className="h-4 w-4"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polygon points="12,2 22,8 22,16 12,22 2,16 2,8" />
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="5" width="18" height="14" rx="1" />
+                    <circle cx="12" cy="12" r="2" fill="currentColor" />
                   </svg>
+                  <span>Depuis le centre</span>
+                  {rectangleMode === "center" && <Check className="h-4 w-4 ml-auto text-green-600" />}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <ToolButton tool="bezier" icon={Spline} label="Courbe Bézier" shortcut="B" />
+
+            {/* Outil Spline (courbe libre) */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={activeTool === "spline" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setActiveTool("spline");
+                      setTempPoints([]);
+                      setTempGeometry(null);
+                      setFilletFirstLine(null);
+                    }}
+                    className="h-9 w-9 p-0"
+                  >
+                    {/* Icône spline: courbe passant par plusieurs points */}
+                    <svg
+                      className="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    >
+                      <path d="M4 18 Q 8 6, 12 12 T 20 6" />
+                      <circle cx="4" cy="18" r="1.5" fill="currentColor" />
+                      <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+                      <circle cx="20" cy="6" r="1.5" fill="currentColor" />
+                    </svg>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Spline (S) - Double-clic pour terminer</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {/* Outil Polygone régulier */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={activeTool === "polygon" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setActiveTool("polygon");
+                      setTempPoints([]);
+                      setTempGeometry(null);
+                      setFilletFirstLine(null);
+                    }}
+                    className="h-9 w-9 p-0"
+                  >
+                    {/* Icône polygone: hexagone */}
+                    <svg
+                      className="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polygon points="12,2 22,8 22,16 12,22 2,16 2,8" />
+                    </svg>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Polygone régulier (P) - {polygonSides} côtés</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`h-9 w-5 p-0 ${activeTool === "polygon" ? "bg-emerald-100" : ""}`}
+                  title="Nombre de côtés"
+                >
+                  <ChevronDown className="h-3 w-3" />
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Polygone régulier (P) - {polygonSides} côtés</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className={`h-9 w-5 p-0 ${activeTool === "polygon" ? "bg-emerald-100" : ""}`}
-                title="Nombre de côtés"
-              >
-                <ChevronDown className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-40 p-2">
-              <div className="space-y-2">
-                <Label className="text-xs">Nombre de côtés:</Label>
-                <div className="flex gap-1 flex-wrap">
-                  {[3, 4, 5, 6, 8, 10, 12].map((n) => (
-                    <Button
-                      key={n}
-                      variant={polygonSides === n ? "default" : "outline"}
-                      size="sm"
-                      className="h-7 w-8 p-0 text-xs"
-                      onClick={() => {
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-40 p-2">
+                <div className="space-y-2">
+                  <Label className="text-xs">Nombre de côtés:</Label>
+                  <div className="flex gap-1 flex-wrap">
+                    {[3, 4, 5, 6, 8, 10, 12].map((n) => (
+                      <Button
+                        key={n}
+                        variant={polygonSides === n ? "default" : "outline"}
+                        size="sm"
+                        className="h-7 w-8 p-0 text-xs"
+                        onClick={() => {
+                          setPolygonSides(n);
+                          setActiveTool("polygon");
+                        }}
+                      >
+                        {n}
+                      </Button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1 mt-1">
+                    <Input
+                      type="number"
+                      min={3}
+                      max={100}
+                      value={polygonSides}
+                      onChange={(e) => {
+                        const n = Math.max(3, Math.min(100, parseInt(e.target.value) || 6));
                         setPolygonSides(n);
-                        setActiveTool("polygon");
                       }}
-                    >
-                      {n}
-                    </Button>
-                  ))}
-                </div>
-                <div className="flex items-center gap-1 mt-1">
-                  <Input
-                    type="number"
-                    min={3}
-                    max={100}
-                    value={polygonSides}
-                    onChange={(e) => {
-                      const n = Math.max(3, Math.min(100, parseInt(e.target.value) || 6));
-                      setPolygonSides(n);
-                    }}
-                    className="h-7 w-14 text-xs"
-                  />
-                  <span className="text-xs text-muted-foreground">côtés</span>
-                </div>
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Outil Texte avec paramètres */}
-          <ToolButton tool="text" icon={Type} label="Texte / Annotation" shortcut="Shift+T" />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className={`h-9 w-5 p-0 ${activeTool === "text" ? "bg-emerald-100" : ""}`}
-                title="Paramètres texte"
-              >
-                <Settings className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-48 p-2">
-              <div className="space-y-2">
-                {/* Taille */}
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs w-14">Taille:</Label>
-                  <Input
-                    type="number"
-                    value={textFontSize}
-                    onChange={(e) => {
-                      const newSize = Math.max(1, parseFloat(e.target.value) || 5);
-                      setTextFontSize(newSize);
-                      // Appliquer aux textes sélectionnés
-                      const selectedTexts = Array.from(selectedEntities).filter((id) => {
-                        const geo = sketch.geometries.get(id);
-                        return geo?.type === "text";
-                      });
-                      if (selectedTexts.length > 0) {
-                        const newGeometries = new Map(sketch.geometries);
-                        selectedTexts.forEach((id) => {
-                          const geo = newGeometries.get(id) as TextAnnotation;
-                          if (geo) {
-                            newGeometries.set(id, { ...geo, fontSize: newSize });
-                          }
-                        });
-                        const newSketch = { ...sketch, geometries: newGeometries };
-                        setSketch(newSketch);
-                        addToHistory(newSketch, `Taille texte → ${newSize}mm`);
-                      }
-                    }}
-                    className="h-7 w-16 text-xs"
-                    min="1"
-                    max="100"
-                    onKeyDown={(e) => e.stopPropagation()}
-                  />
-                  <span className="text-xs text-gray-500">mm</span>
-                </div>
-
-                {/* Couleur */}
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs w-14">Couleur:</Label>
-                  <input
-                    type="color"
-                    value={textColor}
-                    onChange={(e) => {
-                      const newColor = e.target.value;
-                      setTextColor(newColor);
-                      // Appliquer aux textes sélectionnés
-                      const selectedTexts = Array.from(selectedEntities).filter((id) => {
-                        const geo = sketch.geometries.get(id);
-                        return geo?.type === "text";
-                      });
-                      if (selectedTexts.length > 0) {
-                        const newGeometries = new Map(sketch.geometries);
-                        selectedTexts.forEach((id) => {
-                          const geo = newGeometries.get(id) as TextAnnotation;
-                          if (geo) {
-                            newGeometries.set(id, { ...geo, color: newColor });
-                          }
-                        });
-                        const newSketch = { ...sketch, geometries: newGeometries };
-                        setSketch(newSketch);
-                        addToHistory(newSketch, `Couleur texte → ${newColor}`);
-                      }
-                    }}
-                    className="h-7 w-8 cursor-pointer rounded border"
-                  />
-                  <span className="text-[10px] text-gray-500 font-mono">{textColor}</span>
-                </div>
-
-                {/* Alignement */}
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs w-14">Align:</Label>
-                  <div className="flex gap-0.5">
-                    <Button
-                      variant={textAlignment === "left" ? "default" : "outline"}
-                      size="sm"
-                      className="h-6 w-6 p-0 text-xs"
-                      onClick={() => {
-                        setTextAlignment("left");
-                        // Appliquer aux textes sélectionnés
-                        const selectedTexts = Array.from(selectedEntities).filter((id) => {
-                          const geo = sketch.geometries.get(id);
-                          return geo?.type === "text";
-                        });
-                        if (selectedTexts.length > 0) {
-                          const newGeometries = new Map(sketch.geometries);
-                          selectedTexts.forEach((id) => {
-                            const geo = newGeometries.get(id) as TextAnnotation;
-                            if (geo) {
-                              newGeometries.set(id, { ...geo, alignment: "left" });
-                            }
-                          });
-                          const newSketch = { ...sketch, geometries: newGeometries };
-                          setSketch(newSketch);
-                          addToHistory(newSketch, "Alignement texte → gauche");
-                        }
-                      }}
-                    >
-                      ←
-                    </Button>
-                    <Button
-                      variant={textAlignment === "center" ? "default" : "outline"}
-                      size="sm"
-                      className="h-6 w-6 p-0 text-xs"
-                      onClick={() => {
-                        setTextAlignment("center");
-                        // Appliquer aux textes sélectionnés
-                        const selectedTexts = Array.from(selectedEntities).filter((id) => {
-                          const geo = sketch.geometries.get(id);
-                          return geo?.type === "text";
-                        });
-                        if (selectedTexts.length > 0) {
-                          const newGeometries = new Map(sketch.geometries);
-                          selectedTexts.forEach((id) => {
-                            const geo = newGeometries.get(id) as TextAnnotation;
-                            if (geo) {
-                              newGeometries.set(id, { ...geo, alignment: "center" });
-                            }
-                          });
-                          const newSketch = { ...sketch, geometries: newGeometries };
-                          setSketch(newSketch);
-                          addToHistory(newSketch, "Alignement texte → centré");
-                        }
-                      }}
-                    >
-                      ↔
-                    </Button>
-                    <Button
-                      variant={textAlignment === "right" ? "default" : "outline"}
-                      size="sm"
-                      className="h-6 w-6 p-0 text-xs"
-                      onClick={() => {
-                        setTextAlignment("right");
-                        // Appliquer aux textes sélectionnés
-                        const selectedTexts = Array.from(selectedEntities).filter((id) => {
-                          const geo = sketch.geometries.get(id);
-                          return geo?.type === "text";
-                        });
-                        if (selectedTexts.length > 0) {
-                          const newGeometries = new Map(sketch.geometries);
-                          selectedTexts.forEach((id) => {
-                            const geo = newGeometries.get(id) as TextAnnotation;
-                            if (geo) {
-                              newGeometries.set(id, { ...geo, alignment: "right" });
-                            }
-                          });
-                          const newSketch = { ...sketch, geometries: newGeometries };
-                          setSketch(newSketch);
-                          addToHistory(newSketch, "Alignement texte → droite");
-                        }
-                      }}
-                    >
-                      →
-                    </Button>
+                      className="h-7 w-14 text-xs"
+                    />
+                    <span className="text-xs text-muted-foreground">côtés</span>
                   </div>
                 </div>
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Outil Texte avec paramètres */}
+            <ToolButton tool="text" icon={Type} label="Texte / Annotation" shortcut="Shift+T" />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`h-9 w-5 p-0 ${activeTool === "text" ? "bg-emerald-100" : ""}`}
+                  title="Paramètres texte"
+                >
+                  <Settings className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48 p-2">
+                <div className="space-y-2">
+                  {/* Taille */}
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs w-14">Taille:</Label>
+                    <Input
+                      type="number"
+                      value={textFontSize}
+                      onChange={(e) => {
+                        const newSize = Math.max(1, parseFloat(e.target.value) || 5);
+                        setTextFontSize(newSize);
+                        // Appliquer aux textes sélectionnés
+                        const selectedTexts = Array.from(selectedEntities).filter((id) => {
+                          const geo = sketch.geometries.get(id);
+                          return geo?.type === "text";
+                        });
+                        if (selectedTexts.length > 0) {
+                          const newGeometries = new Map(sketch.geometries);
+                          selectedTexts.forEach((id) => {
+                            const geo = newGeometries.get(id) as TextAnnotation;
+                            if (geo) {
+                              newGeometries.set(id, { ...geo, fontSize: newSize });
+                            }
+                          });
+                          const newSketch = { ...sketch, geometries: newGeometries };
+                          setSketch(newSketch);
+                          addToHistory(newSketch, `Taille texte → ${newSize}mm`);
+                        }
+                      }}
+                      className="h-7 w-16 text-xs"
+                      min="1"
+                      max="100"
+                      onKeyDown={(e) => e.stopPropagation()}
+                    />
+                    <span className="text-xs text-gray-500">mm</span>
+                  </div>
+
+                  {/* Couleur */}
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs w-14">Couleur:</Label>
+                    <input
+                      type="color"
+                      value={textColor}
+                      onChange={(e) => {
+                        const newColor = e.target.value;
+                        setTextColor(newColor);
+                        // Appliquer aux textes sélectionnés
+                        const selectedTexts = Array.from(selectedEntities).filter((id) => {
+                          const geo = sketch.geometries.get(id);
+                          return geo?.type === "text";
+                        });
+                        if (selectedTexts.length > 0) {
+                          const newGeometries = new Map(sketch.geometries);
+                          selectedTexts.forEach((id) => {
+                            const geo = newGeometries.get(id) as TextAnnotation;
+                            if (geo) {
+                              newGeometries.set(id, { ...geo, color: newColor });
+                            }
+                          });
+                          const newSketch = { ...sketch, geometries: newGeometries };
+                          setSketch(newSketch);
+                          addToHistory(newSketch, `Couleur texte → ${newColor}`);
+                        }
+                      }}
+                      className="h-7 w-8 cursor-pointer rounded border"
+                    />
+                    <span className="text-[10px] text-gray-500 font-mono">{textColor}</span>
+                  </div>
+
+                  {/* Alignement */}
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs w-14">Align:</Label>
+                    <div className="flex gap-0.5">
+                      <Button
+                        variant={textAlignment === "left" ? "default" : "outline"}
+                        size="sm"
+                        className="h-6 w-6 p-0 text-xs"
+                        onClick={() => {
+                          setTextAlignment("left");
+                          // Appliquer aux textes sélectionnés
+                          const selectedTexts = Array.from(selectedEntities).filter((id) => {
+                            const geo = sketch.geometries.get(id);
+                            return geo?.type === "text";
+                          });
+                          if (selectedTexts.length > 0) {
+                            const newGeometries = new Map(sketch.geometries);
+                            selectedTexts.forEach((id) => {
+                              const geo = newGeometries.get(id) as TextAnnotation;
+                              if (geo) {
+                                newGeometries.set(id, { ...geo, alignment: "left" });
+                              }
+                            });
+                            const newSketch = { ...sketch, geometries: newGeometries };
+                            setSketch(newSketch);
+                            addToHistory(newSketch, "Alignement texte → gauche");
+                          }
+                        }}
+                      >
+                        ←
+                      </Button>
+                      <Button
+                        variant={textAlignment === "center" ? "default" : "outline"}
+                        size="sm"
+                        className="h-6 w-6 p-0 text-xs"
+                        onClick={() => {
+                          setTextAlignment("center");
+                          // Appliquer aux textes sélectionnés
+                          const selectedTexts = Array.from(selectedEntities).filter((id) => {
+                            const geo = sketch.geometries.get(id);
+                            return geo?.type === "text";
+                          });
+                          if (selectedTexts.length > 0) {
+                            const newGeometries = new Map(sketch.geometries);
+                            selectedTexts.forEach((id) => {
+                              const geo = newGeometries.get(id) as TextAnnotation;
+                              if (geo) {
+                                newGeometries.set(id, { ...geo, alignment: "center" });
+                              }
+                            });
+                            const newSketch = { ...sketch, geometries: newGeometries };
+                            setSketch(newSketch);
+                            addToHistory(newSketch, "Alignement texte → centré");
+                          }
+                        }}
+                      >
+                        ↔
+                      </Button>
+                      <Button
+                        variant={textAlignment === "right" ? "default" : "outline"}
+                        size="sm"
+                        className="h-6 w-6 p-0 text-xs"
+                        onClick={() => {
+                          setTextAlignment("right");
+                          // Appliquer aux textes sélectionnés
+                          const selectedTexts = Array.from(selectedEntities).filter((id) => {
+                            const geo = sketch.geometries.get(id);
+                            return geo?.type === "text";
+                          });
+                          if (selectedTexts.length > 0) {
+                            const newGeometries = new Map(sketch.geometries);
+                            selectedTexts.forEach((id) => {
+                              const geo = newGeometries.get(id) as TextAnnotation;
+                              if (geo) {
+                                newGeometries.set(id, { ...geo, alignment: "right" });
+                              }
+                            });
+                            const newSketch = { ...sketch, geometries: newGeometries };
+                            setSketch(newSketch);
+                            addToHistory(newSketch, "Alignement texte → droite");
+                          }
+                        }}
+                      >
+                        →
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
 
         <Separator orientation="vertical" className="h-6" />
 
@@ -14681,7 +14836,7 @@ export function CADGabaritCanvas({
         />
 
         {/* Outils photos (si des images sont chargées) */}
-        {backgroundImages.length > 0 && (
+        {toolbarConfig.line2.photoTools && backgroundImages.length > 0 && (
           <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
             <Button
               variant={showBackgroundImage ? "default" : "outline"}
@@ -15634,6 +15789,81 @@ export function CADGabaritCanvas({
             <span className="text-xs text-blue-500 w-6">{Math.round(highlightOpacity * 100)}%</span>
           </div>
         </div>
+
+        {/* Bouton configuration ligne 2 */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-9 w-6 p-0 ml-auto">
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <div className="px-2 py-1.5 text-xs font-semibold text-gray-500">Afficher/Masquer</div>
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line2.selectPan}
+              onCheckedChange={() => toggleToolbarItem("line2", "selectPan")}
+            >
+              🖱️ Sélection / Pan
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line2.transform}
+              onCheckedChange={() => toggleToolbarItem("line2", "transform")}
+            >
+              ↔️ Symétrie / Transform
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line2.drawBasic}
+              onCheckedChange={() => toggleToolbarItem("line2", "drawBasic")}
+            >
+              ✏️ Dessin (ligne, cercle, arc...)
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line2.drawAdvanced}
+              onCheckedChange={() => toggleToolbarItem("line2", "drawAdvanced")}
+            >
+              🔷 Avancé (spline, polygone)
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line2.modifications}
+              onCheckedChange={() => toggleToolbarItem("line2", "modifications")}
+            >
+              🔧 Modifications (congé, chanfrein...)
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line2.photoTools}
+              onCheckedChange={() => toggleToolbarItem("line2", "photoTools")}
+            >
+              📷 Outils photos
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line2.dimensions}
+              onCheckedChange={() => toggleToolbarItem("line2", "dimensions")}
+            >
+              📏 Cotations / Contraintes
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line2.viewControls}
+              onCheckedChange={() => toggleToolbarItem("line2", "viewControls")}
+            >
+              👁️ Vue (grille, snap, zoom)
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line2.history}
+              onCheckedChange={() => toggleToolbarItem("line2", "history")}
+            >
+              ⏪ Historique
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={toolbarConfig.line2.branches}
+              onCheckedChange={() => toggleToolbarItem("line2", "branches")}
+            >
+              🌿 Branches
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Zone principale avec Canvas + Panneau latéral */}
