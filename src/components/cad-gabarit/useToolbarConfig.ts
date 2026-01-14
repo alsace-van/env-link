@@ -74,6 +74,45 @@ export interface ResolvedTool {
 }
 
 // ============================================
+// MIGRATION DEPUIS L'ANCIEN FORMAT
+// ============================================
+
+interface OldToolbarConfigV2 {
+  version: string;
+  line1: ToolbarItem[];
+  line2: ToolbarItem[];
+  groups: ToolbarGroup[];
+  hidden: string[];
+}
+
+function isOldConfigV2(config: unknown): config is OldToolbarConfigV2 {
+  if (!config || typeof config !== "object") return false;
+  const c = config as OldToolbarConfigV2;
+  return Array.isArray(c.line1) && Array.isArray(c.line2) && !("lines" in c);
+}
+
+function migrateFromV2(oldConfig: OldToolbarConfigV2): ToolbarConfig {
+  console.log("[useToolbarConfig] Migrating from v2 to v3...");
+  return {
+    version: "3.0",
+    lines: [
+      {
+        id: "line_1",
+        name: "Fichiers",
+        items: oldConfig.line1 || [],
+      },
+      {
+        id: "line_2",
+        name: "Outils",
+        items: oldConfig.line2 || [],
+      },
+    ],
+    groups: oldConfig.groups || [],
+    hidden: oldConfig.hidden || [],
+  };
+}
+
+// ============================================
 // HOOK PRINCIPAL
 // ============================================
 
@@ -84,11 +123,29 @@ export function useToolbarConfig(): UseToolbarConfigReturn {
   // Charger la config depuis localStorage
   const [config, setConfig] = useState<ToolbarConfig>(() => {
     try {
+      // Essayer la nouvelle clé v3
       const saved = localStorage.getItem(TOOLBAR_CONFIG_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (isValidToolbarConfig(parsed)) {
           return mergeWithDefaults(parsed);
+        }
+        // Migration depuis v2
+        if (isOldConfigV2(parsed)) {
+          const migrated = migrateFromV2(parsed);
+          return mergeWithDefaults(migrated);
+        }
+      }
+
+      // Essayer l'ancienne clé v2
+      const oldSaved = localStorage.getItem("cad-toolbar-config-v2");
+      if (oldSaved) {
+        const oldParsed = JSON.parse(oldSaved);
+        if (isOldConfigV2(oldParsed)) {
+          const migrated = migrateFromV2(oldParsed);
+          // Supprimer l'ancienne clé
+          localStorage.removeItem("cad-toolbar-config-v2");
+          return mergeWithDefaults(migrated);
         }
       }
     } catch (error) {
