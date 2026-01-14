@@ -5180,11 +5180,15 @@ export function CADGabaritCanvas({
 
   // Trouver les lignes connectées à un point
   const findLinesConnectedToPoint = useCallback(
-    (pointId: string): Line[] => {
+    (pointId: string, excludeConstruction: boolean = true): Line[] => {
       const lines: Line[] = [];
       sketch.geometries.forEach((geo) => {
         if (geo.type === "line") {
           const line = geo as Line;
+          // Exclure les lignes de construction si demandé (pour les congés/chanfreins)
+          if (excludeConstruction && line.isConstruction) {
+            return;
+          }
           if (line.p1 === pointId || line.p2 === pointId) {
             lines.push(line);
           }
