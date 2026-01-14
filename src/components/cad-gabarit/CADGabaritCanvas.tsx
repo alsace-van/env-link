@@ -17877,98 +17877,122 @@ export function CADGabaritCanvas({
                     {perspectiveMethod === "checkerboard" && (
                       <div className="space-y-3">
                         <span className="text-sm font-medium">Damier de calibration</span>
-                        <p className="text-xs text-muted-foreground">
-                          Placez les 4 coins extérieurs du damier (sens horaire à partir du coin supérieur gauche)
-                        </p>
+
+                        {/* Instructions claires */}
+                        <div className="p-2 bg-blue-50 rounded border border-blue-200">
+                          <p className="text-xs text-blue-700 font-medium mb-1">📋 Instructions :</p>
+                          <ol className="text-xs text-blue-600 list-decimal list-inside space-y-0.5">
+                            <li>Cliquez "Ajouter point" ci-dessus</li>
+                            <li>Placez 4 points sur les coins extérieurs du damier</li>
+                            <li>Cliquez "Sélectionner" et choisissez-les dans l'ordre</li>
+                          </ol>
+                        </div>
 
                         {/* Configuration du damier */}
                         <div className="space-y-2 p-2 bg-gray-50 rounded">
                           <div className="flex items-center gap-2">
-                            <Label className="text-xs w-20">Cases X:</Label>
+                            <Label className="text-xs w-16">Cases X:</Label>
                             <Input
                               type="number"
                               min="2"
                               max="20"
                               value={checkerCornersX}
                               onChange={(e) => setCheckerCornersX(e.target.value)}
-                              className="h-8 text-sm w-16"
+                              className="h-8 text-sm w-14"
                             />
-                            <Label className="text-xs w-20 ml-2">Cases Y:</Label>
+                            <Label className="text-xs w-16">Cases Y:</Label>
                             <Input
                               type="number"
                               min="2"
                               max="20"
                               value={checkerCornersY}
                               onChange={(e) => setCheckerCornersY(e.target.value)}
-                              className="h-8 text-sm w-16"
+                              className="h-8 text-sm w-14"
                             />
                           </div>
                           <div className="flex items-center gap-2">
-                            <Label className="text-xs w-20">Taille case:</Label>
+                            <Label className="text-xs w-16">Taille:</Label>
                             <Input
                               type="text"
                               inputMode="decimal"
                               value={checkerSquareSize}
                               onChange={(e) => setCheckerSquareSize(e.target.value.replace(/[^0-9.,]/g, ""))}
                               placeholder="30"
-                              className="h-8 text-sm flex-1"
+                              className="h-8 text-sm w-20"
                             />
-                            <span className="text-xs text-muted-foreground">mm</span>
+                            <span className="text-xs text-muted-foreground">mm/case</span>
                           </div>
                           <p className="text-xs text-muted-foreground italic">
-                            Damier {parseInt(checkerCornersX) + 1}×{parseInt(checkerCornersY) + 1} cases ={" "}
-                            {(
-                              (parseInt(checkerCornersX) + 1) * parseFloat(checkerSquareSize.replace(",", ".")) || 0
-                            ).toFixed(0)}
+                            Damier {checkerCornersX}×{checkerCornersY} ={" "}
+                            {(parseInt(checkerCornersX) * parseFloat(checkerSquareSize.replace(",", ".")) || 0).toFixed(
+                              0,
+                            )}
                             ×
-                            {(
-                              (parseInt(checkerCornersY) + 1) * parseFloat(checkerSquareSize.replace(",", ".")) || 0
-                            ).toFixed(0)}{" "}
+                            {(parseInt(checkerCornersY) * parseFloat(checkerSquareSize.replace(",", ".")) || 0).toFixed(
+                              0,
+                            )}{" "}
                             mm
                           </p>
                         </div>
 
                         {/* Points sélectionnés */}
-                        <div className="flex gap-1 flex-wrap items-center">
-                          {["TL", "TR", "BR", "BL"].map((label, idx) => {
-                            const pointId = rectPoints[idx];
-                            const point = pointId ? calibrationData.points.get(pointId) : null;
-                            return (
-                              <div
-                                key={idx}
-                                className={`w-10 h-8 rounded border-2 flex items-center justify-center text-xs font-bold ${
-                                  point
-                                    ? "bg-purple-100 border-purple-500 text-purple-700"
-                                    : "bg-gray-100 border-gray-300 text-gray-400"
-                                }`}
-                                title={["Haut-Gauche", "Haut-Droit", "Bas-Droit", "Bas-Gauche"][idx]}
-                              >
-                                {point ? point.label : label}
-                              </div>
-                            );
-                          })}
-                          <Button
-                            variant={calibrationMode === "selectRect" ? "default" : "outline"}
-                            size="sm"
-                            className="ml-2"
-                            onClick={() => {
-                              if (calibrationData.points.size < 4) {
-                                toast.error("Ajoutez au moins 4 points");
-                                return;
-                              }
-                              setCalibrationMode("selectRect");
-                              setRectPoints([]);
-                            }}
-                          >
-                            {rectPoints.length === 4 ? "Modifier" : "Sélectionner"}
-                          </Button>
+                        <div className="space-y-2">
+                          <Label className="text-xs">Coins du damier ({rectPoints.length}/4) :</Label>
+                          <div className="flex gap-1 flex-wrap items-center">
+                            {["TL", "TR", "BR", "BL"].map((label, idx) => {
+                              const pointId = rectPoints[idx];
+                              const point = pointId ? calibrationData.points.get(pointId) : null;
+                              return (
+                                <div
+                                  key={idx}
+                                  className={`w-10 h-8 rounded border-2 flex items-center justify-center text-xs font-bold ${
+                                    point
+                                      ? "bg-purple-100 border-purple-500 text-purple-700"
+                                      : idx === rectPoints.length && calibrationMode === "selectRect"
+                                        ? "bg-yellow-100 border-yellow-500 text-yellow-700 animate-pulse"
+                                        : "bg-gray-100 border-gray-300 text-gray-400"
+                                  }`}
+                                  title={["Haut-Gauche", "Haut-Droit", "Bas-Droit", "Bas-Gauche"][idx]}
+                                >
+                                  {point ? "✓" : label}
+                                </div>
+                              );
+                            })}
+                            <Button
+                              variant={calibrationMode === "selectRect" ? "default" : "outline"}
+                              size="sm"
+                              className="ml-1 h-8 text-xs"
+                              onClick={() => {
+                                if (calibrationData.points.size < 4) {
+                                  toast.error("Ajoutez d'abord 4 points sur l'image");
+                                  return;
+                                }
+                                setCalibrationMode("selectRect");
+                                setRectPoints([]);
+                              }}
+                            >
+                              {calibrationMode === "selectRect"
+                                ? "Annuler"
+                                : rectPoints.length === 4
+                                  ? "Refaire"
+                                  : "Sélectionner"}
+                            </Button>
+                          </div>
                         </div>
 
                         {calibrationMode === "selectRect" && (
                           <div className="p-2 bg-purple-50 rounded text-sm text-purple-700">
-                            {rectPoints.length < 4
-                              ? `Coin ${["Haut-Gauche", "Haut-Droit", "Bas-Droit", "Bas-Gauche"][rectPoints.length]} (${rectPoints.length + 1}/4)`
-                              : "4 coins sélectionnés ✓"}
+                            👆 Cliquez sur le coin{" "}
+                            <strong>
+                              {["Haut-Gauche", "Haut-Droit", "Bas-Droit", "Bas-Gauche"][rectPoints.length]}
+                            </strong>{" "}
+                            ({rectPoints.length + 1}/4)
+                          </div>
+                        )}
+
+                        {rectPoints.length === 4 && calibrationMode !== "selectRect" && (
+                          <div className="p-2 bg-green-50 rounded text-sm text-green-700">
+                            ✓ 4 coins sélectionnés - Cliquez "Calculer l'échelle"
                           </div>
                         )}
                       </div>
