@@ -7645,12 +7645,16 @@ export function CADGabaritCanvas({
 
       // Mode centre: ajouter le point central et les diagonales de construction
       if (isCenter) {
+        // Calculer le centre exact à partir des 4 coins
+        const centerX = (corner1.x + corner2.x + corner3.x + corner4.x) / 4;
+        const centerY = (corner1.y + corner2.y + corner3.y + corner4.y) / 4;
+
         // Créer le point central explicitement (pour le snap)
         const centerPointId = generateId();
         const centerPoint: Point = {
           id: centerPointId,
-          x: p1.x,
-          y: p1.y,
+          x: centerX,
+          y: centerY,
         };
         newSketch.points.set(centerPointId, centerPoint);
 
@@ -12444,7 +12448,7 @@ export function CADGabaritCanvas({
               const fillId = generateId();
               newSketch.shapeFills.set(fillId, {
                 id: fillId,
-                geoIds,
+                geoIds: Array.from(geoIds),
                 fillType: "solid",
                 color: checkerColor || "#000000",
                 opacity: 1,
@@ -15562,13 +15566,7 @@ export function CADGabaritCanvas({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 px-2"
-                  onClick={openArrayDialog}
-                  disabled={selectedEntities.size === 0}
-                >
+                <Button variant="outline" size="sm" className="h-8 px-2" onClick={() => openArrayDialog()}>
                   <Grid3X3 className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
