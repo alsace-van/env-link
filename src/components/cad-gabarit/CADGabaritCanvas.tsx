@@ -8863,7 +8863,8 @@ export function CADGabaritCanvas({
 
       // === Multi-photos: vérifier si on clique sur une image (en mode select) ===
       // IMPORTANT: Ne pas intercepter si on est en mode calibration actif (addPoint, selectPair, etc.)
-      const isCalibrationActive = calibrationMode !== "idle" && calibrationMode !== "selectRect";
+      // Note: selectRect est déjà traité en priorité au début de handleMouseDown
+      const isCalibrationActive = calibrationMode !== "idle";
 
       // === Sélection et drag des marqueurs ===
       if (activeTool === "select" && markerMode === "idle" && !isCalibrationActive) {
