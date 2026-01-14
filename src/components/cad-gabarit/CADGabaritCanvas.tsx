@@ -8519,6 +8519,60 @@ export function CADGabaritCanvas({
       const screenY = e.clientY - rect.top;
       const worldPos = screenToWorld(screenX, screenY);
 
+      // === PRIORITÉ ABSOLUE: Mode selectRect pour calibration ===
+      // Ce mode doit être traité en premier, avant tout le reste
+      if (calibrationMode === "selectRect") {
+        const tolerance = 20 / viewport.scale; // Tolérance plus grande pour faciliter la sélection
+        let closestPoint: CalibrationPoint | null = null;
+        let closestDist = Infinity;
+
+        // Utiliser les points de l'image sélectionnée (multi-photos) ou les points globaux
+        const imageCalib = getSelectedImageCalibration();
+        const pointsToCheck = imageCalib.points.size > 0 ? imageCalib.points : calibrationData.points;
+
+        pointsToCheck.forEach((point) => {
+          // Convertir en coordonnées monde si c'est un point d'image (relatif)
+          let worldPtX = point.x;
+          let worldPtY = point.y;
+
+          // Si on utilise les points de l'image, ils sont relatifs au centre de l'image
+          if (imageCalib.points.size > 0 && selectedImageId) {
+            const img = backgroundImages.find((i) => i.id === selectedImageId);
+            if (img) {
+              worldPtX = img.x + point.x;
+              worldPtY = img.y + point.y;
+            }
+          }
+
+          const d = distance(worldPos, { x: worldPtX, y: worldPtY });
+          if (d < tolerance && d < closestDist) {
+            closestDist = d;
+            closestPoint = point;
+          }
+        });
+
+        if (closestPoint) {
+          // Vérifier que le point n'est pas déjà sélectionné
+          if (rectPoints.includes(closestPoint.id)) {
+            toast.error("Point déjà sélectionné");
+            return;
+          }
+
+          const newRectPoints = [...rectPoints, closestPoint.id];
+          setRectPoints(newRectPoints);
+
+          if (newRectPoints.length < 4) {
+            toast.info(`Point ${closestPoint.label} sélectionné (${newRectPoints.length}/4)`);
+          } else {
+            toast.success("4 points sélectionnés ! Cliquez sur Calculer l'échelle.");
+            setCalibrationMode("idle");
+          }
+        } else {
+          toast.error("Cliquez sur un point de calibration (cercle rouge)");
+        }
+        return; // IMPORTANT: Ne pas continuer avec les autres handlers
+      }
+
       // === Gestion de la grille A4 ===
       if (showA4Grid && e.button === 0) {
         // Vérifier si on clique sur l'origine (pour la déplacer)
@@ -9111,57 +9165,7 @@ export function CADGabaritCanvas({
       }
 
       // Mode sélection rectangle pour perspective
-      if (calibrationMode === "selectRect") {
-        const tolerance = 15 / viewport.scale;
-        let closestPoint: CalibrationPoint | null = null;
-        let closestDist = Infinity;
-
-        // Utiliser les points de l'image sélectionnée (multi-photos) ou les points globaux
-        const imageCalib = getSelectedImageCalibration();
-        const pointsToCheck = imageCalib.points.size > 0 ? imageCalib.points : calibrationData.points;
-
-        pointsToCheck.forEach((point) => {
-          // Convertir en coordonnées monde si c'est un point d'image (relatif)
-          let worldPtX = point.x;
-          let worldPtY = point.y;
-
-          // Si on utilise les points de l'image, ils sont relatifs au centre de l'image
-          if (imageCalib.points.size > 0 && selectedImageId) {
-            const img = backgroundImages.find((i) => i.id === selectedImageId);
-            if (img) {
-              worldPtX = img.x + point.x;
-              worldPtY = img.y + point.y;
-            }
-          }
-
-          const d = distance(worldPos, { x: worldPtX, y: worldPtY });
-          if (d < tolerance && d < closestDist) {
-            closestDist = d;
-            closestPoint = point;
-          }
-        });
-
-        if (closestPoint) {
-          // Vérifier que le point n'est pas déjà sélectionné
-          if (rectPoints.includes(closestPoint.id)) {
-            toast.error("Point déjà sélectionné");
-            return;
-          }
-
-          const newRectPoints = [...rectPoints, closestPoint.id];
-          setRectPoints(newRectPoints);
-
-          if (newRectPoints.length < 4) {
-            toast.info(`Point ${closestPoint.label} sélectionné (${newRectPoints.length}/4)`);
-          } else {
-            toast.success("4 points sélectionnés ! Cliquez sur Calculer l'échelle.");
-            setCalibrationMode("idle");
-          }
-        } else {
-          toast.error("Cliquez sur un point de calibration");
-        }
-        return;
-      }
+      // Note: Le mode selectRect est maintenant traité en priorité au début de handleMouseDown
 
       // Pan avec outil main
       if (activeTool === "pan") {
