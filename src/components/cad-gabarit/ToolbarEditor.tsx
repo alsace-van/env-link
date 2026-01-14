@@ -525,4 +525,358 @@ export function ToolbarEditor({
         <div
           key={groupId}
           draggable
-          onDragStart={(e)
+          onDragStart={(e) => handleDragStart(e, groupId, "group", line, index)}
+          onDragEnd={handleDragEnd}
+          className={`
+            border-2 rounded-lg p-2 transition-all
+            ${isDragged ? "opacity-50 border-dashed" : ""}
+          `}
+          style={{ borderColor: group.color || "#3B82F6" }}
+        >
+          {/* Header du groupe */}
+          <div className="flex items-center gap-2 mb-2">
+            <GripVertical className="h-4 w-4 text-gray-400 cursor-grab" />
+            <div
+              className="w-3 h-3 rounded-full flex-shrink-0"
+              style={{ backgroundColor: group.color }}
+            />
+            {isEditing ? (
+              <Input
+                value={editGroupName}
+                onChange={(e) => setEditGroupName(e.target.value)}
+                onBlur={() => renameGroup(groupId, editGroupName)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") renameGroup(groupId, editGroupName);
+                  if (e.key === "Escape") setEditingGroupId(null);
+                }}
+                className="h-6 text-sm flex-1"
+                autoFocus
+              />
+            ) : (
+              <span className="text-sm font-medium flex-1 truncate">{group.name}</span>
+            )}
+            <Badge variant="secondary" className="text-xs">
+              {group.items.length}
+            </Badge>
+
+            {/* Menu du groupe */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => {
+                    setEditingGroupId(groupId);
+                    setEditGroupName(group.name);
+                  }}
+                >
+                  <Edit3 className="h-4 w-4 mr-2" />
+                  Renommer
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <div className="px-2 py-1.5">
+                  <Label className="text-xs text-gray-500">Couleur</Label>
+                  <div className="flex gap-1 mt-1">
+                    {GROUP_COLORS.map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => changeGroupColor(groupId, color)}
+                        className={`w-5 h-5 rounded-full border-2 ${
+                          group.color === color ? "border-gray-800" : "border-transparent"
+                        }`}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => dissolveGroup(groupId)}>
+                  <Ungroup className="h-4 w-4 mr-2" />
+                  Dissoudre le groupe
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {/* Outils du groupe */}
+          <div className="space-y-1 pl-5">
+            {group.items.map((toolId, idx) => renderTool(toolId, line, idx, true))}
+          </div>
+        </div>
+      );
+    },
+    [
+      localConfig.groups,
+      dragState,
+      editingGroupId,
+      editGroupName,
+      handleDragStart,
+      handleDragEnd,
+      renameGroup,
+      changeGroupColor,
+      dissolveGroup,
+      renderTool,
+    ]
+  );
+
+  // ============================================
+  // RENDU D'UNE LIGNE
+  // ============================================
+
+  const renderLine = useCallback(
+    (lineNum: 1 | 2) => {
+      const items = lineNum === 1 ? localConfig.line1 : localConfig.line2;
+      const isDropTarget = dragState.targetLine === lineNum;
+
+      return (
+        <div
+          onDragOver={(e) => handleDragOver(e, lineNum, items.length)}
+          onDrop={(e) => handleDrop(e, lineNum, items.length)}
+          className={`
+            min-h-[100px] p-3 rounded-lg border-2 border-dashed transition-all
+            ${isDropTarget ? "border-blue-400 bg-blue-50" : "border-gray-200"}
+          `}
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <Badge variant="outline">Ligne {lineNum}</Badge>
+            <span className="text-xs text-gray-500">
+              {lineNum === 1 ? "Fichiers & Export" : "Outils & Options"}
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {items.map((item, index) => (
+              <div
+                key={item.id}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleDragOver(e, lineNum, index);
+                }}
+                onDrop={(e) => {
+                  e.stopPropagation();
+                  handleDrop(e, lineNum, index);
+                }}
+                className={`
+                  relative
+                  ${dragState.targetLine === lineNum && dragState.targetIndex === index
+                    ? "before:absolute before:left-0 before:right-0 before:-top-1 before:h-0.5 before:bg-blue-500"
+                    : ""
+                  }
+                `}
+              >
+                {item.type === "group"
+                  ? renderGroup(item.id, lineNum, index)
+                  : renderTool(item.id, lineNum, index)}
+              </div>
+            ))}
+
+            {items.length === 0 && (
+              <div className="text-center py-8 text-gray-400 text-sm">
+                Glissez des outils ou groupes ici
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    },
+    [localConfig, dragState, handleDragOver, handleDrop, renderGroup, renderTool]
+  );
+
+  // ============================================
+  // RENDU ZONE MASQUÉE
+  // ============================================
+
+  const renderHiddenZone = useCallback(() => {
+    const isDropTarget = dragState.targetLine === "hidden";
+
+    return (
+      <div
+        onDragOver={(e) => handleDragOver(e, "hidden", localConfig.hidden.length)}
+        onDrop={(e) => handleDrop(e, "hidden", localConfig.hidden.length)}
+        className={`
+          min-h-[80px] p-3 rounded-lg border-2 border-dashed transition-all
+          ${isDropTarget ? "border-red-400 bg-red-50" : "border-gray-300 bg-gray-50"}
+        `}
+      >
+        <div className="flex items-center gap-2 mb-2">
+          <EyeOff className="h-4 w-4 text-gray-400" />
+          <span className="text-sm text-gray-500">Outils masqués</span>
+          <Badge variant="secondary">{localConfig.hidden.length}</Badge>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {localConfig.hidden.map((toolId, index) => {
+            const tool = toolDefs.current.get(toolId);
+            if (!tool) return null;
+
+            return (
+              <div
+                key={toolId}
+                draggable
+                onDragStart={(e) => handleDragStart(e, toolId, "tool", "hidden", index)}
+                onDragEnd={handleDragEnd}
+                className="flex items-center gap-1 px-2 py-1 bg-white rounded border border-gray-200 text-sm cursor-grab hover:bg-gray-50"
+              >
+                <span className="truncate max-w-[120px]">{tool.label}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 w-5 p-0 ml-1"
+                  onClick={() => showHiddenTool(toolId)}
+                >
+                  <Eye className="h-3 w-3" />
+                </Button>
+              </div>
+            );
+          })}
+
+          {localConfig.hidden.length === 0 && (
+            <span className="text-gray-400 text-sm">
+              Glissez des outils ici pour les masquer
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }, [
+    localConfig.hidden,
+    dragState,
+    handleDragOver,
+    handleDrop,
+    handleDragStart,
+    handleDragEnd,
+    showHiddenTool,
+  ]);
+
+  // ============================================
+  // RENDU PRINCIPAL
+  // ============================================
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center pt-10">
+      <div
+        ref={modalRef}
+        onMouseDown={handleModalMouseDown}
+        style={{
+          position: "absolute",
+          left: modalPosition.x,
+          top: modalPosition.y,
+        }}
+        className="bg-white rounded-xl shadow-2xl w-[700px] max-h-[85vh] flex flex-col"
+      >
+        {/* Header draggable */}
+        <div className="modal-header flex items-center justify-between px-4 py-3 border-b bg-gray-50 rounded-t-xl cursor-move">
+          <div className="flex items-center gap-3">
+            <Move className="h-4 w-4 text-gray-400" />
+            <h2 className="text-lg font-semibold">Configurer la Toolbar</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={handleReset}>
+              <RotateCcw className="h-4 w-4 mr-1" />
+              Reset
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Contenu scrollable */}
+        <ScrollArea className="flex-1 p-4">
+          {/* Actions de création de groupe */}
+          <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+            {!isCreatingGroup ? (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-blue-700">
+                  Sélectionnez des outils puis créez un groupe
+                </span>
+                <Button
+                  size="sm"
+                  onClick={() => setIsCreatingGroup(true)}
+                  className="gap-1"
+                >
+                  <FolderPlus className="h-4 w-4" />
+                  Nouveau groupe
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Badge variant="default">{selectedTools.size} outils sélectionnés</Badge>
+                  <span className="text-xs text-gray-500">
+                    Cliquez sur les outils pour les sélectionner
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Nom du groupe..."
+                    value={newGroupName}
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                    className="flex-1"
+                  />
+                  <div className="flex gap-1">
+                    {GROUP_COLORS.slice(0, 4).map((color) => (
+                      <button
+                        key={color}
+                        onClick={() => setNewGroupColor(color)}
+                        className={`w-6 h-6 rounded-full border-2 ${
+                          newGroupColor === color ? "border-gray-800" : "border-transparent"
+                        }`}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={createGroup} disabled={selectedTools.size < 2}>
+                    <Check className="h-4 w-4 mr-1" />
+                    Créer
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setIsCreatingGroup(false);
+                      setSelectedTools(new Set());
+                      setNewGroupName("");
+                    }}
+                  >
+                    Annuler
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Lignes de toolbar */}
+          <div className="space-y-4">
+            {renderLine(1)}
+            {renderLine(2)}
+          </div>
+
+          {/* Zone masquée */}
+          <div className="mt-4">{renderHiddenZone()}</div>
+        </ScrollArea>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t bg-gray-50 rounded-b-xl">
+          <Button variant="outline" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button onClick={handleSave}>
+            <Check className="h-4 w-4 mr-1" />
+            Sauvegarder
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default ToolbarEditor;
