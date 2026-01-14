@@ -8070,6 +8070,9 @@ export function CADGabaritCanvas({
       if (normalizedRotation > 180) normalizedRotation -= 360;
       if (normalizedRotation < -180) normalizedRotation += 360;
 
+      // Sauvegarder l'état actuel pour undo AVANT la modification
+      addToImageHistoryRef.current(backgroundImagesRef.current, markerLinksRef.current);
+
       setBackgroundImages((prev) =>
         prev.map((img) => {
           if (img.id !== selectedImageId) return img;
