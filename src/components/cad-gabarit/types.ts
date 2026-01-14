@@ -561,6 +561,19 @@ export interface BackgroundImage {
   adjustments?: ImageAdjustments;
   // Canvas avec les ajustements appliqués (cache)
   adjustedCanvas?: HTMLCanvasElement;
+  // Données de recadrage (crop)
+  crop?: ImageCrop;
+  // Canvas avec le crop appliqué (cache)
+  croppedCanvas?: HTMLCanvasElement;
+}
+
+// Données de recadrage d'image
+export interface ImageCrop {
+  // Coordonnées en pourcentage de l'image originale (0-100)
+  x: number; // Position X du coin supérieur gauche
+  y: number; // Position Y du coin supérieur gauche
+  width: number; // Largeur du crop
+  height: number; // Hauteur du crop
 }
 
 // Ajustements d'image pour améliorer la visibilité des contours

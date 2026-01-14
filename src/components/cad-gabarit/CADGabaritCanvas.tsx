@@ -132,7 +132,6 @@ import {
   ImageMarker,
   ImageMarkerLink,
   ImageAdjustments,
-  ImageCrop,
   CALIBRATION_COLORS,
   MARKER_COLORS,
   DEFAULT_IMAGE_ADJUSTMENTS,
@@ -140,6 +139,14 @@ import {
   distance,
   midpoint,
 } from "./types";
+
+// Type pour le crop d'image (si absent de types.ts)
+interface ImageCrop {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 import { CADRenderer } from "./cad-renderer";
 import { SnapSystem, DEFAULT_SNAP_SETTINGS, AdditionalSnapPoint } from "./snap-system";
 import { CADSolver } from "./cad-solver";
@@ -458,6 +465,11 @@ export function CADGabaritCanvas({
     y: 0,
     crop: { x: 0, y: 0, width: 100, height: 100 },
   });
+
+  // Panneau d'ajustements d'image (draggable)
+  const [adjustmentsPanelPos, setAdjustmentsPanelPos] = useState({ x: 100, y: 200 });
+  const [adjustmentsPanelDragging, setAdjustmentsPanelDragging] = useState(false);
+  const [adjustmentsPanelDragStart, setAdjustmentsPanelDragStart] = useState({ x: 0, y: 0 });
 
   // Synchroniser les refs avec les états
   useEffect(() => {
