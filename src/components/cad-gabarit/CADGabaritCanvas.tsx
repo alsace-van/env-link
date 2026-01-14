@@ -446,8 +446,14 @@ export function CADGabaritCanvas({
   const [cropPanelPos, setCropPanelPos] = useState({ x: 100, y: 100 });
   const [cropPanelDragging, setCropPanelDragging] = useState(false);
   const [cropPanelDragStart, setCropPanelDragStart] = useState({ x: 0, y: 0 });
-  const [cropDragging, setCropDragging] = useState<"move" | "nw" | "ne" | "sw" | "se" | "n" | "s" | "e" | "w" | null>(null);
-  const [cropDragStart, setCropDragStart] = useState<{ x: number; y: number; crop: { x: number; y: number; width: number; height: number } }>({
+  const [cropDragging, setCropDragging] = useState<"move" | "nw" | "ne" | "sw" | "se" | "n" | "s" | "e" | "w" | null>(
+    null,
+  );
+  const [cropDragStart, setCropDragStart] = useState<{
+    x: number;
+    y: number;
+    crop: { x: number; y: number; width: number; height: number };
+  }>({
     x: 0,
     y: 0,
     crop: { x: 0, y: 0, width: 100, height: 100 },
@@ -724,7 +730,8 @@ export function CADGabaritCanvas({
     [setToolbarEditorOpen],
   );
 
-<
+  // Calibration
+  const [calibrationMode, setCalibrationMode] = useState<
     "idle" | "addPoint" | "selectPair1" | "selectPair2" | "selectRect"
   >("idle");
   const [selectedCalibrationPoint, setSelectedCalibrationPoint] = useState<string | null>(null);
@@ -1007,16 +1014,16 @@ export function CADGabaritCanvas({
     if (!arrayDialog?.open) {
       return null;
     }
-    
+
     // Le mode damier ne nécessite pas de sélection
     if (arrayDialog.type === "checkerboard") {
       return { centerX: 0, centerY: 0, scaleFactor: sketch.scaleFactor, isCheckerboard: true };
     }
-    
+
     if (selectedEntities.size === 0) {
       return null;
     }
-    
+
     // Extraire les points des entités sélectionnées une seule fois
     const selectedPoints: Array<{ x: number; y: number }> = [];
     selectedEntities.forEach((id) => {
@@ -1044,30 +1051,46 @@ export function CADGabaritCanvas({
         }
       }
     });
-    
+
     if (selectedPoints.length === 0) return null;
-    
-    let centerX = 0, centerY = 0;
+
+    let centerX = 0,
+      centerY = 0;
     selectedPoints.forEach((p) => {
       centerX += p.x;
       centerY += p.y;
     });
     centerX /= selectedPoints.length;
     centerY /= selectedPoints.length;
-    
+
     return { centerX, centerY, scaleFactor: sketch.scaleFactor };
   }, [arrayDialog?.open, selectedEntities, sketch.geometries, sketch.points, sketch.scaleFactor]);
-  
+
   // Calcul du preview séparé (ne dépend que de arrayDialog et des données extraites)
   const arrayPreview = useMemo(() => {
     if (!arrayDialog?.open || !arrayPreviewData) {
       return null;
     }
 
-    const { type, linearCount, linearSpacing, linearSpacingMode, linearDirection, linearAngle,
-            countX, spacingX, spacingModeX, countY, spacingY, spacingModeY,
-            circularCount, circularAngle, circularCenter, includeOriginal } = arrayDialog;
-    
+    const {
+      type,
+      linearCount,
+      linearSpacing,
+      linearSpacingMode,
+      linearDirection,
+      linearAngle,
+      countX,
+      spacingX,
+      spacingModeX,
+      countY,
+      spacingY,
+      spacingModeY,
+      circularCount,
+      circularAngle,
+      circularCenter,
+      includeOriginal,
+    } = arrayDialog;
+
     const { centerX: baseCenterX, centerY: baseCenterY, scaleFactor } = arrayPreviewData;
 
     // Parser les valeurs (peuvent être string ou number pour compatibilité)
@@ -1076,7 +1099,7 @@ export function CADGabaritCanvas({
     const spacingYStr = typeof spacingY === "string" ? spacingY : String(spacingY || "50");
     const circularAngleStr = typeof circularAngle === "string" ? circularAngle : String(circularAngle || "360");
     const linearAngleStr = typeof linearAngle === "string" ? linearAngle : String(linearAngle || "0");
-    
+
     const linearSpacingNum = parseFloat(linearSpacingStr.replace(",", ".")) || 0;
     const spacingXNum = parseFloat(spacingXStr.replace(",", ".")) || 0;
     const spacingYNum = parseFloat(spacingYStr.replace(",", ".")) || 0;
@@ -1084,15 +1107,12 @@ export function CADGabaritCanvas({
     const linearAngleNum = parseFloat(linearAngleStr.replace(",", ".")) || 0;
 
     // Calculer l'espacement réel selon le mode
-    const realLinearSpacing = linearSpacingMode === "distance" && (linearCount || 3) > 1 
-      ? linearSpacingNum / ((linearCount || 3) - 1) 
-      : linearSpacingNum;
-    const realSpacingX = spacingModeX === "distance" && countX > 1 
-      ? spacingXNum / (countX - 1) 
-      : spacingXNum;
-    const realSpacingY = spacingModeY === "distance" && countY > 1 
-      ? spacingYNum / (countY - 1) 
-      : spacingYNum;
+    const realLinearSpacing =
+      linearSpacingMode === "distance" && (linearCount || 3) > 1
+        ? linearSpacingNum / ((linearCount || 3) - 1)
+        : linearSpacingNum;
+    const realSpacingX = spacingModeX === "distance" && countX > 1 ? spacingXNum / (countX - 1) : spacingXNum;
+    const realSpacingY = spacingModeY === "distance" && countY > 1 ? spacingYNum / (countY - 1) : spacingYNum;
 
     // Utiliser le centre personnalisé pour circulaire
     let centerX = baseCenterX;
@@ -1112,18 +1132,18 @@ export function CADGabaritCanvas({
       } else if (linearDirection === "custom") {
         dirAngle = (linearAngleNum * Math.PI) / 180;
       }
-      
+
       const dirX = Math.cos(dirAngle);
       const dirY = Math.sin(dirAngle);
-      
+
       const startIdx = includeOriginal ? 1 : 0;
       const count = linearCount || 3;
       for (let i = startIdx; i < count; i++) {
         const dist = i * realLinearSpacing * scaleFactor;
-        transforms.push({ 
-          offsetX: dist * dirX, 
-          offsetY: dist * dirY, 
-          rotation: 0 
+        transforms.push({
+          offsetX: dist * dirX,
+          offsetY: dist * dirY,
+          rotation: 0,
         });
       }
     } else if (type === "grid") {
@@ -1150,21 +1170,21 @@ export function CADGabaritCanvas({
       const countXStr = typeof checkerCountX === "string" ? checkerCountX : String(checkerCountX || "8");
       const countYStr = typeof checkerCountY === "string" ? checkerCountY : String(checkerCountY || "6");
       const sizeStr = typeof checkerSize === "string" ? checkerSize : String(checkerSize || "20");
-      
+
       const countXNum = parseInt(countXStr) || 8;
       const countYNum = parseInt(countYStr) || 6;
       const sizePx = (parseFloat(sizeStr.replace(",", ".")) || 20) * scaleFactor;
-      
-      return { 
-        transforms: [], 
-        centerX: 0, 
+
+      return {
+        transforms: [],
+        centerX: 0,
         centerY: 0,
         checkerboard: {
           countX: Math.max(1, countXNum),
           countY: Math.max(1, countYNum),
           sizePx,
-          color: checkerColor ?? "#000000"
-        }
+          color: checkerColor ?? "#000000",
+        },
       };
     }
 
@@ -1845,19 +1865,19 @@ export function CADGabaritCanvas({
       const ctx = canvasRef.current.getContext("2d");
       if (ctx) {
         ctx.save();
-        
+
         // Mode damier - preview spécial (optimisé)
         if (arrayPreview.checkerboard) {
           const { countX, countY, sizePx, color } = arrayPreview.checkerboard;
-          
+
           // Limiter le preview pour la performance
           const maxPreviewCells = 20;
           const previewCountX = Math.min(countX, maxPreviewCells);
           const previewCountY = Math.min(countY, maxPreviewCells);
           const isLimited = countX > maxPreviewCells || countY > maxPreviewCells;
-          
+
           const screenSize = sizePx * viewport.scale;
-          
+
           // Dessiner toutes les cases colorées d'un coup (un seul path)
           ctx.fillStyle = color;
           ctx.globalAlpha = 0.8;
@@ -1872,20 +1892,20 @@ export function CADGabaritCanvas({
             }
           }
           ctx.fill();
-          
+
           // Dessiner la grille (lignes uniquement, pas de strokeRect)
           ctx.strokeStyle = "#A855F7";
           ctx.lineWidth = 1;
           ctx.globalAlpha = 0.5;
           ctx.beginPath();
-          
+
           // Lignes horizontales
           for (let row = 0; row <= previewCountY; row++) {
             const y = row * sizePx * viewport.scale + viewport.offsetY;
             ctx.moveTo(viewport.offsetX, y);
             ctx.lineTo(previewCountX * sizePx * viewport.scale + viewport.offsetX, y);
           }
-          
+
           // Lignes verticales
           for (let col = 0; col <= previewCountX; col++) {
             const x = col * sizePx * viewport.scale + viewport.offsetX;
@@ -1893,7 +1913,7 @@ export function CADGabaritCanvas({
             ctx.lineTo(x, previewCountY * sizePx * viewport.scale + viewport.offsetY);
           }
           ctx.stroke();
-          
+
           // Afficher les dimensions totales
           ctx.globalAlpha = 1;
           ctx.fillStyle = "#A855F7";
@@ -1901,12 +1921,11 @@ export function CADGabaritCanvas({
           const labelY = previewCountY * sizePx * viewport.scale + viewport.offsetY + 20;
           const labelX = (previewCountX * sizePx * viewport.scale) / 2 + viewport.offsetX - 30;
           ctx.fillText(`${countX}×${countY} cases`, labelX, labelY);
-          
+
           if (isLimited) {
             ctx.fillStyle = "#F97316"; // Orange
             ctx.fillText(`(preview limité à ${maxPreviewCells}×${maxPreviewCells})`, labelX - 20, labelY + 15);
           }
-          
         } else if (arrayPreview.transforms.length > 0) {
           // Mode normal (linéaire, grille, circulaire)
           ctx.strokeStyle = "#A855F7"; // Violet
@@ -1917,188 +1936,188 @@ export function CADGabaritCanvas({
 
           const { transforms, centerX, centerY } = arrayPreview;
 
-        // Pour chaque transformation, dessiner une copie fantôme des éléments sélectionnés
-        transforms.forEach((transform) => {
-          selectedEntities.forEach((id) => {
-            const geo = sketch.geometries.get(id);
-            if (!geo) return;
+          // Pour chaque transformation, dessiner une copie fantôme des éléments sélectionnés
+          transforms.forEach((transform) => {
+            selectedEntities.forEach((id) => {
+              const geo = sketch.geometries.get(id);
+              if (!geo) return;
 
-            if (geo.type === "line") {
-              const line = geo as Line;
-              const p1 = sketch.points.get(line.p1);
-              const p2 = sketch.points.get(line.p2);
-              if (p1 && p2) {
-                // Appliquer la transformation
-                let newP1 = { x: p1.x, y: p1.y };
-                let newP2 = { x: p2.x, y: p2.y };
+              if (geo.type === "line") {
+                const line = geo as Line;
+                const p1 = sketch.points.get(line.p1);
+                const p2 = sketch.points.get(line.p2);
+                if (p1 && p2) {
+                  // Appliquer la transformation
+                  let newP1 = { x: p1.x, y: p1.y };
+                  let newP2 = { x: p2.x, y: p2.y };
 
-                if (transform.rotation !== 0) {
-                  // Rotation autour du centre
-                  const cos = Math.cos(transform.rotation);
-                  const sin = Math.sin(transform.rotation);
-                  const dx1 = p1.x - centerX;
-                  const dy1 = p1.y - centerY;
-                  const dx2 = p2.x - centerX;
-                  const dy2 = p2.y - centerY;
-                  newP1 = {
-                    x: centerX + dx1 * cos - dy1 * sin,
-                    y: centerY + dx1 * sin + dy1 * cos,
+                  if (transform.rotation !== 0) {
+                    // Rotation autour du centre
+                    const cos = Math.cos(transform.rotation);
+                    const sin = Math.sin(transform.rotation);
+                    const dx1 = p1.x - centerX;
+                    const dy1 = p1.y - centerY;
+                    const dx2 = p2.x - centerX;
+                    const dy2 = p2.y - centerY;
+                    newP1 = {
+                      x: centerX + dx1 * cos - dy1 * sin,
+                      y: centerY + dx1 * sin + dy1 * cos,
+                    };
+                    newP2 = {
+                      x: centerX + dx2 * cos - dy2 * sin,
+                      y: centerY + dx2 * sin + dy2 * cos,
+                    };
+                  }
+
+                  // Appliquer l'offset
+                  newP1.x += transform.offsetX;
+                  newP1.y += transform.offsetY;
+                  newP2.x += transform.offsetX;
+                  newP2.y += transform.offsetY;
+
+                  // Convertir en coordonnées écran
+                  const screenP1 = {
+                    x: newP1.x * viewport.scale + viewport.offsetX,
+                    y: newP1.y * viewport.scale + viewport.offsetY,
                   };
-                  newP2 = {
-                    x: centerX + dx2 * cos - dy2 * sin,
-                    y: centerY + dx2 * sin + dy2 * cos,
+                  const screenP2 = {
+                    x: newP2.x * viewport.scale + viewport.offsetX,
+                    y: newP2.y * viewport.scale + viewport.offsetY,
                   };
+
+                  ctx.beginPath();
+                  ctx.moveTo(screenP1.x, screenP1.y);
+                  ctx.lineTo(screenP2.x, screenP2.y);
+                  ctx.stroke();
                 }
+              } else if (geo.type === "circle") {
+                const circle = geo as CircleType;
+                const center = sketch.points.get(circle.center);
+                if (center) {
+                  let newCenter = { x: center.x, y: center.y };
 
-                // Appliquer l'offset
-                newP1.x += transform.offsetX;
-                newP1.y += transform.offsetY;
-                newP2.x += transform.offsetX;
-                newP2.y += transform.offsetY;
-
-                // Convertir en coordonnées écran
-                const screenP1 = {
-                  x: newP1.x * viewport.scale + viewport.offsetX,
-                  y: newP1.y * viewport.scale + viewport.offsetY,
-                };
-                const screenP2 = {
-                  x: newP2.x * viewport.scale + viewport.offsetX,
-                  y: newP2.y * viewport.scale + viewport.offsetY,
-                };
-
-                ctx.beginPath();
-                ctx.moveTo(screenP1.x, screenP1.y);
-                ctx.lineTo(screenP2.x, screenP2.y);
-                ctx.stroke();
-              }
-            } else if (geo.type === "circle") {
-              const circle = geo as CircleType;
-              const center = sketch.points.get(circle.center);
-              if (center) {
-                let newCenter = { x: center.x, y: center.y };
-
-                if (transform.rotation !== 0) {
-                  const cos = Math.cos(transform.rotation);
-                  const sin = Math.sin(transform.rotation);
-                  const dx = center.x - centerX;
-                  const dy = center.y - centerY;
-                  newCenter = {
-                    x: centerX + dx * cos - dy * sin,
-                    y: centerY + dx * sin + dy * cos,
-                  };
-                }
-
-                newCenter.x += transform.offsetX;
-                newCenter.y += transform.offsetY;
-
-                const screenCenter = {
-                  x: newCenter.x * viewport.scale + viewport.offsetX,
-                  y: newCenter.y * viewport.scale + viewport.offsetY,
-                };
-                const screenRadius = circle.radius * viewport.scale;
-
-                ctx.beginPath();
-                ctx.arc(screenCenter.x, screenCenter.y, screenRadius, 0, Math.PI * 2);
-                ctx.stroke();
-              }
-            } else if (geo.type === "arc") {
-              const arc = geo as Arc;
-              const arcCenter = sketch.points.get(arc.center);
-              const startPt = sketch.points.get(arc.startPoint);
-              const endPt = sketch.points.get(arc.endPoint);
-              if (arcCenter && startPt && endPt) {
-                let newCenter = { x: arcCenter.x, y: arcCenter.y };
-
-                if (transform.rotation !== 0) {
-                  const cos = Math.cos(transform.rotation);
-                  const sin = Math.sin(transform.rotation);
-                  const dx = arcCenter.x - centerX;
-                  const dy = arcCenter.y - centerY;
-                  newCenter = {
-                    x: centerX + dx * cos - dy * sin,
-                    y: centerY + dx * sin + dy * cos,
-                  };
-                }
-
-                newCenter.x += transform.offsetX;
-                newCenter.y += transform.offsetY;
-
-                const screenCenter = {
-                  x: newCenter.x * viewport.scale + viewport.offsetX,
-                  y: newCenter.y * viewport.scale + viewport.offsetY,
-                };
-                const screenRadius = arc.radius * viewport.scale;
-
-                // Calculer les angles transformés
-                let startAngle = Math.atan2(startPt.y - arcCenter.y, startPt.x - arcCenter.x);
-                let endAngle = Math.atan2(endPt.y - arcCenter.y, endPt.x - arcCenter.x);
-                startAngle += transform.rotation;
-                endAngle += transform.rotation;
-
-                ctx.beginPath();
-                ctx.arc(screenCenter.x, screenCenter.y, screenRadius, startAngle, endAngle, arc.counterClockwise);
-                ctx.stroke();
-              }
-            } else if (geo.type === "rectangle") {
-              const rect = geo as Rectangle;
-              const points = [rect.p1, rect.p2, rect.p3, rect.p4]
-                .map((pid) => sketch.points.get(pid))
-                .filter(Boolean) as Point[];
-              if (points.length === 4) {
-                const transformedPoints = points.map((p) => {
-                  let newP = { x: p.x, y: p.y };
                   if (transform.rotation !== 0) {
                     const cos = Math.cos(transform.rotation);
                     const sin = Math.sin(transform.rotation);
-                    const dx = p.x - centerX;
-                    const dy = p.y - centerY;
-                    newP = {
+                    const dx = center.x - centerX;
+                    const dy = center.y - centerY;
+                    newCenter = {
                       x: centerX + dx * cos - dy * sin,
                       y: centerY + dx * sin + dy * cos,
                     };
                   }
-                  newP.x += transform.offsetX;
-                  newP.y += transform.offsetY;
-                  return {
-                    x: newP.x * viewport.scale + viewport.offsetX,
-                    y: newP.y * viewport.scale + viewport.offsetY,
+
+                  newCenter.x += transform.offsetX;
+                  newCenter.y += transform.offsetY;
+
+                  const screenCenter = {
+                    x: newCenter.x * viewport.scale + viewport.offsetX,
+                    y: newCenter.y * viewport.scale + viewport.offsetY,
                   };
-                });
+                  const screenRadius = circle.radius * viewport.scale;
 
-                ctx.beginPath();
-                ctx.moveTo(transformedPoints[0].x, transformedPoints[0].y);
-                ctx.lineTo(transformedPoints[1].x, transformedPoints[1].y);
-                ctx.lineTo(transformedPoints[2].x, transformedPoints[2].y);
-                ctx.lineTo(transformedPoints[3].x, transformedPoints[3].y);
-                ctx.closePath();
-                ctx.stroke();
+                  ctx.beginPath();
+                  ctx.arc(screenCenter.x, screenCenter.y, screenRadius, 0, Math.PI * 2);
+                  ctx.stroke();
+                }
+              } else if (geo.type === "arc") {
+                const arc = geo as Arc;
+                const arcCenter = sketch.points.get(arc.center);
+                const startPt = sketch.points.get(arc.startPoint);
+                const endPt = sketch.points.get(arc.endPoint);
+                if (arcCenter && startPt && endPt) {
+                  let newCenter = { x: arcCenter.x, y: arcCenter.y };
+
+                  if (transform.rotation !== 0) {
+                    const cos = Math.cos(transform.rotation);
+                    const sin = Math.sin(transform.rotation);
+                    const dx = arcCenter.x - centerX;
+                    const dy = arcCenter.y - centerY;
+                    newCenter = {
+                      x: centerX + dx * cos - dy * sin,
+                      y: centerY + dx * sin + dy * cos,
+                    };
+                  }
+
+                  newCenter.x += transform.offsetX;
+                  newCenter.y += transform.offsetY;
+
+                  const screenCenter = {
+                    x: newCenter.x * viewport.scale + viewport.offsetX,
+                    y: newCenter.y * viewport.scale + viewport.offsetY,
+                  };
+                  const screenRadius = arc.radius * viewport.scale;
+
+                  // Calculer les angles transformés
+                  let startAngle = Math.atan2(startPt.y - arcCenter.y, startPt.x - arcCenter.x);
+                  let endAngle = Math.atan2(endPt.y - arcCenter.y, endPt.x - arcCenter.x);
+                  startAngle += transform.rotation;
+                  endAngle += transform.rotation;
+
+                  ctx.beginPath();
+                  ctx.arc(screenCenter.x, screenCenter.y, screenRadius, startAngle, endAngle, arc.counterClockwise);
+                  ctx.stroke();
+                }
+              } else if (geo.type === "rectangle") {
+                const rect = geo as Rectangle;
+                const points = [rect.p1, rect.p2, rect.p3, rect.p4]
+                  .map((pid) => sketch.points.get(pid))
+                  .filter(Boolean) as Point[];
+                if (points.length === 4) {
+                  const transformedPoints = points.map((p) => {
+                    let newP = { x: p.x, y: p.y };
+                    if (transform.rotation !== 0) {
+                      const cos = Math.cos(transform.rotation);
+                      const sin = Math.sin(transform.rotation);
+                      const dx = p.x - centerX;
+                      const dy = p.y - centerY;
+                      newP = {
+                        x: centerX + dx * cos - dy * sin,
+                        y: centerY + dx * sin + dy * cos,
+                      };
+                    }
+                    newP.x += transform.offsetX;
+                    newP.y += transform.offsetY;
+                    return {
+                      x: newP.x * viewport.scale + viewport.offsetX,
+                      y: newP.y * viewport.scale + viewport.offsetY,
+                    };
+                  });
+
+                  ctx.beginPath();
+                  ctx.moveTo(transformedPoints[0].x, transformedPoints[0].y);
+                  ctx.lineTo(transformedPoints[1].x, transformedPoints[1].y);
+                  ctx.lineTo(transformedPoints[2].x, transformedPoints[2].y);
+                  ctx.lineTo(transformedPoints[3].x, transformedPoints[3].y);
+                  ctx.closePath();
+                  ctx.stroke();
+                }
               }
-            }
+            });
           });
-        });
 
-        // Dessiner le centre de rotation pour le mode circulaire
-        if (arrayDialog?.type === "circular") {
-          const screenCenterX = centerX * viewport.scale + viewport.offsetX;
-          const screenCenterY = centerY * viewport.scale + viewport.offsetY;
+          // Dessiner le centre de rotation pour le mode circulaire
+          if (arrayDialog?.type === "circular") {
+            const screenCenterX = centerX * viewport.scale + viewport.offsetX;
+            const screenCenterY = centerY * viewport.scale + viewport.offsetY;
 
-          ctx.setLineDash([]);
-          ctx.strokeStyle = "#A855F7";
-          ctx.lineWidth = 2;
+            ctx.setLineDash([]);
+            ctx.strokeStyle = "#A855F7";
+            ctx.lineWidth = 2;
 
-          // Croix au centre
-          ctx.beginPath();
-          ctx.moveTo(screenCenterX - 10, screenCenterY);
-          ctx.lineTo(screenCenterX + 10, screenCenterY);
-          ctx.moveTo(screenCenterX, screenCenterY - 10);
-          ctx.lineTo(screenCenterX, screenCenterY + 10);
-          ctx.stroke();
+            // Croix au centre
+            ctx.beginPath();
+            ctx.moveTo(screenCenterX - 10, screenCenterY);
+            ctx.lineTo(screenCenterX + 10, screenCenterY);
+            ctx.moveTo(screenCenterX, screenCenterY - 10);
+            ctx.lineTo(screenCenterX, screenCenterY + 10);
+            ctx.stroke();
 
-          // Cercle autour du centre
-          ctx.beginPath();
-          ctx.arc(screenCenterX, screenCenterY, 5, 0, Math.PI * 2);
-          ctx.stroke();
-        }
+            // Cercle autour du centre
+            ctx.beginPath();
+            ctx.arc(screenCenterX, screenCenterY, 5, 0, Math.PI * 2);
+            ctx.stroke();
+          }
         } // Fin du else if (arrayPreview.transforms.length > 0)
 
         ctx.restore();
@@ -7518,7 +7537,7 @@ export function CADGabaritCanvas({
       // Si des valeurs sont passées en paramètre, les utiliser, sinon lire le state
       const widthStr = inputValues?.width ?? rectInputs.widthValue;
       const heightStr = inputValues?.height ?? rectInputs.heightValue;
-      
+
       const inputWidth = parseFloat(widthStr.replace(",", "."));
       const inputHeight = parseFloat(heightStr.replace(",", "."));
 
@@ -7655,7 +7674,7 @@ export function CADGabaritCanvas({
         // Calculer le centre exact à partir des 4 coins
         const centerX = (corner1.x + corner2.x + corner3.x + corner4.x) / 4;
         const centerY = (corner1.y + corner2.y + corner3.y + corner4.y) / 4;
-        
+
         // Créer le point central explicitement (pour le snap)
         const centerPointId = generateId();
         const centerPoint: Point = {
@@ -8023,49 +8042,49 @@ export function CADGabaritCanvas({
   // Ouvrir le dialogue de crop pour l'image sélectionnée
   const openCropDialog = useCallback(() => {
     if (!selectedImageId) return;
-    
+
     const img = backgroundImages.find((i) => i.id === selectedImageId);
     if (!img) return;
-    
+
     // Initialiser la sélection avec le crop existant ou 100%
     if (img.crop) {
       setCropSelection({ ...img.crop });
     } else {
       setCropSelection({ x: 0, y: 0, width: 100, height: 100 });
     }
-    
+
     setShowCropDialog(true);
   }, [selectedImageId, backgroundImages]);
 
   // Appliquer le crop à l'image sélectionnée
   const applyCrop = useCallback(() => {
     if (!selectedImageId) return;
-    
+
     setBackgroundImages((prev) =>
       prev.map((img) => {
         if (img.id !== selectedImageId) return img;
-        
+
         // Créer le canvas croppé
         const sourceImage = img.adjustedCanvas || img.image;
         const srcWidth = sourceImage.width;
         const srcHeight = sourceImage.height;
-        
+
         // Calculer les coordonnées en pixels
         const cropX = Math.round((cropSelection.x / 100) * srcWidth);
         const cropY = Math.round((cropSelection.y / 100) * srcHeight);
         const cropW = Math.round((cropSelection.width / 100) * srcWidth);
         const cropH = Math.round((cropSelection.height / 100) * srcHeight);
-        
+
         if (cropW <= 0 || cropH <= 0) return img;
-        
+
         const croppedCanvas = document.createElement("canvas");
         croppedCanvas.width = cropW;
         croppedCanvas.height = cropH;
         const ctx = croppedCanvas.getContext("2d");
         if (!ctx) return img;
-        
+
         ctx.drawImage(sourceImage, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-        
+
         return {
           ...img,
           crop: { ...cropSelection },
@@ -8073,7 +8092,7 @@ export function CADGabaritCanvas({
         };
       }),
     );
-    
+
     setShowCropDialog(false);
     toast.success("Recadrage appliqué");
   }, [selectedImageId, cropSelection]);
@@ -8081,7 +8100,7 @@ export function CADGabaritCanvas({
   // Réinitialiser le crop
   const resetCrop = useCallback(() => {
     if (!selectedImageId) return;
-    
+
     setBackgroundImages((prev) =>
       prev.map((img) => {
         if (img.id !== selectedImageId) return img;
@@ -8092,7 +8111,7 @@ export function CADGabaritCanvas({
         };
       }),
     );
-    
+
     setCropSelection({ x: 0, y: 0, width: 100, height: 100 });
     toast.success("Recadrage réinitialisé");
   }, [selectedImageId]);
@@ -12119,90 +12138,109 @@ export function CADGabaritCanvas({
   // === RÉPÉTITION/ARRAY ===
 
   // Ouvrir la modale de répétition
-  const openArrayDialog = useCallback((forceCheckerboard = false) => {
-    // Si pas de sélection, basculer automatiquement en mode damier
-    const noSelection = selectedEntities.size === 0;
-    const useCheckerboard = forceCheckerboard || noSelection;
+  const openArrayDialog = useCallback(
+    (forceCheckerboard = false) => {
+      // Si pas de sélection, basculer automatiquement en mode damier
+      const noSelection = selectedEntities.size === 0;
+      const useCheckerboard = forceCheckerboard || noSelection;
 
-    // Calculer le centre de la sélection pour le mode circulaire
-    let sumX = 0,
-      sumY = 0,
-      count = 0;
-    selectedEntities.forEach((id) => {
-      const geo = sketch.geometries.get(id);
-      if (geo) {
-        if (geo.type === "line") {
-          const line = geo as Line;
-          const p1 = sketch.points.get(line.p1);
-          const p2 = sketch.points.get(line.p2);
-          if (p1 && p2) {
-            sumX += (p1.x + p2.x) / 2;
-            sumY += (p1.y + p2.y) / 2;
-            count++;
-          }
-        } else if (geo.type === "circle") {
-          const circle = geo as CircleType;
-          const center = sketch.points.get(circle.center);
-          if (center) {
-            sumX += center.x;
-            sumY += center.y;
-            count++;
-          }
-        } else if (geo.type === "arc") {
-          const arc = geo as Arc;
-          const center = sketch.points.get(arc.center);
-          if (center) {
-            sumX += center.x;
-            sumY += center.y;
-            count++;
+      // Calculer le centre de la sélection pour le mode circulaire
+      let sumX = 0,
+        sumY = 0,
+        count = 0;
+      selectedEntities.forEach((id) => {
+        const geo = sketch.geometries.get(id);
+        if (geo) {
+          if (geo.type === "line") {
+            const line = geo as Line;
+            const p1 = sketch.points.get(line.p1);
+            const p2 = sketch.points.get(line.p2);
+            if (p1 && p2) {
+              sumX += (p1.x + p2.x) / 2;
+              sumY += (p1.y + p2.y) / 2;
+              count++;
+            }
+          } else if (geo.type === "circle") {
+            const circle = geo as CircleType;
+            const center = sketch.points.get(circle.center);
+            if (center) {
+              sumX += center.x;
+              sumY += center.y;
+              count++;
+            }
+          } else if (geo.type === "arc") {
+            const arc = geo as Arc;
+            const center = sketch.points.get(arc.center);
+            if (center) {
+              sumX += center.x;
+              sumY += center.y;
+              count++;
+            }
           }
         }
-      }
-    });
+      });
 
-    const selectionCenter = count > 0 ? { x: sumX / count, y: sumY / count } : { x: 0, y: 0 };
+      const selectionCenter = count > 0 ? { x: sumX / count, y: sumY / count } : { x: 0, y: 0 };
 
-    setArrayDialog({
-      open: true,
-      type: useCheckerboard ? "checkerboard" : "linear",
-      // Linéaire
-      linearCount: 3,
-      linearSpacing: "50",
-      linearSpacingMode: "spacing",
-      linearDirection: "x",
-      linearAngle: "0",
-      // Grille
-      countX: 3,
-      spacingX: "50",
-      spacingModeX: "spacing",
-      countY: 3,
-      spacingY: "50",
-      spacingModeY: "spacing",
-      // Circulaire
-      circularCount: 6,
-      circularAngle: "360",
-      circularCenter: selectionCenter,
-      // Damier
-      checkerCountX: "8",
-      checkerCountY: "6",
-      checkerSize: "20",
-      checkerColor: "#000000",
-      // Général
-      includeOriginal: true,
-      createIntersections: true,
-    });
-  }, [selectedEntities, sketch]);
+      setArrayDialog({
+        open: true,
+        type: useCheckerboard ? "checkerboard" : "linear",
+        // Linéaire
+        linearCount: 3,
+        linearSpacing: "50",
+        linearSpacingMode: "spacing",
+        linearDirection: "x",
+        linearAngle: "0",
+        // Grille
+        countX: 3,
+        spacingX: "50",
+        spacingModeX: "spacing",
+        countY: 3,
+        spacingY: "50",
+        spacingModeY: "spacing",
+        // Circulaire
+        circularCount: 6,
+        circularAngle: "360",
+        circularCenter: selectionCenter,
+        // Damier
+        checkerCountX: "8",
+        checkerCountY: "6",
+        checkerSize: "20",
+        checkerColor: "#000000",
+        // Général
+        includeOriginal: true,
+        createIntersections: true,
+      });
+    },
+    [selectedEntities, sketch],
+  );
 
   // Exécuter la répétition
   const executeArray = useCallback(() => {
     if (!arrayDialog) return;
-    
+
     // Le mode checkerboard ne nécessite pas de sélection
     if (arrayDialog.type !== "checkerboard" && selectedEntities.size === 0) return;
 
-    const { type, linearCount, linearSpacing, linearSpacingMode, linearDirection, linearAngle,
-            countX, spacingX, spacingModeX, countY, spacingY, spacingModeY,
-            circularCount, circularAngle, circularCenter, includeOriginal, createIntersections } = arrayDialog;
+    const {
+      type,
+      linearCount,
+      linearSpacing,
+      linearSpacingMode,
+      linearDirection,
+      linearAngle,
+      countX,
+      spacingX,
+      spacingModeX,
+      countY,
+      spacingY,
+      spacingModeY,
+      circularCount,
+      circularAngle,
+      circularCenter,
+      includeOriginal,
+      createIntersections,
+    } = arrayDialog;
 
     // Parser les valeurs
     const linearSpacingStr = typeof linearSpacing === "string" ? linearSpacing : String(linearSpacing || "50");
@@ -12210,7 +12248,7 @@ export function CADGabaritCanvas({
     const spacingYStr = typeof spacingY === "string" ? spacingY : String(spacingY || "50");
     const circularAngleStr = typeof circularAngle === "string" ? circularAngle : String(circularAngle || "360");
     const linearAngleStr = typeof linearAngle === "string" ? linearAngle : String(linearAngle || "0");
-    
+
     const linearSpacingNum = parseFloat(linearSpacingStr.replace(",", ".")) || 0;
     const spacingXNum = parseFloat(spacingXStr.replace(",", ".")) || 0;
     const spacingYNum = parseFloat(spacingYStr.replace(",", ".")) || 0;
@@ -12219,15 +12257,10 @@ export function CADGabaritCanvas({
 
     // Calculer l'espacement réel selon le mode
     const count = linearCount || 3;
-    const realLinearSpacing = linearSpacingMode === "distance" && count > 1 
-      ? linearSpacingNum / (count - 1) 
-      : linearSpacingNum;
-    const realSpacingX = spacingModeX === "distance" && countX > 1 
-      ? spacingXNum / (countX - 1) 
-      : spacingXNum;
-    const realSpacingY = spacingModeY === "distance" && countY > 1 
-      ? spacingYNum / (countY - 1) 
-      : spacingYNum;
+    const realLinearSpacing =
+      linearSpacingMode === "distance" && count > 1 ? linearSpacingNum / (count - 1) : linearSpacingNum;
+    const realSpacingX = spacingModeX === "distance" && countX > 1 ? spacingXNum / (countX - 1) : spacingXNum;
+    const realSpacingY = spacingModeY === "distance" && countY > 1 ? spacingYNum / (countY - 1) : spacingYNum;
 
     // Collecter les points et géométries sélectionnés
     const copiedPoints = new Map<string, Point>();
@@ -12270,7 +12303,8 @@ export function CADGabaritCanvas({
     });
 
     // Calculer le centre de la sélection pour la rotation
-    let centerX = 0, centerY = 0;
+    let centerX = 0,
+      centerY = 0;
     copiedPoints.forEach((p) => {
       centerX += p.x;
       centerY += p.y;
@@ -12390,10 +12424,10 @@ export function CADGabaritCanvas({
       } else if (linearDirection === "custom") {
         dirAngle = (linearAngleNum * Math.PI) / 180;
       }
-      
+
       const dirX = Math.cos(dirAngle);
       const dirY = Math.sin(dirAngle);
-      
+
       const startIdx = includeOriginal ? 1 : 0;
       for (let i = startIdx; i < count; i++) {
         const dist = i * realLinearSpacing * sketch.scaleFactor;
@@ -12421,20 +12455,20 @@ export function CADGabaritCanvas({
     } else if (type === "checkerboard") {
       // Mode damier - création spéciale (ne nécessite pas de sélection)
       const { checkerCountX, checkerCountY, checkerSize, checkerColor } = arrayDialog;
-      
+
       // Parser les valeurs (peuvent être string ou number)
       const countXStr = typeof checkerCountX === "string" ? checkerCountX : String(checkerCountX || "8");
       const countYStr = typeof checkerCountY === "string" ? checkerCountY : String(checkerCountY || "6");
       const sizeStr = typeof checkerSize === "string" ? checkerSize : String(checkerSize || "20");
-      
+
       const cX = Math.max(1, parseInt(countXStr) || 8);
       const cY = Math.max(1, parseInt(countYStr) || 6);
       const sizePx = (parseFloat(sizeStr.replace(",", ".")) || 20) * sketch.scaleFactor;
-      
+
       // Point de départ (centre du viewport ou origine)
       const startX = 0;
       const startY = 0;
-      
+
       // Créer les points de la grille
       const pointGrid: string[][] = [];
       for (let row = 0; row <= cY; row++) {
@@ -12449,7 +12483,7 @@ export function CADGabaritCanvas({
           pointGrid[row][col] = pointId;
         }
       }
-      
+
       // Créer les lignes horizontales
       for (let row = 0; row <= cY; row++) {
         for (let col = 0; col < cX; col++) {
@@ -12466,7 +12500,7 @@ export function CADGabaritCanvas({
           newGeometryIds.push(lineId);
         }
       }
-      
+
       // Créer les lignes verticales
       for (let col = 0; col <= cX; col++) {
         for (let row = 0; row < cY; row++) {
@@ -12483,7 +12517,7 @@ export function CADGabaritCanvas({
           newGeometryIds.push(lineId);
         }
       }
-      
+
       // Créer les remplissages pour les cases noires (pattern damier)
       // Initialiser shapeFills si nécessaire
       if (!newSketch.shapeFills) {
@@ -12491,7 +12525,7 @@ export function CADGabaritCanvas({
       } else {
         newSketch.shapeFills = new Map(newSketch.shapeFills);
       }
-      
+
       for (let row = 0; row < cY; row++) {
         for (let col = 0; col < cX; col++) {
           // Case noire si (row + col) est pair
@@ -12499,20 +12533,20 @@ export function CADGabaritCanvas({
             // Trouver les 4 lignes qui forment cette case
             // Lignes horizontales: row à col et row+1 à col
             // Lignes verticales: col à row et col+1 à row
-            
+
             // On va identifier les geoIds des 4 côtés de la case
             const topLineIdx = row * cX + col;
             const bottomLineIdx = (row + 1) * cX + col;
             const leftLineIdx = cX * (cY + 1) + col * cY + row;
             const rightLineIdx = cX * (cY + 1) + (col + 1) * cY + row;
-            
+
             // Récupérer les IDs depuis newGeometryIds
             const geoIds = new Set<string>();
             if (newGeometryIds[topLineIdx]) geoIds.add(newGeometryIds[topLineIdx]);
             if (newGeometryIds[bottomLineIdx]) geoIds.add(newGeometryIds[bottomLineIdx]);
             if (newGeometryIds[leftLineIdx]) geoIds.add(newGeometryIds[leftLineIdx]);
             if (newGeometryIds[rightLineIdx]) geoIds.add(newGeometryIds[rightLineIdx]);
-            
+
             if (geoIds.size === 4) {
               const fillId = generateId();
               newSketch.shapeFills.set(fillId, {
@@ -12526,18 +12560,18 @@ export function CADGabaritCanvas({
           }
         }
       }
-      
+
       totalCopies = cX * cY;
     }
 
     // Créer les points d'intersection si demandé
     if (createIntersections) {
       // Collecter toutes les géométries (originales + nouvelles)
-      const allLineIds = [...Array.from(selectedEntities), ...newGeometryIds].filter(id => {
+      const allLineIds = [...Array.from(selectedEntities), ...newGeometryIds].filter((id) => {
         const geo = newSketch.geometries.get(id);
         return geo && geo.type === "line";
       });
-      
+
       // Créer les intersections pour chaque nouvelle géométrie
       for (const geoId of newGeometryIds) {
         createIntersectionPoints(geoId, newSketch);
@@ -13856,16 +13890,16 @@ export function CADGabaritCanvas({
       // Dimensions en mm (sketch units sont en pixels, diviser par scaleFactor)
       const widthMm = (maxX - minX) / sketch.scaleFactor;
       const heightMm = (maxY - minY) / sketch.scaleFactor;
-      
+
       // 300 DPI pour impression de qualité
       // 300 pixels/inch ÷ 25.4 mm/inch = 11.811 pixels/mm
       const DPI = 300;
       const pixelsPerMm = DPI / 25.4;
-      
+
       // Calculer la taille en pixels pour 300 DPI
       const canvasWidth = Math.ceil(widthMm * pixelsPerMm) + padding * 2;
       const canvasHeight = Math.ceil(heightMm * pixelsPerMm) + padding * 2;
-      
+
       tempCanvas.width = Math.max(100, canvasWidth);
       tempCanvas.height = Math.max(100, canvasHeight);
 
@@ -13891,10 +13925,10 @@ export function CADGabaritCanvas({
       if (sketch.shapeFills) {
         sketch.shapeFills.forEach((fill) => {
           if (!fill.geoIds || fill.geoIds.length === 0) return;
-          
+
           const allPoints: { x: number; y: number }[] = [];
           const processedPoints = new Set<string>();
-          
+
           for (const geoId of fill.geoIds) {
             const geo = sketch.geometries.get(geoId);
             if (geo && geo.type === "line") {
@@ -13911,19 +13945,19 @@ export function CADGabaritCanvas({
               }
             }
           }
-          
+
           if (allPoints.length < 3) return;
-          
+
           // Trier les points pour former un polygone
           const fillCx = allPoints.reduce((s, p) => s + p.x, 0) / allPoints.length;
           const fillCy = allPoints.reduce((s, p) => s + p.y, 0) / allPoints.length;
-          
+
           allPoints.sort((a, b) => {
             const angleA = Math.atan2(a.y - fillCy, a.x - fillCx);
             const angleB = Math.atan2(b.y - fillCy, b.x - fillCx);
             return angleA - angleB;
           });
-          
+
           ctx.fillStyle = fill.color || "#000000";
           ctx.beginPath();
           allPoints.forEach((p, i) => {
@@ -13974,92 +14008,94 @@ export function CADGabaritCanvas({
       // Fonction pour ajouter les métadonnées pHYs (DPI) au PNG
       const addPngDpiMetadata = async (dataUrl: string, dpi: number): Promise<string> => {
         // Convertir dataURL en ArrayBuffer
-        const base64 = dataUrl.split(',')[1];
+        const base64 = dataUrl.split(",")[1];
         const binary = atob(base64);
         const bytes = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) {
           bytes[i] = binary.charCodeAt(i);
         }
-        
+
         // Calculer pixels par mètre (DPI * 39.3701)
         const pixelsPerMeter = Math.round(dpi * 39.3701);
-        
+
         // Créer le chunk pHYs
         // Structure: [length (4)] [type "pHYs" (4)] [x pixels/unit (4)] [y pixels/unit (4)] [unit (1)] [CRC (4)]
         const pHYsData = new Uint8Array(21);
         const dataView = new DataView(pHYsData.buffer);
-        
+
         // Length = 9 (données seulement)
         dataView.setUint32(0, 9, false);
-        
+
         // Type = "pHYs"
         pHYsData[4] = 0x70; // p
         pHYsData[5] = 0x48; // H
         pHYsData[6] = 0x59; // Y
         pHYsData[7] = 0x73; // s
-        
+
         // X pixels per unit
         dataView.setUint32(8, pixelsPerMeter, false);
-        
+
         // Y pixels per unit
         dataView.setUint32(12, pixelsPerMeter, false);
-        
+
         // Unit = 1 (meter)
         pHYsData[16] = 1;
-        
+
         // Calculer CRC32 sur type + data
         const crcData = pHYsData.slice(4, 17);
-        let crc = 0xFFFFFFFF;
+        let crc = 0xffffffff;
         const crcTable: number[] = [];
         for (let n = 0; n < 256; n++) {
           let c = n;
           for (let k = 0; k < 8; k++) {
-            c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+            c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
           }
           crcTable[n] = c;
         }
         for (let i = 0; i < crcData.length; i++) {
-          crc = crcTable[(crc ^ crcData[i]) & 0xFF] ^ (crc >>> 8);
+          crc = crcTable[(crc ^ crcData[i]) & 0xff] ^ (crc >>> 8);
         }
-        crc = (crc ^ 0xFFFFFFFF) >>> 0;
+        crc = (crc ^ 0xffffffff) >>> 0;
         dataView.setUint32(17, crc, false);
-        
+
         // Trouver la position après IHDR (signature PNG = 8 bytes, IHDR = 25 bytes)
         // Le chunk pHYs doit être inséré après IHDR
         const insertPos = 33; // 8 (signature) + 25 (IHDR chunk complet)
-        
+
         // Créer le nouveau PNG avec pHYs inséré
         const newPng = new Uint8Array(bytes.length + 21);
         newPng.set(bytes.slice(0, insertPos), 0);
         newPng.set(pHYsData, insertPos);
         newPng.set(bytes.slice(insertPos), insertPos + 21);
-        
+
         // Convertir en blob et retourner l'URL
-        const blob = new Blob([newPng], { type: 'image/png' });
+        const blob = new Blob([newPng], { type: "image/png" });
         return URL.createObjectURL(blob);
       };
 
       // Ajouter les métadonnées DPI et télécharger
       const dataUrl = tempCanvas.toDataURL("image/png");
-      
-      addPngDpiMetadata(dataUrl, DPI).then((blobUrl) => {
-        const a = document.createElement("a");
-        a.href = blobUrl;
-        a.download = `gabarit-${templateId}${transparent ? "-transparent" : ""}-${widthMm.toFixed(0)}x${heightMm.toFixed(0)}mm.png`;
-        a.click();
-        URL.revokeObjectURL(blobUrl);
-        
-        toast.success(`PNG exporté à 300 DPI (${widthMm.toFixed(1)} × ${heightMm.toFixed(1)} mm)`);
-        setShowExportDialog(null);
-      }).catch(() => {
-        // Fallback si l'ajout des métadonnées échoue
-        const a = document.createElement("a");
-        a.href = dataUrl;
-        a.download = `gabarit-${templateId}${transparent ? "-transparent" : ""}.png`;
-        a.click();
-        toast.success(`PNG exporté${transparent ? " (fond transparent)" : ""} !`);
-        setShowExportDialog(null);
-      });
+
+      addPngDpiMetadata(dataUrl, DPI)
+        .then((blobUrl) => {
+          const a = document.createElement("a");
+          a.href = blobUrl;
+          a.download = `gabarit-${templateId}${transparent ? "-transparent" : ""}-${widthMm.toFixed(0)}x${heightMm.toFixed(0)}mm.png`;
+          a.click();
+          URL.revokeObjectURL(blobUrl);
+
+          toast.success(`PNG exporté à 300 DPI (${widthMm.toFixed(1)} × ${heightMm.toFixed(1)} mm)`);
+          setShowExportDialog(null);
+        })
+        .catch(() => {
+          // Fallback si l'ajout des métadonnées échoue
+          const a = document.createElement("a");
+          a.href = dataUrl;
+          a.download = `gabarit-${templateId}${transparent ? "-transparent" : ""}.png`;
+          a.click();
+          toast.success(`PNG exporté${transparent ? " (fond transparent)" : ""} !`);
+          setShowExportDialog(null);
+        });
     },
     [sketch, templateId],
   );
@@ -14255,11 +14291,11 @@ export function CADGabaritCanvas({
       if (sketch.shapeFills) {
         sketch.shapeFills.forEach((fill) => {
           if (!fill.geoIds || fill.geoIds.length === 0) return;
-          
+
           // Collecter tous les points qui forment cette forme
           const allPoints: { x: number; y: number }[] = [];
           const processedPoints = new Set<string>();
-          
+
           for (const geoId of fill.geoIds) {
             const geo = sketch.geometries.get(geoId);
             if (geo && geo.type === "line") {
@@ -14276,49 +14312,49 @@ export function CADGabaritCanvas({
               }
             }
           }
-          
+
           if (allPoints.length < 3) return;
-          
+
           // Vérifier si la forme intersecte la cellule
-          const fillMinX = Math.min(...allPoints.map(p => p.x));
-          const fillMaxX = Math.max(...allPoints.map(p => p.x));
-          const fillMinY = Math.min(...allPoints.map(p => p.y));
-          const fillMaxY = Math.max(...allPoints.map(p => p.y));
-          
+          const fillMinX = Math.min(...allPoints.map((p) => p.x));
+          const fillMaxX = Math.max(...allPoints.map((p) => p.x));
+          const fillMinY = Math.min(...allPoints.map((p) => p.y));
+          const fillMaxY = Math.max(...allPoints.map((p) => p.y));
+
           if (fillMaxX < exportMinX || fillMinX > exportMaxX || fillMaxY < exportMinY || fillMinY > exportMaxY) {
             return;
           }
-          
+
           // Trier les points pour former un polygone convexe (pour un rectangle)
           // Calculer le centre
           const fillCx = allPoints.reduce((s, p) => s + p.x, 0) / allPoints.length;
           const fillCy = allPoints.reduce((s, p) => s + p.y, 0) / allPoints.length;
-          
+
           // Trier par angle
           allPoints.sort((a, b) => {
             const angleA = Math.atan2(a.y - fillCy, a.x - fillCx);
             const angleB = Math.atan2(b.y - fillCy, b.x - fillCx);
             return angleA - angleB;
           });
-          
+
           // Convertir en coordonnées PDF
-          const pdfPoints = allPoints.map(p => toPage(p.x, p.y));
-          
+          const pdfPoints = allPoints.map((p) => toPage(p.x, p.y));
+
           // Définir la couleur de remplissage
           const fillColor = fill.color || "#000000";
           const fillR = parseInt(fillColor.slice(1, 3), 16);
           const fillG = parseInt(fillColor.slice(3, 5), 16);
           const fillB = parseInt(fillColor.slice(5, 7), 16);
-          
+
           doc.setFillColor(fillR, fillG, fillB);
-          
+
           // Dessiner le polygone rempli
           if (pdfPoints.length >= 3) {
             // Construire le path
-            const pathData: number[][] = pdfPoints.map(p => [p.x, p.y]);
-            
+            const pathData: number[][] = pdfPoints.map((p) => [p.x, p.y]);
+
             // Utiliser la méthode polygon de jsPDF
-            (doc as any).polygon(pathData, 'F'); // 'F' = Fill only
+            (doc as any).polygon(pathData, "F"); // 'F' = Fill only
           }
         });
       }
@@ -14551,10 +14587,10 @@ export function CADGabaritCanvas({
       if (sketch.shapeFills) {
         sketch.shapeFills.forEach((fill) => {
           if (!fill.geoIds || fill.geoIds.length === 0) return;
-          
+
           const allPoints: { x: number; y: number }[] = [];
           const processedPoints = new Set<string>();
-          
+
           for (const geoId of fill.geoIds) {
             const geo = sketch.geometries.get(geoId);
             if (geo && geo.type === "line") {
@@ -14571,39 +14607,39 @@ export function CADGabaritCanvas({
               }
             }
           }
-          
+
           if (allPoints.length < 3) return;
-          
-          const fillMinX = Math.min(...allPoints.map(p => p.x));
-          const fillMaxX = Math.max(...allPoints.map(p => p.x));
-          const fillMinY = Math.min(...allPoints.map(p => p.y));
-          const fillMaxY = Math.max(...allPoints.map(p => p.y));
-          
+
+          const fillMinX = Math.min(...allPoints.map((p) => p.x));
+          const fillMaxX = Math.max(...allPoints.map((p) => p.x));
+          const fillMinY = Math.min(...allPoints.map((p) => p.y));
+          const fillMaxY = Math.max(...allPoints.map((p) => p.y));
+
           if (fillMaxX < exportMinX || fillMinX > exportMaxX || fillMaxY < exportMinY || fillMinY > exportMaxY) {
             return;
           }
-          
+
           const fillCx = allPoints.reduce((s, p) => s + p.x, 0) / allPoints.length;
           const fillCy = allPoints.reduce((s, p) => s + p.y, 0) / allPoints.length;
-          
+
           allPoints.sort((a, b) => {
             const angleA = Math.atan2(a.y - fillCy, a.x - fillCx);
             const angleB = Math.atan2(b.y - fillCy, b.x - fillCx);
             return angleA - angleB;
           });
-          
-          const pdfPoints = allPoints.map(p => toPage(p.x, p.y));
-          
+
+          const pdfPoints = allPoints.map((p) => toPage(p.x, p.y));
+
           const fillColor = fill.color || "#000000";
           const fillR = parseInt(fillColor.slice(1, 3), 16);
           const fillG = parseInt(fillColor.slice(3, 5), 16);
           const fillB = parseInt(fillColor.slice(5, 7), 16);
-          
+
           doc.setFillColor(fillR, fillG, fillB);
-          
+
           if (pdfPoints.length >= 3) {
-            const pathData: number[][] = pdfPoints.map(p => [p.x, p.y]);
-            (doc as any).polygon(pathData, 'F');
+            const pathData: number[][] = pdfPoints.map((p) => [p.x, p.y]);
+            (doc as any).polygon(pathData, "F");
           }
         });
       }
@@ -14850,10 +14886,10 @@ export function CADGabaritCanvas({
       if (sketch.shapeFills) {
         sketch.shapeFills.forEach((fill) => {
           if (!fill.geoIds || fill.geoIds.length === 0) return;
-          
+
           const allPoints: { x: number; y: number }[] = [];
           const processedPoints = new Set<string>();
-          
+
           for (const geoId of fill.geoIds) {
             const geo = sketch.geometries.get(geoId);
             if (geo && geo.type === "line") {
@@ -14870,19 +14906,19 @@ export function CADGabaritCanvas({
               }
             }
           }
-          
+
           if (allPoints.length < 3) return;
-          
+
           // Trier les points pour former un polygone
           const fillCx = allPoints.reduce((s, p) => s + p.x, 0) / allPoints.length;
           const fillCy = allPoints.reduce((s, p) => s + p.y, 0) / allPoints.length;
-          
+
           allPoints.sort((a, b) => {
             const angleA = Math.atan2(a.y - fillCy, a.x - fillCx);
             const angleB = Math.atan2(b.y - fillCy, b.x - fillCx);
             return angleA - angleB;
           });
-          
+
           tempCtx.fillStyle = fill.color || "#000000";
           tempCtx.beginPath();
           allPoints.forEach((p, i) => {
@@ -15985,12 +16021,7 @@ export function CADGabaritCanvas({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 px-2"
-                  onClick={() => openArrayDialog()}
-                >
+                <Button variant="outline" size="sm" className="h-8 px-2" onClick={() => openArrayDialog()}>
                   <Grid3X3 className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
@@ -19194,24 +19225,21 @@ export function CADGabaritCanvas({
           {/* Contenu */}
           <div className="p-3 space-y-3">
             {/* Canvas de preview avec zone de crop */}
-            <div 
-              className="crop-canvas-container relative bg-gray-100 rounded overflow-hidden"
-              style={{ height: 280 }}
-            >
+            <div className="crop-canvas-container relative bg-gray-100 rounded overflow-hidden" style={{ height: 280 }}>
               <canvas
                 ref={(canvas) => {
                   if (!canvas || !selectedImageData) return;
                   const ctx = canvas.getContext("2d");
                   if (!ctx) return;
-                  
+
                   const sourceImage = selectedImageData.image;
                   const aspectRatio = sourceImage.width / sourceImage.height;
-                  
+
                   // Calculer la taille du canvas pour afficher l'image
                   const maxWidth = 376;
                   const maxHeight = 260;
                   let canvasWidth, canvasHeight;
-                  
+
                   if (aspectRatio > maxWidth / maxHeight) {
                     canvasWidth = maxWidth;
                     canvasHeight = maxWidth / aspectRatio;
@@ -19219,23 +19247,23 @@ export function CADGabaritCanvas({
                     canvasHeight = maxHeight;
                     canvasWidth = maxHeight * aspectRatio;
                   }
-                  
+
                   canvas.width = canvasWidth;
                   canvas.height = canvasHeight;
-                  
+
                   // Dessiner l'image avec overlay sombre
                   ctx.drawImage(sourceImage, 0, 0, canvasWidth, canvasHeight);
-                  
+
                   // Overlay sombre sur toute l'image
                   ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
                   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-                  
+
                   // Zone de crop (claire)
                   const cropX = (cropSelection.x / 100) * canvasWidth;
                   const cropY = (cropSelection.y / 100) * canvasHeight;
                   const cropW = (cropSelection.width / 100) * canvasWidth;
                   const cropH = (cropSelection.height / 100) * canvasHeight;
-                  
+
                   // Effacer la zone de crop pour montrer l'image originale
                   ctx.save();
                   ctx.beginPath();
@@ -19243,28 +19271,38 @@ export function CADGabaritCanvas({
                   ctx.clip();
                   ctx.drawImage(sourceImage, 0, 0, canvasWidth, canvasHeight);
                   ctx.restore();
-                  
+
                   // Bordure de la zone de crop
                   ctx.strokeStyle = "#22c55e";
                   ctx.lineWidth = 2;
                   ctx.setLineDash([]);
                   ctx.strokeRect(cropX, cropY, cropW, cropH);
-                  
+
                   // Poignées de redimensionnement
                   const handleSize = 8;
                   ctx.fillStyle = "#22c55e";
-                  
+
                   // Coins
-                  ctx.fillRect(cropX - handleSize/2, cropY - handleSize/2, handleSize, handleSize); // NW
-                  ctx.fillRect(cropX + cropW - handleSize/2, cropY - handleSize/2, handleSize, handleSize); // NE
-                  ctx.fillRect(cropX - handleSize/2, cropY + cropH - handleSize/2, handleSize, handleSize); // SW
-                  ctx.fillRect(cropX + cropW - handleSize/2, cropY + cropH - handleSize/2, handleSize, handleSize); // SE
-                  
+                  ctx.fillRect(cropX - handleSize / 2, cropY - handleSize / 2, handleSize, handleSize); // NW
+                  ctx.fillRect(cropX + cropW - handleSize / 2, cropY - handleSize / 2, handleSize, handleSize); // NE
+                  ctx.fillRect(cropX - handleSize / 2, cropY + cropH - handleSize / 2, handleSize, handleSize); // SW
+                  ctx.fillRect(cropX + cropW - handleSize / 2, cropY + cropH - handleSize / 2, handleSize, handleSize); // SE
+
                   // Milieux
-                  ctx.fillRect(cropX + cropW/2 - handleSize/2, cropY - handleSize/2, handleSize, handleSize); // N
-                  ctx.fillRect(cropX + cropW/2 - handleSize/2, cropY + cropH - handleSize/2, handleSize, handleSize); // S
-                  ctx.fillRect(cropX - handleSize/2, cropY + cropH/2 - handleSize/2, handleSize, handleSize); // W
-                  ctx.fillRect(cropX + cropW - handleSize/2, cropY + cropH/2 - handleSize/2, handleSize, handleSize); // E
+                  ctx.fillRect(cropX + cropW / 2 - handleSize / 2, cropY - handleSize / 2, handleSize, handleSize); // N
+                  ctx.fillRect(
+                    cropX + cropW / 2 - handleSize / 2,
+                    cropY + cropH - handleSize / 2,
+                    handleSize,
+                    handleSize,
+                  ); // S
+                  ctx.fillRect(cropX - handleSize / 2, cropY + cropH / 2 - handleSize / 2, handleSize, handleSize); // W
+                  ctx.fillRect(
+                    cropX + cropW - handleSize / 2,
+                    cropY + cropH / 2 - handleSize / 2,
+                    handleSize,
+                    handleSize,
+                  ); // E
                 }}
                 onMouseDown={(e) => {
                   const canvas = e.currentTarget;
@@ -19273,31 +19311,38 @@ export function CADGabaritCanvas({
                   const y = e.clientY - rect.top;
                   const canvasWidth = canvas.width;
                   const canvasHeight = canvas.height;
-                  
+
                   // Convertir en coordonnées de crop (%)
                   const cropX = (cropSelection.x / 100) * canvasWidth;
                   const cropY = (cropSelection.y / 100) * canvasHeight;
                   const cropW = (cropSelection.width / 100) * canvasWidth;
                   const cropH = (cropSelection.height / 100) * canvasHeight;
-                  
+
                   const handleSize = 12;
-                  
+
                   // Déterminer quelle partie est cliquée
                   let handle: typeof cropDragging = null;
-                  
+
                   // Coins
                   if (Math.abs(x - cropX) < handleSize && Math.abs(y - cropY) < handleSize) handle = "nw";
-                  else if (Math.abs(x - (cropX + cropW)) < handleSize && Math.abs(y - cropY) < handleSize) handle = "ne";
-                  else if (Math.abs(x - cropX) < handleSize && Math.abs(y - (cropY + cropH)) < handleSize) handle = "sw";
-                  else if (Math.abs(x - (cropX + cropW)) < handleSize && Math.abs(y - (cropY + cropH)) < handleSize) handle = "se";
+                  else if (Math.abs(x - (cropX + cropW)) < handleSize && Math.abs(y - cropY) < handleSize)
+                    handle = "ne";
+                  else if (Math.abs(x - cropX) < handleSize && Math.abs(y - (cropY + cropH)) < handleSize)
+                    handle = "sw";
+                  else if (Math.abs(x - (cropX + cropW)) < handleSize && Math.abs(y - (cropY + cropH)) < handleSize)
+                    handle = "se";
                   // Milieux
-                  else if (Math.abs(x - (cropX + cropW/2)) < handleSize && Math.abs(y - cropY) < handleSize) handle = "n";
-                  else if (Math.abs(x - (cropX + cropW/2)) < handleSize && Math.abs(y - (cropY + cropH)) < handleSize) handle = "s";
-                  else if (Math.abs(x - cropX) < handleSize && Math.abs(y - (cropY + cropH/2)) < handleSize) handle = "w";
-                  else if (Math.abs(x - (cropX + cropW)) < handleSize && Math.abs(y - (cropY + cropH/2)) < handleSize) handle = "e";
+                  else if (Math.abs(x - (cropX + cropW / 2)) < handleSize && Math.abs(y - cropY) < handleSize)
+                    handle = "n";
+                  else if (Math.abs(x - (cropX + cropW / 2)) < handleSize && Math.abs(y - (cropY + cropH)) < handleSize)
+                    handle = "s";
+                  else if (Math.abs(x - cropX) < handleSize && Math.abs(y - (cropY + cropH / 2)) < handleSize)
+                    handle = "w";
+                  else if (Math.abs(x - (cropX + cropW)) < handleSize && Math.abs(y - (cropY + cropH / 2)) < handleSize)
+                    handle = "e";
                   // Déplacement
                   else if (x >= cropX && x <= cropX + cropW && y >= cropY && y <= cropY + cropH) handle = "move";
-                  
+
                   if (handle) {
                     setCropDragging(handle);
                     setCropDragStart({ x, y, crop: { ...cropSelection } });
@@ -19305,37 +19350,49 @@ export function CADGabaritCanvas({
                 }}
                 onMouseMove={(e) => {
                   if (!cropDragging) return;
-                  
+
                   const canvas = e.currentTarget;
                   const rect = canvas.getBoundingClientRect();
                   const x = e.clientX - rect.left;
                   const y = e.clientY - rect.top;
                   const canvasWidth = canvas.width;
                   const canvasHeight = canvas.height;
-                  
+
                   const dx = ((x - cropDragStart.x) / canvasWidth) * 100;
                   const dy = ((y - cropDragStart.y) / canvasHeight) * 100;
-                  
+
                   let newCrop = { ...cropDragStart.crop };
-                  
+
                   switch (cropDragging) {
                     case "move":
                       newCrop.x = Math.max(0, Math.min(100 - newCrop.width, cropDragStart.crop.x + dx));
                       newCrop.y = Math.max(0, Math.min(100 - newCrop.height, cropDragStart.crop.y + dy));
                       break;
                     case "nw":
-                      newCrop.x = Math.max(0, Math.min(cropDragStart.crop.x + cropDragStart.crop.width - 5, cropDragStart.crop.x + dx));
-                      newCrop.y = Math.max(0, Math.min(cropDragStart.crop.y + cropDragStart.crop.height - 5, cropDragStart.crop.y + dy));
+                      newCrop.x = Math.max(
+                        0,
+                        Math.min(cropDragStart.crop.x + cropDragStart.crop.width - 5, cropDragStart.crop.x + dx),
+                      );
+                      newCrop.y = Math.max(
+                        0,
+                        Math.min(cropDragStart.crop.y + cropDragStart.crop.height - 5, cropDragStart.crop.y + dy),
+                      );
                       newCrop.width = cropDragStart.crop.width - (newCrop.x - cropDragStart.crop.x);
                       newCrop.height = cropDragStart.crop.height - (newCrop.y - cropDragStart.crop.y);
                       break;
                     case "ne":
-                      newCrop.y = Math.max(0, Math.min(cropDragStart.crop.y + cropDragStart.crop.height - 5, cropDragStart.crop.y + dy));
+                      newCrop.y = Math.max(
+                        0,
+                        Math.min(cropDragStart.crop.y + cropDragStart.crop.height - 5, cropDragStart.crop.y + dy),
+                      );
                       newCrop.width = Math.max(5, Math.min(100 - newCrop.x, cropDragStart.crop.width + dx));
                       newCrop.height = cropDragStart.crop.height - (newCrop.y - cropDragStart.crop.y);
                       break;
                     case "sw":
-                      newCrop.x = Math.max(0, Math.min(cropDragStart.crop.x + cropDragStart.crop.width - 5, cropDragStart.crop.x + dx));
+                      newCrop.x = Math.max(
+                        0,
+                        Math.min(cropDragStart.crop.x + cropDragStart.crop.width - 5, cropDragStart.crop.x + dx),
+                      );
                       newCrop.width = cropDragStart.crop.width - (newCrop.x - cropDragStart.crop.x);
                       newCrop.height = Math.max(5, Math.min(100 - newCrop.y, cropDragStart.crop.height + dy));
                       break;
@@ -19344,21 +19401,27 @@ export function CADGabaritCanvas({
                       newCrop.height = Math.max(5, Math.min(100 - newCrop.y, cropDragStart.crop.height + dy));
                       break;
                     case "n":
-                      newCrop.y = Math.max(0, Math.min(cropDragStart.crop.y + cropDragStart.crop.height - 5, cropDragStart.crop.y + dy));
+                      newCrop.y = Math.max(
+                        0,
+                        Math.min(cropDragStart.crop.y + cropDragStart.crop.height - 5, cropDragStart.crop.y + dy),
+                      );
                       newCrop.height = cropDragStart.crop.height - (newCrop.y - cropDragStart.crop.y);
                       break;
                     case "s":
                       newCrop.height = Math.max(5, Math.min(100 - newCrop.y, cropDragStart.crop.height + dy));
                       break;
                     case "w":
-                      newCrop.x = Math.max(0, Math.min(cropDragStart.crop.x + cropDragStart.crop.width - 5, cropDragStart.crop.x + dx));
+                      newCrop.x = Math.max(
+                        0,
+                        Math.min(cropDragStart.crop.x + cropDragStart.crop.width - 5, cropDragStart.crop.x + dx),
+                      );
                       newCrop.width = cropDragStart.crop.width - (newCrop.x - cropDragStart.crop.x);
                       break;
                     case "e":
                       newCrop.width = Math.max(5, Math.min(100 - newCrop.x, cropDragStart.crop.width + dx));
                       break;
                   }
-                  
+
                   setCropSelection(newCrop);
                 }}
                 onMouseUp={() => setCropDragging(null)}
@@ -19366,7 +19429,7 @@ export function CADGabaritCanvas({
                 style={{ display: "block", margin: "auto", cursor: cropDragging ? "grabbing" : "crosshair" }}
               />
             </div>
-            
+
             {/* Valeurs numériques */}
             <div className="grid grid-cols-4 gap-2 text-xs">
               <div>
@@ -19430,7 +19493,7 @@ export function CADGabaritCanvas({
                 />
               </div>
             </div>
-            
+
             {/* Boutons d'action */}
             <div className="flex gap-2">
               <Button
@@ -19442,20 +19505,11 @@ export function CADGabaritCanvas({
                 <Maximize2 className="h-3 w-3 mr-1" />
                 100%
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1 h-8 text-xs"
-                onClick={resetCrop}
-              >
+              <Button variant="outline" size="sm" className="flex-1 h-8 text-xs" onClick={resetCrop}>
                 <RotateCw className="h-3 w-3 mr-1" />
                 Reset
               </Button>
-              <Button
-                size="sm"
-                className="flex-1 h-8 text-xs bg-green-600 hover:bg-green-700"
-                onClick={applyCrop}
-              >
+              <Button size="sm" className="flex-1 h-8 text-xs bg-green-600 hover:bg-green-700" onClick={applyCrop}>
                 <Check className="h-3 w-3 mr-1" />
                 Appliquer
               </Button>
@@ -19964,15 +20018,15 @@ export function CADGabaritCanvas({
                     onKeyDown={(e) => e.stopPropagation()}
                   />
                 </div>
-                
+
                 {/* Direction */}
                 <div className="space-y-1">
                   <Label className="text-xs">Direction :</Label>
                   <div className="flex gap-1 bg-gray-100 p-1 rounded">
                     <button
                       className={`flex-1 text-xs py-1.5 px-2 rounded transition-colors ${
-                        (arrayDialog.linearDirection ?? "x") === "x" 
-                          ? "bg-white shadow text-purple-600 font-medium" 
+                        (arrayDialog.linearDirection ?? "x") === "x"
+                          ? "bg-white shadow text-purple-600 font-medium"
                           : "text-gray-500 hover:text-gray-700"
                       }`}
                       onClick={() => setArrayDialog({ ...arrayDialog, linearDirection: "x" })}
@@ -19981,8 +20035,8 @@ export function CADGabaritCanvas({
                     </button>
                     <button
                       className={`flex-1 text-xs py-1.5 px-2 rounded transition-colors ${
-                        (arrayDialog.linearDirection ?? "x") === "y" 
-                          ? "bg-white shadow text-purple-600 font-medium" 
+                        (arrayDialog.linearDirection ?? "x") === "y"
+                          ? "bg-white shadow text-purple-600 font-medium"
                           : "text-gray-500 hover:text-gray-700"
                       }`}
                       onClick={() => setArrayDialog({ ...arrayDialog, linearDirection: "y" })}
@@ -19991,8 +20045,8 @@ export function CADGabaritCanvas({
                     </button>
                     <button
                       className={`flex-1 text-xs py-1.5 px-2 rounded transition-colors ${
-                        (arrayDialog.linearDirection ?? "x") === "custom" 
-                          ? "bg-white shadow text-purple-600 font-medium" 
+                        (arrayDialog.linearDirection ?? "x") === "custom"
+                          ? "bg-white shadow text-purple-600 font-medium"
                           : "text-gray-500 hover:text-gray-700"
                       }`}
                       onClick={() => setArrayDialog({ ...arrayDialog, linearDirection: "custom" })}
@@ -20001,7 +20055,7 @@ export function CADGabaritCanvas({
                     </button>
                   </div>
                 </div>
-                
+
                 {/* Angle personnalisé */}
                 {(arrayDialog.linearDirection ?? "x") === "custom" && (
                   <div className="flex items-center gap-2">
@@ -20010,20 +20064,22 @@ export function CADGabaritCanvas({
                       type="text"
                       inputMode="decimal"
                       value={arrayDialog.linearAngle ?? "0"}
-                      onChange={(e) => setArrayDialog({ ...arrayDialog, linearAngle: e.target.value.replace(/[^0-9.,\-]/g, "") })}
+                      onChange={(e) =>
+                        setArrayDialog({ ...arrayDialog, linearAngle: e.target.value.replace(/[^0-9.,\-]/g, "") })
+                      }
                       className="h-7 flex-1 text-xs"
                       onKeyDown={(e) => e.stopPropagation()}
                     />
                     <span className="text-xs text-gray-500">°</span>
                   </div>
                 )}
-                
+
                 {/* Toggle espacement / distance */}
                 <div className="flex gap-1 bg-gray-100 p-1 rounded">
                   <button
                     className={`flex-1 text-xs py-1 px-2 rounded transition-colors ${
-                      (arrayDialog.linearSpacingMode ?? "spacing") === "spacing" 
-                        ? "bg-white shadow text-purple-600 font-medium" 
+                      (arrayDialog.linearSpacingMode ?? "spacing") === "spacing"
+                        ? "bg-white shadow text-purple-600 font-medium"
                         : "text-gray-500 hover:text-gray-700"
                     }`}
                     onClick={() => setArrayDialog({ ...arrayDialog, linearSpacingMode: "spacing" })}
@@ -20032,8 +20088,8 @@ export function CADGabaritCanvas({
                   </button>
                   <button
                     className={`flex-1 text-xs py-1 px-2 rounded transition-colors ${
-                      (arrayDialog.linearSpacingMode ?? "spacing") === "distance" 
-                        ? "bg-white shadow text-purple-600 font-medium" 
+                      (arrayDialog.linearSpacingMode ?? "spacing") === "distance"
+                        ? "bg-white shadow text-purple-600 font-medium"
                         : "text-gray-500 hover:text-gray-700"
                     }`}
                     onClick={() => setArrayDialog({ ...arrayDialog, linearSpacingMode: "distance" })}
@@ -20041,7 +20097,7 @@ export function CADGabaritCanvas({
                     Distance totale
                   </button>
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                   <Label className="text-xs w-20">
                     {(arrayDialog.linearSpacingMode ?? "spacing") === "spacing" ? "Espacement :" : "Distance :"}
@@ -20050,23 +20106,35 @@ export function CADGabaritCanvas({
                     type="text"
                     inputMode="decimal"
                     value={arrayDialog.linearSpacing ?? "50"}
-                    onChange={(e) => setArrayDialog({ ...arrayDialog, linearSpacing: e.target.value.replace(/[^0-9.,\-]/g, "") })}
+                    onChange={(e) =>
+                      setArrayDialog({ ...arrayDialog, linearSpacing: e.target.value.replace(/[^0-9.,\-]/g, "") })
+                    }
                     className="h-7 flex-1 text-xs"
                     onKeyDown={(e) => e.stopPropagation()}
                   />
                   <span className="text-xs text-gray-500">mm</span>
                 </div>
-                
+
                 {/* Info calculée */}
                 {(arrayDialog.linearSpacingMode ?? "spacing") === "distance" && (arrayDialog.linearCount ?? 3) > 1 && (
                   <div className="text-xs text-gray-500 text-center bg-gray-50 py-1 rounded">
-                    Espacement réel : {((parseFloat(String(arrayDialog.linearSpacing ?? "50").replace(",", ".")) || 0) / ((arrayDialog.linearCount ?? 3) - 1)).toFixed(1)} mm
+                    Espacement réel :{" "}
+                    {(
+                      (parseFloat(String(arrayDialog.linearSpacing ?? "50").replace(",", ".")) || 0) /
+                      ((arrayDialog.linearCount ?? 3) - 1)
+                    ).toFixed(1)}{" "}
+                    mm
                   </div>
                 )}
-                
+
                 {(arrayDialog.linearSpacingMode ?? "spacing") === "spacing" && (arrayDialog.linearCount ?? 3) > 1 && (
                   <div className="text-xs text-gray-500 text-center bg-gray-50 py-1 rounded">
-                    Distance totale : {((parseFloat(String(arrayDialog.linearSpacing ?? "50").replace(",", ".")) || 0) * ((arrayDialog.linearCount ?? 3) - 1)).toFixed(1)} mm
+                    Distance totale :{" "}
+                    {(
+                      (parseFloat(String(arrayDialog.linearSpacing ?? "50").replace(",", ".")) || 0) *
+                      ((arrayDialog.linearCount ?? 3) - 1)
+                    ).toFixed(1)}{" "}
+                    mm
                   </div>
                 )}
               </>
@@ -20112,19 +20180,23 @@ export function CADGabaritCanvas({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Label className="text-xs w-20">{arrayDialog.spacingModeX === "spacing" ? "Esp. X :" : "Dist. X :"}</Label>
+                    <Label className="text-xs w-20">
+                      {arrayDialog.spacingModeX === "spacing" ? "Esp. X :" : "Dist. X :"}
+                    </Label>
                     <Input
                       type="text"
                       inputMode="decimal"
                       value={arrayDialog.spacingX}
-                      onChange={(e) => setArrayDialog({ ...arrayDialog, spacingX: e.target.value.replace(/[^0-9.,\-]/g, "") })}
+                      onChange={(e) =>
+                        setArrayDialog({ ...arrayDialog, spacingX: e.target.value.replace(/[^0-9.,\-]/g, "") })
+                      }
                       className="h-7 flex-1 text-xs"
                       onKeyDown={(e) => e.stopPropagation()}
                     />
                     <span className="text-xs text-gray-500">mm</span>
                   </div>
                 </div>
-                
+
                 {/* Lignes (Y) */}
                 <div className="space-y-2 p-2 bg-gray-50 rounded">
                   <div className="flex items-center gap-2">
@@ -20163,19 +20235,23 @@ export function CADGabaritCanvas({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Label className="text-xs w-20">{arrayDialog.spacingModeY === "spacing" ? "Esp. Y :" : "Dist. Y :"}</Label>
+                    <Label className="text-xs w-20">
+                      {arrayDialog.spacingModeY === "spacing" ? "Esp. Y :" : "Dist. Y :"}
+                    </Label>
                     <Input
                       type="text"
                       inputMode="decimal"
                       value={arrayDialog.spacingY}
-                      onChange={(e) => setArrayDialog({ ...arrayDialog, spacingY: e.target.value.replace(/[^0-9.,\-]/g, "") })}
+                      onChange={(e) =>
+                        setArrayDialog({ ...arrayDialog, spacingY: e.target.value.replace(/[^0-9.,\-]/g, "") })
+                      }
                       className="h-7 flex-1 text-xs"
                       onKeyDown={(e) => e.stopPropagation()}
                     />
                     <span className="text-xs text-gray-500">mm</span>
                   </div>
                 </div>
-                
+
                 <div className="text-xs text-gray-500 text-center bg-purple-50 py-1 rounded">
                   Total: {arrayDialog.countX * arrayDialog.countY} éléments
                 </div>
@@ -20207,14 +20283,20 @@ export function CADGabaritCanvas({
                     type="text"
                     inputMode="decimal"
                     value={arrayDialog.circularAngle}
-                    onChange={(e) => setArrayDialog({ ...arrayDialog, circularAngle: e.target.value.replace(/[^0-9.,\-]/g, "") })}
+                    onChange={(e) =>
+                      setArrayDialog({ ...arrayDialog, circularAngle: e.target.value.replace(/[^0-9.,\-]/g, "") })
+                    }
                     className="h-7 flex-1 text-xs"
                     onKeyDown={(e) => e.stopPropagation()}
                   />
                   <span className="text-xs text-gray-500">°</span>
                 </div>
                 <div className="text-xs text-gray-500 bg-gray-50 py-1 px-2 rounded">
-                  Pas angulaire: {((parseFloat(String(arrayDialog.circularAngle).replace(",", ".")) || 360) / arrayDialog.circularCount).toFixed(1)}°
+                  Pas angulaire:{" "}
+                  {(
+                    (parseFloat(String(arrayDialog.circularAngle).replace(",", ".")) || 360) / arrayDialog.circularCount
+                  ).toFixed(1)}
+                  °
                 </div>
                 {arrayDialog.circularCenter && (
                   <div className="text-xs text-gray-400">
@@ -20231,48 +20313,52 @@ export function CADGabaritCanvas({
                   <div className="text-xs text-purple-700 font-medium flex items-center gap-1">
                     🏁 Mire de calibrage
                   </div>
-                  <div className="text-[10px] text-purple-600 mt-1">
-                    Crée un damier pour la calibration photo
-                  </div>
+                  <div className="text-[10px] text-purple-600 mt-1">Crée un damier pour la calibration photo</div>
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                   <Label className="text-xs w-24">Cases en X :</Label>
                   <Input
                     type="text"
                     inputMode="numeric"
                     value={arrayDialog.checkerCountX ?? "8"}
-                    onChange={(e) => setArrayDialog({ ...arrayDialog, checkerCountX: e.target.value.replace(/[^0-9]/g, "") })}
+                    onChange={(e) =>
+                      setArrayDialog({ ...arrayDialog, checkerCountX: e.target.value.replace(/[^0-9]/g, "") })
+                    }
                     className="h-7 flex-1 text-xs"
                     onKeyDown={(e) => e.stopPropagation()}
                   />
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                   <Label className="text-xs w-24">Cases en Y :</Label>
                   <Input
                     type="text"
                     inputMode="numeric"
                     value={arrayDialog.checkerCountY ?? "6"}
-                    onChange={(e) => setArrayDialog({ ...arrayDialog, checkerCountY: e.target.value.replace(/[^0-9]/g, "") })}
+                    onChange={(e) =>
+                      setArrayDialog({ ...arrayDialog, checkerCountY: e.target.value.replace(/[^0-9]/g, "") })
+                    }
                     className="h-7 flex-1 text-xs"
                     onKeyDown={(e) => e.stopPropagation()}
                   />
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                   <Label className="text-xs w-24">Taille case :</Label>
                   <Input
                     type="text"
                     inputMode="decimal"
                     value={arrayDialog.checkerSize ?? "20"}
-                    onChange={(e) => setArrayDialog({ ...arrayDialog, checkerSize: e.target.value.replace(/[^0-9.,]/g, "") })}
+                    onChange={(e) =>
+                      setArrayDialog({ ...arrayDialog, checkerSize: e.target.value.replace(/[^0-9.,]/g, "") })
+                    }
                     className="h-7 flex-1 text-xs"
                     onKeyDown={(e) => e.stopPropagation()}
                   />
                   <span className="text-xs text-gray-500">mm</span>
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                   <Label className="text-xs w-24">Couleur :</Label>
                   <input
@@ -20283,15 +20369,27 @@ export function CADGabaritCanvas({
                   />
                   <span className="text-xs text-gray-500 flex-1">{arrayDialog.checkerColor ?? "#000000"}</span>
                 </div>
-                
+
                 {/* Dimensions totales calculées */}
                 <div className="bg-gray-50 rounded p-2 space-y-1">
                   <div className="text-xs text-gray-600 font-medium">Dimensions totales :</div>
                   <div className="text-xs text-gray-500">
-                    {((parseInt(String(arrayDialog.checkerCountX ?? "8")) || 8) * (parseFloat(String(arrayDialog.checkerSize ?? "20").replace(",", ".")) || 20)).toFixed(1)} × {((parseInt(String(arrayDialog.checkerCountY ?? "6")) || 6) * (parseFloat(String(arrayDialog.checkerSize ?? "20").replace(",", ".")) || 20)).toFixed(1)} mm
+                    {(
+                      (parseInt(String(arrayDialog.checkerCountX ?? "8")) || 8) *
+                      (parseFloat(String(arrayDialog.checkerSize ?? "20").replace(",", ".")) || 20)
+                    ).toFixed(1)}{" "}
+                    ×{" "}
+                    {(
+                      (parseInt(String(arrayDialog.checkerCountY ?? "6")) || 6) *
+                      (parseFloat(String(arrayDialog.checkerSize ?? "20").replace(",", ".")) || 20)
+                    ).toFixed(1)}{" "}
+                    mm
                   </div>
                   <div className="text-xs text-gray-400">
-                    Points intérieurs: {Math.max(0, (parseInt(String(arrayDialog.checkerCountX ?? "8")) || 8) - 1)} × {Math.max(0, (parseInt(String(arrayDialog.checkerCountY ?? "6")) || 6) - 1)} = {Math.max(0, (parseInt(String(arrayDialog.checkerCountX ?? "8")) || 8) - 1) * Math.max(0, (parseInt(String(arrayDialog.checkerCountY ?? "6")) || 6) - 1)}
+                    Points intérieurs: {Math.max(0, (parseInt(String(arrayDialog.checkerCountX ?? "8")) || 8) - 1)} ×{" "}
+                    {Math.max(0, (parseInt(String(arrayDialog.checkerCountY ?? "6")) || 6) - 1)} ={" "}
+                    {Math.max(0, (parseInt(String(arrayDialog.checkerCountX ?? "8")) || 8) - 1) *
+                      Math.max(0, (parseInt(String(arrayDialog.checkerCountY ?? "6")) || 6) - 1)}
                   </div>
                 </div>
               </>
@@ -20309,7 +20407,7 @@ export function CADGabaritCanvas({
                 Inclure l'original dans le compte
               </label>
             )}
-            
+
             {/* Option: créer les intersections */}
             <label className="flex items-center gap-2 text-xs cursor-pointer">
               <input
