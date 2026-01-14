@@ -12914,7 +12914,7 @@ export function CADGabaritCanvas({
         setFillOpacity(existingFill.opacity);
         setFillType(existingFill.fillType);
         setHatchPattern(existingFill.hatchPattern || "lines");
-        setHatchAngle(existingFill.hatchAngle || 45);
+        setHatchAngle(existingFill.hatchAngle ?? 45);
         setHatchSpacing(existingFill.hatchSpacing || 5);
       } else {
         // Valeurs par défaut

@@ -3663,7 +3663,7 @@ export class CADRenderer {
               matchingShape.path,
               fill.color,
               fill.hatchPattern || "lines",
-              fill.hatchAngle || 45,
+              fill.hatchAngle ?? 45,
               (fill.hatchSpacing || 5) * (sketch.scaleFactor || 1),
             );
           }
