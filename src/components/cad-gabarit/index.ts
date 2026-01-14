@@ -123,4 +123,4 @@ export {
 export { ToolbarEditor } from "./ToolbarEditor";
 export { ToolbarRenderer, ToolbarGroupBadge } from "./ToolbarRenderer";
 export { useToolbarConfig } from "./useToolbarConfig";
-export type { UseToolbarConfigReturn, ResolvedToolbarItem, ResolvedTool, OldToolbarConfig } from "./useToolbarConfig";
+export type { UseToolbarConfigReturn, ResolvedToolbarItem, ResolvedTool, ResolvedLine } from "./useToolbarConfig";

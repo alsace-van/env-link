@@ -94,8 +94,7 @@ export function useToolbarVisibility() {
   const {
     config,
     toolDefinitions,
-    line1Tools,
-    line2Tools,
+    resolvedLines,
     isEditorOpen,
     setEditorOpen,
     updateConfig,
@@ -156,8 +155,7 @@ export function useToolbarVisibility() {
   return {
     config,
     toolDefinitions,
-    line1Tools,
-    line2Tools,
+    resolvedLines,
     isEditorOpen,
     setEditorOpen,
     updateConfig,
