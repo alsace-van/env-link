@@ -694,10 +694,13 @@ export function CADGabaritCanvas({
   }, [isToolVisible]);
 
   // Fonction de compatibilité - ne fait plus rien car géré par le nouveau système
-  const toggleToolbarItem = useCallback((line: "line1" | "line2", item: string) => {
-    // Ouvrir l'éditeur de toolbar à la place
-    setToolbarEditorOpen(true);
-  }, [setToolbarEditorOpen]);
+  const toggleToolbarItem = useCallback(
+    (line: "line1" | "line2", item: string) => {
+      // Ouvrir l'éditeur de toolbar à la place
+      setToolbarEditorOpen(true);
+    },
+    [setToolbarEditorOpen],
+  );
 
   const [adjustmentsPanelPos, setAdjustmentsPanelPos] = useState({ x: 100, y: 100 });
   const [adjustmentsPanelDragging, setAdjustmentsPanelDragging] = useState(false);
@@ -14358,12 +14361,7 @@ export function CADGabaritCanvas({
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-9 w-9 p-0"
-                onClick={() => setToolbarEditorOpen(true)}
-              >
+              <Button variant="ghost" size="sm" className="h-9 w-9 p-0" onClick={() => setToolbarEditorOpen(true)}>
                 <Settings className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
@@ -15738,7 +15736,6 @@ export function CADGabaritCanvas({
             <span className="text-xs text-blue-500 w-6">{Math.round(highlightOpacity * 100)}%</span>
           </div>
         </div>
-
       </div>
 
       {/* Zone principale avec Canvas + Panneau latéral */}
@@ -20682,5 +20679,3 @@ function exportToSVG(sketch: Sketch): string {
 }
 
 export default CADGabaritCanvas;
-
-Claude
