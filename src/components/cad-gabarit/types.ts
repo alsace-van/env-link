@@ -1,7 +1,7 @@
 // ============================================
 // TYPES: CAD Gabarit Types
 // Types pour le système CAO
-// VERSION: 3.2 - Ajout ShapeFill et HatchPattern pour remplissages
+// VERSION: 3.3 - Ajout src et rotation pour BackgroundImage
 // ============================================
 
 // === GÉOMÉTRIE DE BASE ===
@@ -538,13 +538,16 @@ export interface ImageMarkerLink {
   color: string;
 }
 
+// VERSION 3.3: Ajout de src et rotation
 export interface BackgroundImage {
   id: string;
   name: string; // Nom du fichier ou label
+  src?: string; // URL source de l'image (data URL ou URL externe)
   image: HTMLImageElement;
   x: number; // Position X en coordonnées monde (centre de l'image)
   y: number; // Position Y en coordonnées monde (centre de l'image)
   scale: number; // Échelle individuelle (1 = taille originale)
+  rotation?: number; // Rotation de l'image en degrés (défaut: 0)
   opacity: number; // Opacité (0-1)
   visible: boolean;
   locked: boolean; // Si verrouillé, ne peut pas être déplacé
