@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.11 - Fix: bouton reset rotation toujours visible + raccourcis ignorés dans inputs
+// VERSION: 7.12 - Mode édition inline de la toolbar avec drag & drop + menus contextuels
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -98,6 +98,7 @@ import {
   MoreVertical,
   Crop,
   Maximize2,
+  GripVertical,
 } from "lucide-react";
 
 import {
@@ -176,6 +177,7 @@ import { TemplateLibrary } from "./TemplateLibrary";
 // Système de toolbar configurable (drag & drop)
 import { useToolbarConfig } from "./useToolbarConfig";
 import { ToolbarEditor } from "./ToolbarEditor";
+import { InlineToolbarEditor, EditModeButton, HiddenToolsZone } from "./InlineToolbarEditor";
 
 interface CADGabaritCanvasProps {
   imageUrl?: string;
@@ -688,7 +690,7 @@ export function CADGabaritCanvas({
   const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
 
   // ============================================
-  // NOUVEAU SYSTÈME DE TOOLBAR CONFIGURABLE (v7.10)
+  // NOUVEAU SYSTÈME DE TOOLBAR CONFIGURABLE (v7.11)
   // Remplace l'ancien système de booléens par drag & drop
   // ============================================
   const {
@@ -699,6 +701,9 @@ export function CADGabaritCanvas({
     updateConfig: updateToolbarConfig,
     isToolVisible,
   } = useToolbarConfig();
+
+  // Mode édition inline de la toolbar (drag & drop direct)
+  const [toolbarEditMode, setToolbarEditMode] = useState(false);
 
   // Compatibilité avec l'ancien code - convertir la nouvelle config vers l'ancien format
   const toolbarConfig = useMemo(() => {
@@ -15183,6 +15188,252 @@ export function CADGabaritCanvas({
     </TooltipProvider>
   );
 
+  // ============================================
+  // WRAPPER DE GROUPE POUR MODE ÉDITION (v7.12)
+  // Ajoute drag & drop + menu contextuel aux groupes
+  // ============================================
+
+  // État pour le drag des groupes
+  const [draggedGroupId, setDraggedGroupId] = useState<string | null>(null);
+  const [dropTargetGroupId, setDropTargetGroupId] = useState<string | null>(null);
+
+  // Gestionnaires de drag pour les groupes
+  const handleGroupDragStart = useCallback(
+    (e: React.DragEvent, groupId: string) => {
+      if (!toolbarEditMode) return;
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", groupId);
+      setDraggedGroupId(groupId);
+    },
+    [toolbarEditMode],
+  );
+
+  const handleGroupDragOver = useCallback(
+    (e: React.DragEvent, targetGroupId: string) => {
+      if (!toolbarEditMode || !draggedGroupId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setDropTargetGroupId(targetGroupId);
+    },
+    [toolbarEditMode, draggedGroupId],
+  );
+
+  const handleGroupDragLeave = useCallback(() => {
+    setDropTargetGroupId(null);
+  }, []);
+
+  const handleGroupDragEnd = useCallback(() => {
+    setDraggedGroupId(null);
+    setDropTargetGroupId(null);
+  }, []);
+
+  const handleGroupDrop = useCallback(
+    (e: React.DragEvent, targetGroupId: string, lineIndex: number) => {
+      e.preventDefault();
+      const sourceGroupId = e.dataTransfer.getData("text/plain");
+      if (!sourceGroupId || sourceGroupId === targetGroupId) {
+        handleGroupDragEnd();
+        return;
+      }
+
+      // Réorganiser les groupes dans la config
+      updateToolbarConfig(
+        (() => {
+          const newConfig = JSON.parse(JSON.stringify(newToolbarConfig));
+          const line = newConfig.lines[lineIndex];
+          if (!line) return newConfig;
+
+          const sourceIdx = line.items.findIndex((item: any) => item.id === sourceGroupId);
+          const targetIdx = line.items.findIndex((item: any) => item.id === targetGroupId);
+
+          if (sourceIdx === -1 || targetIdx === -1) return newConfig;
+
+          // Déplacer l'élément
+          const [movedItem] = line.items.splice(sourceIdx, 1);
+          line.items.splice(targetIdx, 0, movedItem);
+
+          return newConfig;
+        })(),
+      );
+
+      handleGroupDragEnd();
+      toast.success("Groupe déplacé");
+    },
+    [newToolbarConfig, updateToolbarConfig, handleGroupDragEnd],
+  );
+
+  // Composant wrapper pour les groupes en mode édition
+  const ToolbarGroupWrapper = useCallback(
+    ({
+      groupId,
+      groupName,
+      groupColor = "#3B82F6",
+      lineIndex,
+      children,
+    }: {
+      groupId: string;
+      groupName: string;
+      groupColor?: string;
+      lineIndex: number;
+      children: React.ReactNode;
+    }) => {
+      const isDragging = draggedGroupId === groupId;
+      const isDropTarget = dropTargetGroupId === groupId;
+
+      // Trouver le groupe dans la config
+      const group = newToolbarConfig.groups.find((g) => g.id === groupId);
+
+      return (
+        <div
+          className={`
+          relative flex items-center gap-1 bg-white rounded-md p-1 shadow-sm transition-all
+          ${isDragging ? "opacity-50 scale-95" : ""}
+          ${isDropTarget ? "ring-2 ring-blue-500 ring-offset-1" : ""}
+          ${toolbarEditMode ? "cursor-grab active:cursor-grabbing" : ""}
+        `}
+          style={{
+            borderLeft: toolbarEditMode ? `3px solid ${groupColor}` : undefined,
+          }}
+          draggable={toolbarEditMode}
+          onDragStart={(e) => handleGroupDragStart(e, groupId)}
+          onDragOver={(e) => handleGroupDragOver(e, groupId)}
+          onDragLeave={handleGroupDragLeave}
+          onDragEnd={handleGroupDragEnd}
+          onDrop={(e) => handleGroupDrop(e, groupId, lineIndex)}
+        >
+          {/* Poignée de drag en mode édition */}
+          {toolbarEditMode && (
+            <div className="flex items-center pr-1 border-r border-gray-200 mr-1">
+              <GripVertical className="h-4 w-4 text-gray-400" />
+            </div>
+          )}
+
+          {/* Contenu du groupe */}
+          {children}
+
+          {/* Menu 3 points en mode édition */}
+          {toolbarEditMode && group && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 ml-1 flex-shrink-0">
+                  <MoreVertical className="h-4 w-4 text-gray-500" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <div className="px-2 py-1.5 flex items-center gap-2 border-b">
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: groupColor }} />
+                  <span className="font-medium text-sm truncate">{groupName}</span>
+                </div>
+
+                <DropdownMenuSeparator />
+
+                {/* Liste des outils du groupe */}
+                <div className="px-2 py-1 text-xs text-gray-500">Outils ({group.items.length})</div>
+                <div className="max-h-48 overflow-y-auto">
+                  {group.items.map((toolId) => {
+                    const def = toolDefinitions.get(toolId);
+                    return (
+                      <DropdownMenuCheckboxItem
+                        key={toolId}
+                        checked={true}
+                        onCheckedChange={() => {
+                          // Retirer l'outil du groupe
+                          updateToolbarConfig({
+                            ...newToolbarConfig,
+                            groups: newToolbarConfig.groups.map((g) => {
+                              if (g.id !== groupId) return g;
+                              return { ...g, items: g.items.filter((id) => id !== toolId) };
+                            }),
+                            hidden: [...newToolbarConfig.hidden, toolId],
+                          });
+                        }}
+                      >
+                        {def?.label || toolId}
+                      </DropdownMenuCheckboxItem>
+                    );
+                  })}
+                </div>
+
+                {/* Outils masqués disponibles */}
+                {newToolbarConfig.hidden.length > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <div className="px-2 py-1 text-xs text-gray-500">Ajouter un outil masqué</div>
+                    <div className="max-h-32 overflow-y-auto">
+                      {newToolbarConfig.hidden.slice(0, 8).map((toolId) => {
+                        const def = toolDefinitions.get(toolId);
+                        return (
+                          <DropdownMenuItem
+                            key={toolId}
+                            onClick={() => {
+                              // Ajouter l'outil au groupe
+                              updateToolbarConfig({
+                                ...newToolbarConfig,
+                                groups: newToolbarConfig.groups.map((g) => {
+                                  if (g.id !== groupId) return g;
+                                  return { ...g, items: [...g.items, toolId] };
+                                }),
+                                hidden: newToolbarConfig.hidden.filter((id) => id !== toolId),
+                              });
+                            }}
+                          >
+                            <Plus className="h-3 w-3 mr-2" />
+                            {def?.label || toolId}
+                          </DropdownMenuItem>
+                        );
+                      })}
+                      {newToolbarConfig.hidden.length > 8 && (
+                        <div className="px-2 py-1 text-xs text-gray-400">
+                          +{newToolbarConfig.hidden.length - 8} autres...
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                <DropdownMenuSeparator />
+
+                {/* Supprimer le groupe */}
+                <DropdownMenuItem
+                  onClick={() => {
+                    // Déplacer tous les outils vers masqués et supprimer le groupe
+                    updateToolbarConfig({
+                      ...newToolbarConfig,
+                      groups: newToolbarConfig.groups.filter((g) => g.id !== groupId),
+                      lines: newToolbarConfig.lines.map((line) => ({
+                        ...line,
+                        items: line.items.filter((item) => !(item.type === "group" && item.id === groupId)),
+                      })),
+                      hidden: [...newToolbarConfig.hidden, ...group.items],
+                    });
+                    toast.success(`Groupe "${groupName}" supprimé`);
+                  }}
+                  className="text-red-600 focus:text-red-600"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Supprimer le groupe
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      );
+    },
+    [
+      toolbarEditMode,
+      draggedGroupId,
+      dropTargetGroupId,
+      newToolbarConfig,
+      toolDefinitions,
+      handleGroupDragStart,
+      handleGroupDragOver,
+      handleGroupDragLeave,
+      handleGroupDragEnd,
+      handleGroupDrop,
+      updateToolbarConfig,
+    ],
+  );
+
   return (
     <div
       ref={containerRef}
@@ -15192,7 +15443,7 @@ export function CADGabaritCanvas({
       <div className="flex items-center gap-2 p-2 bg-gray-100 border-b flex-shrink-0">
         {/* Sauvegarder */}
         {toolbarConfig.line1.save && (
-          <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+          <ToolbarGroupWrapper groupId="grp_save" groupName="Sauvegarde" groupColor="#3B82F6" lineIndex={0}>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -15205,13 +15456,13 @@ export function CADGabaritCanvas({
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-          </div>
+          </ToolbarGroupWrapper>
         )}
 
         {toolbarConfig.line1.save && <Separator orientation="vertical" className="h-6" />}
 
         {/* Import/Export fichiers */}
-        <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+        <ToolbarGroupWrapper groupId="grp_import_export" groupName="Import/Export" groupColor="#10B981" lineIndex={0}>
           {/* Import DXF */}
           {toolbarConfig.line1.import && (
             <TooltipProvider>
@@ -15314,7 +15565,7 @@ export function CADGabaritCanvas({
               <span className="text-xs">Templates</span>
             </Button>
           )}
-        </div>
+        </ToolbarGroupWrapper>
 
         {/* Bouton raccourcis clavier */}
         {toolbarConfig.line1.help && (
@@ -15354,30 +15605,61 @@ export function CADGabaritCanvas({
           {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
         </Button>
 
-        {/* Bouton configuration toolbar (drag & drop) */}
+        {/* Bouton configuration toolbar (mode édition inline) */}
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-9 w-9 p-0" onClick={() => setToolbarEditorOpen(true)}>
-                <Settings className="h-4 w-4" />
+              <Button
+                variant={toolbarEditMode ? "default" : "ghost"}
+                size="sm"
+                className={`h-9 w-9 p-0 ${toolbarEditMode ? "bg-blue-600 hover:bg-blue-700" : ""}`}
+                onClick={() => setToolbarEditMode(!toolbarEditMode)}
+              >
+                <Settings
+                  className={`h-4 w-4 ${toolbarEditMode ? "animate-spin" : ""}`}
+                  style={{ animationDuration: toolbarEditMode ? "3s" : "0s" }}
+                />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Configurer la toolbar (drag & drop)</p>
+              <p>{toolbarEditMode ? "Quitter le mode édition" : "Éditer la toolbar (drag & drop)"}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       </div>
+
+      {/* Bandeau mode édition */}
+      {toolbarEditMode && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-100 border-b border-blue-300 text-blue-800 text-sm">
+          <Settings className="h-4 w-4" />
+          <span className="font-medium">Mode édition</span>
+          <span className="text-blue-600">
+            — Glissez les groupes pour les réorganiser, cliquez sur ⋮ pour gérer les outils
+          </span>
+          <div className="flex-1" />
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs bg-white"
+            onClick={() => setToolbarEditorOpen(true)}
+          >
+            Éditeur avancé
+          </Button>
+          <Button size="sm" className="h-7 text-xs" onClick={() => setToolbarEditMode(false)}>
+            Terminer
+          </Button>
+        </div>
+      )}
 
       {/* Toolbar Ligne 2 - Outils */}
       <div className="flex items-center gap-2 p-2 bg-gray-100 border-b flex-wrap flex-shrink-0">
         {/* Outils de sélection/navigation */}
         {toolbarConfig.line2.selectPan && (
           <>
-            <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+            <ToolbarGroupWrapper groupId="grp_select" groupName="Sélection" groupColor="#3B82F6" lineIndex={1}>
               <ToolButton tool="select" icon={MousePointer} label="Sélection" shortcut="V" />
               <ToolButton tool="pan" icon={Hand} label="Déplacer" shortcut="H" />
-            </div>
+            </ToolbarGroupWrapper>
             <Separator orientation="vertical" className="h-6" />
           </>
         )}
@@ -15385,7 +15667,7 @@ export function CADGabaritCanvas({
         {/* Outil Symétrie + Transformation */}
         {toolbarConfig.line2.transform && (
           <>
-            <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+            <ToolbarGroupWrapper groupId="grp_transform" groupName="Transformation" groupColor="#F59E0B" lineIndex={1}>
               <ToolButton tool="mirror" icon={FlipHorizontal2} label="Symétrie" shortcut="S" />
               <TooltipProvider>
                 <Tooltip>
@@ -15410,13 +15692,13 @@ export function CADGabaritCanvas({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            </div>
+            </ToolbarGroupWrapper>
           </>
         )}
 
         {/* Outils de dessin */}
         {toolbarConfig.line2.drawBasic && (
-          <div className="flex items-center gap-1 bg-white rounded-md p-1 shadow-sm">
+          <ToolbarGroupWrapper groupId="grp_draw" groupName="Dessin" groupColor="#10B981" lineIndex={1}>
             <ToolButton tool="line" icon={Minus} label="Ligne" shortcut="L" />
             <ToolButton tool="circle" icon={Circle} label="Cercle" shortcut="C" />
             <ToolButton tool="arc3points" icon={CircleDot} label="Arc 3 points" shortcut="A" />
@@ -15763,7 +16045,7 @@ export function CADGabaritCanvas({
                 </div>
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
+          </ToolbarGroupWrapper>
         )}
 
         <Separator orientation="vertical" className="h-6" />
