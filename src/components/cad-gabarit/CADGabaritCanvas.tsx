@@ -1023,10 +1023,14 @@ export function CADGabaritCanvas({
       includeOriginal,
     } = arrayDialog;
 
-    // Parser les valeurs string
-    const spacingXNum = parseFloat(spacingX.replace(",", ".")) || 0;
-    const spacingYNum = parseFloat(spacingY.replace(",", ".")) || 0;
-    const circularAngleNum = parseFloat(circularAngle.replace(",", ".")) || 360;
+    // Parser les valeurs (peuvent être string ou number pour compatibilité)
+    const spacingXStr = typeof spacingX === "string" ? spacingX : String(spacingX);
+    const spacingYStr = typeof spacingY === "string" ? spacingY : String(spacingY);
+    const circularAngleStr = typeof circularAngle === "string" ? circularAngle : String(circularAngle);
+
+    const spacingXNum = parseFloat(spacingXStr.replace(",", ".")) || 0;
+    const spacingYNum = parseFloat(spacingYStr.replace(",", ".")) || 0;
+    const circularAngleNum = parseFloat(circularAngleStr.replace(",", ".")) || 360;
 
     // Calculer l'espacement réel selon le mode
     // Mode "distance" = distance totale, donc espacement = distance / (count - 1)
@@ -11910,10 +11914,14 @@ export function CADGabaritCanvas({
       includeOriginal,
     } = arrayDialog;
 
-    // Parser les valeurs string
-    const spacingXNum = parseFloat(spacingX.replace(",", ".")) || 0;
-    const spacingYNum = parseFloat(spacingY.replace(",", ".")) || 0;
-    const circularAngleNum = parseFloat(circularAngle.replace(",", ".")) || 360;
+    // Parser les valeurs (peuvent être string ou number pour compatibilité)
+    const spacingXStr = typeof spacingX === "string" ? spacingX : String(spacingX);
+    const spacingYStr = typeof spacingY === "string" ? spacingY : String(spacingY);
+    const circularAngleStr = typeof circularAngle === "string" ? circularAngle : String(circularAngle);
+
+    const spacingXNum = parseFloat(spacingXStr.replace(",", ".")) || 0;
+    const spacingYNum = parseFloat(spacingYStr.replace(",", ".")) || 0;
+    const circularAngleNum = parseFloat(circularAngleStr.replace(",", ".")) || 360;
 
     // Calculer l'espacement réel selon le mode
     const realSpacingX = spacingModeX === "distance" && countX > 1 ? spacingXNum / (countX - 1) : spacingXNum;
@@ -18891,7 +18899,10 @@ export function CADGabaritCanvas({
                 {arrayDialog.spacingModeX === "distance" && arrayDialog.countX > 1 && (
                   <div className="text-xs text-gray-500 text-center bg-gray-50 py-1 rounded">
                     Espacement réel :{" "}
-                    {((parseFloat(arrayDialog.spacingX.replace(",", ".")) || 0) / (arrayDialog.countX - 1)).toFixed(1)}{" "}
+                    {(
+                      (parseFloat(String(arrayDialog.spacingX).replace(",", ".")) || 0) /
+                      (arrayDialog.countX - 1)
+                    ).toFixed(1)}{" "}
                     mm
                   </div>
                 )}
@@ -18900,7 +18911,10 @@ export function CADGabaritCanvas({
                 {arrayDialog.spacingModeX === "spacing" && arrayDialog.countX > 1 && (
                   <div className="text-xs text-gray-500 text-center bg-gray-50 py-1 rounded">
                     Distance totale :{" "}
-                    {((parseFloat(arrayDialog.spacingX.replace(",", ".")) || 0) * (arrayDialog.countX - 1)).toFixed(1)}{" "}
+                    {(
+                      (parseFloat(String(arrayDialog.spacingX).replace(",", ".")) || 0) *
+                      (arrayDialog.countX - 1)
+                    ).toFixed(1)}{" "}
                     mm
                   </div>
                 )}
@@ -19061,7 +19075,7 @@ export function CADGabaritCanvas({
                 <div className="text-xs text-gray-500 bg-gray-50 py-1 px-2 rounded">
                   Pas angulaire:{" "}
                   {(
-                    (parseFloat(arrayDialog.circularAngle.replace(",", ".")) || 360) / arrayDialog.circularCount
+                    (parseFloat(String(arrayDialog.circularAngle).replace(",", ".")) || 360) / arrayDialog.circularCount
                   ).toFixed(1)}
                   °
                 </div>
