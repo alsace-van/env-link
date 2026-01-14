@@ -552,6 +552,7 @@ export interface BackgroundImage {
   visible: boolean;
   locked: boolean; // Si verrouillé, ne peut pas être déplacé
   order: number; // Ordre d'affichage (0 = fond)
+  layerId?: string; // Calque associé (optionnel, pour filtrer l'affichage)
   // Points de référence pour alignement
   markers: ImageMarker[];
   // Transformation optionnelle (après calibration)

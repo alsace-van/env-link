@@ -1688,8 +1688,16 @@ export function CADGabaritCanvas({
       showGrid,
       showConstraints,
       showDimensions,
-      // Multi-photos
-      backgroundImages: showBackgroundImage ? backgroundImages : [],
+      // Multi-photos (filtrer selon la visibilité du calque)
+      backgroundImages: showBackgroundImage
+        ? backgroundImages.filter((img) => {
+            // Si l'image n'a pas de layerId, elle est toujours visible
+            if (!img.layerId) return true;
+            // Sinon, vérifier si son calque est visible
+            const layer = sketch.layers.get(img.layerId);
+            return layer ? layer.visible : true;
+          })
+        : [],
       selectedImageId,
       markerLinks,
       selectedMarkerId,
@@ -4634,6 +4642,7 @@ export function CADGabaritCanvas({
                 locked: false,
                 order: currentLength + index,
                 markers: [],
+                layerId: sketchRef.current.activeLayerId, // Assigner au calque actif
               };
 
               return [...prev, newImage];
@@ -7794,7 +7803,16 @@ export function CADGabaritCanvas({
     (worldX: number, worldY: number): BackgroundImage | null => {
       // Chercher dans l'ordre inverse (les images du dessus d'abord)
       const sortedImages = [...backgroundImages]
-        .filter((img) => img.visible && !img.locked)
+        .filter((img) => {
+          // Vérifier que l'image elle-même est visible et non verrouillée
+          if (!img.visible || img.locked) return false;
+          // Vérifier que le calque de l'image est visible
+          if (img.layerId) {
+            const layer = sketch.layers.get(img.layerId);
+            if (layer && !layer.visible) return false;
+          }
+          return true;
+        })
         .sort((a, b) => b.order - a.order);
 
       for (const bgImage of sortedImages) {
@@ -7816,7 +7834,7 @@ export function CADGabaritCanvas({
       }
       return null;
     },
-    [backgroundImages],
+    [backgroundImages, sketch.layers],
   );
 
   // === Helpers pour calibration de l'image sélectionnée ===
@@ -11894,6 +11912,7 @@ export function CADGabaritCanvas({
       });
 
       // Coller les géométries avec nouveaux IDs et références mises à jour
+      // IMPORTANT: Assigner le calque actif aux éléments collés
       const newSelectedEntities = new Set<string>();
       clipboard.geometries.forEach((geo) => {
         const newId = generateId();
@@ -11904,6 +11923,7 @@ export function CADGabaritCanvas({
           newSketch.geometries.set(newId, {
             ...line,
             id: newId,
+            layerId: sketch.activeLayerId, // Assigner au calque actif
             p1: pointIdMapping.get(line.p1) || line.p1,
             p2: pointIdMapping.get(line.p2) || line.p2,
           });
@@ -11912,6 +11932,7 @@ export function CADGabaritCanvas({
           newSketch.geometries.set(newId, {
             ...circle,
             id: newId,
+            layerId: sketch.activeLayerId, // Assigner au calque actif
             center: pointIdMapping.get(circle.center) || circle.center,
           });
         } else if (geo.type === "arc") {
@@ -11919,6 +11940,7 @@ export function CADGabaritCanvas({
           newSketch.geometries.set(newId, {
             ...arc,
             id: newId,
+            layerId: sketch.activeLayerId, // Assigner au calque actif
             center: pointIdMapping.get(arc.center) || arc.center,
             startPoint: pointIdMapping.get(arc.startPoint) || arc.startPoint,
             endPoint: pointIdMapping.get(arc.endPoint) || arc.endPoint,
@@ -11928,6 +11950,7 @@ export function CADGabaritCanvas({
           newSketch.geometries.set(newId, {
             ...rect,
             id: newId,
+            layerId: sketch.activeLayerId, // Assigner au calque actif
             p1: pointIdMapping.get(rect.p1) || rect.p1,
             p2: pointIdMapping.get(rect.p2) || rect.p2,
             p3: pointIdMapping.get(rect.p3) || rect.p3,
@@ -11938,6 +11961,7 @@ export function CADGabaritCanvas({
           newSketch.geometries.set(newId, {
             ...bezier,
             id: newId,
+            layerId: sketch.activeLayerId, // Assigner au calque actif
             p1: pointIdMapping.get(bezier.p1) || bezier.p1,
             p2: pointIdMapping.get(bezier.p2) || bezier.p2,
             cp1: pointIdMapping.get(bezier.cp1) || bezier.cp1,
@@ -11948,6 +11972,7 @@ export function CADGabaritCanvas({
           newSketch.geometries.set(newId, {
             ...text,
             id: newId,
+            layerId: sketch.activeLayerId, // Assigner au calque actif
             position: pointIdMapping.get(text.position) || text.position,
           });
         }
