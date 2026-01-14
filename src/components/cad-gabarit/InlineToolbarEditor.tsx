@@ -1,10 +1,15 @@
 // ============================================
 // COMPOSANT: InlineToolbarEditor
 // Système de drag & drop direct dans la toolbar
-// VERSION: 1.0 - Création initiale
+// VERSION: 1.1 - Correction zones de drop entre groupes
+// MODIFICATIONS v1.1:
+// - Zones de drop désormais ENTRE les groupes (pas à l'intérieur)
+// - Suppression des handlers drop sur les conteneurs de groupe
+// - Zones de drop plus larges et visibles
+// - Poignées de déplacement sur tous les groupes garanties
 // ============================================
 
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -32,9 +37,7 @@ import {
   Eye,
   EyeOff,
   Check,
-  X,
   Settings,
-  Palette,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -42,11 +45,10 @@ import {
   ToolbarConfig,
   ToolbarGroup,
   ToolbarItem,
-  ToolbarLine,
   GROUP_COLORS,
   generateToolbarId,
 } from "./toolbar-types";
-import { createToolDefinitionsMap, ALL_TOOL_DEFINITIONS } from "./toolbar-defaults";
+import { createToolDefinitionsMap } from "./toolbar-defaults";
 
 // ============================================
 // TYPES
@@ -71,6 +73,53 @@ interface DragData {
   sourceLineIndex: number;
   sourceIndex: number;
   fromGroupId?: string;
+}
+
+// ============================================
+// COMPOSANT: DropZone (zone de drop entre éléments)
+// ============================================
+
+interface DropZoneProps {
+  targetIndex: number;
+  isActive: boolean;
+  isDragActive: boolean;
+  onDragOver: (e: React.DragEvent, index: number) => void;
+  onDragLeave: () => void;
+  onDrop: (e: React.DragEvent, index: number) => void;
+}
+
+function DropZone({ 
+  targetIndex, 
+  isActive, 
+  isDragActive,
+  onDragOver, 
+  onDragLeave, 
+  onDrop 
+}: DropZoneProps) {
+  if (!isDragActive) return null;
+  
+  return (
+    <div
+      className={`
+        flex items-center justify-center
+        min-w-[16px] min-h-[40px] mx-1
+        border-2 border-dashed rounded-md
+        transition-all duration-150
+        ${isActive 
+          ? "border-blue-500 bg-blue-100 min-w-[24px]" 
+          : "border-gray-300 bg-gray-50 hover:border-blue-300 hover:bg-blue-50"
+        }
+      `}
+      onDragOver={(e) => onDragOver(e, targetIndex)}
+      onDragLeave={onDragLeave}
+      onDrop={(e) => onDrop(e, targetIndex)}
+    >
+      <div className={`
+        w-1 h-6 rounded-full transition-all
+        ${isActive ? "bg-blue-500" : "bg-gray-300"}
+      `} />
+    </div>
+  );
 }
 
 // ============================================
@@ -306,6 +355,7 @@ export function InlineToolbarEditor({
 
   // ============================================
   // RENDU D'UN GROUPE
+  // VERSION: 1.1 - Sans handlers drop sur le conteneur
   // ============================================
 
   const renderGroup = useCallback((groupId: string, index: number) => {
@@ -313,7 +363,6 @@ export function InlineToolbarEditor({
     if (!group) return null;
     
     const isDragging = dragData?.id === groupId;
-    const isDropTarget = dropTargetIndex === index;
     const isEditing = editingGroupId === groupId;
 
     // Filtrer les outils selon les conditions
@@ -332,9 +381,8 @@ export function InlineToolbarEditor({
         key={groupId}
         className={`
           relative flex items-center gap-1 bg-white rounded-md p-1 shadow-sm transition-all
-          ${isDragging ? "opacity-50" : ""}
-          ${isDropTarget ? "ring-2 ring-blue-500" : ""}
-          ${editMode ? "pr-2" : ""}
+          ${isDragging ? "opacity-50 scale-95" : ""}
+          ${editMode ? "pr-2 ring-1 ring-gray-200 hover:ring-blue-300" : ""}
         `}
         style={{
           borderLeft: `3px solid ${group.color || "#3B82F6"}`,
@@ -342,15 +390,33 @@ export function InlineToolbarEditor({
         draggable={editMode}
         onDragStart={(e) => editMode && handleDragStart(e, "group", groupId, index)}
         onDragEnd={handleDragEnd}
-        onDragOver={(e) => editMode && handleDragOver(e, index)}
-        onDragLeave={handleDragLeave}
-        onDrop={(e) => editMode && handleDrop(e, index)}
+        // NOTE v1.1: Pas de handlers onDragOver/onDrop ici - les drops se font sur les DropZone entre les groupes
       >
-        {/* Poignée de drag en mode édition */}
+        {/* Poignée de drag en mode édition - TOUJOURS VISIBLE */}
         {editMode && (
-          <div className="cursor-grab active:cursor-grabbing p-0.5 hover:bg-gray-100 rounded">
-            <GripVertical className="h-4 w-4 text-gray-400" />
-          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="cursor-grab active:cursor-grabbing p-1 hover:bg-gray-100 rounded flex-shrink-0">
+                  <GripVertical className="h-4 w-4 text-gray-400" />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p>Glisser pour déplacer</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+
+        {/* Nom du groupe en mode édition (optionnel, petit badge) */}
+        {editMode && (
+          <Badge 
+            variant="outline" 
+            className="text-[10px] px-1 py-0 h-4 flex-shrink-0"
+            style={{ borderColor: group.color, color: group.color }}
+          >
+            {group.name}
+          </Badge>
         )}
 
         {/* Outils du groupe */}
@@ -360,11 +426,16 @@ export function InlineToolbarEditor({
           </React.Fragment>
         ))}
 
+        {/* Indicateur groupe vide en mode édition */}
+        {editMode && visibleTools.length === 0 && (
+          <span className="text-xs text-gray-400 italic px-2">Groupe vide</span>
+        )}
+
         {/* Menu 3 points en mode édition */}
         {editMode && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 ml-1">
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 ml-1 flex-shrink-0">
                 <MoreVertical className="h-4 w-4 text-gray-500" />
               </Button>
             </DropdownMenuTrigger>
@@ -487,16 +558,12 @@ export function InlineToolbarEditor({
   }, [
     config,
     dragData,
-    dropTargetIndex,
     editMode,
     editingGroupId,
     editGroupName,
     conditions,
     handleDragStart,
     handleDragEnd,
-    handleDragOver,
-    handleDragLeave,
-    handleDrop,
     renderTool,
     renameGroup,
     changeGroupColor,
@@ -507,6 +574,7 @@ export function InlineToolbarEditor({
 
   // ============================================
   // RENDU D'UN OUTIL SEUL
+  // VERSION: 1.1 - Sans handlers drop sur le conteneur
   // ============================================
 
   const renderSingleTool = useCallback((toolId: string, index: number) => {
@@ -517,86 +585,76 @@ export function InlineToolbarEditor({
     if (def.conditional && !conditions[def.conditional]) return null;
 
     const isDragging = dragData?.id === toolId;
-    const isDropTarget = dropTargetIndex === index;
 
     return (
       <div
         key={toolId}
         className={`
           relative flex items-center
-          ${isDragging ? "opacity-50" : ""}
-          ${isDropTarget ? "ring-2 ring-blue-500 rounded" : ""}
+          ${isDragging ? "opacity-50 scale-95" : ""}
+          ${editMode ? "ring-1 ring-gray-200 hover:ring-blue-300 rounded p-0.5" : ""}
         `}
         draggable={editMode}
         onDragStart={(e) => editMode && handleDragStart(e, "tool", toolId, index)}
         onDragEnd={handleDragEnd}
-        onDragOver={(e) => editMode && handleDragOver(e, index)}
-        onDragLeave={handleDragLeave}
-        onDrop={(e) => editMode && handleDrop(e, index)}
+        // NOTE v1.1: Pas de handlers onDragOver/onDrop ici - les drops se font sur les DropZone
       >
         {editMode && (
-          <div className="cursor-grab active:cursor-grabbing p-0.5 hover:bg-gray-200 rounded mr-1">
-            <GripVertical className="h-3 w-3 text-gray-400" />
-          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="cursor-grab active:cursor-grabbing p-0.5 hover:bg-gray-200 rounded mr-1">
+                  <GripVertical className="h-3 w-3 text-gray-400" />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p>Glisser pour déplacer</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
         {renderTool(toolId)}
       </div>
     );
-  }, [editMode, dragData, dropTargetIndex, conditions, handleDragStart, handleDragEnd, handleDragOver, handleDragLeave, handleDrop, renderTool]);
-
-  // ============================================
-  // RENDU ZONE DE DROP FINALE
-  // ============================================
-
-  const renderDropZone = useCallback(() => {
-    if (!editMode || !dragData) return null;
-    
-    const isDropTarget = dropTargetIndex === currentLine.items.length;
-    
-    return (
-      <div
-        className={`
-          min-w-[40px] min-h-[36px] border-2 border-dashed rounded-md transition-all
-          ${isDropTarget ? "border-blue-500 bg-blue-50" : "border-gray-300"}
-        `}
-        onDragOver={(e) => handleDragOver(e, currentLine.items.length)}
-        onDragLeave={handleDragLeave}
-        onDrop={(e) => handleDrop(e, currentLine.items.length)}
-      />
-    );
-  }, [editMode, dragData, dropTargetIndex, currentLine.items.length, handleDragOver, handleDragLeave, handleDrop]);
+  }, [editMode, dragData, conditions, handleDragStart, handleDragEnd, renderTool]);
 
   // ============================================
   // RENDU PRINCIPAL
+  // VERSION: 1.1 - Zones de drop ENTRE les éléments
   // ============================================
 
   return (
     <>
-      {/* Éléments de la ligne */}
+      {/* Zone de drop au début (avant le premier élément) */}
+      <DropZone
+        targetIndex={0}
+        isActive={dropTargetIndex === 0}
+        isDragActive={editMode && dragData !== null}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      />
+
+      {/* Éléments de la ligne avec zones de drop entre eux */}
       {currentLine.items.map((item, index) => (
         <React.Fragment key={item.id}>
-          {/* Zone de drop avant l'élément */}
-          {editMode && dragData && (
-            <div
-              className={`
-                w-1 min-h-[36px] rounded transition-all
-                ${dropTargetIndex === index ? "bg-blue-500 w-2" : "bg-transparent hover:bg-blue-200"}
-              `}
-              onDragOver={(e) => handleDragOver(e, index)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, index)}
-            />
-          )}
-          
+          {/* L'élément lui-même (groupe ou outil) */}
           {item.type === "group" 
             ? renderGroup(item.id, index)
             : renderSingleTool(item.id, index)
           }
+          
+          {/* Zone de drop APRÈS cet élément (entre lui et le suivant) */}
+          <DropZone
+            targetIndex={index + 1}
+            isActive={dropTargetIndex === index + 1}
+            isDragActive={editMode && dragData !== null}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          />
         </React.Fragment>
       ))}
-
-      {/* Zone de drop finale */}
-      {renderDropZone()}
 
       {/* Bouton créer groupe en mode édition */}
       {editMode && (
