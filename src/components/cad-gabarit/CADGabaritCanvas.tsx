@@ -951,7 +951,7 @@ export function CADGabaritCanvas({
   // Modale pour répétition/array
   const [arrayDialog, setArrayDialog] = useState<{
     open: boolean;
-    type: "linear" | "grid" | "circular";
+    type: "linear" | "grid" | "circular" | "checkerboard";
     // Linéaire
     linearCount: number;
     linearSpacing: string; // mm - string pour permettre la saisie
@@ -969,6 +969,11 @@ export function CADGabaritCanvas({
     circularCount: number;
     circularAngle: string; // angle total en degrés (360 = cercle complet) - string
     circularCenter: { x: number; y: number } | null;
+    // Damier (checkerboard)
+    checkerCountX: number; // Nombre de cases en X
+    checkerCountY: number; // Nombre de cases en Y
+    checkerSize: string; // Taille d'une case en mm
+    checkerColor: string; // Couleur des cases noires
     // Général
     includeOriginal: boolean;
     createIntersections: boolean; // Créer les points d'intersection
@@ -980,7 +985,16 @@ export function CADGabaritCanvas({
   // Prévisualisation de la répétition en temps réel (useMemo pour performance)
   // Extraire uniquement les valeurs nécessaires pour éviter les recalculs inutiles
   const arrayPreviewData = useMemo(() => {
-    if (!arrayDialog?.open || selectedEntities.size === 0) {
+    if (!arrayDialog?.open) {
+      return null;
+    }
+
+    // Le mode damier ne nécessite pas de sélection
+    if (arrayDialog.type === "checkerboard") {
+      return { centerX: 0, centerY: 0, scaleFactor: sketch.scaleFactor, isCheckerboard: true };
+    }
+
+    if (selectedEntities.size === 0) {
       return null;
     }
 
@@ -1124,6 +1138,23 @@ export function CADGabaritCanvas({
         const rotation = i * angleStep;
         transforms.push({ offsetX: 0, offsetY: 0, rotation });
       }
+    } else if (type === "checkerboard") {
+      // Mode damier - retourner les données du damier pour le preview
+      const { checkerCountX, checkerCountY, checkerSize, checkerColor } = arrayDialog;
+      const sizeStr = typeof checkerSize === "string" ? checkerSize : String(checkerSize || "20");
+      const sizePx = (parseFloat(sizeStr.replace(",", ".")) || 20) * scaleFactor;
+
+      return {
+        transforms: [],
+        centerX: 0,
+        centerY: 0,
+        checkerboard: {
+          countX: checkerCountX ?? 8,
+          countY: checkerCountY ?? 6,
+          sizePx,
+          color: checkerColor ?? "#000000",
+        },
+      };
     }
 
     return { transforms, centerX, centerY };
@@ -1799,200 +1830,247 @@ export function CADGabaritCanvas({
     }
 
     // Dessiner la prévisualisation de répétition (array)
-    if (arrayPreview && arrayPreview.transforms.length > 0 && canvasRef.current) {
+    if (arrayPreview && canvasRef.current) {
       const ctx = canvasRef.current.getContext("2d");
       if (ctx) {
         ctx.save();
-        ctx.strokeStyle = "#A855F7"; // Violet
-        ctx.fillStyle = "rgba(168, 85, 247, 0.1)"; // Violet transparent
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([6, 4]);
-        ctx.globalAlpha = 0.7;
 
-        const { transforms, centerX, centerY } = arrayPreview;
+        // Mode damier - preview spécial
+        if (arrayPreview.checkerboard) {
+          const { countX, countY, sizePx, color } = arrayPreview.checkerboard;
 
-        // Pour chaque transformation, dessiner une copie fantôme des éléments sélectionnés
-        transforms.forEach((transform) => {
-          selectedEntities.forEach((id) => {
-            const geo = sketch.geometries.get(id);
-            if (!geo) return;
+          ctx.strokeStyle = "#A855F7"; // Violet
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([]);
 
-            if (geo.type === "line") {
-              const line = geo as Line;
-              const p1 = sketch.points.get(line.p1);
-              const p2 = sketch.points.get(line.p2);
-              if (p1 && p2) {
-                // Appliquer la transformation
-                let newP1 = { x: p1.x, y: p1.y };
-                let newP2 = { x: p2.x, y: p2.y };
+          // Dessiner les cases du damier
+          for (let row = 0; row < countY; row++) {
+            for (let col = 0; col < countX; col++) {
+              const x = col * sizePx;
+              const y = row * sizePx;
 
-                if (transform.rotation !== 0) {
-                  // Rotation autour du centre
-                  const cos = Math.cos(transform.rotation);
-                  const sin = Math.sin(transform.rotation);
-                  const dx1 = p1.x - centerX;
-                  const dy1 = p1.y - centerY;
-                  const dx2 = p2.x - centerX;
-                  const dy2 = p2.y - centerY;
-                  newP1 = {
-                    x: centerX + dx1 * cos - dy1 * sin,
-                    y: centerY + dx1 * sin + dy1 * cos,
-                  };
-                  newP2 = {
-                    x: centerX + dx2 * cos - dy2 * sin,
-                    y: centerY + dx2 * sin + dy2 * cos,
-                  };
-                }
+              // Convertir en coordonnées écran
+              const screenX = x * viewport.scale + viewport.offsetX;
+              const screenY = y * viewport.scale + viewport.offsetY;
+              const screenSize = sizePx * viewport.scale;
 
-                // Appliquer l'offset
-                newP1.x += transform.offsetX;
-                newP1.y += transform.offsetY;
-                newP2.x += transform.offsetX;
-                newP2.y += transform.offsetY;
-
-                // Convertir en coordonnées écran
-                const screenP1 = {
-                  x: newP1.x * viewport.scale + viewport.offsetX,
-                  y: newP1.y * viewport.scale + viewport.offsetY,
-                };
-                const screenP2 = {
-                  x: newP2.x * viewport.scale + viewport.offsetX,
-                  y: newP2.y * viewport.scale + viewport.offsetY,
-                };
-
-                ctx.beginPath();
-                ctx.moveTo(screenP1.x, screenP1.y);
-                ctx.lineTo(screenP2.x, screenP2.y);
-                ctx.stroke();
+              // Case colorée si (row + col) est pair
+              if ((row + col) % 2 === 0) {
+                ctx.fillStyle = color;
+                ctx.globalAlpha = 0.8;
+                ctx.fillRect(screenX, screenY, screenSize, screenSize);
               }
-            } else if (geo.type === "circle") {
-              const circle = geo as CircleType;
-              const center = sketch.points.get(circle.center);
-              if (center) {
-                let newCenter = { x: center.x, y: center.y };
 
-                if (transform.rotation !== 0) {
-                  const cos = Math.cos(transform.rotation);
-                  const sin = Math.sin(transform.rotation);
-                  const dx = center.x - centerX;
-                  const dy = center.y - centerY;
-                  newCenter = {
-                    x: centerX + dx * cos - dy * sin,
-                    y: centerY + dx * sin + dy * cos,
+              // Contour de la case
+              ctx.globalAlpha = 0.5;
+              ctx.strokeStyle = "#A855F7";
+              ctx.strokeRect(screenX, screenY, screenSize, screenSize);
+            }
+          }
+
+          // Afficher les dimensions totales
+          const totalWidth = countX * sizePx * viewport.scale;
+          const totalHeight = countY * sizePx * viewport.scale;
+          const startX = viewport.offsetX;
+          const startY = viewport.offsetY;
+
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = "#A855F7";
+          ctx.font = "12px sans-serif";
+          ctx.fillText(`${countX}×${countY} cases`, startX + totalWidth / 2 - 30, startY + totalHeight + 20);
+        } else if (arrayPreview.transforms.length > 0) {
+          // Mode normal (linéaire, grille, circulaire)
+          ctx.strokeStyle = "#A855F7"; // Violet
+          ctx.fillStyle = "rgba(168, 85, 247, 0.1)"; // Violet transparent
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([6, 4]);
+          ctx.globalAlpha = 0.7;
+
+          const { transforms, centerX, centerY } = arrayPreview;
+
+          // Pour chaque transformation, dessiner une copie fantôme des éléments sélectionnés
+          transforms.forEach((transform) => {
+            selectedEntities.forEach((id) => {
+              const geo = sketch.geometries.get(id);
+              if (!geo) return;
+
+              if (geo.type === "line") {
+                const line = geo as Line;
+                const p1 = sketch.points.get(line.p1);
+                const p2 = sketch.points.get(line.p2);
+                if (p1 && p2) {
+                  // Appliquer la transformation
+                  let newP1 = { x: p1.x, y: p1.y };
+                  let newP2 = { x: p2.x, y: p2.y };
+
+                  if (transform.rotation !== 0) {
+                    // Rotation autour du centre
+                    const cos = Math.cos(transform.rotation);
+                    const sin = Math.sin(transform.rotation);
+                    const dx1 = p1.x - centerX;
+                    const dy1 = p1.y - centerY;
+                    const dx2 = p2.x - centerX;
+                    const dy2 = p2.y - centerY;
+                    newP1 = {
+                      x: centerX + dx1 * cos - dy1 * sin,
+                      y: centerY + dx1 * sin + dy1 * cos,
+                    };
+                    newP2 = {
+                      x: centerX + dx2 * cos - dy2 * sin,
+                      y: centerY + dx2 * sin + dy2 * cos,
+                    };
+                  }
+
+                  // Appliquer l'offset
+                  newP1.x += transform.offsetX;
+                  newP1.y += transform.offsetY;
+                  newP2.x += transform.offsetX;
+                  newP2.y += transform.offsetY;
+
+                  // Convertir en coordonnées écran
+                  const screenP1 = {
+                    x: newP1.x * viewport.scale + viewport.offsetX,
+                    y: newP1.y * viewport.scale + viewport.offsetY,
                   };
-                }
-
-                newCenter.x += transform.offsetX;
-                newCenter.y += transform.offsetY;
-
-                const screenCenter = {
-                  x: newCenter.x * viewport.scale + viewport.offsetX,
-                  y: newCenter.y * viewport.scale + viewport.offsetY,
-                };
-                const screenRadius = circle.radius * viewport.scale;
-
-                ctx.beginPath();
-                ctx.arc(screenCenter.x, screenCenter.y, screenRadius, 0, Math.PI * 2);
-                ctx.stroke();
-              }
-            } else if (geo.type === "arc") {
-              const arc = geo as Arc;
-              const arcCenter = sketch.points.get(arc.center);
-              const startPt = sketch.points.get(arc.startPoint);
-              const endPt = sketch.points.get(arc.endPoint);
-              if (arcCenter && startPt && endPt) {
-                let newCenter = { x: arcCenter.x, y: arcCenter.y };
-
-                if (transform.rotation !== 0) {
-                  const cos = Math.cos(transform.rotation);
-                  const sin = Math.sin(transform.rotation);
-                  const dx = arcCenter.x - centerX;
-                  const dy = arcCenter.y - centerY;
-                  newCenter = {
-                    x: centerX + dx * cos - dy * sin,
-                    y: centerY + dx * sin + dy * cos,
+                  const screenP2 = {
+                    x: newP2.x * viewport.scale + viewport.offsetX,
+                    y: newP2.y * viewport.scale + viewport.offsetY,
                   };
+
+                  ctx.beginPath();
+                  ctx.moveTo(screenP1.x, screenP1.y);
+                  ctx.lineTo(screenP2.x, screenP2.y);
+                  ctx.stroke();
                 }
+              } else if (geo.type === "circle") {
+                const circle = geo as CircleType;
+                const center = sketch.points.get(circle.center);
+                if (center) {
+                  let newCenter = { x: center.x, y: center.y };
 
-                newCenter.x += transform.offsetX;
-                newCenter.y += transform.offsetY;
-
-                const screenCenter = {
-                  x: newCenter.x * viewport.scale + viewport.offsetX,
-                  y: newCenter.y * viewport.scale + viewport.offsetY,
-                };
-                const screenRadius = arc.radius * viewport.scale;
-
-                // Calculer les angles transformés
-                let startAngle = Math.atan2(startPt.y - arcCenter.y, startPt.x - arcCenter.x);
-                let endAngle = Math.atan2(endPt.y - arcCenter.y, endPt.x - arcCenter.x);
-                startAngle += transform.rotation;
-                endAngle += transform.rotation;
-
-                ctx.beginPath();
-                ctx.arc(screenCenter.x, screenCenter.y, screenRadius, startAngle, endAngle, arc.counterClockwise);
-                ctx.stroke();
-              }
-            } else if (geo.type === "rectangle") {
-              const rect = geo as Rectangle;
-              const points = [rect.p1, rect.p2, rect.p3, rect.p4]
-                .map((pid) => sketch.points.get(pid))
-                .filter(Boolean) as Point[];
-              if (points.length === 4) {
-                const transformedPoints = points.map((p) => {
-                  let newP = { x: p.x, y: p.y };
                   if (transform.rotation !== 0) {
                     const cos = Math.cos(transform.rotation);
                     const sin = Math.sin(transform.rotation);
-                    const dx = p.x - centerX;
-                    const dy = p.y - centerY;
-                    newP = {
+                    const dx = center.x - centerX;
+                    const dy = center.y - centerY;
+                    newCenter = {
                       x: centerX + dx * cos - dy * sin,
                       y: centerY + dx * sin + dy * cos,
                     };
                   }
-                  newP.x += transform.offsetX;
-                  newP.y += transform.offsetY;
-                  return {
-                    x: newP.x * viewport.scale + viewport.offsetX,
-                    y: newP.y * viewport.scale + viewport.offsetY,
+
+                  newCenter.x += transform.offsetX;
+                  newCenter.y += transform.offsetY;
+
+                  const screenCenter = {
+                    x: newCenter.x * viewport.scale + viewport.offsetX,
+                    y: newCenter.y * viewport.scale + viewport.offsetY,
                   };
-                });
+                  const screenRadius = circle.radius * viewport.scale;
 
-                ctx.beginPath();
-                ctx.moveTo(transformedPoints[0].x, transformedPoints[0].y);
-                ctx.lineTo(transformedPoints[1].x, transformedPoints[1].y);
-                ctx.lineTo(transformedPoints[2].x, transformedPoints[2].y);
-                ctx.lineTo(transformedPoints[3].x, transformedPoints[3].y);
-                ctx.closePath();
-                ctx.stroke();
+                  ctx.beginPath();
+                  ctx.arc(screenCenter.x, screenCenter.y, screenRadius, 0, Math.PI * 2);
+                  ctx.stroke();
+                }
+              } else if (geo.type === "arc") {
+                const arc = geo as Arc;
+                const arcCenter = sketch.points.get(arc.center);
+                const startPt = sketch.points.get(arc.startPoint);
+                const endPt = sketch.points.get(arc.endPoint);
+                if (arcCenter && startPt && endPt) {
+                  let newCenter = { x: arcCenter.x, y: arcCenter.y };
+
+                  if (transform.rotation !== 0) {
+                    const cos = Math.cos(transform.rotation);
+                    const sin = Math.sin(transform.rotation);
+                    const dx = arcCenter.x - centerX;
+                    const dy = arcCenter.y - centerY;
+                    newCenter = {
+                      x: centerX + dx * cos - dy * sin,
+                      y: centerY + dx * sin + dy * cos,
+                    };
+                  }
+
+                  newCenter.x += transform.offsetX;
+                  newCenter.y += transform.offsetY;
+
+                  const screenCenter = {
+                    x: newCenter.x * viewport.scale + viewport.offsetX,
+                    y: newCenter.y * viewport.scale + viewport.offsetY,
+                  };
+                  const screenRadius = arc.radius * viewport.scale;
+
+                  // Calculer les angles transformés
+                  let startAngle = Math.atan2(startPt.y - arcCenter.y, startPt.x - arcCenter.x);
+                  let endAngle = Math.atan2(endPt.y - arcCenter.y, endPt.x - arcCenter.x);
+                  startAngle += transform.rotation;
+                  endAngle += transform.rotation;
+
+                  ctx.beginPath();
+                  ctx.arc(screenCenter.x, screenCenter.y, screenRadius, startAngle, endAngle, arc.counterClockwise);
+                  ctx.stroke();
+                }
+              } else if (geo.type === "rectangle") {
+                const rect = geo as Rectangle;
+                const points = [rect.p1, rect.p2, rect.p3, rect.p4]
+                  .map((pid) => sketch.points.get(pid))
+                  .filter(Boolean) as Point[];
+                if (points.length === 4) {
+                  const transformedPoints = points.map((p) => {
+                    let newP = { x: p.x, y: p.y };
+                    if (transform.rotation !== 0) {
+                      const cos = Math.cos(transform.rotation);
+                      const sin = Math.sin(transform.rotation);
+                      const dx = p.x - centerX;
+                      const dy = p.y - centerY;
+                      newP = {
+                        x: centerX + dx * cos - dy * sin,
+                        y: centerY + dx * sin + dy * cos,
+                      };
+                    }
+                    newP.x += transform.offsetX;
+                    newP.y += transform.offsetY;
+                    return {
+                      x: newP.x * viewport.scale + viewport.offsetX,
+                      y: newP.y * viewport.scale + viewport.offsetY,
+                    };
+                  });
+
+                  ctx.beginPath();
+                  ctx.moveTo(transformedPoints[0].x, transformedPoints[0].y);
+                  ctx.lineTo(transformedPoints[1].x, transformedPoints[1].y);
+                  ctx.lineTo(transformedPoints[2].x, transformedPoints[2].y);
+                  ctx.lineTo(transformedPoints[3].x, transformedPoints[3].y);
+                  ctx.closePath();
+                  ctx.stroke();
+                }
               }
-            }
+            });
           });
-        });
 
-        // Dessiner le centre de rotation pour le mode circulaire
-        if (arrayDialog?.type === "circular") {
-          const screenCenterX = centerX * viewport.scale + viewport.offsetX;
-          const screenCenterY = centerY * viewport.scale + viewport.offsetY;
+          // Dessiner le centre de rotation pour le mode circulaire
+          if (arrayDialog?.type === "circular") {
+            const screenCenterX = centerX * viewport.scale + viewport.offsetX;
+            const screenCenterY = centerY * viewport.scale + viewport.offsetY;
 
-          ctx.setLineDash([]);
-          ctx.strokeStyle = "#A855F7";
-          ctx.lineWidth = 2;
+            ctx.setLineDash([]);
+            ctx.strokeStyle = "#A855F7";
+            ctx.lineWidth = 2;
 
-          // Croix au centre
-          ctx.beginPath();
-          ctx.moveTo(screenCenterX - 10, screenCenterY);
-          ctx.lineTo(screenCenterX + 10, screenCenterY);
-          ctx.moveTo(screenCenterX, screenCenterY - 10);
-          ctx.lineTo(screenCenterX, screenCenterY + 10);
-          ctx.stroke();
+            // Croix au centre
+            ctx.beginPath();
+            ctx.moveTo(screenCenterX - 10, screenCenterY);
+            ctx.lineTo(screenCenterX + 10, screenCenterY);
+            ctx.moveTo(screenCenterX, screenCenterY - 10);
+            ctx.lineTo(screenCenterX, screenCenterY + 10);
+            ctx.stroke();
 
-          // Cercle autour du centre
-          ctx.beginPath();
-          ctx.arc(screenCenterX, screenCenterY, 5, 0, Math.PI * 2);
-          ctx.stroke();
-        }
+            // Cercle autour du centre
+            ctx.beginPath();
+            ctx.arc(screenCenterX, screenCenterY, 5, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        } // Fin du else if (arrayPreview.transforms.length > 0)
 
         ctx.restore();
       }
@@ -11872,79 +11950,91 @@ export function CADGabaritCanvas({
   // === RÉPÉTITION/ARRAY ===
 
   // Ouvrir la modale de répétition
-  const openArrayDialog = useCallback(() => {
-    if (selectedEntities.size === 0) {
-      toast.error("Sélectionnez des éléments à répéter");
-      return;
-    }
+  const openArrayDialog = useCallback(
+    (forceCheckerboard = false) => {
+      // Le mode damier ne nécessite pas de sélection
+      if (!forceCheckerboard && selectedEntities.size === 0) {
+        toast.error("Sélectionnez des éléments à répéter (ou utilisez le mode Damier)");
+        return;
+      }
 
-    // Calculer le centre de la sélection pour le mode circulaire
-    let sumX = 0,
-      sumY = 0,
-      count = 0;
-    selectedEntities.forEach((id) => {
-      const geo = sketch.geometries.get(id);
-      if (geo) {
-        if (geo.type === "line") {
-          const line = geo as Line;
-          const p1 = sketch.points.get(line.p1);
-          const p2 = sketch.points.get(line.p2);
-          if (p1 && p2) {
-            sumX += (p1.x + p2.x) / 2;
-            sumY += (p1.y + p2.y) / 2;
-            count++;
-          }
-        } else if (geo.type === "circle") {
-          const circle = geo as CircleType;
-          const center = sketch.points.get(circle.center);
-          if (center) {
-            sumX += center.x;
-            sumY += center.y;
-            count++;
-          }
-        } else if (geo.type === "arc") {
-          const arc = geo as Arc;
-          const center = sketch.points.get(arc.center);
-          if (center) {
-            sumX += center.x;
-            sumY += center.y;
-            count++;
+      // Calculer le centre de la sélection pour le mode circulaire
+      let sumX = 0,
+        sumY = 0,
+        count = 0;
+      selectedEntities.forEach((id) => {
+        const geo = sketch.geometries.get(id);
+        if (geo) {
+          if (geo.type === "line") {
+            const line = geo as Line;
+            const p1 = sketch.points.get(line.p1);
+            const p2 = sketch.points.get(line.p2);
+            if (p1 && p2) {
+              sumX += (p1.x + p2.x) / 2;
+              sumY += (p1.y + p2.y) / 2;
+              count++;
+            }
+          } else if (geo.type === "circle") {
+            const circle = geo as CircleType;
+            const center = sketch.points.get(circle.center);
+            if (center) {
+              sumX += center.x;
+              sumY += center.y;
+              count++;
+            }
+          } else if (geo.type === "arc") {
+            const arc = geo as Arc;
+            const center = sketch.points.get(arc.center);
+            if (center) {
+              sumX += center.x;
+              sumY += center.y;
+              count++;
+            }
           }
         }
-      }
-    });
+      });
 
-    const selectionCenter = count > 0 ? { x: sumX / count, y: sumY / count } : { x: 0, y: 0 };
+      const selectionCenter = count > 0 ? { x: sumX / count, y: sumY / count } : { x: 0, y: 0 };
 
-    setArrayDialog({
-      open: true,
-      type: "linear",
-      // Linéaire
-      linearCount: 3,
-      linearSpacing: "50",
-      linearSpacingMode: "spacing",
-      linearDirection: "x",
-      linearAngle: "0",
-      // Grille
-      countX: 3,
-      spacingX: "50",
-      spacingModeX: "spacing",
-      countY: 3,
-      spacingY: "50",
-      spacingModeY: "spacing",
-      // Circulaire
-      circularCount: 6,
-      circularAngle: "360",
-      circularCenter: selectionCenter,
-      // Général
-      includeOriginal: true,
-      createIntersections: true,
-    });
-  }, [selectedEntities, sketch]);
+      setArrayDialog({
+        open: true,
+        type: forceCheckerboard ? "checkerboard" : "linear",
+        // Linéaire
+        linearCount: 3,
+        linearSpacing: "50",
+        linearSpacingMode: "spacing",
+        linearDirection: "x",
+        linearAngle: "0",
+        // Grille
+        countX: 3,
+        spacingX: "50",
+        spacingModeX: "spacing",
+        countY: 3,
+        spacingY: "50",
+        spacingModeY: "spacing",
+        // Circulaire
+        circularCount: 6,
+        circularAngle: "360",
+        circularCenter: selectionCenter,
+        // Damier
+        checkerCountX: 8,
+        checkerCountY: 6,
+        checkerSize: "20",
+        checkerColor: "#000000",
+        // Général
+        includeOriginal: true,
+        createIntersections: true,
+      });
+    },
+    [selectedEntities, sketch],
+  );
 
   // Exécuter la répétition
   const executeArray = useCallback(() => {
-    if (!arrayDialog || selectedEntities.size === 0) return;
+    if (!arrayDialog) return;
+
+    // Le mode checkerboard ne nécessite pas de sélection
+    if (arrayDialog.type !== "checkerboard" && selectedEntities.size === 0) return;
 
     const {
       type,
@@ -12176,6 +12266,109 @@ export function CADGabaritCanvas({
         createCopy(0, 0, rotation);
         totalCopies++;
       }
+    } else if (type === "checkerboard") {
+      // Mode damier - création spéciale (ne nécessite pas de sélection)
+      const { checkerCountX, checkerCountY, checkerSize, checkerColor } = arrayDialog;
+      const sizeStr = typeof checkerSize === "string" ? checkerSize : String(checkerSize || "20");
+      const sizePx = (parseFloat(sizeStr.replace(",", ".")) || 20) * sketch.scaleFactor;
+
+      // Point de départ (centre du viewport ou origine)
+      const startX = 0;
+      const startY = 0;
+
+      // Créer les points de la grille
+      const pointGrid: string[][] = [];
+      for (let row = 0; row <= checkerCountY; row++) {
+        pointGrid[row] = [];
+        for (let col = 0; col <= checkerCountX; col++) {
+          const pointId = generateId();
+          newSketch.points.set(pointId, {
+            id: pointId,
+            x: startX + col * sizePx,
+            y: startY + row * sizePx,
+          });
+          pointGrid[row][col] = pointId;
+        }
+      }
+
+      // Créer les lignes horizontales
+      for (let row = 0; row <= checkerCountY; row++) {
+        for (let col = 0; col < checkerCountX; col++) {
+          const lineId = generateId();
+          newSketch.geometries.set(lineId, {
+            id: lineId,
+            type: "line",
+            p1: pointGrid[row][col],
+            p2: pointGrid[row][col + 1],
+            layerId: sketch.activeLayerId,
+            strokeWidth: defaultStrokeWidthRef.current,
+            strokeColor: defaultStrokeColorRef.current,
+          });
+          newGeometryIds.push(lineId);
+        }
+      }
+
+      // Créer les lignes verticales
+      for (let col = 0; col <= checkerCountX; col++) {
+        for (let row = 0; row < checkerCountY; row++) {
+          const lineId = generateId();
+          newSketch.geometries.set(lineId, {
+            id: lineId,
+            type: "line",
+            p1: pointGrid[row][col],
+            p2: pointGrid[row + 1][col],
+            layerId: sketch.activeLayerId,
+            strokeWidth: defaultStrokeWidthRef.current,
+            strokeColor: defaultStrokeColorRef.current,
+          });
+          newGeometryIds.push(lineId);
+        }
+      }
+
+      // Créer les remplissages pour les cases noires (pattern damier)
+      // Initialiser shapeFills si nécessaire
+      if (!newSketch.shapeFills) {
+        newSketch.shapeFills = new Map();
+      } else {
+        newSketch.shapeFills = new Map(newSketch.shapeFills);
+      }
+
+      for (let row = 0; row < checkerCountY; row++) {
+        for (let col = 0; col < checkerCountX; col++) {
+          // Case noire si (row + col) est pair
+          if ((row + col) % 2 === 0) {
+            // Trouver les 4 lignes qui forment cette case
+            // Lignes horizontales: row à col et row+1 à col
+            // Lignes verticales: col à row et col+1 à row
+
+            // On va identifier les geoIds des 4 côtés de la case
+            const topLineIdx = row * checkerCountX + col;
+            const bottomLineIdx = (row + 1) * checkerCountX + col;
+            const leftLineIdx = checkerCountX * (checkerCountY + 1) + col * checkerCountY + row;
+            const rightLineIdx = checkerCountX * (checkerCountY + 1) + (col + 1) * checkerCountY + row;
+
+            // Récupérer les IDs depuis newGeometryIds
+            const geoIds = new Set<string>();
+            if (newGeometryIds[topLineIdx]) geoIds.add(newGeometryIds[topLineIdx]);
+            if (newGeometryIds[bottomLineIdx]) geoIds.add(newGeometryIds[bottomLineIdx]);
+            if (newGeometryIds[leftLineIdx]) geoIds.add(newGeometryIds[leftLineIdx]);
+            if (newGeometryIds[rightLineIdx]) geoIds.add(newGeometryIds[rightLineIdx]);
+
+            if (geoIds.size === 4) {
+              const fillId = generateId();
+              newSketch.shapeFills.set(fillId, {
+                id: fillId,
+                geoIds,
+                fillType: "solid",
+                color: checkerColor || "#000000",
+                opacity: 1,
+              });
+            }
+          }
+        }
+      }
+
+      totalCopies = checkerCountX * checkerCountY;
     }
 
     // Créer les points d'intersection si demandé
@@ -18892,7 +19085,7 @@ export function CADGabaritCanvas({
 
           {/* Type de répétition */}
           <div className="px-3 py-2 border-b">
-            <div className="flex gap-1">
+            <div className="flex gap-1 flex-wrap">
               <Button
                 variant={arrayDialog.type === "linear" ? "default" : "outline"}
                 size="sm"
@@ -18916,6 +19109,14 @@ export function CADGabaritCanvas({
                 onClick={() => setArrayDialog({ ...arrayDialog, type: "circular" })}
               >
                 Circulaire
+              </Button>
+              <Button
+                variant={arrayDialog.type === "checkerboard" ? "default" : "outline"}
+                size="sm"
+                className="flex-1 h-7 text-xs bg-gradient-to-r from-black via-white to-black bg-[length:20px_20px]"
+                onClick={() => setArrayDialog({ ...arrayDialog, type: "checkerboard" })}
+              >
+                🏁 Damier
               </Button>
             </div>
           </div>
@@ -19230,16 +19431,113 @@ export function CADGabaritCanvas({
               </>
             )}
 
-            {/* Option: inclure l'original */}
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input
-                type="checkbox"
-                checked={arrayDialog.includeOriginal}
-                onChange={(e) => setArrayDialog({ ...arrayDialog, includeOriginal: e.target.checked })}
-                className="h-3 w-3"
-              />
-              Inclure l'original dans le compte
-            </label>
+            {/* Mode Damier (Mire de calibrage) */}
+            {arrayDialog.type === "checkerboard" && (
+              <>
+                <div className="bg-purple-50 border border-purple-200 rounded p-2 mb-2">
+                  <div className="text-xs text-purple-700 font-medium flex items-center gap-1">
+                    🏁 Mire de calibrage
+                  </div>
+                  <div className="text-[10px] text-purple-600 mt-1">Crée un damier pour la calibration photo</div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs w-24">Cases en X :</Label>
+                  <Input
+                    type="number"
+                    value={arrayDialog.checkerCountX ?? 8}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      if (!isNaN(val) && val >= 2) {
+                        setArrayDialog({ ...arrayDialog, checkerCountX: val });
+                      }
+                    }}
+                    className="h-7 flex-1 text-xs"
+                    min="2"
+                    max="50"
+                    onKeyDown={(e) => e.stopPropagation()}
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs w-24">Cases en Y :</Label>
+                  <Input
+                    type="number"
+                    value={arrayDialog.checkerCountY ?? 6}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      if (!isNaN(val) && val >= 2) {
+                        setArrayDialog({ ...arrayDialog, checkerCountY: val });
+                      }
+                    }}
+                    className="h-7 flex-1 text-xs"
+                    min="2"
+                    max="50"
+                    onKeyDown={(e) => e.stopPropagation()}
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs w-24">Taille case :</Label>
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    value={arrayDialog.checkerSize ?? "20"}
+                    onChange={(e) =>
+                      setArrayDialog({ ...arrayDialog, checkerSize: e.target.value.replace(/[^0-9.,]/g, "") })
+                    }
+                    className="h-7 flex-1 text-xs"
+                    onKeyDown={(e) => e.stopPropagation()}
+                  />
+                  <span className="text-xs text-gray-500">mm</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs w-24">Couleur :</Label>
+                  <input
+                    type="color"
+                    value={arrayDialog.checkerColor ?? "#000000"}
+                    onChange={(e) => setArrayDialog({ ...arrayDialog, checkerColor: e.target.value })}
+                    className="h-7 w-10 rounded cursor-pointer"
+                  />
+                  <span className="text-xs text-gray-500 flex-1">{arrayDialog.checkerColor ?? "#000000"}</span>
+                </div>
+
+                {/* Dimensions totales calculées */}
+                <div className="bg-gray-50 rounded p-2 space-y-1">
+                  <div className="text-xs text-gray-600 font-medium">Dimensions totales :</div>
+                  <div className="text-xs text-gray-500">
+                    {(
+                      (arrayDialog.checkerCountX ?? 8) *
+                      (parseFloat(String(arrayDialog.checkerSize ?? "20").replace(",", ".")) || 20)
+                    ).toFixed(1)}{" "}
+                    ×{" "}
+                    {(
+                      (arrayDialog.checkerCountY ?? 6) *
+                      (parseFloat(String(arrayDialog.checkerSize ?? "20").replace(",", ".")) || 20)
+                    ).toFixed(1)}{" "}
+                    mm
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    Points intérieurs: {(arrayDialog.checkerCountX ?? 8) - 1} × {(arrayDialog.checkerCountY ?? 6) - 1} ={" "}
+                    {((arrayDialog.checkerCountX ?? 8) - 1) * ((arrayDialog.checkerCountY ?? 6) - 1)}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Option: inclure l'original (masqué pour damier) */}
+            {arrayDialog.type !== "checkerboard" && (
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={arrayDialog.includeOriginal}
+                  onChange={(e) => setArrayDialog({ ...arrayDialog, includeOriginal: e.target.checked })}
+                  className="h-3 w-3"
+                />
+                Inclure l'original dans le compte
+              </label>
+            )}
 
             {/* Option: créer les intersections */}
             <label className="flex items-center gap-2 text-xs cursor-pointer">
