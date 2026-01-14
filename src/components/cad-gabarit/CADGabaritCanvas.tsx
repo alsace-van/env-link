@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.97 - Fix drag points calibration (priorité sur drag image)
+// VERSION: 6.98 - Bouton appliquer valeurs estimées (par paire et global)
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -16416,12 +16416,30 @@ export function CADGabaritCanvas({
                                   </p>
                                   <p className="text-muted-foreground">Échelle: {pairScale.toFixed(4)} mm/px</p>
                                   {imgCalib.scale && (
-                                    <p
-                                      className={`font-medium ${Math.abs(errorMm) < 0.5 ? "text-green-600" : Math.abs(errorMm) < 2 ? "text-orange-500" : "text-red-500"}`}
-                                    >
-                                      → Estimé: {measuredWithAvgScale.toFixed(1)} mm ({errorMm >= 0 ? "+" : ""}
-                                      {errorMm.toFixed(1)} mm)
-                                    </p>
+                                    <div className="flex items-center gap-2">
+                                      <p
+                                        className={`font-medium ${Math.abs(errorMm) < 0.5 ? "text-green-600" : Math.abs(errorMm) < 2 ? "text-orange-500" : "text-red-500"}`}
+                                      >
+                                        → Estimé: {measuredWithAvgScale.toFixed(1)} mm ({errorMm >= 0 ? "+" : ""}
+                                        {errorMm.toFixed(1)} mm)
+                                      </p>
+                                      {Math.abs(errorMm) >= 0.1 && (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-5 px-1 text-xs text-green-600 hover:text-green-700 hover:bg-green-50"
+                                          onClick={() => {
+                                            updatePairDistance(pair.id, Math.round(measuredWithAvgScale * 10) / 10);
+                                            toast.success(
+                                              `Paire ${p1?.label}-${p2?.label}: ${measuredWithAvgScale.toFixed(1)} mm`,
+                                            );
+                                          }}
+                                          title="Utiliser la valeur estimée"
+                                        >
+                                          ✓
+                                        </Button>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                                 <div className="flex items-center justify-between">
@@ -16736,7 +16754,7 @@ export function CADGabaritCanvas({
                       </Button>
 
                       {calibrationData.scale && (
-                        <div className="p-2 bg-green-50 rounded space-y-1">
+                        <div className="p-2 bg-green-50 rounded space-y-2">
                           <p className="text-sm font-medium text-green-700">
                             Échelle: {calibrationData.scale.toFixed(4)} mm/px
                           </p>
@@ -16745,6 +16763,34 @@ export function CADGabaritCanvas({
                               Erreur moyenne: {calibrationData.error.toFixed(1)}%
                             </p>
                           )}
+                          {/* Bouton pour appliquer toutes les valeurs estimées */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full text-xs h-7 border-green-300 text-green-700 hover:bg-green-100"
+                            onClick={() => {
+                              const scale = imgCalib.scale || calibrationData.scale;
+                              if (!scale) return;
+
+                              let count = 0;
+                              imgCalib.pairs.forEach((pair) => {
+                                const p1 = imgCalib.points.get(pair.point1Id);
+                                const p2 = imgCalib.points.get(pair.point2Id);
+                                if (p1 && p2) {
+                                  const distPx = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+                                  const estimatedMm = Math.round(distPx * scale * 10) / 10;
+                                  updatePairDistance(pair.id, estimatedMm);
+                                  count++;
+                                }
+                              });
+
+                              toast.success(`${count} paires mises à jour avec les valeurs estimées`);
+                              // Recalculer après pour ajuster l'erreur
+                              setTimeout(() => calculateCalibration(), 100);
+                            }}
+                          >
+                            ✓ Appliquer valeurs estimées à toutes les paires
+                          </Button>
                         </div>
                       )}
 
