@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.11 - Fix: bouton reset rotation toujours visible pour éviter décalage icônes
+// VERSION: 7.11 - Fix: bouton reset rotation toujours visible + raccourcis ignorés dans inputs
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -12768,6 +12768,18 @@ export function CADGabaritCanvas({
   // Gestion clavier (DOIT être après les fonctions copySelectedEntities, pasteEntities, duplicateSelectedEntities)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // MODIFICATION v7.11: Ignorer les raccourcis si le focus est sur un input/textarea
+      const activeElement = document.activeElement;
+      const isInputFocused =
+        activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLTextAreaElement ||
+        activeElement?.getAttribute("contenteditable") === "true";
+
+      // Pour les touches de saisie (Delete, Backspace, lettres), ne pas interférer avec les inputs
+      if (isInputFocused && e.key !== "Escape") {
+        return;
+      }
+
       // Echap - annuler l'action en cours
       if (e.key === "Escape") {
         // Fermer l'input texte en premier
