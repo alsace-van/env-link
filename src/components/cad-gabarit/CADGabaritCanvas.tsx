@@ -15243,6 +15243,8 @@ export function CADGabaritCanvas({
   const handleDropZoneDrop = useCallback(
     (e: React.DragEvent, targetIndex: number, targetLineIndex: number) => {
       e.preventDefault();
+      e.stopPropagation();
+
       const data = e.dataTransfer.getData("text/plain");
       if (!data) {
         handleGroupDragEnd();
@@ -15250,16 +15252,12 @@ export function CADGabaritCanvas({
       }
 
       let sourceGroupId: string;
-      let sourceLineIndex: number;
 
       try {
         const parsed = JSON.parse(data);
         sourceGroupId = parsed.groupId;
-        sourceLineIndex = parsed.lineIndex;
       } catch {
-        // Ancien format (juste groupId)
         sourceGroupId = data;
-        sourceLineIndex = targetLineIndex;
       }
 
       if (!sourceGroupId) {
@@ -15272,34 +15270,57 @@ export function CADGabaritCanvas({
         (() => {
           const newConfig = JSON.parse(JSON.stringify(newToolbarConfig));
 
-          // Trouver et retirer le groupe de sa position actuelle
+          // Trouver et retirer le groupe de sa position actuelle (chercher dans TOUTES les lignes)
           let movedItem: any = null;
-          for (const line of newConfig.lines) {
+          let sourceLineIdx = -1;
+          let sourceItemIdx = -1;
+
+          for (let lineIdx = 0; lineIdx < newConfig.lines.length; lineIdx++) {
+            const line = newConfig.lines[lineIdx];
             const idx = line.items.findIndex((item: any) => item.id === sourceGroupId);
             if (idx !== -1) {
+              sourceLineIdx = lineIdx;
+              sourceItemIdx = idx;
               [movedItem] = line.items.splice(idx, 1);
               break;
             }
           }
 
-          if (!movedItem) return newConfig;
+          if (!movedItem) {
+            console.warn("[Drop] Groupe non trouvé:", sourceGroupId);
+            return newConfig;
+          }
 
-          // Ajouter à la nouvelle position
-          const targetLine = newConfig.lines[targetLineIndex];
-          if (!targetLine) return newConfig;
+          // Mapper lineIndex JSX vers la vraie ligne dans la config
+          // lineIndex 0 = ligne 0 (Fichiers), lineIndex 1 = on fusionne lignes 1-3 (Outils)
+          let realTargetLineIdx = targetLineIndex;
+          if (targetLineIndex === 1) {
+            // Pour lineIndex 1 du JSX, on met tout dans la ligne 1 de la config
+            realTargetLineIdx = 1;
+          }
 
-          // Ajuster l'index si on déplace dans la même ligne et la source est avant la cible
-          let adjustedIndex = targetIndex;
-          if (sourceLineIndex === targetLineIndex) {
-            const originalIdx = newToolbarConfig.lines[sourceLineIndex]?.items.findIndex(
-              (item: any) => item.id === sourceGroupId,
-            );
-            if (originalIdx !== undefined && originalIdx < targetIndex) {
-              adjustedIndex = Math.max(0, targetIndex - 1);
-            }
+          // S'assurer que la ligne cible existe
+          while (newConfig.lines.length <= realTargetLineIdx) {
+            newConfig.lines.push({
+              id: `line_${newConfig.lines.length + 1}`,
+              name: `Ligne ${newConfig.lines.length + 1}`,
+              items: [],
+            });
+          }
+
+          const targetLine = newConfig.lines[realTargetLineIdx];
+
+          // Calculer l'index ajusté
+          let adjustedIndex = Math.min(targetIndex, targetLine.items.length);
+
+          // Si on déplace dans la même ligne et la source était avant la cible
+          if (sourceLineIdx === realTargetLineIdx && sourceItemIdx < targetIndex) {
+            adjustedIndex = Math.max(0, adjustedIndex);
           }
 
           targetLine.items.splice(adjustedIndex, 0, movedItem);
+
+          console.log("[Drop] Groupe déplacé:", sourceGroupId, "vers ligne", realTargetLineIdx, "index", adjustedIndex);
 
           return newConfig;
         })(),
@@ -15312,33 +15333,45 @@ export function CADGabaritCanvas({
   );
 
   // v1.1: Composant zone de drop entre les groupes
+  // v1.2: Composant zone de drop entre les groupes - toujours visible en mode édition
   const DropZoneBetweenGroups = useCallback(
     ({ targetIndex, lineIndex }: { targetIndex: number; lineIndex: number }) => {
-      if (!toolbarEditMode || !draggedGroupId) return null;
+      if (!toolbarEditMode) return null;
 
-      const isActive = dropTargetIndex === targetIndex && dropTargetLineIndex === lineIndex;
+      const isActive = draggedGroupId && dropTargetIndex === targetIndex && dropTargetLineIndex === lineIndex;
+      const isDragging = !!draggedGroupId;
 
       return (
         <div
           className={`
             flex items-center justify-center
-            min-w-[16px] min-h-[40px] mx-1
-            border-2 border-dashed rounded-md
             transition-all duration-150
             ${
-              isActive
-                ? "border-blue-500 bg-blue-100 min-w-[24px]"
-                : "border-gray-300 bg-gray-50 hover:border-blue-300 hover:bg-blue-50"
+              isDragging
+                ? `min-w-[20px] min-h-[40px] mx-1 border-2 border-dashed rounded-md ${
+                    isActive
+                      ? "border-blue-500 bg-blue-100 min-w-[32px]"
+                      : "border-gray-400 bg-gray-100 hover:border-blue-400 hover:bg-blue-50"
+                  }`
+                : "min-w-[8px] min-h-[40px] mx-0.5 opacity-30 hover:opacity-60"
             }
           `}
-          onDragOver={(e) => handleDropZoneDragOver(e, targetIndex, lineIndex)}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleDropZoneDragOver(e, targetIndex, lineIndex);
+          }}
+          onDragEnter={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
           onDragLeave={handleDropZoneDragLeave}
           onDrop={(e) => handleDropZoneDrop(e, targetIndex, lineIndex)}
         >
           <div
             className={`
-            w-1 h-6 rounded-full transition-all
-            ${isActive ? "bg-blue-500" : "bg-gray-300"}
+            w-1 rounded-full transition-all
+            ${isDragging ? `h-6 ${isActive ? "bg-blue-500" : "bg-gray-400"}` : "h-4 bg-gray-300"}
           `}
           />
         </div>
@@ -15419,7 +15452,7 @@ export function CADGabaritCanvas({
                 {/* Liste des outils du groupe */}
                 <div className="px-2 py-1 text-xs text-gray-500">Outils ({group.items.length})</div>
                 <div className="max-h-48 overflow-y-auto">
-  {/* MOD: Menu amélioré avec option "Déplacer vers" */}
+                  {/* MOD: Menu amélioré avec option "Déplacer vers" */}
                   {group.items.map((toolId) => {
                     const def = toolDefinitions.get(toolId);
                     const otherGroups = newToolbarConfig.groups.filter((g) => g.id !== groupId);
@@ -15448,7 +15481,7 @@ export function CADGabaritCanvas({
                             <EyeOff className="h-4 w-4 mr-2" />
                             Masquer
                           </DropdownMenuItem>
-                          
+
                           {otherGroups.length > 0 && (
                             <>
                               <DropdownMenuSeparator />
