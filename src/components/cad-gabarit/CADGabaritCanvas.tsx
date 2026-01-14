@@ -6031,11 +6031,13 @@ export function CADGabaritCanvas({
 
     for (const corner of filletDialog.corners) {
       // Retrouver les lignes connectées à ce point dans le sketch COURANT
+      // IMPORTANT: Exclure les lignes de construction (ex: diagonales des rectangles par le centre)
       const connectedLines: Line[] = [];
       currentSketch.geometries.forEach((geo) => {
         if (geo.type === "line") {
           const line = geo as Line;
-          if (line.p1 === corner.pointId || line.p2 === corner.pointId) {
+          // Exclure les lignes de construction pour ne garder que les 2 côtés du coin
+          if (!line.isConstruction && (line.p1 === corner.pointId || line.p2 === corner.pointId)) {
             connectedLines.push(line);
           }
         }
@@ -6135,11 +6137,13 @@ export function CADGabaritCanvas({
 
     for (const corner of chamferDialog.corners) {
       // Retrouver les lignes connectées à ce point dans le sketch COURANT
+      // IMPORTANT: Exclure les lignes de construction (ex: diagonales des rectangles par le centre)
       const connectedLines: Line[] = [];
       currentSketch.geometries.forEach((geo) => {
         if (geo.type === "line") {
           const line = geo as Line;
-          if (line.p1 === corner.pointId || line.p2 === corner.pointId) {
+          // Exclure les lignes de construction pour ne garder que les 2 côtés du coin
+          if (!line.isConstruction && (line.p1 === corner.pointId || line.p2 === corner.pointId)) {
             connectedLines.push(line);
           }
         }
