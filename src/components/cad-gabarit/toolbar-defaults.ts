@@ -1,7 +1,7 @@
 // ============================================
 // TOOLBAR DEFAULTS
 // Configuration par défaut de la toolbar CAD
-// VERSION: 1.0 - Création initiale
+// VERSION: 2.0 - Support multi-lignes dynamiques
 // ============================================
 
 import {
@@ -9,8 +9,10 @@ import {
   ToolbarConfig,
   ToolbarGroup,
   ToolbarItem,
+  ToolbarLine,
   ToolCategory,
   generateToolbarId,
+  generateLineId,
 } from "./toolbar-types";
 
 // ============================================
@@ -634,25 +636,47 @@ export const DEFAULT_GROUPS: ToolbarGroup[] = [
 // ============================================
 
 export const DEFAULT_TOOLBAR_CONFIG: ToolbarConfig = {
-  version: "2.0",
-  line1: [
-    { type: "group", id: "grp_save" },
-    { type: "group", id: "grp_import_export" },
-    { type: "group", id: "grp_help" },
-    { type: "tool", id: "status" },
-    { type: "tool", id: "fullscreen" },
-  ],
-  line2: [
-    { type: "group", id: "grp_select" },
-    { type: "group", id: "grp_transform" },
-    { type: "group", id: "grp_draw" },
-    { type: "group", id: "grp_photo" },
-    { type: "group", id: "grp_dimension" },
-    { type: "group", id: "grp_modify" },
-    { type: "group", id: "grp_style" },
-    { type: "group", id: "grp_view" },
-    { type: "group", id: "grp_history" },
-    { type: "group", id: "grp_display" },
+  version: "3.0",
+  lines: [
+    {
+      id: "line_1",
+      name: "Fichiers",
+      items: [
+        { type: "group", id: "grp_save" },
+        { type: "group", id: "grp_import_export" },
+        { type: "group", id: "grp_help" },
+        { type: "tool", id: "status" },
+        { type: "tool", id: "fullscreen" },
+      ],
+    },
+    {
+      id: "line_2",
+      name: "Outils de dessin",
+      items: [
+        { type: "group", id: "grp_select" },
+        { type: "group", id: "grp_transform" },
+        { type: "group", id: "grp_draw" },
+        { type: "group", id: "grp_dimension" },
+      ],
+    },
+    {
+      id: "line_3",
+      name: "Modifications",
+      items: [
+        { type: "group", id: "grp_modify" },
+        { type: "group", id: "grp_style" },
+        { type: "group", id: "grp_view" },
+        { type: "group", id: "grp_history" },
+      ],
+    },
+    {
+      id: "line_4",
+      name: "Photos & Affichage",
+      items: [
+        { type: "group", id: "grp_photo" },
+        { type: "group", id: "grp_display" },
+      ],
+    },
   ],
   groups: DEFAULT_GROUPS,
   hidden: [],
@@ -700,8 +724,10 @@ export function mergeWithDefaults(savedConfig: ToolbarConfig): ToolbarConfig {
     });
   };
 
-  collectIds(savedConfig.line1, savedConfig.groups);
-  collectIds(savedConfig.line2, savedConfig.groups);
+  // Collecter les IDs de toutes les lignes
+  savedConfig.lines.forEach((line) => {
+    collectIds(line.items, savedConfig.groups);
+  });
   savedConfig.hidden.forEach((id) => configToolIds.add(id));
 
   const newTools: string[] = [];

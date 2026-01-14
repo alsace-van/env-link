@@ -1,7 +1,7 @@
 // ============================================
 // HOOK: useToolbarConfig
 // Gestion de la configuration de la toolbar
-// VERSION: 1.0 - Création initiale
+// VERSION: 2.0 - Support multi-lignes dynamiques
 // ============================================
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -9,16 +9,13 @@ import {
   ToolbarConfig,
   ToolbarItem,
   ToolbarGroup,
+  ToolbarLine,
   ToolDefinition,
   TOOLBAR_CONFIG_KEY,
   isValidToolbarConfig,
+  generateLineId,
 } from "./toolbar-types";
-import {
-  DEFAULT_TOOLBAR_CONFIG,
-  getDefaultToolbarConfig,
-  createToolDefinitionsMap,
-  mergeWithDefaults,
-} from "./toolbar-defaults";
+import { getDefaultToolbarConfig, createToolDefinitionsMap, mergeWithDefaults } from "./toolbar-defaults";
 
 // ============================================
 // TYPE DE RETOUR DU HOOK
@@ -31,11 +28,8 @@ export interface UseToolbarConfigReturn {
   // Map des définitions d'outils
   toolDefinitions: Map<string, ToolDefinition>;
 
-  // Outils de la ligne 1 (résolus avec leurs définitions)
-  line1Tools: ResolvedToolbarItem[];
-
-  // Outils de la ligne 2 (résolus avec leurs définitions)
-  line2Tools: ResolvedToolbarItem[];
+  // Toutes les lignes résolues
+  resolvedLines: ResolvedLine[];
 
   // Outils masqués
   hiddenTools: string[];
@@ -50,14 +44,20 @@ export interface UseToolbarConfigReturn {
   isToolVisible: (toolId: string) => boolean;
   isGroupVisible: (groupId: string) => boolean;
   getGroupForTool: (toolId: string) => ToolbarGroup | null;
-
-  // Pour la migration depuis l'ancienne config
-  migrateFromOldConfig: (oldConfig: OldToolbarConfig) => void;
+  addLine: () => void;
+  removeLine: (lineIndex: number) => void;
 }
 
 // ============================================
 // TYPES INTERNES
 // ============================================
+
+// Une ligne résolue avec ses outils
+export interface ResolvedLine {
+  id: string;
+  name?: string;
+  items: ResolvedToolbarItem[];
+}
 
 // Outil résolu avec sa définition et son groupe éventuel
 export interface ResolvedToolbarItem {
@@ -72,35 +72,6 @@ export interface ResolvedTool {
   id: string;
   definition: ToolDefinition;
 }
-
-// Ancienne config (v1) pour migration
-export interface OldToolbarConfig {
-  line1: { [key: string]: boolean };
-  line2: { [key: string]: boolean };
-}
-
-// Mapping ancien ID -> nouveau ID
-const OLD_TO_NEW_ID_MAP: Record<string, string> = {
-  save: "save",
-  import: "import",
-  photos: "photos",
-  exportSvg: "exportSvg",
-  exportPng: "exportPng",
-  exportDxf: "exportDxf",
-  exportPdf: "exportPdf",
-  templates: "templates",
-  help: "help",
-  selectPan: "select", // Groupe contenant select + pan
-  transform: "mirror", // Groupe contenant mirror + moveRotate
-  drawBasic: "line", // Groupe contenant outils de dessin
-  drawAdvanced: "spline", // Groupe contenant spline, polygon
-  modifications: "fillet", // Groupe contenant fillet, chamfer, offset
-  photoTools: "showBackground", // Groupe outils photos
-  dimensions: "dimension", // Groupe cotations
-  viewControls: "zoomIn", // Groupe vue
-  history: "undo", // Groupe historique
-  branches: "branchSelect", // Groupe branches
-};
 
 // ============================================
 // HOOK PRINCIPAL
@@ -178,11 +149,17 @@ export function useToolbarConfig(): UseToolbarConfigReturn {
         }
       });
     },
-    [config.groups, toolDefinitions]
+    [config.groups, toolDefinitions],
   );
 
-  const line1Tools = useMemo(() => resolveItems(config.line1), [config.line1, resolveItems]);
-  const line2Tools = useMemo(() => resolveItems(config.line2), [config.line2, resolveItems]);
+  // Résoudre toutes les lignes
+  const resolvedLines = useMemo((): ResolvedLine[] => {
+    return config.lines.map((line) => ({
+      id: line.id,
+      name: line.name,
+      items: resolveItems(line.items),
+    }));
+  }, [config.lines, resolveItems]);
 
   // ============================================
   // ACTIONS
@@ -194,6 +171,48 @@ export function useToolbarConfig(): UseToolbarConfigReturn {
 
   const resetConfig = useCallback(() => {
     setConfig(getDefaultToolbarConfig());
+  }, []);
+
+  const addLine = useCallback(() => {
+    setConfig((prev) => ({
+      ...prev,
+      lines: [
+        ...prev.lines,
+        {
+          id: generateLineId(),
+          name: `Ligne ${prev.lines.length + 1}`,
+          items: [],
+        },
+      ],
+    }));
+  }, []);
+
+  const removeLine = useCallback((lineIndex: number) => {
+    setConfig((prev) => {
+      if (prev.lines.length <= 1) return prev; // Garder au moins une ligne
+
+      const lineToRemove = prev.lines[lineIndex];
+      if (!lineToRemove) return prev;
+
+      // Récupérer tous les outils de la ligne à supprimer et les masquer
+      const toolsToHide: string[] = [];
+      lineToRemove.items.forEach((item) => {
+        if (item.type === "tool") {
+          toolsToHide.push(item.id);
+        } else {
+          const group = prev.groups.find((g) => g.id === item.id);
+          if (group) {
+            toolsToHide.push(...group.items);
+          }
+        }
+      });
+
+      return {
+        ...prev,
+        lines: prev.lines.filter((_, idx) => idx !== lineIndex),
+        hidden: [...new Set([...prev.hidden, ...toolsToHide])],
+      };
+    });
   }, []);
 
   const isToolVisible = useCallback(
@@ -213,19 +232,16 @@ export function useToolbarConfig(): UseToolbarConfigReturn {
         return false;
       };
 
-      return checkInItems(config.line1) || checkInItems(config.line2);
+      return config.lines.some((line) => checkInItems(line.items));
     },
-    [config]
+    [config],
   );
 
   const isGroupVisible = useCallback(
     (groupId: string): boolean => {
-      const checkInItems = (items: ToolbarItem[]): boolean => {
-        return items.some((item) => item.type === "group" && item.id === groupId);
-      };
-      return checkInItems(config.line1) || checkInItems(config.line2);
+      return config.lines.some((line) => line.items.some((item) => item.type === "group" && item.id === groupId));
     },
-    [config]
+    [config],
   );
 
   const getGroupForTool = useCallback(
@@ -237,48 +253,8 @@ export function useToolbarConfig(): UseToolbarConfigReturn {
       }
       return null;
     },
-    [config.groups]
+    [config.groups],
   );
-
-  // ============================================
-  // MIGRATION DEPUIS L'ANCIENNE CONFIG
-  // ============================================
-
-  const migrateFromOldConfig = useCallback((oldConfig: OldToolbarConfig) => {
-    console.log("[useToolbarConfig] Migrating from old config:", oldConfig);
-
-    // Pour la migration, on va simplement masquer les outils qui étaient désactivés
-    const hidden: string[] = [];
-
-    // Ligne 1
-    Object.entries(oldConfig.line1).forEach(([key, visible]) => {
-      if (!visible) {
-        const newId = OLD_TO_NEW_ID_MAP[key];
-        if (newId) hidden.push(newId);
-      }
-    });
-
-    // Ligne 2
-    Object.entries(oldConfig.line2).forEach(([key, visible]) => {
-      if (!visible) {
-        const newId = OLD_TO_NEW_ID_MAP[key];
-        if (newId) hidden.push(newId);
-      }
-    });
-
-    // Mettre à jour la config avec les outils masqués
-    setConfig((prev) => ({
-      ...prev,
-      hidden: [...new Set([...prev.hidden, ...hidden])],
-    }));
-
-    // Supprimer l'ancienne config
-    try {
-      localStorage.removeItem("cad-toolbar-config");
-    } catch {
-      // Ignore
-    }
-  }, []);
 
   // ============================================
   // RETOUR
@@ -287,8 +263,7 @@ export function useToolbarConfig(): UseToolbarConfigReturn {
   return {
     config,
     toolDefinitions,
-    line1Tools,
-    line2Tools,
+    resolvedLines,
     hiddenTools: config.hidden,
     isEditorOpen,
     setEditorOpen,
@@ -297,7 +272,8 @@ export function useToolbarConfig(): UseToolbarConfigReturn {
     isToolVisible,
     isGroupVisible,
     getGroupForTool,
-    migrateFromOldConfig,
+    addLine,
+    removeLine,
   };
 }
 

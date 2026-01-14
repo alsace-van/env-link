@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: ToolbarEditor
-// Éditeur de toolbar drag & drop avec groupes
-// VERSION: 1.1 - Corrections TypeScript
+// Éditeur de toolbar drag & drop multi-lignes
+// VERSION: 2.0 - Support multi-lignes dynamiques
 // ============================================
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
@@ -28,11 +28,22 @@ import {
   Eye,
   EyeOff,
   Move,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { ToolbarConfig, ToolbarGroup, ToolbarItem, DragState, GROUP_COLORS, generateToolbarId } from "./toolbar-types";
-import { getDefaultToolbarConfig, createToolDefinitionsMap } from "./toolbar-defaults";
+import {
+  ToolbarConfig,
+  ToolbarGroup,
+  ToolbarItem,
+  ToolbarLine,
+  DragState,
+  GROUP_COLORS,
+  generateToolbarId,
+  generateLineId,
+} from "./toolbar-types";
+import { createToolDefinitionsMap } from "./toolbar-defaults";
 
 // ============================================
 // PROPS
@@ -61,9 +72,9 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
     isDragging: false,
     draggedId: null,
     draggedType: null,
-    sourceLine: null,
+    sourceLineIndex: null,
     sourceIndex: null,
-    targetLine: null,
+    targetLineIndex: null,
     targetIndex: null,
   });
 
@@ -76,6 +87,10 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
   // État pour l'édition de groupe
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editGroupName, setEditGroupName] = useState("");
+
+  // État pour l'édition de nom de ligne
+  const [editingLineId, setEditingLineId] = useState<string | null>(null);
+  const [editLineName, setEditLineName] = useState("");
 
   // État pour la modale draggable
   const [modalPosition, setModalPosition] = useState({ x: 100, y: 50 });
@@ -134,34 +149,41 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
   }, [isDraggingModal, dragStartPos]);
 
   // ============================================
-  // DRAG & DROP OUTILS
+  // DRAG & DROP OUTILS/GROUPES
   // ============================================
 
   const handleDragStart = useCallback(
-    (e: React.DragEvent, itemId: string, itemType: "tool" | "group", line: 1 | 2 | "hidden", index: number) => {
+    (
+      e: React.DragEvent,
+      itemId: string,
+      itemType: "tool" | "group",
+      lineIndex: number | "hidden",
+      index: number,
+      fromGroupId?: string,
+    ) => {
       e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", JSON.stringify({ itemId, itemType, line, index }));
+      e.dataTransfer.setData("text/plain", JSON.stringify({ itemId, itemType, lineIndex, index, fromGroupId }));
 
       setDragState({
         isDragging: true,
         draggedId: itemId,
         draggedType: itemType,
-        sourceLine: line === "hidden" ? null : line,
+        sourceLineIndex: lineIndex === "hidden" ? null : lineIndex,
         sourceIndex: index,
-        targetLine: null,
+        targetLineIndex: null,
         targetIndex: null,
       });
     },
     [],
   );
 
-  const handleDragOver = useCallback((e: React.DragEvent, targetLine: 1 | 2 | "hidden", targetIndex: number) => {
+  const handleDragOver = useCallback((e: React.DragEvent, targetLineIndex: number | "hidden", targetIndex: number) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
 
     setDragState((prev) => ({
       ...prev,
-      targetLine,
+      targetLineIndex,
       targetIndex,
     }));
   }, []);
@@ -171,61 +193,53 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
       isDragging: false,
       draggedId: null,
       draggedType: null,
-      sourceLine: null,
+      sourceLineIndex: null,
       sourceIndex: null,
-      targetLine: null,
+      targetLineIndex: null,
       targetIndex: null,
     });
   }, []);
 
   const handleDrop = useCallback(
-    (e: React.DragEvent, targetLine: 1 | 2 | "hidden", targetIndex: number) => {
+    (e: React.DragEvent, targetLineIndex: number | "hidden", targetIndex: number) => {
       e.preventDefault();
 
       try {
         const data = JSON.parse(e.dataTransfer.getData("text/plain"));
-        const { itemId, itemType, line: sourceLine, index: sourceIndex, fromGroupId } = data;
+        const { itemId, itemType, lineIndex: sourceLineIndex, index: sourceIndex, fromGroupId } = data;
 
         setLocalConfig((prev) => {
           const newConfig = JSON.parse(JSON.stringify(prev)) as ToolbarConfig;
 
           // Retirer de la source
           if (fromGroupId) {
-            // L'outil vient d'un groupe - le retirer du groupe
+            // L'outil vient d'un groupe
             const sourceGroup = newConfig.groups.find((g) => g.id === fromGroupId);
             if (sourceGroup) {
               sourceGroup.items = sourceGroup.items.filter((id) => id !== itemId);
-              // Supprimer le groupe s'il devient vide
               if (sourceGroup.items.length === 0) {
                 newConfig.groups = newConfig.groups.filter((g) => g.id !== fromGroupId);
-                newConfig.line1 = newConfig.line1.filter((item) => !(item.type === "group" && item.id === fromGroupId));
-                newConfig.line2 = newConfig.line2.filter((item) => !(item.type === "group" && item.id === fromGroupId));
+                newConfig.lines.forEach((line) => {
+                  line.items = line.items.filter((item) => !(item.type === "group" && item.id === fromGroupId));
+                });
               }
             }
-          } else if (sourceLine === 1) {
-            newConfig.line1.splice(sourceIndex, 1);
-          } else if (sourceLine === 2) {
-            newConfig.line2.splice(sourceIndex, 1);
-          } else if (sourceLine === "hidden") {
+          } else if (typeof sourceLineIndex === "number") {
+            newConfig.lines[sourceLineIndex].items.splice(sourceIndex, 1);
+          } else if (sourceLineIndex === "hidden") {
             newConfig.hidden = newConfig.hidden.filter((id) => id !== itemId);
           }
 
           // Ajouter à la cible
           const item: ToolbarItem = { type: itemType, id: itemId };
 
-          if (targetLine === 1) {
+          if (typeof targetLineIndex === "number") {
             let adjustedIndex = targetIndex;
-            if (!fromGroupId && sourceLine === 1 && sourceIndex < targetIndex) {
+            if (!fromGroupId && sourceLineIndex === targetLineIndex && sourceIndex < targetIndex) {
               adjustedIndex--;
             }
-            newConfig.line1.splice(adjustedIndex, 0, item);
-          } else if (targetLine === 2) {
-            let adjustedIndex = targetIndex;
-            if (!fromGroupId && sourceLine === 2 && sourceIndex < targetIndex) {
-              adjustedIndex--;
-            }
-            newConfig.line2.splice(adjustedIndex, 0, item);
-          } else if (targetLine === "hidden") {
+            newConfig.lines[targetLineIndex].items.splice(adjustedIndex, 0, item);
+          } else if (targetLineIndex === "hidden") {
             if (itemType === "group") {
               const group = newConfig.groups.find((g) => g.id === itemId);
               if (group) {
@@ -247,6 +261,121 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
     },
     [handleDragEnd],
   );
+
+  // Drop dans un groupe existant
+  const handleDropInGroup = useCallback(
+    (e: React.DragEvent, targetGroupId: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      try {
+        const data = JSON.parse(e.dataTransfer.getData("text/plain"));
+        const { itemId, itemType, fromGroupId } = data;
+
+        if (itemType !== "tool") return;
+        if (fromGroupId === targetGroupId) return;
+
+        setLocalConfig((prev) => {
+          const newConfig = JSON.parse(JSON.stringify(prev)) as ToolbarConfig;
+
+          // Retirer de la source
+          if (fromGroupId) {
+            const sourceGroup = newConfig.groups.find((g) => g.id === fromGroupId);
+            if (sourceGroup) {
+              sourceGroup.items = sourceGroup.items.filter((id) => id !== itemId);
+              if (sourceGroup.items.length === 0) {
+                newConfig.groups = newConfig.groups.filter((g) => g.id !== fromGroupId);
+                newConfig.lines.forEach((line) => {
+                  line.items = line.items.filter((item) => !(item.type === "group" && item.id === fromGroupId));
+                });
+              }
+            }
+          } else {
+            newConfig.lines.forEach((line) => {
+              line.items = line.items.filter((item) => !(item.type === "tool" && item.id === itemId));
+            });
+            newConfig.hidden = newConfig.hidden.filter((id) => id !== itemId);
+          }
+
+          // Ajouter au groupe cible
+          const targetGroup = newConfig.groups.find((g) => g.id === targetGroupId);
+          if (targetGroup && !targetGroup.items.includes(itemId)) {
+            targetGroup.items.push(itemId);
+          }
+
+          return newConfig;
+        });
+
+        handleDragEnd();
+      } catch (error) {
+        console.error("Drop in group error:", error);
+      }
+    },
+    [handleDragEnd],
+  );
+
+  // ============================================
+  // GESTION DES LIGNES
+  // ============================================
+
+  const addLine = useCallback(() => {
+    setLocalConfig((prev) => ({
+      ...prev,
+      lines: [
+        ...prev.lines,
+        {
+          id: generateLineId(),
+          name: `Ligne ${prev.lines.length + 1}`,
+          items: [],
+        },
+      ],
+    }));
+    toast.success("Nouvelle ligne ajoutée");
+  }, []);
+
+  const removeLine = useCallback((lineIndex: number) => {
+    setLocalConfig((prev) => {
+      if (prev.lines.length <= 1) {
+        toast.error("Impossible de supprimer la dernière ligne");
+        return prev;
+      }
+
+      const lineToRemove = prev.lines[lineIndex];
+      const toolsToHide: string[] = [];
+
+      lineToRemove.items.forEach((item) => {
+        if (item.type === "tool") {
+          toolsToHide.push(item.id);
+        } else {
+          const group = prev.groups.find((g) => g.id === item.id);
+          if (group) {
+            toolsToHide.push(...group.items);
+          }
+        }
+      });
+
+      toast.success(`Ligne "${lineToRemove.name || lineIndex + 1}" supprimée`);
+
+      return {
+        ...prev,
+        lines: prev.lines.filter((_, idx) => idx !== lineIndex),
+        hidden: [...new Set([...prev.hidden, ...toolsToHide])],
+      };
+    });
+  }, []);
+
+  const renameLine = useCallback((lineId: string, newName: string) => {
+    if (!newName.trim()) {
+      setEditingLineId(null);
+      return;
+    }
+
+    setLocalConfig((prev) => ({
+      ...prev,
+      lines: prev.lines.map((line) => (line.id === lineId ? { ...line, name: newName.trim() } : line)),
+    }));
+    setEditingLineId(null);
+  }, []);
 
   // ============================================
   // GESTION DES GROUPES
@@ -275,17 +404,18 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
       };
       newConfig.groups.push(newGroup);
 
-      let targetLine: number = 2;
+      let targetLineIndex = 0;
       let targetIndex = 0;
       let firstToolFound = false;
 
-      const removeTools = (line: ToolbarItem[], lineNum: number) => {
-        const newLine: ToolbarItem[] = [];
-        line.forEach((item) => {
+      // Trouver où placer le groupe et retirer les outils
+      newConfig.lines.forEach((line, lineIdx) => {
+        const newItems: ToolbarItem[] = [];
+        line.items.forEach((item) => {
           if (item.type === "tool" && toolIds.includes(item.id)) {
             if (!firstToolFound) {
-              targetLine = lineNum;
-              targetIndex = newLine.length;
+              targetLineIndex = lineIdx;
+              targetIndex = newItems.length;
               firstToolFound = true;
             }
           } else if (item.type === "group") {
@@ -293,29 +423,23 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
             if (group) {
               group.items = group.items.filter((id) => !toolIds.includes(id));
               if (group.items.length > 0) {
-                newLine.push(item);
+                newItems.push(item);
               }
             } else {
-              newLine.push(item);
+              newItems.push(item);
             }
           } else {
-            newLine.push(item);
+            newItems.push(item);
           }
         });
-        return newLine;
-      };
+        line.items = newItems;
+      });
 
-      newConfig.line1 = removeTools(newConfig.line1, 1);
-      newConfig.line2 = removeTools(newConfig.line2, 2);
       newConfig.hidden = newConfig.hidden.filter((id) => !toolIds.includes(id));
       newConfig.groups = newConfig.groups.filter((g) => g.items.length > 0);
 
       const groupItem: ToolbarItem = { type: "group", id: newGroup.id };
-      if (targetLine === 1) {
-        newConfig.line1.splice(targetIndex, 0, groupItem);
-      } else {
-        newConfig.line2.splice(targetIndex, 0, groupItem);
-      }
+      newConfig.lines[targetLineIndex].items.splice(targetIndex, 0, groupItem);
 
       return newConfig;
     });
@@ -333,35 +457,24 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
 
       if (!group) return prev;
 
-      let targetLine: number = 2;
+      let targetLineIndex = 0;
       let targetIndex = 0;
 
-      const findAndRemove = (line: ToolbarItem[], lineNum: number) => {
-        const idx = line.findIndex((item) => item.type === "group" && item.id === groupId);
+      newConfig.lines.forEach((line, lineIdx) => {
+        const idx = line.items.findIndex((item) => item.type === "group" && item.id === groupId);
         if (idx !== -1) {
-          targetLine = lineNum;
+          targetLineIndex = lineIdx;
           targetIndex = idx;
-          line.splice(idx, 1);
-          return true;
+          line.items.splice(idx, 1);
         }
-        return false;
-      };
-
-      if (!findAndRemove(newConfig.line1, 1)) {
-        findAndRemove(newConfig.line2, 2);
-      }
+      });
 
       const toolItems: ToolbarItem[] = group.items.map((id) => ({
         type: "tool" as const,
         id,
       }));
 
-      if (targetLine === 1) {
-        newConfig.line1.splice(targetIndex, 0, ...toolItems);
-      } else {
-        newConfig.line2.splice(targetIndex, 0, ...toolItems);
-      }
-
+      newConfig.lines[targetLineIndex].items.splice(targetIndex, 0, ...toolItems);
       newConfig.groups = newConfig.groups.filter((g) => g.id !== groupId);
 
       return newConfig;
@@ -371,43 +484,28 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
   }, []);
 
   const renameGroup = useCallback((groupId: string, newName: string) => {
-    setLocalConfig((prev) => {
-      const newConfig = JSON.parse(JSON.stringify(prev)) as ToolbarConfig;
-      const group = newConfig.groups.find((g) => g.id === groupId);
-      if (group) {
-        group.name = newName;
-      }
-      return newConfig;
-    });
+    if (!newName.trim()) {
+      setEditingGroupId(null);
+      return;
+    }
+
+    setLocalConfig((prev) => ({
+      ...prev,
+      groups: prev.groups.map((g) => (g.id === groupId ? { ...g, name: newName.trim() } : g)),
+    }));
     setEditingGroupId(null);
   }, []);
 
   const changeGroupColor = useCallback((groupId: string, color: string) => {
-    setLocalConfig((prev) => {
-      const newConfig = JSON.parse(JSON.stringify(prev)) as ToolbarConfig;
-      const group = newConfig.groups.find((g) => g.id === groupId);
-      if (group) {
-        group.color = color;
-      }
-      return newConfig;
-    });
+    setLocalConfig((prev) => ({
+      ...prev,
+      groups: prev.groups.map((g) => (g.id === groupId ? { ...g, color } : g)),
+    }));
   }, []);
 
   // ============================================
-  // ACTIONS
+  // AUTRES ACTIONS
   // ============================================
-
-  const handleSave = useCallback(() => {
-    onConfigChange(localConfig);
-    toast.success("Configuration sauvegardée");
-    onClose();
-  }, [localConfig, onConfigChange, onClose]);
-
-  const handleReset = useCallback(() => {
-    const defaultConfig = getDefaultToolbarConfig();
-    setLocalConfig(defaultConfig);
-    toast.info("Configuration réinitialisée");
-  }, []);
 
   const toggleToolSelection = useCallback((toolId: string) => {
     setSelectedTools((prev) => {
@@ -425,9 +523,29 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
     setLocalConfig((prev) => {
       const newConfig = JSON.parse(JSON.stringify(prev)) as ToolbarConfig;
       newConfig.hidden = newConfig.hidden.filter((id) => id !== toolId);
-      newConfig.line2.push({ type: "tool", id: toolId });
+      // Ajouter à la dernière ligne
+      if (newConfig.lines.length > 0) {
+        newConfig.lines[newConfig.lines.length - 1].items.push({
+          type: "tool",
+          id: toolId,
+        });
+      }
       return newConfig;
     });
+  }, []);
+
+  const handleSave = useCallback(() => {
+    onConfigChange(localConfig);
+    toast.success("Configuration sauvegardée");
+    onClose();
+  }, [localConfig, onConfigChange, onClose]);
+
+  const handleReset = useCallback(() => {
+    if (confirm("Réinitialiser la toolbar à sa configuration par défaut ?")) {
+      const { getDefaultToolbarConfig } = require("./toolbar-defaults");
+      setLocalConfig(getDefaultToolbarConfig());
+      toast.success("Configuration réinitialisée");
+    }
   }, []);
 
   // ============================================
@@ -435,7 +553,7 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
   // ============================================
 
   const renderTool = useCallback(
-    (toolId: string, line: 1 | 2 | "hidden", index: number, inGroup = false, groupId?: string) => {
+    (toolId: string, lineIndex: number | "hidden", index: number, inGroup = false, groupId?: string) => {
       const tool = toolDefs.current.get(toolId);
       if (!tool) return null;
 
@@ -446,29 +564,7 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
         <div
           key={toolId}
           draggable
-          onDragStart={(e) => {
-            // Stocker aussi le groupId source si l'outil est dans un groupe
-            e.dataTransfer.effectAllowed = "move";
-            e.dataTransfer.setData(
-              "text/plain",
-              JSON.stringify({
-                itemId: toolId,
-                itemType: "tool",
-                line,
-                index,
-                fromGroupId: groupId || null,
-              }),
-            );
-            setDragState({
-              isDragging: true,
-              draggedId: toolId,
-              draggedType: "tool",
-              sourceLine: line === "hidden" ? null : line,
-              sourceIndex: index,
-              targetLine: null,
-              targetIndex: null,
-            });
-          }}
+          onDragStart={(e) => handleDragStart(e, toolId, "tool", lineIndex, index, groupId)}
           onDragEnd={handleDragEnd}
           onClick={() => isCreatingGroup && toggleToolSelection(toolId)}
           className={`
@@ -489,7 +585,7 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
         </div>
       );
     },
-    [selectedTools, dragState, isCreatingGroup, handleDragEnd, toggleToolSelection],
+    [selectedTools, dragState, isCreatingGroup, handleDragStart, handleDragEnd, toggleToolSelection],
   );
 
   // ============================================
@@ -497,7 +593,7 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
   // ============================================
 
   const renderGroup = useCallback(
-    (groupId: string, line: 1 | 2, index: number) => {
+    (groupId: string, lineIndex: number, index: number) => {
       const group = localConfig.groups.find((g) => g.id === groupId);
       if (!group) return null;
 
@@ -508,68 +604,13 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
         <div
           key={groupId}
           draggable
-          onDragStart={(e) => handleDragStart(e, groupId, "group", line, index)}
+          onDragStart={(e) => handleDragStart(e, groupId, "group", lineIndex, index)}
           onDragEnd={handleDragEnd}
           onDragOver={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            // Permettre le drop dans le groupe
           }}
-          onDrop={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            try {
-              const data = JSON.parse(e.dataTransfer.getData("text/plain"));
-              const { itemId, itemType, fromGroupId } = data;
-
-              // Ne permettre que les outils (pas les groupes)
-              if (itemType !== "tool") return;
-
-              // Si l'outil vient du même groupe, ne rien faire
-              if (fromGroupId === groupId) return;
-
-              setLocalConfig((prev) => {
-                const newConfig = JSON.parse(JSON.stringify(prev)) as ToolbarConfig;
-
-                // Retirer l'outil de sa source
-                if (fromGroupId) {
-                  // Retirer du groupe source
-                  const sourceGroup = newConfig.groups.find((g) => g.id === fromGroupId);
-                  if (sourceGroup) {
-                    sourceGroup.items = sourceGroup.items.filter((id) => id !== itemId);
-                    // Supprimer le groupe source s'il est vide
-                    if (sourceGroup.items.length === 0) {
-                      newConfig.groups = newConfig.groups.filter((g) => g.id !== fromGroupId);
-                      // Retirer aussi des lignes
-                      newConfig.line1 = newConfig.line1.filter(
-                        (item) => !(item.type === "group" && item.id === fromGroupId),
-                      );
-                      newConfig.line2 = newConfig.line2.filter(
-                        (item) => !(item.type === "group" && item.id === fromGroupId),
-                      );
-                    }
-                  }
-                } else {
-                  // Retirer des lignes ou hidden
-                  newConfig.line1 = newConfig.line1.filter((item) => !(item.type === "tool" && item.id === itemId));
-                  newConfig.line2 = newConfig.line2.filter((item) => !(item.type === "tool" && item.id === itemId));
-                  newConfig.hidden = newConfig.hidden.filter((id) => id !== itemId);
-                }
-
-                // Ajouter au groupe cible
-                const targetGroup = newConfig.groups.find((g) => g.id === groupId);
-                if (targetGroup && !targetGroup.items.includes(itemId)) {
-                  targetGroup.items.push(itemId);
-                }
-
-                return newConfig;
-              });
-
-              handleDragEnd();
-            } catch (error) {
-              console.error("Drop in group error:", error);
-            }
-          }}
+          onDrop={(e) => handleDropInGroup(e, groupId)}
           className={`
             border-2 rounded-lg p-2 transition-all
             ${isDragged ? "opacity-50 border-dashed" : ""}
@@ -640,7 +681,7 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
           </div>
 
           <div className="space-y-1 pl-5">
-            {group.items.map((toolId, idx) => renderTool(toolId, line, idx, true, groupId))}
+            {group.items.map((toolId, idx) => renderTool(toolId, lineIndex, idx, true, groupId))}
           </div>
         </div>
       );
@@ -652,6 +693,7 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
       editGroupName,
       handleDragStart,
       handleDragEnd,
+      handleDropInGroup,
       renameGroup,
       changeGroupColor,
       dissolveGroup,
@@ -664,58 +706,105 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
   // ============================================
 
   const renderLine = useCallback(
-    (lineNum: 1 | 2) => {
-      const items = lineNum === 1 ? localConfig.line1 : localConfig.line2;
-      const isDropTarget = dragState.targetLine === lineNum;
+    (line: ToolbarLine, lineIndex: number) => {
+      const isDropTarget = dragState.targetLineIndex === lineIndex;
+      const isEditingName = editingLineId === line.id;
 
       return (
         <div
-          onDragOver={(e) => handleDragOver(e, lineNum, items.length)}
-          onDrop={(e) => handleDrop(e, lineNum, items.length)}
+          key={line.id}
+          onDragOver={(e) => handleDragOver(e, lineIndex, line.items.length)}
+          onDrop={(e) => handleDrop(e, lineIndex, line.items.length)}
           className={`
-            min-h-[100px] p-3 rounded-lg border-2 border-dashed transition-all
+            min-h-[80px] p-3 rounded-lg border-2 border-dashed transition-all
             ${isDropTarget ? "border-blue-400 bg-blue-50" : "border-gray-200"}
           `}
         >
           <div className="flex items-center gap-2 mb-3">
-            <Badge variant="outline">Ligne {lineNum}</Badge>
-            <span className="text-xs text-gray-500">{lineNum === 1 ? "Fichiers & Export" : "Outils & Options"}</span>
+            <Badge variant="outline" className="bg-white">
+              {lineIndex + 1}
+            </Badge>
+            {isEditingName ? (
+              <Input
+                value={editLineName}
+                onChange={(e) => setEditLineName(e.target.value)}
+                onBlur={() => renameLine(line.id, editLineName)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") renameLine(line.id, editLineName);
+                  if (e.key === "Escape") setEditingLineId(null);
+                }}
+                className="h-6 text-sm w-40"
+                autoFocus
+              />
+            ) : (
+              <span
+                className="text-sm text-gray-600 cursor-pointer hover:text-blue-600"
+                onClick={() => {
+                  setEditingLineId(line.id);
+                  setEditLineName(line.name || "");
+                }}
+              >
+                {line.name || `Ligne ${lineIndex + 1}`}
+              </span>
+            )}
+            <div className="flex-1" />
+            {localConfig.lines.length > 1 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                onClick={() => removeLine(lineIndex)}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            )}
           </div>
 
           <div className="space-y-2">
-            {items.map((item, index) => (
+            {line.items.map((item, index) => (
               <div
                 key={item.id}
                 onDragOver={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  handleDragOver(e, lineNum, index);
+                  handleDragOver(e, lineIndex, index);
                 }}
                 onDrop={(e) => {
                   e.stopPropagation();
-                  handleDrop(e, lineNum, index);
+                  handleDrop(e, lineIndex, index);
                 }}
                 className={`
                   relative
                   ${
-                    dragState.targetLine === lineNum && dragState.targetIndex === index
+                    dragState.targetLineIndex === lineIndex && dragState.targetIndex === index
                       ? "before:absolute before:left-0 before:right-0 before:-top-1 before:h-0.5 before:bg-blue-500"
                       : ""
                   }
                 `}
               >
-                {item.type === "group" ? renderGroup(item.id, lineNum, index) : renderTool(item.id, lineNum, index)}
+                {item.type === "group" ? renderGroup(item.id, lineIndex, index) : renderTool(item.id, lineIndex, index)}
               </div>
             ))}
 
-            {items.length === 0 && (
-              <div className="text-center py-8 text-gray-400 text-sm">Glissez des outils ou groupes ici</div>
+            {line.items.length === 0 && (
+              <div className="text-center py-6 text-gray-400 text-sm">Glissez des outils ou groupes ici</div>
             )}
           </div>
         </div>
       );
     },
-    [localConfig, dragState, handleDragOver, handleDrop, renderGroup, renderTool],
+    [
+      localConfig.lines,
+      dragState,
+      editingLineId,
+      editLineName,
+      handleDragOver,
+      handleDrop,
+      renderGroup,
+      renderTool,
+      renameLine,
+      removeLine,
+    ],
   );
 
   // ============================================
@@ -723,14 +812,14 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
   // ============================================
 
   const renderHiddenZone = useCallback(() => {
-    const isDropTarget = dragState.targetLine === "hidden";
+    const isDropTarget = dragState.targetLineIndex === "hidden";
 
     return (
       <div
         onDragOver={(e) => handleDragOver(e, "hidden", localConfig.hidden.length)}
         onDrop={(e) => handleDrop(e, "hidden", localConfig.hidden.length)}
         className={`
-          min-h-[80px] p-3 rounded-lg border-2 border-dashed transition-all
+          min-h-[60px] p-3 rounded-lg border-2 border-dashed transition-all
           ${isDropTarget ? "border-red-400 bg-red-50" : "border-gray-300 bg-gray-50"}
         `}
       >
@@ -786,7 +875,7 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
           top: modalPosition.y,
           maxHeight: "85vh",
         }}
-        className="bg-white rounded-xl shadow-2xl w-[700px] flex flex-col overflow-hidden"
+        className="bg-white rounded-xl shadow-2xl w-[750px] flex flex-col overflow-hidden"
       >
         <div className="modal-header flex items-center justify-between px-4 py-3 border-b bg-gray-50 rounded-t-xl cursor-move flex-shrink-0">
           <div className="flex items-center gap-3">
@@ -805,10 +894,13 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
+          {/* Création de groupe */}
           <div className="mb-4 p-3 bg-blue-50 rounded-lg">
             {!isCreatingGroup ? (
               <div className="flex items-center justify-between">
-                <span className="text-sm text-blue-700">Sélectionnez des outils puis créez un groupe</span>
+                <span className="text-sm text-blue-700">
+                  Glissez les groupes entre les lignes, ou créez de nouveaux groupes
+                </span>
                 <Button size="sm" onClick={() => setIsCreatingGroup(true)} className="gap-1">
                   <FolderPlus className="h-4 w-4" />
                   Nouveau groupe
@@ -861,11 +953,18 @@ export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: Toolb
             )}
           </div>
 
-          <div className="space-y-4">
-            {renderLine(1)}
-            {renderLine(2)}
+          {/* Bouton ajouter une ligne */}
+          <div className="flex justify-end mb-3">
+            <Button variant="outline" size="sm" onClick={addLine} className="gap-1">
+              <Plus className="h-4 w-4" />
+              Ajouter une ligne
+            </Button>
           </div>
 
+          {/* Toutes les lignes */}
+          <div className="space-y-4">{localConfig.lines.map((line, index) => renderLine(line, index))}</div>
+
+          {/* Zone masquée */}
           <div className="mt-4">{renderHiddenZone()}</div>
         </div>
 
