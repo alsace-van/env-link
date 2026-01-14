@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 6.94 - Grille A4 pour export PDF panoramique 1:1
+// VERSION: 6.95 - Grille A4 améliorée: chevauchement, mode découpe, export par lot, sauvegarde template
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -387,6 +387,8 @@ export function CADGabaritCanvas({
   const [a4GridRows, setA4GridRows] = useState(3);
   const [a4GridCols, setA4GridCols] = useState(4);
   const [isDraggingA4Origin, setIsDraggingA4Origin] = useState(false);
+  const [a4OverlapMm, setA4OverlapMm] = useState(0); // Chevauchement en mm (0-20)
+  const [a4CutMode, setA4CutMode] = useState(false); // Mode plan de coupe (sans images)
   const A4_WIDTH_MM = 210;
   const A4_HEIGHT_MM = 297;
 
@@ -2986,16 +2988,28 @@ export function CADGabaritCanvas({
         ctx.save();
 
         // Dimensions A4 en pixels (basé sur scaleFactor du sketch)
-        const cellWidthPx = (a4GridOrientation === "portrait" ? A4_WIDTH_MM : A4_HEIGHT_MM) * sketch.scaleFactor;
-        const cellHeightPx = (a4GridOrientation === "portrait" ? A4_HEIGHT_MM : A4_WIDTH_MM) * sketch.scaleFactor;
+        const fullCellWidthMm = a4GridOrientation === "portrait" ? A4_WIDTH_MM : A4_HEIGHT_MM;
+        const fullCellHeightMm = a4GridOrientation === "portrait" ? A4_HEIGHT_MM : A4_WIDTH_MM;
+
+        // Avec chevauchement, les cellules se déplacent moins
+        const contentWidthMm = fullCellWidthMm - a4OverlapMm;
+        const contentHeightMm = fullCellHeightMm - a4OverlapMm;
+
+        const contentWidthPx = contentWidthMm * sketch.scaleFactor;
+        const contentHeightPx = contentHeightMm * sketch.scaleFactor;
+        const fullCellWidthPx = fullCellWidthMm * sketch.scaleFactor;
+        const fullCellHeightPx = fullCellHeightMm * sketch.scaleFactor;
 
         // Convertir l'origine de la grille en coordonnées écran
         const originScreenX = a4GridOrigin.x * viewport.scale + viewport.offsetX;
         const originScreenY = a4GridOrigin.y * viewport.scale + viewport.offsetY;
 
         // Taille des cellules en pixels écran
-        const cellWidthScreen = cellWidthPx * viewport.scale;
-        const cellHeightScreen = cellHeightPx * viewport.scale;
+        const contentWidthScreen = contentWidthPx * viewport.scale;
+        const contentHeightScreen = contentHeightPx * viewport.scale;
+        const fullCellWidthScreen = fullCellWidthPx * viewport.scale;
+        const fullCellHeightScreen = fullCellHeightPx * viewport.scale;
+        const overlapScreen = a4OverlapMm * sketch.scaleFactor * viewport.scale;
 
         // Dessiner les cellules
         for (let row = 0; row < a4GridRows; row++) {
@@ -3003,31 +3017,84 @@ export function CADGabaritCanvas({
             const cellKey = `${row}-${col}`;
             const isSelected = selectedA4Cells.has(cellKey);
 
-            const x = originScreenX + col * cellWidthScreen;
-            const y = originScreenY + row * cellHeightScreen;
+            // Position basée sur le contenu (sans chevauchement)
+            const x = originScreenX + col * contentWidthScreen;
+            const y = originScreenY + row * contentHeightScreen;
+
+            // La cellule réelle est plus grande (inclut le chevauchement)
+            const cellX = col > 0 ? x - overlapScreen : x;
+            const cellY = row > 0 ? y - overlapScreen : y;
+            const cellW = col > 0 ? fullCellWidthScreen : contentWidthScreen + overlapScreen;
+            const cellH = row > 0 ? fullCellHeightScreen : contentHeightScreen + overlapScreen;
 
             // Fond si sélectionnée
             if (isSelected) {
-              ctx.fillStyle = "rgba(59, 130, 246, 0.2)";
-              ctx.fillRect(x, y, cellWidthScreen, cellHeightScreen);
+              ctx.fillStyle = a4CutMode ? "rgba(239, 68, 68, 0.15)" : "rgba(59, 130, 246, 0.2)";
+              ctx.fillRect(x, y, contentWidthScreen, contentHeightScreen);
+
+              // Zone de chevauchement (plus transparente)
+              if (a4OverlapMm > 0) {
+                ctx.fillStyle = "rgba(251, 191, 36, 0.15)"; // Jaune
+                if (col > 0) {
+                  ctx.fillRect(x - overlapScreen, y, overlapScreen, contentHeightScreen);
+                }
+                if (row > 0) {
+                  ctx.fillRect(x, y - overlapScreen, contentWidthScreen, overlapScreen);
+                }
+                if (col > 0 && row > 0) {
+                  ctx.fillRect(x - overlapScreen, y - overlapScreen, overlapScreen, overlapScreen);
+                }
+              }
             }
 
-            // Bordure
-            ctx.strokeStyle = isSelected ? "#3B82F6" : "#9CA3AF";
+            // Bordure de la zone de contenu
+            ctx.strokeStyle = isSelected ? (a4CutMode ? "#EF4444" : "#3B82F6") : "#9CA3AF";
             ctx.lineWidth = isSelected ? 2 : 1;
             ctx.setLineDash(isSelected ? [] : [5, 5]);
-            ctx.strokeRect(x, y, cellWidthScreen, cellHeightScreen);
+            ctx.strokeRect(x, y, contentWidthScreen, contentHeightScreen);
 
-            // Numéro de cellule
-            ctx.fillStyle = isSelected ? "#3B82F6" : "#6B7280";
-            ctx.font = "bold 14px Arial";
+            // Bordure de chevauchement (pointillés orange)
+            if (a4OverlapMm > 0 && isSelected) {
+              ctx.strokeStyle = "#F59E0B";
+              ctx.lineWidth = 1;
+              ctx.setLineDash([3, 3]);
+              if (col > 0) {
+                ctx.beginPath();
+                ctx.moveTo(x - overlapScreen, y);
+                ctx.lineTo(x - overlapScreen, y + contentHeightScreen);
+                ctx.stroke();
+              }
+              if (row > 0) {
+                ctx.beginPath();
+                ctx.moveTo(x, y - overlapScreen);
+                ctx.lineTo(x + contentWidthScreen, y - overlapScreen);
+                ctx.stroke();
+              }
+            }
+
+            // Numéro de cellule en haut à droite (comme dans le PDF)
+            ctx.setLineDash([]);
+            const labelX = x + contentWidthScreen - 15;
+            const labelY = y + 12;
+
+            // Fond du label
+            ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+            ctx.fillRect(labelX - 10, labelY - 8, 22, 14);
+            ctx.strokeStyle = isSelected ? (a4CutMode ? "#EF4444" : "#3B82F6") : "#9CA3AF";
+            ctx.lineWidth = 1;
+            ctx.strokeRect(labelX - 10, labelY - 8, 22, 14);
+
+            // Texte du label
+            ctx.fillStyle = isSelected ? (a4CutMode ? "#EF4444" : "#3B82F6") : "#6B7280";
+            ctx.font = "bold 10px Arial";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillText(`${row + 1}-${col + 1}`, x + cellWidthScreen / 2, y + cellHeightScreen / 2);
+            ctx.fillText(`${row + 1}-${col + 1}`, labelX + 1, labelY);
           }
         }
 
         // Dessiner l'indicateur d'origine (coin déplaçable)
+        ctx.setLineDash([]);
         ctx.fillStyle = "#EF4444";
         ctx.beginPath();
         ctx.arc(originScreenX, originScreenY, 8, 0, Math.PI * 2);
@@ -3057,14 +3124,16 @@ export function CADGabaritCanvas({
         ctx.lineTo(originScreenX + 5, originScreenY + 25);
         ctx.stroke();
 
-        // Dimensions de la grille totale
-        const totalWidthMm = a4GridCols * (a4GridOrientation === "portrait" ? A4_WIDTH_MM : A4_HEIGHT_MM);
-        const totalHeightMm = a4GridRows * (a4GridOrientation === "portrait" ? A4_HEIGHT_MM : A4_WIDTH_MM);
+        // Dimensions de la grille totale (avec chevauchement pris en compte)
+        const totalWidthMm = a4GridCols * contentWidthMm + a4OverlapMm;
+        const totalHeightMm = a4GridRows * contentHeightMm + a4OverlapMm;
         ctx.fillStyle = "#374151";
         ctx.font = "12px Arial";
         ctx.textAlign = "left";
+        const overlapText = a4OverlapMm > 0 ? ` (chevauche. ${a4OverlapMm}mm)` : "";
+        const modeText = a4CutMode ? " [DÉCOUPE]" : "";
         ctx.fillText(
-          `Grille: ${a4GridCols}×${a4GridRows} = ${totalWidthMm}×${totalHeightMm} mm`,
+          `Grille: ${a4GridCols}×${a4GridRows} = ${Math.round(totalWidthMm)}×${Math.round(totalHeightMm)} mm${overlapText}${modeText}`,
           originScreenX + 5,
           originScreenY - 15,
         );
@@ -3133,6 +3202,8 @@ export function CADGabaritCanvas({
     a4GridRows,
     a4GridCols,
     selectedA4Cells,
+    a4OverlapMm,
+    a4CutMode,
   ]);
 
   useEffect(() => {
@@ -3318,6 +3389,17 @@ export function CADGabaritCanvas({
       }
 
       setSketch(newSketch);
+
+      // Charger les données de la grille A4 si présentes
+      if (data.a4Grid) {
+        if (data.a4Grid.origin) setA4GridOrigin(data.a4Grid.origin);
+        if (data.a4Grid.orientation) setA4GridOrientation(data.a4Grid.orientation);
+        if (data.a4Grid.rows) setA4GridRows(data.a4Grid.rows);
+        if (data.a4Grid.cols) setA4GridCols(data.a4Grid.cols);
+        if (data.a4Grid.overlapMm !== undefined) setA4OverlapMm(data.a4Grid.overlapMm);
+        if (data.a4Grid.cutMode !== undefined) setA4CutMode(data.a4Grid.cutMode);
+      }
+
       // NE PAS appeler solveSketch ici - on veut restaurer l'état exact de l'historique
       // sans que le solver "corrige" les contraintes H/V
       // solveSketch(newSketch);
@@ -3334,6 +3416,15 @@ export function CADGabaritCanvas({
       dimensions: Object.fromEntries(sketch.dimensions),
       scaleFactor: sketch.scaleFactor,
       savedAt: new Date().toISOString(),
+      // Données de la grille A4
+      a4Grid: {
+        origin: a4GridOrigin,
+        orientation: a4GridOrientation,
+        rows: a4GridRows,
+        cols: a4GridCols,
+        overlapMm: a4OverlapMm,
+        cutMode: a4CutMode,
+      },
     };
 
     if (onSave) {
@@ -3342,7 +3433,7 @@ export function CADGabaritCanvas({
     }
 
     return data;
-  }, [sketch, onSave]);
+  }, [sketch, onSave, a4GridOrigin, a4GridOrientation, a4GridRows, a4GridCols, a4OverlapMm, a4CutMode]);
 
   // Résoudre le sketch
   const solveSketch = useCallback(async (sketchToSolve: Sketch) => {
@@ -7948,18 +8039,21 @@ export function CADGabaritCanvas({
         }
 
         // Sinon vérifier si on clique sur une cellule
-        const cellWidthPx = (a4GridOrientation === "portrait" ? A4_WIDTH_MM : A4_HEIGHT_MM) * sketch.scaleFactor;
-        const cellHeightPx = (a4GridOrientation === "portrait" ? A4_HEIGHT_MM : A4_WIDTH_MM) * sketch.scaleFactor;
-        const cellWidthScreen = cellWidthPx * viewport.scale;
-        const cellHeightScreen = cellHeightPx * viewport.scale;
+        // Avec chevauchement, utiliser les dimensions de contenu (pas fullPage)
+        const contentWidthMm = (a4GridOrientation === "portrait" ? A4_WIDTH_MM : A4_HEIGHT_MM) - a4OverlapMm;
+        const contentHeightMm = (a4GridOrientation === "portrait" ? A4_HEIGHT_MM : A4_WIDTH_MM) - a4OverlapMm;
+        const contentWidthPx = contentWidthMm * sketch.scaleFactor;
+        const contentHeightPx = contentHeightMm * sketch.scaleFactor;
+        const contentWidthScreen = contentWidthPx * viewport.scale;
+        const contentHeightScreen = contentHeightPx * viewport.scale;
 
         // Calculer la cellule cliquée
         const relX = screenX - originScreenX;
         const relY = screenY - originScreenY;
 
         if (relX >= 0 && relY >= 0) {
-          const col = Math.floor(relX / cellWidthScreen);
-          const row = Math.floor(relY / cellHeightScreen);
+          const col = Math.floor(relX / contentWidthScreen);
+          const row = Math.floor(relY / contentHeightScreen);
 
           if (col >= 0 && col < a4GridCols && row >= 0 && row < a4GridRows) {
             const cellKey = `${row}-${col}`;
@@ -13313,9 +13407,13 @@ export function CADGabaritCanvas({
       return;
     }
 
-    // Dimensions A4 en mm
-    const pageWidthMm = a4GridOrientation === "portrait" ? A4_WIDTH_MM : A4_HEIGHT_MM;
-    const pageHeightMm = a4GridOrientation === "portrait" ? A4_HEIGHT_MM : A4_WIDTH_MM;
+    // Dimensions A4 en mm (avec chevauchement)
+    const basePageWidthMm = a4GridOrientation === "portrait" ? A4_WIDTH_MM : A4_HEIGHT_MM;
+    const basePageHeightMm = a4GridOrientation === "portrait" ? A4_HEIGHT_MM : A4_WIDTH_MM;
+
+    // La zone de contenu est réduite par le chevauchement (sauf pour les bords)
+    const contentWidthMm = basePageWidthMm - a4OverlapMm;
+    const contentHeightMm = basePageHeightMm - a4OverlapMm;
 
     // Créer le PDF
     const doc = new jsPDF({
@@ -13333,62 +13431,94 @@ export function CADGabaritCanvas({
     });
 
     // Pour chaque cellule, créer une page
-    sortedCells.forEach((cellKey, index) => {
+    for (let index = 0; index < sortedCells.length; index++) {
+      const cellKey = sortedCells[index];
       if (index > 0) doc.addPage();
 
       const [row, col] = cellKey.split("-").map(Number);
 
       // Calculer les bounds de cette cellule en coordonnées sketch
-      const cellWidthPx = pageWidthMm * sketch.scaleFactor;
-      const cellHeightPx = pageHeightMm * sketch.scaleFactor;
+      // Avec chevauchement: chaque cellule commence a4OverlapMm plus tôt (sauf première ligne/colonne)
+      const cellWidthPx = contentWidthMm * sketch.scaleFactor;
+      const cellHeightPx = contentHeightMm * sketch.scaleFactor;
 
       const cellMinX = a4GridOrigin.x + col * cellWidthPx;
       const cellMinY = a4GridOrigin.y + row * cellHeightPx;
-      const cellMaxX = cellMinX + cellWidthPx;
-      const cellMaxY = cellMinY + cellHeightPx;
+      // La zone exportée inclut le chevauchement
+      const exportMinX = cellMinX - (col > 0 ? a4OverlapMm * sketch.scaleFactor : 0);
+      const exportMinY = cellMinY - (row > 0 ? a4OverlapMm * sketch.scaleFactor : 0);
+      const exportMaxX = cellMinX + basePageWidthMm * sketch.scaleFactor;
+      const exportMaxY = cellMinY + basePageHeightMm * sketch.scaleFactor;
 
       // Fonction pour convertir coordonnées sketch → PDF
       const toPage = (x: number, y: number) => ({
-        x: (x - cellMinX) / sketch.scaleFactor,
-        y: (y - cellMinY) / sketch.scaleFactor,
+        x: (x - exportMinX) / sketch.scaleFactor,
+        y: (y - exportMinY) / sketch.scaleFactor,
       });
 
-      // Dessiner les images de fond d'abord
-      backgroundImages.forEach((img) => {
-        // Vérifier si l'image intersecte cette cellule
-        const imgWidth = img.image.width * img.scale;
-        const imgHeight = img.image.height * img.scale;
-        const imgMinX = img.x - imgWidth / 2;
-        const imgMaxX = img.x + imgWidth / 2;
-        const imgMinY = img.y - imgHeight / 2;
-        const imgMaxY = img.y + imgHeight / 2;
+      // Dessiner les images de fond (si pas en mode plan de coupe)
+      if (!a4CutMode) {
+        for (const img of backgroundImages) {
+          if (!img.visible) continue;
 
-        if (imgMaxX < cellMinX || imgMinX > cellMaxX || imgMaxY < cellMinY || imgMinY > cellMaxY) {
-          return; // Pas d'intersection
+          // Vérifier si l'image intersecte cette cellule
+          const imgWidth = img.image.width * img.scale;
+          const imgHeight = img.image.height * img.scale;
+          const imgMinX = img.x - imgWidth / 2;
+          const imgMaxX = img.x + imgWidth / 2;
+          const imgMinY = img.y - imgHeight / 2;
+          const imgMaxY = img.y + imgHeight / 2;
+
+          if (imgMaxX < exportMinX || imgMinX > exportMaxX || imgMaxY < exportMinY || imgMinY > exportMaxY) {
+            continue; // Pas d'intersection
+          }
+
+          try {
+            // Convertir l'image en base64
+            const canvas = document.createElement("canvas");
+            canvas.width = img.image.width;
+            canvas.height = img.image.height;
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              ctx.drawImage(img.image, 0, 0);
+              const base64 = canvas.toDataURL("image/jpeg", 0.8);
+
+              // Position et dimensions dans le PDF
+              const imgPos = toPage(imgMinX, imgMinY);
+              const imgWidthMm = imgWidth / sketch.scaleFactor;
+              const imgHeightMm = imgHeight / sketch.scaleFactor;
+
+              // Ajouter l'image au PDF avec opacité
+              doc.setGState(new (doc as any).GState({ opacity: img.opacity }));
+              doc.addImage(base64, "JPEG", imgPos.x, imgPos.y, imgWidthMm, imgHeightMm);
+              doc.setGState(new (doc as any).GState({ opacity: 1 }));
+            }
+          } catch (e) {
+            console.warn("Impossible d'exporter l'image:", e);
+          }
         }
-
-        // Note: Pour les images, jsPDF nécessite base64 ou URL
-        // Pour simplifier, on n'inclut pas les images pour l'instant
-        // On pourrait ajouter cette fonctionnalité plus tard
-      });
+      }
 
       // Dessiner les géométries
       doc.setDrawColor(0, 0, 0);
       doc.setLineWidth(0.3);
 
       sketch.geometries.forEach((geo) => {
+        // En mode plan de coupe, ignorer les lignes de construction
+        if (a4CutMode && (geo as any).isConstruction) return;
+
         if (geo.type === "line") {
           const line = geo as Line;
           const p1 = sketch.points.get(line.p1);
           const p2 = sketch.points.get(line.p2);
           if (p1 && p2) {
-            // Vérifier si la ligne est dans la cellule
+            // Vérifier si la ligne intersecte la cellule
             const lineMinX = Math.min(p1.x, p2.x);
             const lineMaxX = Math.max(p1.x, p2.x);
             const lineMinY = Math.min(p1.y, p2.y);
             const lineMaxY = Math.max(p1.y, p2.y);
 
-            if (lineMaxX < cellMinX || lineMinX > cellMaxX || lineMaxY < cellMinY || lineMinY > cellMaxY) {
+            if (lineMaxX < exportMinX || lineMinX > exportMaxX || lineMaxY < exportMinY || lineMinY > exportMaxY) {
               return;
             }
 
@@ -13406,9 +13536,9 @@ export function CADGabaritCanvas({
             // Vérifier si le cercle intersecte la cellule
             if (
               cp.x + radiusMm < 0 ||
-              cp.x - radiusMm > pageWidthMm ||
+              cp.x - radiusMm > basePageWidthMm ||
               cp.y + radiusMm < 0 ||
-              cp.y - radiusMm > pageHeightMm
+              cp.y - radiusMm > basePageHeightMm
             ) {
               return;
             }
@@ -13427,9 +13557,9 @@ export function CADGabaritCanvas({
             // Vérifier si l'arc intersecte la cellule
             if (
               cp.x + radiusMm < 0 ||
-              cp.x - radiusMm > pageWidthMm ||
+              cp.x - radiusMm > basePageWidthMm ||
               cp.y + radiusMm < 0 ||
-              cp.y - radiusMm > pageHeightMm
+              cp.y - radiusMm > basePageHeightMm
             ) {
               return;
             }
@@ -13462,16 +13592,323 @@ export function CADGabaritCanvas({
         }
       });
 
-      // Numéro de page en petit dans le coin
-      doc.setFontSize(6);
-      doc.setTextColor(200, 200, 200);
-      doc.text(`${row + 1}-${col + 1}`, 2, 4);
-    });
+      // === Numéro de page en haut à droite ===
+      const pageLabel = `${row + 1}-${col + 1}`;
+      const labelX = basePageWidthMm - 5;
+      const labelY = 8;
+
+      // Fond blanc pour lisibilité
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(labelX - 12, labelY - 5, 14, 8, 1, 1, "F");
+
+      // Bordure
+      doc.setDrawColor(100, 100, 100);
+      doc.setLineWidth(0.2);
+      doc.roundedRect(labelX - 12, labelY - 5, 14, 8, 1, 1, "S");
+
+      // Texte
+      doc.setFontSize(10);
+      doc.setTextColor(50, 50, 50);
+      doc.text(pageLabel, labelX - 5, labelY + 1, { align: "center" });
+
+      // Indicateur de chevauchement (petites marques aux bords)
+      if (a4OverlapMm > 0) {
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.1);
+        doc.setLineDashPattern([1, 1], 0);
+
+        // Marques de chevauchement
+        if (col > 0) {
+          // Ligne verticale à gauche indiquant la zone de chevauchement
+          doc.line(a4OverlapMm, 0, a4OverlapMm, basePageHeightMm);
+        }
+        if (row > 0) {
+          // Ligne horizontale en haut
+          doc.line(0, a4OverlapMm, basePageWidthMm, a4OverlapMm);
+        }
+        doc.setLineDashPattern([], 0);
+      }
+    }
 
     // Sauvegarder
-    doc.save(`gabarit-a4-${sortedCells.length}pages.pdf`);
-    toast.success(`PDF exporté: ${sortedCells.length} pages A4`);
-  }, [selectedA4Cells, a4GridOrientation, a4GridOrigin, sketch, backgroundImages]);
+    const filename = a4CutMode ? "gabarit-decoupe" : "gabarit-a4";
+    doc.save(`${filename}-${sortedCells.length}pages.pdf`);
+    toast.success(
+      `PDF exporté: ${sortedCells.length} pages A4${a4OverlapMm > 0 ? ` (chevauchement ${a4OverlapMm}mm)` : ""}`,
+    );
+  }, [selectedA4Cells, a4GridOrientation, a4GridOrigin, sketch, backgroundImages, a4OverlapMm, a4CutMode]);
+
+  // Export par lot - un fichier PDF par cellule
+  const exportA4GridByLot = useCallback(async () => {
+    if (selectedA4Cells.size === 0) {
+      toast.error("Aucune cellule sélectionnée");
+      return;
+    }
+
+    // Dimensions A4 en mm
+    const basePageWidthMm = a4GridOrientation === "portrait" ? A4_WIDTH_MM : A4_HEIGHT_MM;
+    const basePageHeightMm = a4GridOrientation === "portrait" ? A4_HEIGHT_MM : A4_WIDTH_MM;
+    const contentWidthMm = basePageWidthMm - a4OverlapMm;
+    const contentHeightMm = basePageHeightMm - a4OverlapMm;
+
+    // Trier les cellules
+    const sortedCells = Array.from(selectedA4Cells).sort((a, b) => {
+      const [rowA, colA] = a.split("-").map(Number);
+      const [rowB, colB] = b.split("-").map(Number);
+      if (rowA !== rowB) return rowA - rowB;
+      return colA - colB;
+    });
+
+    toast.info(`Export de ${sortedCells.length} fichiers...`);
+
+    // Exporter chaque cellule dans un fichier séparé
+    for (let index = 0; index < sortedCells.length; index++) {
+      const cellKey = sortedCells[index];
+      const [row, col] = cellKey.split("-").map(Number);
+
+      // Créer un PDF pour cette cellule
+      const doc = new jsPDF({
+        orientation: a4GridOrientation,
+        unit: "mm",
+        format: "a4",
+      });
+
+      // Calculer les bounds
+      const cellWidthPx = contentWidthMm * sketch.scaleFactor;
+      const cellHeightPx = contentHeightMm * sketch.scaleFactor;
+
+      const cellMinX = a4GridOrigin.x + col * cellWidthPx;
+      const cellMinY = a4GridOrigin.y + row * cellHeightPx;
+      const exportMinX = cellMinX - (col > 0 ? a4OverlapMm * sketch.scaleFactor : 0);
+      const exportMinY = cellMinY - (row > 0 ? a4OverlapMm * sketch.scaleFactor : 0);
+      const exportMaxX = cellMinX + basePageWidthMm * sketch.scaleFactor;
+      const exportMaxY = cellMinY + basePageHeightMm * sketch.scaleFactor;
+
+      const toPage = (x: number, y: number) => ({
+        x: (x - exportMinX) / sketch.scaleFactor,
+        y: (y - exportMinY) / sketch.scaleFactor,
+      });
+
+      // Dessiner les images (si pas mode découpe)
+      if (!a4CutMode) {
+        for (const img of backgroundImages) {
+          if (!img.visible) continue;
+          const imgWidth = img.image.width * img.scale;
+          const imgHeight = img.image.height * img.scale;
+          const imgMinX = img.x - imgWidth / 2;
+          const imgMaxX = img.x + imgWidth / 2;
+          const imgMinY = img.y - imgHeight / 2;
+          const imgMaxY = img.y + imgHeight / 2;
+
+          if (imgMaxX < exportMinX || imgMinX > exportMaxX || imgMaxY < exportMinY || imgMinY > exportMaxY) continue;
+
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = img.image.width;
+            canvas.height = img.image.height;
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              ctx.drawImage(img.image, 0, 0);
+              const base64 = canvas.toDataURL("image/jpeg", 0.8);
+              const imgPos = toPage(imgMinX, imgMinY);
+              const imgWidthMm = imgWidth / sketch.scaleFactor;
+              const imgHeightMm = imgHeight / sketch.scaleFactor;
+              doc.setGState(new (doc as any).GState({ opacity: img.opacity }));
+              doc.addImage(base64, "JPEG", imgPos.x, imgPos.y, imgWidthMm, imgHeightMm);
+              doc.setGState(new (doc as any).GState({ opacity: 1 }));
+            }
+          } catch (e) {
+            console.warn("Erreur image:", e);
+          }
+        }
+      }
+
+      // Dessiner les géométries
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.3);
+
+      sketch.geometries.forEach((geo) => {
+        if (a4CutMode && (geo as any).isConstruction) return;
+
+        if (geo.type === "line") {
+          const line = geo as Line;
+          const p1 = sketch.points.get(line.p1);
+          const p2 = sketch.points.get(line.p2);
+          if (p1 && p2) {
+            const lineMinX = Math.min(p1.x, p2.x);
+            const lineMaxX = Math.max(p1.x, p2.x);
+            const lineMinY = Math.min(p1.y, p2.y);
+            const lineMaxY = Math.max(p1.y, p2.y);
+            if (lineMaxX < exportMinX || lineMinX > exportMaxX || lineMaxY < exportMinY || lineMinY > exportMaxY)
+              return;
+            const pp1 = toPage(p1.x, p1.y);
+            const pp2 = toPage(p2.x, p2.y);
+            doc.line(pp1.x, pp1.y, pp2.x, pp2.y);
+          }
+        } else if (geo.type === "circle") {
+          const circle = geo as CircleType;
+          const center = sketch.points.get(circle.center);
+          if (center) {
+            const radiusMm = circle.radius / sketch.scaleFactor;
+            const cp = toPage(center.x, center.y);
+            if (
+              cp.x + radiusMm >= 0 &&
+              cp.x - radiusMm <= basePageWidthMm &&
+              cp.y + radiusMm >= 0 &&
+              cp.y - radiusMm <= basePageHeightMm
+            ) {
+              doc.circle(cp.x, cp.y, radiusMm);
+            }
+          }
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          const center = sketch.points.get(arc.center);
+          const startPt = sketch.points.get(arc.startPoint);
+          const endPt = sketch.points.get(arc.endPoint);
+          if (center && startPt && endPt) {
+            const cp = toPage(center.x, center.y);
+            const radiusMm = arc.radius / sketch.scaleFactor;
+            if (
+              cp.x + radiusMm >= 0 &&
+              cp.x - radiusMm <= basePageWidthMm &&
+              cp.y + radiusMm >= 0 &&
+              cp.y - radiusMm <= basePageHeightMm
+            ) {
+              let startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
+              let endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
+              if (arc.counterClockwise) [startAngle, endAngle] = [endAngle, startAngle];
+              while (endAngle <= startAngle) endAngle += 2 * Math.PI;
+              const steps = 32;
+              const angleStep = (endAngle - startAngle) / steps;
+              for (let i = 0; i < steps; i++) {
+                const a1 = startAngle + i * angleStep;
+                const a2 = startAngle + (i + 1) * angleStep;
+                doc.line(
+                  cp.x + radiusMm * Math.cos(a1),
+                  cp.y + radiusMm * Math.sin(a1),
+                  cp.x + radiusMm * Math.cos(a2),
+                  cp.y + radiusMm * Math.sin(a2),
+                );
+              }
+            }
+          }
+        }
+      });
+
+      // Numéro en haut à droite
+      const pageLabel = `${row + 1}-${col + 1}`;
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(basePageWidthMm - 17, 3, 14, 8, 1, 1, "F");
+      doc.setDrawColor(100, 100, 100);
+      doc.setLineWidth(0.2);
+      doc.roundedRect(basePageWidthMm - 17, 3, 14, 8, 1, 1, "S");
+      doc.setFontSize(10);
+      doc.setTextColor(50, 50, 50);
+      doc.text(pageLabel, basePageWidthMm - 10, 8, { align: "center" });
+
+      // Sauvegarder ce fichier
+      const filename = a4CutMode ? "decoupe" : "page";
+      doc.save(`${filename}-${row + 1}-${col + 1}.pdf`);
+
+      // Petit délai pour éviter surcharge navigateur
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    toast.success(`${sortedCells.length} fichiers PDF exportés !`);
+  }, [selectedA4Cells, a4GridOrientation, a4GridOrigin, sketch, backgroundImages, a4OverlapMm, a4CutMode]);
+
+  // Calcul automatique de la grille A4 pour couvrir tout le contenu
+  const autoFitA4Grid = useCallback(() => {
+    // Calculer les bounds du contenu (géométries + images)
+    let minX = Infinity,
+      minY = Infinity;
+    let maxX = -Infinity,
+      maxY = -Infinity;
+    let hasContent = false;
+
+    // Parcourir les géométries
+    sketch.geometries.forEach((geo) => {
+      if (geo.type === "line") {
+        const line = geo as Line;
+        const p1 = sketch.points.get(line.p1);
+        const p2 = sketch.points.get(line.p2);
+        if (p1 && p2) {
+          minX = Math.min(minX, p1.x, p2.x);
+          maxX = Math.max(maxX, p1.x, p2.x);
+          minY = Math.min(minY, p1.y, p2.y);
+          maxY = Math.max(maxY, p1.y, p2.y);
+          hasContent = true;
+        }
+      } else if (geo.type === "circle") {
+        const circle = geo as CircleType;
+        const center = sketch.points.get(circle.center);
+        if (center) {
+          minX = Math.min(minX, center.x - circle.radius);
+          maxX = Math.max(maxX, center.x + circle.radius);
+          minY = Math.min(minY, center.y - circle.radius);
+          maxY = Math.max(maxY, center.y + circle.radius);
+          hasContent = true;
+        }
+      } else if (geo.type === "arc") {
+        const arc = geo as Arc;
+        const center = sketch.points.get(arc.center);
+        if (center) {
+          minX = Math.min(minX, center.x - arc.radius);
+          maxX = Math.max(maxX, center.x + arc.radius);
+          minY = Math.min(minY, center.y - arc.radius);
+          maxY = Math.max(maxY, center.y + arc.radius);
+          hasContent = true;
+        }
+      }
+    });
+
+    // Parcourir les images de fond
+    backgroundImages.forEach((img) => {
+      if (!img.visible) return;
+      const imgWidth = img.image.width * img.scale;
+      const imgHeight = img.image.height * img.scale;
+      minX = Math.min(minX, img.x - imgWidth / 2);
+      maxX = Math.max(maxX, img.x + imgWidth / 2);
+      minY = Math.min(minY, img.y - imgHeight / 2);
+      maxY = Math.max(maxY, img.y + imgHeight / 2);
+      hasContent = true;
+    });
+
+    if (!hasContent || !isFinite(minX)) {
+      toast.error("Aucun contenu à couvrir");
+      return;
+    }
+
+    // Dimensions du contenu en mm
+    const contentWidthMm = (maxX - minX) / sketch.scaleFactor;
+    const contentHeightMm = (maxY - minY) / sketch.scaleFactor;
+
+    // Dimensions d'une cellule A4 (avec chevauchement)
+    const cellWidthMm = (a4GridOrientation === "portrait" ? A4_WIDTH_MM : A4_HEIGHT_MM) - a4OverlapMm;
+    const cellHeightMm = (a4GridOrientation === "portrait" ? A4_HEIGHT_MM : A4_WIDTH_MM) - a4OverlapMm;
+
+    // Calculer le nombre de cellules nécessaires
+    const cols = Math.max(1, Math.ceil(contentWidthMm / cellWidthMm));
+    const rows = Math.max(1, Math.ceil(contentHeightMm / cellHeightMm));
+
+    // Positionner l'origine au coin supérieur gauche du contenu (avec petite marge)
+    const marginPx = 5 * sketch.scaleFactor; // 5mm de marge
+
+    setA4GridOrigin({ x: minX - marginPx, y: minY - marginPx });
+    setA4GridCols(cols);
+    setA4GridRows(rows);
+
+    // Sélectionner toutes les cellules
+    const allCells = new Set<string>();
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        allCells.add(`${r}-${c}`);
+      }
+    }
+    setSelectedA4Cells(allCells);
+
+    toast.success(`Grille auto: ${cols}×${rows} = ${cols * rows} pages A4`);
+  }, [sketch, backgroundImages, a4GridOrientation, a4OverlapMm]);
 
   // Reset view - origine en bas à gauche
   const resetView = useCallback(() => {
@@ -19645,12 +20082,12 @@ export function CADGabaritCanvas({
       {/* Panneau de contrôle de la grille A4 */}
       {showA4Grid && (
         <div
-          className="fixed bottom-4 left-4 bg-white rounded-lg shadow-xl border p-4 z-50 w-72"
+          className="fixed bottom-4 left-4 bg-white rounded-lg shadow-xl border p-4 z-50 w-80"
           style={{ cursor: "default" }}
         >
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold text-sm flex items-center gap-2">
-              <FileDown className="h-4 w-4 text-blue-500" />
+              <FileDown className={`h-4 w-4 ${a4CutMode ? "text-red-500" : "text-blue-500"}`} />
               Grille A4 Export
             </h3>
             <Button variant="ghost" size="sm" onClick={() => setShowA4Grid(false)} className="h-6 w-6 p-0">
@@ -19659,7 +20096,7 @@ export function CADGabaritCanvas({
           </div>
 
           {/* Orientation */}
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-2">
             <Label className="text-xs w-20">Orientation:</Label>
             <Select value={a4GridOrientation} onValueChange={(v: "portrait" | "landscape") => setA4GridOrientation(v)}>
               <SelectTrigger className="h-8 flex-1">
@@ -19673,7 +20110,7 @@ export function CADGabaritCanvas({
           </div>
 
           {/* Lignes et colonnes */}
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-2">
             <Label className="text-xs w-20">Taille:</Label>
             <Input
               type="number"
@@ -19681,7 +20118,7 @@ export function CADGabaritCanvas({
               max="20"
               value={a4GridCols}
               onChange={(e) => setA4GridCols(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
-              className="h-8 w-16 text-center"
+              className="h-8 w-14 text-center"
             />
             <span className="text-xs">×</span>
             <Input
@@ -19690,19 +20127,93 @@ export function CADGabaritCanvas({
               max="20"
               value={a4GridRows}
               onChange={(e) => setA4GridRows(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
-              className="h-8 w-16 text-center"
+              className="h-8 w-14 text-center"
             />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={autoFitA4Grid}
+              className="h-8 px-2"
+              title="Ajuster automatiquement au contenu"
+            >
+              <Target className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Chevauchement */}
+          <div className="flex items-center gap-2 mb-2">
+            <Label className="text-xs w-20">Chevauche.:</Label>
+            <Input
+              type="number"
+              min="0"
+              max="30"
+              value={a4OverlapMm}
+              onChange={(e) => setA4OverlapMm(Math.max(0, Math.min(30, parseInt(e.target.value) || 0)))}
+              className="h-8 w-14 text-center"
+            />
+            <span className="text-xs text-gray-500">mm</span>
+            <div className="flex-1 flex gap-1">
+              {[0, 5, 10, 15].map((v) => (
+                <Button
+                  key={v}
+                  variant={a4OverlapMm === v ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setA4OverlapMm(v)}
+                  className="h-6 px-1 text-xs flex-1"
+                >
+                  {v}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Mode plan de coupe */}
+          <div className="flex items-center gap-2 mb-3">
+            <Label className="text-xs w-20">Mode:</Label>
+            <Button
+              variant={!a4CutMode ? "default" : "outline"}
+              size="sm"
+              onClick={() => setA4CutMode(false)}
+              className={`h-7 flex-1 text-xs ${!a4CutMode ? "bg-blue-500 hover:bg-blue-600" : ""}`}
+            >
+              📷 Avec photos
+            </Button>
+            <Button
+              variant={a4CutMode ? "default" : "outline"}
+              size="sm"
+              onClick={() => setA4CutMode(true)}
+              className={`h-7 flex-1 text-xs ${a4CutMode ? "bg-red-500 hover:bg-red-600" : ""}`}
+            >
+              ✂️ Découpe
+            </Button>
           </div>
 
           {/* Info dimensions */}
           <div className="text-xs text-gray-500 mb-3 p-2 bg-gray-50 rounded">
-            <div>
-              Grille: {a4GridCols} × {a4GridRows} = {a4GridCols * a4GridRows} pages
+            <div className="flex justify-between">
+              <span>
+                Grille: {a4GridCols} × {a4GridRows}
+              </span>
+              <span className="font-medium">{a4GridCols * a4GridRows} pages</span>
             </div>
-            <div>
-              Dimensions: {a4GridCols * (a4GridOrientation === "portrait" ? A4_WIDTH_MM : A4_HEIGHT_MM)} ×{" "}
-              {a4GridRows * (a4GridOrientation === "portrait" ? A4_HEIGHT_MM : A4_WIDTH_MM)} mm
+            <div className="flex justify-between">
+              <span>Couverture:</span>
+              <span>
+                {Math.round(
+                  a4GridCols * ((a4GridOrientation === "portrait" ? A4_WIDTH_MM : A4_HEIGHT_MM) - a4OverlapMm) +
+                    a4OverlapMm,
+                )}{" "}
+                ×{" "}
+                {Math.round(
+                  a4GridRows * ((a4GridOrientation === "portrait" ? A4_HEIGHT_MM : A4_WIDTH_MM) - a4OverlapMm) +
+                    a4OverlapMm,
+                )}{" "}
+                mm
+              </span>
             </div>
+            {a4OverlapMm > 0 && (
+              <div className="text-amber-600 mt-1">⚠️ Zones jaunes = chevauchement {a4OverlapMm}mm</div>
+            )}
             <div className="mt-1 text-blue-600">🎯 Drag le point rouge pour positionner</div>
           </div>
 
@@ -19742,16 +20253,30 @@ export function CADGabaritCanvas({
           </div>
 
           {/* Export */}
-          <Button
-            onClick={exportA4GridToPDF}
-            disabled={selectedA4Cells.size === 0}
-            className="w-full bg-blue-500 hover:bg-blue-600"
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Exporter PDF ({selectedA4Cells.size} page{selectedA4Cells.size > 1 ? "s" : ""})
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={exportA4GridToPDF}
+              disabled={selectedA4Cells.size === 0}
+              className={`flex-1 ${a4CutMode ? "bg-red-500 hover:bg-red-600" : "bg-blue-500 hover:bg-blue-600"}`}
+            >
+              <Download className="h-4 w-4 mr-1" />
+              PDF unique
+            </Button>
+            <Button
+              onClick={exportA4GridByLot}
+              disabled={selectedA4Cells.size === 0}
+              variant="outline"
+              className="flex-1"
+              title="Exporter chaque page dans un fichier séparé"
+            >
+              <FileDown className="h-4 w-4 mr-1" />
+              Par fichier
+            </Button>
+          </div>
 
-          <p className="text-xs text-gray-400 mt-2 text-center">Export A4 sans marge, échelle 1:1</p>
+          <p className="text-xs text-gray-400 mt-2 text-center">
+            {selectedA4Cells.size} page{selectedA4Cells.size > 1 ? "s" : ""} • A4 sans marge • échelle 1:1
+          </p>
         </div>
       )}
 
