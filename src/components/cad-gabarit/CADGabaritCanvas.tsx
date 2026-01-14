@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.01 - Alt pour désactiver snap temporairement (drag fluide)
+// VERSION: 7.02 - Ctrl+Z fonctionne pour le déplacement des photos
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -478,6 +478,7 @@ export function CADGabaritCanvas({
   // Interface pour les entrées d'historique avec description
   interface HistoryEntry {
     sketch: any; // Sketch sérialisé
+    backgroundImages?: any[]; // Images de fond sérialisées (sans l'objet Image)
     description: string;
     timestamp: number;
   }
@@ -8443,6 +8444,8 @@ export function CADGabaritCanvas({
 
             // Préparer le drag seulement si l'image n'est pas verrouillée
             if (!clickedImage.locked) {
+              // Sauvegarder l'état actuel pour undo AVANT le drag
+              addToImageHistoryRef.current(backgroundImagesRef.current, markerLinksRef.current);
               setIsDraggingImage(true);
               setImageDragStart({
                 x: worldPos.x,
@@ -10328,6 +10331,17 @@ export function CADGabaritCanvas({
 
       // === Multi-photos: fin du drag d'une image ===
       if (isDraggingImage) {
+        // Vérifier si l'image a vraiment bougé
+        if (imageDragStart && selectedImageId) {
+          const movedImage = backgroundImages.find((img) => img.id === selectedImageId);
+          if (movedImage) {
+            const hasMoved = movedImage.x !== imageDragStart.imgX || movedImage.y !== imageDragStart.imgY;
+            if (!hasMoved) {
+              // Pas de déplacement réel - retirer le dernier état de l'historique
+              setImageHistory((prev) => prev.slice(0, -1));
+            }
+          }
+        }
         setIsDraggingImage(false);
         setImageDragStart(null);
         return;
@@ -10553,6 +10567,9 @@ export function CADGabaritCanvas({
       screenToWorld,
       // Multi-photos
       isDraggingImage,
+      imageDragStart,
+      selectedImageId,
+      backgroundImages,
       draggingMarker,
       // Gizmo drag
       gizmoDrag,
@@ -20473,6 +20490,34 @@ function serializeSketch(sketch: Sketch): any {
     dof: sketch.dof,
     status: sketch.status,
   };
+}
+
+// Sérialiser les images de fond (sans l'objet Image qui ne peut pas être cloné)
+function serializeBackgroundImages(images: BackgroundImage[]): any[] {
+  return images.map((img) => ({
+    id: img.id,
+    name: img.name,
+    src: img.src,
+    x: img.x,
+    y: img.y,
+    scale: img.scale,
+    rotation: img.rotation,
+    opacity: img.opacity,
+    visible: img.visible,
+    locked: img.locked,
+    markers: img.markers,
+    adjustments: img.adjustments,
+    calibrationData: img.calibrationData
+      ? {
+          points: Object.fromEntries(img.calibrationData.points || new Map()),
+          pairs: Object.fromEntries(img.calibrationData.pairs || new Map()),
+          scale: img.calibrationData.scale,
+          error: img.calibrationData.error,
+          applied: img.calibrationData.applied,
+          mode: img.calibrationData.mode,
+        }
+      : undefined,
+  }));
 }
 
 function deserializeSketch(data: any): Sketch {
