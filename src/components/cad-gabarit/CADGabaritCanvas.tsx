@@ -15800,7 +15800,7 @@ export function CADGabaritCanvas({
 
             {/* Rotation de l'image sélectionnée */}
             {selectedImageId && (
-              <div className="flex items-center gap-0.5 px-1 border-l border-gray-200 ml-1">
+              <div className="flex items-center gap-0.5 px-1 border-l border-gray-200 ml-1 flex-shrink-0">
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -15844,7 +15844,8 @@ export function CADGabaritCanvas({
                     const val = parseFloat(e.target.value);
                     if (!isNaN(val)) updateSelectedImageRotation(val);
                   }}
-                  className="w-12 h-7 text-xs text-center border rounded px-1"
+                  className="h-7 text-xs text-center border rounded px-1"
+                  style={{ width: "52px" }}
                   title="Rotation (degrés)"
                   step="0.1"
                 />
