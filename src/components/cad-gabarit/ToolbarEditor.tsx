@@ -422,3 +422,107 @@ export function ToolbarEditor({
       return newConfig;
     });
   }, []);
+// ============================================
+  // ACTIONS
+  // ============================================
+
+  const handleSave = useCallback(() => {
+    onConfigChange(localConfig);
+    toast.success("Configuration sauvegardée");
+    onClose();
+  }, [localConfig, onConfigChange, onClose]);
+
+  const handleReset = useCallback(() => {
+    const defaultConfig = getDefaultToolbarConfig();
+    setLocalConfig(defaultConfig);
+    toast.info("Configuration réinitialisée");
+  }, []);
+
+  const toggleToolSelection = useCallback((toolId: string) => {
+    setSelectedTools((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(toolId)) {
+        newSet.delete(toolId);
+      } else {
+        newSet.add(toolId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const showHiddenTool = useCallback((toolId: string) => {
+    setLocalConfig((prev) => {
+      const newConfig = JSON.parse(JSON.stringify(prev)) as ToolbarConfig;
+      newConfig.hidden = newConfig.hidden.filter((id) => id !== toolId);
+      newConfig.line2.push({ type: "tool", id: toolId });
+      return newConfig;
+    });
+  }, []);
+
+  // ============================================
+  // RENDU D'UN OUTIL
+  // ============================================
+
+  const renderTool = useCallback(
+    (toolId: string, line: 1 | 2 | "hidden", index: number, inGroup = false) => {
+      const tool = toolDefs.current.get(toolId);
+      if (!tool) return null;
+
+      const isSelected = selectedTools.has(toolId);
+      const isDragged = dragState.draggedId === toolId;
+
+      return (
+        <div
+          key={toolId}
+          draggable={!inGroup}
+          onDragStart={(e) => !inGroup && handleDragStart(e, toolId, "tool", line, index)}
+          onDragEnd={handleDragEnd}
+          onClick={() => isCreatingGroup && toggleToolSelection(toolId)}
+          className={`
+            flex items-center gap-2 px-2 py-1.5 rounded border transition-all
+            ${isDragged ? "opacity-50 border-dashed" : ""}
+            ${isSelected ? "border-blue-500 bg-blue-50" : "border-gray-200 bg-white"}
+            ${isCreatingGroup ? "cursor-pointer hover:border-blue-300" : "cursor-grab hover:bg-gray-50"}
+            ${inGroup ? "cursor-default" : ""}
+          `}
+        >
+          {!inGroup && (
+            <GripVertical className="h-3 w-3 text-gray-400 flex-shrink-0" />
+          )}
+          <span className="text-sm truncate flex-1">{tool.label}</span>
+          {tool.shortcut && (
+            <Badge variant="outline" className="text-[10px] px-1 py-0">
+              {tool.shortcut}
+            </Badge>
+          )}
+          {isSelected && <Check className="h-3 w-3 text-blue-500" />}
+        </div>
+      );
+    },
+    [
+      selectedTools,
+      dragState,
+      isCreatingGroup,
+      handleDragStart,
+      handleDragEnd,
+      toggleToolSelection,
+    ]
+  );
+
+  // ============================================
+  // RENDU D'UN GROUPE
+  // ============================================
+
+  const renderGroup = useCallback(
+    (groupId: string, line: 1 | 2, index: number) => {
+      const group = localConfig.groups.find((g) => g.id === groupId);
+      if (!group) return null;
+
+      const isDragged = dragState.draggedId === groupId;
+      const isEditing = editingGroupId === groupId;
+
+      return (
+        <div
+          key={groupId}
+          draggable
+          onDragStart={(e)
