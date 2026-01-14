@@ -19,8 +19,6 @@ import {
 
 export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
   // ========== LIGNE 1 - FICHIERS ==========
-
-  // Sauvegarde
   {
     id: "save",
     label: "Sauvegarder",
@@ -30,8 +28,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
-  // Import
   {
     id: "import",
     label: "Importer un fichier DXF",
@@ -40,8 +36,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
-  // Photos
   {
     id: "photos",
     label: "Charger des photos de référence",
@@ -50,8 +44,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
-  // Export SVG
   {
     id: "exportSvg",
     label: "Exporter en SVG",
@@ -60,8 +52,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
-  // Export PNG
   {
     id: "exportPng",
     label: "Exporter en PNG",
@@ -71,8 +61,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     hasDropdown: true,
     defaultVisible: true,
   },
-
-  // Export DXF
   {
     id: "exportDxf",
     label: "Exporter en DXF",
@@ -81,8 +69,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
-  // Export PDF
   {
     id: "exportPdf",
     label: "Exporter en PDF",
@@ -91,8 +77,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
-  // Templates
   {
     id: "templates",
     label: "Bibliothèque de templates",
@@ -101,8 +85,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
-  // Aide
   {
     id: "help",
     label: "Raccourcis clavier",
@@ -111,8 +93,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
-  // Status (non déplaçable)
   {
     id: "status",
     label: "Status des contraintes",
@@ -121,8 +101,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "display",
     defaultVisible: true,
   },
-
-  // Fullscreen
   {
     id: "fullscreen",
     label: "Plein écran",
@@ -133,8 +111,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
   },
 
   // ========== LIGNE 2 - OUTILS ==========
-
-  // Sélection
   {
     id: "select",
     label: "Sélection",
@@ -144,8 +120,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
-  // Pan
   {
     id: "pan",
     label: "Déplacer la vue",
@@ -155,8 +129,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
-  // Symétrie
   {
     id: "mirror",
     label: "Symétrie",
@@ -166,8 +138,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
-  // Move/Rotate (Transform Gizmo)
   {
     id: "moveRotate",
     label: "Déplacer / Rotation",
@@ -177,8 +147,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "toggle",
     defaultVisible: true,
   },
-
-  // Ligne
   {
     id: "line",
     label: "Ligne",
@@ -188,8 +156,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
-  // Cercle
   {
     id: "circle",
     label: "Cercle",
@@ -199,8 +165,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
-  // Arc 3 points
   {
     id: "arc3points",
     label: "Arc 3 points",
@@ -210,8 +174,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
-  // Rectangle
   {
     id: "rectangle",
     label: "Rectangle",
@@ -221,8 +183,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     hasDropdown: true,
     defaultVisible: true,
   },
-
-  // Bézier
   {
     id: "bezier",
     label: "Courbe Bézier",
@@ -232,8 +192,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
-  // Spline
   {
     id: "spline",
     label: "Spline - Double-clic pour terminer",
@@ -243,8 +201,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
-  // Polygone
   {
     id: "polygon",
     label: "Polygone régulier",
@@ -255,8 +211,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     hasDropdown: true,
     defaultVisible: true,
   },
-
-  // Texte
   {
     id: "text",
     label: "Texte / Annotation",
@@ -268,8 +222,7 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     defaultVisible: true,
   },
 
-  // ========== OUTILS PHOTOS (conditionnels) ==========
-
+  // ========== OUTILS PHOTOS ==========
   {
     id: "showBackground",
     label: "Afficher/Masquer photos",
@@ -279,7 +232,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     conditional: "hasImages",
     defaultVisible: true,
   },
-
   {
     id: "imageOpacity",
     label: "Opacité des photos",
@@ -289,7 +241,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     conditional: "hasImages",
     defaultVisible: true,
   },
-
   {
     id: "addMarker",
     label: "Ajouter un marqueur",
@@ -299,7 +250,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     conditional: "hasImages",
     defaultVisible: true,
   },
-
   {
     id: "linkMarker",
     label: "Lier deux marqueurs",
@@ -309,7 +259,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     conditional: "hasImages",
     defaultVisible: true,
   },
-
   {
     id: "calibrate",
     label: "Calibration",
@@ -319,7 +268,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     conditional: "hasImages",
     defaultVisible: true,
   },
-
   {
     id: "adjustEdges",
     label: "Ajuster les contours",
@@ -329,7 +277,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     conditional: "hasImages",
     defaultVisible: true,
   },
-
   {
     id: "deletePhotos",
     label: "Supprimer toutes les photos",
@@ -341,7 +288,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
   },
 
   // ========== COTATIONS ET CONTRAINTES ==========
-
   {
     id: "dimension",
     label: "Cotation",
@@ -351,7 +297,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
   {
     id: "measure",
     label: "Mesurer",
@@ -361,7 +306,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
   {
     id: "constraints",
     label: "Contraintes",
@@ -371,7 +315,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     hasDropdown: true,
     defaultVisible: true,
   },
-
   {
     id: "group",
     label: "Grouper",
@@ -381,7 +324,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
   {
     id: "ungroup",
     label: "Dégrouper",
@@ -391,7 +333,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
   {
     id: "array",
     label: "Répétition / Array",
@@ -402,7 +343,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
   },
 
   // ========== MODIFICATIONS ==========
-
   {
     id: "fillet",
     label: "Congé",
@@ -412,7 +352,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     hasDropdown: true,
     defaultVisible: true,
   },
-
   {
     id: "chamfer",
     label: "Chanfrein",
@@ -422,7 +361,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     hasDropdown: true,
     defaultVisible: true,
   },
-
   {
     id: "offset",
     label: "Offset - Copie parallèle",
@@ -433,7 +371,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
   },
 
   // ========== STYLE ==========
-
   {
     id: "strokeWidth",
     label: "Épaisseur du trait",
@@ -443,7 +380,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     hasDropdown: true,
     defaultVisible: true,
   },
-
   {
     id: "strokeColor",
     label: "Couleur du trait",
@@ -454,7 +390,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
   },
 
   // ========== VUE ET ZOOM ==========
-
   {
     id: "zoomOut",
     label: "Zoom arrière",
@@ -463,7 +398,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
   {
     id: "zoomLevel",
     label: "Niveau de zoom",
@@ -472,7 +406,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "display",
     defaultVisible: true,
   },
-
   {
     id: "zoomIn",
     label: "Zoom avant",
@@ -481,7 +414,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
   {
     id: "fitContent",
     label: "Ajuster au contenu",
@@ -490,7 +422,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
   {
     id: "resetView",
     label: "Reset vue",
@@ -501,7 +432,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
   },
 
   // ========== HISTORIQUE ==========
-
   {
     id: "undo",
     label: "Annuler",
@@ -511,7 +441,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
   {
     id: "redo",
     label: "Refaire",
@@ -521,7 +450,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
   {
     id: "branchSelect",
     label: "Branche active",
@@ -531,7 +459,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     hasDropdown: true,
     defaultVisible: true,
   },
-
   {
     id: "newBranch",
     label: "Nouvelle branche",
@@ -540,7 +467,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "button",
     defaultVisible: true,
   },
-
   {
     id: "historyPanel",
     label: "Historique et branches",
@@ -552,7 +478,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
   },
 
   // ========== AFFICHAGE ==========
-
   {
     id: "toggleGrid",
     label: "Grille",
@@ -561,7 +486,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "toggle",
     defaultVisible: true,
   },
-
   {
     id: "toggleA4Grid",
     label: "Grille A4 (export PDF)",
@@ -570,7 +494,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "toggle",
     defaultVisible: true,
   },
-
   {
     id: "toggleSnap",
     label: "Snap (aimantation)",
@@ -579,7 +502,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "toggle",
     defaultVisible: true,
   },
-
   {
     id: "snapActiveLayer",
     label: "Snap calque actif uniquement",
@@ -588,7 +510,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "toggle",
     defaultVisible: true,
   },
-
   {
     id: "constructionMode",
     label: "Mode construction",
@@ -597,7 +518,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "toggle",
     defaultVisible: true,
   },
-
   {
     id: "showConstruction",
     label: "Afficher lignes construction",
@@ -606,7 +526,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
     renderType: "toggle",
     defaultVisible: true,
   },
-
   {
     id: "highlightOpacity",
     label: "Opacité surbrillance",
@@ -622,7 +541,6 @@ export const ALL_TOOL_DEFINITIONS: ToolDefinition[] = [
 // ============================================
 
 export const DEFAULT_GROUPS: ToolbarGroup[] = [
-  // Ligne 1
   {
     id: "grp_save",
     name: "Sauvegarde",
@@ -641,8 +559,6 @@ export const DEFAULT_GROUPS: ToolbarGroup[] = [
     color: "#8B5CF6",
     items: ["help"],
   },
-
-  // Ligne 2
   {
     id: "grp_select",
     name: "Sélection",
@@ -746,7 +662,6 @@ export const DEFAULT_TOOLBAR_CONFIG: ToolbarConfig = {
 // FONCTIONS UTILITAIRES
 // ============================================
 
-// Créer une Map des définitions d'outils pour accès rapide
 export function createToolDefinitionsMap(): Map<string, ToolDefinition> {
   const map = new Map<string, ToolDefinition>();
   ALL_TOOL_DEFINITIONS.forEach((tool) => {
@@ -755,12 +670,10 @@ export function createToolDefinitionsMap(): Map<string, ToolDefinition> {
   return map;
 }
 
-// Obtenir la config par défaut (copie profonde)
 export function getDefaultToolbarConfig(): ToolbarConfig {
   return JSON.parse(JSON.stringify(DEFAULT_TOOLBAR_CONFIG));
 }
 
-// Créer un nouveau groupe
 export function createNewGroup(name: string, toolIds: string[], color?: string): ToolbarGroup {
   return {
     id: generateToolbarId(),
@@ -770,15 +683,10 @@ export function createNewGroup(name: string, toolIds: string[], color?: string):
   };
 }
 
-// Fusionner la config sauvegardée avec les défauts (pour nouvelles tools)
 export function mergeWithDefaults(savedConfig: ToolbarConfig): ToolbarConfig {
-  const defaultConfig = getDefaultToolbarConfig();
-
-  // Vérifier si de nouveaux outils ont été ajoutés
   const allToolIds = new Set(ALL_TOOL_DEFINITIONS.map((t) => t.id));
   const configToolIds = new Set<string>();
 
-  // Collecter tous les IDs présents dans la config
   const collectIds = (items: ToolbarItem[], groups: ToolbarGroup[]) => {
     items.forEach((item) => {
       if (item.type === "tool") {
@@ -796,7 +704,6 @@ export function mergeWithDefaults(savedConfig: ToolbarConfig): ToolbarConfig {
   collectIds(savedConfig.line2, savedConfig.groups);
   savedConfig.hidden.forEach((id) => configToolIds.add(id));
 
-  // Ajouter les nouveaux outils à la fin de la ligne 2 (masqués par défaut)
   const newTools: string[] = [];
   allToolIds.forEach((id) => {
     if (!configToolIds.has(id)) {
@@ -811,7 +718,6 @@ export function mergeWithDefaults(savedConfig: ToolbarConfig): ToolbarConfig {
   return savedConfig;
 }
 
-// Labels des catégories pour l'UI
 export const CATEGORY_LABELS: Record<ToolCategory, string> = {
   file: "Fichiers",
   draw: "Dessin",
@@ -825,4 +731,3 @@ export const CATEGORY_LABELS: Record<ToolCategory, string> = {
   style: "Style",
   help: "Aide",
 };
-s;
