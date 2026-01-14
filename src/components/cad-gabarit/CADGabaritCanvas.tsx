@@ -7330,7 +7330,7 @@ export function CADGabaritCanvas({
 
   // Création du rectangle avec les dimensions saisies ou le curseur
   const createRectangleFromInputs = useCallback(
-    (clickPos?: { x: number; y: number }) => {
+    (clickPos?: { x: number; y: number }, inputValues?: { width: string; height: string }) => {
       if (tempPoints.length === 0 || !tempGeometry?.p1) return;
 
       const p1 = tempPoints[0];
@@ -7344,9 +7344,12 @@ export function CADGabaritCanvas({
       let width: number;
       let height: number;
 
-      // Si des valeurs sont saisies, les utiliser
-      const inputWidth = parseFloat(rectInputs.widthValue);
-      const inputHeight = parseFloat(rectInputs.heightValue);
+      // Si des valeurs sont passées en paramètre, les utiliser, sinon lire le state
+      const widthStr = inputValues?.width ?? rectInputs.widthValue;
+      const heightStr = inputValues?.height ?? rectInputs.heightValue;
+
+      const inputWidth = parseFloat(widthStr.replace(",", "."));
+      const inputHeight = parseFloat(heightStr.replace(",", "."));
 
       if (!isNaN(inputWidth) && inputWidth > 0) {
         width = inputWidth * currentSketch.scaleFactor; // Convertir mm en px
@@ -16098,8 +16101,8 @@ export function CADGabaritCanvas({
                         e.preventDefault();
                         const wVal = widthInputRef.current?.value || "";
                         const hVal = heightInputRef.current?.value || "";
-                        setRectInputs((prev) => ({ ...prev, widthValue: wVal, heightValue: hVal }));
-                        setTimeout(() => createRectangleFromInputs(), 0);
+                        // Passer les valeurs directement pour éviter le problème de timing
+                        createRectangleFromInputs(undefined, { width: wVal, height: hVal });
                       } else if (e.key === "Escape") {
                         e.preventDefault();
                         setTempPoints([]);
@@ -16145,8 +16148,8 @@ export function CADGabaritCanvas({
                         e.preventDefault();
                         const wVal = widthInputRef.current?.value || "";
                         const hVal = heightInputRef.current?.value || "";
-                        setRectInputs((prev) => ({ ...prev, widthValue: wVal, heightValue: hVal }));
-                        setTimeout(() => createRectangleFromInputs(), 0);
+                        // Passer les valeurs directement pour éviter le problème de timing
+                        createRectangleFromInputs(undefined, { width: wVal, height: hVal });
                       } else if (e.key === "Escape") {
                         e.preventDefault();
                         setTempPoints([]);
