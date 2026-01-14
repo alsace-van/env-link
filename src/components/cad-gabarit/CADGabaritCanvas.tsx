@@ -9116,8 +9116,25 @@ export function CADGabaritCanvas({
         let closestPoint: CalibrationPoint | null = null;
         let closestDist = Infinity;
 
-        calibrationData.points.forEach((point) => {
-          const d = distance(worldPos, point);
+        // Utiliser les points de l'image sélectionnée (multi-photos) ou les points globaux
+        const imageCalib = getSelectedImageCalibration();
+        const pointsToCheck = imageCalib.points.size > 0 ? imageCalib.points : calibrationData.points;
+
+        pointsToCheck.forEach((point) => {
+          // Convertir en coordonnées monde si c'est un point d'image (relatif)
+          let worldPtX = point.x;
+          let worldPtY = point.y;
+
+          // Si on utilise les points de l'image, ils sont relatifs au centre de l'image
+          if (imageCalib.points.size > 0 && selectedImageId) {
+            const img = backgroundImages.find((i) => i.id === selectedImageId);
+            if (img) {
+              worldPtX = img.x + point.x;
+              worldPtY = img.y + point.y;
+            }
+          }
+
+          const d = distance(worldPos, { x: worldPtX, y: worldPtY });
           if (d < tolerance && d < closestDist) {
             closestDist = d;
             closestPoint = point;
@@ -9137,7 +9154,7 @@ export function CADGabaritCanvas({
           if (newRectPoints.length < 4) {
             toast.info(`Point ${closestPoint.label} sélectionné (${newRectPoints.length}/4)`);
           } else {
-            toast.success("4 points sélectionnés ! Entrez les dimensions du rectangle.");
+            toast.success("4 points sélectionnés ! Cliquez sur Calculer l'échelle.");
             setCalibrationMode("idle");
           }
         } else {
@@ -17802,7 +17819,10 @@ export function CADGabaritCanvas({
                         <div className="flex gap-1 flex-wrap">
                           {[0, 1, 2, 3].map((idx) => {
                             const pointId = rectPoints[idx];
-                            const point = pointId ? calibrationData.points.get(pointId) : null;
+                            // Utiliser les points de l'image sélectionnée ou les points globaux
+                            const imgCalib = getSelectedImageCalibration();
+                            const pointsMap = imgCalib.points.size > 0 ? imgCalib.points : calibrationData.points;
+                            const point = pointId ? pointsMap.get(pointId) : null;
                             return (
                               <div
                                 key={idx}
@@ -17821,7 +17841,11 @@ export function CADGabaritCanvas({
                             size="sm"
                             className="ml-2"
                             onClick={() => {
-                              if (calibrationData.points.size < 4) {
+                              // Utiliser les points de l'image sélectionnée ou les points globaux
+                              const imgCalib = getSelectedImageCalibration();
+                              const pointsCount =
+                                imgCalib.points.size > 0 ? imgCalib.points.size : calibrationData.points.size;
+                              if (pointsCount < 4) {
                                 toast.error("Ajoutez au moins 4 points");
                                 return;
                               }
@@ -17941,7 +17965,10 @@ export function CADGabaritCanvas({
                           <div className="flex gap-1 flex-wrap items-center">
                             {["TL", "TR", "BR", "BL"].map((label, idx) => {
                               const pointId = rectPoints[idx];
-                              const point = pointId ? calibrationData.points.get(pointId) : null;
+                              // Utiliser les points de l'image sélectionnée ou les points globaux
+                              const imgCalib = getSelectedImageCalibration();
+                              const pointsMap = imgCalib.points.size > 0 ? imgCalib.points : calibrationData.points;
+                              const point = pointId ? pointsMap.get(pointId) : null;
                               return (
                                 <div
                                   key={idx}
@@ -17963,7 +17990,11 @@ export function CADGabaritCanvas({
                               size="sm"
                               className="ml-1 h-8 text-xs"
                               onClick={() => {
-                                if (calibrationData.points.size < 4) {
+                                // Utiliser les points de l'image sélectionnée ou les points globaux
+                                const imgCalib = getSelectedImageCalibration();
+                                const pointsCount =
+                                  imgCalib.points.size > 0 ? imgCalib.points.size : calibrationData.points.size;
+                                if (pointsCount < 4) {
                                   toast.error("Ajoutez d'abord 4 points sur l'image");
                                   return;
                                 }
