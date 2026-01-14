@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: ToolbarEditor
 // Éditeur de toolbar drag & drop avec groupes
-// VERSION: 1.0 - Création initiale
+// VERSION: 1.1 - Corrections TypeScript
 // ============================================
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,8 +20,6 @@ import {
 import {
   X,
   GripVertical,
-  Plus,
-  Trash2,
   Edit3,
   ChevronDown,
   RotateCcw,
@@ -35,19 +32,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import {
-  ToolbarConfig,
-  ToolbarGroup,
-  ToolbarItem,
-  ToolDefinition,
-  DragState,
-  GROUP_COLORS,
-  generateToolbarId,
-} from "./toolbar-types";
-import {
-  getDefaultToolbarConfig,
-  createToolDefinitionsMap,
-} from "./toolbar-defaults";
+import { ToolbarConfig, ToolbarGroup, ToolbarItem, DragState, GROUP_COLORS, generateToolbarId } from "./toolbar-types";
+import { getDefaultToolbarConfig, createToolDefinitionsMap } from "./toolbar-defaults";
 
 // ============================================
 // PROPS
@@ -64,12 +50,7 @@ interface ToolbarEditorProps {
 // COMPOSANT PRINCIPAL
 // ============================================
 
-export function ToolbarEditor({
-  isOpen,
-  onClose,
-  config,
-  onConfigChange,
-}: ToolbarEditorProps) {
+export function ToolbarEditor({ isOpen, onClose, config, onConfigChange }: ToolbarEditorProps) {
   // Map des définitions d'outils
   const toolDefs = useRef(createToolDefinitionsMap());
 
@@ -91,7 +72,7 @@ export function ToolbarEditor({
   const [selectedTools, setSelectedTools] = useState<Set<string>>(new Set());
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
-  const [newGroupColor, setNewGroupColor] = useState(GROUP_COLORS[0]);
+  const [newGroupColor, setNewGroupColor] = useState<string>(GROUP_COLORS[0]);
 
   // État pour l'édition de groupe
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
@@ -115,15 +96,18 @@ export function ToolbarEditor({
   // DRAG & DROP MODAL
   // ============================================
 
-  const handleModalMouseDown = useCallback((e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest(".modal-header")) {
-      setIsDraggingModal(true);
-      setDragStartPos({
-        x: e.clientX - modalPosition.x,
-        y: e.clientY - modalPosition.y,
-      });
-    }
-  }, [modalPosition]);
+  const handleModalMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if ((e.target as HTMLElement).closest(".modal-header")) {
+        setIsDraggingModal(true);
+        setDragStartPos({
+          x: e.clientX - modalPosition.x,
+          y: e.clientY - modalPosition.y,
+        });
+      }
+    },
+    [modalPosition],
+  );
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -155,13 +139,7 @@ export function ToolbarEditor({
   // ============================================
 
   const handleDragStart = useCallback(
-    (
-      e: React.DragEvent,
-      itemId: string,
-      itemType: "tool" | "group",
-      line: 1 | 2 | "hidden",
-      index: number
-    ) => {
+    (e: React.DragEvent, itemId: string, itemType: "tool" | "group", line: 1 | 2 | "hidden", index: number) => {
       e.dataTransfer.effectAllowed = "move";
       e.dataTransfer.setData("text/plain", JSON.stringify({ itemId, itemType, line, index }));
 
@@ -175,22 +153,19 @@ export function ToolbarEditor({
         targetIndex: null,
       });
     },
-    []
+    [],
   );
 
-  const handleDragOver = useCallback(
-    (e: React.DragEvent, targetLine: 1 | 2 | "hidden", targetIndex: number) => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
+  const handleDragOver = useCallback((e: React.DragEvent, targetLine: 1 | 2 | "hidden", targetIndex: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
 
-      setDragState((prev) => ({
-        ...prev,
-        targetLine,
-        targetIndex,
-      }));
-    },
-    []
-  );
+    setDragState((prev) => ({
+      ...prev,
+      targetLine,
+      targetIndex,
+    }));
+  }, []);
 
   const handleDragEnd = useCallback(() => {
     setDragState({
@@ -228,7 +203,6 @@ export function ToolbarEditor({
           const item: ToolbarItem = { type: itemType, id: itemId };
 
           if (targetLine === 1) {
-            // Ajuster l'index si on déplace dans la même ligne
             let adjustedIndex = targetIndex;
             if (sourceLine === 1 && sourceIndex < targetIndex) {
               adjustedIndex--;
@@ -241,12 +215,10 @@ export function ToolbarEditor({
             }
             newConfig.line2.splice(adjustedIndex, 0, item);
           } else if (targetLine === "hidden") {
-            // Si c'est un groupe, extraire les outils et les masquer
             if (itemType === "group") {
               const group = newConfig.groups.find((g) => g.id === itemId);
               if (group) {
                 newConfig.hidden.push(...group.items);
-                // Supprimer le groupe
                 newConfig.groups = newConfig.groups.filter((g) => g.id !== itemId);
               }
             } else {
@@ -262,7 +234,7 @@ export function ToolbarEditor({
 
       handleDragEnd();
     },
-    [handleDragEnd]
+    [handleDragEnd],
   );
 
   // ============================================
@@ -284,7 +256,6 @@ export function ToolbarEditor({
       const newConfig = JSON.parse(JSON.stringify(prev)) as ToolbarConfig;
       const toolIds = Array.from(selectedTools);
 
-      // Créer le nouveau groupe
       const newGroup: ToolbarGroup = {
         id: generateToolbarId(),
         name: newGroupName.trim(),
@@ -293,15 +264,13 @@ export function ToolbarEditor({
       };
       newConfig.groups.push(newGroup);
 
-      // Trouver où insérer le groupe (position du premier outil sélectionné)
-      let targetLine: 1 | 2 = 2;
+      let targetLine: number = 2;
       let targetIndex = 0;
       let firstToolFound = false;
 
-      // Retirer les outils des lignes et trouver la position
-      const removeTools = (line: ToolbarItem[], lineNum: 1 | 2) => {
+      const removeTools = (line: ToolbarItem[], lineNum: number) => {
         const newLine: ToolbarItem[] = [];
-        line.forEach((item, idx) => {
+        line.forEach((item) => {
           if (item.type === "tool" && toolIds.includes(item.id)) {
             if (!firstToolFound) {
               targetLine = lineNum;
@@ -311,9 +280,7 @@ export function ToolbarEditor({
           } else if (item.type === "group") {
             const group = newConfig.groups.find((g) => g.id === item.id);
             if (group) {
-              // Retirer les outils du groupe existant s'ils sont sélectionnés
               group.items = group.items.filter((id) => !toolIds.includes(id));
-              // Garder le groupe seulement s'il a encore des outils
               if (group.items.length > 0) {
                 newLine.push(item);
               }
@@ -329,14 +296,9 @@ export function ToolbarEditor({
 
       newConfig.line1 = removeTools(newConfig.line1, 1);
       newConfig.line2 = removeTools(newConfig.line2, 2);
-
-      // Retirer des masqués aussi
       newConfig.hidden = newConfig.hidden.filter((id) => !toolIds.includes(id));
-
-      // Nettoyer les groupes vides
       newConfig.groups = newConfig.groups.filter((g) => g.items.length > 0);
 
-      // Insérer le nouveau groupe
       const groupItem: ToolbarItem = { type: "group", id: newGroup.id };
       if (targetLine === 1) {
         newConfig.line1.splice(targetIndex, 0, groupItem);
@@ -360,11 +322,10 @@ export function ToolbarEditor({
 
       if (!group) return prev;
 
-      // Trouver où est le groupe
-      let targetLine: 1 | 2 = 2;
+      let targetLine: number = 2;
       let targetIndex = 0;
 
-      const findAndRemove = (line: ToolbarItem[], lineNum: 1 | 2) => {
+      const findAndRemove = (line: ToolbarItem[], lineNum: number) => {
         const idx = line.findIndex((item) => item.type === "group" && item.id === groupId);
         if (idx !== -1) {
           targetLine = lineNum;
@@ -379,7 +340,6 @@ export function ToolbarEditor({
         findAndRemove(newConfig.line2, 2);
       }
 
-      // Insérer les outils individuels à la place
       const toolItems: ToolbarItem[] = group.items.map((id) => ({
         type: "tool" as const,
         id,
@@ -391,7 +351,6 @@ export function ToolbarEditor({
         newConfig.line2.splice(targetIndex, 0, ...toolItems);
       }
 
-      // Supprimer le groupe
       newConfig.groups = newConfig.groups.filter((g) => g.id !== groupId);
 
       return newConfig;
@@ -422,7 +381,8 @@ export function ToolbarEditor({
       return newConfig;
     });
   }, []);
-// ============================================
+
+  // ============================================
   // ACTIONS
   // ============================================
 
@@ -486,9 +446,7 @@ export function ToolbarEditor({
             ${inGroup ? "cursor-default" : ""}
           `}
         >
-          {!inGroup && (
-            <GripVertical className="h-3 w-3 text-gray-400 flex-shrink-0" />
-          )}
+          {!inGroup && <GripVertical className="h-3 w-3 text-gray-400 flex-shrink-0" />}
           <span className="text-sm truncate flex-1">{tool.label}</span>
           {tool.shortcut && (
             <Badge variant="outline" className="text-[10px] px-1 py-0">
@@ -499,14 +457,7 @@ export function ToolbarEditor({
         </div>
       );
     },
-    [
-      selectedTools,
-      dragState,
-      isCreatingGroup,
-      handleDragStart,
-      handleDragEnd,
-      toggleToolSelection,
-    ]
+    [selectedTools, dragState, isCreatingGroup, handleDragStart, handleDragEnd, toggleToolSelection],
   );
 
   // ============================================
@@ -533,13 +484,9 @@ export function ToolbarEditor({
           `}
           style={{ borderColor: group.color || "#3B82F6" }}
         >
-          {/* Header du groupe */}
           <div className="flex items-center gap-2 mb-2">
             <GripVertical className="h-4 w-4 text-gray-400 cursor-grab" />
-            <div
-              className="w-3 h-3 rounded-full flex-shrink-0"
-              style={{ backgroundColor: group.color }}
-            />
+            <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: group.color }} />
             {isEditing ? (
               <Input
                 value={editGroupName}
@@ -559,7 +506,6 @@ export function ToolbarEditor({
               {group.items.length}
             </Badge>
 
-            {/* Menu du groupe */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
@@ -601,10 +547,7 @@ export function ToolbarEditor({
             </DropdownMenu>
           </div>
 
-          {/* Outils du groupe */}
-          <div className="space-y-1 pl-5">
-            {group.items.map((toolId, idx) => renderTool(toolId, line, idx, true))}
-          </div>
+          <div className="space-y-1 pl-5">{group.items.map((toolId, idx) => renderTool(toolId, line, idx, true))}</div>
         </div>
       );
     },
@@ -619,7 +562,7 @@ export function ToolbarEditor({
       changeGroupColor,
       dissolveGroup,
       renderTool,
-    ]
+    ],
   );
 
   // ============================================
@@ -642,9 +585,7 @@ export function ToolbarEditor({
         >
           <div className="flex items-center gap-2 mb-3">
             <Badge variant="outline">Ligne {lineNum}</Badge>
-            <span className="text-xs text-gray-500">
-              {lineNum === 1 ? "Fichiers & Export" : "Outils & Options"}
-            </span>
+            <span className="text-xs text-gray-500">{lineNum === 1 ? "Fichiers & Export" : "Outils & Options"}</span>
           </div>
 
           <div className="space-y-2">
@@ -662,28 +603,25 @@ export function ToolbarEditor({
                 }}
                 className={`
                   relative
-                  ${dragState.targetLine === lineNum && dragState.targetIndex === index
-                    ? "before:absolute before:left-0 before:right-0 before:-top-1 before:h-0.5 before:bg-blue-500"
-                    : ""
+                  ${
+                    dragState.targetLine === lineNum && dragState.targetIndex === index
+                      ? "before:absolute before:left-0 before:right-0 before:-top-1 before:h-0.5 before:bg-blue-500"
+                      : ""
                   }
                 `}
               >
-                {item.type === "group"
-                  ? renderGroup(item.id, lineNum, index)
-                  : renderTool(item.id, lineNum, index)}
+                {item.type === "group" ? renderGroup(item.id, lineNum, index) : renderTool(item.id, lineNum, index)}
               </div>
             ))}
 
             {items.length === 0 && (
-              <div className="text-center py-8 text-gray-400 text-sm">
-                Glissez des outils ou groupes ici
-              </div>
+              <div className="text-center py-8 text-gray-400 text-sm">Glissez des outils ou groupes ici</div>
             )}
           </div>
         </div>
       );
     },
-    [localConfig, dragState, handleDragOver, handleDrop, renderGroup, renderTool]
+    [localConfig, dragState, handleDragOver, handleDrop, renderGroup, renderTool],
   );
 
   // ============================================
@@ -722,12 +660,7 @@ export function ToolbarEditor({
                 className="flex items-center gap-1 px-2 py-1 bg-white rounded border border-gray-200 text-sm cursor-grab hover:bg-gray-50"
               >
                 <span className="truncate max-w-[120px]">{tool.label}</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-5 w-5 p-0 ml-1"
-                  onClick={() => showHiddenTool(toolId)}
-                >
+                <Button variant="ghost" size="sm" className="h-5 w-5 p-0 ml-1" onClick={() => showHiddenTool(toolId)}>
                   <Eye className="h-3 w-3" />
                 </Button>
               </div>
@@ -735,22 +668,12 @@ export function ToolbarEditor({
           })}
 
           {localConfig.hidden.length === 0 && (
-            <span className="text-gray-400 text-sm">
-              Glissez des outils ici pour les masquer
-            </span>
+            <span className="text-gray-400 text-sm">Glissez des outils ici pour les masquer</span>
           )}
         </div>
       </div>
     );
-  }, [
-    localConfig.hidden,
-    dragState,
-    handleDragOver,
-    handleDrop,
-    handleDragStart,
-    handleDragEnd,
-    showHiddenTool,
-  ]);
+  }, [localConfig.hidden, dragState, handleDragOver, handleDrop, handleDragStart, handleDragEnd, showHiddenTool]);
 
   // ============================================
   // RENDU PRINCIPAL
@@ -770,7 +693,6 @@ export function ToolbarEditor({
         }}
         className="bg-white rounded-xl shadow-2xl w-[700px] max-h-[85vh] flex flex-col"
       >
-        {/* Header draggable */}
         <div className="modal-header flex items-center justify-between px-4 py-3 border-b bg-gray-50 rounded-t-xl cursor-move">
           <div className="flex items-center gap-3">
             <Move className="h-4 w-4 text-gray-400" />
@@ -787,20 +709,12 @@ export function ToolbarEditor({
           </div>
         </div>
 
-        {/* Contenu scrollable */}
         <ScrollArea className="flex-1 p-4">
-          {/* Actions de création de groupe */}
           <div className="mb-4 p-3 bg-blue-50 rounded-lg">
             {!isCreatingGroup ? (
               <div className="flex items-center justify-between">
-                <span className="text-sm text-blue-700">
-                  Sélectionnez des outils puis créez un groupe
-                </span>
-                <Button
-                  size="sm"
-                  onClick={() => setIsCreatingGroup(true)}
-                  className="gap-1"
-                >
+                <span className="text-sm text-blue-700">Sélectionnez des outils puis créez un groupe</span>
+                <Button size="sm" onClick={() => setIsCreatingGroup(true)} className="gap-1">
                   <FolderPlus className="h-4 w-4" />
                   Nouveau groupe
                 </Button>
@@ -809,9 +723,7 @@ export function ToolbarEditor({
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <Badge variant="default">{selectedTools.size} outils sélectionnés</Badge>
-                  <span className="text-xs text-gray-500">
-                    Cliquez sur les outils pour les sélectionner
-                  </span>
+                  <span className="text-xs text-gray-500">Cliquez sur les outils pour les sélectionner</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Input
@@ -854,17 +766,14 @@ export function ToolbarEditor({
             )}
           </div>
 
-          {/* Lignes de toolbar */}
           <div className="space-y-4">
             {renderLine(1)}
             {renderLine(2)}
           </div>
 
-          {/* Zone masquée */}
           <div className="mt-4">{renderHiddenZone()}</div>
         </ScrollArea>
 
-        {/* Footer */}
         <div className="flex items-center justify-end gap-2 px-4 py-3 border-t bg-gray-50 rounded-b-xl">
           <Button variant="outline" onClick={onClose}>
             Annuler
