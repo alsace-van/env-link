@@ -150,7 +150,7 @@ export function useToolbarVisibility() {
     (line: "line1" | "line2", groupKey: string): boolean => {
       return oldStyleConfig[line][groupKey] ?? false;
     },
-    [oldStyleConfig]
+    [oldStyleConfig],
   );
 
   return {
@@ -183,12 +183,7 @@ export function ToolbarConfigButton({ onClick, className = "" }: ToolbarConfigBu
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onClick}
-            className={`h-8 w-8 p-0 ${className}`}
-          >
+          <Button variant="ghost" size="sm" onClick={onClick} className={`h-8 w-8 p-0 ${className}`}>
             <Settings className="h-4 w-4" />
           </Button>
         </TooltipTrigger>
@@ -210,27 +205,12 @@ interface ToolbarEditorWrapperProps {
   onClose: () => void;
   config: ToolbarConfig;
   onConfigChange: (config: ToolbarConfig) => void;
-  toolDefinitions: Map<string, import("./toolbar-types").ToolDefinition>;
 }
 
-export function ToolbarEditorWrapper({
-  isOpen,
-  onClose,
-  config,
-  onConfigChange,
-  toolDefinitions,
-}: ToolbarEditorWrapperProps) {
+export function ToolbarEditorWrapper({ isOpen, onClose, config, onConfigChange }: ToolbarEditorWrapperProps) {
   if (!isOpen) return null;
 
-  return (
-    <ToolbarEditor
-      isOpen={isOpen}
-      onClose={onClose}
-      config={config}
-      onConfigChange={onConfigChange}
-      toolDefinitions={toolDefinitions}
-    />
-  );
+  return <ToolbarEditor isOpen={isOpen} onClose={onClose} config={config} onConfigChange={onConfigChange} />;
 }
 
 // ============================================

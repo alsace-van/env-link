@@ -20528,7 +20528,6 @@ export function CADGabaritCanvas({
         onClose={() => setToolbarEditorOpen(false)}
         config={newToolbarConfig}
         onConfigChange={updateToolbarConfig}
-        toolDefinitions={toolDefinitions}
       />
     </div>
   );
