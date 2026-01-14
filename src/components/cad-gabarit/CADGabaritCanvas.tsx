@@ -4083,15 +4083,16 @@ export function CADGabaritCanvas({
       const pointTolerance = 10 / viewport.scale; // Augmenté de 8 à 10
 
       // PRIORITÉ 1: Vérifier les points de COIN en premier (pour congé/chanfrein)
-      // Un coin est un point connecté à exactement 2 lignes
+      // Un coin est un point connecté à exactement 2 lignes (hors lignes de construction)
       for (const [id, point] of sketch.points) {
         if (distance({ x: worldX, y: worldY }, point) < pointTolerance) {
-          // Compter les lignes connectées à ce point
+          // Compter les lignes connectées à ce point (exclure les lignes de construction)
           let connectedLines = 0;
           for (const geo of sketch.geometries.values()) {
             if (geo.type === "line") {
               const line = geo as Line;
-              if (line.p1 === id || line.p2 === id) {
+              // Exclure les lignes de construction (ex: diagonales des rectangles par le centre)
+              if (!line.isConstruction && (line.p1 === id || line.p2 === id)) {
                 connectedLines++;
               }
             }
