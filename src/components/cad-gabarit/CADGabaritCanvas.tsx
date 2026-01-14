@@ -7643,25 +7643,52 @@ export function CADGabaritCanvas({
 
       lines.forEach((l) => newSketch.geometries.set(l.id, l));
 
-      // Mode centre: ajouter les diagonales de construction
-      let diagonalIds: string[] = [];
+      // Mode centre: ajouter le point central et les diagonales de construction
       if (isCenter) {
-        // Créer les diagonales de construction
-        const diagonal1: Line = {
+        // Créer le point central explicitement (pour le snap)
+        const centerPointId = generateId();
+        const centerPoint: Point = {
+          id: centerPointId,
+          x: p1.x,
+          y: p1.y,
+        };
+        newSketch.points.set(centerPointId, centerPoint);
+
+        // Créer les 4 demi-diagonales (connectées au centre)
+        const diagonal1a: Line = {
           id: generateId(),
           type: "line",
           p1: corner1.id,
+          p2: centerPointId,
+          layerId: currentSketch.activeLayerId,
+          strokeWidth: defaultStrokeWidthRef.current,
+          strokeColor: "#888888",
+          isConstruction: true,
+        };
+        const diagonal1b: Line = {
+          id: generateId(),
+          type: "line",
+          p1: centerPointId,
           p2: corner3.id,
           layerId: currentSketch.activeLayerId,
           strokeWidth: defaultStrokeWidthRef.current,
-          strokeColor: "#888888", // Gris pour les lignes de construction
+          strokeColor: "#888888",
           isConstruction: true,
         };
-
-        const diagonal2: Line = {
+        const diagonal2a: Line = {
           id: generateId(),
           type: "line",
           p1: corner2.id,
+          p2: centerPointId,
+          layerId: currentSketch.activeLayerId,
+          strokeWidth: defaultStrokeWidthRef.current,
+          strokeColor: "#888888",
+          isConstruction: true,
+        };
+        const diagonal2b: Line = {
+          id: generateId(),
+          type: "line",
+          p1: centerPointId,
           p2: corner4.id,
           layerId: currentSketch.activeLayerId,
           strokeWidth: defaultStrokeWidthRef.current,
@@ -7669,19 +7696,15 @@ export function CADGabaritCanvas({
           isConstruction: true,
         };
 
-        newSketch.geometries.set(diagonal1.id, diagonal1);
-        newSketch.geometries.set(diagonal2.id, diagonal2);
-        diagonalIds = [diagonal1.id, diagonal2.id];
+        newSketch.geometries.set(diagonal1a.id, diagonal1a);
+        newSketch.geometries.set(diagonal1b.id, diagonal1b);
+        newSketch.geometries.set(diagonal2a.id, diagonal2a);
+        newSketch.geometries.set(diagonal2b.id, diagonal2b);
       }
 
-      // Détecter et créer les points d'intersection
+      // Détecter et créer les points d'intersection pour les côtés
       for (const line of lines) {
         createIntersectionPoints(line.id, newSketch);
-      }
-
-      // Créer l'intersection des diagonales (point central)
-      for (const diagId of diagonalIds) {
-        createIntersectionPoints(diagId, newSketch);
       }
 
       // Ajouter contraintes horizontales/verticales
