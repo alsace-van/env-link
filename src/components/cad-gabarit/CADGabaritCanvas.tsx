@@ -13805,6 +13805,54 @@ export function CADGabaritCanvas({
       ctx.translate(padding - minX * scale, padding - minY * scale);
       ctx.scale(scale, scale);
 
+      // Dessiner les remplissages (shapeFills) AVANT les lignes
+      if (sketch.shapeFills) {
+        sketch.shapeFills.forEach((fill) => {
+          if (!fill.geoIds || fill.geoIds.length === 0) return;
+
+          const allPoints: { x: number; y: number }[] = [];
+          const processedPoints = new Set<string>();
+
+          for (const geoId of fill.geoIds) {
+            const geo = sketch.geometries.get(geoId);
+            if (geo && geo.type === "line") {
+              const line = geo as Line;
+              const p1 = sketch.points.get(line.p1);
+              const p2 = sketch.points.get(line.p2);
+              if (p1 && !processedPoints.has(line.p1)) {
+                allPoints.push({ x: p1.x, y: p1.y });
+                processedPoints.add(line.p1);
+              }
+              if (p2 && !processedPoints.has(line.p2)) {
+                allPoints.push({ x: p2.x, y: p2.y });
+                processedPoints.add(line.p2);
+              }
+            }
+          }
+
+          if (allPoints.length < 3) return;
+
+          // Trier les points pour former un polygone
+          const fillCx = allPoints.reduce((s, p) => s + p.x, 0) / allPoints.length;
+          const fillCy = allPoints.reduce((s, p) => s + p.y, 0) / allPoints.length;
+
+          allPoints.sort((a, b) => {
+            const angleA = Math.atan2(a.y - fillCy, a.x - fillCx);
+            const angleB = Math.atan2(b.y - fillCy, b.x - fillCx);
+            return angleA - angleB;
+          });
+
+          ctx.fillStyle = fill.color || "#000000";
+          ctx.beginPath();
+          allPoints.forEach((p, i) => {
+            if (i === 0) ctx.moveTo(p.x, p.y);
+            else ctx.lineTo(p.x, p.y);
+          });
+          ctx.closePath();
+          ctx.fill();
+        });
+      }
+
       // Lignes
       exportGeometries.forEach((geo) => {
         ctx.strokeStyle = (geo as any).strokeColor || "#000000";
@@ -14041,6 +14089,78 @@ export function CADGabaritCanvas({
         }
       }
 
+      // Dessiner les remplissages (shapeFills) AVANT les lignes
+      if (sketch.shapeFills) {
+        sketch.shapeFills.forEach((fill) => {
+          if (!fill.geoIds || fill.geoIds.length === 0) return;
+
+          // Collecter tous les points qui forment cette forme
+          const allPoints: { x: number; y: number }[] = [];
+          const processedPoints = new Set<string>();
+
+          for (const geoId of fill.geoIds) {
+            const geo = sketch.geometries.get(geoId);
+            if (geo && geo.type === "line") {
+              const line = geo as Line;
+              const p1 = sketch.points.get(line.p1);
+              const p2 = sketch.points.get(line.p2);
+              if (p1 && !processedPoints.has(line.p1)) {
+                allPoints.push({ x: p1.x, y: p1.y });
+                processedPoints.add(line.p1);
+              }
+              if (p2 && !processedPoints.has(line.p2)) {
+                allPoints.push({ x: p2.x, y: p2.y });
+                processedPoints.add(line.p2);
+              }
+            }
+          }
+
+          if (allPoints.length < 3) return;
+
+          // Vérifier si la forme intersecte la cellule
+          const fillMinX = Math.min(...allPoints.map((p) => p.x));
+          const fillMaxX = Math.max(...allPoints.map((p) => p.x));
+          const fillMinY = Math.min(...allPoints.map((p) => p.y));
+          const fillMaxY = Math.max(...allPoints.map((p) => p.y));
+
+          if (fillMaxX < exportMinX || fillMinX > exportMaxX || fillMaxY < exportMinY || fillMinY > exportMaxY) {
+            return;
+          }
+
+          // Trier les points pour former un polygone convexe (pour un rectangle)
+          // Calculer le centre
+          const fillCx = allPoints.reduce((s, p) => s + p.x, 0) / allPoints.length;
+          const fillCy = allPoints.reduce((s, p) => s + p.y, 0) / allPoints.length;
+
+          // Trier par angle
+          allPoints.sort((a, b) => {
+            const angleA = Math.atan2(a.y - fillCy, a.x - fillCx);
+            const angleB = Math.atan2(b.y - fillCy, b.x - fillCx);
+            return angleA - angleB;
+          });
+
+          // Convertir en coordonnées PDF
+          const pdfPoints = allPoints.map((p) => toPage(p.x, p.y));
+
+          // Définir la couleur de remplissage
+          const fillColor = fill.color || "#000000";
+          const fillR = parseInt(fillColor.slice(1, 3), 16);
+          const fillG = parseInt(fillColor.slice(3, 5), 16);
+          const fillB = parseInt(fillColor.slice(5, 7), 16);
+
+          doc.setFillColor(fillR, fillG, fillB);
+
+          // Dessiner le polygone rempli
+          if (pdfPoints.length >= 3) {
+            // Construire le path
+            const pathData: number[][] = pdfPoints.map((p) => [p.x, p.y]);
+
+            // Utiliser la méthode polygon de jsPDF
+            (doc as any).polygon(pathData, "F"); // 'F' = Fill only
+          }
+        });
+      }
+
       // Dessiner les géométries
       doc.setDrawColor(0, 0, 0);
       doc.setLineWidth(0.3);
@@ -14263,6 +14383,67 @@ export function CADGabaritCanvas({
             console.warn("Erreur image:", e);
           }
         }
+      }
+
+      // Dessiner les remplissages (shapeFills) AVANT les lignes
+      if (sketch.shapeFills) {
+        sketch.shapeFills.forEach((fill) => {
+          if (!fill.geoIds || fill.geoIds.length === 0) return;
+
+          const allPoints: { x: number; y: number }[] = [];
+          const processedPoints = new Set<string>();
+
+          for (const geoId of fill.geoIds) {
+            const geo = sketch.geometries.get(geoId);
+            if (geo && geo.type === "line") {
+              const line = geo as Line;
+              const p1 = sketch.points.get(line.p1);
+              const p2 = sketch.points.get(line.p2);
+              if (p1 && !processedPoints.has(line.p1)) {
+                allPoints.push({ x: p1.x, y: p1.y });
+                processedPoints.add(line.p1);
+              }
+              if (p2 && !processedPoints.has(line.p2)) {
+                allPoints.push({ x: p2.x, y: p2.y });
+                processedPoints.add(line.p2);
+              }
+            }
+          }
+
+          if (allPoints.length < 3) return;
+
+          const fillMinX = Math.min(...allPoints.map((p) => p.x));
+          const fillMaxX = Math.max(...allPoints.map((p) => p.x));
+          const fillMinY = Math.min(...allPoints.map((p) => p.y));
+          const fillMaxY = Math.max(...allPoints.map((p) => p.y));
+
+          if (fillMaxX < exportMinX || fillMinX > exportMaxX || fillMaxY < exportMinY || fillMinY > exportMaxY) {
+            return;
+          }
+
+          const fillCx = allPoints.reduce((s, p) => s + p.x, 0) / allPoints.length;
+          const fillCy = allPoints.reduce((s, p) => s + p.y, 0) / allPoints.length;
+
+          allPoints.sort((a, b) => {
+            const angleA = Math.atan2(a.y - fillCy, a.x - fillCx);
+            const angleB = Math.atan2(b.y - fillCy, b.x - fillCx);
+            return angleA - angleB;
+          });
+
+          const pdfPoints = allPoints.map((p) => toPage(p.x, p.y));
+
+          const fillColor = fill.color || "#000000";
+          const fillR = parseInt(fillColor.slice(1, 3), 16);
+          const fillG = parseInt(fillColor.slice(3, 5), 16);
+          const fillB = parseInt(fillColor.slice(5, 7), 16);
+
+          doc.setFillColor(fillR, fillG, fillB);
+
+          if (pdfPoints.length >= 3) {
+            const pathData: number[][] = pdfPoints.map((p) => [p.x, p.y]);
+            (doc as any).polygon(pathData, "F");
+          }
+        });
       }
 
       // Dessiner les géométries
@@ -14502,6 +14683,56 @@ export function CADGabaritCanvas({
       const scale = Math.min((size - 2 * margin) / width, (size - 2 * margin) / height);
       const offsetX = (size - width * scale) / 2 - minX * scale;
       const offsetY = (size - height * scale) / 2 - minY * scale;
+
+      // Dessiner les remplissages (shapeFills) AVANT les lignes
+      if (sketch.shapeFills) {
+        sketch.shapeFills.forEach((fill) => {
+          if (!fill.geoIds || fill.geoIds.length === 0) return;
+
+          const allPoints: { x: number; y: number }[] = [];
+          const processedPoints = new Set<string>();
+
+          for (const geoId of fill.geoIds) {
+            const geo = sketch.geometries.get(geoId);
+            if (geo && geo.type === "line") {
+              const line = geo as Line;
+              const p1 = sketch.points.get(line.p1);
+              const p2 = sketch.points.get(line.p2);
+              if (p1 && !processedPoints.has(line.p1)) {
+                allPoints.push({ x: p1.x, y: p1.y });
+                processedPoints.add(line.p1);
+              }
+              if (p2 && !processedPoints.has(line.p2)) {
+                allPoints.push({ x: p2.x, y: p2.y });
+                processedPoints.add(line.p2);
+              }
+            }
+          }
+
+          if (allPoints.length < 3) return;
+
+          // Trier les points pour former un polygone
+          const fillCx = allPoints.reduce((s, p) => s + p.x, 0) / allPoints.length;
+          const fillCy = allPoints.reduce((s, p) => s + p.y, 0) / allPoints.length;
+
+          allPoints.sort((a, b) => {
+            const angleA = Math.atan2(a.y - fillCy, a.x - fillCx);
+            const angleB = Math.atan2(b.y - fillCy, b.x - fillCx);
+            return angleA - angleB;
+          });
+
+          tempCtx.fillStyle = fill.color || "#000000";
+          tempCtx.beginPath();
+          allPoints.forEach((p, i) => {
+            const px = p.x * scale + offsetX;
+            const py = p.y * scale + offsetY;
+            if (i === 0) tempCtx.moveTo(px, py);
+            else tempCtx.lineTo(px, py);
+          });
+          tempCtx.closePath();
+          tempCtx.fill();
+        });
+      }
 
       // Dessiner les géométries
       tempCtx.strokeStyle = "#374151";
