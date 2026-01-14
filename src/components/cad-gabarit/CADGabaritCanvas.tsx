@@ -8078,11 +8078,11 @@ export function CADGabaritCanvas({
     console.log("[CROP] Applying crop to image:", selectedImageId);
     console.log("[CROP] Crop selection:", cropSelection);
 
-    setBackgroundImages((prev) =>
-      prev.map((img) => {
+    setBackgroundImages((prev) => {
+      const newImages = prev.map((img) => {
         if (img.id !== selectedImageId) return img;
 
-        // Créer le canvas croppé
+        // Créer le canvas croppé - utiliser l'image originale pour le crop
         const sourceImage = img.adjustedCanvas || img.image;
         const srcWidth = sourceImage.width;
         const srcHeight = sourceImage.height;
@@ -8114,24 +8114,26 @@ export function CADGabaritCanvas({
         ctx.drawImage(sourceImage, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
         console.log("[CROP] Created cropped canvas:", cropW, "x", cropH);
+        console.log("[CROP] Image scale unchanged:", img.scale);
 
-        // Calculer le nouveau scale pour garder la même taille visuelle
-        const scaleAdjustment = srcWidth / cropW;
-        const newScale = img.scale * scaleAdjustment;
-
-        console.log("[CROP] Scale adjustment:", scaleAdjustment, "new scale:", newScale);
-
-        return {
+        // Retourner un nouvel objet avec le croppedCanvas
+        const newImg = {
           ...img,
           crop: { ...cropSelection },
-          croppedCanvas,
-          scale: newScale, // Ajuster le scale pour garder la taille visuelle
+          croppedCanvas: croppedCanvas,
         };
-      }),
-    );
+
+        console.log("[CROP] New image has croppedCanvas:", !!newImg.croppedCanvas);
+
+        return newImg;
+      });
+
+      console.log("[CROP] Updated images array, length:", newImages.length);
+      return newImages;
+    });
 
     setShowCropDialog(false);
-    toast.success("Recadrage appliqué");
+    toast.success("Recadrage appliqué - l'image devrait être plus petite");
   }, [selectedImageId, cropSelection]);
 
   // Réinitialiser le crop
