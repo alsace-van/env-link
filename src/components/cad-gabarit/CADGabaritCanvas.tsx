@@ -970,8 +970,8 @@ export function CADGabaritCanvas({
     circularAngle: string; // angle total en degrés (360 = cercle complet) - string
     circularCenter: { x: number; y: number } | null;
     // Damier (checkerboard)
-    checkerCountX: number; // Nombre de cases en X
-    checkerCountY: number; // Nombre de cases en Y
+    checkerCountX: string; // Nombre de cases en X (string pour saisie fluide)
+    checkerCountY: string; // Nombre de cases en Y (string pour saisie fluide)
     checkerSize: string; // Taille d'une case en mm
     checkerColor: string; // Couleur des cases noires
     // Général
@@ -1141,7 +1141,12 @@ export function CADGabaritCanvas({
     } else if (type === "checkerboard") {
       // Mode damier - retourner les données du damier pour le preview
       const { checkerCountX, checkerCountY, checkerSize, checkerColor } = arrayDialog;
+      const countXStr = typeof checkerCountX === "string" ? checkerCountX : String(checkerCountX || "8");
+      const countYStr = typeof checkerCountY === "string" ? checkerCountY : String(checkerCountY || "6");
       const sizeStr = typeof checkerSize === "string" ? checkerSize : String(checkerSize || "20");
+
+      const countXNum = parseInt(countXStr) || 8;
+      const countYNum = parseInt(countYStr) || 6;
       const sizePx = (parseFloat(sizeStr.replace(",", ".")) || 20) * scaleFactor;
 
       return {
@@ -1149,8 +1154,8 @@ export function CADGabaritCanvas({
         centerX: 0,
         centerY: 0,
         checkerboard: {
-          countX: checkerCountX ?? 8,
-          countY: checkerCountY ?? 6,
+          countX: Math.max(1, countXNum),
+          countY: Math.max(1, countYNum),
           sizePx,
           color: checkerColor ?? "#000000",
         },
@@ -1835,49 +1840,66 @@ export function CADGabaritCanvas({
       if (ctx) {
         ctx.save();
 
-        // Mode damier - preview spécial
+        // Mode damier - preview spécial (optimisé)
         if (arrayPreview.checkerboard) {
           const { countX, countY, sizePx, color } = arrayPreview.checkerboard;
 
-          ctx.strokeStyle = "#A855F7"; // Violet
-          ctx.lineWidth = 1.5;
-          ctx.setLineDash([]);
+          // Limiter le preview pour la performance
+          const maxPreviewCells = 20;
+          const previewCountX = Math.min(countX, maxPreviewCells);
+          const previewCountY = Math.min(countY, maxPreviewCells);
+          const isLimited = countX > maxPreviewCells || countY > maxPreviewCells;
 
-          // Dessiner les cases du damier
-          for (let row = 0; row < countY; row++) {
-            for (let col = 0; col < countX; col++) {
-              const x = col * sizePx;
-              const y = row * sizePx;
+          const screenSize = sizePx * viewport.scale;
 
-              // Convertir en coordonnées écran
-              const screenX = x * viewport.scale + viewport.offsetX;
-              const screenY = y * viewport.scale + viewport.offsetY;
-              const screenSize = sizePx * viewport.scale;
-
-              // Case colorée si (row + col) est pair
+          // Dessiner toutes les cases colorées d'un coup (un seul path)
+          ctx.fillStyle = color;
+          ctx.globalAlpha = 0.8;
+          ctx.beginPath();
+          for (let row = 0; row < previewCountY; row++) {
+            for (let col = 0; col < previewCountX; col++) {
               if ((row + col) % 2 === 0) {
-                ctx.fillStyle = color;
-                ctx.globalAlpha = 0.8;
-                ctx.fillRect(screenX, screenY, screenSize, screenSize);
+                const screenX = col * sizePx * viewport.scale + viewport.offsetX;
+                const screenY = row * sizePx * viewport.scale + viewport.offsetY;
+                ctx.rect(screenX, screenY, screenSize, screenSize);
               }
-
-              // Contour de la case
-              ctx.globalAlpha = 0.5;
-              ctx.strokeStyle = "#A855F7";
-              ctx.strokeRect(screenX, screenY, screenSize, screenSize);
             }
           }
+          ctx.fill();
+
+          // Dessiner la grille (lignes uniquement, pas de strokeRect)
+          ctx.strokeStyle = "#A855F7";
+          ctx.lineWidth = 1;
+          ctx.globalAlpha = 0.5;
+          ctx.beginPath();
+
+          // Lignes horizontales
+          for (let row = 0; row <= previewCountY; row++) {
+            const y = row * sizePx * viewport.scale + viewport.offsetY;
+            ctx.moveTo(viewport.offsetX, y);
+            ctx.lineTo(previewCountX * sizePx * viewport.scale + viewport.offsetX, y);
+          }
+
+          // Lignes verticales
+          for (let col = 0; col <= previewCountX; col++) {
+            const x = col * sizePx * viewport.scale + viewport.offsetX;
+            ctx.moveTo(x, viewport.offsetY);
+            ctx.lineTo(x, previewCountY * sizePx * viewport.scale + viewport.offsetY);
+          }
+          ctx.stroke();
 
           // Afficher les dimensions totales
-          const totalWidth = countX * sizePx * viewport.scale;
-          const totalHeight = countY * sizePx * viewport.scale;
-          const startX = viewport.offsetX;
-          const startY = viewport.offsetY;
-
           ctx.globalAlpha = 1;
           ctx.fillStyle = "#A855F7";
           ctx.font = "12px sans-serif";
-          ctx.fillText(`${countX}×${countY} cases`, startX + totalWidth / 2 - 30, startY + totalHeight + 20);
+          const labelY = previewCountY * sizePx * viewport.scale + viewport.offsetY + 20;
+          const labelX = (previewCountX * sizePx * viewport.scale) / 2 + viewport.offsetX - 30;
+          ctx.fillText(`${countX}×${countY} cases`, labelX, labelY);
+
+          if (isLimited) {
+            ctx.fillStyle = "#F97316"; // Orange
+            ctx.fillText(`(preview limité à ${maxPreviewCells}×${maxPreviewCells})`, labelX - 20, labelY + 15);
+          }
         } else if (arrayPreview.transforms.length > 0) {
           // Mode normal (linéaire, grille, circulaire)
           ctx.strokeStyle = "#A855F7"; // Violet
@@ -11952,11 +11974,9 @@ export function CADGabaritCanvas({
   // Ouvrir la modale de répétition
   const openArrayDialog = useCallback(
     (forceCheckerboard = false) => {
-      // Le mode damier ne nécessite pas de sélection
-      if (!forceCheckerboard && selectedEntities.size === 0) {
-        toast.error("Sélectionnez des éléments à répéter (ou utilisez le mode Damier)");
-        return;
-      }
+      // Si pas de sélection, basculer automatiquement en mode damier
+      const noSelection = selectedEntities.size === 0;
+      const useCheckerboard = forceCheckerboard || noSelection;
 
       // Calculer le centre de la sélection pour le mode circulaire
       let sumX = 0,
@@ -11998,7 +12018,7 @@ export function CADGabaritCanvas({
 
       setArrayDialog({
         open: true,
-        type: forceCheckerboard ? "checkerboard" : "linear",
+        type: useCheckerboard ? "checkerboard" : "linear",
         // Linéaire
         linearCount: 3,
         linearSpacing: "50",
@@ -12017,8 +12037,8 @@ export function CADGabaritCanvas({
         circularAngle: "360",
         circularCenter: selectionCenter,
         // Damier
-        checkerCountX: 8,
-        checkerCountY: 6,
+        checkerCountX: "8",
+        checkerCountY: "6",
         checkerSize: "20",
         checkerColor: "#000000",
         // Général
@@ -12269,7 +12289,14 @@ export function CADGabaritCanvas({
     } else if (type === "checkerboard") {
       // Mode damier - création spéciale (ne nécessite pas de sélection)
       const { checkerCountX, checkerCountY, checkerSize, checkerColor } = arrayDialog;
+
+      // Parser les valeurs (peuvent être string ou number)
+      const countXStr = typeof checkerCountX === "string" ? checkerCountX : String(checkerCountX || "8");
+      const countYStr = typeof checkerCountY === "string" ? checkerCountY : String(checkerCountY || "6");
       const sizeStr = typeof checkerSize === "string" ? checkerSize : String(checkerSize || "20");
+
+      const cX = Math.max(1, parseInt(countXStr) || 8);
+      const cY = Math.max(1, parseInt(countYStr) || 6);
       const sizePx = (parseFloat(sizeStr.replace(",", ".")) || 20) * sketch.scaleFactor;
 
       // Point de départ (centre du viewport ou origine)
@@ -12278,9 +12305,9 @@ export function CADGabaritCanvas({
 
       // Créer les points de la grille
       const pointGrid: string[][] = [];
-      for (let row = 0; row <= checkerCountY; row++) {
+      for (let row = 0; row <= cY; row++) {
         pointGrid[row] = [];
-        for (let col = 0; col <= checkerCountX; col++) {
+        for (let col = 0; col <= cX; col++) {
           const pointId = generateId();
           newSketch.points.set(pointId, {
             id: pointId,
@@ -12292,8 +12319,8 @@ export function CADGabaritCanvas({
       }
 
       // Créer les lignes horizontales
-      for (let row = 0; row <= checkerCountY; row++) {
-        for (let col = 0; col < checkerCountX; col++) {
+      for (let row = 0; row <= cY; row++) {
+        for (let col = 0; col < cX; col++) {
           const lineId = generateId();
           newSketch.geometries.set(lineId, {
             id: lineId,
@@ -12309,8 +12336,8 @@ export function CADGabaritCanvas({
       }
 
       // Créer les lignes verticales
-      for (let col = 0; col <= checkerCountX; col++) {
-        for (let row = 0; row < checkerCountY; row++) {
+      for (let col = 0; col <= cX; col++) {
+        for (let row = 0; row < cY; row++) {
           const lineId = generateId();
           newSketch.geometries.set(lineId, {
             id: lineId,
@@ -12333,8 +12360,8 @@ export function CADGabaritCanvas({
         newSketch.shapeFills = new Map(newSketch.shapeFills);
       }
 
-      for (let row = 0; row < checkerCountY; row++) {
-        for (let col = 0; col < checkerCountX; col++) {
+      for (let row = 0; row < cY; row++) {
+        for (let col = 0; col < cX; col++) {
           // Case noire si (row + col) est pair
           if ((row + col) % 2 === 0) {
             // Trouver les 4 lignes qui forment cette case
@@ -12342,10 +12369,10 @@ export function CADGabaritCanvas({
             // Lignes verticales: col à row et col+1 à row
 
             // On va identifier les geoIds des 4 côtés de la case
-            const topLineIdx = row * checkerCountX + col;
-            const bottomLineIdx = (row + 1) * checkerCountX + col;
-            const leftLineIdx = checkerCountX * (checkerCountY + 1) + col * checkerCountY + row;
-            const rightLineIdx = checkerCountX * (checkerCountY + 1) + (col + 1) * checkerCountY + row;
+            const topLineIdx = row * cX + col;
+            const bottomLineIdx = (row + 1) * cX + col;
+            const leftLineIdx = cX * (cY + 1) + col * cY + row;
+            const rightLineIdx = cX * (cY + 1) + (col + 1) * cY + row;
 
             // Récupérer les IDs depuis newGeometryIds
             const geoIds = new Set<string>();
@@ -12368,7 +12395,7 @@ export function CADGabaritCanvas({
         }
       }
 
-      totalCopies = checkerCountX * checkerCountY;
+      totalCopies = cX * cY;
     }
 
     // Créer les points d'intersection si demandé
@@ -19444,17 +19471,13 @@ export function CADGabaritCanvas({
                 <div className="flex items-center gap-2">
                   <Label className="text-xs w-24">Cases en X :</Label>
                   <Input
-                    type="number"
-                    value={arrayDialog.checkerCountX ?? 8}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value);
-                      if (!isNaN(val) && val >= 2) {
-                        setArrayDialog({ ...arrayDialog, checkerCountX: val });
-                      }
-                    }}
+                    type="text"
+                    inputMode="numeric"
+                    value={arrayDialog.checkerCountX ?? "8"}
+                    onChange={(e) =>
+                      setArrayDialog({ ...arrayDialog, checkerCountX: e.target.value.replace(/[^0-9]/g, "") })
+                    }
                     className="h-7 flex-1 text-xs"
-                    min="2"
-                    max="50"
                     onKeyDown={(e) => e.stopPropagation()}
                   />
                 </div>
@@ -19462,17 +19485,13 @@ export function CADGabaritCanvas({
                 <div className="flex items-center gap-2">
                   <Label className="text-xs w-24">Cases en Y :</Label>
                   <Input
-                    type="number"
-                    value={arrayDialog.checkerCountY ?? 6}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value);
-                      if (!isNaN(val) && val >= 2) {
-                        setArrayDialog({ ...arrayDialog, checkerCountY: val });
-                      }
-                    }}
+                    type="text"
+                    inputMode="numeric"
+                    value={arrayDialog.checkerCountY ?? "6"}
+                    onChange={(e) =>
+                      setArrayDialog({ ...arrayDialog, checkerCountY: e.target.value.replace(/[^0-9]/g, "") })
+                    }
                     className="h-7 flex-1 text-xs"
-                    min="2"
-                    max="50"
                     onKeyDown={(e) => e.stopPropagation()}
                   />
                 </div>
@@ -19508,19 +19527,21 @@ export function CADGabaritCanvas({
                   <div className="text-xs text-gray-600 font-medium">Dimensions totales :</div>
                   <div className="text-xs text-gray-500">
                     {(
-                      (arrayDialog.checkerCountX ?? 8) *
+                      (parseInt(String(arrayDialog.checkerCountX ?? "8")) || 8) *
                       (parseFloat(String(arrayDialog.checkerSize ?? "20").replace(",", ".")) || 20)
                     ).toFixed(1)}{" "}
                     ×{" "}
                     {(
-                      (arrayDialog.checkerCountY ?? 6) *
+                      (parseInt(String(arrayDialog.checkerCountY ?? "6")) || 6) *
                       (parseFloat(String(arrayDialog.checkerSize ?? "20").replace(",", ".")) || 20)
                     ).toFixed(1)}{" "}
                     mm
                   </div>
                   <div className="text-xs text-gray-400">
-                    Points intérieurs: {(arrayDialog.checkerCountX ?? 8) - 1} × {(arrayDialog.checkerCountY ?? 6) - 1} ={" "}
-                    {((arrayDialog.checkerCountX ?? 8) - 1) * ((arrayDialog.checkerCountY ?? 6) - 1)}
+                    Points intérieurs: {Math.max(0, (parseInt(String(arrayDialog.checkerCountX ?? "8")) || 8) - 1)} ×{" "}
+                    {Math.max(0, (parseInt(String(arrayDialog.checkerCountY ?? "6")) || 6) - 1)} ={" "}
+                    {Math.max(0, (parseInt(String(arrayDialog.checkerCountX ?? "8")) || 8) - 1) *
+                      Math.max(0, (parseInt(String(arrayDialog.checkerCountY ?? "6")) || 6) - 1)}
                   </div>
                 </div>
               </>
