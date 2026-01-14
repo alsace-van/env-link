@@ -1,7 +1,7 @@
 // ============================================
 // CAD GABARIT - Index
 // Export de tous les modules
-// VERSION: 2.9 - Ajout ImageAdjustments pour amélioration des contours
+// VERSION: 3.0 - Ajout système de toolbar configurable
 // ============================================
 
 // Types
@@ -87,3 +87,40 @@ export type { DXFParseResult } from "./dxf-parser";
 
 // Composant principal
 export { default as CADGabaritCanvas } from "./CADGabaritCanvas";
+
+// Toolbar configurable
+export type {
+  ToolDefinition,
+  ToolbarConfig,
+  ToolbarGroup,
+  ToolbarItem,
+  ToolCategory,
+  ToolRenderType,
+  DragState,
+  ToolbarEditorProps,
+  ToolbarPreferences,
+} from "./toolbar-types";
+
+export {
+  TOOLBAR_CONFIG_KEY,
+  TOOLBAR_PREFERENCES_KEY,
+  GROUP_COLORS,
+  generateToolbarId,
+  isValidToolbarConfig,
+} from "./toolbar-types";
+
+export {
+  ALL_TOOL_DEFINITIONS,
+  DEFAULT_GROUPS,
+  DEFAULT_TOOLBAR_CONFIG,
+  createToolDefinitionsMap,
+  getDefaultToolbarConfig,
+  createNewGroup,
+  mergeWithDefaults,
+  CATEGORY_LABELS,
+} from "./toolbar-defaults";
+
+export { ToolbarEditor } from "./ToolbarEditor";
+export { ToolbarRenderer, ToolbarGroupBadge } from "./ToolbarRenderer";
+export { useToolbarConfig } from "./useToolbarConfig";
+export type { UseToolbarConfigReturn, ResolvedToolbarItem, ResolvedTool, OldToolbarConfig } from "./useToolbarConfig";
