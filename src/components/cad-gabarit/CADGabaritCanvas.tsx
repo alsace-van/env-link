@@ -953,64 +953,43 @@ export function CADGabaritCanvas({
     open: boolean;
     type: "linear" | "grid" | "circular";
     // Linéaire
+    linearCount: number;
+    linearSpacing: string; // mm - string pour permettre la saisie
+    linearSpacingMode: "spacing" | "distance";
+    linearDirection: "x" | "y" | "custom"; // Direction de la répétition
+    linearAngle: string; // Angle personnalisé en degrés
+    // Grille
     countX: number;
     spacingX: string; // mm - string pour permettre la saisie
-    spacingModeX: "spacing" | "distance"; // espacement entre éléments OU distance totale
+    spacingModeX: "spacing" | "distance";
     countY: number;
     spacingY: string; // mm - string pour permettre la saisie
     spacingModeY: "spacing" | "distance";
-    // Grille (utilise countX, countY, spacingX, spacingY)
     // Circulaire
     circularCount: number;
     circularAngle: string; // angle total en degrés (360 = cercle complet) - string
     circularCenter: { x: number; y: number } | null;
     // Général
-    includeOriginal: boolean; // Inclure l'original dans le compte
+    includeOriginal: boolean;
+    createIntersections: boolean; // Créer les points d'intersection
   } | null>(null);
   const [arrayPanelPos, setArrayPanelPos] = useState({ x: 100, y: 100 });
   const [arrayPanelDragging, setArrayPanelDragging] = useState(false);
   const [arrayPanelDragStart, setArrayPanelDragStart] = useState({ x: 0, y: 0 });
 
-  // Prévisualisation de la répétition en temps réel
-  const [arrayPreview, setArrayPreview] = useState<{
-    transforms: Array<{ offsetX: number; offsetY: number; rotation: number }>;
-    centerX: number;
-    centerY: number;
-  } | null>(null);
-
-  // Dialogue pour export PDF professionnel (éditeur plein écran)
-  const [pdfPlanEditorOpen, setPdfPlanEditorOpen] = useState(false);
-
-  // Modale pour texte/annotation - Input inline sur le canvas
-  const [textInput, setTextInput] = useState<{
-    active: boolean;
-    position: { x: number; y: number }; // Position monde
-    screenPos: { x: number; y: number }; // Position écran pour l'input
-    content: string;
-    editingId: string | null; // Si on édite un texte existant
-  } | null>(null);
-  // Paramètres de texte (dans la toolbar)
-  const [textFontSize, setTextFontSize] = useState(5); // mm
-  const [textColor, setTextColor] = useState("#000000");
-  const [textAlignment, setTextAlignment] = useState<"left" | "center" | "right">("left");
-  const textInputRef = useRef<HTMLInputElement>(null);
-
-  // Fermer l'input texte quand on change d'outil
-  useEffect(() => {
-    if (activeTool !== "text" && textInput?.active) {
-      setTextInput(null);
-    }
-  }, [activeTool]);
-
-  // Calculer la prévisualisation de répétition en temps réel
-  useEffect(() => {
+  // Prévisualisation de la répétition en temps réel (useMemo pour performance)
+  const arrayPreview = useMemo(() => {
     if (!arrayDialog?.open || selectedEntities.size === 0) {
-      setArrayPreview(null);
-      return;
+      return null;
     }
 
     const {
       type,
+      linearCount,
+      linearSpacing,
+      linearSpacingMode,
+      linearDirection,
+      linearAngle,
       countX,
       spacingX,
       spacingModeX,
@@ -1024,17 +1003,23 @@ export function CADGabaritCanvas({
     } = arrayDialog;
 
     // Parser les valeurs (peuvent être string ou number pour compatibilité)
-    const spacingXStr = typeof spacingX === "string" ? spacingX : String(spacingX);
-    const spacingYStr = typeof spacingY === "string" ? spacingY : String(spacingY);
-    const circularAngleStr = typeof circularAngle === "string" ? circularAngle : String(circularAngle);
+    const linearSpacingStr = typeof linearSpacing === "string" ? linearSpacing : String(linearSpacing || "50");
+    const spacingXStr = typeof spacingX === "string" ? spacingX : String(spacingX || "50");
+    const spacingYStr = typeof spacingY === "string" ? spacingY : String(spacingY || "50");
+    const circularAngleStr = typeof circularAngle === "string" ? circularAngle : String(circularAngle || "360");
+    const linearAngleStr = typeof linearAngle === "string" ? linearAngle : String(linearAngle || "0");
 
+    const linearSpacingNum = parseFloat(linearSpacingStr.replace(",", ".")) || 0;
     const spacingXNum = parseFloat(spacingXStr.replace(",", ".")) || 0;
     const spacingYNum = parseFloat(spacingYStr.replace(",", ".")) || 0;
     const circularAngleNum = parseFloat(circularAngleStr.replace(",", ".")) || 360;
+    const linearAngleNum = parseFloat(linearAngleStr.replace(",", ".")) || 0;
 
     // Calculer l'espacement réel selon le mode
-    // Mode "distance" = distance totale, donc espacement = distance / (count - 1)
-    // Mode "spacing" = espacement entre chaque élément
+    const realLinearSpacing =
+      linearSpacingMode === "distance" && (linearCount || 3) > 1
+        ? linearSpacingNum / ((linearCount || 3) - 1)
+        : linearSpacingNum;
     const realSpacingX = spacingModeX === "distance" && countX > 1 ? spacingXNum / (countX - 1) : spacingXNum;
     const realSpacingY = spacingModeY === "distance" && countY > 1 ? spacingYNum / (countY - 1) : spacingYNum;
 
@@ -1067,8 +1052,7 @@ export function CADGabaritCanvas({
     });
 
     if (selectedPoints.length === 0) {
-      setArrayPreview(null);
-      return;
+      return null;
     }
 
     let centerX = 0,
@@ -1089,14 +1073,30 @@ export function CADGabaritCanvas({
     const transforms: Array<{ offsetX: number; offsetY: number; rotation: number }> = [];
 
     if (type === "linear") {
+      // Calculer la direction en radians
+      let dirAngle = 0; // Par défaut X (0°)
+      if (linearDirection === "y") {
+        dirAngle = Math.PI / 2; // 90°
+      } else if (linearDirection === "custom") {
+        dirAngle = (linearAngleNum * Math.PI) / 180;
+      }
+
+      const dirX = Math.cos(dirAngle);
+      const dirY = Math.sin(dirAngle);
+
       const startIdx = includeOriginal ? 1 : 0;
-      for (let i = startIdx; i < countX; i++) {
-        transforms.push({ offsetX: i * realSpacingX * sketch.scaleFactor, offsetY: 0, rotation: 0 });
+      const count = linearCount || 3;
+      for (let i = startIdx; i < count; i++) {
+        const dist = i * realLinearSpacing * sketch.scaleFactor;
+        transforms.push({
+          offsetX: dist * dirX,
+          offsetY: dist * dirY,
+          rotation: 0,
+        });
       }
     } else if (type === "grid") {
       for (let row = 0; row < countY; row++) {
         for (let col = 0; col < countX; col++) {
-          if (row === 0 && col === 0 && !includeOriginal) continue;
           if (row === 0 && col === 0) continue; // Ne pas afficher l'original en preview
           transforms.push({
             offsetX: col * realSpacingX * sketch.scaleFactor,
@@ -1114,8 +1114,32 @@ export function CADGabaritCanvas({
       }
     }
 
-    setArrayPreview({ transforms, centerX, centerY });
+    return { transforms, centerX, centerY };
   }, [arrayDialog, selectedEntities, sketch]);
+
+  // Dialogue pour export PDF professionnel (éditeur plein écran)
+  const [pdfPlanEditorOpen, setPdfPlanEditorOpen] = useState(false);
+
+  // Modale pour texte/annotation - Input inline sur le canvas
+  const [textInput, setTextInput] = useState<{
+    active: boolean;
+    position: { x: number; y: number }; // Position monde
+    screenPos: { x: number; y: number }; // Position écran pour l'input
+    content: string;
+    editingId: string | null; // Si on édite un texte existant
+  } | null>(null);
+  // Paramètres de texte (dans la toolbar)
+  const [textFontSize, setTextFontSize] = useState(5); // mm
+  const [textColor, setTextColor] = useState("#000000");
+  const [textAlignment, setTextAlignment] = useState<"left" | "center" | "right">("left");
+  const textInputRef = useRef<HTMLInputElement>(null);
+
+  // Fermer l'input texte quand on change d'outil
+  useEffect(() => {
+    if (activeTool !== "text" && textInput?.active) {
+      setTextInput(null);
+    }
+  }, [activeTool]);
 
   // Aliases pour compatibilité avec le rendu
   const measureStart = measureState.start;
@@ -11883,16 +11907,26 @@ export function CADGabaritCanvas({
     setArrayDialog({
       open: true,
       type: "linear",
+      // Linéaire
+      linearCount: 3,
+      linearSpacing: "50",
+      linearSpacingMode: "spacing",
+      linearDirection: "x",
+      linearAngle: "0",
+      // Grille
       countX: 3,
       spacingX: "50",
       spacingModeX: "spacing",
-      countY: 1,
+      countY: 3,
       spacingY: "50",
       spacingModeY: "spacing",
+      // Circulaire
       circularCount: 6,
       circularAngle: "360",
       circularCenter: selectionCenter,
+      // Général
       includeOriginal: true,
+      createIntersections: true,
     });
   }, [selectedEntities, sketch]);
 
@@ -11902,6 +11936,11 @@ export function CADGabaritCanvas({
 
     const {
       type,
+      linearCount,
+      linearSpacing,
+      linearSpacingMode,
+      linearDirection,
+      linearAngle,
       countX,
       spacingX,
       spacingModeX,
@@ -11912,18 +11951,26 @@ export function CADGabaritCanvas({
       circularAngle,
       circularCenter,
       includeOriginal,
+      createIntersections,
     } = arrayDialog;
 
-    // Parser les valeurs (peuvent être string ou number pour compatibilité)
-    const spacingXStr = typeof spacingX === "string" ? spacingX : String(spacingX);
-    const spacingYStr = typeof spacingY === "string" ? spacingY : String(spacingY);
-    const circularAngleStr = typeof circularAngle === "string" ? circularAngle : String(circularAngle);
+    // Parser les valeurs
+    const linearSpacingStr = typeof linearSpacing === "string" ? linearSpacing : String(linearSpacing || "50");
+    const spacingXStr = typeof spacingX === "string" ? spacingX : String(spacingX || "50");
+    const spacingYStr = typeof spacingY === "string" ? spacingY : String(spacingY || "50");
+    const circularAngleStr = typeof circularAngle === "string" ? circularAngle : String(circularAngle || "360");
+    const linearAngleStr = typeof linearAngle === "string" ? linearAngle : String(linearAngle || "0");
 
+    const linearSpacingNum = parseFloat(linearSpacingStr.replace(",", ".")) || 0;
     const spacingXNum = parseFloat(spacingXStr.replace(",", ".")) || 0;
     const spacingYNum = parseFloat(spacingYStr.replace(",", ".")) || 0;
     const circularAngleNum = parseFloat(circularAngleStr.replace(",", ".")) || 360;
+    const linearAngleNum = parseFloat(linearAngleStr.replace(",", ".")) || 0;
 
     // Calculer l'espacement réel selon le mode
+    const count = linearCount || 3;
+    const realLinearSpacing =
+      linearSpacingMode === "distance" && count > 1 ? linearSpacingNum / (count - 1) : linearSpacingNum;
     const realSpacingX = spacingModeX === "distance" && countX > 1 ? spacingXNum / (countX - 1) : spacingXNum;
     const realSpacingY = spacingModeY === "distance" && countY > 1 ? spacingYNum / (countY - 1) : spacingYNum;
 
@@ -11987,6 +12034,9 @@ export function CADGabaritCanvas({
     newSketch.points = new Map(sketch.points);
     newSketch.geometries = new Map(sketch.geometries);
 
+    // Liste des nouvelles géométries créées (pour les intersections)
+    const newGeometryIds: string[] = [];
+
     // Fonction pour créer une copie avec offset/rotation
     const createCopy = (offsetX: number, offsetY: number, rotation: number = 0) => {
       const pointIdMapping = new Map<string, string>();
@@ -12013,12 +12063,13 @@ export function CADGabaritCanvas({
           id: newId,
           x: newX + offsetX,
           y: newY + offsetY,
-          fixed: false, // Les copies ne sont pas fixes
+          fixed: false,
         });
       });
 
       copiedGeometries.forEach((geo) => {
         const newId = generateId();
+        newGeometryIds.push(newId);
 
         if (geo.type === "line") {
           const line = geo as Line;
@@ -12078,17 +12129,28 @@ export function CADGabaritCanvas({
     let totalCopies = 0;
 
     if (type === "linear") {
-      // Répétition linéaire (uniquement sur X avec countX copies)
+      // Calculer la direction en radians
+      let dirAngle = 0;
+      if (linearDirection === "y") {
+        dirAngle = Math.PI / 2; // 90°
+      } else if (linearDirection === "custom") {
+        dirAngle = (linearAngleNum * Math.PI) / 180;
+      }
+
+      const dirX = Math.cos(dirAngle);
+      const dirY = Math.sin(dirAngle);
+
       const startIdx = includeOriginal ? 1 : 0;
-      for (let i = startIdx; i < countX; i++) {
-        createCopy(i * realSpacingX * sketch.scaleFactor, 0);
+      for (let i = startIdx; i < count; i++) {
+        const dist = i * realLinearSpacing * sketch.scaleFactor;
+        createCopy(dist * dirX, dist * dirY);
         totalCopies++;
       }
     } else if (type === "grid") {
       // Répétition en grille
       for (let row = 0; row < countY; row++) {
         for (let col = 0; col < countX; col++) {
-          if (row === 0 && col === 0 && includeOriginal) continue; // Skip l'original
+          if (row === 0 && col === 0 && includeOriginal) continue;
           createCopy(col * realSpacingX * sketch.scaleFactor, row * realSpacingY * sketch.scaleFactor);
           totalCopies++;
         }
@@ -12104,11 +12166,25 @@ export function CADGabaritCanvas({
       }
     }
 
+    // Créer les points d'intersection si demandé
+    if (createIntersections) {
+      // Collecter toutes les géométries (originales + nouvelles)
+      const allLineIds = [...Array.from(selectedEntities), ...newGeometryIds].filter((id) => {
+        const geo = newSketch.geometries.get(id);
+        return geo && geo.type === "line";
+      });
+
+      // Créer les intersections pour chaque nouvelle géométrie
+      for (const geoId of newGeometryIds) {
+        createIntersectionPoints(geoId, newSketch);
+      }
+    }
+
     setSketch(newSketch);
-    addToHistory(newSketch);
+    addToHistory(newSketch, `Répétition ${type} (${totalCopies} copies)`);
     setArrayDialog(null);
     toast.success(`${totalCopies} copie(s) créée(s)`);
-  }, [arrayDialog, selectedEntities, sketch, addToHistory]);
+  }, [arrayDialog, selectedEntities, sketch, addToHistory, createIntersectionPoints]);
 
   // Créer ou modifier un texte/annotation
   const commitTextInput = useCallback(() => {
@@ -18836,15 +18912,16 @@ export function CADGabaritCanvas({
           <div className="p-3 space-y-3">
             {arrayDialog.type === "linear" && (
               <>
+                {/* Nombre de copies */}
                 <div className="flex items-center gap-2">
                   <Label className="text-xs w-20">Nombre :</Label>
                   <Input
                     type="number"
-                    value={arrayDialog.countX}
+                    value={arrayDialog.linearCount ?? 3}
                     onChange={(e) => {
                       const val = parseInt(e.target.value);
                       if (!isNaN(val) && val >= 1) {
-                        setArrayDialog({ ...arrayDialog, countX: val });
+                        setArrayDialog({ ...arrayDialog, linearCount: val });
                       }
                     }}
                     className="h-7 flex-1 text-xs"
@@ -18854,25 +18931,80 @@ export function CADGabaritCanvas({
                   />
                 </div>
 
+                {/* Direction */}
+                <div className="space-y-1">
+                  <Label className="text-xs">Direction :</Label>
+                  <div className="flex gap-1 bg-gray-100 p-1 rounded">
+                    <button
+                      className={`flex-1 text-xs py-1.5 px-2 rounded transition-colors ${
+                        (arrayDialog.linearDirection ?? "x") === "x"
+                          ? "bg-white shadow text-purple-600 font-medium"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                      onClick={() => setArrayDialog({ ...arrayDialog, linearDirection: "x" })}
+                    >
+                      → Horizontal (X)
+                    </button>
+                    <button
+                      className={`flex-1 text-xs py-1.5 px-2 rounded transition-colors ${
+                        (arrayDialog.linearDirection ?? "x") === "y"
+                          ? "bg-white shadow text-purple-600 font-medium"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                      onClick={() => setArrayDialog({ ...arrayDialog, linearDirection: "y" })}
+                    >
+                      ↓ Vertical (Y)
+                    </button>
+                    <button
+                      className={`flex-1 text-xs py-1.5 px-2 rounded transition-colors ${
+                        (arrayDialog.linearDirection ?? "x") === "custom"
+                          ? "bg-white shadow text-purple-600 font-medium"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                      onClick={() => setArrayDialog({ ...arrayDialog, linearDirection: "custom" })}
+                    >
+                      ∠ Angle
+                    </button>
+                  </div>
+                </div>
+
+                {/* Angle personnalisé */}
+                {(arrayDialog.linearDirection ?? "x") === "custom" && (
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs w-20">Angle :</Label>
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={arrayDialog.linearAngle ?? "0"}
+                      onChange={(e) =>
+                        setArrayDialog({ ...arrayDialog, linearAngle: e.target.value.replace(/[^0-9.,\-]/g, "") })
+                      }
+                      className="h-7 flex-1 text-xs"
+                      onKeyDown={(e) => e.stopPropagation()}
+                    />
+                    <span className="text-xs text-gray-500">°</span>
+                  </div>
+                )}
+
                 {/* Toggle espacement / distance */}
                 <div className="flex gap-1 bg-gray-100 p-1 rounded">
                   <button
                     className={`flex-1 text-xs py-1 px-2 rounded transition-colors ${
-                      arrayDialog.spacingModeX === "spacing"
+                      (arrayDialog.linearSpacingMode ?? "spacing") === "spacing"
                         ? "bg-white shadow text-purple-600 font-medium"
                         : "text-gray-500 hover:text-gray-700"
                     }`}
-                    onClick={() => setArrayDialog({ ...arrayDialog, spacingModeX: "spacing" })}
+                    onClick={() => setArrayDialog({ ...arrayDialog, linearSpacingMode: "spacing" })}
                   >
                     Espacement
                   </button>
                   <button
                     className={`flex-1 text-xs py-1 px-2 rounded transition-colors ${
-                      arrayDialog.spacingModeX === "distance"
+                      (arrayDialog.linearSpacingMode ?? "spacing") === "distance"
                         ? "bg-white shadow text-purple-600 font-medium"
                         : "text-gray-500 hover:text-gray-700"
                     }`}
-                    onClick={() => setArrayDialog({ ...arrayDialog, spacingModeX: "distance" })}
+                    onClick={() => setArrayDialog({ ...arrayDialog, linearSpacingMode: "distance" })}
                   >
                     Distance totale
                   </button>
@@ -18880,14 +19012,14 @@ export function CADGabaritCanvas({
 
                 <div className="flex items-center gap-2">
                   <Label className="text-xs w-20">
-                    {arrayDialog.spacingModeX === "spacing" ? "Espacement :" : "Distance :"}
+                    {(arrayDialog.linearSpacingMode ?? "spacing") === "spacing" ? "Espacement :" : "Distance :"}
                   </Label>
                   <Input
                     type="text"
                     inputMode="decimal"
-                    value={arrayDialog.spacingX}
+                    value={arrayDialog.linearSpacing ?? "50"}
                     onChange={(e) =>
-                      setArrayDialog({ ...arrayDialog, spacingX: e.target.value.replace(/[^0-9.,\-]/g, "") })
+                      setArrayDialog({ ...arrayDialog, linearSpacing: e.target.value.replace(/[^0-9.,\-]/g, "") })
                     }
                     className="h-7 flex-1 text-xs"
                     onKeyDown={(e) => e.stopPropagation()}
@@ -18895,25 +19027,24 @@ export function CADGabaritCanvas({
                   <span className="text-xs text-gray-500">mm</span>
                 </div>
 
-                {/* Affichage de l'espacement calculé en mode distance */}
-                {arrayDialog.spacingModeX === "distance" && arrayDialog.countX > 1 && (
+                {/* Info calculée */}
+                {(arrayDialog.linearSpacingMode ?? "spacing") === "distance" && (arrayDialog.linearCount ?? 3) > 1 && (
                   <div className="text-xs text-gray-500 text-center bg-gray-50 py-1 rounded">
                     Espacement réel :{" "}
                     {(
-                      (parseFloat(String(arrayDialog.spacingX).replace(",", ".")) || 0) /
-                      (arrayDialog.countX - 1)
+                      (parseFloat(String(arrayDialog.linearSpacing ?? "50").replace(",", ".")) || 0) /
+                      ((arrayDialog.linearCount ?? 3) - 1)
                     ).toFixed(1)}{" "}
                     mm
                   </div>
                 )}
 
-                {/* Affichage de la distance totale en mode espacement */}
-                {arrayDialog.spacingModeX === "spacing" && arrayDialog.countX > 1 && (
+                {(arrayDialog.linearSpacingMode ?? "spacing") === "spacing" && (arrayDialog.linearCount ?? 3) > 1 && (
                   <div className="text-xs text-gray-500 text-center bg-gray-50 py-1 rounded">
                     Distance totale :{" "}
                     {(
-                      (parseFloat(String(arrayDialog.spacingX).replace(",", ".")) || 0) *
-                      (arrayDialog.countX - 1)
+                      (parseFloat(String(arrayDialog.linearSpacing ?? "50").replace(",", ".")) || 0) *
+                      ((arrayDialog.linearCount ?? 3) - 1)
                     ).toFixed(1)}{" "}
                     mm
                   </div>
@@ -19096,6 +19227,17 @@ export function CADGabaritCanvas({
                 className="h-3 w-3"
               />
               Inclure l'original dans le compte
+            </label>
+
+            {/* Option: créer les intersections */}
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={arrayDialog.createIntersections ?? true}
+                onChange={(e) => setArrayDialog({ ...arrayDialog, createIntersections: e.target.checked })}
+                className="h-3 w-3"
+              />
+              Créer les points d'intersection
             </label>
 
             {/* Boutons */}
