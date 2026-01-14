@@ -12378,66 +12378,49 @@ export function CADGabaritCanvas({
 
   // Appliquer la calibration au sketch
   const applyCalibration = useCallback(async () => {
+    // Récupérer les données de calibration de l'image sélectionnée
+    const imgCalib = getSelectedImageCalibration();
+    const selectedImage = getSelectedImage();
+
     // Mode simple : échelle uniforme
     if (calibrationData.mode === "simple" || !calibrationData.mode) {
-      if (!calibrationData.scale) {
+      // Utiliser l'échelle de l'image sélectionnée ou celle globale
+      const scale = imgCalib.scale || calibrationData.scale;
+
+      if (!scale) {
         toast.error("Calculez d'abord la calibration");
         return;
       }
 
-      const scale = calibrationData.scale; // mm/px
+      // Le scale est en mm/px
+      // Nouveau scaleFactor = 1/scale (px/mm)
+      const newScaleFactor = 1 / scale;
 
-      // Convertir les points de calibration existants en mm
-      const newCalibPoints = new Map<string, CalibrationPoint>();
-      calibrationData.points.forEach((point, id) => {
-        newCalibPoints.set(id, {
-          ...point,
-          x: point.x * scale,
-          y: point.y * scale,
-        });
-      });
+      // Mettre à jour le scaleFactor du sketch
+      // Les coordonnées des points restent les mêmes (en pixels)
+      // Mais le scaleFactor change pour que les mesures soient correctes
+      setSketch((prev) => ({
+        ...prev,
+        scaleFactor: newScaleFactor,
+      }));
 
-      // Convertir les points du sketch en mm
-      const newSketchPoints = new Map(sketch.points);
-      newSketchPoints.forEach((point, id) => {
-        newSketchPoints.set(id, {
-          ...point,
-          x: point.x * scale,
-          y: point.y * scale,
-        });
-      });
-
-      // Convertir les géométries avec rayon (cercles)
-      const newGeometries = new Map(sketch.geometries);
-      newGeometries.forEach((geo, id) => {
-        if (geo.type === "circle") {
-          const circle = geo as any;
-          newGeometries.set(id, {
-            ...circle,
-            radius: circle.radius * scale,
-          });
-        }
-      });
-
-      // Mettre à jour l'échelle de l'image
-      setImageScale(scale);
-
-      // Mettre à jour les points de calibration convertis
+      // Mettre à jour la calibration comme appliquée
       setCalibrationData((prev) => ({
         ...prev,
-        points: newCalibPoints,
+        scale: scale,
         applied: true,
       }));
 
-      // Mettre à jour le sketch avec scaleFactor = 1 (tout est en mm maintenant)
-      setSketch((prev) => ({
+      // Marquer l'image comme calibrée
+      updateSelectedImageCalibration((prev) => ({
         ...prev,
-        points: newSketchPoints,
-        geometries: newGeometries,
-        scaleFactor: 1, // Coordonnées maintenant en mm
+        scale: scale,
+        applied: true,
       }));
 
-      toast.success(`Calibration appliquée ! Image mise à l'échelle (${scale.toFixed(4)} mm/px)`);
+      toast.success(
+        `Calibration appliquée ! Échelle: ${scale.toFixed(4)} mm/px (scaleFactor: ${newScaleFactor.toFixed(2)} px/mm)`,
+      );
       return;
     }
 
@@ -12699,6 +12682,9 @@ export function CADGabaritCanvas({
     checkerCornersX,
     checkerCornersY,
     checkerSquareSize,
+    getSelectedImageCalibration,
+    getSelectedImage,
+    updateSelectedImageCalibration,
   ]);
 
   // Réinitialiser la calibration
