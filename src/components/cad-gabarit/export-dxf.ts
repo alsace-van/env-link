@@ -120,25 +120,73 @@ function exportLine(line: Line, sketch: Sketch, scale: number): string {
 
   // Coordonnées en mm (diviser par scale car scale = px/mm)
   // Y inversé pour DXF (système de coordonnées différent)
-  const x1 = (p1.x / scale).toFixed(4);
-  const y1 = (-p1.y / scale).toFixed(4);
-  const x2 = (p2.x / scale).toFixed(4);
-  const y2 = (-p2.y / scale).toFixed(4);
+  const x1 = p1.x / scale;
+  const y1 = -p1.y / scale;
+  const x2 = p2.x / scale;
+  const y2 = -p2.y / scale;
 
-  // MOD v7.12b: Calque et type de ligne selon isConstruction
-  const layer = line.isConstruction ? "CONSTRUCTION" : "0";
-  const lineType = line.isConstruction ? "DASHED" : "CONTINUOUS";
+  // MOD v7.12c: Si ligne de construction, dessiner en pointillé (segments)
+  if (line.isConstruction) {
+    return exportDashedLine(x1, y1, x2, y2);
+  }
 
+  // Ligne normale (continue)
   let dxf = "";
   dxf += "0\nLINE\n";
-  dxf += `8\n${layer}\n`; // Calque
-  dxf += `6\n${lineType}\n`; // Type de ligne
-  dxf += `10\n${x1}\n`;
-  dxf += `20\n${y1}\n`;
+  dxf += "8\n0\n"; // Calque
+  dxf += `10\n${x1.toFixed(4)}\n`;
+  dxf += `20\n${y1.toFixed(4)}\n`;
   dxf += "30\n0.0\n";
-  dxf += `11\n${x2}\n`;
-  dxf += `21\n${y2}\n`;
+  dxf += `11\n${x2.toFixed(4)}\n`;
+  dxf += `21\n${y2.toFixed(4)}\n`;
   dxf += "31\n0.0\n";
+
+  return dxf;
+}
+
+// MOD v7.12c: Dessiner une ligne en pointillé (segments de 5mm avec espaces de 3mm)
+function exportDashedLine(x1: number, y1: number, x2: number, y2: number): string {
+  const dashLength = 5; // mm - longueur du trait
+  const gapLength = 3; // mm - longueur de l'espace
+  const patternLength = dashLength + gapLength;
+
+  // Calculer la longueur totale et la direction
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const totalLength = Math.sqrt(dx * dx + dy * dy);
+
+  if (totalLength < 0.1) return ""; // Ligne trop courte
+
+  // Vecteur unitaire
+  const ux = dx / totalLength;
+  const uy = dy / totalLength;
+
+  let dxf = "";
+  let currentPos = 0;
+
+  while (currentPos < totalLength) {
+    // Début du trait
+    const startX = x1 + ux * currentPos;
+    const startY = y1 + uy * currentPos;
+
+    // Fin du trait (ne pas dépasser la fin de la ligne)
+    const endPos = Math.min(currentPos + dashLength, totalLength);
+    const endX = x1 + ux * endPos;
+    const endY = y1 + uy * endPos;
+
+    // Ajouter le segment
+    dxf += "0\nLINE\n";
+    dxf += "8\nCONSTRUCTION\n"; // Calque construction
+    dxf += `10\n${startX.toFixed(4)}\n`;
+    dxf += `20\n${startY.toFixed(4)}\n`;
+    dxf += "30\n0.0\n";
+    dxf += `11\n${endX.toFixed(4)}\n`;
+    dxf += `21\n${endY.toFixed(4)}\n`;
+    dxf += "31\n0.0\n";
+
+    // Avancer au prochain trait (trait + espace)
+    currentPos += patternLength;
+  }
 
   return dxf;
 }
