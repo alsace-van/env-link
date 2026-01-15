@@ -8,9 +8,11 @@ import { Sketch, Line, Circle as CircleType, Arc } from "./types";
 
 /**
  * Exporte un sketch au format DXF (AutoCAD R12 - format le plus compatible)
+ * MOD v7.12: Correction de l'échelle - scaleFactor est en px/mm
  */
 export function exportToDXF(sketch: Sketch): string {
-  // scaleFactor = mm/px, donc pour convertir px en mm on multiplie par scaleFactor
+  // scaleFactor = px/mm (ex: 2.5 pixels par mm)
+  // Pour convertir px en mm, on DIVISE par scaleFactor
   const scale = sketch.scaleFactor || 1;
 
   let dxf = "";
@@ -94,11 +96,12 @@ function exportLine(line: Line, sketch: Sketch, scale: number): string {
 
   if (!p1 || !p2) return "";
 
-  // Coordonnées en mm (Y inversé pour DXF)
-  const x1 = (p1.x * scale).toFixed(4);
-  const y1 = (-p1.y * scale).toFixed(4);
-  const x2 = (p2.x * scale).toFixed(4);
-  const y2 = (-p2.y * scale).toFixed(4);
+  // MOD v7.12: Coordonnées en mm (diviser par scale car scale = px/mm)
+  // Y inversé pour DXF (système de coordonnées différent)
+  const x1 = (p1.x / scale).toFixed(4);
+  const y1 = (-p1.y / scale).toFixed(4);
+  const x2 = (p2.x / scale).toFixed(4);
+  const y2 = (-p2.y / scale).toFixed(4);
 
   let dxf = "";
   dxf += "0\nLINE\n";
@@ -118,9 +121,10 @@ function exportCircle(circle: CircleType, sketch: Sketch, scale: number): string
 
   if (!center) return "";
 
-  const cx = (center.x * scale).toFixed(4);
-  const cy = (-center.y * scale).toFixed(4);
-  const r = (circle.radius * scale).toFixed(4);
+  // MOD v7.12: Diviser par scale (px/mm) pour obtenir des mm
+  const cx = (center.x / scale).toFixed(4);
+  const cy = (-center.y / scale).toFixed(4);
+  const r = (circle.radius / scale).toFixed(4);
 
   let dxf = "";
   dxf += "0\nCIRCLE\n";
@@ -140,9 +144,10 @@ function exportArc(arc: Arc, sketch: Sketch, scale: number): string {
 
   if (!center || !startPt || !endPt) return "";
 
-  const cx = (center.x * scale).toFixed(4);
-  const cy = (-center.y * scale).toFixed(4);
-  const r = (arc.radius * scale).toFixed(4);
+  // MOD v7.12: Diviser par scale (px/mm) pour obtenir des mm
+  const cx = (center.x / scale).toFixed(4);
+  const cy = (-center.y / scale).toFixed(4);
+  const r = (arc.radius / scale).toFixed(4);
 
   // Calculer les angles en degrés pour DXF
   // Note: Y est inversé, donc on inverse aussi le signe de Y dans atan2
