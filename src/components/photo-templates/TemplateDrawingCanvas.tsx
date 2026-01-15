@@ -1,3 +1,14 @@
+// ============================================================================
+// MODIFICATION #82 - TemplateDrawingCanvas.tsx
+// Date: 2026-01-15
+// Description: Ajout du contrôle d'opacité pour l'image de fond
+// Changements:
+//   - Import de l'icône Eye de lucide-react
+//   - Ajout du state backgroundOpacity (0-100%)
+//   - Ajout du useEffect pour appliquer l'opacité à l'image de fond
+//   - Ajout du slider d'opacité dans la toolbar (mode normal et fullscreen)
+// ============================================================================
+
 import { useEffect, useRef, useState, useCallback } from "react";
 import Draggable from "react-draggable";
 import * as fabric from "fabric";
@@ -49,6 +60,7 @@ import {
   Minimize,
   RefreshCw,
   Save,
+  Eye, // FIX #82: Ajout de l'icône pour le contrôle d'opacité
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -591,6 +603,9 @@ export function TemplateDrawingCanvas({
     snapToGridRef.current = snapToGrid;
   }, [snapToGrid]);
   const [showRulers, setShowRulers] = useState(true);
+
+  // FIX #82: State pour l'opacité de l'image de fond (0-100%)
+  const [backgroundOpacity, setBackgroundOpacity] = useState(100);
 
   // L'échelle effective : combien de mm représente 1 pixel
   // Si scaleValuePerCell = 10mm et gridSizePx = 35px, alors 1px = 10/35 = 0.286mm
@@ -1167,6 +1182,17 @@ export function TemplateDrawingCanvas({
       canvas.dispose();
     };
   }, [imageUrl]);
+
+  // FIX #82: Appliquer l'opacité à l'image de fond quand elle change
+  useEffect(() => {
+    if (!fabricCanvas) return;
+
+    const bg = fabricCanvas.backgroundImage as FabricImage | null;
+    if (bg) {
+      bg.set("opacity", backgroundOpacity / 100);
+      fabricCanvas.renderAll();
+    }
+  }, [backgroundOpacity, fabricCanvas]);
 
   // Recréer la grille quand les paramètres changent
   useEffect(() => {
@@ -3016,6 +3042,21 @@ export function TemplateDrawingCanvas({
                     step={1}
                   />
                 </div>
+
+                {/* FIX #82: Contrôle d'opacité de l'image de fond (mode fullscreen) */}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1">
+                    <Eye className="h-3 w-3 text-muted-foreground" />
+                    <Label className="text-xs">Opacité: {backgroundOpacity}%</Label>
+                  </div>
+                  <Slider
+                    value={[backgroundOpacity]}
+                    onValueChange={([value]) => setBackgroundOpacity(value)}
+                    min={0}
+                    max={100}
+                    step={5}
+                  />
+                </div>
               </div>
 
               <Separator />
@@ -3282,6 +3323,22 @@ export function TemplateDrawingCanvas({
               />
             </div>
             <Badge variant="outline">{strokeWidth}px</Badge>
+          </div>
+
+          {/* FIX #82: Contrôle d'opacité de l'image de fond */}
+          <div className="flex items-center gap-2">
+            <Eye className="h-4 w-4 text-muted-foreground" />
+            <Label className="text-sm">Opacité:</Label>
+            <div className="w-24">
+              <Slider
+                value={[backgroundOpacity]}
+                onValueChange={([value]) => setBackgroundOpacity(value)}
+                min={0}
+                max={100}
+                step={5}
+              />
+            </div>
+            <Badge variant="outline">{backgroundOpacity}%</Badge>
           </div>
 
           <Separator orientation="vertical" className="h-8" />
