@@ -18318,53 +18318,22 @@ export function CADGabaritCanvas({
             {/* Contenu */}
             <ScrollArea className="flex-1">
               <div className="p-3 space-y-4">
-                {/* Actions */}
+                {/* Actions - Ajouter point seulement */}
                 <div className="space-y-2">
-                  <div className="flex gap-2">
-                    <Button
-                      variant={calibrationMode === "addPoint" ? "default" : "outline"}
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => setCalibrationMode(calibrationMode === "addPoint" ? "idle" : "addPoint")}
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Ajouter point
-                    </Button>
-                    <Button
-                      variant={
-                        calibrationMode === "selectPair1" || calibrationMode === "selectPair2" ? "default" : "outline"
-                      }
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => {
-                        // Toggle: si déjà en mode paire, retourner en idle
-                        if (calibrationMode === "selectPair1" || calibrationMode === "selectPair2") {
-                          setCalibrationMode("idle");
-                          setSelectedCalibrationPoint(null);
-                          return;
-                        }
-                        const imgCalib = getSelectedImageCalibration();
-                        if (imgCalib.points.size < 2) {
-                          toast.error("Ajoutez au moins 2 points");
-                          return;
-                        }
-                        setCalibrationMode("selectPair1");
-                        setSelectedCalibrationPoint(null);
-                      }}
-                    >
-                      <Link className="h-4 w-4 mr-1" />
-                      Créer paire
-                    </Button>
-                  </div>
+                  <Button
+                    variant={calibrationMode === "addPoint" ? "default" : "outline"}
+                    size="sm"
+                    className="w-full"
+                    onClick={() => setCalibrationMode(calibrationMode === "addPoint" ? "idle" : "addPoint")}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Ajouter point
+                  </Button>
 
-                  {/* Mode actif avec bouton Annuler */}
-                  {calibrationMode !== "idle" && calibrationMode !== "selectRect" && (
+                  {/* Mode actif pour addPoint */}
+                  {calibrationMode === "addPoint" && (
                     <div className="p-2 bg-blue-50 rounded text-sm text-blue-700 flex items-center justify-between">
-                      <span>
-                        {calibrationMode === "addPoint" && "📍 Cliquez sur l'image pour placer un point"}
-                        {calibrationMode === "selectPair1" && "1️⃣ Cliquez sur le 1er point"}
-                        {calibrationMode === "selectPair2" && "2️⃣ Cliquez sur le 2ème point"}
-                      </span>
+                      <span>📍 Cliquez sur l'image</span>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -18374,49 +18343,8 @@ export function CADGabaritCanvas({
                           setSelectedCalibrationPoint(null);
                         }}
                       >
-                        ✕ Annuler
+                        ✕
                       </Button>
-                    </div>
-                  )}
-
-                  {/* Configuration nouvelle paire */}
-                  {(calibrationMode === "selectPair1" || calibrationMode === "selectPair2") && (
-                    <div className="space-y-2 p-2 bg-gray-50 rounded">
-                      <div className="flex items-center gap-2">
-                        <Label className="text-xs w-20">Distance:</Label>
-                        <Input
-                          type="text"
-                          inputMode="decimal"
-                          value={newPairDistance}
-                          onChange={(e) => {
-                            // Accepter chiffres, point et virgule
-                            const val = e.target.value.replace(/[^0-9.,]/g, "");
-                            setNewPairDistance(val);
-                          }}
-                          onFocus={(e) => {
-                            if (e.target.value === "0") {
-                              setNewPairDistance("");
-                            }
-                          }}
-                          placeholder="auto"
-                          className="h-8 text-sm"
-                        />
-                        <span className="text-xs text-muted-foreground">mm</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground italic">Laissez vide pour estimation auto</p>
-                      <div className="flex items-center gap-2">
-                        <Label className="text-xs w-20">Couleur:</Label>
-                        <div className="flex gap-1 flex-wrap">
-                          {CALIBRATION_COLORS.map((color) => (
-                            <button
-                              key={color}
-                              className={`w-5 h-5 rounded-full border-2 ${newPairColor === color ? "border-gray-800" : "border-transparent"}`}
-                              style={{ backgroundColor: color }}
-                              onClick={() => setNewPairColor(color)}
-                            />
-                          ))}
-                        </div>
-                      </div>
                     </div>
                   )}
                 </div>
@@ -18605,6 +18533,75 @@ export function CADGabaritCanvas({
                               </div>
                             );
                           })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* MOD #85b: Bouton Créer paire déplacé ici (après la liste des paires) */}
+                {(() => {
+                  const imgCalib = getSelectedImageCalibration();
+                  return (
+                    <div className="space-y-2">
+                      <Button
+                        variant={
+                          calibrationMode === "selectPair1" || calibrationMode === "selectPair2" ? "default" : "outline"
+                        }
+                        size="sm"
+                        className="w-full"
+                        onClick={() => {
+                          if (calibrationMode === "selectPair1" || calibrationMode === "selectPair2") {
+                            setCalibrationMode("idle");
+                            setSelectedCalibrationPoint(null);
+                            return;
+                          }
+                          if (imgCalib.points.size < 2) {
+                            toast.error("Ajoutez au moins 2 points");
+                            return;
+                          }
+                          setCalibrationMode("selectPair1");
+                          setSelectedCalibrationPoint(null);
+                        }}
+                      >
+                        <Link className="h-4 w-4 mr-1" />
+                        {calibrationMode === "selectPair1" || calibrationMode === "selectPair2"
+                          ? "Annuler"
+                          : "Créer paire"}
+                      </Button>
+
+                      {/* Mode actif pour création paire */}
+                      {(calibrationMode === "selectPair1" || calibrationMode === "selectPair2") && (
+                        <div className="space-y-2">
+                          <div className="p-2 bg-blue-50 rounded text-sm text-blue-700">
+                            {calibrationMode === "selectPair1" && "1️⃣ Cliquez sur le 1er point"}
+                            {calibrationMode === "selectPair2" && "2️⃣ Cliquez sur le 2ème point"}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              value={newPairDistance}
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/[^0-9.,]/g, "");
+                                setNewPairDistance(val);
+                              }}
+                              onFocus={(e) => e.target.value === "0" && setNewPairDistance("")}
+                              placeholder="Distance (auto)"
+                              className="h-7 text-xs flex-1"
+                            />
+                            <span className="text-xs text-muted-foreground">mm</span>
+                          </div>
+                          <div className="flex gap-1">
+                            {CALIBRATION_COLORS.slice(0, 6).map((color) => (
+                              <button
+                                key={color}
+                                className={`w-4 h-4 rounded-full border ${newPairColor === color ? "border-gray-800 border-2" : "border-gray-300"}`}
+                                style={{ backgroundColor: color }}
+                                onClick={() => setNewPairColor(color)}
+                              />
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
