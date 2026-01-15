@@ -1,12 +1,17 @@
 // ============================================================================
-// MODIFICATION #82 - TemplateDrawingCanvas.tsx
+// MODIFICATION #82 + #82b + #82c - TemplateDrawingCanvas.tsx
 // Date: 2026-01-15
-// Description: Ajout du contrôle d'opacité pour l'image de fond
+// Description:
+//   #82 - Ajout du contrôle d'opacité pour l'image de fond
+//   #82b - Correction du calcul de distance dans l'outil dimension
+//   #82c - Unification de l'échelle : calibration, règle et outil dimension
+//         utilisent maintenant la même vraie échelle (trueScale)
 // Changements:
 //   - Import de l'icône Eye de lucide-react
-//   - Ajout du state backgroundOpacity (0-100%)
-//   - Ajout du useEffect pour appliquer l'opacité à l'image de fond
-//   - Ajout du slider d'opacité dans la toolbar (mode normal et fullscreen)
+//   - Ajout de trueScale (mm/pixel) calculé depuis l'image rectifiée
+//   - Règle graduée basée sur trueScale (graduations automatiques en mm réels)
+//   - Outil dimension utilise trueScale
+//   - Affichage de l'échelle calibrée en bas de page
 // ============================================================================
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -607,7 +612,15 @@ export function TemplateDrawingCanvas({
   // FIX #82: State pour l'opacité de l'image de fond (0-100%)
   const [backgroundOpacity, setBackgroundOpacity] = useState(100);
 
-  // L'échelle effective : combien de mm représente 1 pixel
+  // FIX #82c: Vraie échelle basée sur la calibration
+  // L'image rectifiée a été créée avec 10 px/mm (RECTIFIED_IMAGE_SCALE)
+  // Puis elle est redimensionnée pour le canvas (canvasDisplayScale)
+  // Donc : 1 pixel canvas = 1 / (10 * canvasDisplayScale) mm
+  const RECTIFIED_IMAGE_SCALE = 10; // L'image rectifiée a 10 pixels par mm
+  const [trueScale, setTrueScale] = useState(0.1); // mm par pixel canvas (valeur par défaut)
+  const canvasDisplayScaleRef = useRef(1);
+
+  // L'échelle effective pour la grille (paramétrable séparément)
   // Si scaleValuePerCell = 10mm et gridSizePx = 35px, alors 1px = 10/35 = 0.286mm
   const effectiveScale = scaleValuePerCell / gridSizePx; // mm par pixel
 
@@ -1143,6 +1156,17 @@ export function TemplateDrawingCanvas({
       const maxHeight = 900;
       const scale = Math.min(maxWidth / img.width, maxHeight / img.height);
 
+      // FIX #82c: Stocker le scale d'affichage et calculer la vraie échelle
+      canvasDisplayScaleRef.current = scale;
+      // La vraie échelle : mm par pixel canvas
+      // L'image rectifiée a RECTIFIED_IMAGE_SCALE px/mm, affichée avec scale
+      // Donc 1 pixel canvas = 1 / (RECTIFIED_IMAGE_SCALE * scale) mm
+      const calculatedTrueScale = 1 / (RECTIFIED_IMAGE_SCALE * scale);
+      setTrueScale(calculatedTrueScale);
+      console.log(
+        `[Calibration] Scale canvas: ${scale.toFixed(4)}, TrueScale: ${calculatedTrueScale.toFixed(4)} mm/px`,
+      );
+
       const finalWidth = img.width * scale;
       const finalHeight = img.height * scale;
 
@@ -1240,17 +1264,30 @@ export function TemplateDrawingCanvas({
       (leftRulerBg as any).isRuler = true;
       fabricCanvas.add(leftRulerBg);
 
-      // Règle horizontale (axe X) - chiffres basés sur scaleValuePerCell
-      const numTicksX = Math.ceil(canvasWidth / gridSize);
-      for (let i = 0; i <= numTicksX; i++) {
-        const x = i * gridSize;
+      // Règle horizontale (axe X) - FIX #82c: Utiliser trueScale pour les graduations réelles
+      // Calculer un bon intervalle de graduation
+      const pixelsPerMm = 1 / trueScale; // Combien de pixels pour 1 mm
+      let graduationIntervalMm = 10; // Par défaut 10mm
+      const minPixelsBetweenGraduations = 40; // Minimum 40 pixels entre 2 graduations
+
+      // Ajuster l'intervalle pour qu'il soit lisible
+      if (pixelsPerMm * 10 < minPixelsBetweenGraduations) graduationIntervalMm = 20;
+      if (pixelsPerMm * 20 < minPixelsBetweenGraduations) graduationIntervalMm = 50;
+      if (pixelsPerMm * 50 < minPixelsBetweenGraduations) graduationIntervalMm = 100;
+      if (pixelsPerMm * 100 < minPixelsBetweenGraduations) graduationIntervalMm = 200;
+      if (pixelsPerMm * 200 < minPixelsBetweenGraduations) graduationIntervalMm = 500;
+
+      const pixelsPerGraduation = graduationIntervalMm * pixelsPerMm;
+      const maxMmX = canvasWidth * trueScale; // Largeur totale en mm
+      const numGraduationsX = Math.ceil(maxMmX / graduationIntervalMm);
+
+      for (let i = 0; i <= numGraduationsX; i++) {
+        const mmValue = i * graduationIntervalMm;
+        const x = mmValue * pixelsPerMm; // Position en pixels
         if (x > canvasWidth) break;
 
-        // Calculer la valeur réelle : position * mm par pixel
-        const realMm = i * scaleValuePerCell;
-        // Afficher en cm si >= 10mm
-        const displayValue = realMm >= 10 ? (realMm / 10).toFixed(realMm % 10 === 0 ? 0 : 1) : realMm.toFixed(0);
-        const unit = realMm >= 10 ? "" : ""; // On affiche juste le nombre
+        // Afficher en cm si >= 100mm, sinon en mm
+        const displayValue = mmValue >= 100 ? (mmValue / 10).toFixed(0) : mmValue.toFixed(0);
 
         // Trait vertical petit (en dehors de l'image)
         const line = new Line([x, canvasHeight, x, canvasHeight + 8], {
@@ -1278,15 +1315,17 @@ export function TemplateDrawingCanvas({
         fabricCanvas.add(text);
       }
 
-      // Règle verticale (axe Y) - à gauche, 0 en bas
-      const numTicksY = Math.ceil(canvasHeight / gridSize);
-      for (let i = 0; i <= numTicksY; i++) {
-        const y = canvasHeight - i * gridSize; // Inverser l'axe Y
+      // Règle verticale (axe Y) - FIX #82c: Utiliser trueScale, 0 en bas
+      const maxMmY = canvasHeight * trueScale; // Hauteur totale en mm
+      const numGraduationsY = Math.ceil(maxMmY / graduationIntervalMm);
+
+      for (let i = 0; i <= numGraduationsY; i++) {
+        const mmValue = i * graduationIntervalMm;
+        const y = canvasHeight - mmValue * pixelsPerMm; // Position en pixels (0 en bas)
         if (y < 0) break;
 
-        // Calculer la valeur réelle
-        const realMm = i * scaleValuePerCell;
-        const displayValue = realMm >= 10 ? (realMm / 10).toFixed(realMm % 10 === 0 ? 0 : 1) : realMm.toFixed(0);
+        // Afficher en cm si >= 100mm
+        const displayValue = mmValue >= 100 ? (mmValue / 10).toFixed(0) : mmValue.toFixed(0);
 
         // Trait horizontal petit (en dehors de l'image)
         const line = new Line([-8, y, 0, y], {
@@ -1325,7 +1364,7 @@ export function TemplateDrawingCanvas({
       });
       fabricCanvas.renderAll();
     }
-  }, [showGrid, gridSize, fabricCanvas, createGrid, showRulers, scaleValuePerCell, effectiveScale]);
+  }, [showGrid, gridSize, fabricCanvas, createGrid, showRulers, trueScale]);
 
   // 🔧 BUG FIX #6 : Gérer la sélection et le déplacement des courbes éditables
   useEffect(() => {
@@ -2496,8 +2535,8 @@ export function TemplateDrawingCanvas({
           const dx = p2.x - p1.x;
           const dy = p2.y - p1.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
-          // Utiliser l'échelle effective (mm par pixel)
-          const realDistance = (distance * effectiveScale).toFixed(1);
+          // FIX #82c: Utiliser la vraie échelle (trueScale = mm par pixel canvas)
+          const realDistance = (distance * trueScale).toFixed(1);
 
           const dimensionLine = new Line([p1.x, p1.y, p2.x, p2.y], {
             stroke: "#3b82f6",
@@ -2772,6 +2811,7 @@ export function TemplateDrawingCanvas({
     snapPoint,
     saveState,
     scaleFactor,
+    trueScale, // FIX #82c: Ajout pour recalculer les dimensions avec la vraie échelle
     tempObjects,
     previewCurve,
   ]);
@@ -3448,8 +3488,8 @@ export function TemplateDrawingCanvas({
       {!isFullscreen && (
         <div className="text-sm text-muted-foreground bg-blue-50 p-3 rounded-lg">
           <p>
-            <strong>Échelle:</strong> 1 pixel = {effectiveScale.toFixed(3)} mm •{" "}
-            <strong className="ml-2">Résolution:</strong> {(1 / effectiveScale).toFixed(2)} pixels/mm •
+            <strong>Échelle calibrée:</strong> 1 pixel = {trueScale.toFixed(4)} mm •{" "}
+            <strong className="ml-2">Résolution:</strong> {(1 / trueScale).toFixed(2)} pixels/mm •
             <strong className="ml-2">Historique:</strong> {historyIndex + 1}/{history.length} états
           </p>
           <p className="mt-1 text-blue-600 font-medium">
