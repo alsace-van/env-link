@@ -418,6 +418,13 @@ export function CADGabaritCanvas({
   const [lockedPoints, setLockedPoints] = useState<Set<string>>(new Set());
   const [showExportDialog, setShowExportDialog] = useState<"png" | "pdf" | null>(null);
 
+  // MOD v7.12: Modale d'export DXF avec nom de fichier personnalisé
+  const [dxfExportDialog, setDxfExportDialog] = useState<{
+    open: boolean;
+    filename: string;
+    position: { x: number; y: number };
+  } | null>(null);
+
   // === Multi-photos ===
   const [backgroundImages, setBackgroundImages] = useState<BackgroundImage[]>([]);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
@@ -13989,20 +13996,36 @@ export function CADGabaritCanvas({
     [sketch, solveSketch, addToHistory],
   );
 
-  // Export DXF
+  // MOD v7.12: Ouvrir la modale d'export DXF
   const handleExportDXF = useCallback(() => {
+    setDxfExportDialog({
+      open: true,
+      filename: `gabarit-${templateId || "export"}`,
+      position: { x: window.innerWidth / 2 - 150, y: window.innerHeight / 2 - 80 },
+    });
+  }, [templateId]);
+
+  // MOD v7.12: Effectuer l'export DXF avec le nom choisi
+  const confirmExportDXF = useCallback(() => {
+    if (!dxfExportDialog) return;
+
     const dxfContent = exportToDXF(sketch);
     const blob = new Blob([dxfContent], { type: "application/dxf" });
     const url = URL.createObjectURL(blob);
 
     const a = document.createElement("a");
     a.href = url;
-    a.download = `gabarit-${templateId}.dxf`;
+    // Ajouter .dxf si pas déjà présent
+    const filename = dxfExportDialog.filename.endsWith(".dxf")
+      ? dxfExportDialog.filename
+      : `${dxfExportDialog.filename}.dxf`;
+    a.download = filename;
     a.click();
 
     URL.revokeObjectURL(url);
-    toast.success("DXF exporté pour Fusion 360 !");
-  }, [sketch, templateId]);
+    setDxfExportDialog(null);
+    toast.success(`DXF exporté: ${filename}`);
+  }, [sketch, dxfExportDialog]);
 
   // Export SVG
   const handleExportSVG = useCallback(() => {
@@ -19295,6 +19318,88 @@ export function CADGabaritCanvas({
               <Check className="h-3 w-3 mr-1" />
               Valider
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* MOD v7.12: Modale d'export DXF avec nom de fichier */}
+      {dxfExportDialog?.open && (
+        <div
+          className="fixed bg-white rounded-lg shadow-xl border z-50 select-none"
+          style={{
+            left: dxfExportDialog.position.x,
+            top: dxfExportDialog.position.y,
+            width: 300,
+          }}
+          onMouseDown={(e) => {
+            if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "BUTTON") return;
+            const startX = e.clientX - dxfExportDialog.position.x;
+            const startY = e.clientY - dxfExportDialog.position.y;
+            const onMouseMove = (ev: MouseEvent) => {
+              setDxfExportDialog({
+                ...dxfExportDialog,
+                position: { x: ev.clientX - startX, y: ev.clientY - startY },
+              });
+            };
+            const onMouseUp = () => {
+              document.removeEventListener("mousemove", onMouseMove);
+              document.removeEventListener("mouseup", onMouseUp);
+            };
+            document.addEventListener("mousemove", onMouseMove);
+            document.addEventListener("mouseup", onMouseUp);
+          }}
+        >
+          {/* Header draggable */}
+          <div className="flex items-center justify-between px-3 py-2 bg-blue-50 rounded-t-lg cursor-move border-b">
+            <span className="text-sm font-medium">Export DXF</span>
+            <button className="text-gray-500 hover:text-gray-700" onClick={() => setDxfExportDialog(null)}>
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Contenu */}
+          <div className="p-3 space-y-3">
+            <div className="space-y-1">
+              <label className="text-xs text-gray-600">Nom du fichier</label>
+              <Input
+                type="text"
+                value={dxfExportDialog.filename}
+                onChange={(e) => setDxfExportDialog({ ...dxfExportDialog, filename: e.target.value })}
+                className="h-8 text-sm"
+                placeholder="nom-du-fichier"
+                autoFocus
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter" && dxfExportDialog.filename.trim()) {
+                    confirmExportDXF();
+                  }
+                  if (e.key === "Escape") {
+                    setDxfExportDialog(null);
+                  }
+                }}
+              />
+              <p className="text-[10px] text-gray-400">.dxf sera ajouté automatiquement</p>
+            </div>
+
+            <div className="text-[10px] text-gray-500 bg-gray-50 px-2 py-1.5 rounded">
+              📁 Le fichier sera téléchargé dans votre dossier de téléchargements
+            </div>
+
+            {/* Boutons */}
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="flex-1 h-8" onClick={() => setDxfExportDialog(null)}>
+                Annuler
+              </Button>
+              <Button
+                size="sm"
+                className="flex-1 h-8"
+                onClick={confirmExportDXF}
+                disabled={!dxfExportDialog.filename.trim()}
+              >
+                <Check className="h-3 w-3 mr-1" />
+                Exporter
+              </Button>
+            </div>
           </div>
         </div>
       )}

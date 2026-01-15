@@ -60,15 +60,13 @@ export function exportToDXF(sketch: Sketch): string {
   dxf += "0\nSECTION\n";
   dxf += "2\nENTITIES\n";
 
-  // Exporter les géométries (exclure les lignes de construction)
+  // Exporter les géométries (inclure les lignes de construction - MOD v7.12)
   sketch.geometries.forEach((geo) => {
     switch (geo.type) {
       case "line": {
         const line = geo as Line;
-        // Exclure les lignes de construction
-        if (!line.isConstruction) {
-          dxf += exportLine(line, sketch, scale);
-        }
+        // MOD v7.12: Inclure les lignes de construction
+        dxf += exportLine(line, sketch, scale);
         break;
       }
       case "circle": {
