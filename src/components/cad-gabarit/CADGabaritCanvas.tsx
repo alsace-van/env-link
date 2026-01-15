@@ -13206,34 +13206,44 @@ export function CADGabaritCanvas({
         return;
       }
 
-      // Le scale est en mm/px
-      // Nouveau scaleFactor = 1/scale (px/mm)
-      const newScaleFactor = 1 / scale;
+      if (!selectedImage) {
+        toast.error("Sélectionnez d'abord une image");
+        return;
+      }
 
-      // Mettre à jour le scaleFactor du sketch
-      // Les coordonnées des points restent les mêmes (en pixels)
-      // Mais le scaleFactor change pour que les mesures soient correctes
-      setSketch((prev) => ({
-        ...prev,
-        scaleFactor: newScaleFactor,
-      }));
+      // Le scale est en mm/px (ex: 0.5 mm/px signifie 1 pixel = 0.5mm)
+      // sketch.scaleFactor est en px/mm (ex: 2.5 px/mm signifie 1mm = 2.5 pixels)
+      // Pour que les mesures soient correctes, l'image doit être mise à l'échelle :
+      // newImageScale = sketch.scaleFactor * scale
+      // Exemple: 2.5 px/mm * 0.5 mm/px = 1.25 (l'image doit être agrandie de 25%)
+      const currentSketch = sketchRef.current;
+      const newImageScale = currentSketch.scaleFactor * scale;
 
-      // Mettre à jour la calibration comme appliquée
+      // Mettre à jour l'échelle de l'image (pas le scaleFactor global)
+      setBackgroundImages((prev) =>
+        prev.map((img) => {
+          if (img.id !== selectedImage.id) return img;
+          return {
+            ...img,
+            scale: newImageScale,
+            calibrationData: {
+              ...(img.calibrationData || { points: new Map(), pairs: [], mode: "simple" }),
+              scale: scale,
+              applied: true,
+            },
+          };
+        }),
+      );
+
+      // Mettre à jour la calibration globale comme appliquée (pour l'affichage)
       setCalibrationData((prev) => ({
         ...prev,
         scale: scale,
         applied: true,
       }));
 
-      // Marquer l'image comme calibrée
-      updateSelectedImageCalibration((prev) => ({
-        ...prev,
-        scale: scale,
-        applied: true,
-      }));
-
       toast.success(
-        `Calibration appliquée ! Échelle: ${scale.toFixed(4)} mm/px (scaleFactor: ${newScaleFactor.toFixed(2)} px/mm)`,
+        `Calibration appliquée à l'image ! Échelle image: ${newImageScale.toFixed(2)}x (${scale.toFixed(4)} mm/px)`,
       );
       return;
     }
