@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PrintPreviewModal
 // Modale d'impression avec prévisualisation et duplication de motifs
-// VERSION: 80.11
+// VERSION: 80.16 - Correction capture sans règles + option cadre
 // ============================================
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { X, Printer, Maximize2, Grid3X3, Scissors, Move } from "lucide-react";
+import { X, Printer, Maximize2, Grid3X3, Scissors, Move, Square } from "lucide-react";
 
 // Types pour les options d'impression
 interface PrintOptions {
@@ -24,6 +24,7 @@ interface PrintOptions {
   includeGrid: boolean;
   includeDimensions: boolean;
   includeCutMarks: boolean;
+  includeBorder: boolean; // MOD v80.16: Option pour afficher le cadre du motif
   printZone: "all" | "visible" | "selection";
   scale: "fit" | "100" | "custom";
   customScale: number; // pourcentage
@@ -36,6 +37,9 @@ const PAPER_SIZES: Record<string, { width: number; height: number }> = {
   Letter: { width: 216, height: 279 },
   Legal: { width: 216, height: 356 },
 };
+
+// MOD v80.16: Taille des règles en pixels (à exclure de la capture)
+const RULER_SIZE = 40; // pixels
 
 interface PrintPreviewModalProps {
   isOpen: boolean;
@@ -77,6 +81,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     includeGrid: showGrid,
     includeDimensions: showDimensions,
     includeCutMarks: false,
+    includeBorder: true, // MOD v80.16: Cadre activé par défaut
     printZone: "visible",
     scale: "fit",
     customScale: 100,
@@ -123,6 +128,46 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     }));
   }, [calculateMaxMotifs]);
 
+  // MOD v80.16: Capturer le contenu du canvas SANS les règles
+  const captureContentWithoutRulers = useCallback((): HTMLCanvasElement | null => {
+    if (!canvasRef.current) return null;
+
+    const sourceCanvas = canvasRef.current;
+    const srcWidth = sourceCanvas.width;
+    const srcHeight = sourceCanvas.height;
+
+    // Créer un canvas temporaire pour le contenu sans règles
+    const tempCanvas = document.createElement("canvas");
+    const contentWidth = srcWidth - RULER_SIZE;
+    const contentHeight = srcHeight - RULER_SIZE;
+
+    if (contentWidth <= 0 || contentHeight <= 0) {
+      // Si le canvas est trop petit, utiliser tout le canvas
+      return sourceCanvas;
+    }
+
+    tempCanvas.width = contentWidth;
+    tempCanvas.height = contentHeight;
+
+    const ctx = tempCanvas.getContext("2d");
+    if (!ctx) return sourceCanvas;
+
+    // Copier uniquement la partie sans les règles (règles en haut et à gauche)
+    ctx.drawImage(
+      sourceCanvas,
+      RULER_SIZE, // sx: commencer après la règle gauche
+      RULER_SIZE, // sy: commencer après la règle du haut
+      contentWidth, // sWidth
+      contentHeight, // sHeight
+      0, // dx
+      0, // dy
+      contentWidth, // dWidth
+      contentHeight, // dHeight
+    );
+
+    return tempCanvas;
+  }, [canvasRef]);
+
   // Générer la prévisualisation
   const generatePreview = useCallback(() => {
     if (!previewCanvasRef.current || !canvasRef.current) return;
@@ -146,15 +191,16 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, previewCanvas.width, previewCanvas.height);
 
-    // Zone imprimable (marges)
+    // Zone imprimable (marges) - ligne pointillée
     const marginPx = options.margins * previewScale;
     ctx.strokeStyle = "#E0E0E0";
     ctx.setLineDash([4, 4]);
     ctx.strokeRect(marginPx, marginPx, previewCanvas.width - marginPx * 2, previewCanvas.height - marginPx * 2);
     ctx.setLineDash([]);
 
-    // Capturer le canvas source
-    const sourceCanvas = canvasRef.current;
+    // MOD v80.16: Capturer le canvas sans les règles
+    const sourceCanvas = captureContentWithoutRulers();
+    if (!sourceCanvas) return;
 
     // Calculer la taille du motif dans la préview
     const printable = getPrintableArea();
@@ -164,8 +210,14 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     // Calculer l'échelle du motif
     let motifScale = 1;
     if (options.scale === "fit") {
-      const scaleX = (printable.width / options.columns - options.spacing) / motifW;
-      const scaleY = (printable.height / options.rows - options.spacing) / motifH;
+      const availableW = options.enableDuplication
+        ? (printable.width - (options.columns - 1) * options.spacing) / options.columns
+        : printable.width;
+      const availableH = options.enableDuplication
+        ? (printable.height - (options.rows - 1) * options.spacing) / options.rows
+        : printable.height;
+      const scaleX = availableW / motifW;
+      const scaleY = availableH / motifH;
       motifScale = Math.min(scaleX, scaleY, 1);
     } else if (options.scale === "100") {
       motifScale = 1;
@@ -181,11 +233,13 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     const rows = options.enableDuplication ? options.rows : 1;
     const spacingPx = options.spacing * previewScale;
 
-    // Calculer la position de départ pour centrer les motifs
+    // Calculer la position de départ pour centrer les motifs dans la zone imprimable
     const totalWidth = cols * scaledMotifW + (cols - 1) * spacingPx;
     const totalHeight = rows * scaledMotifH + (rows - 1) * spacingPx;
-    const startX = marginPx + (previewCanvas.width - marginPx * 2 - totalWidth) / 2;
-    const startY = marginPx + (previewCanvas.height - marginPx * 2 - totalHeight) / 2;
+    const printableWidthPx = (previewCanvas.width - marginPx * 2);
+    const printableHeightPx = (previewCanvas.height - marginPx * 2);
+    const startX = marginPx + (printableWidthPx - totalWidth) / 2;
+    const startY = marginPx + (printableHeightPx - totalHeight) / 2;
 
     // Dessiner les motifs
     for (let row = 0; row < rows; row++) {
@@ -193,8 +247,16 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
         const x = startX + col * (scaledMotifW + spacingPx);
         const y = startY + row * (scaledMotifH + spacingPx);
 
-        // Dessiner l'image du canvas
+        // Dessiner l'image du canvas (sans règles)
         ctx.drawImage(sourceCanvas, x, y, scaledMotifW, scaledMotifH);
+
+        // MOD v80.16: Dessiner le cadre du motif si activé
+        if (options.includeBorder) {
+          ctx.strokeStyle = "#333333";
+          ctx.lineWidth = 1;
+          ctx.setLineDash([]);
+          ctx.strokeRect(x, y, scaledMotifW, scaledMotifH);
+        }
 
         // Traits de coupe si activés
         if (options.includeCutMarks && options.enableDuplication) {
@@ -233,7 +295,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
       ? `${cols} × ${rows} = ${cols * rows} motif(s) - ${options.format} ${options.orientation}`
       : `1 motif - ${options.format} ${options.orientation}`;
     ctx.fillText(infoText, previewCanvas.width / 2, previewCanvas.height - 5);
-  }, [canvasRef, options, getPageDimensions, getPrintableArea, contentWidth, contentHeight]);
+  }, [canvasRef, options, getPageDimensions, getPrintableArea, contentWidth, contentHeight, captureContentWithoutRulers]);
 
   // Mettre à jour la prévisualisation quand les options changent
   useEffect(() => {
@@ -256,8 +318,14 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     // Calculer l'échelle du motif
     let motifScale = 1;
     if (options.scale === "fit") {
-      const scaleX = (printable.width / options.columns - options.spacing) / motifW;
-      const scaleY = (printable.height / options.rows - options.spacing) / motifH;
+      const availableW = options.enableDuplication
+        ? (printable.width - (options.columns - 1) * options.spacing) / options.columns
+        : printable.width;
+      const availableH = options.enableDuplication
+        ? (printable.height - (options.rows - 1) * options.spacing) / options.rows
+        : printable.height;
+      const scaleX = availableW / motifW;
+      const scaleY = availableH / motifH;
       motifScale = Math.min(scaleX, scaleY, 1);
     } else if (options.scale === "100") {
       motifScale = 1;
@@ -279,8 +347,9 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     ctx.fillStyle = "#FFFFFF";
     ctx.fillRect(0, 0, printCanvas.width, printCanvas.height);
 
-    // Source
-    const sourceCanvas = canvasRef.current;
+    // MOD v80.16: Source sans règles
+    const sourceCanvas = captureContentWithoutRulers();
+    if (!sourceCanvas) return;
 
     // Calculer les dimensions
     const marginPx = options.margins * mmToPx;
@@ -293,8 +362,10 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     // Centrer
     const totalWidth = cols * scaledMotifW + (cols - 1) * spacingPx;
     const totalHeight = rows * scaledMotifH + (rows - 1) * spacingPx;
-    const startX = marginPx + (printCanvas.width - marginPx * 2 - totalWidth) / 2;
-    const startY = marginPx + (printCanvas.height - marginPx * 2 - totalHeight) / 2;
+    const printableWidthPx = printCanvas.width - marginPx * 2;
+    const printableHeightPx = printCanvas.height - marginPx * 2;
+    const startX = marginPx + (printableWidthPx - totalWidth) / 2;
+    const startY = marginPx + (printableHeightPx - totalHeight) / 2;
 
     // Dessiner les motifs
     for (let row = 0; row < rows; row++) {
@@ -303,25 +374,33 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
         const y = startY + row * (scaledMotifH + spacingPx);
         ctx.drawImage(sourceCanvas, x, y, scaledMotifW, scaledMotifH);
 
+        // MOD v80.16: Cadre du motif
+        if (options.includeBorder) {
+          ctx.strokeStyle = "#000000";
+          ctx.lineWidth = 1 * mmToPx / 25.4; // ~1pt
+          ctx.setLineDash([]);
+          ctx.strokeRect(x, y, scaledMotifW, scaledMotifH);
+        }
+
         // Traits de coupe
         if (options.includeCutMarks && options.enableDuplication) {
           ctx.strokeStyle = "#AAAAAA";
-          ctx.lineWidth = 1;
-          ctx.setLineDash([5, 5]);
+          ctx.lineWidth = 0.5 * mmToPx / 25.4;
+          ctx.setLineDash([5 * mmToPx / 25.4, 5 * mmToPx / 25.4]);
 
           if (col < cols - 1) {
             const cutX = x + scaledMotifW + spacingPx / 2;
             ctx.beginPath();
-            ctx.moveTo(cutX, Math.max(0, y - 10 * mmToPx));
-            ctx.lineTo(cutX, Math.min(printCanvas.height, y + scaledMotifH + 10 * mmToPx));
+            ctx.moveTo(cutX, Math.max(0, y - 10 * mmToPx / 25.4));
+            ctx.lineTo(cutX, Math.min(printCanvas.height, y + scaledMotifH + 10 * mmToPx / 25.4));
             ctx.stroke();
           }
 
           if (row < rows - 1) {
             const cutY = y + scaledMotifH + spacingPx / 2;
             ctx.beginPath();
-            ctx.moveTo(Math.max(0, x - 10 * mmToPx), cutY);
-            ctx.lineTo(Math.min(printCanvas.width, x + scaledMotifW + 10 * mmToPx), cutY);
+            ctx.moveTo(Math.max(0, x - 10 * mmToPx / 25.4), cutY);
+            ctx.lineTo(Math.min(printCanvas.width, x + scaledMotifW + 10 * mmToPx / 25.4), cutY);
             ctx.stroke();
           }
 
@@ -386,7 +465,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
     `);
 
     printWindow.document.close();
-  }, [canvasRef, options, getPageDimensions, getPrintableArea, contentWidth, contentHeight]);
+  }, [canvasRef, options, getPageDimensions, getPrintableArea, contentWidth, contentHeight, captureContentWithoutRulers]);
 
   // Gestion du drag de la modale
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -603,6 +682,20 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
             ) : (
               "1 motif (duplication désactivée)"
             )}
+          </div>
+        </div>
+
+        {/* MOD v80.16: Options d'affichage */}
+        <div className="mb-4 p-3 bg-orange-50 rounded-lg">
+          <h3 className="text-sm font-semibold text-orange-800 mb-2 flex items-center gap-1">
+            <Square className="h-4 w-4" /> Affichage
+          </h3>
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={options.includeBorder}
+              onCheckedChange={(v) => setOptions((prev) => ({ ...prev, includeBorder: v }))}
+            />
+            <Label className="text-xs text-gray-600">Cadre autour du motif</Label>
           </div>
         </div>
 
