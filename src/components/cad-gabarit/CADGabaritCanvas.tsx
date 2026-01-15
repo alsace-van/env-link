@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.12 - Mode édition inline de la toolbar avec drag & drop + menus contextuels
+// VERSION: 7.13 - Fix bug calibration: scale ajusté après redimensionnement image
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -13349,15 +13349,21 @@ export function CADGabaritCanvas({
         }),
       );
 
+      // FIX #84: APRÈS redimensionnement, le scale pour les mesures doit correspondre au scaleFactor du sketch
+      // car l'image a été mise à l'échelle pour matcher le sketch
+      // scale en mm/px = 1 / sketch.scaleFactor (px/mm)
+      // Exemple: sketch.scaleFactor = 10 px/mm → adjustedScale = 0.1 mm/px → 1px = 0.1mm
+      const adjustedScale = 1 / currentSketch.scaleFactor;
+
       // Mettre à jour la calibration globale comme appliquée (pour l'affichage)
       setCalibrationData((prev) => ({
         ...prev,
-        scale: scale,
+        scale: adjustedScale,
         applied: true,
       }));
 
       toast.success(
-        `Calibration appliquée à l'image ! Échelle image: ${newImageScale.toFixed(2)}x (${scale.toFixed(4)} mm/px)`,
+        `Calibration appliquée à l'image ! Échelle image: ${newImageScale.toFixed(2)}x (1px = ${(1 / currentSketch.scaleFactor).toFixed(3)}mm)`,
       );
       return;
     }
