@@ -2,7 +2,7 @@
 // HOOK: useCADAutoBackup
 // Sauvegarde automatique du canvas CAD sur Supabase
 // Protection contre les pertes de données spontanées
-// VERSION: 1.0
+// VERSION: 1.1 - Fix types Supabase
 // ============================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -20,6 +20,20 @@ const generateSessionId = (): string => {
   sessionStorage.setItem("cad_session_id", newId);
   return newId;
 };
+
+// Types pour les tables Supabase (en attendant la régénération des types)
+interface CADAutoBackupRow {
+  id: string;
+  user_id: string;
+  session_id: string;
+  template_id: string | null;
+  sketch_data: Record<string, unknown>;
+  background_images: unknown[] | null;
+  marker_links: unknown[] | null;
+  geometry_count: number;
+  point_count: number;
+  created_at: string;
+}
 
 interface AutoBackupState {
   lastBackupTime: number | null;
@@ -86,6 +100,10 @@ function serializeBackgroundImages(images: BackgroundImage[]): unknown[] {
   }));
 }
 
+// Client Supabase non typé pour les nouvelles tables
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const supabaseAny = supabase as any;
+
 export function useCADAutoBackup(
   sketch: Sketch,
   backgroundImages: BackgroundImage[],
@@ -131,7 +149,7 @@ export function useCADAutoBackup(
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      await supabase.from("cad_autobackup_logs").insert({
+      await supabaseAny.from("cad_autobackup_logs").insert({
         user_id: user.id,
         session_id: sessionId.current,
         event_type: eventType,
@@ -176,13 +194,13 @@ export function useCADAutoBackup(
       const serializedSketch = serializeSketchForBackup(sketch);
       const serializedImages = serializeBackgroundImages(backgroundImages);
 
-      const { error } = await supabase.from("cad_autobackups").insert({
+      const { error } = await supabaseAny.from("cad_autobackups").insert({
         user_id: user.id,
         session_id: sessionId.current,
-        template_id: templateId,
-        sketch_data: serializedSketch as unknown as Record<string, unknown>,
-        background_images: serializedImages as unknown as Record<string, unknown>[],
-        marker_links: markerLinks as unknown as Record<string, unknown>[],
+        template_id: templateId || null,
+        sketch_data: serializedSketch,
+        background_images: serializedImages,
+        marker_links: markerLinks,
         geometry_count: geometryCount,
         point_count: pointCount,
       });
@@ -217,12 +235,12 @@ export function useCADAutoBackup(
   }, [enabled, sketch, backgroundImages, markerLinks, templateId, minGeometryCount, computeHash, logEvent]);
 
   // Récupérer le dernier backup valide
-  const getLatestBackup = useCallback(async () => {
+  const getLatestBackup = useCallback(async (): Promise<CADAutoBackupRow | null> => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
 
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAny
         .from("cad_autobackups")
         .select("*")
         .eq("user_id", user.id)
@@ -236,7 +254,7 @@ export function useCADAutoBackup(
         return null;
       }
 
-      return data;
+      return data as CADAutoBackupRow;
     } catch (error) {
       console.error("[AutoBackup] Error fetching backup:", error);
       return null;
