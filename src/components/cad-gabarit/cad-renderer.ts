@@ -739,8 +739,9 @@ export class CADRenderer {
       // Appliquer l'opacité
       this.ctx.globalAlpha = bgImage.opacity;
 
-      // Utiliser l'image croppée si disponible, puis ajustée, puis transformée, sinon l'originale
-      const imageToDraw = bgImage.croppedCanvas || bgImage.adjustedCanvas || bgImage.transformedCanvas || bgImage.image;
+      // MOD v80.17: Corriger l'ordre de priorité - adjustedCanvas doit être prioritaire
+      // car les ajustements sont appliqués sur le canvas le plus récent (crop inclus)
+      const imageToDraw = bgImage.adjustedCanvas || bgImage.croppedCanvas || bgImage.transformedCanvas || bgImage.image;
 
       const width = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.width : imageToDraw.width;
       const height = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.height : imageToDraw.height;
@@ -792,7 +793,12 @@ export class CADRenderer {
         // Dessiner les poignées de coin vertes
         const handleSize = 6 / this.viewport.scale;
         this.ctx.fillStyle = "#22C55E";
-        this.ctx.fillRect(-scaledWidth / 2 - handleSize / 2, -scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
+        this.ctx.fillRect(
+          -scaledWidth / 2 - handleSize / 2,
+          -scaledHeight / 2 - handleSize / 2,
+          handleSize,
+          handleSize,
+        );
         this.ctx.fillRect(scaledWidth / 2 - handleSize / 2, -scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
         this.ctx.fillRect(-scaledWidth / 2 - handleSize / 2, scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
         this.ctx.fillRect(scaledWidth / 2 - handleSize / 2, scaledHeight / 2 - handleSize / 2, handleSize, handleSize);

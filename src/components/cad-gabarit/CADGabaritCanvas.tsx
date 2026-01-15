@@ -8072,8 +8072,9 @@ export function CADGabaritCanvas({
           const currentAdjustments = img.adjustments || { ...DEFAULT_IMAGE_ADJUSTMENTS };
           const newAdjustments = { ...currentAdjustments, ...adjustments };
 
-          // Utiliser l'image transformée si elle existe, sinon l'originale
-          const sourceImage = img.transformedCanvas || img.image;
+          // MOD v80.17: Utiliser le canvas le plus récent comme source
+          // Priorité : croppedCanvas > transformedCanvas > image
+          const sourceImage = img.croppedCanvas || img.transformedCanvas || img.image;
 
           // Vérifier que l'image source est valide
           if (!sourceImage || (sourceImage instanceof HTMLImageElement && !sourceImage.complete)) {
@@ -9081,7 +9082,7 @@ export function CADGabaritCanvas({
               setSelectedEntities(new Set());
               return;
             }
-            
+
             // Clic simple : sélection unique (efface la multi-sélection)
             setSelectedImageId(clickedImage.id);
             setSelectedImageIds(new Set()); // Effacer la multi-sélection
@@ -15879,12 +15880,7 @@ export function CADGabaritCanvas({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowPrintDialog(true)}
-                  className="h-9 px-2"
-                >
+                <Button variant="outline" size="sm" onClick={() => setShowPrintDialog(true)} className="h-9 px-2">
                   <Printer className="h-4 w-4 mr-1" />
                   <span className="text-xs">Imprimer</span>
                 </Button>
@@ -23063,8 +23059,8 @@ export function CADGabaritCanvas({
         isOpen={showPrintDialog}
         onClose={() => setShowPrintDialog(false)}
         canvasRef={canvasRef}
-        contentWidth={canvasRef.current ? (canvasRef.current.width / viewport.scale) / sketch.scaleFactor : 100}
-        contentHeight={canvasRef.current ? (canvasRef.current.height / viewport.scale) / sketch.scaleFactor : 100}
+        contentWidth={canvasRef.current ? canvasRef.current.width / viewport.scale / sketch.scaleFactor : 100}
+        contentHeight={canvasRef.current ? canvasRef.current.height / viewport.scale / sketch.scaleFactor : 100}
         showGrid={showGrid}
         showDimensions={showDimensions}
       />
