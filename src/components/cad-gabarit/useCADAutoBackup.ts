@@ -15,7 +15,7 @@ import type { BackgroundImage, ImageMarkerLink } from "./types";
 const generateSessionId = (): string => {
   const stored = sessionStorage.getItem("cad_session_id");
   if (stored) return stored;
-  
+
   const newId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   sessionStorage.setItem("cad_session_id", newId);
   return newId;
@@ -96,8 +96,59 @@ function serializeBackgroundImages(images: BackgroundImage[]): unknown[] {
     markers: img.markers,
     adjustments: img.adjustments,
     layerId: img.layerId,
+    order: img.order,
+    // FIX #86: Sérialiser calibrationData (Map → Array pour JSON)
+    calibrationData: img.calibrationData
+      ? {
+          mode: img.calibrationData.mode,
+          scale: img.calibrationData.scale,
+          scaleX: img.calibrationData.scaleX,
+          scaleY: img.calibrationData.scaleY,
+          error: img.calibrationData.error,
+          errorX: img.calibrationData.errorX,
+          errorY: img.calibrationData.errorY,
+          applied: img.calibrationData.applied,
+          // Convertir les Map en tableaux pour la sérialisation JSON
+          points: img.calibrationData.points ? Array.from(img.calibrationData.points.entries()) : [],
+          pairs: img.calibrationData.pairs ? Array.from(img.calibrationData.pairs.entries()) : [],
+        }
+      : undefined,
     // Exclure img.image (HTMLImageElement non sérialisable)
   }));
+}
+
+// FIX #86: Désérialiser les images de fond (reconvertir Arrays en Maps)
+function deserializeBackgroundImages(images: unknown[]): BackgroundImage[] {
+  return images.map((imgData: unknown) => {
+    const img = imgData as Record<string, unknown>;
+    const calibData = img.calibrationData as Record<string, unknown> | undefined;
+
+    return {
+      ...img,
+      // Reconvertir calibrationData si présent
+      calibrationData: calibData
+        ? {
+            mode: calibData.mode as "simple" | "perspective" | undefined,
+            scale: calibData.scale as number | undefined,
+            scaleX: calibData.scaleX as number | undefined,
+            scaleY: calibData.scaleY as number | undefined,
+            error: calibData.error as number | undefined,
+            errorX: calibData.errorX as number | undefined,
+            errorY: calibData.errorY as number | undefined,
+            applied: calibData.applied as boolean | undefined,
+            // Reconvertir les tableaux en Maps
+            points:
+              calibData.points && Array.isArray(calibData.points)
+                ? new Map(calibData.points as [string, unknown][])
+                : new Map(),
+            pairs:
+              calibData.pairs && Array.isArray(calibData.pairs)
+                ? new Map(calibData.pairs as [string, unknown][])
+                : new Map(),
+          }
+        : undefined,
+    } as BackgroundImage;
+  });
 }
 
 // Client Supabase non typé pour les nouvelles tables
@@ -111,7 +162,7 @@ export function useCADAutoBackup(
   loadSketchData: (data: unknown) => void,
   setBackgroundImages: (images: BackgroundImage[]) => void,
   setMarkerLinks: (links: ImageMarkerLink[]) => void,
-  options: UseCADAutoBackupOptions = {}
+  options: UseCADAutoBackupOptions = {},
 ) {
   const {
     enabled = true,
@@ -124,7 +175,7 @@ export function useCADAutoBackup(
   const lastSavedHashRef = useRef<string>("");
   const previousGeometryCountRef = useRef<number>(0);
   const isRestoringRef = useRef(false);
-  
+
   const [state, setState] = useState<AutoBackupState>({
     lastBackupTime: null,
     backupCount: 0,
@@ -133,20 +184,31 @@ export function useCADAutoBackup(
   });
 
   // Calculer un hash simple pour détecter les changements
-  const computeHash = useCallback((sketch: Sketch): string => {
+  // FIX #86: Inclure aussi les images de fond et les points de calibration
+  const computeHash = useCallback((sketch: Sketch, images: BackgroundImage[]): string => {
     const geoCount = sketch.geometries.size;
     const pointCount = sketch.points.size;
     const geoIds = Array.from(sketch.geometries.keys()).sort().join(",");
-    return `${geoCount}:${pointCount}:${geoIds.slice(0, 100)}`;
+
+    // Ajouter les infos des images et calibration au hash
+    const imageHash = images
+      .map((img) => {
+        const calibPointCount = img.calibrationData?.points?.size || 0;
+        const calibPairCount = img.calibrationData?.pairs?.size || 0;
+        const calibApplied = img.calibrationData?.applied ? 1 : 0;
+        return `${img.id}:${img.scale.toFixed(2)}:${calibPointCount}:${calibPairCount}:${calibApplied}`;
+      })
+      .join("|");
+
+    return `${geoCount}:${pointCount}:${geoIds.slice(0, 100)}|img:${imageHash}`;
   }, []);
 
   // Logger un événement dans Supabase (pour debug)
-  const logEvent = useCallback(async (
-    eventType: string,
-    details: Record<string, unknown>
-  ) => {
+  const logEvent = useCallback(async (eventType: string, details: Record<string, unknown>) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
       await supabaseAny.from("cad_autobackup_logs").insert({
@@ -165,79 +227,100 @@ export function useCADAutoBackup(
   }, []);
 
   // Sauvegarder le sketch dans Supabase
-  const saveBackup = useCallback(async (force = false): Promise<boolean> => {
-    if (!enabled || isRestoringRef.current) return false;
+  const saveBackup = useCallback(
+    async (force = false): Promise<boolean> => {
+      if (!enabled || isRestoringRef.current) return false;
 
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.log("[AutoBackup] No user logged in, skipping backup");
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) {
+          console.log("[AutoBackup] No user logged in, skipping backup");
+          return false;
+        }
+
+        const geometryCount = sketch.geometries.size;
+        const pointCount = sketch.points.size;
+
+        // FIX #86: Compter aussi les images de fond et les points de calibration
+        const imageCount = backgroundImages.length;
+        const calibrationPointCount = backgroundImages.reduce((acc, img) => {
+          return acc + (img.calibrationData?.points?.size || 0);
+        }, 0);
+        const hasSignificantContent = geometryCount >= minGeometryCount || imageCount > 0 || calibrationPointCount > 0;
+
+        // Ne pas sauvegarder si pas de contenu significatif (sauf si forcé)
+        if (!force && !hasSignificantContent) {
+          console.log(
+            `[AutoBackup] Skipping - only ${geometryCount} geometries, ${imageCount} images, ${calibrationPointCount} calib points`,
+          );
+          return false;
+        }
+
+        // Vérifier si quelque chose a changé
+        const currentHash = computeHash(sketch, backgroundImages);
+        if (!force && currentHash === lastSavedHashRef.current) {
+          console.log("[AutoBackup] No changes detected, skipping");
+          return false;
+        }
+
+        const serializedSketch = serializeSketchForBackup(sketch);
+        const serializedImages = serializeBackgroundImages(backgroundImages);
+
+        const { error } = await supabaseAny.from("cad_autobackups").insert({
+          user_id: user.id,
+          session_id: sessionId.current,
+          template_id: templateId || null,
+          sketch_data: serializedSketch,
+          background_images: serializedImages,
+          marker_links: markerLinks,
+          geometry_count: geometryCount,
+          point_count: pointCount,
+        });
+
+        if (error) {
+          console.error("[AutoBackup] Failed to save:", error);
+          return false;
+        }
+
+        lastSavedHashRef.current = currentHash;
+        previousGeometryCountRef.current = geometryCount;
+
+        setState((prev) => ({
+          ...prev,
+          lastBackupTime: Date.now(),
+          backupCount: prev.backupCount + 1,
+        }));
+
+        // FIX #86: Log amélioré avec images et calibration
+        console.log(
+          `[AutoBackup] Saved successfully: ${geometryCount} geometries, ${pointCount} points, ${imageCount} images, ${calibrationPointCount} calib points`,
+        );
+
+        await logEvent("backup_created", {
+          geometryCount,
+          pointCount,
+          imageCount,
+          calibrationPointCount,
+          hash: currentHash,
+        });
+
+        return true;
+      } catch (error) {
+        console.error("[AutoBackup] Error saving backup:", error);
         return false;
       }
-
-      const geometryCount = sketch.geometries.size;
-      const pointCount = sketch.points.size;
-
-      // Ne pas sauvegarder si pas assez de géométries (sauf si forcé)
-      if (!force && geometryCount < minGeometryCount) {
-        console.log(`[AutoBackup] Skipping - only ${geometryCount} geometries`);
-        return false;
-      }
-
-      // Vérifier si quelque chose a changé
-      const currentHash = computeHash(sketch);
-      if (!force && currentHash === lastSavedHashRef.current) {
-        console.log("[AutoBackup] No changes detected, skipping");
-        return false;
-      }
-
-      const serializedSketch = serializeSketchForBackup(sketch);
-      const serializedImages = serializeBackgroundImages(backgroundImages);
-
-      const { error } = await supabaseAny.from("cad_autobackups").insert({
-        user_id: user.id,
-        session_id: sessionId.current,
-        template_id: templateId || null,
-        sketch_data: serializedSketch,
-        background_images: serializedImages,
-        marker_links: markerLinks,
-        geometry_count: geometryCount,
-        point_count: pointCount,
-      });
-
-      if (error) {
-        console.error("[AutoBackup] Failed to save:", error);
-        return false;
-      }
-
-      lastSavedHashRef.current = currentHash;
-      previousGeometryCountRef.current = geometryCount;
-      
-      setState(prev => ({
-        ...prev,
-        lastBackupTime: Date.now(),
-        backupCount: prev.backupCount + 1,
-      }));
-
-      console.log(`[AutoBackup] Saved successfully: ${geometryCount} geometries, ${pointCount} points`);
-      
-      await logEvent("backup_created", {
-        geometryCount,
-        pointCount,
-        hash: currentHash,
-      });
-
-      return true;
-    } catch (error) {
-      console.error("[AutoBackup] Error saving backup:", error);
-      return false;
-    }
-  }, [enabled, sketch, backgroundImages, markerLinks, templateId, minGeometryCount, computeHash, logEvent]);
+    },
+    [enabled, sketch, backgroundImages, markerLinks, templateId, minGeometryCount, computeHash, logEvent],
+  );
 
   // Récupérer le dernier backup valide
   const getLatestBackup = useCallback(async (): Promise<CADAutoBackupRow | null> => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return null;
 
       const { data, error } = await supabaseAny
@@ -262,78 +345,104 @@ export function useCADAutoBackup(
   }, []);
 
   // Restaurer depuis un backup
-  const restoreFromBackup = useCallback(async (showToast = true): Promise<boolean> => {
-    if (isRestoringRef.current) return false;
-    
-    isRestoringRef.current = true;
-    setState(prev => ({ ...prev, isRestoring: true }));
+  const restoreFromBackup = useCallback(
+    async (showToast = true): Promise<boolean> => {
+      if (isRestoringRef.current) return false;
 
-    try {
-      const backup = await getLatestBackup();
-      
-      if (!backup || !backup.sketch_data) {
-        console.log("[AutoBackup] No valid backup to restore");
-        if (showToast) toast.error("Aucune sauvegarde disponible");
-        return false;
-      }
+      isRestoringRef.current = true;
+      setState((prev) => ({ ...prev, isRestoring: true }));
 
-      // Vérifier que le backup a du contenu
-      const backupGeoCount = backup.geometry_count || 0;
-      if (backupGeoCount < minGeometryCount) {
-        console.log("[AutoBackup] Backup has no significant content");
-        if (showToast) toast.error("La sauvegarde est vide");
-        return false;
-      }
+      try {
+        const backup = await getLatestBackup();
 
-      console.log(`[AutoBackup] Restoring backup: ${backupGeoCount} geometries`);
+        if (!backup || !backup.sketch_data) {
+          console.log("[AutoBackup] No valid backup to restore");
+          if (showToast) toast.error("Aucune sauvegarde disponible");
+          return false;
+        }
 
-      // Restaurer le sketch
-      loadSketchData(backup.sketch_data);
+        // FIX #86: Vérifier que le backup a du contenu (géométries OU images OU points de calibration)
+        const backupGeoCount = backup.geometry_count || 0;
+        // Désérialiser les images pour avoir les Maps correctes
+        const backupImages =
+          backup.background_images && Array.isArray(backup.background_images)
+            ? deserializeBackgroundImages(backup.background_images)
+            : [];
+        const backupImageCount = backupImages.length;
+        const backupCalibPointCount = backupImages.reduce((acc, img) => {
+          return acc + (img.calibrationData?.points?.size || 0);
+        }, 0);
 
-      // Restaurer les images de fond (sans HTMLImageElement - sera rechargé par le composant)
-      if (backup.background_images && Array.isArray(backup.background_images)) {
-        setBackgroundImages(backup.background_images as BackgroundImage[]);
-      }
+        const hasContent = backupGeoCount >= minGeometryCount || backupImageCount > 0 || backupCalibPointCount > 0;
 
-      // Restaurer les liens de marqueurs
-      if (backup.marker_links && Array.isArray(backup.marker_links)) {
-        setMarkerLinks(backup.marker_links as ImageMarkerLink[]);
-      }
+        if (!hasContent) {
+          console.log("[AutoBackup] Backup has no significant content");
+          if (showToast) toast.error("La sauvegarde est vide");
+          return false;
+        }
 
-      // Mettre à jour les refs pour éviter de re-sauvegarder immédiatement
-      lastSavedHashRef.current = computeHash(sketch);
-      previousGeometryCountRef.current = backupGeoCount;
+        console.log(
+          `[AutoBackup] Restoring backup: ${backupGeoCount} geometries, ${backupImageCount} images, ${backupCalibPointCount} calib points`,
+        );
 
-      setState(prev => ({
-        ...prev,
-        isRestoring: false,
-        hasRestoredThisSession: true,
-      }));
+        // Restaurer le sketch
+        loadSketchData(backup.sketch_data);
 
-      await logEvent("restored", {
-        backupId: backup.id,
-        geometryCount: backupGeoCount,
-        pointCount: backup.point_count,
-        backupAge: Date.now() - new Date(backup.created_at).getTime(),
-      });
+        // FIX #86: Restaurer les images de fond avec calibrationData désérialisé
+        if (backupImages.length > 0) {
+          setBackgroundImages(backupImages);
+        }
 
-      if (showToast) {
-        toast.success(`Canvas restauré (${backupGeoCount} éléments)`, {
-          description: "Sauvegarde automatique récupérée",
-          duration: 5000,
+        // Restaurer les liens de marqueurs
+        if (backup.marker_links && Array.isArray(backup.marker_links)) {
+          setMarkerLinks(backup.marker_links as ImageMarkerLink[]);
+        }
+
+        // FIX #86: Mettre à jour les refs pour éviter de re-sauvegarder immédiatement
+        lastSavedHashRef.current = computeHash(sketch, backupImages);
+        previousGeometryCountRef.current = backupGeoCount;
+
+        setState((prev) => ({
+          ...prev,
+          isRestoring: false,
+          hasRestoredThisSession: true,
+        }));
+
+        await logEvent("restored", {
+          backupId: backup.id,
+          geometryCount: backupGeoCount,
+          pointCount: backup.point_count,
+          backupAge: Date.now() - new Date(backup.created_at).getTime(),
         });
-      }
 
-      return true;
-    } catch (error) {
-      console.error("[AutoBackup] Error restoring:", error);
-      if (showToast) toast.error("Erreur lors de la restauration");
-      return false;
-    } finally {
-      isRestoringRef.current = false;
-      setState(prev => ({ ...prev, isRestoring: false }));
-    }
-  }, [getLatestBackup, loadSketchData, setBackgroundImages, setMarkerLinks, minGeometryCount, computeHash, logEvent, sketch]);
+        if (showToast) {
+          toast.success(`Canvas restauré (${backupGeoCount} éléments)`, {
+            description: "Sauvegarde automatique récupérée",
+            duration: 5000,
+          });
+        }
+
+        return true;
+      } catch (error) {
+        console.error("[AutoBackup] Error restoring:", error);
+        if (showToast) toast.error("Erreur lors de la restauration");
+        return false;
+      } finally {
+        isRestoringRef.current = false;
+        setState((prev) => ({ ...prev, isRestoring: false }));
+      }
+    },
+    [
+      getLatestBackup,
+      loadSketchData,
+      setBackgroundImages,
+      setMarkerLinks,
+      minGeometryCount,
+      computeHash,
+      logEvent,
+      sketch,
+    ],
+  );
 
   // Détecter la perte de données et restaurer automatiquement
   useEffect(() => {
@@ -345,7 +454,7 @@ export function useCADAutoBackup(
     // Détecter une perte brutale : beaucoup d'éléments -> 0
     if (previousGeoCount >= 3 && currentGeoCount === 0) {
       console.warn(`[AutoBackup] ⚠️ LOSS DETECTED: ${previousGeoCount} -> ${currentGeoCount} geometries`);
-      
+
       // Logger l'événement de perte
       logEvent("loss_detected", {
         previousCount: previousGeoCount,
@@ -402,7 +511,7 @@ export function useCADAutoBackup(
 
     const checkAndRestoreOnMount = async () => {
       // Attendre un peu pour laisser le composant s'initialiser
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Si le canvas est toujours vide, vérifier s'il y a un backup récent
       if (sketch.geometries.size === 0) {
@@ -434,16 +543,14 @@ export function useCADAutoBackup(
     backupCount: state.backupCount,
     isRestoring: state.isRestoring,
     sessionId: sessionId.current,
-    
+
     // Actions
     saveBackup,
     restoreFromBackup,
     getLatestBackup,
-    
+
     // Pour affichage dans l'UI
-    formattedLastBackup: state.lastBackupTime
-      ? new Date(state.lastBackupTime).toLocaleTimeString("fr-FR")
-      : null,
+    formattedLastBackup: state.lastBackupTime ? new Date(state.lastBackupTime).toLocaleTimeString("fr-FR") : null,
   };
 }
 
