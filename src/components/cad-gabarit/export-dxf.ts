@@ -134,4 +134,38 @@ function exportCircle(circle: CircleType, sketch: Sketch, scale: number): string
 
 function exportArc(arc: Arc, sketch: Sketch, scale: number): string {
   const center = sketch.points.get(arc.center);
-  const startPt
+  const startPt = sketch.points.get(arc.startPoint);
+  const endPt = sketch.points.get(arc.endPoint);
+
+  if (!center || !startPt || !endPt) return "";
+
+  const cx = (center.x / scale).toFixed(4);
+  const cy = (-center.y / scale).toFixed(4);
+  const r = (arc.radius / scale).toFixed(4);
+
+  let startAngle = (Math.atan2(-(startPt.y - center.y), startPt.x - center.x) * 180) / Math.PI;
+  let endAngle = (Math.atan2(-(endPt.y - center.y), endPt.x - center.x) * 180) / Math.PI;
+
+  if (arc.counterClockwise === false) {
+    const temp = startAngle;
+    startAngle = endAngle;
+    endAngle = temp;
+  }
+
+  while (startAngle < 0) startAngle += 360;
+  while (endAngle < 0) endAngle += 360;
+
+  let dxf = "";
+  dxf += "0\nARC\n";
+  dxf += "8\n0\n";
+  dxf += `10\n${cx}\n`;
+  dxf += `20\n${cy}\n`;
+  dxf += "30\n0.0\n";
+  dxf += `40\n${r}\n`;
+  dxf += `50\n${startAngle.toFixed(4)}\n`;
+  dxf += `51\n${endAngle.toFixed(4)}\n`;
+
+  return dxf;
+}
+
+export default exportToDXF;
