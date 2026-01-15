@@ -85,7 +85,8 @@ function serializeBackgroundImages(images: BackgroundImage[]): unknown[] {
   return images.map((img) => ({
     id: img.id,
     name: img.name,
-    src: img.src,
+    // FIX #86b: Utiliser img.src ou img.image.src comme fallback
+    src: img.src || img.image?.src || null,
     x: img.x,
     y: img.y,
     scale: img.scale,
@@ -97,6 +98,7 @@ function serializeBackgroundImages(images: BackgroundImage[]): unknown[] {
     adjustments: img.adjustments,
     layerId: img.layerId,
     order: img.order,
+    crop: img.crop,
     // FIX #86: Sérialiser calibrationData (Map → Array pour JSON)
     calibrationData: img.calibrationData
       ? {
@@ -118,13 +120,40 @@ function serializeBackgroundImages(images: BackgroundImage[]): unknown[] {
 }
 
 // FIX #86: Désérialiser les images de fond (reconvertir Arrays en Maps)
-function deserializeBackgroundImages(images: unknown[]): BackgroundImage[] {
-  return images.map((imgData: unknown) => {
+// FIX #86b: Charger les HTMLImageElement de façon asynchrone
+async function deserializeBackgroundImages(images: unknown[]): Promise<BackgroundImage[]> {
+  const loadedImages: BackgroundImage[] = [];
+
+  for (const imgData of images) {
     const img = imgData as Record<string, unknown>;
     const calibData = img.calibrationData as Record<string, unknown> | undefined;
 
-    return {
+    // Charger l'HTMLImageElement depuis le src
+    const src = img.src as string | undefined;
+    let htmlImage: HTMLImageElement | null = null;
+
+    if (src) {
+      try {
+        htmlImage = await new Promise<HTMLImageElement>((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = () => reject(new Error(`Failed to load image: ${img.name}`));
+          image.src = src;
+        });
+      } catch (error) {
+        console.error("[AutoBackup] Failed to load image:", img.name, error);
+        // Continuer sans cette image
+        continue;
+      }
+    } else {
+      console.warn("[AutoBackup] Image without src, skipping:", img.name);
+      continue;
+    }
+
+    loadedImages.push({
       ...img,
+      image: htmlImage,
+      src: src,
       // Reconvertir calibrationData si présent
       calibrationData: calibData
         ? {
@@ -147,8 +176,10 @@ function deserializeBackgroundImages(images: unknown[]): BackgroundImage[] {
                 : new Map(),
           }
         : undefined,
-    } as BackgroundImage;
-  });
+    } as BackgroundImage);
+  }
+
+  return loadedImages;
 }
 
 // Client Supabase non typé pour les nouvelles tables
@@ -363,10 +394,10 @@ export function useCADAutoBackup(
 
         // FIX #86: Vérifier que le backup a du contenu (géométries OU images OU points de calibration)
         const backupGeoCount = backup.geometry_count || 0;
-        // Désérialiser les images pour avoir les Maps correctes
+        // FIX #86b: Désérialiser les images de façon asynchrone (charge les HTMLImageElement)
         const backupImages =
           backup.background_images && Array.isArray(backup.background_images)
-            ? deserializeBackgroundImages(backup.background_images)
+            ? await deserializeBackgroundImages(backup.background_images)
             : [];
         const backupImageCount = backupImages.length;
         const backupCalibPointCount = backupImages.reduce((acc, img) => {
@@ -444,7 +475,10 @@ export function useCADAutoBackup(
     ],
   );
 
-  // Détecter la perte de données et restaurer automatiquement
+  // FIX #86b: Désactivé - la restauration automatique causait des problèmes
+  // quand l'utilisateur supprimait volontairement des éléments
+  // La restauration manuelle reste disponible via le bouton
+  /*
   useEffect(() => {
     if (!enabled || isRestoringRef.current || state.isRestoring) return;
 
@@ -454,7 +488,7 @@ export function useCADAutoBackup(
     // Détecter une perte brutale : beaucoup d'éléments -> 0
     if (previousGeoCount >= 3 && currentGeoCount === 0) {
       console.warn(`[AutoBackup] ⚠️ LOSS DETECTED: ${previousGeoCount} -> ${currentGeoCount} geometries`);
-
+      
       // Logger l'événement de perte
       logEvent("loss_detected", {
         previousCount: previousGeoCount,
@@ -474,6 +508,13 @@ export function useCADAutoBackup(
     // Mettre à jour le compteur précédent
     previousGeometryCountRef.current = currentGeoCount;
   }, [enabled, sketch.geometries.size, state.isRestoring, logEvent, restoreFromBackup]);
+  */
+
+  // Simplement mettre à jour le compteur sans restauration automatique
+  useEffect(() => {
+    if (!enabled || isRestoringRef.current) return;
+    previousGeometryCountRef.current = sketch.geometries.size;
+  }, [enabled, sketch.geometries.size]);
 
   // Sauvegarde périodique
   useEffect(() => {

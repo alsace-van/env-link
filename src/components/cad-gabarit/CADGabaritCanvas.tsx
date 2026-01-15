@@ -4691,6 +4691,8 @@ export function CADGabaritCanvas({
                 id: generateId(),
                 name: file.name,
                 image: img,
+                // FIX #86b: Stocker le src pour permettre la restauration depuis AutoBackup
+                src: img.src,
                 x: position.x,
                 y: position.y,
                 scale: 1,
