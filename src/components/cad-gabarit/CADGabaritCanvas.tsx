@@ -7874,6 +7874,9 @@ export function CADGabaritCanvas({
 
       for (const bgImage of sortedImages) {
         const imageToDraw = bgImage.transformedCanvas || bgImage.image;
+        // FIX #85c: Vérifier que l'image existe
+        if (!imageToDraw) continue;
+
         const width = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.width : imageToDraw.width;
         const height = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.height : imageToDraw.height;
         const scaledWidth = width * bgImage.scale;
@@ -14708,6 +14711,8 @@ export function CADGabaritCanvas({
       if (!a4CutMode) {
         for (const img of backgroundImages) {
           if (!img.visible) continue;
+          // FIX #85c: Vérifier que l'image existe
+          if (!img.image) continue;
 
           // Vérifier si l'image intersecte cette cellule
           const imgWidth = img.image.width * img.scale;
@@ -15013,6 +15018,9 @@ export function CADGabaritCanvas({
       if (!a4CutMode) {
         for (const img of backgroundImages) {
           if (!img.visible) continue;
+          // FIX #85c: Vérifier que l'image existe
+          if (!img.image) continue;
+
           const imgWidth = img.image.width * img.scale;
           const imgHeight = img.image.height * img.scale;
           const imgMinX = img.x - imgWidth / 2;
@@ -15246,6 +15254,9 @@ export function CADGabaritCanvas({
     // Parcourir les images de fond
     backgroundImages.forEach((img) => {
       if (!img.visible) return;
+      // FIX #85c: Vérifier que l'image existe
+      if (!img.image) return;
+
       const imgWidth = img.image.width * img.scale;
       const imgHeight = img.image.height * img.scale;
       minX = Math.min(minX, img.x - imgWidth / 2);

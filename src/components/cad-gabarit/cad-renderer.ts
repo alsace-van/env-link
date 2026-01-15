@@ -743,6 +743,12 @@ export class CADRenderer {
       // car les ajustements sont appliqués sur le canvas le plus récent (crop inclus)
       const imageToDraw = bgImage.adjustedCanvas || bgImage.croppedCanvas || bgImage.transformedCanvas || bgImage.image;
 
+      // FIX #85c: Vérifier que l'image existe avant de la dessiner
+      if (!imageToDraw) {
+        this.ctx.restore();
+        continue;
+      }
+
       const width = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.width : imageToDraw.width;
       const height = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.height : imageToDraw.height;
 
