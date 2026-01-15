@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.13 - Fix bug calibration: scale ajusté après redimensionnement image
+// VERSION: 7.14 - Auto-backup Supabase pour protection contre les pertes de données
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -104,6 +104,9 @@ import {
   GripVertical,
   ArrowRight,
   Printer,
+  Cloud,
+  CloudOff,
+  RefreshCw,
 } from "lucide-react";
 
 import {
@@ -186,6 +189,9 @@ import { ToolbarEditor } from "./ToolbarEditor";
 
 // MOD v80.12: Modale d'impression avec duplication
 import { PrintPreviewModal } from "./PrintPreviewModal";
+
+// MOD v7.14: Auto-backup sur Supabase pour protection contre les pertes
+import { useCADAutoBackup } from "./useCADAutoBackup";
 
 interface CADGabaritCanvasProps {
   imageUrl?: string;
@@ -3734,6 +3740,24 @@ export function CADGabaritCanvas({
 
     return data;
   }, [sketch, onSave, a4GridOrigin, a4GridOrientation, a4GridRows, a4GridCols, a4OverlapMm, a4CutMode]);
+
+  // ============================================
+  // MOD v7.14: AUTO-BACKUP SUPABASE
+  // Protection contre les pertes de données spontanées
+  // ============================================
+  const {
+    lastBackupTime: autoBackupLastTime,
+    backupCount: autoBackupCount,
+    isRestoring: autoBackupIsRestoring,
+    saveBackup: autoBackupSave,
+    restoreFromBackup: autoBackupRestore,
+    formattedLastBackup: autoBackupFormatted,
+  } = useCADAutoBackup(sketch, backgroundImages, markerLinks, loadSketchData, setBackgroundImages, setMarkerLinks, {
+    enabled: true,
+    intervalMs: 30000, // Sauvegarde toutes les 30 secondes
+    minGeometryCount: 1, // Sauvegarder dès qu'il y a au moins 1 géométrie
+    templateId,
+  });
 
   // Résoudre le sketch
   const solveSketch = useCallback(async (sketchToSolve: Sketch) => {
@@ -15775,6 +15799,59 @@ export function CADGabaritCanvas({
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Sauvegarder (Ctrl+S)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              {/* MOD v7.14: Indicateur Auto-backup Supabase */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-1">
+                      {autoBackupIsRestoring ? (
+                        <RefreshCw className="h-3.5 w-3.5 text-amber-500 animate-spin" />
+                      ) : autoBackupLastTime ? (
+                        <Cloud className="h-3.5 w-3.5 text-green-500" />
+                      ) : (
+                        <CloudOff className="h-3.5 w-3.5 text-gray-400" />
+                      )}
+                      {autoBackupFormatted && <span className="text-[10px] text-gray-500">{autoBackupFormatted}</span>}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <div className="text-xs">
+                      <p className="font-medium">Auto-backup Supabase</p>
+                      {autoBackupIsRestoring ? (
+                        <p className="text-amber-500">Restauration en cours...</p>
+                      ) : autoBackupLastTime ? (
+                        <>
+                          <p className="text-green-500">Dernière sauvegarde: {autoBackupFormatted}</p>
+                          <p className="text-gray-400">{autoBackupCount} backups cette session</p>
+                        </>
+                      ) : (
+                        <p className="text-gray-400">En attente de contenu...</p>
+                      )}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              {/* Bouton restauration manuelle */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => autoBackupRestore(true)}
+                      disabled={autoBackupIsRestoring || !autoBackupLastTime}
+                      className="h-7 w-7 p-0"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${autoBackupIsRestoring ? "animate-spin" : ""}`} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Restaurer dernière sauvegarde</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
