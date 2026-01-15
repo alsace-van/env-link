@@ -103,6 +103,7 @@ import {
   Maximize2,
   GripVertical,
   ArrowRight,
+  Printer,
 } from "lucide-react";
 
 import {
@@ -182,6 +183,9 @@ import { TemplateLibrary } from "./TemplateLibrary";
 import { useToolbarConfig } from "./useToolbarConfig";
 import { ToolbarEditor } from "./ToolbarEditor";
 // Note: InlineToolbarEditor n'est plus utilisé - le drag & drop est intégré directement
+
+// MOD v80.12: Modale d'impression avec duplication
+import { PrintPreviewModal } from "./PrintPreviewModal";
 
 interface CADGabaritCanvasProps {
   imageUrl?: string;
@@ -703,6 +707,8 @@ export function CADGabaritCanvas({
   const [showCalibrationPanel, setShowCalibrationPanel] = useState(false);
   const [showAdjustmentsDialog, setShowAdjustmentsDialog] = useState(false);
   const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
+  // MOD v80.13: Modale d'impression avec duplication
+  const [showPrintDialog, setShowPrintDialog] = useState(false);
 
   // ============================================
   // NOUVEAU SYSTÈME DE TOOLBAR CONFIGURABLE (v7.11)
@@ -9075,7 +9081,7 @@ export function CADGabaritCanvas({
               setSelectedEntities(new Set());
               return;
             }
-
+            
             // Clic simple : sélection unique (efface la multi-sélection)
             setSelectedImageId(clickedImage.id);
             setSelectedImageIds(new Set()); // Effacer la multi-sélection
@@ -15868,6 +15874,26 @@ export function CADGabaritCanvas({
               <span className="text-xs">PDF</span>
             </Button>
           )}
+
+          {/* MOD v80.14: Bouton impression directe avec duplication */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowPrintDialog(true)}
+                  className="h-9 px-2"
+                >
+                  <Printer className="h-4 w-4 mr-1" />
+                  <span className="text-xs">Imprimer</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Impression directe avec duplication de motifs</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
           {/* Bibliothèque de templates */}
           {toolbarConfig.line1.templates && (
@@ -23030,6 +23056,17 @@ export function CADGabaritCanvas({
         currentSketch={sketch}
         onLoadTemplate={handleLoadTemplate}
         onGenerateThumbnail={generateThumbnail}
+      />
+
+      {/* MOD v80.15: Modale d'impression avec duplication de motifs */}
+      <PrintPreviewModal
+        isOpen={showPrintDialog}
+        onClose={() => setShowPrintDialog(false)}
+        canvasRef={canvasRef}
+        contentWidth={canvasRef.current ? (canvasRef.current.width / viewport.scale) / sketch.scaleFactor : 100}
+        contentHeight={canvasRef.current ? (canvasRef.current.height / viewport.scale) / sketch.scaleFactor : 100}
+        showGrid={showGrid}
+        showDimensions={showDimensions}
       />
 
       {/* Éditeur de toolbar configurable (drag & drop) */}
