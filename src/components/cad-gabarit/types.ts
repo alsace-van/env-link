@@ -485,8 +485,16 @@ export interface DistortionCoefficients {
 export interface CalibrationData {
   points: Map<string, CalibrationPoint>;
   pairs: Map<string, CalibrationPair>;
-  scale?: number; // mm par pixel (calculé) - pour mode simple
+  scale?: number; // mm par pixel (calculé) - moyenne pour rétrocompatibilité
   error?: number; // Erreur moyenne en %
+  // MOD #85: Calibration anisotrope (scaleX et scaleY séparés)
+  scaleX?: number; // mm par pixel horizontal (paires où |Δx| > |Δy|)
+  scaleY?: number; // mm par pixel vertical (paires où |Δy| > |Δx|)
+  errorX?: number; // Erreur X en %
+  errorY?: number; // Erreur Y en %
+  // MOD #85: Points originaux pour reset
+  originalPoints?: Map<string, CalibrationPoint>;
+  originalImageScale?: number; // Échelle image avant calibration
   applied: boolean; // Si la calibration a été appliquée
   // Mode perspective (correction de déformation)
   mode: "simple" | "perspective" | "checkerboard";

@@ -13270,6 +13270,7 @@ export function CADGabaritCanvas({
   );
 
   // Calculer l'échelle à partir des paires (utilise l'image sélectionnée)
+  // MOD #85: Calibration anisotrope - calcule scaleX et scaleY séparément
   const calculateCalibration = useCallback(() => {
     const imgCalib = getSelectedImageCalibration();
     if (imgCalib.pairs.size === 0) {
@@ -13277,69 +13278,123 @@ export function CADGabaritCanvas({
       return;
     }
 
-    let totalScale = 0;
-    let count = 0;
+    // Séparer les paires par orientation
+    let totalScaleX = 0;
+    let countX = 0;
+    let totalScaleY = 0;
+    let countY = 0;
 
     imgCalib.pairs.forEach((pair) => {
       const p1 = imgCalib.points.get(pair.point1Id);
       const p2 = imgCalib.points.get(pair.point2Id);
       if (p1 && p2 && pair.distanceMm > 0) {
+        const dx = Math.abs(p2.x - p1.x);
+        const dy = Math.abs(p2.y - p1.y);
         const distPx = distance(p1, p2);
         const scale = pair.distanceMm / distPx;
-        totalScale += scale;
-        count++;
+
+        // Paire horizontale si |Δx| > |Δy|, sinon verticale
+        if (dx > dy) {
+          // Paire principalement horizontale → contribue à scaleX
+          totalScaleX += scale;
+          countX++;
+        } else {
+          // Paire principalement verticale → contribue à scaleY
+          totalScaleY += scale;
+          countY++;
+        }
       }
     });
 
-    if (count === 0) {
+    if (countX === 0 && countY === 0) {
       toast.error("Aucune paire valide");
       return;
     }
 
-    const avgScale = totalScale / count;
+    // Calculer les échelles (fallback sur l'autre axe si pas de paires)
+    const scaleX = countX > 0 ? totalScaleX / countX : countY > 0 ? totalScaleY / countY : 1 / sketch.scaleFactor;
+    const scaleY = countY > 0 ? totalScaleY / countY : countX > 0 ? totalScaleX / countX : 1 / sketch.scaleFactor;
+    const avgScale = (scaleX + scaleY) / 2;
 
-    // Calculer l'erreur moyenne
-    let totalError = 0;
+    // Calculer les erreurs par axe
+    let totalErrorX = 0;
+    let totalErrorY = 0;
+    let errorCountX = 0;
+    let errorCountY = 0;
+
     imgCalib.pairs.forEach((pair) => {
       const p1 = imgCalib.points.get(pair.point1Id);
       const p2 = imgCalib.points.get(pair.point2Id);
-      if (p1 && p2) {
+      if (p1 && p2 && pair.distanceMm > 0) {
+        const dx = Math.abs(p2.x - p1.x);
+        const dy = Math.abs(p2.y - p1.y);
         const distPx = distance(p1, p2);
-        const calculatedMm = distPx * avgScale;
-        const error = (Math.abs(calculatedMm - pair.distanceMm) / pair.distanceMm) * 100;
-        totalError += error;
+
+        if (dx > dy) {
+          const calculatedMm = distPx * scaleX;
+          const error = (Math.abs(calculatedMm - pair.distanceMm) / pair.distanceMm) * 100;
+          totalErrorX += error;
+          errorCountX++;
+        } else {
+          const calculatedMm = distPx * scaleY;
+          const error = (Math.abs(calculatedMm - pair.distanceMm) / pair.distanceMm) * 100;
+          totalErrorY += error;
+          errorCountY++;
+        }
       }
     });
-    const avgError = totalError / count;
+
+    const errorX = errorCountX > 0 ? totalErrorX / errorCountX : 0;
+    const errorY = errorCountY > 0 ? totalErrorY / errorCountY : 0;
+    const avgError = (errorX * errorCountX + errorY * errorCountY) / (errorCountX + errorCountY || 1);
 
     // Mettre à jour la calibration de l'image
     updateSelectedImageCalibration((prev) => ({
       ...prev,
       scale: avgScale,
+      scaleX: scaleX,
+      scaleY: scaleY,
       error: avgError,
+      errorX: errorX,
+      errorY: errorY,
     }));
 
     // IMPORTANT: Aussi mettre à jour calibrationData.scale pour activer le bouton "Appliquer"
     setCalibrationData((prev) => ({
       ...prev,
       scale: avgScale,
+      scaleX: scaleX,
+      scaleY: scaleY,
+      error: avgError,
+      errorX: errorX,
+      errorY: errorY,
     }));
 
-    toast.success(`Échelle calculée : ${avgScale.toFixed(4)} mm/px (erreur : ${avgError.toFixed(1)}%)`);
-  }, [getSelectedImageCalibration, updateSelectedImageCalibration]);
+    // Message différent selon si anisotrope ou pas
+    const isAnisotrope = Math.abs(scaleX - scaleY) / avgScale > 0.02; // >2% de différence
+    if (isAnisotrope) {
+      toast.success(
+        `Échelle anisotrope: X=${scaleX.toFixed(4)} mm/px (${countX} paires), Y=${scaleY.toFixed(4)} mm/px (${countY} paires)`,
+      );
+    } else {
+      toast.success(`Échelle: ${avgScale.toFixed(4)} mm/px (erreur: ${avgError.toFixed(1)}%)`);
+    }
+  }, [getSelectedImageCalibration, updateSelectedImageCalibration, sketch.scaleFactor]);
 
   // Appliquer la calibration au sketch
+  // MOD #85: Transforme aussi les points pour qu'ils suivent le redimensionnement de l'image
   const applyCalibration = useCallback(async () => {
     // Récupérer les données de calibration de l'image sélectionnée
     const imgCalib = getSelectedImageCalibration();
     const selectedImage = getSelectedImage();
 
-    // Mode simple : échelle uniforme
+    // Mode simple : échelle uniforme ou anisotrope
     if (calibrationData.mode === "simple" || !calibrationData.mode) {
-      // Utiliser l'échelle de l'image sélectionnée ou celle globale
-      const scale = imgCalib.scale || calibrationData.scale;
+      // Utiliser scaleX/scaleY si disponible, sinon scale moyen
+      const scaleX = imgCalib.scaleX || imgCalib.scale || calibrationData.scaleX || calibrationData.scale;
+      const scaleY = imgCalib.scaleY || imgCalib.scale || calibrationData.scaleY || calibrationData.scale;
 
-      if (!scale) {
+      if (!scaleX || !scaleY) {
         toast.error("Calculez d'abord la calibration");
         return;
       }
@@ -13349,15 +13404,38 @@ export function CADGabaritCanvas({
         return;
       }
 
-      // Le scale est en mm/px (ex: 0.5 mm/px signifie 1 pixel = 0.5mm)
-      // sketch.scaleFactor est en px/mm (ex: 2.5 px/mm signifie 1mm = 2.5 pixels)
-      // Pour que les mesures soient correctes, l'image doit être mise à l'échelle :
-      // newImageScale = sketch.scaleFactor * scale
-      // Exemple: 2.5 px/mm * 0.5 mm/px = 1.25 (l'image doit être agrandie de 25%)
       const currentSketch = sketchRef.current;
-      const newImageScale = currentSketch.scaleFactor * scale;
 
-      // Mettre à jour l'échelle de l'image (pas le scaleFactor global)
+      // Calculer les nouvelles échelles de l'image
+      // Pour anisotrope : on utilise la moyenne pour l'affichage uniforme de l'image
+      // (le vrai anisotrope nécessiterait de déformer l'image, ce qui est complexe)
+      const avgScale = (scaleX + scaleY) / 2;
+      const newImageScale = currentSketch.scaleFactor * avgScale;
+
+      // MOD #85: Sauvegarder l'échelle originale de l'image et les points originaux
+      const oldImageScale = selectedImage.scale || 1;
+      const scaleFactor = newImageScale / oldImageScale;
+
+      // Centre de l'image (point de référence pour la transformation)
+      const imgCenterX = selectedImage.x;
+      const imgCenterY = selectedImage.y;
+
+      // Sauvegarder les points originaux (pour reset) et transformer les points
+      const originalPoints = new Map(imgCalib.points);
+      const transformedPoints = new Map<string, CalibrationPoint>();
+
+      imgCalib.points.forEach((point, id) => {
+        // Transformer le point : déplacer proportionnellement au changement d'échelle
+        const newX = imgCenterX + (point.x - imgCenterX) * scaleFactor;
+        const newY = imgCenterY + (point.y - imgCenterY) * scaleFactor;
+        transformedPoints.set(id, {
+          ...point,
+          x: newX,
+          y: newY,
+        });
+      });
+
+      // Mettre à jour l'image avec la nouvelle échelle ET les points transformés
       setBackgroundImages((prev) =>
         prev.map((img) => {
           if (img.id !== selectedImage.id) return img;
@@ -13366,29 +13444,37 @@ export function CADGabaritCanvas({
             scale: newImageScale,
             calibrationData: {
               ...(img.calibrationData || { points: new Map(), pairs: new Map(), mode: "simple" as const }),
-              scale: scale,
+              points: transformedPoints,
+              scale: avgScale,
+              scaleX: scaleX,
+              scaleY: scaleY,
+              // MOD #85: Sauvegarder pour reset
+              originalPoints: originalPoints,
+              originalImageScale: oldImageScale,
               applied: true as const,
             },
           };
         }),
       );
 
-      // FIX #84: APRÈS redimensionnement, le scale pour les mesures doit correspondre au scaleFactor du sketch
-      // car l'image a été mise à l'échelle pour matcher le sketch
-      // scale en mm/px = 1 / sketch.scaleFactor (px/mm)
-      // Exemple: sketch.scaleFactor = 10 px/mm → adjustedScale = 0.1 mm/px → 1px = 0.1mm
-      const adjustedScale = 1 / currentSketch.scaleFactor;
-
-      // Mettre à jour la calibration globale comme appliquée (pour l'affichage)
+      // Mettre à jour calibrationData avec les points transformés
       setCalibrationData((prev) => ({
         ...prev,
-        scale: adjustedScale,
+        points: transformedPoints,
+        originalPoints: originalPoints,
+        originalImageScale: oldImageScale,
+        scale: 1 / currentSketch.scaleFactor,
+        scaleX: 1 / currentSketch.scaleFactor,
+        scaleY: 1 / currentSketch.scaleFactor,
         applied: true,
       }));
 
-      toast.success(
-        `Calibration appliquée à l'image ! Échelle image: ${newImageScale.toFixed(2)}x (1px = ${(1 / currentSketch.scaleFactor).toFixed(3)}mm)`,
-      );
+      const isAnisotrope = Math.abs(scaleX - scaleY) / avgScale > 0.02;
+      if (isAnisotrope) {
+        toast.success(`Calibration anisotrope appliquée ! X=${scaleX.toFixed(4)}, Y=${scaleY.toFixed(4)} mm/px`);
+      } else {
+        toast.success(`Calibration appliquée ! Échelle: ${newImageScale.toFixed(2)}x`);
+      }
       return;
     }
 
@@ -13656,29 +13742,71 @@ export function CADGabaritCanvas({
   ]);
 
   // Réinitialiser la calibration
+  // MOD #85: Restaure les points originaux et l'échelle de l'image
   const resetCalibration = useCallback(() => {
-    if (calibrationData.applied) {
-      toast.info("Les coordonnées ont été converties. Suppression des points de calibration uniquement.");
+    const imgCalib = getSelectedImageCalibration();
+    const selectedImage = getSelectedImage();
+
+    // MOD #85: Restaurer l'état original si disponible
+    if (imgCalib.applied && imgCalib.originalPoints && imgCalib.originalImageScale !== undefined && selectedImage) {
+      // Restaurer les points originaux
+      const originalPoints = imgCalib.originalPoints;
+      const originalImageScale = imgCalib.originalImageScale;
+
+      // Mettre à jour l'image avec l'échelle originale et les points originaux
+      setBackgroundImages((prev) =>
+        prev.map((img) => {
+          if (img.id !== selectedImage.id) return img;
+          return {
+            ...img,
+            scale: originalImageScale,
+            calibrationData: {
+              ...(img.calibrationData || { points: new Map(), pairs: new Map(), mode: "simple" as const }),
+              points: originalPoints,
+              scale: undefined,
+              scaleX: undefined,
+              scaleY: undefined,
+              originalPoints: undefined,
+              originalImageScale: undefined,
+              applied: false,
+            },
+          };
+        }),
+      );
+
+      // Mettre à jour calibrationData
+      setCalibrationData((prev) => ({
+        ...prev,
+        points: originalPoints,
+        scale: undefined,
+        scaleX: undefined,
+        scaleY: undefined,
+        originalPoints: undefined,
+        originalImageScale: undefined,
+        applied: false,
+      }));
+
+      toast.success("Calibration annulée - image et points restaurés");
+    } else {
+      // Pas d'état original à restaurer, juste reset
+      setCalibrationData({
+        points: new Map(),
+        pairs: new Map(),
+        applied: false,
+        mode: "simple",
+      });
+      toast.success("Points de calibration supprimés");
     }
-    setCalibrationData({
-      points: new Map(),
-      pairs: new Map(),
-      applied: calibrationData.applied, // Garder le flag applied si déjà appliqué
-      mode: "simple",
-    });
+
     setCalibrationMode("idle");
     setSelectedCalibrationPoint(null);
     // Reset du mode perspective
     setRectPoints([]);
     setRectWidth("");
     setRectHeight("");
-    // Ne pas reset imageScale si déjà appliqué pour ne pas casser l'échelle
-    if (!calibrationData.applied) {
-      setImageScale(1);
-      setTransformedImage(null);
-    }
-    toast.success("Points de calibration supprimés");
-  }, [calibrationData.applied]);
+    setImageScale(1);
+    setTransformedImage(null);
+  }, [getSelectedImageCalibration, getSelectedImage]);
 
   // === REMPLISSAGES / HACHURES ===
 
@@ -18369,6 +18497,7 @@ export function CADGabaritCanvas({
                 <Separator />
 
                 {/* Paires de calibration - utilise l'image sélectionnée */}
+                {/* MOD #85: UI compacte - 2 lignes par paire au lieu de 6 */}
                 {(() => {
                   const imgCalib = getSelectedImageCalibration();
                   return (
@@ -18378,7 +18507,7 @@ export function CADGabaritCanvas({
                       {imgCalib.pairs.size === 0 ? (
                         <p className="text-xs text-muted-foreground italic mt-2">Aucune paire</p>
                       ) : (
-                        <div className="space-y-2 mt-2">
+                        <div className="space-y-1.5 mt-2">
                           {Array.from(imgCalib.pairs.values()).map((pair) => {
                             const p1 = imgCalib.points.get(pair.point1Id);
                             const p2 = imgCalib.points.get(pair.point2Id);
@@ -18386,26 +18515,23 @@ export function CADGabaritCanvas({
                             const pairScale = distPx > 0 ? pair.distanceMm / distPx : 0;
                             const measuredWithAvgScale = imgCalib.scale ? distPx * imgCalib.scale : 0;
                             const errorMm = measuredWithAvgScale - pair.distanceMm;
+                            // Déterminer si paire horizontale ou verticale
+                            const dx = p1 && p2 ? Math.abs(p2.x - p1.x) : 0;
+                            const dy = p1 && p2 ? Math.abs(p2.y - p1.y) : 0;
+                            const isHorizontal = dx > dy;
 
                             return (
-                              <div key={pair.id} className="p-2 bg-gray-50 rounded space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 rounded-full" style={{ backgroundColor: pair.color }} />
-                                    <span className="font-medium text-sm">
-                                      {p1?.label} ↔ {p2?.label}
-                                    </span>
-                                  </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => deleteCalibrationPair(pair.id)}
-                                    className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                                <div className="flex items-center gap-2">
+                              <div key={pair.id} className="p-1.5 bg-gray-50 rounded space-y-1">
+                                {/* Ligne 1: Couleur + Labels + Input + Delete */}
+                                <div className="flex items-center gap-1.5">
+                                  <div
+                                    className="w-3 h-3 rounded-full flex-shrink-0"
+                                    style={{ backgroundColor: pair.color }}
+                                    title={isHorizontal ? "Paire horizontale (→ scaleX)" : "Paire verticale (→ scaleY)"}
+                                  />
+                                  <span className="font-medium text-xs whitespace-nowrap">
+                                    {p1?.label}↔{p2?.label}
+                                  </span>
                                   <Input
                                     type="text"
                                     inputMode="decimal"
@@ -18414,76 +18540,63 @@ export function CADGabaritCanvas({
                                       const val = e.target.value.replace(",", ".").replace(/[^0-9.]/g, "");
                                       updatePairDistance(pair.id, parseFloat(val) || 0);
                                     }}
-                                    onFocus={(e) => {
-                                      if (e.target.value === "0") {
-                                        e.target.select();
-                                      }
-                                    }}
-                                    className="h-7 text-sm flex-1"
+                                    onFocus={(e) => e.target.value === "0" && e.target.select()}
+                                    className="h-6 text-xs w-16 px-1.5"
                                   />
                                   <span className="text-xs text-muted-foreground">mm</span>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => deleteCalibrationPair(pair.id)}
+                                    className="h-5 w-5 p-0 ml-auto text-red-500 hover:text-red-700"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
                                 </div>
-                                <div className="text-xs space-y-0.5">
-                                  <p className="text-muted-foreground">
-                                    Mesuré: {distPx.toFixed(1)} px = {pair.distanceMm} mm
-                                  </p>
-                                  <p className="text-muted-foreground">Échelle: {pairScale.toFixed(4)} mm/px</p>
-                                  {imgCalib.scale && (
-                                    <div className="flex items-center gap-2">
-                                      <p
-                                        className={`font-medium ${Math.abs(errorMm) < 0.5 ? "text-green-600" : Math.abs(errorMm) < 2 ? "text-orange-500" : "text-red-500"}`}
-                                      >
-                                        → Estimé: {measuredWithAvgScale.toFixed(1)} mm ({errorMm >= 0 ? "+" : ""}
-                                        {errorMm.toFixed(1)} mm)
-                                      </p>
-                                      {Math.abs(errorMm) >= 0.1 && (
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          className="h-5 px-1 text-xs text-green-600 hover:text-green-700 hover:bg-green-50"
-                                          onClick={() => {
-                                            updatePairDistance(pair.id, Math.round(measuredWithAvgScale * 10) / 10);
-                                            toast.success(
-                                              `Paire ${p1?.label}-${p2?.label}: ${measuredWithAvgScale.toFixed(1)} mm`,
-                                            );
-                                          }}
-                                          title="Utiliser la valeur estimée"
+                                {/* Ligne 2: Stats compactes + Utiliser */}
+                                <div className="flex items-center justify-between text-xs">
+                                  <div className="flex items-center gap-1 text-muted-foreground">
+                                    <span>{distPx.toFixed(0)}px</span>
+                                    <span>·</span>
+                                    <span>{pairScale.toFixed(4)}</span>
+                                    {imgCalib.scale && (
+                                      <>
+                                        <span>·</span>
+                                        <span
+                                          className={`font-medium ${Math.abs(errorMm) < 0.5 ? "text-green-600" : Math.abs(errorMm) < 2 ? "text-orange-500" : "text-red-500"}`}
                                         >
-                                          ✓
-                                        </Button>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="flex items-center justify-between">
-                                  <div className="flex gap-1">
-                                    {CALIBRATION_COLORS.slice(0, 5).map((color) => (
-                                      <button
-                                        key={color}
-                                        className={`w-3 h-3 rounded-full border ${pair.color === color ? "border-gray-800 border-2" : "border-gray-300"}`}
-                                        style={{ backgroundColor: color }}
-                                        onClick={() => updatePairColor(pair.id, color)}
-                                      />
-                                    ))}
+                                          Δ{errorMm >= 0 ? "+" : ""}
+                                          {errorMm.toFixed(1)}
+                                        </span>
+                                        {Math.abs(errorMm) >= 0.1 && (
+                                          <button
+                                            className="text-green-600 hover:text-green-700"
+                                            onClick={() => {
+                                              updatePairDistance(pair.id, Math.round(measuredWithAvgScale * 10) / 10);
+                                            }}
+                                            title="Utiliser la valeur estimée"
+                                          >
+                                            ✓
+                                          </button>
+                                        )}
+                                      </>
+                                    )}
                                   </div>
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    className="h-6 text-xs px-2"
+                                    className="h-5 text-xs px-1.5"
                                     onClick={() => {
                                       updateSelectedImageCalibration((prev) => ({
                                         ...prev,
                                         scale: pairScale,
                                         error: 0,
                                       }));
-                                      // Aussi mettre à jour calibrationData.scale
                                       setCalibrationData((prev) => ({
                                         ...prev,
                                         scale: pairScale,
                                       }));
-                                      toast.success(
-                                        `Échelle définie: ${pairScale.toFixed(4)} mm/px (paire ${p1?.label}-${p2?.label})`,
-                                      );
+                                      toast.success(`Échelle: ${pairScale.toFixed(4)} mm/px`);
                                     }}
                                   >
                                     Utiliser
@@ -18845,16 +18958,49 @@ export function CADGabaritCanvas({
                         </div>
                       )}
 
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="w-full"
-                        onClick={applyCalibration}
-                        disabled={!calibrationData.scale}
-                      >
-                        <Check className="h-4 w-4 mr-1" />
-                        Appliquer la calibration
-                      </Button>
+                      {/* MOD #85: Afficher scaleX/scaleY si anisotrope */}
+                      {imgCalib.scaleX &&
+                        imgCalib.scaleY &&
+                        Math.abs(imgCalib.scaleX - imgCalib.scaleY) / ((imgCalib.scaleX + imgCalib.scaleY) / 2) >
+                          0.02 && (
+                          <div className="p-2 bg-blue-50 rounded text-xs space-y-1">
+                            <p className="font-medium text-blue-700">Calibration anisotrope détectée</p>
+                            <p className="text-blue-600">
+                              X: {imgCalib.scaleX.toFixed(4)} mm/px{" "}
+                              {imgCalib.errorX !== undefined && `(±${imgCalib.errorX.toFixed(1)}%)`}
+                            </p>
+                            <p className="text-blue-600">
+                              Y: {imgCalib.scaleY.toFixed(4)} mm/px{" "}
+                              {imgCalib.errorY !== undefined && `(±${imgCalib.errorY.toFixed(1)}%)`}
+                            </p>
+                          </div>
+                        )}
+
+                      {/* Boutons Appliquer + Reset */}
+                      <div className="flex gap-2">
+                        <Button
+                          variant="default"
+                          size="sm"
+                          className="flex-1"
+                          onClick={applyCalibration}
+                          disabled={!calibrationData.scale && !imgCalib.scale}
+                        >
+                          <Check className="h-4 w-4 mr-1" />
+                          Appliquer
+                        </Button>
+                        {/* MOD #85: Bouton Reset */}
+                        {(calibrationData.applied || imgCalib.applied) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={resetCalibration}
+                            className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                            title="Annuler la calibration et restaurer l'image"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
 
                       {calibrationData.applied && (
                         <p className="text-xs text-center text-green-600 font-medium">✓ Calibration appliquée</p>
