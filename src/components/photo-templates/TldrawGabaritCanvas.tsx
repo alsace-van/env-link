@@ -1,3505 +1,787 @@
-// ============================================================================
-// MODIFICATION #82 + #82b + #82c - TemplateDrawingCanvas.tsx
-// Date: 2026-01-15
-// Description: 
-//   #82 - Ajout du contrôle d'opacité pour l'image de fond
-//   #82b - Correction du calcul de distance dans l'outil dimension
-//   #82c - Unification de l'échelle : calibration, règle et outil dimension
-//         utilisent maintenant la même vraie échelle (trueScale)
-// Changements:
-//   - Import de l'icône Eye de lucide-react
-//   - Ajout de trueScale (mm/pixel) calculé depuis l'image rectifiée
-//   - Règle graduée basée sur trueScale (graduations automatiques en mm réels)
-//   - Outil dimension utilise trueScale
-//   - Affichage de l'échelle calibrée en bas de page
-// ============================================================================
+// ============================================
+// COMPOSANT: TldrawGabaritCanvas
+// Canvas moderne pour gabarits CNC avec tldraw
+// VERSION: 1.9 - Fix boîte à outils visible
+// ============================================
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useCallback, useState, useRef } from "react";
 import Draggable from "react-draggable";
-import * as fabric from "fabric";
-import {
-  Canvas as FabricCanvas,
-  Line,
-  Circle,
-  Rect,
-  Textbox,
-  FabricImage,
-  Path,
-  Polygon,
-  Ellipse,
-  Group,
-  Control,
-  Point,
-  util,
-  Text as FabricText,
-} from "fabric";
+import { Tldraw, Editor, createShapeId } from "@tldraw/tldraw";
+import "@tldraw/tldraw/tldraw.css";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { Slider } from "@/components/ui/slider";
 import {
-  Pencil,
-  Square,
-  Circle as CircleIcon,
-  Minus,
-  Type,
-  Hand,
-  ZoomIn,
-  ZoomOut,
-  Trash2,
-  Undo,
-  Redo,
-  Waves,
-  Workflow,
-  CircleDot,
+  Download,
+  Save,
   Ruler,
-  Pentagon,
-  Grid3x3,
-  Magnet,
-  Sparkles,
-  Move,
   Maximize,
   Minimize,
-  RefreshCw,
-  Save,
-  Eye, // FIX #82: Ajout de l'icône pour le contrôle d'opacité
+  FileDown,
+  RotateCcw,
+  MousePointer,
+  Hand,
+  Pencil,
+  Square,
+  Eraser,
+  Spline,
+  ZoomIn,
+  ZoomOut,
+  GripVertical,
 } from "lucide-react";
 import { toast } from "sonner";
 
-interface TemplateDrawingCanvasProps {
+interface TldrawGabaritCanvasProps {
   imageUrl: string;
   scaleFactor: number;
-  onDrawingsChanged?: (drawingsData: any) => void;
-  initialDrawings?: any;
+  templateId: string;
+  initialData?: any;
+  onSave?: (data: any) => void;
 }
 
-interface HistoryState {
-  objects: any[];
-}
+// Fonction de conversion SVG vers DXF
+const svgToDxf = (svgString: string, scale: number = 1): string => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgString, "image/svg+xml");
 
-// Classe personnalisée pour les courbes éditables
-class EditableCurve extends Path {
-  public controlPoints: { start: Point; control: Point; end: Point };
-  public controlHandles: Circle[];
-  public controlLines: Line[];
-  public canvasRef: FabricCanvas | null = null;
-  private lastLeft: number = 0;
-  private lastTop: number = 0;
+  let dxf = `0
+SECTION
+2
+HEADER
+9
+$ACADVER
+1
+AC1015
+9
+$INSUNITS
+70
+4
+0
+ENDSEC
+0
+SECTION
+2
+TABLES
+0
+TABLE
+2
+LAYER
+0
+LAYER
+2
+0
+70
+64
+62
+7
+6
+CONTINUOUS
+0
+LAYER
+2
+CONTOURS
+70
+64
+62
+5
+6
+CONTINUOUS
+0
+ENDTAB
+0
+ENDSEC
+0
+SECTION
+2
+ENTITIES
+`;
 
-  constructor(start: Point, control: Point, end: Point, options: any = {}) {
-    const pathData = `M ${start.x} ${start.y} Q ${control.x} ${control.y} ${end.x} ${end.y}`;
-    super(pathData, {
-      ...options,
-      objectCaching: false,
-      // Désactiver les contrôles de transformation pour éviter la bounding box
-      hasControls: false,
-      hasBorders: false,
-      lockScalingX: true,
-      lockScalingY: true,
-      lockRotation: true,
-    });
+  const processElement = (element: Element, layer: string = "CONTOURS") => {
+    const tagName = element.tagName.toLowerCase();
 
-    this.controlPoints = { start, control, end };
-    this.controlHandles = [];
-    this.controlLines = [];
-
-    // Type personnalisé pour identifier cette courbe
-    this.set("customType", "editableCurve");
-
-    // Initialiser la position de référence pour le déplacement
-    this.lastLeft = this.left ?? 0;
-    this.lastTop = this.top ?? 0;
-
-    // Événements : déplacement de la courbe et mise à jour des poignées après modif (ex: depuis l'UI)
-    this.on("moving", () => this.handleMoving());
-    this.on("modified", () => this.syncHandlesOnMove());
-  }
-
-  // Déplacement de la courbe : faire suivre les poignées et les lignes
-  private handleMoving() {
-    if (!this.canvasRef) return;
-
-    const newLeft = this.left ?? 0;
-    const newTop = this.top ?? 0;
-    const dx = newLeft - this.lastLeft;
-    const dy = newTop - this.lastTop;
-
-    if (dx === 0 && dy === 0) return;
-
-    // Déplacer les poignées
-    this.controlHandles.forEach((handle) => {
-      if (handle.left == null || handle.top == null) return;
-      handle.set({ left: handle.left + dx, top: handle.top + dy });
-      handle.setCoords();
-    });
-
-    // Déplacer les lignes de contrôle
-    this.controlLines.forEach((line) => {
-      line.set({
-        x1: (line.x1 ?? 0) + dx,
-        y1: (line.y1 ?? 0) + dy,
-        x2: (line.x2 ?? 0) + dx,
-        y2: (line.y2 ?? 0) + dy,
-      });
-      line.setCoords();
-    });
-
-    this.lastLeft = newLeft;
-    this.lastTop = newTop;
-
-    this.canvasRef.requestRenderAll();
-  }
-
-  // Synchroniser les poignées avec la courbe (par ex. après une modification de path)
-  syncHandlesOnMove() {
-    if (!this.canvasRef || this.controlHandles.length === 0) return;
-
-    // Récupérer les points directement depuis le path actuel pour éviter tout décalage
-    const path = (this.path || []) as any[];
-    if (!path.length || path.length < 2) return;
-
-    const [, startX, startY] = path[0];
-    const [, controlX, controlY, endX, endY] = path[1];
-
-    this.controlPoints.start = new Point(startX, startY);
-    this.controlPoints.control = new Point(controlX, controlY);
-    this.controlPoints.end = new Point(endX, endY);
-
-    // Mettre à jour les poignées directement (pas de transformation)
-    if (this.controlHandles[0]) {
-      this.controlHandles[0].set({ left: startX, top: startY });
-      this.controlHandles[0].setCoords();
-    }
-    if (this.controlHandles[1]) {
-      this.controlHandles[1].set({ left: controlX, top: controlY });
-      this.controlHandles[1].setCoords();
-    }
-    if (this.controlHandles[2]) {
-      this.controlHandles[2].set({ left: endX, top: endY });
-      this.controlHandles[2].setCoords();
-    }
-    // Poignée de déplacement (centre)
-    if (this.controlHandles[3]) {
-      const centerX = (startX + endX) / 2;
-      const centerY = (startY + endY) / 2;
-      this.controlHandles[3].set({ left: centerX, top: centerY });
-      this.controlHandles[3].setCoords();
+    const transform = element.getAttribute("transform") || "";
+    let translateX = 0,
+      translateY = 0;
+    const translateMatch = transform.match(/translate\(([^,]+),?\s*([^)]*)\)/);
+    if (translateMatch) {
+      translateX = parseFloat(translateMatch[1]) || 0;
+      translateY = parseFloat(translateMatch[2]) || 0;
     }
 
-    // Mettre à jour les lignes de contrôle
-    if (this.controlLines[0]) {
-      this.controlLines[0].set({
-        x1: startX,
-        y1: startY,
-        x2: controlX,
-        y2: controlY,
-      });
-      this.controlLines[0].setCoords();
-    }
-    if (this.controlLines[1]) {
-      this.controlLines[1].set({
-        x1: controlX,
-        y1: controlY,
-        x2: endX,
-        y2: endY,
-      });
-      this.controlLines[1].setCoords();
-    }
-
-    this.canvasRef.requestRenderAll();
-  }
-
-  // Créer les poignées de contrôle visuelles
-  createHandles(canvas: FabricCanvas, color: string = "#3b82f6", currentZoom: number = 1) {
-    this.canvasRef = canvas;
-
-    // Nettoyer les anciennes poignées (inclut le nettoyage des lignes orphelines)
-    this.removeHandles(canvas);
-
-    // Tailles adaptées au zoom
-    const endpointRadius = 3 / currentZoom;
-    const centerRadius = 4 / currentZoom;
-    const strokeWidth = 1 / currentZoom;
-
-    // Positions des points directement depuis controlPoints (coordonnées du path)
-    const startPos = this.controlPoints.start;
-    const controlPos = this.controlPoints.control;
-    const endPos = this.controlPoints.end;
-
-    // Créer les lignes de contrôle (traits en pointillés pour visualiser la relation)
-    const line1 = new Line([startPos.x, startPos.y, controlPos.x, controlPos.y], {
-      stroke: color,
-      strokeWidth: strokeWidth,
-      strokeDashArray: [4 / currentZoom, 4 / currentZoom],
-      selectable: false,
-      evented: false,
-      opacity: 0.5,
-    });
-    (line1 as any).isControlLine = true;
-
-    const line2 = new Line([controlPos.x, controlPos.y, endPos.x, endPos.y], {
-      stroke: color,
-      strokeWidth: strokeWidth,
-      strokeDashArray: [4 / currentZoom, 4 / currentZoom],
-      selectable: false,
-      evented: false,
-      opacity: 0.5,
-    });
-    (line2 as any).isControlLine = true;
-
-    this.controlLines = [line1, line2];
-
-    // Poignées (cercles) - taille adaptée au zoom
-    const handleStart = new Circle({
-      left: startPos.x,
-      top: startPos.y,
-      radius: endpointRadius,
-      fill: "#3b82f6",
-      stroke: "#ffffff",
-      strokeWidth: strokeWidth,
-      originX: "center",
-      originY: "center",
-      hasBorders: false,
-      hasControls: false,
-      selectable: true,
-      hoverCursor: "pointer",
-      lockRotation: true,
-      lockScalingX: true,
-      lockScalingY: true,
-      borderColor: "transparent",
-      cornerColor: "transparent",
-      transparentCorners: false,
-      objectCaching: false,
-    });
-    (handleStart as any).curvePointType = "start";
-    (handleStart as any).parentCurve = this;
-    (handleStart as any).isControlHandle = true;
-
-    const handleControl = new Circle({
-      left: controlPos.x,
-      top: controlPos.y,
-      radius: endpointRadius,
-      fill: "#f97316", // Orange pour le point de contrôle
-      stroke: "#ffffff",
-      strokeWidth: strokeWidth,
-      originX: "center",
-      originY: "center",
-      hasBorders: false,
-      hasControls: false,
-      selectable: true,
-      hoverCursor: "pointer",
-      lockRotation: true,
-      lockScalingX: true,
-      lockScalingY: true,
-      borderColor: "transparent",
-      cornerColor: "transparent",
-      transparentCorners: false,
-      objectCaching: false,
-    });
-    (handleControl as any).curvePointType = "control";
-    (handleControl as any).parentCurve = this;
-    (handleControl as any).isControlHandle = true;
-
-    const handleEnd = new Circle({
-      left: endPos.x,
-      top: endPos.y,
-      radius: endpointRadius,
-      fill: "#3b82f6",
-      stroke: "#ffffff",
-      strokeWidth: strokeWidth,
-      originX: "center",
-      originY: "center",
-      hasBorders: false,
-      hasControls: false,
-      selectable: true,
-      hoverCursor: "pointer",
-      lockRotation: true,
-      lockScalingX: true,
-      lockScalingY: true,
-      borderColor: "transparent",
-      cornerColor: "transparent",
-      transparentCorners: false,
-      objectCaching: false,
-    });
-    (handleEnd as any).curvePointType = "end";
-    (handleEnd as any).parentCurve = this;
-    (handleEnd as any).isControlHandle = true;
-
-    this.controlHandles = [handleStart, handleControl, handleEnd];
-
-    // Calculer le centre de la courbe (entre start et end)
-    const centerX = (startPos.x + endPos.x) / 2;
-    const centerY = (startPos.y + endPos.y) / 2;
-
-    // Poignée de déplacement au centre (verte)
-    const handleMove = new Circle({
-      left: centerX,
-      top: centerY,
-      radius: centerRadius,
-      fill: "#22c55e", // Vert
-      stroke: "#ffffff",
-      strokeWidth: strokeWidth,
-      originX: "center",
-      originY: "center",
-      hasBorders: false,
-      hasControls: false,
-      selectable: true,
-      hoverCursor: "move",
-      lockRotation: true,
-      lockScalingX: true,
-      lockScalingY: true,
-      objectCaching: false,
-    });
-    (handleMove as any).curvePointType = "move";
-    (handleMove as any).parentCurve = this;
-    (handleMove as any).isControlHandle = true;
-
-    // Stocker la dernière position pour calculer le delta
-    let lastMovePos = { x: centerX, y: centerY };
-
-    // Event handler pour déplacer toute la courbe
-    handleMove.on("moving", () => {
-      const newX = handleMove.left ?? 0;
-      const newY = handleMove.top ?? 0;
-      const dx = newX - lastMovePos.x;
-      const dy = newY - lastMovePos.y;
-
-      // Déplacer tous les points de contrôle
-      this.controlPoints.start = new Point(this.controlPoints.start.x + dx, this.controlPoints.start.y + dy);
-      this.controlPoints.control = new Point(this.controlPoints.control.x + dx, this.controlPoints.control.y + dy);
-      this.controlPoints.end = new Point(this.controlPoints.end.x + dx, this.controlPoints.end.y + dy);
-
-      // Recalculer le path
-      const newPathData = `M ${this.controlPoints.start.x} ${this.controlPoints.start.y} Q ${this.controlPoints.control.x} ${this.controlPoints.control.y} ${this.controlPoints.end.x} ${this.controlPoints.end.y}`;
-      this.set("path", (new Path(newPathData) as any).path);
-
-      // Mettre à jour les autres poignées
-      handleStart.set({ left: this.controlPoints.start.x, top: this.controlPoints.start.y });
-      handleStart.setCoords();
-      handleControl.set({ left: this.controlPoints.control.x, top: this.controlPoints.control.y });
-      handleControl.setCoords();
-      handleEnd.set({ left: this.controlPoints.end.x, top: this.controlPoints.end.y });
-      handleEnd.setCoords();
-
-      // Mettre à jour les lignes de contrôle
-      if (this.controlLines[0]) {
-        this.controlLines[0].set({
-          x1: this.controlPoints.start.x,
-          y1: this.controlPoints.start.y,
-          x2: this.controlPoints.control.x,
-          y2: this.controlPoints.control.y,
-        });
-        this.controlLines[0].setCoords();
-      }
-      if (this.controlLines[1]) {
-        this.controlLines[1].set({
-          x1: this.controlPoints.control.x,
-          y1: this.controlPoints.control.y,
-          x2: this.controlPoints.end.x,
-          y2: this.controlPoints.end.y,
-        });
-        this.controlLines[1].setCoords();
+    switch (tagName) {
+      case "line": {
+        const x1 = (parseFloat(element.getAttribute("x1") || "0") + translateX) / scale;
+        const y1 = -(parseFloat(element.getAttribute("y1") || "0") + translateY) / scale;
+        const x2 = (parseFloat(element.getAttribute("x2") || "0") + translateX) / scale;
+        const y2 = -(parseFloat(element.getAttribute("y2") || "0") + translateY) / scale;
+        dxf += `0
+LINE
+8
+${layer}
+10
+${x1.toFixed(4)}
+20
+${y1.toFixed(4)}
+11
+${x2.toFixed(4)}
+21
+${y2.toFixed(4)}
+`;
+        break;
       }
 
-      lastMovePos = { x: newX, y: newY };
-      canvas.requestRenderAll();
-    });
+      case "rect": {
+        const x = (parseFloat(element.getAttribute("x") || "0") + translateX) / scale;
+        const y = -(parseFloat(element.getAttribute("y") || "0") + translateY) / scale;
+        const width = parseFloat(element.getAttribute("width") || "0") / scale;
+        const height = parseFloat(element.getAttribute("height") || "0") / scale;
 
-    // Ajouter au canvas
-    this.controlLines.forEach((line) => canvas.add(line));
-    this.controlHandles.forEach((handle) => {
-      canvas.add(handle);
-    });
-    canvas.add(handleMove);
+        dxf += `0
+LWPOLYLINE
+8
+${layer}
+90
+4
+70
+1
+10
+${x.toFixed(4)}
+20
+${y.toFixed(4)}
+10
+${(x + width).toFixed(4)}
+20
+${y.toFixed(4)}
+10
+${(x + width).toFixed(4)}
+20
+${(y - height).toFixed(4)}
+10
+${x.toFixed(4)}
+20
+${(y - height).toFixed(4)}
+`;
+        break;
+      }
 
-    // Ajouter la poignée de déplacement à la liste
-    this.controlHandles.push(handleMove);
+      case "circle": {
+        const cx = (parseFloat(element.getAttribute("cx") || "0") + translateX) / scale;
+        const cy = -(parseFloat(element.getAttribute("cy") || "0") + translateY) / scale;
+        const r = parseFloat(element.getAttribute("r") || "0") / scale;
+        dxf += `0
+CIRCLE
+8
+${layer}
+10
+${cx.toFixed(4)}
+20
+${cy.toFixed(4)}
+40
+${r.toFixed(4)}
+`;
+        break;
+      }
 
-    // VERROUILLER le déplacement de la courbe (utiliser la poignée verte)
-    this.set({ lockMovementX: true, lockMovementY: true });
+      case "ellipse": {
+        const cx = (parseFloat(element.getAttribute("cx") || "0") + translateX) / scale;
+        const cy = -(parseFloat(element.getAttribute("cy") || "0") + translateY) / scale;
+        const rx = parseFloat(element.getAttribute("rx") || "0") / scale;
+        const ry = parseFloat(element.getAttribute("ry") || "0") / scale;
+        if (rx === 0) break;
+        dxf += `0
+ELLIPSE
+8
+${layer}
+10
+${cx.toFixed(4)}
+20
+${cy.toFixed(4)}
+30
+0
+11
+${rx.toFixed(4)}
+21
+0
+31
+0
+40
+${(ry / rx).toFixed(4)}
+41
+0
+42
+6.283185
+`;
+        break;
+      }
 
-    // Event handlers pour déplacer les poignées
-    this.controlHandles.forEach((handle) => {
-      handle.on("moving", () => {
-        this.updateCurveFromHandle(handle as Circle, canvas);
-      });
+      case "path": {
+        const d = element.getAttribute("d") || "";
+        const points = parsePathToPoints(d, translateX, translateY, scale);
+        if (points.length >= 2) {
+          dxf += `0
+LWPOLYLINE
+8
+${layer}
+90
+${points.length}
+70
+0
+`;
+          points.forEach(([x, y]) => {
+            dxf += `10
+${x.toFixed(4)}
+20
+${(-y).toFixed(4)}
+`;
+          });
+        }
+        break;
+      }
 
-      // Forcer la sélection du handle au mousedown
-      handle.on("mousedown", () => {
-        canvas.setActiveObject(handle);
-        canvas.renderAll();
-      });
+      case "polyline":
+      case "polygon": {
+        const pointsStr = element.getAttribute("points") || "";
+        const points = pointsStr
+          .split(/\s+/)
+          .map((p) => {
+            const [x, y] = p.split(",").map(Number);
+            return [(x + translateX) / scale, (y + translateY) / scale];
+          })
+          .filter((p) => !isNaN(p[0]) && !isNaN(p[1]));
 
-      // 🔧 Nettoyage après modification
-      handle.on("mouseup", () => {
-        // Nettoyer les lignes de contrôle orphelines
-        const objectsToRemove: any[] = [];
-        canvas.getObjects().forEach((obj) => {
-          if (obj instanceof Line && (obj as any).isControlLine && !this.controlLines.includes(obj)) {
-            objectsToRemove.push(obj);
+        if (points.length >= 2) {
+          const isClosed = tagName === "polygon" ? 1 : 0;
+          dxf += `0
+LWPOLYLINE
+8
+${layer}
+90
+${points.length}
+70
+${isClosed}
+`;
+          points.forEach(([x, y]) => {
+            dxf += `10
+${x.toFixed(4)}
+20
+${(-y).toFixed(4)}
+`;
+          });
+        }
+        break;
+      }
+
+      case "g":
+        Array.from(element.children).forEach((child) => processElement(child, layer));
+        break;
+    }
+  };
+
+  const parsePathToPoints = (d: string, tx: number, ty: number, scale: number): number[][] => {
+    const points: number[][] = [];
+    const commands = d.match(/[MLQCZ][^MLQCZ]*/gi) || [];
+    let currentX = 0,
+      currentY = 0;
+
+    commands.forEach((cmd) => {
+      const type = cmd[0].toUpperCase();
+      const coords = cmd
+        .slice(1)
+        .trim()
+        .split(/[\s,]+/)
+        .map(Number);
+
+      switch (type) {
+        case "M":
+          currentX = coords[0];
+          currentY = coords[1];
+          points.push([(currentX + tx) / scale, (currentY + ty) / scale]);
+          break;
+        case "L":
+          currentX = coords[0];
+          currentY = coords[1];
+          points.push([(currentX + tx) / scale, (currentY + ty) / scale]);
+          break;
+        case "Q":
+          const qcx = coords[0],
+            qcy = coords[1];
+          const qex = coords[2],
+            qey = coords[3];
+          for (let t = 0.1; t <= 1; t += 0.1) {
+            const x = (1 - t) * (1 - t) * currentX + 2 * (1 - t) * t * qcx + t * t * qex;
+            const y = (1 - t) * (1 - t) * currentY + 2 * (1 - t) * t * qcy + t * t * qey;
+            points.push([(x + tx) / scale, (y + ty) / scale]);
           }
-        });
-        objectsToRemove.forEach((obj) => canvas.remove(obj));
-        canvas.requestRenderAll();
-      });
-    });
-
-    canvas.renderAll();
-  }
-
-  // Mettre à jour la courbe quand une poignée bouge
-  updateCurveFromHandle(handle: Circle, canvas: FabricCanvas) {
-    const pointType = (handle as any).curvePointType;
-    const newX = handle.left!;
-    const newY = handle.top!;
-
-    // Ignorer la poignée de déplacement (gérée séparément)
-    if (pointType === "move") return;
-
-    // Mettre à jour les points de contrôle directement en coordonnées du canevas
-    if (pointType === "start") {
-      this.controlPoints.start = new Point(newX, newY);
-    } else if (pointType === "control") {
-      this.controlPoints.control = new Point(newX, newY);
-    } else if (pointType === "end") {
-      this.controlPoints.end = new Point(newX, newY);
-    }
-
-    // Recalculer le path avec les nouvelles coordonnées
-    const newPathData = `M ${this.controlPoints.start.x} ${this.controlPoints.start.y} Q ${this.controlPoints.control.x} ${this.controlPoints.control.y} ${this.controlPoints.end.x} ${this.controlPoints.end.y}`;
-    this.set("path", (new Path(newPathData) as any).path);
-
-    // 🔧 NETTOYAGE AGRESSIF : Supprimer toutes les anciennes lignes de contrôle orphelines
-    const objectsToRemove: any[] = [];
-    canvas.getObjects().forEach((obj) => {
-      if (obj instanceof Line && (obj as any).isControlLine && !this.controlLines.includes(obj)) {
-        objectsToRemove.push(obj);
+          currentX = qex;
+          currentY = qey;
+          break;
+        case "C":
+          const c1x = coords[0],
+            c1y = coords[1];
+          const c2x = coords[2],
+            c2y = coords[3];
+          const cex = coords[4],
+            cey = coords[5];
+          for (let t = 0.1; t <= 1; t += 0.1) {
+            const x =
+              Math.pow(1 - t, 3) * currentX +
+              3 * Math.pow(1 - t, 2) * t * c1x +
+              3 * (1 - t) * t * t * c2x +
+              Math.pow(t, 3) * cex;
+            const y =
+              Math.pow(1 - t, 3) * currentY +
+              3 * Math.pow(1 - t, 2) * t * c1y +
+              3 * (1 - t) * t * t * c2y +
+              Math.pow(t, 3) * cey;
+            points.push([(x + tx) / scale, (y + ty) / scale]);
+          }
+          currentX = cex;
+          currentY = cey;
+          break;
+        case "Z":
+          if (points.length > 0) {
+            points.push([...points[0]]);
+          }
+          break;
       }
     });
-    objectsToRemove.forEach((obj) => canvas.remove(obj));
 
-    // Mettre à jour les lignes de contrôle
-    const startAbs = this.controlPoints.start;
-    const controlAbs = this.controlPoints.control;
-    const endAbs = this.controlPoints.end;
+    return points;
+  };
 
-    if (this.controlLines[0]) {
-      this.controlLines[0].set({
-        x1: startAbs.x,
-        y1: startAbs.y,
-        x2: controlAbs.x,
-        y2: controlAbs.y,
-      });
-      this.controlLines[0].setCoords();
-    }
-    if (this.controlLines[1]) {
-      this.controlLines[1].set({
-        x1: controlAbs.x,
-        y1: controlAbs.y,
-        x2: endAbs.x,
-        y2: endAbs.y,
-      });
-      this.controlLines[1].setCoords();
-    }
-
-    // Mettre à jour la poignée de déplacement (centre entre start et end)
-    if (this.controlHandles[3]) {
-      const centerX = (startAbs.x + endAbs.x) / 2;
-      const centerY = (startAbs.y + endAbs.y) / 2;
-      this.controlHandles[3].set({ left: centerX, top: centerY });
-      this.controlHandles[3].setCoords();
-    }
-
-    canvas.requestRenderAll();
-  }
-
-  // Supprimer les poignées
-  removeHandles(canvas: FabricCanvas) {
-    // Supprimer les lignes de contrôle de cette courbe
-    this.controlLines.forEach((line) => canvas.remove(line));
-    this.controlLines = [];
-
-    // Supprimer les poignées de cette courbe
-    this.controlHandles.forEach((handle) => canvas.remove(handle));
-    this.controlHandles = [];
-
-    // 🔧 Nettoyage complet : supprimer toutes les lignes de contrôle orphelines du canvas
-    const linesToRemove: Line[] = [];
-    canvas.getObjects().forEach((obj) => {
-      if (obj instanceof Line && (obj as any).isControlLine) {
-        linesToRemove.push(obj as Line);
+  const svg = doc.querySelector("svg");
+  if (svg) {
+    Array.from(svg.children).forEach((child) => {
+      if (child.tagName.toLowerCase() !== "image") {
+        processElement(child);
       }
     });
-    linesToRemove.forEach((line) => canvas.remove(line));
-
-    // Réactiver le déplacement de la courbe
-    this.set({ lockMovementX: false, lockMovementY: false });
-
-    // Forcer un rafraîchissement pour bien effacer les traits
-    canvas.requestRenderAll();
   }
 
-  // Cacher/Montrer les poignées
-  hideHandles() {
-    this.controlLines.forEach((line) => line.set("visible", false));
-    this.controlHandles.forEach((handle) => handle.set("visible", false));
-  }
+  dxf += `0
+ENDSEC
+0
+EOF
+`;
 
-  showHandles() {
-    this.controlLines.forEach((line) => line.set("visible", true));
-    this.controlHandles.forEach((handle) => handle.set("visible", true));
-  }
-}
+  return dxf;
+};
 
-export function TemplateDrawingCanvas({
+// Composant principal
+export function TldrawGabaritCanvas({
   imageUrl,
   scaleFactor,
-  onDrawingsChanged,
-  initialDrawings,
-}: TemplateDrawingCanvasProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
-  const [activeTool, setActiveTool] = useState<
-    | "select"
-    | "line"
-    | "rectangle"
-    | "circle"
-    | "ellipse"
-    | "pencil"
-    | "text"
-    | "bezier"
-    | "spline"
-    | "editableCurve"
-    | "polygon"
-    | "dimension"
-    | "pan"
-  >("select");
-
-  const [tempPoints, setTempPoints] = useState<{ x: number; y: number }[]>([]);
-  const [tempObjects, setTempObjects] = useState<any[]>([]);
-  const [previewCurve, setPreviewCurve] = useState<Path | null>(null);
-  const [strokeColor, setStrokeColor] = useState("#ef4444");
-  const [strokeWidth, setStrokeWidth] = useState(2);
-  const [zoom, setZoom] = useState(1);
-  const [showGrid, setShowGrid] = useState(true);
-  // Nouvelle logique d'échelle :
-  // - gridSizePx = taille FIXE de la grille en pixels (visuellement constant)
-  // - scaleValuePerCell = ce que représente chaque case en mm (ajustable par l'utilisateur)
-  const [gridSizePx, setGridSizePx] = useState(35); // Taille fixe de la grille en pixels
-  const [scaleValuePerCell, setScaleValuePerCell] = useState(() => {
-    // Initialiser avec la valeur réelle basée sur scaleFactor
-    // scaleFactor = pixels par mm, donc 35px / scaleFactor = mm par case
-    const realValue = 35 / scaleFactor;
-    // Arrondir à une valeur pratique (10, 20, 50, 100mm...)
-    if (realValue <= 5) return 5;
-    if (realValue <= 10) return 10;
-    if (realValue <= 20) return 20;
-    if (realValue <= 50) return 50;
-    if (realValue <= 100) return 100;
-    return Math.round(realValue / 50) * 50;
-  });
-  const [snapToGrid, setSnapToGrid] = useState(false); // Désactivé par défaut - snap uniquement vers objets utilisateur
-  const snapToGridRef = useRef(snapToGrid);
-  // Garder la ref synchronisée
-  useEffect(() => {
-    snapToGridRef.current = snapToGrid;
-  }, [snapToGrid]);
-  const [showRulers, setShowRulers] = useState(true);
-
-  // FIX #82: State pour l'opacité de l'image de fond (0-100%)
-  const [backgroundOpacity, setBackgroundOpacity] = useState(100);
-
-  // FIX #82c: Vraie échelle basée sur la calibration
-  // L'image rectifiée a été créée avec 10 px/mm (RECTIFIED_IMAGE_SCALE)
-  // Puis elle est redimensionnée pour le canvas (canvasDisplayScale)
-  // Donc : 1 pixel canvas = 1 / (10 * canvasDisplayScale) mm
-  const RECTIFIED_IMAGE_SCALE = 10; // L'image rectifiée a 10 pixels par mm
-  const [trueScale, setTrueScale] = useState(0.1); // mm par pixel canvas (valeur par défaut)
-  const canvasDisplayScaleRef = useRef(1);
-
-  // L'échelle effective pour la grille (paramétrable séparément)
-  // Si scaleValuePerCell = 10mm et gridSizePx = 35px, alors 1px = 10/35 = 0.286mm
-  const effectiveScale = scaleValuePerCell / gridSizePx; // mm par pixel
-
-  // Pour compatibilité avec le reste du code, on garde gridSize comme alias
-  const gridSize = gridSizePx;
-  const [history, setHistory] = useState<HistoryState[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
+  templateId,
+  initialData,
+  onSave,
+}: TldrawGabaritCanvasProps) {
+  const [editor, setEditor] = useState<Editor | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const imgRef = useRef<HTMLImageElement | null>(null);
-  const gridLinesRef = useRef<any[]>([]);
-  const closedShapesRef = useRef<any[]>([]); // Polygones de surbrillance pour formes fermées
-  const activeCurveRef = useRef<EditableCurve | null>(null);
-  const activeLineRef = useRef<Line | null>(null);
-  const lineHandlesRef = useRef<Circle[]>([]);
-  const lastPosRef = useRef<{ x: number; y: number } | null>(null);
-  const previousCanvasSizeRef = useRef<{
-    width: number;
-    height: number;
-    viewportTransform: number[] | null;
-  } | null>(null);
+  const [activeTool, setActiveTool] = useState<string>("select");
+  const [zoomLevel, setZoomLevel] = useState(100);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<Editor | null>(null);
+  const nodeRef = useRef<HTMLDivElement>(null);
 
-  // 🔧 Fonction pour détecter et afficher les formes fermées (comme Fusion 360)
-  const detectClosedShapes = useCallback((canvas: FabricCanvas) => {
-    if (!canvas) return;
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
 
-    // Supprimer les anciennes surbrillances
-    closedShapesRef.current.forEach((shape) => canvas.remove(shape));
-    closedShapesRef.current = [];
+  // Intercepter la molette pour le zoom
+  useEffect(() => {
+    const container = canvasContainerRef.current;
+    if (!container) return;
 
-    // Collecter tous les segments (lignes et courbes) avec leurs extrémités
-    const segments: Array<{
-      obj: any;
-      start: { x: number; y: number };
-      end: { x: number; y: number };
-    }> = [];
+    const handleWheel = (e: WheelEvent) => {
+      const currentEditor = editorRef.current;
+      if (!currentEditor) return;
 
-    canvas.getObjects().forEach((obj: any) => {
-      if (!obj.isUserDrawn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
 
-      if (obj instanceof Line) {
-        segments.push({
-          obj,
-          start: { x: obj.x1 ?? 0, y: obj.y1 ?? 0 },
-          end: { x: obj.x2 ?? 0, y: obj.y2 ?? 0 },
-        });
-      } else if (obj.customType === "editableCurve") {
-        const curve = obj as EditableCurve;
-        segments.push({
-          obj,
-          start: { x: curve.controlPoints.start.x, y: curve.controlPoints.start.y },
-          end: { x: curve.controlPoints.end.x, y: curve.controlPoints.end.y },
-        });
-      }
-    });
+      const currentZoom = currentEditor.getZoomLevel();
+      const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+      const newZoom = Math.min(Math.max(currentZoom * zoomFactor, 0.1), 8);
 
-    if (segments.length < 3) return; // Il faut au moins 3 segments pour une forme fermée
-
-    const CONNECTION_THRESHOLD = 8; // Distance max pour considérer deux points comme connectés
-
-    // Fonction pour vérifier si deux points sont connectés
-    const areConnected = (p1: { x: number; y: number }, p2: { x: number; y: number }) => {
-      const dist = Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
-      return dist < CONNECTION_THRESHOLD;
-    };
-
-    // Construire le graphe de connexions entre segments
-    const findConnectedSegment = (
-      point: { x: number; y: number },
-      excludeSegments: Set<number>,
-    ): { segmentIndex: number; isStart: boolean } | null => {
-      for (let i = 0; i < segments.length; i++) {
-        if (excludeSegments.has(i)) continue;
-        if (areConnected(point, segments[i].start)) {
-          return { segmentIndex: i, isStart: true };
-        }
-        if (areConnected(point, segments[i].end)) {
-          return { segmentIndex: i, isStart: false };
-        }
-      }
-      return null;
-    };
-
-    // Chercher des formes fermées en partant de chaque segment
-    const usedInClosedShape = new Set<number>();
-
-    for (let startIdx = 0; startIdx < segments.length; startIdx++) {
-      if (usedInClosedShape.has(startIdx)) continue;
-
-      // Essayer de construire une forme fermée en partant de ce segment
-      const path: Array<{ x: number; y: number }> = [];
-      const usedSegments = new Set<number>([startIdx]);
-
-      const startSegment = segments[startIdx];
-      path.push(startSegment.start);
-      path.push(startSegment.end);
-
-      let currentPoint = startSegment.end;
-      let foundClosure = false;
-      let iterations = 0;
-      const maxIterations = segments.length + 1;
-
-      while (iterations < maxIterations) {
-        iterations++;
-
-        // Chercher le prochain segment connecté
-        const next = findConnectedSegment(currentPoint, usedSegments);
-
-        if (!next) break; // Pas de segment suivant, forme ouverte
-
-        usedSegments.add(next.segmentIndex);
-        const nextSegment = segments[next.segmentIndex];
-
-        // Déterminer le prochain point
-        const nextPoint = next.isStart ? nextSegment.end : nextSegment.start;
-        path.push(nextPoint);
-
-        // Vérifier si on a bouclé (retour au point de départ)
-        if (areConnected(nextPoint, startSegment.start) && usedSegments.size >= 3) {
-          foundClosure = true;
-          break;
-        }
-
-        currentPoint = nextPoint;
-      }
-
-      // Si on a trouvé une forme fermée, créer la surbrillance
-      if (foundClosure && path.length >= 3) {
-        usedSegments.forEach((idx) => usedInClosedShape.add(idx));
-
-        const polygonPoints = path.map((p) => ({ x: p.x, y: p.y }));
-
-        // Créer le polygone PUREMENT VISUEL - aucune interaction possible
-        const highlightPolygon = new Polygon(polygonPoints, {
-          fill: "rgba(59, 130, 246, 0.15)", // Bleu semi-transparent
-          stroke: "transparent",
-          strokeWidth: 0,
-          // Désactiver TOUTES les interactions
-          selectable: false,
-          evented: false,
-          hasControls: false,
-          hasBorders: false,
-          lockMovementX: true,
-          lockMovementY: true,
-          lockRotation: true,
-          lockScalingX: true,
-          lockScalingY: true,
-          // Exclure des sélections rectangulaires
-          activeOn: "up" as const,
-          objectCaching: false,
-          // Ne pas apparaître dans les exports JSON
-          excludeFromExport: true,
-        });
-
-        // Marquer comme surbrillance pour l'exclure partout
-        (highlightPolygon as any).isClosedShapeHighlight = true;
-        // Forcer à ne jamais être ciblé
-        highlightPolygon.set("hoverCursor", "default");
-
-        // Ajouter en dessous des autres objets (mais au-dessus de la grille)
-        canvas.add(highlightPolygon);
-        canvas.sendObjectToBack(highlightPolygon);
-
-        // Remettre la grille tout en dessous
-        gridLinesRef.current.forEach((gridLine) => {
-          canvas.sendObjectToBack(gridLine);
-        });
-
-        closedShapesRef.current.push(highlightPolygon);
-      }
-    }
-
-    canvas.requestRenderAll();
-  }, []);
-
-  // Fonction pour obtenir les coordonnées correctes du canvas en tenant compte du zoom/pan
-  const getCanvasPoint = useCallback((canvas: FabricCanvas, e: any): { x: number; y: number } => {
-    if (!canvas) return { x: 0, y: 0 };
-
-    // Obtenir la position de la souris par rapport au canvas
-    const pointer = canvas.getPointer(e);
-    return { x: pointer.x, y: pointer.y };
-  }, []);
-
-  // ✅ Fonction snap simplifiée - UNIQUEMENT vers les objets utilisateur
-  const snapPoint = useCallback(
-    (point: { x: number; y: number }, canvas?: FabricCanvas) => {
-      // Si magnétisme désactivé, retourner le point tel quel
-      // Utiliser la ref pour avoir toujours la valeur actuelle
-      if (!snapToGridRef.current || !canvas) {
-        return point;
-      }
-
-      const SNAP_DISTANCE = 25; // Distance de détection en pixels (augmentée)
-      let minDistance = SNAP_DISTANCE;
-      let targetPoint: { x: number; y: number } | null = null;
-
-      canvas.getObjects().forEach((obj) => {
-        // UNIQUEMENT les objets créés par l'utilisateur, ignorer les poignées
-        if (!(obj as any).isUserDrawn || (obj as any).isLineHandle) {
-          return;
-        }
-
-        let endpoints: { x: number; y: number }[] = [];
-
-        // Lignes : extrémités
-        if (obj instanceof Line) {
-          const line = obj as Line;
-          endpoints.push({ x: line.x1 ?? 0, y: line.y1 ?? 0 }, { x: line.x2 ?? 0, y: line.y2 ?? 0 });
-        }
-        // Courbes éditables : extrémités (directement depuis controlPoints)
-        else if ((obj as any).customType === "editableCurve") {
-          const curve = obj as unknown as EditableCurve;
-          endpoints.push(
-            { x: curve.controlPoints.start.x, y: curve.controlPoints.start.y },
-            { x: curve.controlPoints.end.x, y: curve.controlPoints.end.y },
-          );
-        }
-        // Rectangles : coins
-        else if (obj instanceof Rect) {
-          const rect = obj as Rect;
-          const left = rect.left ?? 0;
-          const top = rect.top ?? 0;
-          const width = (rect.width ?? 0) * (rect.scaleX ?? 1);
-          const height = (rect.height ?? 0) * (rect.scaleY ?? 1);
-          endpoints.push(
-            { x: left, y: top },
-            { x: left + width, y: top },
-            { x: left, y: top + height },
-            { x: left + width, y: top + height },
-          );
-        }
-
-        // Tester la distance vers chaque point
-        endpoints.forEach((p) => {
-          const distance = Math.sqrt(Math.pow(p.x - point.x, 2) + Math.pow(p.y - point.y, 2));
-          if (distance < minDistance) {
-            minDistance = distance;
-            targetPoint = { x: p.x, y: p.y };
-          }
-        });
+      currentEditor.setCamera({
+        x: currentEditor.getCamera().x,
+        y: currentEditor.getCamera().y,
+        z: newZoom,
       });
 
-      return targetPoint || point;
-    },
-    [], // Pas de dépendances car on utilise snapToGridRef
-  );
-
-  // Créer la grille limitée à l'image
-  const createGrid = useCallback(
-    (canvas: FabricCanvas, width: number, height: number) => {
-      gridLinesRef.current.forEach((line) => canvas.remove(line));
-      gridLinesRef.current = [];
-
-      if (!showGrid) return;
-
-      const gridColor = "#e0e0e0";
-      const gridStrokeWidth = 0.5; // Trait fin pour la grille
-
-      // Utiliser les dimensions de l'image background si disponible
-      const bg = canvas.backgroundImage as FabricImage | null;
-      let gridWidth = width;
-      let gridHeight = height;
-
-      if (bg && bg.width && bg.height) {
-        // Dimensions réelles de l'image avec son échelle
-        gridWidth = bg.width * (bg.scaleX || 1);
-        gridHeight = bg.height * (bg.scaleY || 1);
-      }
-
-      // Lignes verticales
-      for (let i = 0; i <= Math.ceil(gridWidth / gridSize); i++) {
-        const x = i * gridSize;
-        if (x <= gridWidth) {
-          const line = new Line([x, 0, x, gridHeight], {
-            stroke: gridColor,
-            strokeWidth: gridStrokeWidth,
-            selectable: false,
-            evented: false,
-            lockMovementX: true,
-            lockMovementY: true,
-            hasControls: false,
-            hasBorders: false,
-            objectCaching: false, // Désactiver le cache pour éviter les problèmes de rendu au zoom
-            strokeUniform: true, // Épaisseur uniforme quel que soit le zoom
-          });
-          (line as any).isGridLine = true; // Marquer explicitement comme ligne de grille
-          canvas.add(line);
-          canvas.sendObjectToBack(line);
-          gridLinesRef.current.push(line);
-        }
-      }
-
-      // Lignes horizontales
-      for (let i = 0; i <= Math.ceil(gridHeight / gridSize); i++) {
-        const y = i * gridSize;
-        if (y <= gridHeight) {
-          const line = new Line([0, y, gridWidth, y], {
-            stroke: gridColor,
-            strokeWidth: gridStrokeWidth,
-            selectable: false,
-            evented: false,
-            lockMovementX: true,
-            lockMovementY: true,
-            hasControls: false,
-            hasBorders: false,
-            objectCaching: false, // Désactiver le cache pour éviter les problèmes de rendu au zoom
-            strokeUniform: true, // Épaisseur uniforme quel que soit le zoom
-          });
-          (line as any).isGridLine = true; // Marquer explicitement comme ligne de grille
-          canvas.add(line);
-          canvas.sendObjectToBack(line);
-          gridLinesRef.current.push(line);
-        }
-      }
-
-      canvas.renderAll();
-    },
-    [showGrid, gridSize],
-  );
-
-  // Sauvegarder l'état pour undo/redo (en excluant les poignées et éléments UI temporaires)
-  const saveState = useCallback(
-    (canvas: FabricCanvas) => {
-      const objects = canvas.getObjects().filter(
-        (obj) =>
-          (!gridLinesRef.current.includes(obj) && // Pas la grille
-            !(obj as any).curvePointType && // Pas les poignées de courbe
-            !(obj as any).isRuler && // Pas les règles
-            (obj.type !== "line" || !(obj as any).strokeDashArray) && // Pas les lignes de construction
-            obj.selectable !== false) || // Garder les objets sélectionnables
-          (obj as any).customType === "editableCurve", // Toujours garder les courbes éditables
-      );
-      const state: HistoryState = {
-        objects: objects.map((obj) => obj.toJSON()),
-      };
-
-      const newHistory = history.slice(0, historyIndex + 1);
-      newHistory.push(state);
-
-      if (newHistory.length > 50) {
-        newHistory.shift();
-      } else {
-        setHistoryIndex(historyIndex + 1);
-      }
-
-      setHistory(newHistory);
-    },
-    [history, historyIndex],
-  );
-
-  // Annuler
-  const handleUndo = useCallback(() => {
-    if (historyIndex <= 0 || !fabricCanvas) return;
-
-    const newIndex = historyIndex - 1;
-    const state = history[newIndex];
-
-    const objects = fabricCanvas.getObjects();
-    objects.forEach((obj) => {
-      if (
-        !gridLinesRef.current.includes(obj) &&
-        !(obj as any).curvePointType &&
-        (obj.type !== "line" || !(obj as any).strokeDashArray)
-      ) {
-        fabricCanvas.remove(obj);
-      }
-    });
-
-    state.objects.forEach((objData: any) => {
-      fabricCanvas.add(objData);
-    });
-
-    setHistoryIndex(newIndex);
-    fabricCanvas.renderAll();
-    onDrawingsChanged?.(fabricCanvas.toJSON());
-  }, [historyIndex, history, fabricCanvas, onDrawingsChanged]);
-
-  // Refaire
-  const handleRedo = useCallback(() => {
-    if (historyIndex >= history.length - 1 || !fabricCanvas) return;
-
-    const newIndex = historyIndex + 1;
-    const state = history[newIndex];
-
-    const objects = fabricCanvas.getObjects();
-    objects.forEach((obj) => {
-      if (
-        !gridLinesRef.current.includes(obj) &&
-        !(obj as any).curvePointType &&
-        (obj.type !== "line" || !(obj as any).strokeDashArray)
-      ) {
-        fabricCanvas.remove(obj);
-      }
-    });
-
-    state.objects.forEach((objData: any) => {
-      fabricCanvas.add(objData);
-    });
-
-    setHistoryIndex(newIndex);
-    fabricCanvas.renderAll();
-    onDrawingsChanged?.(fabricCanvas.toJSON());
-  }, [historyIndex, history, fabricCanvas, onDrawingsChanged]);
-
-  // Nettoyer les objets temporaires quand on change d'outil
-  useEffect(() => {
-    if (!fabricCanvas) return;
-
-    // Nettoyer tous les objets temporaires
-    tempObjects.forEach((obj) => fabricCanvas.remove(obj));
-    setTempObjects([]);
-    setTempPoints([]);
-
-    // 🧹 NETTOYAGE COMPLET : Supprimer tous les objets temporaires et lignes de construction
-    const objectsToRemove: any[] = [];
-    fabricCanvas.getObjects().forEach((obj) => {
-      // Supprimer les lignes en pointillés (sauf la grille)
-      if (obj instanceof Line && (obj as any).strokeDashArray && !(obj as any).isGridLine) {
-        // Vérifier si c'est une ligne de contrôle d'une courbe active
-        const isActiveControlLine = activeCurveRef.current?.controlLines.includes(obj);
-        if (!isActiveControlLine) {
-          objectsToRemove.push(obj);
-        }
-      }
-      // Nettoyer TOUTES les lignes de contrôle orphelines (isControlLine)
-      if (obj instanceof Line && (obj as any).isControlLine) {
-        const belongsToActiveCurve = activeCurveRef.current?.controlLines.includes(obj);
-        if (!belongsToActiveCurve) {
-          objectsToRemove.push(obj);
-        }
-      }
-      // Supprimer les marqueurs temporaires (cercles bleus non sélectionnables)
-      if (obj instanceof Circle && !obj.selectable && (obj as any).fill === "#3b82f6") {
-        objectsToRemove.push(obj);
-      }
-      // Supprimer les courbes de preview (paths avec opacity 0.7)
-      if (obj instanceof Path && !obj.selectable && (obj as any).opacity === 0.7) {
-        objectsToRemove.push(obj);
-      }
-    });
-    objectsToRemove.forEach((obj) => fabricCanvas.remove(obj));
-
-    if (previewCurve) {
-      fabricCanvas.remove(previewCurve);
-      setPreviewCurve(null);
-    }
-
-    fabricCanvas.renderAll();
-  }, [activeTool, fabricCanvas]);
-
-  // Initialisation du canvas
-  useEffect(() => {
-    const canvasElement = canvasRef.current;
-    if (!canvasElement) return;
-
-    // 🔧 BUG FIX : S'assurer que l'élément canvas est valide avant d'initialiser Fabric
-    if (!(canvasElement instanceof HTMLCanvasElement)) {
-      console.error("Canvas element is not a valid HTMLCanvasElement");
-      return;
-    }
-
-    // 🔧 BUG FIX #8 : Définir les dimensions du canvas HTML avant d'initialiser Fabric.js
-    // Cela évite l'erreur "Right side of assignment cannot be destructured"
-    canvasElement.width = 1400;
-    canvasElement.height = 900;
-
-    const canvas = new FabricCanvas(canvasElement, {
-      backgroundColor: "#ffffff",
-      selection: true,
-      preserveObjectStacking: true,
-    });
-
-    // 🔧 Filtre de sélection : empêcher uniquement la sélection de la grille et des traits de construction,
-    // mais laisser les poignées de courbe éditable sélectionnables pour permettre l'édition.
-    const filterSelection = (e: any) => {
-      const activeObject = canvas.getActiveObject();
-      if (!activeObject) return;
-
-      // Si c'est un seul objet
-      if (activeObject.type !== "activeSelection") {
-        // Si c'est une ligne de grille, une règle, une surbrillance ou dans gridLinesRef, désélectionner
-        if (
-          (activeObject as any).isGridLine ||
-          (activeObject as any).isRuler ||
-          (activeObject as any).isClosedShapeHighlight ||
-          gridLinesRef.current.includes(activeObject) ||
-          closedShapesRef.current.includes(activeObject)
-        ) {
-          canvas.discardActiveObject();
-          canvas.renderAll();
-        }
-      }
-      // Si c'est une sélection multiple
-      else {
-        const objects = (activeObject as any)._objects || [];
-        const filtered = objects.filter((obj: any) => {
-          return !(
-            (obj as any).isGridLine ||
-            (obj as any).isRuler ||
-            (obj as any).isClosedShapeHighlight ||
-            gridLinesRef.current.includes(obj) ||
-            closedShapesRef.current.includes(obj)
-          );
-        });
-
-        if (filtered.length === 0) {
-          // Tous les objets sont de la grille / construction, désélectionner
-          canvas.discardActiveObject();
-          canvas.renderAll();
-        } else if (filtered.length !== objects.length) {
-          // Certains objets sont à exclure, recréer la sélection sans eux
-          canvas.discardActiveObject();
-          if (filtered.length === 1) {
-            canvas.setActiveObject(filtered[0]);
-          } else {
-            // Créer une nouvelle sélection avec les objets filtrés
-            const sel = new fabric.ActiveSelection(filtered, { canvas });
-            canvas.setActiveObject(sel);
-          }
-          canvas.renderAll();
-        }
-      }
+      setZoomLevel(Math.round(newZoom * 100));
     };
 
-    canvas.on("selection:created", filterSelection);
-    canvas.on("selection:updated", filterSelection);
-
-    const img = new Image();
-    img.onload = () => {
-      imgRef.current = img;
-
-      const maxWidth = 1400;
-      const maxHeight = 900;
-      const scale = Math.min(maxWidth / img.width, maxHeight / img.height);
-
-      // FIX #82c: Stocker le scale d'affichage et calculer la vraie échelle
-      canvasDisplayScaleRef.current = scale;
-      // La vraie échelle : mm par pixel canvas
-      // L'image rectifiée a RECTIFIED_IMAGE_SCALE px/mm, affichée avec scale
-      // Donc 1 pixel canvas = 1 / (RECTIFIED_IMAGE_SCALE * scale) mm
-      const calculatedTrueScale = 1 / (RECTIFIED_IMAGE_SCALE * scale);
-      setTrueScale(calculatedTrueScale);
-      console.log(`[Calibration] Scale canvas: ${scale.toFixed(4)}, TrueScale: ${calculatedTrueScale.toFixed(4)} mm/px`);
-
-      const finalWidth = img.width * scale;
-      const finalHeight = img.height * scale;
-
-      canvas.setWidth(finalWidth);
-      canvas.setHeight(finalHeight);
-
-      FabricImage.fromURL(imageUrl).then((fabricImg) => {
-        // Centrer l'image sur le canvas
-        const imgWidth = img.width * scale;
-        const imgHeight = img.height * scale;
-        const left = (finalWidth - imgWidth) / 2;
-        const top = (finalHeight - imgHeight) / 2;
-
-        fabricImg.set({
-          scaleX: scale,
-          scaleY: scale,
-          left: left,
-          top: top,
-          selectable: false,
-          evented: false,
-          objectCaching: false, // 🔧 Désactiver le cache pour éviter les bugs d'affichage au zoom
-        });
-        canvas.backgroundImage = fabricImg;
-        canvas.renderAll();
-
-        createGrid(canvas, finalWidth, finalHeight);
-      });
-
-      saveState(canvas);
-    };
-    img.src = imageUrl;
-
-    setFabricCanvas(canvas);
-    toast.success("Canevas de traçage prêt !");
+    container.addEventListener("wheel", handleWheel, { passive: false, capture: true });
 
     return () => {
-      canvas.dispose();
+      container.removeEventListener("wheel", handleWheel, { capture: true });
     };
-  }, [imageUrl]);
+  }, []);
 
-  // FIX #82: Appliquer l'opacité à l'image de fond quand elle change
-  useEffect(() => {
-    if (!fabricCanvas) return;
-    
-    const bg = fabricCanvas.backgroundImage as FabricImage | null;
-    if (bg) {
-      bg.set('opacity', backgroundOpacity / 100);
-      fabricCanvas.renderAll();
-    }
-  }, [backgroundOpacity, fabricCanvas]);
+  const handleMount = useCallback(
+    (editorInstance: Editor) => {
+      setEditor(editorInstance);
+      editorRef.current = editorInstance;
 
-  // Recréer la grille quand les paramètres changent
-  useEffect(() => {
-    if (!fabricCanvas || !imgRef.current) return;
-    createGrid(fabricCanvas, fabricCanvas.width || 1400, fabricCanvas.height || 900);
-
-    // Dessiner les règles graduées
-    if (showRulers) {
-      // Supprimer les anciennes règles
-      const objects = fabricCanvas.getObjects();
-      objects.forEach((obj: any) => {
-        if (obj.isRuler) {
-          fabricCanvas.remove(obj);
-        }
+      editorInstance.on("change", () => {
+        const currentTool = editorInstance.getCurrentToolId();
+        setActiveTool(currentTool);
       });
 
-      const canvasWidth = fabricCanvas.width || 1400;
-      const canvasHeight = fabricCanvas.height || 900;
-      const rulerColor = "#000000";
-      const textColor = "#000000";
-      const rulerMargin = 30; // Marge pour dessiner les règles en dehors de l'image
+      if (imageUrl) {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          const assetId = `asset:bg-${templateId}` as any;
+          const shapeId = createShapeId(`bg-${templateId}`);
 
-      // Créer un fond blanc pour les règles (en dehors de l'image)
-      const bottomRulerBg = new Rect({
-        left: 0,
-        top: canvasHeight,
-        width: canvasWidth,
-        height: rulerMargin,
-        fill: "#ffffff",
-        selectable: false,
-        evented: false,
-      });
-      (bottomRulerBg as any).isRuler = true;
-      fabricCanvas.add(bottomRulerBg);
+          editorInstance.createAssets([
+            {
+              id: assetId,
+              type: "image",
+              typeName: "asset",
+              props: {
+                name: "background",
+                src: imageUrl,
+                w: img.width,
+                h: img.height,
+                mimeType: "image/jpeg",
+                isAnimated: false,
+              },
+              meta: {},
+            },
+          ]);
 
-      const leftRulerBg = new Rect({
-        left: -rulerMargin,
-        top: 0,
-        width: rulerMargin,
-        height: canvasHeight,
-        fill: "#ffffff",
-        selectable: false,
-        evented: false,
-      });
-      (leftRulerBg as any).isRuler = true;
-      fabricCanvas.add(leftRulerBg);
-
-      // Règle horizontale (axe X) - FIX #82c: Utiliser trueScale pour les graduations réelles
-      // Calculer un bon intervalle de graduation
-      const pixelsPerMm = 1 / trueScale; // Combien de pixels pour 1 mm
-      let graduationIntervalMm = 10; // Par défaut 10mm
-      const minPixelsBetweenGraduations = 40; // Minimum 40 pixels entre 2 graduations
-      
-      // Ajuster l'intervalle pour qu'il soit lisible
-      if (pixelsPerMm * 10 < minPixelsBetweenGraduations) graduationIntervalMm = 20;
-      if (pixelsPerMm * 20 < minPixelsBetweenGraduations) graduationIntervalMm = 50;
-      if (pixelsPerMm * 50 < minPixelsBetweenGraduations) graduationIntervalMm = 100;
-      if (pixelsPerMm * 100 < minPixelsBetweenGraduations) graduationIntervalMm = 200;
-      if (pixelsPerMm * 200 < minPixelsBetweenGraduations) graduationIntervalMm = 500;
-      
-      const pixelsPerGraduation = graduationIntervalMm * pixelsPerMm;
-      const maxMmX = canvasWidth * trueScale; // Largeur totale en mm
-      const numGraduationsX = Math.ceil(maxMmX / graduationIntervalMm);
-
-      for (let i = 0; i <= numGraduationsX; i++) {
-        const mmValue = i * graduationIntervalMm;
-        const x = mmValue * pixelsPerMm; // Position en pixels
-        if (x > canvasWidth) break;
-
-        // Afficher en cm si >= 100mm, sinon en mm
-        const displayValue = mmValue >= 100 
-          ? (mmValue / 10).toFixed(0) 
-          : mmValue.toFixed(0);
-
-        // Trait vertical petit (en dehors de l'image)
-        const line = new Line([x, canvasHeight, x, canvasHeight + 8], {
-          stroke: rulerColor,
-          strokeWidth: 1,
-          selectable: false,
-          evented: false,
-          objectCaching: false,
-          strokeUniform: true,
-        });
-        (line as any).isRuler = true;
-        fabricCanvas.add(line);
-
-        // Texte en bas (à chaque trait)
-        const text = new FabricText(`${displayValue}`, {
-          left: x - 8,
-          top: canvasHeight + 12,
-          fontSize: 12,
-          fill: textColor,
-          selectable: false,
-          evented: false,
-          fontWeight: "normal",
-        });
-        (text as any).isRuler = true;
-        fabricCanvas.add(text);
-      }
-
-      // Règle verticale (axe Y) - FIX #82c: Utiliser trueScale, 0 en bas
-      const maxMmY = canvasHeight * trueScale; // Hauteur totale en mm
-      const numGraduationsY = Math.ceil(maxMmY / graduationIntervalMm);
-
-      for (let i = 0; i <= numGraduationsY; i++) {
-        const mmValue = i * graduationIntervalMm;
-        const y = canvasHeight - (mmValue * pixelsPerMm); // Position en pixels (0 en bas)
-        if (y < 0) break;
-
-        // Afficher en cm si >= 100mm
-        const displayValue = mmValue >= 100 
-          ? (mmValue / 10).toFixed(0) 
-          : mmValue.toFixed(0);
-
-        // Trait horizontal petit (en dehors de l'image)
-        const line = new Line([-8, y, 0, y], {
-          stroke: rulerColor,
-          strokeWidth: 1,
-          selectable: false,
-          evented: false,
-          objectCaching: false,
-          strokeUniform: true,
-        });
-        (line as any).isRuler = true;
-        fabricCanvas.add(line);
-
-        // Texte à gauche (à chaque trait)
-        const text = new FabricText(`${displayValue}`, {
-          left: -28,
-          top: y - 6,
-          fontSize: 12,
-          fill: textColor,
-          selectable: false,
-          evented: false,
-          fontWeight: "normal",
-        });
-        (text as any).isRuler = true;
-        fabricCanvas.add(text);
-      }
-
-      fabricCanvas.renderAll();
-    } else {
-      // Supprimer les règles si désactivées
-      const objects = fabricCanvas.getObjects();
-      objects.forEach((obj: any) => {
-        if (obj.isRuler) {
-          fabricCanvas.remove(obj);
-        }
-      });
-      fabricCanvas.renderAll();
-    }
-  }, [showGrid, gridSize, fabricCanvas, createGrid, showRulers, trueScale]);
-
-  // 🔧 BUG FIX #6 : Gérer la sélection et le déplacement des courbes éditables
-  useEffect(() => {
-    if (!fabricCanvas) return;
-
-    // Tailles de base des poignées (à zoom 1)
-    const BASE_ENDPOINT_RADIUS = 3;
-    const BASE_CENTER_RADIUS = 4;
-    const BASE_STROKE_WIDTH = 1;
-
-    // Fonction pour mettre à jour la taille des poignées selon le zoom
-    const updateHandleSizes = () => {
-      const currentZoom = fabricCanvas.getZoom();
-      const endpointRadius = BASE_ENDPOINT_RADIUS / currentZoom;
-      const centerRadius = BASE_CENTER_RADIUS / currentZoom;
-      const strokeWidth = BASE_STROKE_WIDTH / currentZoom;
-
-      // Mettre à jour les poignées de ligne
-      lineHandlesRef.current.forEach((handle, index) => {
-        const isCenter = index === 1; // La poignée centrale est à l'index 1
-        handle.set({
-          radius: isCenter ? centerRadius : endpointRadius,
-          strokeWidth: strokeWidth,
-        });
-        handle.setCoords();
-      });
-
-      // Mettre à jour les poignées de courbe
-      if (activeCurveRef.current) {
-        activeCurveRef.current.controlHandles.forEach((handle, index) => {
-          const isMove = index === 3; // La poignée de déplacement est à l'index 3
-          handle.set({
-            radius: isMove ? centerRadius : endpointRadius,
-            strokeWidth: strokeWidth,
+          editorInstance.createShape({
+            id: shapeId,
+            type: "image",
+            x: 0,
+            y: 0,
+            props: {
+              assetId: assetId,
+              w: img.width,
+              h: img.height,
+            },
+            isLocked: true,
           });
-          handle.setCoords();
-        });
-        // Mettre à jour les lignes de contrôle (taille et pointillés)
-        activeCurveRef.current.controlLines.forEach((line) => {
-          line.set({
-            strokeWidth: strokeWidth,
-            strokeDashArray: [4 / currentZoom, 4 / currentZoom],
+
+          editorInstance.zoomToFit();
+          setZoomLevel(Math.round(editorInstance.getZoomLevel() * 100));
+        };
+        img.src = imageUrl;
+      }
+
+      if (initialData?.shapes) {
+        try {
+          initialData.shapes.forEach((shape: any) => {
+            if (shape.type !== "image") {
+              editorInstance.createShape(shape);
+            }
           });
-        });
-      }
-
-      fabricCanvas.requestRenderAll();
-    };
-
-    // Écouter les changements de zoom
-    const handleZoom = () => {
-      updateHandleSizes();
-    };
-    fabricCanvas.on("mouse:wheel", handleZoom);
-
-    // Fonction pour créer les poignées d'une ligne (3 poignées : start, center, end)
-    const createLineHandles = (line: Line) => {
-      removeLineHandles();
-
-      const x1 = line.x1 ?? 0;
-      const y1 = line.y1 ?? 0;
-      const x2 = line.x2 ?? 0;
-      const y2 = line.y2 ?? 0;
-
-      // Centre de la ligne
-      const cx = (x1 + x2) / 2;
-      const cy = (y1 + y2) / 2;
-
-      // Ajuster la taille selon le zoom actuel
-      const currentZoom = fabricCanvas.getZoom();
-      const endpointRadius = BASE_ENDPOINT_RADIUS / currentZoom;
-      const centerRadius = BASE_CENTER_RADIUS / currentZoom;
-      const strokeWidth = BASE_STROKE_WIDTH / currentZoom;
-
-      const endpointProps = {
-        radius: endpointRadius,
-        fill: "#3b82f6",
-        stroke: "#ffffff",
-        strokeWidth: strokeWidth,
-        selectable: true,
-        evented: true,
-        hasControls: false,
-        hasBorders: false,
-        originX: "center" as const,
-        originY: "center" as const,
-        hoverCursor: "pointer",
-      };
-
-      const centerProps = {
-        radius: centerRadius,
-        fill: "#22c55e", // Vert pour la poignée de déplacement
-        stroke: "#ffffff",
-        strokeWidth: strokeWidth,
-        selectable: true,
-        evented: true,
-        hasControls: false,
-        hasBorders: false,
-        originX: "center" as const,
-        originY: "center" as const,
-        hoverCursor: "move",
-      };
-
-      const handle1 = new Circle({ ...endpointProps, left: x1, top: y1 });
-      const handleCenter = new Circle({ ...centerProps, left: cx, top: cy });
-      const handle2 = new Circle({ ...endpointProps, left: x2, top: y2 });
-
-      (handle1 as any).isLineHandle = true;
-      (handle1 as any).handleType = "start";
-      (handle1 as any).parentLine = line;
-
-      (handleCenter as any).isLineHandle = true;
-      (handleCenter as any).handleType = "center";
-      (handleCenter as any).parentLine = line;
-
-      (handle2 as any).isLineHandle = true;
-      (handle2 as any).handleType = "end";
-      (handle2 as any).parentLine = line;
-
-      // Variable pour suivre la position précédente du centre
-      let lastCenterPos = { x: cx, y: cy };
-
-      // Gérer le déplacement de la poignée start (fluide, sans snap pendant le mouvement)
-      handle1.on("moving", () => {
-        const posX = handle1.left ?? 0;
-        const posY = handle1.top ?? 0;
-        line.set({ x1: posX, y1: posY });
-        line.setCoords();
-        // Mettre à jour la poignée centrale
-        const newCx = ((line.x1 ?? 0) + (line.x2 ?? 0)) / 2;
-        const newCy = ((line.y1 ?? 0) + (line.y2 ?? 0)) / 2;
-        handleCenter.set({ left: newCx, top: newCy });
-        handleCenter.setCoords();
-        lastCenterPos = { x: newCx, y: newCy };
-        fabricCanvas.requestRenderAll();
-      });
-
-      // Snap au relâchement (snapPoint gère déjà snapToGrid en interne)
-      handle1.on("mouseup", () => {
-        const pos = { x: handle1.left ?? 0, y: handle1.top ?? 0 };
-        const snapped = snapPoint(pos, fabricCanvas);
-        if (snapped.x !== pos.x || snapped.y !== pos.y) {
-          handle1.set({ left: snapped.x, top: snapped.y });
-          handle1.setCoords();
-          line.set({ x1: snapped.x, y1: snapped.y });
-          line.setCoords();
-          // Mettre à jour la poignée centrale
-          const newCx = ((line.x1 ?? 0) + (line.x2 ?? 0)) / 2;
-          const newCy = ((line.y1 ?? 0) + (line.y2 ?? 0)) / 2;
-          handleCenter.set({ left: newCx, top: newCy });
-          handleCenter.setCoords();
-          lastCenterPos = { x: newCx, y: newCy };
+        } catch (error) {
+          console.error("Erreur chargement données:", error);
         }
-        // Toujours déclencher pour détecter les formes fermées
-        fabricCanvas.fire("object:modified", { target: line });
-        fabricCanvas.requestRenderAll();
-      });
-
-      // Gérer le déplacement de la poignée end (fluide, sans snap pendant le mouvement)
-      handle2.on("moving", () => {
-        const posX = handle2.left ?? 0;
-        const posY = handle2.top ?? 0;
-        line.set({ x2: posX, y2: posY });
-        line.setCoords();
-        // Mettre à jour la poignée centrale
-        const newCx = ((line.x1 ?? 0) + (line.x2 ?? 0)) / 2;
-        const newCy = ((line.y1 ?? 0) + (line.y2 ?? 0)) / 2;
-        handleCenter.set({ left: newCx, top: newCy });
-        handleCenter.setCoords();
-        lastCenterPos = { x: newCx, y: newCy };
-        fabricCanvas.requestRenderAll();
-      });
-
-      // Snap au relâchement (snapPoint gère déjà snapToGrid en interne)
-      handle2.on("mouseup", () => {
-        const pos = { x: handle2.left ?? 0, y: handle2.top ?? 0 };
-        const snapped = snapPoint(pos, fabricCanvas);
-        if (snapped.x !== pos.x || snapped.y !== pos.y) {
-          handle2.set({ left: snapped.x, top: snapped.y });
-          handle2.setCoords();
-          line.set({ x2: snapped.x, y2: snapped.y });
-          line.setCoords();
-          // Mettre à jour la poignée centrale
-          const newCx = ((line.x1 ?? 0) + (line.x2 ?? 0)) / 2;
-          const newCy = ((line.y1 ?? 0) + (line.y2 ?? 0)) / 2;
-          handleCenter.set({ left: newCx, top: newCy });
-          handleCenter.setCoords();
-          lastCenterPos = { x: newCx, y: newCy };
-        }
-        // Toujours déclencher pour détecter les formes fermées
-        fabricCanvas.fire("object:modified", { target: line });
-        fabricCanvas.requestRenderAll();
-      });
-
-      // Gérer le déplacement de la poignée centrale (déplace tout le trait)
-      handleCenter.on("moving", () => {
-        const newCenterX = handleCenter.left ?? 0;
-        const newCenterY = handleCenter.top ?? 0;
-
-        // Calculer le delta
-        const dx = newCenterX - lastCenterPos.x;
-        const dy = newCenterY - lastCenterPos.y;
-
-        // Déplacer les deux extrémités
-        const newX1 = (line.x1 ?? 0) + dx;
-        const newY1 = (line.y1 ?? 0) + dy;
-        const newX2 = (line.x2 ?? 0) + dx;
-        const newY2 = (line.y2 ?? 0) + dy;
-
-        line.set({ x1: newX1, y1: newY1, x2: newX2, y2: newY2 });
-        line.setCoords();
-
-        // Mettre à jour les poignées d'extrémité
-        handle1.set({ left: newX1, top: newY1 });
-        handle1.setCoords();
-        handle2.set({ left: newX2, top: newY2 });
-        handle2.setCoords();
-
-        lastCenterPos = { x: newCenterX, y: newCenterY };
-        fabricCanvas.requestRenderAll();
-      });
-
-      // Déclencher la détection des formes fermées après déplacement du trait entier
-      handleCenter.on("mouseup", () => {
-        fabricCanvas.fire("object:modified", { target: line });
-        fabricCanvas.requestRenderAll();
-      });
-
-      fabricCanvas.add(handle1);
-      fabricCanvas.add(handleCenter);
-      fabricCanvas.add(handle2);
-      lineHandlesRef.current = [handle1, handleCenter, handle2];
-    };
-
-    // Fonction pour supprimer les poignées
-    const removeLineHandles = () => {
-      lineHandlesRef.current.forEach((handle) => {
-        fabricCanvas.remove(handle);
-      });
-      lineHandlesRef.current = [];
-    };
-
-    // Synchroniser les poignées avec la position de la ligne (3 poignées)
-    const syncLineHandles = (line: Line) => {
-      if (lineHandlesRef.current.length === 3 && activeLineRef.current === line) {
-        const x1 = line.x1 ?? 0;
-        const y1 = line.y1 ?? 0;
-        const x2 = line.x2 ?? 0;
-        const y2 = line.y2 ?? 0;
-        const cx = (x1 + x2) / 2;
-        const cy = (y1 + y2) / 2;
-
-        lineHandlesRef.current[0].set({ left: x1, top: y1 });
-        lineHandlesRef.current[0].setCoords();
-        lineHandlesRef.current[1].set({ left: cx, top: cy });
-        lineHandlesRef.current[1].setCoords();
-        lineHandlesRef.current[2].set({ left: x2, top: y2 });
-        lineHandlesRef.current[2].setCoords();
       }
+    },
+    [imageUrl, templateId, initialData],
+  );
+
+  const selectTool = useCallback(
+    (toolId: string) => {
+      if (editor) {
+        editor.setCurrentTool(toolId);
+        setActiveTool(toolId);
+      }
+    },
+    [editor],
+  );
+
+  const handleZoomIn = useCallback(() => {
+    if (editor) {
+      const currentZoom = editor.getZoomLevel();
+      const newZoom = Math.min(currentZoom * 1.2, 8);
+      editor.setCamera({
+        x: editor.getCamera().x,
+        y: editor.getCamera().y,
+        z: newZoom,
+      });
+      setZoomLevel(Math.round(newZoom * 100));
+    }
+  }, [editor]);
+
+  const handleZoomOut = useCallback(() => {
+    if (editor) {
+      const currentZoom = editor.getZoomLevel();
+      const newZoom = Math.max(currentZoom * 0.8, 0.1);
+      editor.setCamera({
+        x: editor.getCamera().x,
+        y: editor.getCamera().y,
+        z: newZoom,
+      });
+      setZoomLevel(Math.round(newZoom * 100));
+    }
+  }, [editor]);
+
+  const handleSave = useCallback(() => {
+    if (!editor || !onSave) return;
+
+    const shapes = editor.getCurrentPageShapes();
+    const drawingShapes = shapes.filter((s) => s.type !== "image" && !s.isLocked);
+
+    const data = {
+      shapes: drawingShapes.map((s) => ({
+        id: s.id,
+        type: s.type,
+        x: s.x,
+        y: s.y,
+        rotation: s.rotation,
+        props: s.props,
+      })),
+      scaleFactor,
+      savedAt: new Date().toISOString(),
     };
 
-    const handleSelection = (e: any) => {
-      const selected = e.selected?.[0];
+    onSave(data);
+    toast.success("Gabarit sauvegardé !");
+  }, [editor, onSave, scaleFactor]);
 
-      // Ignorer la sélection des poignées (ligne ou courbe)
-      if (selected && ((selected as any).isLineHandle || (selected as any).isControlHandle)) {
+  const handleExportSVG = useCallback(async () => {
+    if (!editor) return;
+
+    try {
+      const shapes = editor.getCurrentPageShapes();
+      const drawingShapes = shapes.filter((s) => s.type !== "image" && !s.isLocked);
+
+      if (drawingShapes.length === 0) {
+        toast.error("Aucun tracé à exporter");
         return;
       }
 
-      // Cacher les poignées de la courbe précédente
-      if (activeCurveRef.current && activeCurveRef.current !== selected) {
-        activeCurveRef.current.removeHandles(fabricCanvas);
-        activeCurveRef.current = null;
+      editor.select(...drawingShapes.map((s) => s.id));
+
+      const svgResult = await editor.getSvgString(drawingShapes.map((s) => s.id));
+
+      if (!svgResult || !svgResult.svg) {
+        toast.error("Impossible de générer le SVG");
+        return;
       }
 
-      // Cacher les poignées de la ligne précédente
-      if (activeLineRef.current && activeLineRef.current !== selected) {
-        removeLineHandles();
-        activeLineRef.current = null;
-      }
+      const blob = new Blob([svgResult.svg], { type: "image/svg+xml" });
+      const url = URL.createObjectURL(blob);
 
-      // Si c'est une courbe éditable, montrer les poignées
-      if (selected && (selected as any).customType === "editableCurve") {
-        const curve = selected as EditableCurve;
-        curve.createHandles(fabricCanvas, strokeColor, fabricCanvas.getZoom());
-        activeCurveRef.current = curve;
-      }
-      // Si c'est une ligne utilisateur, montrer les poignées aux extrémités
-      else if (selected && selected instanceof Line && (selected as any).isUserDrawn) {
-        createLineHandles(selected);
-        activeLineRef.current = selected;
-      }
-    };
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `gabarit-${templateId}.svg`;
+      a.click();
 
-    const handleDeselection = () => {
-      if (activeCurveRef.current) {
-        activeCurveRef.current.removeHandles(fabricCanvas);
-        activeCurveRef.current = null;
-      }
-      if (activeLineRef.current) {
-        removeLineHandles();
-        activeLineRef.current = null;
-      }
-    };
-
-    // 🔧 BUG FIX : Mettre à jour les poignées quand la courbe ou ligne bouge
-    const handleObjectMoving = (e: any) => {
-      const obj = e.target;
-
-      // Synchroniser les poignées de courbe
-      if (obj && (obj as any).customType === "editableCurve") {
-        const curve = obj as unknown as EditableCurve;
-        curve.syncHandlesOnMove();
-        fabricCanvas.requestRenderAll();
-      }
-
-      // Synchroniser les poignées de ligne (ne pas si c'est une poignée qui bouge)
-      if (obj && obj instanceof Line && (obj as any).isUserDrawn && !(obj as any).isLineHandle) {
-        syncLineHandles(obj);
-        fabricCanvas.requestRenderAll();
-      }
-    };
-
-    // 🔧 BUG FIX : Mettre à jour les poignées après modification (scaling, rotation, etc.)
-    const handleObjectModified = (e: any) => {
-      const obj = e.target;
-
-      // Pour les courbes
-      if (obj && (obj as any).customType === "editableCurve") {
-        const curve = obj as unknown as EditableCurve;
-
-        // 🔧 NETTOYAGE AGRESSIF : Supprimer toutes les lignes de contrôle orphelines
-        const objectsToRemove: any[] = [];
-        fabricCanvas.getObjects().forEach((canvasObj) => {
-          if (canvasObj instanceof Line && (canvasObj as any).isControlLine) {
-            // Vérifier si cette ligne appartient à la courbe actuelle
-            if (!curve.controlLines.includes(canvasObj)) {
-              objectsToRemove.push(canvasObj);
-            }
-          }
-        });
-        objectsToRemove.forEach((toRemove) => fabricCanvas.remove(toRemove));
-
-        // Re-synchroniser les poignées avec la courbe telle qu'elle est transformée
-        curve.syncHandlesOnMove();
-
-        // S'assurer que la courbe active garde des poignées cohérentes
-        if (activeCurveRef.current === curve) {
-          activeCurveRef.current = curve;
-        }
-
-        fabricCanvas.requestRenderAll();
-      }
-
-      // Pour les lignes
-      if (obj && obj instanceof Line && (obj as any).isUserDrawn && !(obj as any).isLineHandle) {
-        syncLineHandles(obj);
-        fabricCanvas.requestRenderAll();
-      }
-    };
-
-    fabricCanvas.on("selection:created", handleSelection);
-    fabricCanvas.on("selection:updated", handleSelection);
-    fabricCanvas.on("selection:cleared", handleDeselection);
-    fabricCanvas.on("object:moving", handleObjectMoving);
-    fabricCanvas.on("object:modified", handleObjectModified);
-
-    return () => {
-      fabricCanvas.off("selection:created", handleSelection);
-      fabricCanvas.off("selection:updated", handleSelection);
-      fabricCanvas.off("selection:cleared", handleDeselection);
-      fabricCanvas.off("object:moving", handleObjectMoving);
-      fabricCanvas.off("object:modified", handleObjectModified);
-      fabricCanvas.off("mouse:wheel", handleZoom);
-    };
-  }, [fabricCanvas, strokeColor, snapPoint]);
-
-  // 🔧 Détecter les formes fermées après chaque modification
-  useEffect(() => {
-    if (!fabricCanvas) return;
-
-    const handleObjectChange = (e: any) => {
-      // Ignorer les polygones de surbrillance pour éviter les boucles infinies
-      if (e?.target?.isClosedShapeHighlight) return;
-
-      // Délai court pour s'assurer que les coordonnées sont à jour
-      setTimeout(() => {
-        detectClosedShapes(fabricCanvas);
-      }, 50);
-    };
-
-    fabricCanvas.on("object:modified", handleObjectChange);
-    fabricCanvas.on("object:added", handleObjectChange);
-    fabricCanvas.on("object:removed", handleObjectChange);
-
-    return () => {
-      fabricCanvas.off("object:modified", handleObjectChange);
-      fabricCanvas.off("object:added", handleObjectChange);
-      fabricCanvas.off("object:removed", handleObjectChange);
-    };
-  }, [fabricCanvas, detectClosedShapes]);
-
-  // Gérer les outils
-  useEffect(() => {
-    if (!fabricCanvas) return;
-
-    fabricCanvas.isDrawingMode = activeTool === "pencil";
-    // Activer la sélection rectangulaire uniquement en mode select
-    fabricCanvas.selection = activeTool === "select";
-
-    // 🎯 Gestion du curseur selon l'outil actif
-    const drawingTools = [
-      "line",
-      "rectangle",
-      "circle",
-      "ellipse",
-      "editableCurve",
-      "bezier",
-      "spline",
-      "polygon",
-      "dimension",
-      "text",
-    ];
-
-    if (activeTool === "pan") {
-      fabricCanvas.defaultCursor = "grab";
-      fabricCanvas.hoverCursor = "grab";
-    } else if (activeTool === "select") {
-      fabricCanvas.defaultCursor = "default";
-      fabricCanvas.hoverCursor = "move";
-    } else if (drawingTools.includes(activeTool)) {
-      fabricCanvas.defaultCursor = "crosshair";
-      fabricCanvas.hoverCursor = "crosshair";
-    } else if (activeTool === "pencil") {
-      fabricCanvas.defaultCursor = "crosshair";
-      fabricCanvas.hoverCursor = "crosshair";
-    } else {
-      fabricCanvas.defaultCursor = "default";
-      fabricCanvas.hoverCursor = "move";
+      URL.revokeObjectURL(url);
+      toast.success("SVG exporté !");
+    } catch (error) {
+      console.error("Erreur export SVG:", error);
+      toast.error("Erreur lors de l'export SVG");
     }
+  }, [editor, templateId]);
 
-    // 🎯 S'assurer que tous les objets existants sont sélectionnables
-    fabricCanvas.getObjects().forEach((obj: any) => {
-      // Ne pas modifier les objets qui ne doivent pas être sélectionnables (grille, règles, surbrillance, etc.)
-      if (
-        !obj.isRuler &&
-        !obj.isGridLine &&
-        !obj.isControlHandle &&
-        !obj.isControlLine &&
-        !obj.isLineHandle &&
-        !obj.isClosedShapeHighlight &&
-        !gridLinesRef.current.includes(obj) &&
-        !closedShapesRef.current.includes(obj)
-      ) {
-        obj.selectable = true;
-        obj.evented = true;
-        obj.setCoords(); // Mettre à jour les coordonnées pour la sélection
-        // Définir le curseur de survol pour chaque objet
-        if (activeTool === "select") {
-          obj.hoverCursor = "move";
-        }
-      } else if (obj.isLineHandle || obj.isControlHandle) {
-        // Les poignées ne sont actives QUE en mode sélection
-        // En mode dessin, on doit pouvoir cliquer à travers elles
-        if (activeTool === "select") {
-          obj.selectable = true;
-          obj.evented = true;
-        } else {
-          obj.selectable = false;
-          obj.evented = false;
-        }
-      } else {
-        // Forcer les objets non sélectionnables à le rester (grille, surbrillance, etc.)
-        obj.selectable = false;
-        obj.evented = false;
-      }
-    });
+  const handleExportDXF = useCallback(async () => {
+    if (!editor) return;
 
-    fabricCanvas.renderAll();
+    try {
+      const shapes = editor.getCurrentPageShapes();
+      const drawingShapes = shapes.filter((s) => s.type !== "image" && !s.isLocked);
 
-    if (activeTool === "pencil" && fabricCanvas.freeDrawingBrush) {
-      fabricCanvas.freeDrawingBrush.color = strokeColor;
-      fabricCanvas.freeDrawingBrush.width = strokeWidth;
-    }
-
-    fabricCanvas.off("mouse:down");
-    fabricCanvas.off("mouse:move");
-    fabricCanvas.off("mouse:up");
-    fabricCanvas.off("mouse:wheel");
-
-    // 🔧 BUG FIX #7 : Gestion améliorée du pan avec le bouton du milieu (molette)
-    let isPanningWithMiddleButton = false;
-    let lastPanPos: { x: number; y: number } | null = null;
-
-    const handleMiddleButtonDown = (opt: any) => {
-      const evt = opt.e;
-      if (evt instanceof MouseEvent && evt.button === 1) {
-        // Bouton du milieu (molette)
-        isPanningWithMiddleButton = true;
-        fabricCanvas.selection = false;
-        fabricCanvas.defaultCursor = "grabbing";
-        lastPanPos = { x: evt.clientX, y: evt.clientY };
-        evt.preventDefault();
-        evt.stopPropagation();
-        return false;
-      }
-    };
-
-    const handleMiddleButtonMove = (opt: any) => {
-      const evt = opt.e;
-      if (isPanningWithMiddleButton && lastPanPos && evt instanceof MouseEvent) {
-        const vpt = fabricCanvas.viewportTransform;
-        if (vpt) {
-          const currentZoom = fabricCanvas.getZoom();
-          const canvasWidth = fabricCanvas.getWidth();
-          const canvasHeight = fabricCanvas.getHeight();
-
-          // Calculer les nouvelles positions
-          let newX = vpt[4] + evt.clientX - lastPanPos.x;
-          let newY = vpt[5] + evt.clientY - lastPanPos.y;
-
-          // Limiter le pan pour garder au moins 20% de l'image visible
-          // minPan : l'image peut sortir vers la gauche/haut jusqu'à ce que 20% reste visible à droite/bas
-          // maxPan : l'image peut sortir vers la droite/bas jusqu'à ce que 20% reste visible à gauche/haut
-          const visibleRatio = 0.2;
-          const minPanX = canvasWidth * visibleRatio - canvasWidth * currentZoom;
-          const maxPanX = canvasWidth * (1 - visibleRatio);
-          const minPanY = canvasHeight * visibleRatio - canvasHeight * currentZoom;
-          const maxPanY = canvasHeight * (1 - visibleRatio);
-
-          newX = Math.max(minPanX, Math.min(maxPanX, newX));
-          newY = Math.max(minPanY, Math.min(maxPanY, newY));
-
-          vpt[4] = newX;
-          vpt[5] = newY;
-          fabricCanvas.requestRenderAll();
-          lastPanPos = { x: evt.clientX, y: evt.clientY };
-        }
-        evt.preventDefault();
-        evt.stopPropagation();
-        return false;
-      }
-    };
-
-    const handleMiddleButtonUp = (opt: any) => {
-      const evt = opt.e;
-      if (evt instanceof MouseEvent && evt.button === 1) {
-        isPanningWithMiddleButton = false;
-        fabricCanvas.selection = activeTool === "select";
-
-        // Remettre le curseur approprié selon l'outil actif
-        const drawingTools = [
-          "line",
-          "rectangle",
-          "circle",
-          "ellipse",
-          "editableCurve",
-          "bezier",
-          "spline",
-          "polygon",
-          "dimension",
-          "text",
-          "pencil",
-        ];
-
-        if (activeTool === "pan") {
-          fabricCanvas.defaultCursor = "grab";
-        } else if (drawingTools.includes(activeTool)) {
-          fabricCanvas.defaultCursor = "crosshair";
-        } else {
-          fabricCanvas.defaultCursor = "default";
-        }
-
-        lastPanPos = null;
-        evt.preventDefault();
-        evt.stopPropagation();
-        return false;
-      }
-    };
-
-    // Attacher les événements au niveau du canvas HTML pour capturer le bouton du milieu
-    const canvasElement = fabricCanvas.getElement();
-    canvasElement.addEventListener("mousedown", handleMiddleButtonDown as any, true);
-    canvasElement.addEventListener("mousemove", handleMiddleButtonMove as any, true);
-    canvasElement.addEventListener("mouseup", handleMiddleButtonUp as any, true);
-
-    // Également attacher aux événements Fabric pour compatibilité
-    fabricCanvas.on("mouse:down", handleMiddleButtonDown);
-    fabricCanvas.on("mouse:move", handleMiddleButtonMove);
-    fabricCanvas.on("mouse:up", handleMiddleButtonUp);
-
-    // Zoom avec la molette (toujours actif)
-    fabricCanvas.on("mouse:wheel", (opt) => {
-      const delta = opt.e.deltaY;
-      const evt = opt.e;
-      evt.preventDefault();
-      evt.stopPropagation();
-
-      let newZoom = fabricCanvas.getZoom();
-      newZoom *= 0.9995 ** delta; // Plus lent pour éviter les sauts brusques
-      if (newZoom > 5) newZoom = 5;
-      if (newZoom < 0.3) newZoom = 0.3; // Minimum pour éviter que l'image disparaisse
-
-      // Utiliser le centre du canvas si on ne peut pas obtenir la position de la souris
-      const canvasEl = fabricCanvas.getElement();
-      const rect = canvasEl.getBoundingClientRect();
-      const mouseX = evt.clientX - rect.left;
-      const mouseY = evt.clientY - rect.top;
-
-      fabricCanvas.zoomToPoint(new Point(mouseX, mouseY), newZoom);
-
-      // Limiter le pan pour garder l'image visible après le zoom
-      const vpt = fabricCanvas.viewportTransform;
-      if (vpt) {
-        const canvasWidth = fabricCanvas.getWidth();
-        const canvasHeight = fabricCanvas.getHeight();
-
-        // Limites plus strictes au dézoom
-        const minPanX = canvasWidth * 0.2 - canvasWidth * newZoom;
-        const maxPanX = canvasWidth * 0.8;
-        const minPanY = canvasHeight * 0.2 - canvasHeight * newZoom;
-        const maxPanY = canvasHeight * 0.8;
-
-        vpt[4] = Math.max(minPanX, Math.min(maxPanX, vpt[4]));
-        vpt[5] = Math.max(minPanY, Math.min(maxPanY, vpt[5]));
-
-        fabricCanvas.setViewportTransform(vpt);
+      if (drawingShapes.length === 0) {
+        toast.error("Aucun tracé à exporter");
+        return;
       }
 
-      setZoom(newZoom);
+      editor.select(...drawingShapes.map((s) => s.id));
 
-      // 🔧 FIX : Forcer le re-rendu complet de l'image de fond
-      if (fabricCanvas.backgroundImage) {
-        (fabricCanvas.backgroundImage as any).dirty = true;
-      }
-      fabricCanvas.renderAll();
-    });
+      const svgResult = await editor.getSvgString(drawingShapes.map((s) => s.id));
 
-    // Gestion du pan (déplacement)
-    if (activeTool === "pan") {
-      fabricCanvas.selection = false;
-      fabricCanvas.defaultCursor = "grab";
-      let panning = false;
-
-      fabricCanvas.on("mouse:down", (opt) => {
-        const evt = opt.e;
-        if (evt instanceof MouseEvent || evt instanceof TouchEvent) {
-          panning = true;
-          fabricCanvas.selection = false;
-          fabricCanvas.defaultCursor = "grabbing";
-          lastPosRef.current = {
-            x: (evt as MouseEvent).clientX || 0,
-            y: (evt as MouseEvent).clientY || 0,
-          };
-        }
-      });
-
-      fabricCanvas.on("mouse:move", (opt) => {
-        if (panning && lastPosRef.current) {
-          const evt = opt.e;
-          if (evt instanceof MouseEvent) {
-            const vpt = fabricCanvas.viewportTransform;
-            if (vpt) {
-              const currentZoom = fabricCanvas.getZoom();
-              const canvasWidth = fabricCanvas.getWidth();
-              const canvasHeight = fabricCanvas.getHeight();
-
-              // Calculer les nouvelles positions
-              let newX = vpt[4] + evt.clientX - lastPosRef.current.x;
-              let newY = vpt[5] + evt.clientY - lastPosRef.current.y;
-
-              // Limiter le pan pour garder au moins 20% de l'image visible
-              const visibleRatio = 0.2;
-              const minPanX = canvasWidth * visibleRatio - canvasWidth * currentZoom;
-              const maxPanX = canvasWidth * (1 - visibleRatio);
-              const minPanY = canvasHeight * visibleRatio - canvasHeight * currentZoom;
-              const maxPanY = canvasHeight * (1 - visibleRatio);
-
-              newX = Math.max(minPanX, Math.min(maxPanX, newX));
-              newY = Math.max(minPanY, Math.min(maxPanY, newY));
-
-              vpt[4] = newX;
-              vpt[5] = newY;
-              fabricCanvas.requestRenderAll();
-              lastPosRef.current = { x: evt.clientX, y: evt.clientY };
-            }
-          }
-        }
-      });
-
-      fabricCanvas.on("mouse:up", () => {
-        panning = false;
-        fabricCanvas.defaultCursor = "grab";
-        lastPosRef.current = null;
-      });
-
-      return;
-    }
-
-    if (activeTool === "select" || activeTool === "pencil") return;
-
-    let isDrawing = false;
-    let startPoint: { x: number; y: number } | null = null;
-    let activeObject: any = null;
-    let previewObject: any = null;
-
-    const cleanTempObjects = () => {
-      tempObjects.forEach((obj) => fabricCanvas.remove(obj));
-      setTempObjects([]);
-    };
-
-    const createMarker = (point: { x: number; y: number }, color: string = strokeColor) => {
-      const marker = new Circle({
-        left: point.x,
-        top: point.y,
-        radius: 5,
-        fill: color,
-        stroke: "#ffffff",
-        strokeWidth: 2,
-        selectable: false,
-        evented: false,
-        originX: "center",
-        originY: "center",
-      });
-      fabricCanvas.add(marker);
-      fabricCanvas.bringObjectToFront(marker);
-      return marker;
-    };
-
-    // Fonction pour nettoyer COMPLÈTEMENT tous les objets temporaires
-    const cleanAllTempObjects = () => {
-      tempObjects.forEach((obj) => fabricCanvas.remove(obj));
-      setTempObjects([]);
-      setTempPoints([]);
-      if (previewCurve) {
-        fabricCanvas.remove(previewCurve);
-        setPreviewCurve(null);
+      if (!svgResult || !svgResult.svg) {
+        toast.error("Impossible de générer le SVG");
+        return;
       }
 
-      // 🧹 NETTOYAGE COMPLET : Supprimer tous les objets temporaires
-      const toRemove: any[] = [];
-      fabricCanvas.getObjects().forEach((obj) => {
-        // Lignes en pointillés (sauf la grille)
-        if (obj instanceof Line && (obj as any).strokeDashArray && !(obj as any).isGridLine) {
-          toRemove.push(obj);
-        }
-        // Lignes de contrôle orphelines
-        if (obj instanceof Line && (obj as any).isControlLine) {
-          toRemove.push(obj);
-        }
-        // Marqueurs temporaires
-        if (obj instanceof Circle && !obj.selectable && (obj as any).fill === "#3b82f6") {
-          toRemove.push(obj);
-        }
-        // Courbes de preview
-        if (obj instanceof Path && !obj.selectable && (obj as any).opacity === 0.7) {
-          toRemove.push(obj);
-        }
-      });
-      toRemove.forEach((obj) => fabricCanvas.remove(obj));
+      const dxfContent = svgToDxf(svgResult.svg, scaleFactor);
 
-      fabricCanvas.renderAll();
-    };
+      const blob = new Blob([dxfContent], { type: "application/dxf" });
+      const url = URL.createObjectURL(blob);
 
-    // === OUTIL COURBE ÉDITABLE (le nouveau !) ===
-    if (activeTool === "editableCurve") {
-      let isFinalizingCurve = false;
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `gabarit-${templateId}.dxf`;
+      a.click();
 
-      fabricCanvas.on("mouse:down", (e) => {
-        if (!e.e || isFinalizingCurve) return;
-
-        // 🔧 BUG FIX #2 : Ignorer le bouton du milieu (pan)
-        if (e.e instanceof MouseEvent && e.e.button === 1) return;
-
-        // 🔧 NOUVEAU FIX : Vérifier si on clique sur une courbe existante
-        const clickedObject = e.target;
-        if (clickedObject && (clickedObject as any).customType === "editableCurve") {
-          // On a cliqué sur une courbe existante, permettre sa sélection
-          fabricCanvas.setActiveObject(clickedObject);
-          fabricCanvas.renderAll();
-          return; // Ne pas créer de nouveau point
-        }
-
-        // 🔧 NOUVEAU FIX : Vérifier si on clique sur une poignée de contrôle
-        if (clickedObject && (clickedObject as any).isControlHandle) {
-          // On a cliqué sur une poignée, la laisser être sélectionnée
-          return;
-        }
-
-        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
-        const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
-        const updatedPoints = [...tempPoints, newPoint];
-        setTempPoints(updatedPoints);
-
-        const marker = createMarker(newPoint, "#3b82f6");
-        setTempObjects((prev) => [...prev, marker]);
-
-        if (updatedPoints.length === 1) {
-          // Premier point = première extrémité
-          toast.info("Première extrémité placée. Cliquez pour placer la deuxième extrémité");
-        } else if (updatedPoints.length === 2) {
-          // Deuxième point = deuxième extrémité
-          toast.info("Deuxième extrémité placée. Déplacez la souris pour ajuster la courbure, puis cliquez");
-
-          // 🔧 BUG FIX : NE PAS créer de courbe temporaire ici
-          // On laisse uniquement l'aperçu dans mouse:move gérer l'affichage
-        } else if (updatedPoints.length === 3) {
-          // Troisième point = ajustement final du point de contrôle
-          isFinalizingCurve = true;
-          const [start, end, control] = updatedPoints;
-
-          // NETTOYAGE COMPLET - Supprimer TOUS les objets temporaires (marqueurs)
-          tempObjects.forEach((obj) => {
-            fabricCanvas.remove(obj);
-          });
-
-          // 🧹 NETTOYAGE COMPLET FINAL : Supprimer TOUS les objets temporaires et lignes de construction
-          const finalCleanup: any[] = [];
-          fabricCanvas.getObjects().forEach((obj) => {
-            // TOUTES les lignes en pointillés (sauf la grille)
-            if (obj instanceof Line && (obj as any).strokeDashArray && !(obj as any).isGridLine) {
-              finalCleanup.push(obj);
-            }
-            // TOUTES les lignes de contrôle (isControlLine)
-            if (obj instanceof Line && (obj as any).isControlLine) {
-              finalCleanup.push(obj);
-            }
-            // Cercles temporaires (marqueurs bleus)
-            if (obj instanceof Circle && !obj.selectable && (obj as any).fill === "#3b82f6") {
-              finalCleanup.push(obj);
-            }
-            // Courbes de preview
-            if (obj instanceof Path && !obj.selectable && (obj as any).opacity === 0.7) {
-              finalCleanup.push(obj);
-            }
-          });
-          finalCleanup.forEach((obj) => fabricCanvas.remove(obj));
-
-          // Supprimer la preview curve si elle existe
-          if (previewCurve) {
-            fabricCanvas.remove(previewCurve);
-            setPreviewCurve(null);
-          }
-
-          // Créer la courbe finale
-          const finalCurve = new EditableCurve(
-            new Point(start.x, start.y),
-            new Point(control.x, control.y),
-            new Point(end.x, end.y),
-            {
-              stroke: strokeColor,
-              strokeWidth: strokeWidth,
-              fill: "transparent",
-              strokeLineCap: "round",
-              strokeLineJoin: "round",
-            },
-          );
-          (finalCurve as any).isUserDrawn = true;
-
-          fabricCanvas.add(finalCurve);
-          // Sélectionner automatiquement la courbe pour afficher ses poignées
-          fabricCanvas.setActiveObject(finalCurve);
-
-          // RÉINITIALISER COMPLÈTEMENT les états
-          setTempObjects([]);
-          setTempPoints([]);
-
-          // Rendu final pour s'assurer que tout est bien nettoyé
-          fabricCanvas.requestRenderAll();
-
-          saveState(fabricCanvas);
-
-          // NE PAS changer d'outil - rester en mode editableCurve pour tracer d'autres courbes
-          // setActiveTool("select");
-
-          toast.success("Courbe créée ! Cliquez pour tracer une nouvelle courbe.");
-
-          // Réinitialiser le flag après un court délai
-          setTimeout(() => {
-            isFinalizingCurve = false;
-          }, 100);
-        }
-
-        fabricCanvas.renderAll();
-      });
-
-      let previewMain: Path | null = null;
-      let previewLine1: Line | null = null;
-      let previewLine2: Line | null = null;
-
-      fabricCanvas.on("mouse:move", (e) => {
-        if (!e.e || tempPoints.length === 0 || isFinalizingCurve) return;
-
-        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
-
-        // 🧹 Supprimer l'ancien aperçu (courbe + lignes)
-        if (previewMain) {
-          fabricCanvas.remove(previewMain);
-          previewMain = null;
-        }
-        if (previewLine1) {
-          fabricCanvas.remove(previewLine1);
-          previewLine1 = null;
-        }
-        if (previewLine2) {
-          fabricCanvas.remove(previewLine2);
-          previewLine2 = null;
-        }
-
-        // Nettoyer aussi les objets d'aperçu dans tempObjects (anciens traits pointillés)
-        const cleanedTempObjects = tempObjects.filter(
-          (obj) => !(obj instanceof Line && (obj as any).strokeDashArray && !(obj as any).isGridLine),
-        );
-        if (cleanedTempObjects.length !== tempObjects.length) {
-          tempObjects.forEach((obj) => {
-            if (obj instanceof Line && (obj as any).strokeDashArray && !(obj as any).isGridLine) {
-              fabricCanvas.remove(obj);
-            }
-          });
-        }
-
-        if (tempPoints.length === 1) {
-          // Aperçu ligne droite vers la deuxième extrémité
-          const lastPoint = tempPoints[0];
-          previewLine1 = new Line([lastPoint.x, lastPoint.y, snappedPoint.x, snappedPoint.y], {
-            stroke: strokeColor,
-            strokeWidth: strokeWidth,
-            strokeDashArray: [5, 5],
-            selectable: false,
-            evented: false,
-            opacity: 0.7,
-          });
-          fabricCanvas.add(previewLine1);
-        } else if (tempPoints.length === 2) {
-          // Aperçu de la courbe avec le point de contrôle qui suit la souris
-          const [start, end] = tempPoints;
-          const pathData = `M ${start.x} ${start.y} Q ${snappedPoint.x} ${snappedPoint.y} ${end.x} ${end.y}`;
-          previewMain = new Path(pathData, {
-            stroke: strokeColor,
-            strokeWidth: strokeWidth,
-            fill: "transparent",
-            strokeLineCap: "round",
-            strokeLineJoin: "round",
-            opacity: 0.7,
-            selectable: false,
-            evented: false,
-          });
-          fabricCanvas.add(previewMain);
-
-          // Lignes pointillées pour montrer le point de contrôle
-          previewLine1 = new Line([start.x, start.y, snappedPoint.x, snappedPoint.y], {
-            stroke: "#3b82f6",
-            strokeWidth: 1,
-            strokeDashArray: [5, 5],
-            selectable: false,
-            evented: false,
-            opacity: 0.5,
-          });
-          fabricCanvas.add(previewLine1);
-
-          previewLine2 = new Line([snappedPoint.x, snappedPoint.y, end.x, end.y], {
-            stroke: "#3b82f6",
-            strokeWidth: 1,
-            strokeDashArray: [5, 5],
-            selectable: false,
-            evented: false,
-            opacity: 0.5,
-          });
-          fabricCanvas.add(previewLine2);
-        }
-
-        fabricCanvas.renderAll();
-      });
-
-      const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === "Escape" && tempPoints.length > 0) {
-          // Utiliser la fonction de nettoyage complet
-          cleanAllTempObjects();
-          toast.info("Courbe annulée");
-        }
-      };
-      window.addEventListener("keydown", handleKeyDown);
-
-      return () => {
-        window.removeEventListener("keydown", handleKeyDown);
-      };
+      URL.revokeObjectURL(url);
+      toast.success("DXF exporté pour Fusion 360 !");
+    } catch (error) {
+      console.error("Erreur export DXF:", error);
+      toast.error("Erreur lors de l'export DXF");
     }
+  }, [editor, templateId, scaleFactor]);
 
-    // === OUTILS MULTI-POINTS (Bézier, Spline, Polygon) ===
-    if (activeTool === "bezier" || activeTool === "spline" || activeTool === "polygon") {
-      fabricCanvas.on("mouse:down", (e) => {
-        if (!e.e) return;
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen(!isFullscreen);
+  }, [isFullscreen]);
 
-        // 🔧 BUG FIX #2 : Ignorer le bouton du milieu (pan)
-        if (e.e instanceof MouseEvent && e.e.button === 1) return;
-
-        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
-        const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
-
-        if ((activeTool === "spline" || activeTool === "polygon") && tempPoints.length >= 2) {
-          const lastPoint = tempPoints[tempPoints.length - 1];
-          const distance = Math.sqrt(Math.pow(newPoint.x - lastPoint.x, 2) + Math.pow(newPoint.y - lastPoint.y, 2));
-
-          if (distance < 15) {
-            if (activeTool === "polygon") {
-              const polygon = new Polygon(tempPoints, {
-                stroke: strokeColor,
-                strokeWidth: strokeWidth,
-                fill: "transparent",
-                strokeLineJoin: "round",
-                selectable: true,
-                evented: true,
-              });
-              (polygon as any).isUserDrawn = true;
-              fabricCanvas.add(polygon);
-              toast.success("Polygone créé");
-            } else if (activeTool === "spline") {
-              let pathData = `M ${tempPoints[0].x},${tempPoints[0].y}`;
-
-              for (let i = 1; i < tempPoints.length; i++) {
-                if (i === 1) {
-                  pathData += ` L ${tempPoints[i].x},${tempPoints[i].y}`;
-                } else {
-                  const prevPoint = tempPoints[i - 1];
-                  const currentPoint = tempPoints[i];
-                  const controlX = (prevPoint.x + currentPoint.x) / 2;
-                  const controlY = (prevPoint.y + currentPoint.y) / 2;
-                  pathData += ` Q ${prevPoint.x},${prevPoint.y} ${controlX},${controlY}`;
-                }
-              }
-
-              const lastPoint = tempPoints[tempPoints.length - 1];
-              pathData += ` L ${lastPoint.x},${lastPoint.y}`;
-
-              const splinePath = new Path(pathData, {
-                stroke: strokeColor,
-                strokeWidth: strokeWidth,
-                fill: "transparent",
-                strokeLineCap: "round",
-                strokeLineJoin: "round",
-                selectable: true,
-                evented: true,
-              });
-              (splinePath as any).isUserDrawn = true;
-              fabricCanvas.add(splinePath);
-              toast.success("Spline créée");
-            }
-
-            cleanTempObjects();
-            setTempPoints([]);
-            saveState(fabricCanvas);
-            fabricCanvas.renderAll();
-            return;
-          }
-        }
-
-        const updatedPoints = [...tempPoints, newPoint];
-        setTempPoints(updatedPoints);
-
-        const marker = createMarker(newPoint);
-        setTempObjects((prev) => [...prev, marker]);
-
-        if (updatedPoints.length > 1) {
-          const prevPoint = updatedPoints[updatedPoints.length - 2];
-          const connectionLine = new Line([prevPoint.x, prevPoint.y, newPoint.x, newPoint.y], {
-            stroke: strokeColor,
-            strokeWidth: 1,
-            strokeDashArray: [5, 5],
-            selectable: false,
-            evented: false,
-          });
-          fabricCanvas.add(connectionLine);
-          setTempObjects((prev) => [...prev, connectionLine]);
-        }
-
-        const requiredPoints = activeTool === "bezier" ? 4 : null;
-
-        if (requiredPoints && updatedPoints.length === requiredPoints) {
-          if (activeTool === "bezier") {
-            const [p0, p1, p2, p3] = updatedPoints;
-            const pathData = `M ${p0.x},${p0.y} C ${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y}`;
-            const bezierPath = new Path(pathData, {
-              stroke: strokeColor,
-              strokeWidth: strokeWidth,
-              fill: "transparent",
-              strokeLineCap: "round",
-              strokeLineJoin: "round",
-              selectable: true,
-              evented: true,
-            });
-            (bezierPath as any).isUserDrawn = true;
-            fabricCanvas.add(bezierPath);
-            toast.success("Courbe de Bézier créée");
-          }
-
-          cleanTempObjects();
-          setTempPoints([]);
-          saveState(fabricCanvas);
-        }
-
-        fabricCanvas.renderAll();
-      });
-
-      fabricCanvas.on("mouse:move", (e) => {
-        if (!e.e || tempPoints.length === 0) return;
-
-        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
-
-        if (previewObject) {
-          fabricCanvas.remove(previewObject);
-          previewObject = null;
-        }
-
-        const lastPoint = tempPoints[tempPoints.length - 1];
-        previewObject = new Line([lastPoint.x, lastPoint.y, snappedPoint.x, snappedPoint.y], {
-          stroke: strokeColor,
-          strokeWidth: 1,
-          strokeDashArray: [3, 3],
-          selectable: false,
-          evented: false,
-          opacity: 0.5,
-        });
-        fabricCanvas.add(previewObject);
-        fabricCanvas.renderAll();
-      });
-
-      const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === "Escape" && tempPoints.length > 0) {
-          cleanTempObjects();
-          setTempPoints([]);
-          if (previewObject) {
-            fabricCanvas.remove(previewObject);
-            previewObject = null;
-          }
-          fabricCanvas.renderAll();
-          toast.info("Tracé annulé");
-        }
-      };
-      window.addEventListener("keydown", handleKeyDown);
-
-      return () => {
-        window.removeEventListener("keydown", handleKeyDown);
-      };
-    }
-
-    // === OUTIL DIMENSION ===
-    if (activeTool === "dimension") {
-      fabricCanvas.on("mouse:down", (e) => {
-        if (!e.e) return;
-
-        // 🔧 BUG FIX #2 : Ignorer le bouton du milieu (pan)
-        if (e.e instanceof MouseEvent && e.e.button === 1) return;
-
-        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
-        const newPoint = { x: snappedPoint.x, y: snappedPoint.y };
-        const updatedPoints = [...tempPoints, newPoint];
-        setTempPoints(updatedPoints);
-
-        const marker = createMarker(newPoint, "#3b82f6");
-        setTempObjects((prev) => [...prev, marker]);
-
-        if (updatedPoints.length === 2) {
-          const [p1, p2] = updatedPoints;
-          const dx = p2.x - p1.x;
-          const dy = p2.y - p1.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          // FIX #82c: Utiliser la vraie échelle (trueScale = mm par pixel canvas)
-          const realDistance = (distance * trueScale).toFixed(1);
-
-          const dimensionLine = new Line([p1.x, p1.y, p2.x, p2.y], {
-            stroke: "#3b82f6",
-            strokeWidth: 2,
-            selectable: true,
-            evented: true,
-          });
-
-          const arrowSize = 10;
-          const angle = Math.atan2(dy, dx);
-
-          const arrow1Path = `M ${p1.x} ${p1.y} 
-                             L ${p1.x + arrowSize * Math.cos(angle + 2.8)} ${p1.y + arrowSize * Math.sin(angle + 2.8)} 
-                             L ${p1.x + arrowSize * Math.cos(angle - 2.8)} ${p1.y + arrowSize * Math.sin(angle - 2.8)} Z`;
-          const arrow1 = new Path(arrow1Path, {
-            fill: "#3b82f6",
-            stroke: "#3b82f6",
-            strokeWidth: 1,
-            selectable: true,
-            evented: true,
-          });
-
-          const arrow2Path = `M ${p2.x} ${p2.y} 
-                             L ${p2.x - arrowSize * Math.cos(angle + 2.8)} ${p2.y - arrowSize * Math.sin(angle + 2.8)} 
-                             L ${p2.x - arrowSize * Math.cos(angle - 2.8)} ${p2.y - arrowSize * Math.sin(angle - 2.8)} Z`;
-          const arrow2 = new Path(arrow2Path, {
-            fill: "#3b82f6",
-            stroke: "#3b82f6",
-            strokeWidth: 1,
-            selectable: true,
-            evented: true,
-          });
-
-          const text = new Textbox(`${realDistance} mm`, {
-            left: (p1.x + p2.x) / 2,
-            top: (p1.y + p2.y) / 2 - 20,
-            fill: "#3b82f6",
-            fontSize: 16,
-            fontWeight: "bold",
-            backgroundColor: "white",
-            padding: 4,
-            textAlign: "center",
-            originX: "center",
-            originY: "center",
-            selectable: true,
-            evented: true,
-          });
-
-          const dimensionGroup = new Group([dimensionLine, arrow1, arrow2, text], {
-            selectable: true,
-            evented: true,
-          });
-          (dimensionGroup as any).isUserDrawn = true;
-          fabricCanvas.add(dimensionGroup);
-
-          cleanTempObjects();
-          setTempPoints([]);
-          saveState(fabricCanvas);
-          fabricCanvas.renderAll();
-          toast.success(`Cote ajoutée: ${realDistance} mm`);
-        }
-      });
-
-      fabricCanvas.on("mouse:move", (e) => {
-        if (!e.e || tempPoints.length !== 1) return;
-
-        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
-
-        if (previewObject) {
-          fabricCanvas.remove(previewObject);
-        }
-
-        const p1 = tempPoints[0];
-        previewObject = new Line([p1.x, p1.y, snappedPoint.x, snappedPoint.y], {
-          stroke: "#3b82f6",
-          strokeWidth: 2,
-          strokeDashArray: [5, 5],
-          selectable: false,
-          evented: false,
-          opacity: 0.5,
-        });
-        fabricCanvas.add(previewObject);
-        fabricCanvas.renderAll();
-      });
-    }
-
-    // === OUTILS STANDARDS ===
-    if (["line", "rectangle", "circle", "ellipse"].includes(activeTool)) {
-      fabricCanvas.on("mouse:down", (e) => {
-        if (!e.e) return;
-
-        // 🔧 BUG FIX #2 : Ignorer le bouton du milieu (pan)
-        if (e.e instanceof MouseEvent && e.e.button === 1) return;
-
-        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
-        isDrawing = true;
-        startPoint = { x: snappedPoint.x, y: snappedPoint.y };
-
-        if (activeTool === "line") {
-          activeObject = new Line([startPoint.x, startPoint.y, startPoint.x, startPoint.y], {
-            stroke: strokeColor,
-            strokeWidth: strokeWidth,
-            strokeLineCap: "round",
-            selectable: true,
-            evented: true,
-            objectCaching: false,
-            hasControls: false, // Pas de bounding box
-            hasBorders: false, // Pas de bordure
-            lockMovementX: true, // Verrouiller le déplacement (on utilise la poignée centrale)
-            lockMovementY: true,
-            lockRotation: true,
-            perPixelTargetFind: true, // Sélection précise sur le trait
-          });
-          (activeObject as any).isUserDrawn = true;
-        } else if (activeTool === "rectangle") {
-          activeObject = new Rect({
-            left: startPoint.x,
-            top: startPoint.y,
-            width: 0,
-            height: 0,
-            stroke: strokeColor,
-            strokeWidth: strokeWidth,
-            fill: "transparent",
-            selectable: true,
-            evented: true,
-            objectCaching: false,
-          });
-          (activeObject as any).isUserDrawn = true;
-        } else if (activeTool === "circle") {
-          activeObject = new Circle({
-            left: startPoint.x,
-            top: startPoint.y,
-            radius: 0,
-            stroke: strokeColor,
-            strokeWidth: strokeWidth,
-            fill: "transparent",
-            originX: "center",
-            originY: "center",
-            selectable: true,
-            evented: true,
-            objectCaching: false,
-          });
-          (activeObject as any).isUserDrawn = true;
-        } else if (activeTool === "ellipse") {
-          activeObject = new Ellipse({
-            left: startPoint.x,
-            top: startPoint.y,
-            rx: 0,
-            ry: 0,
-            stroke: strokeColor,
-            strokeWidth: strokeWidth,
-            fill: "transparent",
-            selectable: true,
-            evented: true,
-            objectCaching: false,
-          });
-          (activeObject as any).isUserDrawn = true;
-        }
-
-        fabricCanvas.add(activeObject);
-      });
-
-      fabricCanvas.on("mouse:move", (e) => {
-        if (!isDrawing || !startPoint || !e.e || !activeObject) return;
-
-        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        // Pas de snap pendant le tracé pour fluidité
-
-        if (activeTool === "line") {
-          activeObject.set({
-            x2: canvasPoint.x,
-            y2: canvasPoint.y,
-          });
-        } else if (activeTool === "rectangle") {
-          const width = canvasPoint.x - startPoint.x;
-          const height = canvasPoint.y - startPoint.y;
-          activeObject.set({
-            width: Math.abs(width),
-            height: Math.abs(height),
-            left: width > 0 ? startPoint.x : canvasPoint.x,
-            top: height > 0 ? startPoint.y : canvasPoint.y,
-          });
-        } else if (activeTool === "circle") {
-          const dx = canvasPoint.x - startPoint.x;
-          const dy = canvasPoint.y - startPoint.y;
-          const radius = Math.sqrt(dx * dx + dy * dy);
-          activeObject.set({ radius: radius });
-        } else if (activeTool === "ellipse") {
-          const rx = Math.abs(canvasPoint.x - startPoint.x);
-          const ry = Math.abs(canvasPoint.y - startPoint.y);
-          activeObject.set({
-            rx: rx,
-            ry: ry,
-            left: canvasPoint.x > startPoint.x ? startPoint.x : canvasPoint.x,
-            top: canvasPoint.y > startPoint.y ? startPoint.y : canvasPoint.y,
-          });
-        }
-
-        fabricCanvas.renderAll();
-      });
-
-      fabricCanvas.on("mouse:up", (e) => {
-        if (isDrawing && activeObject) {
-          // Appliquer le magnétisme uniquement au point final si activé
-          if (activeTool === "line" && e.e) {
-            const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-            const snappedEnd = snapPoint(canvasPoint, fabricCanvas);
-            activeObject.set({ x2: snappedEnd.x, y2: snappedEnd.y });
-          }
-
-          // S'assurer que l'objet est bien sélectionnable
-          activeObject.setCoords();
-          activeObject.set({
-            selectable: true,
-            evented: true,
-          });
-          fabricCanvas.renderAll();
-          saveState(fabricCanvas);
-        }
-        isDrawing = false;
-        startPoint = null;
-        activeObject = null;
-      });
-    }
-
-    // === OUTIL TEXTE ===
-    if (activeTool === "text") {
-      fabricCanvas.on("mouse:down", (e) => {
-        if (!e.e) return;
-
-        // 🔧 BUG FIX #2 : Ignorer le bouton du milieu (pan)
-        if (e.e instanceof MouseEvent && e.e.button === 1) return;
-
-        const canvasPoint = getCanvasPoint(fabricCanvas, e.e);
-        const snappedPoint = snapPoint(canvasPoint, fabricCanvas); // 🔧 Passer fabricCanvas pour snapping vers courbes
-        const text = new Textbox("Double-clic pour éditer", {
-          left: snappedPoint.x,
-          top: snappedPoint.y,
-          fill: strokeColor,
-          fontSize: 20,
-          fontFamily: "Arial",
-          selectable: true,
-          evented: true,
-        });
-        (text as any).isUserDrawn = true;
-        fabricCanvas.add(text);
-        fabricCanvas.setActiveObject(text);
-        text.enterEditing();
-        saveState(fabricCanvas);
-      });
-    }
-
-    return () => {
-      // Nettoyer les event listeners du canvas HTML
-      const canvasElement = fabricCanvas.getElement();
-      canvasElement.removeEventListener("mousedown", handleMiddleButtonDown as any, true);
-      canvasElement.removeEventListener("mousemove", handleMiddleButtonMove as any, true);
-      canvasElement.removeEventListener("mouseup", handleMiddleButtonUp as any, true);
-
-      fabricCanvas.off("mouse:down");
-      fabricCanvas.off("mouse:move");
-      fabricCanvas.off("mouse:up");
-    };
-  }, [
-    activeTool,
-    strokeColor,
-    strokeWidth,
-    fabricCanvas,
-    tempPoints,
-    snapPoint,
-    saveState,
-    scaleFactor,
-    trueScale, // FIX #82c: Ajout pour recalculer les dimensions avec la vraie échelle
-    tempObjects,
-    previewCurve,
-  ]);
-
-  // 🔧 Raccourci clavier Ctrl+S pour enregistrer
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-        e.preventDefault();
-        saveDrawings();
+      if (e.key === "Escape" && isFullscreen) {
+        setIsFullscreen(false);
       }
     };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isFullscreen]);
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [fabricCanvas, onDrawingsChanged]);
-
-  const saveDrawings = () => {
-    if (!fabricCanvas) return;
-
-    // Filtrer les objets à sauvegarder (exclure grille, poignées, surbrillance)
-    const objectsToSave = fabricCanvas.getObjects().filter((obj: any) => {
-      return (
-        obj.isUserDrawn &&
-        !obj.isGridLine &&
-        !obj.isRuler &&
-        !obj.isLineHandle &&
-        !obj.isControlHandle &&
-        !obj.isControlLine &&
-        !obj.isClosedShapeHighlight &&
-        !gridLinesRef.current.includes(obj) &&
-        !closedShapesRef.current.includes(obj)
-      );
-    });
-
-    // Créer un JSON personnalisé avec uniquement les objets utilisateur
-    const json = {
-      version: fabricCanvas.toJSON().version,
-      objects: objectsToSave.map((obj: any) => obj.toObject()),
-    };
-
-    onDrawingsChanged?.(json);
-    toast.success("Tracé enregistré !");
-  };
-
-  const handleClear = () => {
-    if (!fabricCanvas) return;
-    const backgroundImg = fabricCanvas.backgroundImage;
-    const objects = fabricCanvas.getObjects();
-    objects.forEach((obj) => {
-      if (!gridLinesRef.current.includes(obj)) {
-        fabricCanvas.remove(obj);
-      }
-    });
-    if (backgroundImg) {
-      fabricCanvas.backgroundImage = backgroundImg;
+  const handleResetView = useCallback(() => {
+    if (editor) {
+      editor.zoomToFit();
+      setZoomLevel(Math.round(editor.getZoomLevel() * 100));
     }
-    fabricCanvas.renderAll();
-    saveState(fabricCanvas);
-    toast.success("Dessins effacés");
-  };
+  }, [editor]);
 
-  const handleDeleteSelected = () => {
-    if (!fabricCanvas) return;
-    const activeObjects = fabricCanvas.getActiveObjects();
-    if (activeObjects.length > 0) {
-      activeObjects.forEach((obj) => {
-        // Si c'est une courbe éditable, supprimer aussi ses poignées
-        if ((obj as any).customType === "editableCurve") {
-          (obj as unknown as EditableCurve).removeHandles(fabricCanvas);
-          // 🔧 BUG FIX #1 : Nettoyer la ref si c'est la courbe active
-          if (activeCurveRef.current === (obj as unknown as EditableCurve)) {
-            activeCurveRef.current = null;
-          }
-        }
-        fabricCanvas.remove(obj);
-      });
-      fabricCanvas.discardActiveObject();
-      fabricCanvas.renderAll();
-      saveState(fabricCanvas);
-      toast.success("Objet(s) supprimé(s)");
-    }
-  };
-
-  const adjustForFullscreen = useCallback(() => {
-    if (!fabricCanvas || !imgRef.current) return;
-
-    const containerWidth = window.innerWidth;
-    const containerHeight = window.innerHeight;
-
-    // Adapter la taille du canvas à la fenêtre
-    fabricCanvas.setWidth(containerWidth);
-    fabricCanvas.setHeight(containerHeight);
-
-    const bg = fabricCanvas.backgroundImage as FabricImage | null;
-    if (bg && bg.width && bg.height) {
-      const imgWidth = bg.width * (bg.scaleX || 1);
-      const imgHeight = bg.height * (bg.scaleY || 1);
-
-      const scale = Math.min(containerWidth / imgWidth, containerHeight / imgHeight);
-      const offsetX = (containerWidth - imgWidth * scale) / 2;
-      const offsetY = (containerHeight - imgHeight * scale) / 2;
-
-      fabricCanvas.setViewportTransform([scale, 0, 0, scale, offsetX, offsetY]);
-      setZoom(scale);
-    } else {
-      fabricCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
-      setZoom(1);
-    }
-
-    createGrid(fabricCanvas, containerWidth, containerHeight);
-    fabricCanvas.renderAll();
-  }, [fabricCanvas, createGrid]);
-
-  const handleZoomIn = () => {
-    if (!fabricCanvas) return;
-    const newZoom = Math.min(5, zoom + 0.25);
-    setZoom(newZoom);
-    const center = fabricCanvas.getCenter();
-    fabricCanvas.zoomToPoint(new Point(center.left, center.top), newZoom);
-    fabricCanvas.renderAll();
-  };
-
-  const handleZoomOut = () => {
-    if (!fabricCanvas) return;
-    const newZoom = Math.max(0.1, zoom - 0.25);
-    setZoom(newZoom);
-    const center = fabricCanvas.getCenter();
-    fabricCanvas.zoomToPoint(new Point(center.left, center.top), newZoom);
-    fabricCanvas.renderAll();
-  };
-
-  const handleResetView = () => {
-    if (!fabricCanvas || !imgRef.current) return;
-    setZoom(1);
-    fabricCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
-
-    // Recentrer si on est en plein écran
-    if (isFullscreen) {
-      adjustForFullscreen();
-      return;
-    }
-
-    fabricCanvas.renderAll();
-  };
-
-  const tools: Array<{
-    id: string;
-    icon: any;
-    label: string;
-    style?: React.CSSProperties;
-    highlight?: boolean;
-  }> = [
-    { id: "pan", icon: Hand, label: "Déplacer la vue (H)" },
-    { id: "select", icon: Move, label: "Sélection (V)" },
-    { id: "line", icon: Minus, label: "Ligne (L)" },
-    { id: "rectangle", icon: Square, label: "Rectangle (R)" },
-    { id: "circle", icon: CircleIcon, label: "Cercle (C)" },
-    {
-      id: "ellipse",
-      icon: CircleIcon,
-      label: "Ellipse (E)",
-      style: { transform: "scaleX(1.5)" },
-    },
-    { id: "polygon", icon: Pentagon, label: "Polygone (P)" },
-    { id: "pencil", icon: Pencil, label: "Crayon libre (F)" },
-    { id: "editableCurve", icon: Sparkles, label: "Courbe éditable ⭐ (NOUVEAU)", highlight: true },
-    { id: "bezier", icon: Waves, label: "Courbe de Bézier (4 pts)" },
-    { id: "spline", icon: Workflow, label: "Spline (4+ pts)" },
-    { id: "dimension", icon: Ruler, label: "Cote (D)" },
-    { id: "text", icon: Type, label: "Texte (T)" },
-  ];
+  // Bouton d'outil
+  const ToolButton = ({ toolId, icon: Icon, label }: { toolId: string; icon: any; label: string }) => (
+    <button
+      onClick={() => selectTool(toolId)}
+      title={label}
+      className={`h-10 w-10 flex items-center justify-center rounded-lg transition-colors ${
+        activeTool === toolId ? "bg-blue-500 text-white shadow-md" : "bg-white hover:bg-gray-100 text-gray-700"
+      }`}
+    >
+      <Icon className="h-5 w-5" />
+    </button>
+  );
 
   return (
-    <div className={`${isFullscreen ? "fixed inset-0 z-50 bg-background" : "space-y-4"}`}>
-      {tempPoints.length > 0 && (
-        <div className={`flex items-center gap-2 ${isFullscreen ? "fixed top-4 left-4 z-[60]" : ""}`}>
-          <Badge variant="secondary" className="animate-pulse">
-            {activeTool === "editableCurve"
-              ? `Courbe éditable: ${tempPoints.length}/3 points`
-              : activeTool === "bezier"
-                ? `Bézier: ${tempPoints.length}/4 points`
-                : activeTool === "spline"
-                  ? `Spline: ${tempPoints.length} points`
-                  : activeTool === "polygon"
-                    ? `Polygone: ${tempPoints.length} sommets`
-                    : activeTool === "dimension"
-                      ? `Cote: ${tempPoints.length}/2 points`
-                      : ""}
-          </Badge>
-          <span className="text-sm text-muted-foreground bg-background/80 px-2 py-1 rounded">
-            Appuyez sur <kbd className="px-2 py-1 bg-muted rounded">Échap</kbd> pour annuler
-          </span>
+    <div
+      ref={containerRef}
+      className={`flex flex-col relative ${isFullscreen ? "fixed inset-0 z-50 bg-white" : "h-[700px]"}`}
+    >
+      {/* Barre d'actions en haut */}
+      <div className="flex items-center gap-2 p-2 bg-gray-100 border-b">
+        <Badge variant="outline" className="text-xs">
+          <Ruler className="h-3 w-3 mr-1" />
+          1px = {(1 / scaleFactor).toFixed(2)}mm
+        </Badge>
+
+        <Separator orientation="vertical" className="h-6" />
+
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={handleZoomOut} className="h-8 w-8 p-0">
+            <ZoomOut className="h-4 w-4" />
+          </Button>
+          <span className="text-xs font-mono w-12 text-center">{zoomLevel}%</span>
+          <Button variant="ghost" size="sm" onClick={handleZoomIn} className="h-8 w-8 p-0">
+            <ZoomIn className="h-4 w-4" />
+          </Button>
         </div>
-      )}
 
-      {/* Toolbar - draggable en mode plein écran */}
-      {isFullscreen ? (
-        <Draggable handle=".drag-handle" defaultPosition={{ x: 20, y: 20 }}>
-          <div className="fixed z-[60] bg-background/95 backdrop-blur-sm rounded-lg shadow-2xl border-2 border-border max-w-[350px]">
-            <div className="drag-handle cursor-move bg-muted/50 p-2 rounded-t-lg border-b flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-500" />
-                <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                <div className="w-3 h-3 rounded-full bg-green-500" />
-                <span className="text-xs font-medium ml-2">Outils de Dessin</span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  if (fabricCanvas && previousCanvasSizeRef.current) {
-                    const { width, height, viewportTransform } = previousCanvasSizeRef.current;
-                    fabricCanvas.setWidth(width);
-                    fabricCanvas.setHeight(height);
-                    fabricCanvas.setViewportTransform((viewportTransform || [1, 0, 0, 1, 0, 0]) as any);
-                    createGrid(fabricCanvas, width, height);
-                    fabricCanvas.renderAll();
-                    setZoom(1);
-                  }
-                  setIsFullscreen(false);
-                }}
-                className="h-6 w-6 p-0"
-              >
-                <Minimize className="h-3 w-3" />
-              </Button>
+        <Button variant="ghost" size="sm" onClick={handleResetView}>
+          <RotateCcw className="h-4 w-4" />
+        </Button>
+
+        <Separator orientation="vertical" className="h-6" />
+
+        <Button variant="outline" size="sm" onClick={handleSave}>
+          <Save className="h-4 w-4 mr-1" />
+          Sauver
+        </Button>
+
+        <Button variant="outline" size="sm" onClick={handleExportSVG}>
+          <FileDown className="h-4 w-4 mr-1" />
+          SVG
+        </Button>
+
+        <Button variant="default" size="sm" onClick={handleExportDXF}>
+          <Download className="h-4 w-4 mr-1" />
+          DXF
+        </Button>
+
+        <div className="flex-1" />
+
+        <Button variant="ghost" size="sm" onClick={toggleFullscreen}>
+          {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+        </Button>
+
+        {isFullscreen && (
+          <Badge variant="secondary" className="text-xs">
+            <kbd className="mx-1 px-1 bg-gray-300 rounded">Échap</kbd>
+          </Badge>
+        )}
+      </div>
+
+      {/* Zone principale avec canvas et boîte à outils */}
+      <div className="flex-1 relative overflow-hidden">
+        {/* Canvas tldraw */}
+        <div ref={canvasContainerRef} className="absolute inset-0">
+          <Tldraw onMount={handleMount} hideUi={true} />
+        </div>
+
+        {/* Barre d'outils flottante draggable - libre */}
+        <Draggable handle=".drag-handle" defaultPosition={{ x: 20, y: 20 }} nodeRef={nodeRef}>
+          <div
+            ref={nodeRef}
+            className="absolute bg-white rounded-xl shadow-2xl border-2 border-gray-200"
+            style={{ zIndex: 99999 }}
+          >
+            {/* Poignée de drag */}
+            <div className="drag-handle flex items-center justify-center py-2 px-3 bg-gray-50 cursor-move rounded-t-xl border-b">
+              <GripVertical className="h-4 w-4 text-gray-400" />
+              <span className="text-xs font-medium text-gray-500 ml-1">Outils</span>
             </div>
-            <div className="p-3 space-y-3 max-h-[80vh] overflow-y-auto">
-              <div className="grid grid-cols-4 gap-1">
-                {tools.map((tool) => (
-                  <Button
-                    key={tool.id}
-                    variant={activeTool === tool.id ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => {
-                      setActiveTool(tool.id as any);
-                      setTempPoints([]);
-                      setTempObjects([]);
-                    }}
-                    title={tool.label}
-                    className={`h-9 w-9 p-0 ${tool.highlight ? "ring-2 ring-blue-500" : ""}`}
-                  >
-                    <tool.icon className="h-4 w-4" style={tool.style} />
-                  </Button>
-                ))}
+
+            {/* Outils */}
+            <div className="p-3 flex flex-col gap-2">
+              {/* Navigation */}
+              <div className="flex gap-2">
+                <ToolButton toolId="select" icon={MousePointer} label="Sélection (V)" />
+                <ToolButton toolId="hand" icon={Hand} label="Main (H)" />
               </div>
 
-              <Separator />
+              <div className="border-t border-gray-200 my-1" />
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs">Couleur</Label>
-                  <Input
-                    type="color"
-                    value={strokeColor}
-                    onChange={(e) => setStrokeColor(e.target.value)}
-                    className="w-16 h-7"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <Label className="text-xs">Épaisseur: {strokeWidth}px</Label>
-                  <Slider
-                    value={[strokeWidth]}
-                    onValueChange={([value]) => setStrokeWidth(value)}
-                    min={1}
-                    max={20}
-                    step={1}
-                  />
-                </div>
-
-                {/* FIX #82: Contrôle d'opacité de l'image de fond (mode fullscreen) */}
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1">
-                    <Eye className="h-3 w-3 text-muted-foreground" />
-                    <Label className="text-xs">Opacité: {backgroundOpacity}%</Label>
-                  </div>
-                  <Slider
-                    value={[backgroundOpacity]}
-                    onValueChange={([value]) => setBackgroundOpacity(value)}
-                    min={0}
-                    max={100}
-                    step={5}
-                  />
-                </div>
+              {/* Dessin */}
+              <div className="flex gap-2">
+                <ToolButton toolId="draw" icon={Pencil} label="Courbe libre (D)" />
+                <ToolButton toolId="line" icon={Spline} label="Ligne/Courbe (L)" />
               </div>
 
-              <Separator />
-
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs">Zoom: {Math.round(zoom * 100)}%</Label>
-                  <div className="flex gap-1">
-                    <Button variant="outline" size="sm" onClick={handleZoomOut} className="h-7 w-7 p-0">
-                      <ZoomOut className="h-3 w-3" />
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={handleZoomIn} className="h-7 w-7 p-0">
-                      <ZoomIn className="h-3 w-3" />
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={handleResetView} className="h-7 w-7 p-0">
-                      <RefreshCw className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
+              <div className="flex gap-2">
+                <ToolButton toolId="geo" icon={Square} label="Rectangle (R)" />
+                <ToolButton toolId="eraser" icon={Eraser} label="Gomme (E)" />
               </div>
 
-              <Separator />
+              <div className="border-t border-gray-200 my-1" />
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Grid3x3 className="h-3 w-3 text-muted-foreground" />
-                    <Label className="text-xs">Grille</Label>
-                  </div>
-                  <Switch checked={showGrid} onCheckedChange={setShowGrid} />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Magnet className="h-3 w-3 text-muted-foreground" />
-                    <Label className="text-xs">Aimanter</Label>
-                  </div>
-                  <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Ruler className="h-3 w-3 text-muted-foreground" />
-                    <Label className="text-xs">Règles</Label>
-                  </div>
-                  <Switch checked={showRulers} onCheckedChange={setShowRulers} />
-                </div>
-
-                {showRulers && (
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs">Case =</Label>
-                      <div className="flex items-center gap-1">
-                        <Input
-                          type="number"
-                          min="1"
-                          max="500"
-                          value={scaleValuePerCell}
-                          onChange={(e) => setScaleValuePerCell(parseInt(e.target.value) || 10)}
-                          className="w-14 h-7 text-xs"
-                        />
-                        <span className="text-xs text-muted-foreground">mm</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <Label className="text-xs">Grille:</Label>
-                      <div className="flex items-center gap-1">
-                        <Input
-                          type="number"
-                          min="10"
-                          max="100"
-                          value={gridSizePx}
-                          onChange={(e) => setGridSizePx(parseInt(e.target.value) || 35)}
-                          className="w-14 h-7 text-xs"
-                        />
-                        <span className="text-xs text-muted-foreground">px</span>
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 text-xs"
-                      onClick={() => {
-                        // Réinitialiser à l'échelle calibrée
-                        const realValue = gridSizePx / scaleFactor;
-                        if (realValue <= 5) setScaleValuePerCell(5);
-                        else if (realValue <= 10) setScaleValuePerCell(10);
-                        else if (realValue <= 20) setScaleValuePerCell(20);
-                        else if (realValue <= 50) setScaleValuePerCell(50);
-                        else if (realValue <= 100) setScaleValuePerCell(100);
-                        else setScaleValuePerCell(Math.round(realValue / 50) * 50);
-                        toast.success("Échelle recalibrée");
-                      }}
-                    >
-                      <RefreshCw className="h-3 w-3 mr-1" />
-                      Recalibrer
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              <Separator />
-
-              <div className="flex flex-col gap-1">
-                <div className="flex gap-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleUndo}
-                    disabled={historyIndex <= 0}
-                    className="flex-1 h-8"
-                  >
-                    <Undo className="h-3 w-3 mr-1" />
-                    Annuler
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleRedo}
-                    disabled={historyIndex >= history.length - 1}
-                    className="flex-1 h-8"
-                  >
-                    <Redo className="h-3 w-3 mr-1" />
-                    Refaire
-                  </Button>
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="flex flex-col gap-1">
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={saveDrawings}
-                  className="h-8 bg-green-600 hover:bg-green-700"
-                >
-                  <Save className="h-3 w-3 mr-1" />
-                  Enregistrer
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleDeleteSelected} className="h-8">
-                  <Trash2 className="h-3 w-3 mr-1" />
-                  Supprimer
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleClear} className="h-8">
-                  Effacer tout
-                </Button>
+              {/* Info outil actif */}
+              <div className="text-xs text-center text-gray-500 py-1 bg-gray-50 rounded">
+                {activeTool === "select" && "🖱️ Sélection"}
+                {activeTool === "hand" && "✋ Déplacer"}
+                {activeTool === "draw" && "✏️ Courbe libre"}
+                {activeTool === "line" && "〰️ Ligne/Courbe"}
+                {activeTool === "geo" && "⬜ Formes"}
+                {activeTool === "eraser" && "🧹 Gomme"}
               </div>
             </div>
           </div>
         </Draggable>
-      ) : (
-        <div className="flex flex-wrap items-center gap-4 p-4 bg-muted/95 backdrop-blur-sm rounded-lg">
-          <div className="flex flex-wrap gap-1">
-            {tools.map((tool) => (
-              <Button
-                key={tool.id}
-                variant={activeTool === tool.id ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  setActiveTool(tool.id as any);
-                  setTempPoints([]);
-                  setTempObjects([]);
-                }}
-                title={tool.label}
-                className={tool.highlight ? "ring-2 ring-blue-500 animate-pulse" : ""}
-              >
-                <tool.icon className="h-4 w-4" style={tool.style} />
-                {tool.highlight && <span className="ml-1">⭐</span>}
-              </Button>
-            ))}
-          </div>
-
-          <Separator orientation="vertical" className="h-8" />
-
-          {/* 🔧 BUG FIX #4 : Ajouter les contrôles de grille en mode normal */}
-          <div className="flex items-center gap-2">
-            <Grid3x3 className="h-4 w-4 text-muted-foreground" />
-            <Label className="text-sm">Grille:</Label>
-            <Switch checked={showGrid} onCheckedChange={setShowGrid} />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Magnet className="h-4 w-4 text-muted-foreground" />
-            <Label className="text-sm">Aimanter:</Label>
-            <Switch checked={snapToGrid} onCheckedChange={setSnapToGrid} />
-          </div>
-
-          <Separator orientation="vertical" className="h-8" />
-
-          <div className="flex items-center gap-2">
-            <Ruler className="h-4 w-4 text-muted-foreground" />
-            <Label className="text-sm">Règles:</Label>
-            <Switch checked={showRulers} onCheckedChange={setShowRulers} />
-          </div>
-
-          {showRulers && (
-            <>
-              <div className="flex items-center gap-2">
-                <Label className="text-sm">Case =</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="500"
-                  value={scaleValuePerCell}
-                  onChange={(e) => setScaleValuePerCell(parseInt(e.target.value) || 10)}
-                  className="w-16 h-8"
-                />
-                <span className="text-sm text-muted-foreground">mm</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Label className="text-sm">Grille:</Label>
-                <Input
-                  type="number"
-                  min="10"
-                  max="100"
-                  value={gridSizePx}
-                  onChange={(e) => setGridSizePx(parseInt(e.target.value) || 35)}
-                  className="w-16 h-8"
-                />
-                <span className="text-sm text-muted-foreground">px</span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  const realValue = gridSizePx / scaleFactor;
-                  if (realValue <= 5) setScaleValuePerCell(5);
-                  else if (realValue <= 10) setScaleValuePerCell(10);
-                  else if (realValue <= 20) setScaleValuePerCell(20);
-                  else if (realValue <= 50) setScaleValuePerCell(50);
-                  else if (realValue <= 100) setScaleValuePerCell(100);
-                  else setScaleValuePerCell(Math.round(realValue / 50) * 50);
-                  toast.success("Échelle recalibrée");
-                }}
-                title="Recalibrer à l'échelle de l'image"
-              >
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-            </>
-          )}
-
-          <Separator orientation="vertical" className="h-8" />
-
-          <div className="flex items-center gap-2">
-            <Label className="text-sm">Couleur:</Label>
-            <Input
-              type="color"
-              value={strokeColor}
-              onChange={(e) => setStrokeColor(e.target.value)}
-              className="w-16 h-8"
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Label className="text-sm">Épaisseur:</Label>
-            <div className="w-32">
-              <Slider
-                value={[strokeWidth]}
-                onValueChange={([value]) => setStrokeWidth(value)}
-                min={1}
-                max={20}
-                step={1}
-              />
-            </div>
-            <Badge variant="outline">{strokeWidth}px</Badge>
-          </div>
-
-          {/* FIX #82: Contrôle d'opacité de l'image de fond */}
-          <div className="flex items-center gap-2">
-            <Eye className="h-4 w-4 text-muted-foreground" />
-            <Label className="text-sm">Opacité:</Label>
-            <div className="w-24">
-              <Slider
-                value={[backgroundOpacity]}
-                onValueChange={([value]) => setBackgroundOpacity(value)}
-                min={0}
-                max={100}
-                step={5}
-              />
-            </div>
-            <Badge variant="outline">{backgroundOpacity}%</Badge>
-          </div>
-
-          <Separator orientation="vertical" className="h-8" />
-
-          <div className="flex gap-1">
-            <Button variant="outline" size="sm" onClick={handleZoomOut} title="Zoom arrière (-)">
-              <ZoomOut className="h-4 w-4" />
-            </Button>
-            <Badge variant="outline" className="px-3">
-              {Math.round(zoom * 100)}%
-            </Badge>
-            <Button variant="outline" size="sm" onClick={handleZoomIn} title="Zoom avant (+)">
-              <ZoomIn className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleResetView} title="Réinitialiser la vue">
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <Separator orientation="vertical" className="h-8" />
-
-          <div className="flex gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleUndo}
-              disabled={historyIndex <= 0}
-              title="Annuler (Ctrl+Z)"
-            >
-              <Undo className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRedo}
-              disabled={historyIndex >= history.length - 1}
-              title="Refaire (Ctrl+Y)"
-            >
-              <Redo className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <Separator orientation="vertical" className="h-8" />
-
-          <div className="flex gap-1">
-            <Button
-              variant="default"
-              size="sm"
-              onClick={saveDrawings}
-              className="bg-green-600 hover:bg-green-700"
-              title="Enregistrer (Ctrl+S)"
-            >
-              <Save className="h-4 w-4 mr-2" />
-              Enregistrer
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleDeleteSelected} title="Supprimer (Suppr)">
-              <Trash2 className="h-4 w-4 mr-2" />
-              Supprimer
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleClear}>
-              Effacer tout
-            </Button>
-          </div>
-
-          <Separator orientation="vertical" className="h-8" />
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              if (fabricCanvas) {
-                previousCanvasSizeRef.current = {
-                  width: fabricCanvas.getWidth() || 0,
-                  height: fabricCanvas.getHeight() || 0,
-                  viewportTransform: fabricCanvas.viewportTransform
-                    ? [...fabricCanvas.viewportTransform]
-                    : [1, 0, 0, 1, 0, 0],
-                };
-              }
-
-              setIsFullscreen(true);
-              // Ajuster l'image après un délai pour que le DOM se mette à jour
-              setTimeout(() => {
-                adjustForFullscreen();
-              }, 150);
-            }}
-            title="Mode plein écran"
-          >
-            <Maximize className="h-4 w-4 mr-2" />
-            Plein écran
-          </Button>
-        </div>
-      )}
-
-      {/* Canvas - unique, style adapté selon le mode */}
-      <div
-        className={
-          isFullscreen
-            ? "h-screen w-screen flex items-center justify-center overflow-hidden"
-            : "border rounded-lg bg-white shadow-lg flex items-center justify-center overflow-auto"
-        }
-        style={isFullscreen ? {} : { height: "calc(100vh - 350px)", minHeight: "500px", maxHeight: "900px" }}
-      >
-        <canvas ref={canvasRef} className={isFullscreen ? "max-w-full max-h-full" : ""} />
       </div>
 
-      {!isFullscreen && (
-        <div className="text-sm text-muted-foreground bg-blue-50 p-3 rounded-lg">
-          <p>
-            <strong>Échelle calibrée:</strong> 1 pixel = {trueScale.toFixed(4)} mm •{" "}
-            <strong className="ml-2">Résolution:</strong> {(1 / trueScale).toFixed(2)} pixels/mm •
-            <strong className="ml-2">Historique:</strong> {historyIndex + 1}/{history.length} états
-          </p>
-          <p className="mt-1 text-blue-600 font-medium">
-            💡 Astuce : Utilisez la "Courbe éditable" pour ajuster vos courbes en temps réel ! Maintenez le bouton du
-            milieu (molette) pour déplacer la vue, ou utilisez la molette pour zoomer.
-          </p>
-        </div>
-      )}
+      {/* Info en bas */}
+      <div className="p-2 bg-gray-50 border-t text-xs text-muted-foreground flex justify-between">
+        <span>
+          🖱️ <strong>Molette</strong>: zoom • <strong>Espace+glisser</strong>: déplacer
+        </span>
+        <span>Double-clic pour terminer une ligne</span>
+      </div>
     </div>
   );
 }
+
+export default TldrawGabaritCanvas;
