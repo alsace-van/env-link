@@ -636,9 +636,11 @@ export function CADGabaritCanvas({
 
   // Historique séparé pour les images (car HTMLImageElement ne peut pas être sérialisé)
   // Fonctionne comme une PILE : on empile avant suppression, on dépile pour restaurer
+  // MOD v7.12: Ajout timestamp pour synchroniser avec l'historique du sketch
   interface ImageHistoryState {
     backgroundImages: BackgroundImage[];
     markerLinks: ImageMarkerLink[];
+    timestamp: number; // Pour comparer avec HistoryEntry.timestamp
   }
   const [imageHistory, setImageHistory] = useState<ImageHistoryState[]>([]);
   const imageHistoryRef = useRef<ImageHistoryState[]>([]);
@@ -3908,7 +3910,12 @@ export function CADGabaritCanvas({
       marker2: { ...l.marker2 },
     }));
 
-    const newState = { backgroundImages: imagesCopy, markerLinks: linksCopy };
+    // MOD v7.12: Ajout timestamp pour synchronisation chronologique
+    const newState: ImageHistoryState = {
+      backgroundImages: imagesCopy,
+      markerLinks: linksCopy,
+      timestamp: Date.now(),
+    };
     setImageHistory((prev) => [...prev, newState]);
   }, []);
 
@@ -11428,24 +11435,45 @@ export function CADGabaritCanvas({
   }, [sketch, selectedEntities, solveSketch, addToHistory, lineIntersection, isEntityOnLockedLayer]);
 
   // Undo/Redo
+  // MOD v7.12: Comparaison chronologique des historiques sketch et image
   const undo = useCallback(() => {
-    // D'abord essayer de restaurer les images si l'historique d'images contient des états
     const branch = branches.find((b) => b.id === activeBranchId);
     const sketchCanUndo = branch && branch.historyIndex > 0;
     const imageCanUndo = imageHistory.length > 0;
 
-    // Priorité aux images si on a un état à restaurer
+    // Si aucun des deux ne peut annuler, on sort
+    if (!sketchCanUndo && !imageCanUndo) {
+      return;
+    }
+
+    // Récupérer les timestamps pour comparer
+    let sketchTimestamp = 0;
+    let imageTimestamp = 0;
+
+    if (sketchCanUndo && branch) {
+      // Le timestamp de l'entrée ACTUELLE (celle qu'on va annuler)
+      const currentEntry = branch.history[branch.historyIndex];
+      sketchTimestamp = currentEntry?.timestamp || 0;
+    }
+
     if (imageCanUndo) {
-      // Dépiler le dernier état et le restaurer
+      const lastImageState = imageHistory[imageHistory.length - 1];
+      imageTimestamp = lastImageState.timestamp || 0;
+    }
+
+    // Annuler la modification la plus récente (timestamp le plus élevé)
+    if (imageCanUndo && (!sketchCanUndo || imageTimestamp >= sketchTimestamp)) {
+      // Annuler la modification d'image
       const lastState = imageHistory[imageHistory.length - 1];
       setBackgroundImages(lastState.backgroundImages);
       setMarkerLinks(lastState.markerLinks);
-      setImageHistory((prev) => prev.slice(0, -1)); // Retirer le dernier
+      setImageHistory((prev) => prev.slice(0, -1));
       toast.success("Photo restaurée");
       return;
     }
 
     if (sketchCanUndo && branch) {
+      // Annuler la modification du sketch
       const newIndex = branch.historyIndex - 1;
       const prevEntry = branch.history[newIndex];
       loadSketchData(prevEntry.sketch);
