@@ -1,7 +1,7 @@
 // ============================================
 // EXPORT DXF: Export au format AutoCAD R12
 // Compatible Fusion 360, AutoCAD, LibreCAD
-// VERSION: 2.1 - Format R12 ultra-simplifié
+// VERSION: 2.2 - Lignes de construction en pointillé
 // ============================================
 
 import { Sketch, Line, Circle as CircleType, Arc } from "./types";
@@ -9,6 +9,7 @@ import { Sketch, Line, Circle as CircleType, Arc } from "./types";
 /**
  * Exporte un sketch au format DXF (AutoCAD R12 - format le plus compatible)
  * MOD v7.12: Correction de l'échelle - scaleFactor est en px/mm
+ * MOD v7.12b: Lignes de construction en pointillé
  */
 export function exportToDXF(sketch: Sketch): string {
   // scaleFactor = px/mm (ex: 2.5 pixels par mm)
@@ -26,14 +27,16 @@ export function exportToDXF(sketch: Sketch): string {
   dxf += "70\n4\n";
   dxf += "0\nENDSEC\n";
 
-  // Section TABLES (minimale)
+  // Section TABLES
   dxf += "0\nSECTION\n";
   dxf += "2\nTABLES\n";
 
-  // Table LTYPE
+  // Table LTYPE - Types de lignes
   dxf += "0\nTABLE\n";
   dxf += "2\nLTYPE\n";
-  dxf += "70\n1\n";
+  dxf += "70\n2\n"; // 2 types de lignes
+
+  // Type CONTINUOUS (ligne continue)
   dxf += "0\nLTYPE\n";
   dxf += "2\nCONTINUOUS\n";
   dxf += "70\n0\n";
@@ -41,17 +44,39 @@ export function exportToDXF(sketch: Sketch): string {
   dxf += "72\n65\n";
   dxf += "73\n0\n";
   dxf += "40\n0.0\n";
+
+  // Type DASHED (ligne pointillée pour construction)
+  dxf += "0\nLTYPE\n";
+  dxf += "2\nDASHED\n";
+  dxf += "70\n0\n";
+  dxf += "3\nDashed line\n";
+  dxf += "72\n65\n";
+  dxf += "73\n2\n"; // 2 éléments dans le motif
+  dxf += "40\n10.0\n"; // Longueur totale du motif
+  dxf += "49\n5.0\n"; // Trait (positif = visible)
+  dxf += "49\n-5.0\n"; // Espace (négatif = invisible)
+
   dxf += "0\nENDTAB\n";
 
-  // Table LAYER
+  // Table LAYER - Calques
   dxf += "0\nTABLE\n";
   dxf += "2\nLAYER\n";
-  dxf += "70\n1\n";
+  dxf += "70\n2\n"; // 2 calques
+
+  // Calque 0 (défaut - lignes normales)
   dxf += "0\nLAYER\n";
   dxf += "2\n0\n";
   dxf += "70\n0\n";
-  dxf += "62\n7\n";
+  dxf += "62\n7\n"; // Couleur blanche
   dxf += "6\nCONTINUOUS\n";
+
+  // Calque CONSTRUCTION (lignes de construction)
+  dxf += "0\nLAYER\n";
+  dxf += "2\nCONSTRUCTION\n";
+  dxf += "70\n0\n";
+  dxf += "62\n8\n"; // Couleur grise
+  dxf += "6\nDASHED\n";
+
   dxf += "0\nENDTAB\n";
 
   dxf += "0\nENDSEC\n";
@@ -60,12 +85,11 @@ export function exportToDXF(sketch: Sketch): string {
   dxf += "0\nSECTION\n";
   dxf += "2\nENTITIES\n";
 
-  // Exporter les géométries (inclure les lignes de construction - MOD v7.12)
+  // Exporter les géométries
   sketch.geometries.forEach((geo) => {
     switch (geo.type) {
       case "line": {
         const line = geo as Line;
-        // MOD v7.12: Inclure les lignes de construction
         dxf += exportLine(line, sketch, scale);
         break;
       }
@@ -94,16 +118,21 @@ function exportLine(line: Line, sketch: Sketch, scale: number): string {
 
   if (!p1 || !p2) return "";
 
-  // MOD v7.12: Coordonnées en mm (diviser par scale car scale = px/mm)
+  // Coordonnées en mm (diviser par scale car scale = px/mm)
   // Y inversé pour DXF (système de coordonnées différent)
   const x1 = (p1.x / scale).toFixed(4);
   const y1 = (-p1.y / scale).toFixed(4);
   const x2 = (p2.x / scale).toFixed(4);
   const y2 = (-p2.y / scale).toFixed(4);
 
+  // MOD v7.12b: Calque et type de ligne selon isConstruction
+  const layer = line.isConstruction ? "CONSTRUCTION" : "0";
+  const lineType = line.isConstruction ? "DASHED" : "CONTINUOUS";
+
   let dxf = "";
   dxf += "0\nLINE\n";
-  dxf += "8\n0\n";
+  dxf += `8\n${layer}\n`; // Calque
+  dxf += `6\n${lineType}\n`; // Type de ligne
   dxf += `10\n${x1}\n`;
   dxf += `20\n${y1}\n`;
   dxf += "30\n0.0\n";
@@ -119,7 +148,7 @@ function exportCircle(circle: CircleType, sketch: Sketch, scale: number): string
 
   if (!center) return "";
 
-  // MOD v7.12: Diviser par scale (px/mm) pour obtenir des mm
+  // Diviser par scale (px/mm) pour obtenir des mm
   const cx = (center.x / scale).toFixed(4);
   const cy = (-center.y / scale).toFixed(4);
   const r = (circle.radius / scale).toFixed(4);
@@ -142,7 +171,7 @@ function exportArc(arc: Arc, sketch: Sketch, scale: number): string {
 
   if (!center || !startPt || !endPt) return "";
 
-  // MOD v7.12: Diviser par scale (px/mm) pour obtenir des mm
+  // Diviser par scale (px/mm) pour obtenir des mm
   const cx = (center.x / scale).toFixed(4);
   const cy = (-center.y / scale).toFixed(4);
   const r = (arc.radius / scale).toFixed(4);
