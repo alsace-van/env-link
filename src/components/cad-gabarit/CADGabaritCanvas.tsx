@@ -262,8 +262,8 @@ export function CADGabaritCanvas({
   const [currentSnapPoint, setCurrentSnapPoint] = useState<SnapPoint | null>(null);
 
   // Épaisseur de trait par défaut pour les nouvelles figures
-  const [defaultStrokeWidth, setDefaultStrokeWidth] = useState<number>(1.5);
-  const defaultStrokeWidthRef = useRef<number>(1.5);
+  const [defaultStrokeWidth, setDefaultStrokeWidth] = useState<number>(1);
+  const defaultStrokeWidthRef = useRef<number>(1);
   const STROKE_WIDTH_OPTIONS = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5];
 
   // Couleur de trait par défaut
@@ -12983,6 +12983,19 @@ export function CADGabaritCanvas({
       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
         saveSketch();
+      }
+
+      // Ctrl+A - Sélectionner tout (figures du canvas uniquement)
+      if ((e.ctrlKey || e.metaKey) && e.key === "a") {
+        e.preventDefault();
+        e.stopPropagation();
+        const currentSketch = sketchRef.current;
+        const allIds = new Set<string>();
+        currentSketch.geometries.forEach((_, id) => allIds.add(id));
+        setSelectedEntities(allIds);
+        if (allIds.size > 0) {
+          toast.success(`${allIds.size} figure(s) sélectionnée(s)`);
+        }
       }
 
       // Ctrl+C - Copier
