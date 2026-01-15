@@ -428,6 +428,8 @@ export function CADGabaritCanvas({
   // === Multi-photos ===
   const [backgroundImages, setBackgroundImages] = useState<BackgroundImage[]>([]);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
+  // MOD v80.1: Multi-sélection d'images avec Ctrl+clic pour rotation par lot
+  const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(new Set());
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [imageDragStart, setImageDragStart] = useState<{ x: number; y: number; imgX: number; imgY: number } | null>(
     null,
@@ -1717,6 +1719,8 @@ export function CADGabaritCanvas({
           })
         : [],
       selectedImageId,
+      // MOD v80.4: Passer la multi-sélection au renderer
+      selectedImageIds,
       markerLinks,
       selectedMarkerId,
       // Legacy single image (rétrocompatibilité)
@@ -8101,9 +8105,44 @@ export function CADGabaritCanvas({
     toast.success("Ajustements réinitialisés");
   }, [selectedImageId]);
 
-  // Mettre à jour la rotation de l'image sélectionnée
+  // Mettre à jour la rotation de l'image sélectionnée (ou des images multi-sélectionnées)
+  // MOD v80.3: Support de la multi-sélection pour rotation par lot
   const updateSelectedImageRotation = useCallback(
     (rotation: number) => {
+      // Si multi-sélection active, appliquer le delta à toutes les images
+      if (selectedImageIds.size > 0) {
+        // Calculer le delta par rapport à la première image sélectionnée
+        const firstSelectedId = Array.from(selectedImageIds)[0];
+        const firstImg = backgroundImages.find((i) => i.id === firstSelectedId);
+        const currentRotation = firstImg?.rotation || 0;
+        const delta = rotation - currentRotation;
+
+        // Normaliser le delta
+        let normalizedDelta = delta % 360;
+        if (normalizedDelta > 180) normalizedDelta -= 360;
+        if (normalizedDelta < -180) normalizedDelta += 360;
+
+        // Sauvegarder l'état actuel pour undo
+        addToImageHistoryRef.current(backgroundImagesRef.current, markerLinksRef.current);
+
+        setBackgroundImages((prev) =>
+          prev.map((img) => {
+            if (!selectedImageIds.has(img.id)) return img;
+            let newRotation = (img.rotation || 0) + normalizedDelta;
+            // Normaliser entre -180 et 180
+            newRotation = newRotation % 360;
+            if (newRotation > 180) newRotation -= 360;
+            if (newRotation < -180) newRotation += 360;
+            return {
+              ...img,
+              rotation: newRotation,
+            };
+          }),
+        );
+        return;
+      }
+
+      // Sélection unique (comportement original)
       if (!selectedImageId) return;
 
       // Normaliser la rotation entre -180 et 180
@@ -8124,15 +8163,23 @@ export function CADGabaritCanvas({
         }),
       );
     },
-    [selectedImageId],
+    [selectedImageId, selectedImageIds, backgroundImages],
   );
 
-  // Obtenir la rotation de l'image sélectionnée
+  // Obtenir la rotation de l'image sélectionnée (ou de la première image multi-sélectionnée)
+  // MOD v80.3: Support de la multi-sélection
   const getSelectedImageRotation = useCallback(() => {
+    // Si multi-sélection, retourner la rotation de la première image
+    if (selectedImageIds.size > 0) {
+      const firstSelectedId = Array.from(selectedImageIds)[0];
+      const img = backgroundImages.find((i) => i.id === firstSelectedId);
+      return img?.rotation || 0;
+    }
+    // Sélection unique
     if (!selectedImageId) return 0;
     const img = backgroundImages.find((i) => i.id === selectedImageId);
     return img?.rotation || 0;
-  }, [selectedImageId, backgroundImages]);
+  }, [selectedImageId, selectedImageIds, backgroundImages]);
 
   // Ouvrir le dialogue de crop pour l'image sélectionnée
   const openCropDialog = useCallback(() => {
@@ -9009,8 +9056,29 @@ export function CADGabaritCanvas({
         } else {
           const clickedImage = findImageAtPosition(worldPos.x, worldPos.y);
           if (clickedImage) {
-            // Sélectionner l'image
+            // MOD v80.2: Gestion Ctrl+clic pour multi-sélection d'images
+            if (e.ctrlKey || e.metaKey) {
+              // Ctrl+clic : ajouter/retirer de la multi-sélection
+              setSelectedImageIds((prev) => {
+                const newSet = new Set(prev);
+                if (newSet.has(clickedImage.id)) {
+                  newSet.delete(clickedImage.id);
+                } else {
+                  newSet.add(clickedImage.id);
+                }
+                return newSet;
+              });
+              // Garder aussi selectedImageId sur la dernière image cliquée
+              setSelectedImageId(clickedImage.id);
+              setSelectedMarkerId(null);
+              // Pas de drag en mode multi-sélection
+              setSelectedEntities(new Set());
+              return;
+            }
+
+            // Clic simple : sélection unique (efface la multi-sélection)
             setSelectedImageId(clickedImage.id);
+            setSelectedImageIds(new Set()); // Effacer la multi-sélection
             setSelectedMarkerId(null); // Désélectionner le marker
 
             // Préparer le drag seulement si l'image n'est pas verrouillée
@@ -9029,12 +9097,16 @@ export function CADGabaritCanvas({
             setSelectedEntities(new Set());
             return;
           } else {
-            // Clic en dehors des images = désélectionner l'image et le marker
+            // Clic en dehors des images = désélectionner l'image, le marker ET la multi-sélection
             if (selectedImageId) {
               setSelectedImageId(null);
             }
             if (selectedMarkerId) {
               setSelectedMarkerId(null);
+            }
+            // MOD v80.2: Effacer aussi la multi-sélection
+            if (selectedImageIds.size > 0) {
+              setSelectedImageIds(new Set());
             }
           }
         }
@@ -16343,8 +16415,24 @@ export function CADGabaritCanvas({
             </div>
 
             {/* Rotation de l'image sélectionnée */}
-            {selectedImageId && (
+            {/* MOD v80.10: Afficher aussi quand multi-sélection active */}
+            {(selectedImageId || selectedImageIds.size > 0) && (
               <div className="flex items-center gap-0.5 px-1 border-l border-gray-200 ml-1 flex-shrink-0">
+                {/* MOD v80.10: Badge indicateur du nombre d'images multi-sélectionnées */}
+                {selectedImageIds.size > 0 && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="bg-green-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full mr-1">
+                          {selectedImageIds.size}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{selectedImageIds.size} photo(s) sélectionnée(s) - Ctrl+clic pour ajouter/retirer</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>

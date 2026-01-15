@@ -101,6 +101,8 @@ export class CADRenderer {
       // Support multi-photos
       backgroundImages?: BackgroundImage[];
       selectedImageId?: string | null;
+      // MOD v80.5: Multi-sélection d'images pour rotation par lot
+      selectedImageIds?: Set<string>;
       markerLinks?: ImageMarkerLink[];
       selectedMarkerId?: string | null; // Marker sélectionné (format: "imageId:markerId")
       // Legacy single image (rétrocompatibilité)
@@ -183,6 +185,8 @@ export class CADRenderer {
       // Multi-photos
       backgroundImages = [],
       selectedImageId = null,
+      // MOD v80.6: Multi-sélection d'images
+      selectedImageIds = new Set<string>(),
       markerLinks = [],
       selectedMarkerId = null,
       // Legacy
@@ -250,7 +254,8 @@ export class CADRenderer {
 
     // 1. Background images (multi-photos)
     if (backgroundImages.length > 0) {
-      this.drawBackgroundImages(backgroundImages, selectedImageId, markerLinks, selectedMarkerId);
+      // MOD v80.7: Passer selectedImageIds pour affichage multi-sélection
+      this.drawBackgroundImages(backgroundImages, selectedImageId, selectedImageIds, markerLinks, selectedMarkerId);
     } else if (transformedImage) {
       // Legacy: image transformée unique
       this.drawTransformedImage(transformedImage, imageOpacity, imageScale);
@@ -708,10 +713,12 @@ export class CADRenderer {
   /**
    * Dessine plusieurs images de fond (multi-photos)
    * Les images sont triées par ordre et dessinées à leurs positions respectives
+   * MOD v80.8: Support de selectedImageIds pour affichage multi-sélection
    */
   private drawBackgroundImages(
     images: BackgroundImage[],
     selectedImageId: string | null,
+    selectedImageIds: Set<string>,
     markerLinks: ImageMarkerLink[],
     selectedMarkerId: string | null,
   ): void {
@@ -770,6 +777,44 @@ export class CADRenderer {
         this.ctx.fillRect(-scaledWidth / 2 - handleSize / 2, scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
         // Coin inférieur droit
         this.ctx.fillRect(scaledWidth / 2 - handleSize / 2, scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
+      }
+
+      // MOD v80.9: Dessiner le cadre de multi-sélection (vert) si l'image est dans selectedImageIds
+      // Ne pas dessiner si c'est déjà l'image principale sélectionnée (évite double bordure)
+      if (selectedImageIds.has(bgImage.id) && selectedImageId !== bgImage.id) {
+        this.ctx.globalAlpha = 1;
+        this.ctx.strokeStyle = "#22C55E"; // Vert pour multi-sélection
+        this.ctx.lineWidth = 3 / this.viewport.scale;
+        this.ctx.setLineDash([8 / this.viewport.scale, 4 / this.viewport.scale]);
+        this.ctx.strokeRect(-scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
+        this.ctx.setLineDash([]);
+
+        // Dessiner les poignées de coin vertes
+        const handleSize = 6 / this.viewport.scale;
+        this.ctx.fillStyle = "#22C55E";
+        this.ctx.fillRect(
+          -scaledWidth / 2 - handleSize / 2,
+          -scaledHeight / 2 - handleSize / 2,
+          handleSize,
+          handleSize,
+        );
+        this.ctx.fillRect(scaledWidth / 2 - handleSize / 2, -scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
+        this.ctx.fillRect(-scaledWidth / 2 - handleSize / 2, scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
+        this.ctx.fillRect(scaledWidth / 2 - handleSize / 2, scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
+      }
+      // Si l'image est à la fois principale ET dans la multi-sélection, ajouter un indicateur vert
+      else if (selectedImageIds.has(bgImage.id) && selectedImageId === bgImage.id) {
+        // Ajouter une bordure verte intérieure en plus de la bleue
+        this.ctx.globalAlpha = 1;
+        this.ctx.strokeStyle = "#22C55E";
+        this.ctx.lineWidth = 2 / this.viewport.scale;
+        const offset = 6 / this.viewport.scale;
+        this.ctx.strokeRect(
+          -scaledWidth / 2 + offset,
+          -scaledHeight / 2 + offset,
+          scaledWidth - offset * 2,
+          scaledHeight - offset * 2,
+        );
       }
 
       // Afficher le nom de l'image si elle est verrouillée
