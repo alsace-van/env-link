@@ -1,11 +1,11 @@
 // ============================================
 // PAGE: TldrawDemo
 // Page de test pour le nouveau canvas tldraw
-// VERSION: 1.0
+// VERSION: 1.1 - Fix import TldrawGabaritCanvas (import default)
 // ============================================
 
 import { useState } from "react";
-import { TldrawGabaritCanvas } from "@/components/photo-templates/TldrawGabaritCanvas";
+import TldrawGabaritCanvas from "@/components/photo-templates/TldrawGabaritCanvas";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -50,9 +50,7 @@ export default function TldrawDemo() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold">Test Canvas tldraw</h1>
-            <p className="text-muted-foreground">
-              Prototype du nouveau canvas pour gabarits CNC
-            </p>
+            <p className="text-muted-foreground">Prototype du nouveau canvas pour gabarits CNC</p>
           </div>
         </div>
 
@@ -60,26 +58,14 @@ export default function TldrawDemo() {
           <Card>
             <CardHeader>
               <CardTitle>Configuration</CardTitle>
-              <CardDescription>
-                Configurez l'image et l'échelle avant de commencer
-              </CardDescription>
+              <CardDescription>Configurez l'image et l'échelle avant de commencer</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Upload image */}
               <div className="space-y-2">
                 <Label>Image de fond (optionnel)</Label>
-                <Input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                />
-                {imageUrl && (
-                  <img
-                    src={imageUrl}
-                    alt="Preview"
-                    className="max-w-md rounded border"
-                  />
-                )}
+                <Input type="file" accept="image/*" onChange={handleFileUpload} />
+                {imageUrl && <img src={imageUrl} alt="Preview" className="max-w-md rounded border" />}
               </div>
 
               {/* Échelle */}
@@ -91,9 +77,7 @@ export default function TldrawDemo() {
                   value={scaleFactor}
                   onChange={(e) => setScaleFactor(parseFloat(e.target.value) || 1)}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Exemple: 2.5 = 1 pixel représente 0.4mm
-                </p>
+                <p className="text-xs text-muted-foreground">Exemple: 2.5 = 1 pixel représente 0.4mm</p>
               </div>
 
               {/* Boutons */}

@@ -1,13 +1,13 @@
 // ============================================================================
-// MODIFICATION #82 - ScaleCalibrationStep.tsx
+// MODIFICATION #83 - ScaleCalibrationStep.tsx
 // Date: 2026-01-15
-// Description: Correction du bug où les points de calibration ne suivent pas
-//              le redimensionnement de l'image lors de la calibration
+// Description: Fix du bug où le scaleFactor ne correspondait pas à l'image
+//              rectifiée. L'image rectifiée utilise displayScale=10 (10px/mm)
+//              donc le scaleFactor doit être 10, pas avgScale.
 // Changements:
-//   - Ajout de la transformation des coordonnées des points de calibration
-//     avec le ratio de redimensionnement (scaleX, scaleY)
-//   - Les calibrationPairs sont maintenant transformés pour correspondre
-//     à l'image rectifiée
+//   - scaleFactor passé = displayScale (10 px/mm) au lieu de avgScale
+//   - Garantit que 1px = 0.1mm dans l'image rectifiée
+//   - Les mesures et exports DXF seront maintenant corrects
 // ============================================================================
 
 import { useState, useRef, useEffect } from "react";
@@ -287,7 +287,10 @@ export function ScaleCalibrationStep({
     }));
 
     onCalibrationComplete({
-      scaleFactor: avgScale,
+      // FIX #83: Utiliser displayScale (10 px/mm) car c'est l'échelle de l'image rectifiée
+      scaleFactor: displayScale,
+      // Garder l'échelle originale pour référence
+      originalScaleFactor: avgScale,
       knownDistanceMm: parseFloat(knownDistance),
       measuredDistancePx: calibrationPairs[0]?.measuredDistancePx || 0,
       accuracyMm: Math.max(0.5, accuracyMm),
@@ -308,6 +311,8 @@ export function ScaleCalibrationStep({
         widthMm: widthMm,
         heightMm: heightMm,
       },
+      // Info sur l'échelle de l'image rectifiée
+      displayScale: displayScale, // 10 px/mm = 1px = 0.1mm
     });
   };
 
