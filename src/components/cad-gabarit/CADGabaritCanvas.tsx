@@ -8639,12 +8639,14 @@ export function CADGabaritCanvas({
           let worldPtX = point.x;
           let worldPtY = point.y;
 
-          // Si on utilise les points de l'image, ils sont relatifs au centre de l'image
+          // FIX #85d: Si on utilise les points de l'image, ils sont relatifs au centre de l'image
+          // et normalisés à scale=1, donc multiplier par le scale
           if (imageCalib.points.size > 0 && selectedImageId) {
             const img = backgroundImages.find((i) => i.id === selectedImageId);
             if (img) {
-              worldPtX = img.x + point.x;
-              worldPtY = img.y + point.y;
+              const imgScale = img.scale || 1;
+              worldPtX = img.x + point.x * imgScale;
+              worldPtY = img.y + point.y * imgScale;
             }
           }
 
@@ -9023,13 +9025,16 @@ export function CADGabaritCanvas({
             const tolerance = 15 / viewport.scale;
             let clickedCalibPoint: CalibrationPoint | null = null;
 
-            // Convertir la position du clic en coordonnées relatives à l'image
-            const relativeX = worldPos.x - selectedImage.x;
-            const relativeY = worldPos.y - selectedImage.y;
+            // FIX #85d: Convertir la position du clic en coordonnées relatives à l'image (normalisées à scale=1)
+            const imgScale = selectedImage.scale || 1;
+            const relativeX = (worldPos.x - selectedImage.x) / imgScale;
+            const relativeY = (worldPos.y - selectedImage.y) / imgScale;
+            // La tolérance doit aussi être divisée par le scale
+            const toleranceNormalized = tolerance / imgScale;
 
             imageCalib.points.forEach((point: CalibrationPoint) => {
               const d = distance({ x: relativeX, y: relativeY }, point);
-              if (d < tolerance) {
+              if (d < toleranceNormalized) {
                 clickedCalibPoint = point;
               }
             });
@@ -9174,9 +9179,11 @@ export function CADGabaritCanvas({
           return;
         }
 
-        // Stocker les coordonnées relatives à l'image
-        const relativeX = worldPos.x - selectedImage.x;
-        const relativeY = worldPos.y - selectedImage.y;
+        // FIX #85d: Stocker les coordonnées relatives à l'image, normalisées à scale=1
+        // Ainsi les points restent au bon endroit même si le scale change
+        const imgScale = selectedImage.scale || 1;
+        const relativeX = (worldPos.x - selectedImage.x) / imgScale;
+        const relativeY = (worldPos.y - selectedImage.y) / imgScale;
 
         const imageCalib = getSelectedImageCalibration();
         const newPoint: CalibrationPoint = {
@@ -9209,13 +9216,15 @@ export function CADGabaritCanvas({
         let closestPoint: CalibrationPoint | null = null;
         let closestDist = Infinity;
 
-        // Convertir la position du clic en coordonnées relatives à l'image
-        const relativeX = worldPos.x - selectedImage.x;
-        const relativeY = worldPos.y - selectedImage.y;
+        // FIX #85d: Convertir la position du clic en coordonnées relatives à l'image (normalisées à scale=1)
+        const imgScale = selectedImage.scale || 1;
+        const relativeX = (worldPos.x - selectedImage.x) / imgScale;
+        const relativeY = (worldPos.y - selectedImage.y) / imgScale;
+        const toleranceNormalized = tolerance / imgScale;
 
         imageCalib.points.forEach((point) => {
           const d = distance({ x: relativeX, y: relativeY }, point);
-          if (d < tolerance && d < closestDist) {
+          if (d < toleranceNormalized && d < closestDist) {
             closestDist = d;
             closestPoint = point;
           }
@@ -10367,9 +10376,10 @@ export function CADGabaritCanvas({
       if (draggingCalibrationPoint) {
         const selectedImage = getSelectedImage();
         if (selectedImage) {
-          // Convertir en coordonnées relatives à l'image
-          const relativeX = worldPos.x - selectedImage.x;
-          const relativeY = worldPos.y - selectedImage.y;
+          // FIX #85d: Convertir en coordonnées relatives à l'image (normalisées à scale=1)
+          const imgScale = selectedImage.scale || 1;
+          const relativeX = (worldPos.x - selectedImage.x) / imgScale;
+          const relativeY = (worldPos.y - selectedImage.y) / imgScale;
 
           updateSelectedImageCalibration((prev) => {
             const newPoints = new Map(prev.points);
@@ -13419,26 +13429,13 @@ export function CADGabaritCanvas({
       const oldImageScale = selectedImage.scale || 1;
       const scaleFactor = newImageScale / oldImageScale;
 
-      // Centre de l'image (point de référence pour la transformation)
-      const imgCenterX = selectedImage.x;
-      const imgCenterY = selectedImage.y;
-
-      // Sauvegarder les points originaux (pour reset) et transformer les points
+      // FIX #85d: Ne PAS transformer les points ici
+      // Le renderer doit multiplier par le scale de l'image
+      // Les points restent en coordonnées "pixels world relatifs à scale=1"
+      // Sauvegarder l'ancien scale pour le reset
       const originalPoints = new Map(imgCalib.points);
-      const transformedPoints = new Map<string, CalibrationPoint>();
 
-      imgCalib.points.forEach((point, id) => {
-        // Transformer le point : déplacer proportionnellement au changement d'échelle
-        const newX = imgCenterX + (point.x - imgCenterX) * scaleFactor;
-        const newY = imgCenterY + (point.y - imgCenterY) * scaleFactor;
-        transformedPoints.set(id, {
-          ...point,
-          x: newX,
-          y: newY,
-        });
-      });
-
-      // Mettre à jour l'image avec la nouvelle échelle ET les points transformés
+      // Mettre à jour l'image avec la nouvelle échelle (les points restent inchangés)
       setBackgroundImages((prev) =>
         prev.map((img) => {
           if (img.id !== selectedImage.id) return img;
@@ -13447,7 +13444,8 @@ export function CADGabaritCanvas({
             scale: newImageScale,
             calibrationData: {
               ...(img.calibrationData || { points: new Map(), pairs: new Map(), mode: "simple" as const }),
-              points: transformedPoints,
+              // FIX #85d: Les points ne sont PAS transformés, le renderer multiplie par scale
+              points: imgCalib.points,
               scale: avgScale,
               scaleX: scaleX,
               scaleY: scaleY,
@@ -13460,10 +13458,10 @@ export function CADGabaritCanvas({
         }),
       );
 
-      // Mettre à jour calibrationData avec les points transformés
+      // Mettre à jour calibrationData (les points ne sont pas transformés)
       setCalibrationData((prev) => ({
         ...prev,
-        points: transformedPoints,
+        points: imgCalib.points,
         originalPoints: originalPoints,
         originalImageScale: oldImageScale,
         scale: 1 / currentSketch.scaleFactor,

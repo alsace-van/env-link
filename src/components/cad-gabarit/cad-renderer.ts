@@ -1019,11 +1019,14 @@ export class CADRenderer {
       const p2 = calibData.points.get(pair.point2Id);
       if (!p1 || !p2) return;
 
-      // Convertir en coordonnées monde
-      const x1 = selectedImage.x + p1.x;
-      const y1 = selectedImage.y + p1.y;
-      const x2 = selectedImage.x + p2.x;
-      const y2 = selectedImage.y + p2.y;
+      // FIX #85d: Convertir en coordonnées monde en tenant compte du scale de l'image
+      // Les points sont stockés en "pixels world relatifs à scale=1"
+      // Donc on doit multiplier par le scale actuel de l'image
+      const imgScale = selectedImage.scale || 1;
+      const x1 = selectedImage.x + p1.x * imgScale;
+      const y1 = selectedImage.y + p1.y * imgScale;
+      const x2 = selectedImage.x + p2.x * imgScale;
+      const y2 = selectedImage.y + p2.y * imgScale;
 
       this.ctx.save();
 
@@ -1077,8 +1080,10 @@ export class CADRenderer {
 
     // Dessiner les points de calibration - STYLE CROIX DE VISÉE PRÉCIS
     calibData.points.forEach((point) => {
-      const worldX = selectedImage.x + point.x;
-      const worldY = selectedImage.y + point.y;
+      // FIX #85d: Multiplier par le scale de l'image
+      const imgScale = selectedImage.scale || 1;
+      const worldX = selectedImage.x + point.x * imgScale;
+      const worldY = selectedImage.y + point.y * imgScale;
       const crossSize = pointSize * 1.5;
       const innerGap = pointSize * 0.4;
 
