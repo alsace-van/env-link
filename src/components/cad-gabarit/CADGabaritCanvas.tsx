@@ -13284,8 +13284,11 @@ export function CADGabaritCanvas({
 
   // Calculer l'échelle à partir des paires (utilise l'image sélectionnée)
   // MOD #85: Calibration anisotrope - calcule scaleX et scaleY séparément
+  // FIX #85e: Utiliser les distances en coordonnées NORMALISÉES (scale=1)
+  // pour être cohérent avec l'affichage UI et les calculs de paires
   const calculateCalibration = useCallback(() => {
     const imgCalib = getSelectedImageCalibration();
+
     if (imgCalib.pairs.size === 0) {
       toast.error("Ajoutez au moins une paire de calibration");
       return;
@@ -13301,6 +13304,8 @@ export function CADGabaritCanvas({
       const p1 = imgCalib.points.get(pair.point1Id);
       const p2 = imgCalib.points.get(pair.point2Id);
       if (p1 && p2 && pair.distanceMm > 0) {
+        // FIX #85e: Utiliser les distances en coordonnées normalisées
+        // C'est cohérent avec ce que l'UI affiche
         const dx = Math.abs(p2.x - p1.x);
         const dy = Math.abs(p2.y - p1.y);
         const distPx = distance(p1, p2);
@@ -13339,6 +13344,7 @@ export function CADGabaritCanvas({
       const p1 = imgCalib.points.get(pair.point1Id);
       const p2 = imgCalib.points.get(pair.point2Id);
       if (p1 && p2 && pair.distanceMm > 0) {
+        // FIX #85e: Utiliser les distances normalisées
         const dx = Math.abs(p2.x - p1.x);
         const dy = Math.abs(p2.y - p1.y);
         const distPx = distance(p1, p2);
