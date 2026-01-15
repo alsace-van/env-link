@@ -6,6 +6,9 @@
 
 import { Sketch, Line, Circle as CircleType, Arc } from "./types";
 
+/**
+ * Exporte un sketch au format DXF (AutoCAD R12 - format le plus compatible)
+ */
 export function exportToDXF(sketch: Sketch): string {
   const scale = sketch.scaleFactor || 1;
 
@@ -37,12 +40,12 @@ export function exportToDXF(sketch: Sketch): string {
   dxf += "40\n0.0\n";
   dxf += "0\nENDTAB\n";
 
-  // Table LAYER - 2 calques
+  // Table LAYER
   dxf += "0\nTABLE\n";
   dxf += "2\nLAYER\n";
   dxf += "70\n2\n";
 
-  // Calque 0 (lignes normales)
+  // Calque 0
   dxf += "0\nLAYER\n";
   dxf += "2\n0\n";
   dxf += "70\n0\n";
@@ -97,7 +100,6 @@ function exportLine(line: Line, sketch: Sketch, scale: number): string {
   const x2 = (p2.x / scale).toFixed(4);
   const y2 = (-p2.y / scale).toFixed(4);
 
-  // Lignes de construction sur calque "Construction"
   const layer = line.isConstruction ? "Construction" : "0";
 
   let dxf = "";
