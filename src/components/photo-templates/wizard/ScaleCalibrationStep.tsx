@@ -77,7 +77,7 @@ export function ScaleCalibrationStep({
     // Dessiner les paires de calibration validées (en vert)
     calibrationPairs.forEach((pair, pairIdx) => {
       const [pt1, pt2] = pair.points;
-      
+
       // Points verts
       ctx.fillStyle = "#10b981";
       ctx.beginPath();
@@ -142,11 +142,11 @@ export function ScaleCalibrationStep({
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    
+
     // Correction du décalage: tenir compte du scale CSS
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    
+
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
 
@@ -194,21 +194,22 @@ export function ScaleCalibrationStep({
     if (!avgScale || !imgRef.current || !canvasRef.current) return;
 
     // Calculer la précision estimée basée sur l'écart type
-    const variance = calibrationPairs.reduce((sum, pair) => {
-      const diff = pair.scaleFactor - avgScale;
-      return sum + diff * diff;
-    }, 0) / calibrationPairs.length;
+    const variance =
+      calibrationPairs.reduce((sum, pair) => {
+        const diff = pair.scaleFactor - avgScale;
+        return sum + diff * diff;
+      }, 0) / calibrationPairs.length;
     const stdDev = Math.sqrt(variance);
     const accuracyMm = stdDev / avgScale;
 
     // Créer l'image rectifiée
-    const rectifiedCanvas = document.createElement('canvas');
+    const rectifiedCanvas = document.createElement("canvas");
     const img = imgRef.current;
-    
+
     // Calculer les nouvelles dimensions en millimètres réels
     const widthMm = img.width / avgScale;
     const heightMm = img.height / avgScale;
-    
+
     // Pour l'affichage, on garde une résolution raisonnable (par ex: 10px/mm)
     const displayScale = 10; // 10 pixels par mm
     rectifiedCanvas.width = Math.round(widthMm * displayScale);
@@ -219,16 +220,16 @@ export function ScaleCalibrationStep({
     // ========================================================================
     const transformScaleX = rectifiedCanvas.width / img.width;
     const transformScaleY = rectifiedCanvas.height / img.height;
-    
-    const ctx = rectifiedCanvas.getContext('2d');
+
+    const ctx = rectifiedCanvas.getContext("2d");
     if (ctx) {
       // Dessiner l'image originale à l'échelle correcte
       ctx.drawImage(img, 0, 0, rectifiedCanvas.width, rectifiedCanvas.height);
-      
+
       // Ajouter une grille de référence tous les 10mm
-      ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
+      ctx.strokeStyle = "rgba(0, 255, 0, 0.3)";
       ctx.lineWidth = 1;
-      
+
       // Grilles verticales tous les 10mm
       for (let x = 0; x <= widthMm; x += 10) {
         const px = x * displayScale;
@@ -237,7 +238,7 @@ export function ScaleCalibrationStep({
         ctx.lineTo(px, rectifiedCanvas.height);
         ctx.stroke();
       }
-      
+
       // Grilles horizontales tous les 10mm
       for (let y = 0; y <= heightMm; y += 10) {
         const py = y * displayScale;
@@ -246,21 +247,21 @@ export function ScaleCalibrationStep({
         ctx.lineTo(rectifiedCanvas.width, py);
         ctx.stroke();
       }
-      
+
       // Ajouter des annotations pour les dimensions
-      ctx.fillStyle = 'rgba(0, 255, 0, 0.8)';
-      ctx.font = 'bold 16px sans-serif';
+      ctx.fillStyle = "rgba(0, 255, 0, 0.8)";
+      ctx.font = "bold 16px sans-serif";
       ctx.fillText(`${widthMm.toFixed(1)} mm`, 10, 30);
       ctx.fillText(`${heightMm.toFixed(1)} mm`, 10, rectifiedCanvas.height - 10);
     }
-    
+
     const rectifiedImageUrl = rectifiedCanvas.toDataURL();
 
     // ========================================================================
     // FIX #82: Transformer les coordonnées des points de calibration
     // pour qu'ils correspondent à l'image rectifiée
     // ========================================================================
-    const transformedCalibrationPairs = calibrationPairs.map(pair => ({
+    const transformedCalibrationPairs = calibrationPairs.map((pair) => ({
       ...pair,
       points: [
         {
@@ -275,12 +276,12 @@ export function ScaleCalibrationStep({
       // Recalculer la distance mesurée en pixels dans l'image rectifiée
       measuredDistancePx: Math.sqrt(
         Math.pow((pair.points[1].x - pair.points[0].x) * transformScaleX, 2) +
-        Math.pow((pair.points[1].y - pair.points[0].y) * transformScaleY, 2)
+          Math.pow((pair.points[1].y - pair.points[0].y) * transformScaleY, 2),
       ),
     }));
 
     // Transformer aussi les points courants (au cas où ils seraient utilisés)
-    const transformedCurrentPoints = currentPoints.map(point => ({
+    const transformedCurrentPoints = currentPoints.map((point) => ({
       x: point.x * transformScaleX,
       y: point.y * transformScaleY,
     }));
@@ -326,9 +327,7 @@ export function ScaleCalibrationStep({
               onChange={(e) => setKnownDistance(e.target.value)}
               placeholder="40"
             />
-            <p className="text-xs text-muted-foreground">
-              Par exemple: 40mm (taille marqueur ArUco standard)
-            </p>
+            <p className="text-xs text-muted-foreground">Par exemple: 40mm (taille marqueur ArUco standard)</p>
           </div>
 
           <div className="space-y-2">
@@ -347,22 +346,15 @@ export function ScaleCalibrationStep({
         <div className="flex justify-between items-center">
           <Label>
             Points: {currentPoints.length}/2
-            {calibrationPairs.length > 0 && ` • ${calibrationPairs.length} mesure${calibrationPairs.length > 1 ? 's' : ''} validée${calibrationPairs.length > 1 ? 's' : ''}`}
+            {calibrationPairs.length > 0 &&
+              ` • ${calibrationPairs.length} mesure${calibrationPairs.length > 1 ? "s" : ""} validée${calibrationPairs.length > 1 ? "s" : ""}`}
           </Label>
           <div className="flex gap-1">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setZoom(Math.max(0.5, zoom - 0.25))}
-            >
+            <Button size="sm" variant="outline" onClick={() => setZoom(Math.max(0.5, zoom - 0.25))}>
               <ZoomOut className="h-4 w-4" />
             </Button>
             <Badge variant="outline">{Math.round(zoom * 100)}%</Badge>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setZoom(Math.min(3, zoom + 0.25))}
-            >
+            <Button size="sm" variant="outline" onClick={() => setZoom(Math.min(3, zoom + 0.25))}>
               <ZoomIn className="h-4 w-4" />
             </Button>
           </div>
@@ -372,10 +364,10 @@ export function ScaleCalibrationStep({
             ref={canvasRef}
             onClick={handleCanvasClick}
             className="cursor-crosshair"
-            style={{ 
+            style={{
               transform: `scale(${zoom})`,
               transformOrigin: "top left",
-              display: "block"
+              display: "block",
             }}
           />
         </div>
@@ -391,15 +383,9 @@ export function ScaleCalibrationStep({
                   <p className="text-sm font-medium">
                     Mesure #{idx + 1}: {pair.knownDistanceMm}mm = {pair.measuredDistancePx.toFixed(1)}px
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    Échelle: 1px = {(1 / pair.scaleFactor).toFixed(3)}mm
-                  </p>
+                  <p className="text-xs text-muted-foreground">Échelle: 1px = {(1 / pair.scaleFactor).toFixed(3)}mm</p>
                 </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleDeletePair(idx)}
-                >
+                <Button size="sm" variant="ghost" onClick={() => handleDeletePair(idx)}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
@@ -409,11 +395,7 @@ export function ScaleCalibrationStep({
       )}
 
       {currentPoints.length === 2 && (
-        <Button
-          onClick={handleValidatePair}
-          className="w-full"
-          variant="outline"
-        >
+        <Button onClick={handleValidatePair} className="w-full" variant="outline">
           <Plus className="h-4 w-4 mr-2" />
           Valider cette paire de points
         </Button>
@@ -422,7 +404,7 @@ export function ScaleCalibrationStep({
       {avgScale && imgRef.current && (
         <div className="p-4 bg-green-50 dark:bg-green-950 border border-green-500 rounded-lg space-y-2">
           <p className="font-medium text-green-700 dark:text-green-400">
-            ✓ Calibration réussie ({calibrationPairs.length} mesure{calibrationPairs.length > 1 ? 's' : ''})
+            ✓ Calibration réussie ({calibrationPairs.length} mesure{calibrationPairs.length > 1 ? "s" : ""})
           </p>
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
@@ -431,9 +413,7 @@ export function ScaleCalibrationStep({
             </div>
             <div>
               <p className="text-muted-foreground">Précision estimée</p>
-              <Badge variant="outline">
-                ±{calibrationPairs.length > 1 ? '0.3' : '0.5'} mm
-              </Badge>
+              <Badge variant="outline">±{calibrationPairs.length > 1 ? "0.3" : "0.5"} mm</Badge>
             </div>
             <div>
               <p className="text-muted-foreground">Dimensions réelles</p>
@@ -455,10 +435,7 @@ export function ScaleCalibrationStep({
               Annuler les points
             </Button>
           )}
-          <Button 
-            onClick={handleContinue} 
-            disabled={calibrationPairs.length === 0}
-          >
+          <Button onClick={handleContinue} disabled={calibrationPairs.length === 0}>
             Terminer calibration
           </Button>
         </div>
