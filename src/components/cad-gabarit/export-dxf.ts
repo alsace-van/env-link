@@ -1,20 +1,24 @@
 // ============================================
 // EXPORT DXF: Export au format AutoCAD R12
 // Compatible Fusion 360, AutoCAD, LibreCAD
-// VERSION: 2.3 - Lignes construction sur calque séparé
+// VERSION: 2.2 - Lignes de construction en pointillé
 // ============================================
 
 import { Sketch, Line, Circle as CircleType, Arc } from "./types";
 
 /**
  * Exporte un sketch au format DXF (AutoCAD R12 - format le plus compatible)
+ * MOD v7.12: Correction de l'échelle - scaleFactor est en px/mm
+ * MOD v7.12b: Lignes de construction en pointillé
  */
 export function exportToDXF(sketch: Sketch): string {
+  // scaleFactor = px/mm (ex: 2.5 pixels par mm)
+  // Pour convertir px en mm, on DIVISE par scaleFactor
   const scale = sketch.scaleFactor || 1;
 
   let dxf = "";
 
-  // Section HEADER
+  // Section HEADER (minimale pour R12)
   dxf += "0\nSECTION\n";
   dxf += "2\nHEADER\n";
   dxf += "9\n$ACADVER\n";
@@ -27,10 +31,12 @@ export function exportToDXF(sketch: Sketch): string {
   dxf += "0\nSECTION\n";
   dxf += "2\nTABLES\n";
 
-  // Table LTYPE
+  // Table LTYPE - Types de lignes
   dxf += "0\nTABLE\n";
   dxf += "2\nLTYPE\n";
-  dxf += "70\n1\n";
+  dxf += "70\n2\n"; // 2 types de lignes
+
+  // Type CONTINUOUS (ligne continue)
   dxf += "0\nLTYPE\n";
   dxf += "2\nCONTINUOUS\n";
   dxf += "70\n0\n";
@@ -38,38 +44,53 @@ export function exportToDXF(sketch: Sketch): string {
   dxf += "72\n65\n";
   dxf += "73\n0\n";
   dxf += "40\n0.0\n";
+
+  // Type DASHED (ligne pointillée pour construction)
+  dxf += "0\nLTYPE\n";
+  dxf += "2\nDASHED\n";
+  dxf += "70\n0\n";
+  dxf += "3\nDashed line\n";
+  dxf += "72\n65\n";
+  dxf += "73\n2\n"; // 2 éléments dans le motif
+  dxf += "40\n10.0\n"; // Longueur totale du motif
+  dxf += "49\n5.0\n"; // Trait (positif = visible)
+  dxf += "49\n-5.0\n"; // Espace (négatif = invisible)
+
   dxf += "0\nENDTAB\n";
 
-  // Table LAYER
+  // Table LAYER - Calques
   dxf += "0\nTABLE\n";
   dxf += "2\nLAYER\n";
-  dxf += "70\n2\n";
+  dxf += "70\n2\n"; // 2 calques
 
-  // Calque 0
+  // Calque 0 (défaut - lignes normales)
   dxf += "0\nLAYER\n";
   dxf += "2\n0\n";
   dxf += "70\n0\n";
-  dxf += "62\n7\n";
+  dxf += "62\n7\n"; // Couleur blanche
   dxf += "6\nCONTINUOUS\n";
 
-  // Calque Construction
+  // Calque CONSTRUCTION (lignes de construction)
   dxf += "0\nLAYER\n";
-  dxf += "2\nConstruction\n";
+  dxf += "2\nCONSTRUCTION\n";
   dxf += "70\n0\n";
-  dxf += "62\n8\n";
-  dxf += "6\nCONTINUOUS\n";
+  dxf += "62\n8\n"; // Couleur grise
+  dxf += "6\nDASHED\n";
 
   dxf += "0\nENDTAB\n";
+
   dxf += "0\nENDSEC\n";
 
   // Section ENTITIES
   dxf += "0\nSECTION\n";
   dxf += "2\nENTITIES\n";
 
+  // Exporter les géométries
   sketch.geometries.forEach((geo) => {
     switch (geo.type) {
       case "line": {
-        dxf += exportLine(geo as Line, sketch, scale);
+        const line = geo as Line;
+        dxf += exportLine(line, sketch, scale);
         break;
       }
       case "circle": {
@@ -84,6 +105,8 @@ export function exportToDXF(sketch: Sketch): string {
   });
 
   dxf += "0\nENDSEC\n";
+
+  // Fin du fichier
   dxf += "0\nEOF\n";
 
   return dxf;
@@ -95,16 +118,19 @@ function exportLine(line: Line, sketch: Sketch, scale: number): string {
 
   if (!p1 || !p2) return "";
 
+  // Coordonnées en mm (diviser par scale car scale = px/mm)
+  // Y inversé pour DXF (système de coordonnées différent)
   const x1 = (p1.x / scale).toFixed(4);
   const y1 = (-p1.y / scale).toFixed(4);
   const x2 = (p2.x / scale).toFixed(4);
   const y2 = (-p2.y / scale).toFixed(4);
 
+  // MOD v7.12d: Lignes de construction sur calque séparé
   const layer = line.isConstruction ? "Construction" : "0";
 
   let dxf = "";
   dxf += "0\nLINE\n";
-  dxf += `8\n${layer}\n`;
+  dxf += `8\n${layer}\n`; // Calque
   dxf += `10\n${x1}\n`;
   dxf += `20\n${y1}\n`;
   dxf += "30\n0.0\n";
@@ -117,8 +143,10 @@ function exportLine(line: Line, sketch: Sketch, scale: number): string {
 
 function exportCircle(circle: CircleType, sketch: Sketch, scale: number): string {
   const center = sketch.points.get(circle.center);
+
   if (!center) return "";
 
+  // Diviser par scale (px/mm) pour obtenir des mm
   const cx = (center.x / scale).toFixed(4);
   const cy = (-center.y / scale).toFixed(4);
   const r = (circle.radius / scale).toFixed(4);
@@ -141,19 +169,24 @@ function exportArc(arc: Arc, sketch: Sketch, scale: number): string {
 
   if (!center || !startPt || !endPt) return "";
 
+  // Diviser par scale (px/mm) pour obtenir des mm
   const cx = (center.x / scale).toFixed(4);
   const cy = (-center.y / scale).toFixed(4);
   const r = (arc.radius / scale).toFixed(4);
 
+  // Calculer les angles en degrés pour DXF
+  // Note: Y est inversé, donc on inverse aussi le signe de Y dans atan2
   let startAngle = (Math.atan2(-(startPt.y - center.y), startPt.x - center.x) * 180) / Math.PI;
   let endAngle = (Math.atan2(-(endPt.y - center.y), endPt.x - center.x) * 180) / Math.PI;
 
+  // Si counterClockwise est false, inverser les angles
   if (arc.counterClockwise === false) {
     const temp = startAngle;
     startAngle = endAngle;
     endAngle = temp;
   }
 
+  // Normaliser les angles entre 0 et 360
   while (startAngle < 0) startAngle += 360;
   while (endAngle < 0) endAngle += 360;
 

@@ -13262,9 +13262,9 @@ export function CADGabaritCanvas({
             ...img,
             scale: newImageScale,
             calibrationData: {
-              ...(img.calibrationData || { points: new Map(), pairs: [], mode: "simple" }),
+              ...(img.calibrationData || { points: new Map(), pairs: new Map(), mode: "simple" as const }),
               scale: scale,
-              applied: true,
+              applied: true as const,
             },
           };
         }),
