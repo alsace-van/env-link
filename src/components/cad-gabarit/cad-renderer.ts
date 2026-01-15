@@ -792,12 +792,7 @@ export class CADRenderer {
         // Dessiner les poignées de coin vertes
         const handleSize = 6 / this.viewport.scale;
         this.ctx.fillStyle = "#22C55E";
-        this.ctx.fillRect(
-          -scaledWidth / 2 - handleSize / 2,
-          -scaledHeight / 2 - handleSize / 2,
-          handleSize,
-          handleSize,
-        );
+        this.ctx.fillRect(-scaledWidth / 2 - handleSize / 2, -scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
         this.ctx.fillRect(scaledWidth / 2 - handleSize / 2, -scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
         this.ctx.fillRect(-scaledWidth / 2 - handleSize / 2, scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
         this.ctx.fillRect(scaledWidth / 2 - handleSize / 2, scaledHeight / 2 - handleSize / 2, handleSize, handleSize);
