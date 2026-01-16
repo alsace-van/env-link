@@ -69,6 +69,7 @@ interface CornerOffsets {
 interface PairAdjustment {
   pairId: string;
   targetDistanceMm: string;
+  initialDistanceMm: number; // Distance initiale avant tout étirement
 }
 
 export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
@@ -113,28 +114,39 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
     setTargetHeightMm(hMm.toFixed(1));
   }, [currentWidth, currentHeight, scaleFactor]);
   
-  // Initialiser les ajustements de paires
+  // Initialiser les ajustements de paires - seulement quand les paires changent, pas les points
+  // On utilise une ref pour stocker les distances initiales et ne pas les réinitialiser
+  const initialDistancesRef = React.useRef<Map<string, number>>(new Map());
+  
   useEffect(() => {
-    if (calibrationPairs && calibrationPairs.size > 0) {
+    if (calibrationPairs && calibrationPairs.size > 0 && calibrationPoints) {
       const newAdjustments = new Map<string, PairAdjustment>();
       calibrationPairs.forEach((pair, id) => {
-        // Calculer la distance actuelle en pixels puis en mm
-        if (calibrationPoints) {
-          const p1 = calibrationPoints.get(pair.point1Id);
-          const p2 = calibrationPoints.get(pair.point2Id);
-          if (p1 && p2) {
-            const distPx = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-            const distMm = distPx / scaleFactor;
-            newAdjustments.set(id, {
-              pairId: id,
-              targetDistanceMm: pair.distanceMm > 0 ? pair.distanceMm.toFixed(1) : distMm.toFixed(1),
-            });
+        const p1 = calibrationPoints.get(pair.point1Id);
+        const p2 = calibrationPoints.get(pair.point2Id);
+        if (p1 && p2) {
+          const distPx = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+          const currentDistMm = distPx / scaleFactor;
+          
+          // Stocker la distance initiale si pas encore connue
+          if (!initialDistancesRef.current.has(id)) {
+            initialDistancesRef.current.set(id, pair.distanceMm > 0 ? pair.distanceMm : currentDistMm);
           }
+          const initialDist = initialDistancesRef.current.get(id) || currentDistMm;
+          
+          // Conserver la valeur cible existante si elle existe
+          const existingAdjustment = pairAdjustments.get(id);
+          newAdjustments.set(id, {
+            pairId: id,
+            targetDistanceMm: existingAdjustment?.targetDistanceMm ?? currentDistMm.toFixed(1),
+            initialDistanceMm: initialDist,
+          });
         }
       });
       setPairAdjustments(newAdjustments);
     }
-  }, [calibrationPairs, calibrationPoints, scaleFactor]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calibrationPairs]);
   
   const parseNumber = (value: string): number => {
     return parseFloat(value.replace(",", ".")) || 0;
@@ -251,7 +263,8 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
       bottomLeft: { x: 0, y: 0 },
       bottomRight: { x: 0, y: 0 },
     });
-    // Reset pair adjustments
+    // Reset pair adjustments - réinitialiser aussi les distances initiales
+    initialDistancesRef.current.clear();
     if (calibrationPairs && calibrationPoints) {
       const newAdjustments = new Map<string, PairAdjustment>();
       calibrationPairs.forEach((pair, id) => {
@@ -260,9 +273,12 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
         if (p1 && p2) {
           const distPx = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
           const distMm = distPx / scaleFactor;
+          const initialDist = pair.distanceMm > 0 ? pair.distanceMm : distMm;
+          initialDistancesRef.current.set(id, initialDist);
           newAdjustments.set(id, {
             pairId: id,
-            targetDistanceMm: pair.distanceMm > 0 ? pair.distanceMm.toFixed(1) : distMm.toFixed(1),
+            targetDistanceMm: distMm.toFixed(1),
+            initialDistanceMm: initialDist,
           });
         }
       });
@@ -371,10 +387,15 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
                           </span>
                         </div>
                         
-                        {/* Distance actuelle */}
-                        <p className="text-[10px] text-muted-foreground">
-                          Actuel: {info.currentDistMm.toFixed(2)} mm
-                        </p>
+                        {/* Distance actuelle et initiale */}
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <span>Actuel: {info.currentDistMm.toFixed(2)} mm</span>
+                          {adjustment.initialDistanceMm !== info.currentDistMm && (
+                            <span className="text-orange-500">
+                              (init: {adjustment.initialDistanceMm.toFixed(1)} mm)
+                            </span>
+                          )}
+                        </div>
                         
                         {/* Contrôle de distance cible */}
                         <div className="flex items-center gap-1">
