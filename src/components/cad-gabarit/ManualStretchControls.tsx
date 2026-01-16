@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: ManualStretchControls
 // Contrôles d'étirement manuel précis pour images
-// VERSION: 1.0
+// VERSION: 1.1 - Ajout étirement par paires de calibration
 // ============================================
 
 import React, { useState, useCallback, useEffect } from "react";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ChevronDown,
   ChevronUp,
@@ -21,7 +22,23 @@ import {
   Check,
   Minus,
   Plus,
+  Link2,
 } from "lucide-react";
+
+// Types pour les paires de calibration
+interface CalibrationPoint {
+  id: string;
+  x: number;
+  y: number;
+  label: string;
+}
+
+interface CalibrationPair {
+  id: string;
+  point1Id: string;
+  point2Id: string;
+  distanceMm: number;
+}
 
 interface ManualStretchControlsProps {
   /** Dimensions actuelles de l'image en pixels */
@@ -35,6 +52,10 @@ interface ManualStretchControlsProps {
   hasAppliedStretch?: boolean;
   /** Callback pour reset */
   onReset?: () => void;
+  /** Points de calibration */
+  calibrationPoints?: Map<string, CalibrationPoint>;
+  /** Paires de calibration */
+  calibrationPairs?: Map<string, CalibrationPair>;
 }
 
 interface CornerOffsets {
@@ -44,6 +65,12 @@ interface CornerOffsets {
   bottomRight: { x: number; y: number };
 }
 
+// Interface pour les ajustements par paire
+interface PairAdjustment {
+  pairId: string;
+  targetDistanceMm: string;
+}
+
 export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
   currentWidth,
   currentHeight,
@@ -51,6 +78,8 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
   onApplyStretch,
   hasAppliedStretch,
   onReset,
+  calibrationPoints,
+  calibrationPairs,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   
@@ -70,6 +99,9 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
     bottomRight: { x: 0, y: 0 },
   });
   
+  // État pour les ajustements par paire
+  const [pairAdjustments, setPairAdjustments] = useState<Map<string, PairAdjustment>>(new Map());
+  
   // Incrément par défaut en mm
   const [increment, setIncrement] = useState<string>("0.1");
   
@@ -81,6 +113,29 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
     setTargetHeightMm(hMm.toFixed(1));
   }, [currentWidth, currentHeight, scaleFactor]);
   
+  // Initialiser les ajustements de paires
+  useEffect(() => {
+    if (calibrationPairs && calibrationPairs.size > 0) {
+      const newAdjustments = new Map<string, PairAdjustment>();
+      calibrationPairs.forEach((pair, id) => {
+        // Calculer la distance actuelle en pixels puis en mm
+        if (calibrationPoints) {
+          const p1 = calibrationPoints.get(pair.point1Id);
+          const p2 = calibrationPoints.get(pair.point2Id);
+          if (p1 && p2) {
+            const distPx = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+            const distMm = distPx / scaleFactor;
+            newAdjustments.set(id, {
+              pairId: id,
+              targetDistanceMm: pair.distanceMm > 0 ? pair.distanceMm.toFixed(1) : distMm.toFixed(1),
+            });
+          }
+        }
+      });
+      setPairAdjustments(newAdjustments);
+    }
+  }, [calibrationPairs, calibrationPoints, scaleFactor]);
+  
   const parseNumber = (value: string): number => {
     return parseFloat(value.replace(",", ".")) || 0;
   };
@@ -89,9 +144,44 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
     return parseNumber(increment) || 0.1;
   };
   
-  // Calculer les ratios d'étirement
+  // Calculer les ratios d'étirement global
   const stretchX = parseNumber(targetWidthMm) / currentWidthMm;
   const stretchY = parseNumber(targetHeightMm) / currentHeightMm;
+  
+  // Calculer le stretch basé sur une paire
+  const calculatePairStretch = (pairId: string): { stretchX: number; stretchY: number } | null => {
+    if (!calibrationPairs || !calibrationPoints) return null;
+    
+    const pair = calibrationPairs.get(pairId);
+    const adjustment = pairAdjustments.get(pairId);
+    if (!pair || !adjustment) return null;
+    
+    const p1 = calibrationPoints.get(pair.point1Id);
+    const p2 = calibrationPoints.get(pair.point2Id);
+    if (!p1 || !p2) return null;
+    
+    const dx = Math.abs(p2.x - p1.x);
+    const dy = Math.abs(p2.y - p1.y);
+    const distPx = Math.sqrt(dx * dx + dy * dy);
+    const currentDistMm = distPx / scaleFactor;
+    const targetDistMm = parseNumber(adjustment.targetDistanceMm);
+    
+    if (targetDistMm <= 0 || currentDistMm <= 0) return null;
+    
+    const stretchRatio = targetDistMm / currentDistMm;
+    
+    // Déterminer si la paire est plutôt horizontale ou verticale
+    if (dx > dy * 2) {
+      // Paire horizontale → étirer X
+      return { stretchX: stretchRatio, stretchY: 1 };
+    } else if (dy > dx * 2) {
+      // Paire verticale → étirer Y
+      return { stretchX: 1, stretchY: stretchRatio };
+    } else {
+      // Paire diagonale → étirer uniformément
+      return { stretchX: stretchRatio, stretchY: stretchRatio };
+    }
+  };
   
   const handleIncrement = (
     setter: React.Dispatch<React.SetStateAction<string>>,
@@ -101,6 +191,37 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
     const currentVal = parseNumber(current);
     const newVal = Math.max(0.1, currentVal + delta);
     setter(newVal.toFixed(1));
+  };
+  
+  const handlePairIncrement = (pairId: string, delta: number) => {
+    setPairAdjustments((prev) => {
+      const newMap = new Map(prev);
+      const current = newMap.get(pairId);
+      if (current) {
+        const currentVal = parseNumber(current.targetDistanceMm);
+        const newVal = Math.max(0.1, currentVal + delta);
+        newMap.set(pairId, { ...current, targetDistanceMm: newVal.toFixed(1) });
+      }
+      return newMap;
+    });
+  };
+  
+  const handlePairInputChange = (pairId: string, value: string) => {
+    setPairAdjustments((prev) => {
+      const newMap = new Map(prev);
+      const current = newMap.get(pairId);
+      if (current) {
+        newMap.set(pairId, { ...current, targetDistanceMm: value.replace(/[^0-9.,]/g, "") });
+      }
+      return newMap;
+    });
+  };
+  
+  const handleApplyPairStretch = (pairId: string) => {
+    const stretch = calculatePairStretch(pairId);
+    if (stretch) {
+      onApplyStretch(stretch.stretchX, stretch.stretchY);
+    }
   };
   
   const handleCornerChange = (
@@ -130,9 +251,53 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
       bottomLeft: { x: 0, y: 0 },
       bottomRight: { x: 0, y: 0 },
     });
+    // Reset pair adjustments
+    if (calibrationPairs && calibrationPoints) {
+      const newAdjustments = new Map<string, PairAdjustment>();
+      calibrationPairs.forEach((pair, id) => {
+        const p1 = calibrationPoints.get(pair.point1Id);
+        const p2 = calibrationPoints.get(pair.point2Id);
+        if (p1 && p2) {
+          const distPx = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+          const distMm = distPx / scaleFactor;
+          newAdjustments.set(id, {
+            pairId: id,
+            targetDistanceMm: pair.distanceMm > 0 ? pair.distanceMm.toFixed(1) : distMm.toFixed(1),
+          });
+        }
+      });
+      setPairAdjustments(newAdjustments);
+    }
   };
   
   const hasChanges = Math.abs(stretchX - 1) > 0.001 || Math.abs(stretchY - 1) > 0.001;
+  
+  // Calculer les infos de paire pour l'affichage
+  const getPairInfo = (pair: CalibrationPair) => {
+    if (!calibrationPoints) return null;
+    const p1 = calibrationPoints.get(pair.point1Id);
+    const p2 = calibrationPoints.get(pair.point2Id);
+    if (!p1 || !p2) return null;
+    
+    const dx = Math.abs(p2.x - p1.x);
+    const dy = Math.abs(p2.y - p1.y);
+    const distPx = Math.sqrt(dx * dx + dy * dy);
+    const currentDistMm = distPx / scaleFactor;
+    
+    // Orientation
+    let orientation: "H" | "V" | "D" = "D";
+    if (dx > dy * 2) orientation = "H";
+    else if (dy > dx * 2) orientation = "V";
+    
+    return {
+      p1Label: p1.label,
+      p2Label: p2.label,
+      currentDistMm,
+      orientation,
+    };
+  };
+  
+  const hasPairs = calibrationPairs && calibrationPairs.size > 0;
   
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -166,11 +331,113 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
         
         <Separator />
         
+        {/* Étirement par paires de calibration */}
+        {hasPairs && (
+          <>
+            <div className="space-y-2">
+              <Label className="text-xs font-medium flex items-center gap-1">
+                <Link2 className="h-3 w-3" />
+                Étirement par paire
+              </Label>
+              <p className="text-[10px] text-muted-foreground">
+                Ajustez la distance cible pour chaque paire de points
+              </p>
+              
+              <ScrollArea className="max-h-48">
+                <div className="space-y-2 pr-2">
+                  {Array.from(calibrationPairs!.entries()).map(([id, pair]) => {
+                    const info = getPairInfo(pair);
+                    const adjustment = pairAdjustments.get(id);
+                    if (!info || !adjustment) return null;
+                    
+                    const targetMm = parseNumber(adjustment.targetDistanceMm);
+                    const hasChange = Math.abs(targetMm - info.currentDistMm) > 0.01;
+                    const stretchPreview = targetMm / info.currentDistMm;
+                    
+                    return (
+                      <div key={id} className="border rounded p-2 space-y-1 bg-muted/20">
+                        {/* En-tête de la paire */}
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-medium">
+                            {info.p1Label} ↔ {info.p2Label}
+                          </span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                            info.orientation === "H" ? "bg-blue-100 text-blue-700" :
+                            info.orientation === "V" ? "bg-green-100 text-green-700" :
+                            "bg-purple-100 text-purple-700"
+                          }`}>
+                            {info.orientation === "H" ? "Horizontal" :
+                             info.orientation === "V" ? "Vertical" : "Diagonal"}
+                          </span>
+                        </div>
+                        
+                        {/* Distance actuelle */}
+                        <p className="text-[10px] text-muted-foreground">
+                          Actuel: {info.currentDistMm.toFixed(2)} mm
+                        </p>
+                        
+                        {/* Contrôle de distance cible */}
+                        <div className="flex items-center gap-1">
+                          <Label className="text-[10px] w-10">Cible:</Label>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => handlePairIncrement(id, -getIncrement())}
+                          >
+                            <Minus className="h-2 w-2" />
+                          </Button>
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            value={adjustment.targetDistanceMm}
+                            onChange={(e) => handlePairInputChange(id, e.target.value)}
+                            className="h-6 text-[10px] w-16 text-center"
+                          />
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => handlePairIncrement(id, getIncrement())}
+                          >
+                            <Plus className="h-2 w-2" />
+                          </Button>
+                          <span className="text-[10px] text-muted-foreground">mm</span>
+                        </div>
+                        
+                        {/* Prévisualisation et bouton appliquer */}
+                        {hasChange && (
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="text-[10px] text-blue-600">
+                              ×{stretchPreview.toFixed(4)} ({stretchPreview > 1 ? "+" : ""}{((stretchPreview - 1) * 100).toFixed(1)}%)
+                            </span>
+                            <Button
+                              variant="default"
+                              size="sm"
+                              className="h-5 text-[10px] px-2"
+                              onClick={() => handleApplyPairStretch(id)}
+                            >
+                              <Check className="h-2 w-2 mr-1" />
+                              Appliquer
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            </div>
+            
+            <Separator />
+          </>
+        )}
+        
         {/* Dimensions globales */}
         <div className="space-y-2">
           <Label className="text-xs font-medium flex items-center gap-1">
             <Maximize2 className="h-3 w-3" />
-            Dimensions cibles
+            Dimensions globales
           </Label>
           
           {/* Largeur (X) */}

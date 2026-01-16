@@ -18849,6 +18849,10 @@ export function CADGabaritCanvas({
                   const imgCalib = selectedImage.calibrationData;
                   const hasAppliedStretch = !!(imgCalib?.manualStretchX || imgCalib?.manualStretchY);
                   
+                  // Récupérer les points et paires de calibration
+                  const calibPoints = imgCalib?.points || calibrationData.points;
+                  const calibPairs = imgCalib?.pairs || calibrationData.pairs;
+                  
                   return (
                     <ManualStretchControls
                       currentWidth={imgWidth}
@@ -18857,6 +18861,8 @@ export function CADGabaritCanvas({
                       onApplyStretch={handleManualStretch}
                       hasAppliedStretch={hasAppliedStretch}
                       onReset={resetCalibration}
+                      calibrationPoints={calibPoints}
+                      calibrationPairs={calibPairs}
                     />
                   );
                 })()}
