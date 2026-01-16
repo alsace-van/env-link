@@ -194,6 +194,9 @@ import { PrintPreviewModal } from "./PrintPreviewModal";
 // MOD v7.14: Auto-backup sur Supabase pour protection contre les pertes
 import { useCADAutoBackup } from "./useCADAutoBackup";
 
+// MOD v7.15: Contrôles d'étirement manuel
+import { ManualStretchControls } from "./ManualStretchControls";
+
 interface CADGabaritCanvasProps {
   imageUrl?: string;
   scaleFactor?: number;
@@ -18754,6 +18757,109 @@ export function CADGabaritCanvas({
                     </div>
                   )}
                 </div>
+
+                <Separator />
+
+                {/* MOD v7.15: Contrôles d'étirement manuel */}
+                {(() => {
+                  const selectedImage = getSelectedImage();
+                  if (!selectedImage) return null;
+                  
+                  const sourceImage = selectedImage.transformedCanvas || selectedImage.croppedCanvas || selectedImage.image;
+                  if (!sourceImage) return null;
+                  
+                  const imgWidth = sourceImage instanceof HTMLCanvasElement ? sourceImage.width : sourceImage.width;
+                  const imgHeight = sourceImage instanceof HTMLCanvasElement ? sourceImage.height : sourceImage.height;
+                  
+                  const handleManualStretch = (stretchX: number, stretchY: number) => {
+                    // Créer un canvas étiré manuellement
+                    const newWidth = Math.round(imgWidth * stretchX);
+                    const newHeight = Math.round(imgHeight * stretchY);
+                    
+                    const transformedCanvas = document.createElement("canvas");
+                    transformedCanvas.width = newWidth;
+                    transformedCanvas.height = newHeight;
+                    const ctx = transformedCanvas.getContext("2d");
+                    if (ctx) {
+                      ctx.drawImage(sourceImage, 0, 0, newWidth, newHeight);
+                    }
+                    
+                    // Mettre à jour l'image
+                    setBackgroundImages((prev) =>
+                      prev.map((img) => {
+                        if (img.id !== selectedImage.id) return img;
+                        
+                        // Transformer les points de calibration existants
+                        const imgCalib = img.calibrationData || { 
+                          points: new Map(), 
+                          pairs: new Map(), 
+                          mode: "simple" as const,
+                          applied: false,
+                        };
+                        const transformedPoints = new Map<string, any>();
+                        imgCalib.points.forEach((point: any, id: string) => {
+                          transformedPoints.set(id, {
+                            ...point,
+                            x: point.x * stretchX,
+                            y: point.y * stretchY,
+                          });
+                        });
+                        
+                        // Récupérer les stretch existants de manière safe
+                        const existingStretchX = (imgCalib as any).manualStretchX || 1;
+                        const existingStretchY = (imgCalib as any).manualStretchY || 1;
+                        
+                        return {
+                          ...img,
+                          transformedCanvas,
+                          calibrationData: {
+                            ...imgCalib,
+                            points: transformedPoints,
+                            manualStretchX: existingStretchX * stretchX,
+                            manualStretchY: existingStretchY * stretchY,
+                            applied: true,
+                          },
+                        };
+                      }),
+                    );
+                    
+                    // Mettre à jour calibrationData global
+                    setCalibrationData((prev) => {
+                      const transformedPoints = new Map<string, any>();
+                      prev.points.forEach((point: any, id: string) => {
+                        transformedPoints.set(id, {
+                          ...point,
+                          x: point.x * stretchX,
+                          y: point.y * stretchY,
+                        });
+                      });
+                      
+                      return {
+                        ...prev,
+                        points: transformedPoints,
+                        manualStretchX: (prev.manualStretchX || 1) * stretchX,
+                        manualStretchY: (prev.manualStretchY || 1) * stretchY,
+                        applied: true,
+                      };
+                    });
+                    
+                    toast.success(`Étirement appliqué: X×${stretchX.toFixed(3)}, Y×${stretchY.toFixed(3)}`);
+                  };
+                  
+                  const imgCalib = selectedImage.calibrationData;
+                  const hasAppliedStretch = !!(imgCalib?.manualStretchX || imgCalib?.manualStretchY);
+                  
+                  return (
+                    <ManualStretchControls
+                      currentWidth={imgWidth}
+                      currentHeight={imgHeight}
+                      scaleFactor={sketch.scaleFactor}
+                      onApplyStretch={handleManualStretch}
+                      hasAppliedStretch={hasAppliedStretch}
+                      onReset={resetCalibration}
+                    />
+                  );
+                })()}
 
                 {/* Mode Perspective - Choix méthode */}
                 {calibrationData.mode === "perspective" && (
