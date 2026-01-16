@@ -296,7 +296,8 @@ export function useCalibration({
     let totalScaleY = 0;
     let countY = 0;
 
-    imgCalib.pairs.forEach((pair) => {
+    console.log("[calculateCalibration] Analyse des paires:");
+    imgCalib.pairs.forEach((pair, pairId) => {
       const p1 = imgCalib.points.get(pair.point1Id);
       const p2 = imgCalib.points.get(pair.point2Id);
       if (p1 && p2 && pair.distanceMm > 0) {
@@ -304,6 +305,11 @@ export function useCalibration({
         const dy = Math.abs(p2.y - p1.y);
         const distPx = distance(p1, p2);
         const scale = pair.distanceMm / distPx;
+
+        const direction = dx > dy ? "HORIZONTAL (X)" : "VERTICAL (Y)";
+        console.log(
+          `  Paire ${pairId.slice(0, 6)}: dx=${dx.toFixed(1)}, dy=${dy.toFixed(1)} → ${direction}, scale=${scale.toFixed(4)}`,
+        );
 
         // Paire horizontale si |Δx| > |Δy|, sinon verticale
         if (dx > dy) {
@@ -315,6 +321,8 @@ export function useCalibration({
         }
       }
     });
+
+    console.log(`[calculateCalibration] Résumé: ${countX} paires X, ${countY} paires Y`);
 
     if (countX === 0 && countY === 0) {
       toast.error("Aucune paire valide");
@@ -399,10 +407,28 @@ export function useCalibration({
     const imgCalib = getSelectedImageCalibration();
     const selectedImage = getSelectedImage();
 
+    console.log("[applyCalibration] Début");
+    console.log("[applyCalibration] imgCalib:", imgCalib);
+    console.log("[applyCalibration] calibrationData:", calibrationData);
+
     // Mode simple : échelle uniforme ou anisotrope
     if (calibrationData.mode === "simple" || !calibrationData.mode) {
       const scaleX = imgCalib.scaleX || imgCalib.scale || calibrationData.scaleX || calibrationData.scale;
       const scaleY = imgCalib.scaleY || imgCalib.scale || calibrationData.scaleY || calibrationData.scale;
+
+      console.log("[applyCalibration] scaleX:", scaleX, "scaleY:", scaleY);
+      console.log(
+        "[applyCalibration] Sources - imgCalib.scaleX:",
+        imgCalib.scaleX,
+        "imgCalib.scaleY:",
+        imgCalib.scaleY,
+      );
+      console.log(
+        "[applyCalibration] Sources - calibrationData.scaleX:",
+        calibrationData.scaleX,
+        "calibrationData.scaleY:",
+        calibrationData.scaleY,
+      );
 
       if (!scaleX || !scaleY) {
         toast.error("Calculez d'abord la calibration");
@@ -440,6 +466,11 @@ export function useCalibration({
       let transformedCanvas: HTMLCanvasElement | null = null;
 
       const sourceImage = selectedImage.croppedCanvas || selectedImage.image;
+      console.log(
+        "[applyCalibration] sourceImage:",
+        sourceImage ? `${sourceImage.width}x${sourceImage.height}` : "null",
+      );
+
       if (sourceImage) {
         const srcWidth = sourceImage instanceof HTMLCanvasElement ? sourceImage.width : sourceImage.width;
         const srcHeight = sourceImage instanceof HTMLCanvasElement ? sourceImage.height : sourceImage.height;
@@ -448,13 +479,20 @@ export function useCalibration({
         const newWidth = Math.round(srcWidth * stretchX);
         const newHeight = Math.round(srcHeight * stretchY);
 
+        console.log("[applyCalibration] Dimensions:", srcWidth, "x", srcHeight, "→", newWidth, "x", newHeight);
+
         transformedCanvas = document.createElement("canvas");
         transformedCanvas.width = newWidth;
         transformedCanvas.height = newHeight;
         const tctx = transformedCanvas.getContext("2d");
         if (tctx) {
           tctx.drawImage(sourceImage, 0, 0, newWidth, newHeight);
+          console.log("[applyCalibration] Canvas créé:", newWidth, "x", newHeight);
+        } else {
+          console.error("[applyCalibration] Impossible de créer le contexte 2D");
         }
+      } else {
+        console.error("[applyCalibration] Pas d'image source");
       }
 
       // Transformer les points de calibration pour suivre l'étirement de l'image
@@ -474,6 +512,11 @@ export function useCalibration({
       }));
 
       // Mettre à jour l'image avec le canvas transformé
+      console.log(
+        "[applyCalibration] Mise à jour backgroundImages avec transformedCanvas:",
+        transformedCanvas ? "OUI" : "NON",
+      );
+
       setBackgroundImages((prev) =>
         prev.map((img) => {
           if (img.id !== selectedImage.id) return img;
