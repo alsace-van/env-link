@@ -13442,7 +13442,8 @@ export function CADGabaritCanvas({
 
       // Calculer si l'échelle est anisotrope (>2% de différence)
       const avgScale = (scaleX + scaleY) / 2;
-      const isAnisotrope = Math.abs(scaleX - scaleY) / avgScale > 0.02;
+      // MOD: Toujours étirer l'image pour correspondre aux mesures réelles
+      const isAnisotrope = true;
 
       // Si anisotrope, on doit étirer l'image pour corriger la déformation
       // L'échelle de référence sera la plus petite (pour ne pas perdre de résolution)
@@ -13455,9 +13456,9 @@ export function CADGabaritCanvas({
       const stretchX = scaleX / referenceScale;
       const stretchY = scaleY / referenceScale;
 
-      // Créer un canvas transformé si anisotrope
+      // MOD: Toujours créer un canvas transformé pour étirer l'image
       let transformedCanvas: HTMLCanvasElement | null = null;
-      
+
       if (isAnisotrope) {
         const sourceImage = selectedImage.croppedCanvas || selectedImage.image;
         if (sourceImage) {
@@ -13540,10 +13541,12 @@ export function CADGabaritCanvas({
 
       if (isAnisotrope) {
         toast.success(
-          `Calibration anisotrope appliquée ! Photo étirée (X×${stretchX.toFixed(2)}, Y×${stretchY.toFixed(2)}). Échelle: ${referenceScale.toFixed(4)} mm/px`
+          `Calibration anisotrope appliquée ! Photo étirée (X×${stretchX.toFixed(2)}, Y×${stretchY.toFixed(2)}). Échelle: ${referenceScale.toFixed(4)} mm/px`,
         );
       } else {
-        toast.success(`Calibration appliquée ! Échelle: ${referenceScale.toFixed(4)} mm/px (1px = ${referenceScale.toFixed(3)} mm)`);
+        toast.success(
+          `Calibration appliquée ! Échelle: ${referenceScale.toFixed(4)} mm/px (1px = ${referenceScale.toFixed(3)} mm)`,
+        );
       }
       return;
     }
@@ -18548,7 +18551,9 @@ export function CADGabaritCanvas({
                                     <div
                                       className="w-3 h-3 rounded-full flex-shrink-0"
                                       style={{ backgroundColor: pair.color }}
-                                      title={isHorizontal ? "Paire horizontale (→ scaleX)" : "Paire verticale (→ scaleY)"}
+                                      title={
+                                        isHorizontal ? "Paire horizontale (→ scaleX)" : "Paire verticale (→ scaleY)"
+                                      }
                                     />
                                     <span className="font-medium text-xs whitespace-nowrap">
                                       {p1?.label}↔{p2?.label}
@@ -18747,7 +18752,7 @@ export function CADGabaritCanvas({
                     {calibrationData.mode === "affine" && "Échelle + rotation + cisaillement (min 3 pts)"}
                     {calibrationData.mode === "perspective" && "Correction perspective complète (4 pts)"}
                   </p>
-                  
+
                   {/* Indicateur de points requis pour affine */}
                   {calibrationData.mode === "affine" && (
                     <div className="text-xs">
@@ -18757,14 +18762,12 @@ export function CADGabaritCanvas({
                         const pairCount = imgCalib.pairs.size;
                         const isReady = pairCount >= 3;
                         return (
-                          <div className={`p-2 rounded ${isReady ? 'bg-green-50' : 'bg-yellow-50'}`}>
-                            <p className={isReady ? 'text-green-700' : 'text-yellow-700'}>
+                          <div className={`p-2 rounded ${isReady ? "bg-green-50" : "bg-yellow-50"}`}>
+                            <p className={isReady ? "text-green-700" : "text-yellow-700"}>
                               {pointCount} points, {pairCount}/3 paires min
                             </p>
                             {!isReady && (
-                              <p className="text-yellow-600 mt-1">
-                                Ajoutez {3 - pairCount} paire(s) de plus
-                              </p>
+                              <p className="text-yellow-600 mt-1">Ajoutez {3 - pairCount} paire(s) de plus</p>
                             )}
                           </div>
                         );
@@ -18779,18 +18782,19 @@ export function CADGabaritCanvas({
                 {(() => {
                   const selectedImage = getSelectedImage();
                   if (!selectedImage) return null;
-                  
-                  const sourceImage = selectedImage.transformedCanvas || selectedImage.croppedCanvas || selectedImage.image;
+
+                  const sourceImage =
+                    selectedImage.transformedCanvas || selectedImage.croppedCanvas || selectedImage.image;
                   if (!sourceImage) return null;
-                  
+
                   const imgWidth = sourceImage instanceof HTMLCanvasElement ? sourceImage.width : sourceImage.width;
                   const imgHeight = sourceImage instanceof HTMLCanvasElement ? sourceImage.height : sourceImage.height;
-                  
+
                   const handleManualStretch = (stretchX: number, stretchY: number) => {
                     // Créer un canvas étiré manuellement
                     const newWidth = Math.round(imgWidth * stretchX);
                     const newHeight = Math.round(imgHeight * stretchY);
-                    
+
                     const transformedCanvas = document.createElement("canvas");
                     transformedCanvas.width = newWidth;
                     transformedCanvas.height = newHeight;
@@ -18798,16 +18802,16 @@ export function CADGabaritCanvas({
                     if (ctx) {
                       ctx.drawImage(sourceImage, 0, 0, newWidth, newHeight);
                     }
-                    
+
                     // Mettre à jour l'image
                     setBackgroundImages((prev) =>
                       prev.map((img) => {
                         if (img.id !== selectedImage.id) return img;
-                        
+
                         // Transformer les points de calibration existants
-                        const imgCalib = img.calibrationData || { 
-                          points: new Map(), 
-                          pairs: new Map(), 
+                        const imgCalib = img.calibrationData || {
+                          points: new Map(),
+                          pairs: new Map(),
                           mode: "simple" as const,
                           applied: false,
                         };
@@ -18819,11 +18823,11 @@ export function CADGabaritCanvas({
                             y: point.y * stretchY,
                           });
                         });
-                        
+
                         // Récupérer les stretch existants de manière safe
                         const existingStretchX = (imgCalib as any).manualStretchX || 1;
                         const existingStretchY = (imgCalib as any).manualStretchY || 1;
-                        
+
                         return {
                           ...img,
                           transformedCanvas,
@@ -18837,7 +18841,7 @@ export function CADGabaritCanvas({
                         };
                       }),
                     );
-                    
+
                     // Mettre à jour calibrationData global
                     setCalibrationData((prev) => {
                       const transformedPoints = new Map<string, any>();
@@ -18848,7 +18852,7 @@ export function CADGabaritCanvas({
                           y: point.y * stretchY,
                         });
                       });
-                      
+
                       return {
                         ...prev,
                         points: transformedPoints,
@@ -18857,17 +18861,17 @@ export function CADGabaritCanvas({
                         applied: true,
                       };
                     });
-                    
+
                     toast.success(`Étirement appliqué: X×${stretchX.toFixed(3)}, Y×${stretchY.toFixed(3)}`);
                   };
-                  
+
                   const imgCalib = selectedImage.calibrationData;
                   const hasAppliedStretch = !!(imgCalib?.manualStretchX || imgCalib?.manualStretchY);
-                  
+
                   // Récupérer les points et paires de calibration
                   const calibPoints = imgCalib?.points || calibrationData.points;
                   const calibPairs = imgCalib?.pairs || calibrationData.pairs;
-                  
+
                   return (
                     <ManualStretchControls
                       currentWidth={imgWidth}
@@ -19205,28 +19209,24 @@ export function CADGabaritCanvas({
                         const scaleY = calibrationData.scaleY ?? imgCalib.scaleY;
                         const errorX = calibrationData.errorX ?? imgCalib.errorX;
                         const errorY = calibrationData.errorY ?? imgCalib.errorY;
-                        
+
                         if (!scaleX || !scaleY) return null;
-                        
+
                         const avgScale = (scaleX + scaleY) / 2;
                         const isAnisotrope = Math.abs(scaleX - scaleY) / avgScale > 0.02;
-                        
+
                         if (!isAnisotrope) return null;
-                        
+
                         return (
                           <div className="p-2 bg-blue-50 rounded text-xs space-y-1">
                             <p className="font-medium text-blue-700">Calibration anisotrope détectée</p>
                             <p className="text-blue-600">
-                              X: {scaleX.toFixed(4)} mm/px{" "}
-                              {errorX !== undefined && `(±${errorX.toFixed(1)}%)`}
+                              X: {scaleX.toFixed(4)} mm/px {errorX !== undefined && `(±${errorX.toFixed(1)}%)`}
                             </p>
                             <p className="text-blue-600">
-                              Y: {scaleY.toFixed(4)} mm/px{" "}
-                              {errorY !== undefined && `(±${errorY.toFixed(1)}%)`}
+                              Y: {scaleY.toFixed(4)} mm/px {errorY !== undefined && `(±${errorY.toFixed(1)}%)`}
                             </p>
-                            <p className="text-blue-500 text-[10px]">
-                              Ratio X/Y: {(scaleX / scaleY).toFixed(3)}
-                            </p>
+                            <p className="text-blue-500 text-[10px]">Ratio X/Y: {(scaleX / scaleY).toFixed(3)}</p>
                           </div>
                         );
                       })()}
