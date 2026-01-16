@@ -358,8 +358,8 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
                 Ajustez la distance cible pour chaque paire de points
               </p>
               
-              <ScrollArea className="max-h-48">
-                <div className="space-y-2 pr-2">
+              <ScrollArea className="h-auto max-h-[300px]">
+                <div className="space-y-2 pr-3">
                   {Array.from(calibrationPairs!.entries()).map(([id, pair]) => {
                     const info = getPairInfo(pair);
                     const adjustment = pairAdjustments.get(id);
@@ -389,7 +389,7 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
                         {/* Distance actuelle et initiale */}
                         <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                           <span>Actuel: {info.currentDistMm.toFixed(2)} mm</span>
-                          {adjustment.initialDistanceMm !== info.currentDistMm && (
+                          {Math.abs(adjustment.initialDistanceMm - info.currentDistMm) > 0.1 && (
                             <span className="text-orange-500">
                               (init: {adjustment.initialDistanceMm.toFixed(1)} mm)
                             </span>
