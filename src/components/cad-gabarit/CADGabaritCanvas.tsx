@@ -238,8 +238,16 @@ export function CADGabaritCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<CADRenderer | null>(null);
-  const snapSystemRef = useRef<SnapSystem>(new SnapSystem());
-  const solverRef = useRef<CADSolver>(new CADSolver());
+  // FIX: Lazy initialization pour éviter de recréer à chaque render
+  const snapSystemRef = useRef<SnapSystem | null>(null);
+  if (!snapSystemRef.current) {
+    snapSystemRef.current = new SnapSystem();
+  }
+  // FIX: Lazy initialization du solveur pour éviter les appels WASM répétés
+  const solverRef = useRef<CADSolver | null>(null);
+  if (!solverRef.current) {
+    solverRef.current = new CADSolver();
+  }
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dxfInputRef = useRef<HTMLInputElement>(null);
