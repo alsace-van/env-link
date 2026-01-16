@@ -18600,13 +18600,12 @@ export function CADGabaritCanvas({
                         if (!scaleX || !scaleY) return null;
 
                         const avgScale = (scaleX + scaleY) / 2;
-                        const isAnisotrope = Math.abs(scaleX - scaleY) / avgScale > 0.02;
-
-                        if (!isAnisotrope) return null;
+                        // MOD: Toujours afficher les échelles X/Y séparément (suppression seuil 2%)
+                        const diffPercent = (Math.abs(scaleX - scaleY) / avgScale) * 100;
 
                         return (
                           <div className="p-2 bg-blue-50 rounded text-xs space-y-1">
-                            <p className="font-medium text-blue-700">Calibration anisotrope détectée</p>
+                            <p className="font-medium text-blue-700">Échelles X/Y (diff: {diffPercent.toFixed(1)}%)</p>
                             <p className="text-blue-600">
                               X: {scaleX.toFixed(4)} mm/px {errorX !== undefined && `(±${errorX.toFixed(1)}%)`}
                             </p>
