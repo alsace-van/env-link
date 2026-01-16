@@ -40,7 +40,7 @@ export interface UseCalibrationProps {
   sketch: Sketch;
   sketchRef: React.MutableRefObject<Sketch>;
   backgroundImageRef: React.MutableRefObject<HTMLImageElement | null>;
-  
+
   // Mode perspective
   rectPoints: string[];
   rectWidth: string;
@@ -49,12 +49,14 @@ export interface UseCalibrationProps {
   checkerCornersX: string;
   checkerCornersY: string;
   checkerSquareSize: string;
-  
+
   // Setters
   setBackgroundImages: React.Dispatch<React.SetStateAction<BackgroundImage[]>>;
   setCalibrationData: React.Dispatch<React.SetStateAction<CalibrationData>>;
   setSketch: React.Dispatch<React.SetStateAction<Sketch>>;
-  setCalibrationMode: React.Dispatch<React.SetStateAction<"idle" | "addPoint" | "selectPair1" | "selectPair2" | "selectRect">>;
+  setCalibrationMode: React.Dispatch<
+    React.SetStateAction<"idle" | "addPoint" | "selectPair1" | "selectPair2" | "selectRect">
+  >;
   setSelectedCalibrationPoint: React.Dispatch<React.SetStateAction<string | null>>;
   setRectPoints: React.Dispatch<React.SetStateAction<string[]>>;
   setRectWidth: React.Dispatch<React.SetStateAction<string>>;
@@ -106,11 +108,10 @@ export function useCalibration({
   setImageScale,
   setTransformedImage,
 }: UseCalibrationProps): UseCalibrationReturn {
-  
   // ============================================
   // GETTERS
   // ============================================
-  
+
   const getSelectedImage = useCallback((): BackgroundImage | null => {
     if (!selectedImageId) return null;
     return backgroundImages.find((img) => img.id === selectedImageId) || null;
@@ -153,113 +154,128 @@ export function useCalibration({
   // GESTION DES POINTS
   // ============================================
 
-  const addCalibrationPoint = useCallback((x: number, y: number): CalibrationPoint => {
-    const imgCalib = getSelectedImageCalibration();
-    const pointNumber = imgCalib.points.size + 1;
-    
-    const newPoint: CalibrationPoint = {
-      id: generateId(),
-      x,
-      y,
-      label: `${pointNumber}`,
-    };
+  const addCalibrationPoint = useCallback(
+    (x: number, y: number): CalibrationPoint => {
+      const imgCalib = getSelectedImageCalibration();
+      const pointNumber = imgCalib.points.size + 1;
 
-    updateSelectedImageCalibration((prev) => {
-      const newPoints = new Map(prev.points);
-      newPoints.set(newPoint.id, newPoint);
-      return { ...prev, points: newPoints };
-    });
+      const newPoint: CalibrationPoint = {
+        id: generateId(),
+        x,
+        y,
+        label: `${pointNumber}`,
+      };
 
-    return newPoint;
-  }, [getSelectedImageCalibration, updateSelectedImageCalibration]);
-
-  const removeCalibrationPoint = useCallback((pointId: string) => {
-    updateSelectedImageCalibration((prev) => {
-      const newPoints = new Map(prev.points);
-      newPoints.delete(pointId);
-      
-      // Supprimer aussi les paires qui utilisent ce point
-      const newPairs = new Map(prev.pairs);
-      newPairs.forEach((pair, pairId) => {
-        if (pair.point1Id === pointId || pair.point2Id === pointId) {
-          newPairs.delete(pairId);
-        }
+      updateSelectedImageCalibration((prev) => {
+        const newPoints = new Map(prev.points);
+        newPoints.set(newPoint.id, newPoint);
+        return { ...prev, points: newPoints };
       });
-      
-      return { ...prev, points: newPoints, pairs: newPairs };
-    });
-  }, [updateSelectedImageCalibration]);
+
+      return newPoint;
+    },
+    [getSelectedImageCalibration, updateSelectedImageCalibration],
+  );
+
+  const removeCalibrationPoint = useCallback(
+    (pointId: string) => {
+      updateSelectedImageCalibration((prev) => {
+        const newPoints = new Map(prev.points);
+        newPoints.delete(pointId);
+
+        // Supprimer aussi les paires qui utilisent ce point
+        const newPairs = new Map(prev.pairs);
+        newPairs.forEach((pair, pairId) => {
+          if (pair.point1Id === pointId || pair.point2Id === pointId) {
+            newPairs.delete(pairId);
+          }
+        });
+
+        return { ...prev, points: newPoints, pairs: newPairs };
+      });
+    },
+    [updateSelectedImageCalibration],
+  );
 
   // ============================================
   // GESTION DES PAIRES
   // ============================================
 
-  const addCalibrationPair = useCallback((point1Id: string, point2Id: string, distanceMm: number): CalibrationPair | null => {
-    const imgCalib = getSelectedImageCalibration();
-    
-    const p1 = imgCalib.points.get(point1Id);
-    const p2 = imgCalib.points.get(point2Id);
-    
-    if (!p1 || !p2) {
-      toast.error("Points invalides");
-      return null;
-    }
+  const addCalibrationPair = useCallback(
+    (point1Id: string, point2Id: string, distanceMm: number): CalibrationPair | null => {
+      const imgCalib = getSelectedImageCalibration();
 
-    // Vérifier si cette paire existe déjà
-    let pairExists = false;
-    imgCalib.pairs.forEach((pair) => {
-      if (
-        (pair.point1Id === point1Id && pair.point2Id === point2Id) ||
-        (pair.point1Id === point2Id && pair.point2Id === point1Id)
-      ) {
-        pairExists = true;
+      const p1 = imgCalib.points.get(point1Id);
+      const p2 = imgCalib.points.get(point2Id);
+
+      if (!p1 || !p2) {
+        toast.error("Points invalides");
+        return null;
       }
-    });
 
-    if (pairExists) {
-      toast.error("Cette paire existe déjà");
-      return null;
-    }
+      // Vérifier si cette paire existe déjà
+      let pairExists = false;
+      imgCalib.pairs.forEach((pair) => {
+        if (
+          (pair.point1Id === point1Id && pair.point2Id === point2Id) ||
+          (pair.point1Id === point2Id && pair.point2Id === point1Id)
+        ) {
+          pairExists = true;
+        }
+      });
 
-    const distPx = distance(p1, p2);
-    const colorIndex = imgCalib.pairs.size % CALIBRATION_COLORS.length;
-
-    const newPair: CalibrationPair = {
-      id: generateId(),
-      point1Id,
-      point2Id,
-      distanceMm,
-      distancePx: distPx,
-      color: CALIBRATION_COLORS[colorIndex],
-    };
-
-    updateSelectedImageCalibration((prev) => {
-      const newPairs = new Map(prev.pairs);
-      newPairs.set(newPair.id, newPair);
-      return { ...prev, pairs: newPairs };
-    });
-
-    return newPair;
-  }, [getSelectedImageCalibration, updateSelectedImageCalibration]);
-
-  const removeCalibrationPair = useCallback((pairId: string) => {
-    updateSelectedImageCalibration((prev) => {
-      const newPairs = new Map(prev.pairs);
-      newPairs.delete(pairId);
-      return { ...prev, pairs: newPairs };
-    });
-  }, [updateSelectedImageCalibration]);
-
-  const updatePairDistance = useCallback((pairId: string, distanceMm: number) => {
-    updateSelectedImageCalibration((prev) => {
-      const newPairs = new Map(prev.pairs);
-      const pair = newPairs.get(pairId);
-      if (pair) {
-        newPairs.set(pairId, { ...pair, distanceMm });
+      if (pairExists) {
+        toast.error("Cette paire existe déjà");
+        return null;
       }
-      return { ...prev, pairs: newPairs };
-    });
-  }, [updateSelectedImageCalibration]);
+
+      const distPx = distance(p1, p2);
+      const colorIndex = imgCalib.pairs.size % CALIBRATION_COLORS.length;
+
+      const newPair: CalibrationPair = {
+        id: generateId(),
+        point1Id,
+        point2Id,
+        distanceMm,
+        distancePx: distPx,
+        color: CALIBRATION_COLORS[colorIndex],
+      };
+
+      updateSelectedImageCalibration((prev) => {
+        const newPairs = new Map(prev.pairs);
+        newPairs.set(newPair.id, newPair);
+        return { ...prev, pairs: newPairs };
+      });
+
+      return newPair;
+    },
+    [getSelectedImageCalibration, updateSelectedImageCalibration],
+  );
+
+  const removeCalibrationPair = useCallback(
+    (pairId: string) => {
+      updateSelectedImageCalibration((prev) => {
+        const newPairs = new Map(prev.pairs);
+        newPairs.delete(pairId);
+        return { ...prev, pairs: newPairs };
+      });
+    },
+    [updateSelectedImageCalibration],
+  );
+
+  const updatePairDistance = useCallback(
+    (pairId: string, distanceMm: number) => {
+      updateSelectedImageCalibration((prev) => {
+        const newPairs = new Map(prev.pairs);
+        const pair = newPairs.get(pairId);
+        if (pair) {
+          newPairs.set(pairId, { ...pair, distanceMm });
+        }
+        return { ...prev, pairs: newPairs };
+      });
+    },
+    [updateSelectedImageCalibration],
+  );
 
   // ============================================
   // CALCUL DE CALIBRATION
@@ -404,7 +420,7 @@ export function useCalibration({
       const originalPoints = new Map(imgCalib.points);
 
       const avgScale = (scaleX + scaleY) / 2;
-      
+
       // MOD: Toujours étirer l'image pour correspondre aux mesures réelles
       const isAnisotrope = true;
 
@@ -494,12 +510,9 @@ export function useCalibration({
       }));
 
       // Message de succès
-      const stretchInfo = (stretchX !== 1 || stretchY !== 1)
-        ? ` Photo étirée (X×${stretchX.toFixed(3)}, Y×${stretchY.toFixed(3)}).`
-        : "";
-      toast.success(
-        `Calibration appliquée !${stretchInfo} Échelle: ${referenceScale.toFixed(4)} mm/px`
-      );
+      const stretchInfo =
+        stretchX !== 1 || stretchY !== 1 ? ` Photo étirée (X×${stretchX.toFixed(3)}, Y×${stretchY.toFixed(3)}).` : "";
+      toast.success(`Calibration appliquée !${stretchInfo} Échelle: ${referenceScale.toFixed(4)} mm/px`);
       return;
     }
 
