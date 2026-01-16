@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18430,13 +18431,18 @@ export function CADGabaritCanvas({
 
                 <Separator />
 
-                {/* Points de calibration - utilise l'image sélectionnée */}
+                {/* Points de calibration - dans un dropdown */}
                 {(() => {
                   const imgCalib = getSelectedImageCalibration();
                   return (
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Points ({imgCalib.points.size})</span>
+                    <Collapsible defaultOpen={imgCalib.points.size > 0 && imgCalib.points.size <= 4}>
+                      <div className="flex items-center justify-between">
+                        <CollapsibleTrigger asChild>
+                          <Button variant="ghost" className="h-7 px-2 gap-1">
+                            <ChevronDown className="h-3 w-3" />
+                            <span className="text-sm font-medium">Points ({imgCalib.points.size})</span>
+                          </Button>
+                        </CollapsibleTrigger>
                         {imgCalib.points.size > 0 && (
                           <Button
                             variant="ghost"
@@ -18457,164 +18463,173 @@ export function CADGabaritCanvas({
                         )}
                       </div>
 
-                      {imgCalib.points.size === 0 ? (
-                        <p className="text-xs text-muted-foreground italic">Aucun point</p>
-                      ) : (
-                        <div className="space-y-1">
-                          {Array.from(imgCalib.points.values()).map((point) => (
-                            <div
-                              key={point.id}
-                              className="flex items-center justify-between p-1.5 bg-gray-50 rounded text-sm"
-                            >
-                              <span>
-                                <span className="font-medium text-red-500">Point {point.label}</span>
-                                <span className="text-xs text-muted-foreground ml-2">
-                                  ({point.x.toFixed(0)}, {point.y.toFixed(0)})
-                                </span>
-                              </span>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  updateSelectedImageCalibration((prev) => {
-                                    const newPoints = new Map(prev.points);
-                                    newPoints.delete(point.id);
-                                    // Supprimer aussi les paires qui utilisent ce point
-                                    const newPairs = new Map(prev.pairs);
-                                    prev.pairs.forEach((pair, id) => {
-                                      if (pair.point1Id === point.id || pair.point2Id === point.id) {
-                                        newPairs.delete(id);
-                                      }
-                                    });
-                                    return { ...prev, points: newPoints, pairs: newPairs };
-                                  });
-                                }}
-                                className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                      <CollapsibleContent>
+                        {imgCalib.points.size === 0 ? (
+                          <p className="text-xs text-muted-foreground italic pl-2">Aucun point</p>
+                        ) : (
+                          <div className="space-y-1 mt-1">
+                            {Array.from(imgCalib.points.values()).map((point) => (
+                              <div
+                                key={point.id}
+                                className="flex items-center justify-between p-1.5 bg-gray-50 rounded text-sm"
                               >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                                <span>
+                                  <span className="font-medium text-red-500">Point {point.label}</span>
+                                  <span className="text-xs text-muted-foreground ml-2">
+                                    ({point.x.toFixed(0)}, {point.y.toFixed(0)})
+                                  </span>
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    updateSelectedImageCalibration((prev) => {
+                                      const newPoints = new Map(prev.points);
+                                      newPoints.delete(point.id);
+                                      // Supprimer aussi les paires qui utilisent ce point
+                                      const newPairs = new Map(prev.pairs);
+                                      prev.pairs.forEach((pair, id) => {
+                                        if (pair.point1Id === point.id || pair.point2Id === point.id) {
+                                          newPairs.delete(id);
+                                        }
+                                      });
+                                      return { ...prev, points: newPoints, pairs: newPairs };
+                                    });
+                                  }}
+                                  className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </CollapsibleContent>
+                    </Collapsible>
                   );
                 })()}
 
                 <Separator />
 
-                {/* Paires de calibration - utilise l'image sélectionnée */}
+                {/* Paires de calibration - dans un dropdown */}
                 {/* MOD #85: UI compacte - 2 lignes par paire au lieu de 6 */}
                 {(() => {
                   const imgCalib = getSelectedImageCalibration();
                   return (
-                    <div>
-                      <span className="text-sm font-medium">Paires ({imgCalib.pairs.size})</span>
+                    <Collapsible defaultOpen={imgCalib.pairs.size > 0 && imgCalib.pairs.size <= 4}>
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" className="h-7 px-2 gap-1">
+                          <ChevronDown className="h-3 w-3" />
+                          <span className="text-sm font-medium">Paires ({imgCalib.pairs.size})</span>
+                        </Button>
+                      </CollapsibleTrigger>
 
-                      {imgCalib.pairs.size === 0 ? (
-                        <p className="text-xs text-muted-foreground italic mt-2">Aucune paire</p>
-                      ) : (
-                        <div className="space-y-1.5 mt-2">
-                          {Array.from(imgCalib.pairs.values()).map((pair) => {
-                            const p1 = imgCalib.points.get(pair.point1Id);
-                            const p2 = imgCalib.points.get(pair.point2Id);
-                            const distPx = p1 && p2 ? distance(p1, p2) : 0;
-                            const pairScale = distPx > 0 ? pair.distanceMm / distPx : 0;
-                            const measuredWithAvgScale = imgCalib.scale ? distPx * imgCalib.scale : 0;
-                            const errorMm = measuredWithAvgScale - pair.distanceMm;
-                            // Déterminer si paire horizontale ou verticale
-                            const dx = p1 && p2 ? Math.abs(p2.x - p1.x) : 0;
-                            const dy = p1 && p2 ? Math.abs(p2.y - p1.y) : 0;
-                            const isHorizontal = dx > dy;
+                      <CollapsibleContent>
+                        {imgCalib.pairs.size === 0 ? (
+                          <p className="text-xs text-muted-foreground italic pl-2">Aucune paire</p>
+                        ) : (
+                          <div className="space-y-1.5 mt-1">
+                            {Array.from(imgCalib.pairs.values()).map((pair) => {
+                              const p1 = imgCalib.points.get(pair.point1Id);
+                              const p2 = imgCalib.points.get(pair.point2Id);
+                              const distPx = p1 && p2 ? distance(p1, p2) : 0;
+                              const pairScale = distPx > 0 ? pair.distanceMm / distPx : 0;
+                              const measuredWithAvgScale = imgCalib.scale ? distPx * imgCalib.scale : 0;
+                              const errorMm = measuredWithAvgScale - pair.distanceMm;
+                              // Déterminer si paire horizontale ou verticale
+                              const dx = p1 && p2 ? Math.abs(p2.x - p1.x) : 0;
+                              const dy = p1 && p2 ? Math.abs(p2.y - p1.y) : 0;
+                              const isHorizontal = dx > dy;
 
-                            return (
-                              <div key={pair.id} className="p-1.5 bg-gray-50 rounded space-y-1">
-                                {/* Ligne 1: Couleur + Labels + Input + Delete */}
-                                <div className="flex items-center gap-1.5">
-                                  <div
-                                    className="w-3 h-3 rounded-full flex-shrink-0"
-                                    style={{ backgroundColor: pair.color }}
-                                    title={isHorizontal ? "Paire horizontale (→ scaleX)" : "Paire verticale (→ scaleY)"}
-                                  />
-                                  <span className="font-medium text-xs whitespace-nowrap">
-                                    {p1?.label}↔{p2?.label}
-                                  </span>
-                                  <Input
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={pair.distanceMm}
-                                    onChange={(e) => {
-                                      const val = e.target.value.replace(",", ".").replace(/[^0-9.]/g, "");
-                                      updatePairDistance(pair.id, parseFloat(val) || 0);
-                                    }}
-                                    onFocus={(e) => e.target.value === "0" && e.target.select()}
-                                    className="h-6 text-xs w-16 px-1.5"
-                                  />
-                                  <span className="text-xs text-muted-foreground">mm</span>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => deleteCalibrationPair(pair.id)}
-                                    className="h-5 w-5 p-0 ml-auto text-red-500 hover:text-red-700"
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
-                                </div>
-                                {/* Ligne 2: Stats compactes + Utiliser */}
-                                <div className="flex items-center justify-between text-xs">
-                                  <div className="flex items-center gap-1 text-muted-foreground">
-                                    <span>{distPx.toFixed(0)}px</span>
-                                    <span>·</span>
-                                    <span>{pairScale.toFixed(4)}</span>
-                                    {imgCalib.scale && (
-                                      <>
-                                        <span>·</span>
-                                        <span
-                                          className={`font-medium ${Math.abs(errorMm) < 0.5 ? "text-green-600" : Math.abs(errorMm) < 2 ? "text-orange-500" : "text-red-500"}`}
-                                        >
-                                          Δ{errorMm >= 0 ? "+" : ""}
-                                          {errorMm.toFixed(1)}
-                                        </span>
-                                        {Math.abs(errorMm) >= 0.1 && (
-                                          <button
-                                            className="text-green-600 hover:text-green-700"
-                                            onClick={() => {
-                                              updatePairDistance(pair.id, Math.round(measuredWithAvgScale * 10) / 10);
-                                            }}
-                                            title="Utiliser la valeur estimée"
-                                          >
-                                            ✓
-                                          </button>
-                                        )}
-                                      </>
-                                    )}
+                              return (
+                                <div key={pair.id} className="p-1.5 bg-gray-50 rounded space-y-1">
+                                  {/* Ligne 1: Couleur + Labels + Input + Delete */}
+                                  <div className="flex items-center gap-1.5">
+                                    <div
+                                      className="w-3 h-3 rounded-full flex-shrink-0"
+                                      style={{ backgroundColor: pair.color }}
+                                      title={isHorizontal ? "Paire horizontale (→ scaleX)" : "Paire verticale (→ scaleY)"}
+                                    />
+                                    <span className="font-medium text-xs whitespace-nowrap">
+                                      {p1?.label}↔{p2?.label}
+                                    </span>
+                                    <Input
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={pair.distanceMm}
+                                      onChange={(e) => {
+                                        const val = e.target.value.replace(",", ".").replace(/[^0-9.]/g, "");
+                                        updatePairDistance(pair.id, parseFloat(val) || 0);
+                                      }}
+                                      onFocus={(e) => e.target.value === "0" && e.target.select()}
+                                      className="h-6 text-xs w-16 px-1.5"
+                                    />
+                                    <span className="text-xs text-muted-foreground">mm</span>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => deleteCalibrationPair(pair.id)}
+                                      className="h-5 w-5 p-0 ml-auto text-red-500 hover:text-red-700"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
                                   </div>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-5 text-xs px-1.5"
-                                    onClick={() => {
-                                      updateSelectedImageCalibration((prev) => ({
-                                        ...prev,
-                                        scale: pairScale,
-                                        error: 0,
-                                      }));
-                                      setCalibrationData((prev) => ({
-                                        ...prev,
-                                        scale: pairScale,
-                                      }));
-                                      toast.success(`Échelle: ${pairScale.toFixed(4)} mm/px`);
-                                    }}
-                                  >
-                                    Utiliser
-                                  </Button>
+                                  {/* Ligne 2: Stats compactes + Utiliser */}
+                                  <div className="flex items-center justify-between text-xs">
+                                    <div className="flex items-center gap-1 text-muted-foreground">
+                                      <span>{distPx.toFixed(0)}px</span>
+                                      <span>·</span>
+                                      <span>{pairScale.toFixed(4)}</span>
+                                      {imgCalib.scale && (
+                                        <>
+                                          <span>·</span>
+                                          <span
+                                            className={`font-medium ${Math.abs(errorMm) < 0.5 ? "text-green-600" : Math.abs(errorMm) < 2 ? "text-orange-500" : "text-red-500"}`}
+                                          >
+                                            Δ{errorMm >= 0 ? "+" : ""}
+                                            {errorMm.toFixed(1)}
+                                          </span>
+                                          {Math.abs(errorMm) >= 0.1 && (
+                                            <button
+                                              className="text-green-600 hover:text-green-700"
+                                              onClick={() => {
+                                                updatePairDistance(pair.id, Math.round(measuredWithAvgScale * 10) / 10);
+                                              }}
+                                              title="Utiliser la valeur estimée"
+                                            >
+                                              ✓
+                                            </button>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-5 text-xs px-1.5"
+                                      onClick={() => {
+                                        updateSelectedImageCalibration((prev) => ({
+                                          ...prev,
+                                          scale: pairScale,
+                                          error: 0,
+                                        }));
+                                        setCalibrationData((prev) => ({
+                                          ...prev,
+                                          scale: pairScale,
+                                        }));
+                                        toast.success(`Échelle: ${pairScale.toFixed(4)} mm/px`);
+                                      }}
+                                    >
+                                      Utiliser
+                                    </Button>
+                                  </div>
                                 </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </CollapsibleContent>
+                    </Collapsible>
                   );
                 })()}
 
