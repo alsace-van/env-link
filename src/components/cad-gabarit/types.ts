@@ -499,9 +499,16 @@ export interface CalibrationData {
   scaleY?: number; // mm par pixel vertical (paires où |Δy| > |Δx|)
   errorX?: number; // Erreur X en %
   errorY?: number; // Erreur Y en %
+  // MOD #85: Étirements calculés après calibration
+  stretchX?: number; // Ratio d'étirement X appliqué
+  stretchY?: number; // Ratio d'étirement Y appliqué
+  // MOD v7.15: Étirement manuel
+  manualStretchX?: number; // Étirement manuel cumulatif X
+  manualStretchY?: number; // Étirement manuel cumulatif Y
   // MOD #85: Points originaux pour reset
   originalPoints?: Map<string, CalibrationPoint>;
   originalImageScale?: number; // Échelle image avant calibration
+  originalScaleFactor?: number; // ScaleFactor sketch avant calibration
   applied: boolean; // Si la calibration a été appliquée
   // Mode de calibration
   mode: "simple" | "anisotrope" | "affine" | "perspective" | "checkerboard";
