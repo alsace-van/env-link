@@ -11,13 +11,14 @@ import { toast } from "sonner";
 import type { Sketch } from "./types";
 import type { BackgroundImage, ImageMarkerLink } from "./types";
 
-// Générer un ID de session unique pour cette instance du navigateur
+// Générer un ID de session unique - persiste dans localStorage
+// FIX: Utiliser localStorage au lieu de sessionStorage pour persister après rechargement
 const generateSessionId = (): string => {
-  const stored = sessionStorage.getItem("cad_session_id");
+  const stored = localStorage.getItem("cad_session_id");
   if (stored) return stored;
 
   const newId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  sessionStorage.setItem("cad_session_id", newId);
+  localStorage.setItem("cad_session_id", newId);
   return newId;
 };
 
@@ -347,6 +348,7 @@ export function useCADAutoBackup(
   );
 
   // Récupérer le dernier backup valide
+  // FIX: Chercher d'abord par templateId, sinon par session, sinon le plus récent de l'utilisateur
   const getLatestBackup = useCallback(async (): Promise<CADAutoBackupRow | null> => {
     try {
       const {
@@ -354,26 +356,60 @@ export function useCADAutoBackup(
       } = await supabase.auth.getUser();
       if (!user) return null;
 
-      const { data, error } = await supabaseAny
+      // 1. Essayer d'abord par templateId (prioritaire pour les rechargements)
+      if (templateId) {
+        const { data: byTemplate, error: templateError } = await supabaseAny
+          .from("cad_autobackups")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("template_id", templateId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!templateError && byTemplate) {
+          console.log("[AutoBackup] Found backup by templateId:", templateId);
+          return byTemplate as CADAutoBackupRow;
+        }
+      }
+
+      // 2. Sinon essayer par session_id
+      const { data: bySession, error: sessionError } = await supabaseAny
         .from("cad_autobackups")
         .select("*")
         .eq("user_id", user.id)
         .eq("session_id", sessionId.current)
         .order("created_at", { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      if (error || !data) {
-        console.log("[AutoBackup] No backup found for this session");
-        return null;
+      if (!sessionError && bySession) {
+        console.log("[AutoBackup] Found backup by session_id");
+        return bySession as CADAutoBackupRow;
       }
 
-      return data as CADAutoBackupRow;
+      // 3. En dernier recours, prendre le plus récent de l'utilisateur (sans templateId null)
+      const { data: latest, error: latestError } = await supabaseAny
+        .from("cad_autobackups")
+        .select("*")
+        .eq("user_id", user.id)
+        .not("template_id", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!latestError && latest) {
+        console.log("[AutoBackup] Found most recent backup");
+        return latest as CADAutoBackupRow;
+      }
+
+      console.log("[AutoBackup] No backup found");
+      return null;
     } catch (error) {
       console.error("[AutoBackup] Error fetching backup:", error);
       return null;
     }
-  }, []);
+  }, [templateId]);
 
   // Restaurer depuis un backup
   const restoreFromBackup = useCallback(
@@ -546,37 +582,54 @@ export function useCADAutoBackup(
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [enabled, state.lastBackupTime]);
 
-  // Charger le dernier backup au démarrage si le canvas est vide
+  // FIX: Charger automatiquement le dernier backup au démarrage si le canvas est vide
+  // Suppression de la limite de 5 minutes - on restaure toujours si disponible
   useEffect(() => {
     if (!enabled || state.hasRestoredThisSession) return;
 
     const checkAndRestoreOnMount = async () => {
       // Attendre un peu pour laisser le composant s'initialiser
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // Si le canvas est toujours vide, vérifier s'il y a un backup récent
-      if (sketch.geometries.size === 0) {
+      // Si le canvas est vide (pas de géométries ET pas d'images), chercher un backup
+      if (sketch.geometries.size === 0 && backgroundImages.length === 0) {
         const backup = await getLatestBackup();
-        if (backup && (backup.geometry_count || 0) >= minGeometryCount) {
-          const backupAge = Date.now() - new Date(backup.created_at).getTime();
-          // Restaurer uniquement si le backup a moins de 5 minutes
-          if (backupAge < 5 * 60 * 1000) {
-            console.log("[AutoBackup] Found recent backup on mount, offering restore");
-            toast.info("Sauvegarde récente trouvée", {
-              description: "Cliquez pour restaurer votre travail",
-              action: {
-                label: "Restaurer",
-                onClick: () => restoreFromBackup(true),
-              },
-              duration: 10000,
-            });
+        
+        if (backup) {
+          const backupGeoCount = backup.geometry_count || 0;
+          const backupHasImages = backup.background_images && Array.isArray(backup.background_images) && backup.background_images.length > 0;
+          
+          if (backupGeoCount >= minGeometryCount || backupHasImages) {
+            const backupAge = Date.now() - new Date(backup.created_at).getTime();
+            const ageMinutes = Math.round(backupAge / 60000);
+            
+            console.log(`[AutoBackup] Found backup on mount: ${backupGeoCount} geometries, age: ${ageMinutes}min`);
+            
+            // Si le backup est récent (< 24h), restaurer automatiquement
+            if (backupAge < 24 * 60 * 60 * 1000) {
+              console.log("[AutoBackup] Auto-restoring recent backup");
+              await restoreFromBackup(true);
+            } else {
+              // Si plus ancien, proposer à l'utilisateur
+              toast.info("Sauvegarde trouvée", {
+                description: `Travail sauvegardé il y a ${ageMinutes > 60 ? Math.round(ageMinutes/60) + 'h' : ageMinutes + 'min'}`,
+                action: {
+                  label: "Restaurer",
+                  onClick: () => restoreFromBackup(true),
+                },
+                duration: 15000,
+              });
+            }
           }
         }
       }
+      
+      // Marquer qu'on a vérifié pour cette session
+      setState((prev) => ({ ...prev, hasRestoredThisSession: true }));
     };
 
     checkAndRestoreOnMount();
-  }, [enabled, state.hasRestoredThisSession]); // Dépendances minimales pour éviter les re-runs
+  }, [enabled]); // Dépendances minimales - exécuter une seule fois au montage
 
   return {
     // État

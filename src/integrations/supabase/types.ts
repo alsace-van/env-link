@@ -486,6 +486,72 @@ export type Database = {
         }
         Relationships: []
       }
+      cad_autobackup_logs: {
+        Row: {
+          created_at: string | null
+          details: Json | null
+          event_type: string
+          id: string
+          session_id: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          details?: Json | null
+          event_type: string
+          id?: string
+          session_id: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          details?: Json | null
+          event_type?: string
+          id?: string
+          session_id?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      cad_autobackups: {
+        Row: {
+          background_images: Json | null
+          created_at: string | null
+          geometry_count: number | null
+          id: string
+          marker_links: Json | null
+          point_count: number | null
+          session_id: string
+          sketch_data: Json
+          template_id: string | null
+          user_id: string
+        }
+        Insert: {
+          background_images?: Json | null
+          created_at?: string | null
+          geometry_count?: number | null
+          id?: string
+          marker_links?: Json | null
+          point_count?: number | null
+          session_id: string
+          sketch_data: Json
+          template_id?: string | null
+          user_id: string
+        }
+        Update: {
+          background_images?: Json | null
+          created_at?: string | null
+          geometry_count?: number | null
+          id?: string
+          marker_links?: Json | null
+          point_count?: number | null
+          session_id?: string
+          sketch_data?: Json
+          template_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       cad_template_categories: {
         Row: {
           color: string | null
