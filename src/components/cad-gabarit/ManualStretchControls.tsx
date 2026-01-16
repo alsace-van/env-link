@@ -114,8 +114,7 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
     setTargetHeightMm(hMm.toFixed(1));
   }, [currentWidth, currentHeight, scaleFactor]);
   
-  // Initialiser les ajustements de paires - seulement quand les paires changent, pas les points
-  // On utilise une ref pour stocker les distances initiales et ne pas les réinitialiser
+  // Initialiser les ajustements de paires - recalculer quand les paires ou points changent
   const initialDistancesRef = React.useRef<Map<string, number>>(new Map());
   
   useEffect(() => {
@@ -134,7 +133,7 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
           }
           const initialDist = initialDistancesRef.current.get(id) || currentDistMm;
           
-          // Conserver la valeur cible existante si elle existe
+          // Conserver la valeur cible existante si elle existe, sinon utiliser la distance actuelle
           const existingAdjustment = pairAdjustments.get(id);
           newAdjustments.set(id, {
             pairId: id,
@@ -146,7 +145,7 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
       setPairAdjustments(newAdjustments);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calibrationPairs]);
+  }, [calibrationPairs, calibrationPoints, scaleFactor]);
   
   const parseNumber = (value: string): number => {
     return parseFloat(value.replace(",", ".")) || 0;
@@ -424,6 +423,28 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
                             <Plus className="h-2 w-2" />
                           </Button>
                           <span className="text-[10px] text-muted-foreground">mm</span>
+                          {/* Bouton reset pour cette paire */}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 ml-1"
+                            onClick={() => {
+                              setPairAdjustments((prev) => {
+                                const newMap = new Map(prev);
+                                const current = newMap.get(id);
+                                if (current) {
+                                  newMap.set(id, {
+                                    ...current,
+                                    targetDistanceMm: info.currentDistMm.toFixed(1),
+                                  });
+                                }
+                                return newMap;
+                              });
+                            }}
+                            title="Réinitialiser à la valeur actuelle"
+                          >
+                            <RotateCcw className="h-2.5 w-2.5" />
+                          </Button>
                         </div>
                         
                         {/* Prévisualisation et bouton appliquer */}
