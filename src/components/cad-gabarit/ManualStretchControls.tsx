@@ -84,6 +84,9 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   
+  // Nombre de paires pour l'adaptation du dropdown
+  const pairsCount = calibrationPairs?.size || 0;
+  
   // Dimensions cibles en mm
   const currentWidthMm = currentWidth / scaleFactor;
   const currentHeightMm = currentHeight / scaleFactor;
@@ -349,12 +352,12 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
         {/* Étirement par paires de calibration - dans un dropdown adaptatif */}
         {hasPairs && (
           <>
-            <Collapsible defaultOpen={(calibrationPairs?.size || 0) <= 3}>
+            <Collapsible open={pairsCount <= 3 ? undefined : false} defaultOpen={pairsCount <= 3}>
               <CollapsibleTrigger asChild>
                 <Button variant="ghost" className="w-full justify-between h-8 px-2">
                   <span className="text-xs font-medium flex items-center gap-1">
                     <Link2 className="h-3 w-3" />
-                    Étirement par paire ({calibrationPairs?.size || 0} paires)
+                    Étirement par paire ({pairsCount} paires)
                   </span>
                   <ChevronDown className="h-3 w-3" />
                 </Button>
