@@ -158,6 +158,7 @@ interface ImageCrop {
 }
 import { CADRenderer } from "./cad-renderer";
 import { SnapSystem, DEFAULT_SNAP_SETTINGS, AdditionalSnapPoint } from "./snap-system";
+import { computeAffineTransform, warpImageAffine, decomposeAffine, type AffineResult } from "./homography";
 import { CADSolver } from "./cad-solver";
 import {
   createRectifyingHomography,
@@ -18630,29 +18631,70 @@ export function CADGabaritCanvas({
                 {/* Mode de calibration */}
                 <div className="space-y-2">
                   <span className="text-sm font-medium">Mode</span>
-                  <div className="flex gap-2">
+                  <div className="flex gap-1">
                     <Button
                       variant={calibrationData.mode === "simple" ? "default" : "outline"}
                       size="sm"
-                      className="flex-1"
+                      className="flex-1 text-xs px-2"
                       onClick={() => setCalibrationData((prev) => ({ ...prev, mode: "simple" }))}
                     >
-                      Échelle
+                      Simple
+                    </Button>
+                    <Button
+                      variant={calibrationData.mode === "anisotrope" ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1 text-xs px-2"
+                      onClick={() => setCalibrationData((prev) => ({ ...prev, mode: "anisotrope" }))}
+                    >
+                      Aniso
+                    </Button>
+                    <Button
+                      variant={calibrationData.mode === "affine" ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1 text-xs px-2"
+                      onClick={() => setCalibrationData((prev) => ({ ...prev, mode: "affine" }))}
+                    >
+                      Affine
                     </Button>
                     <Button
                       variant={calibrationData.mode === "perspective" ? "default" : "outline"}
                       size="sm"
-                      className="flex-1"
+                      className="flex-1 text-xs px-2"
                       onClick={() => setCalibrationData((prev) => ({ ...prev, mode: "perspective" }))}
                     >
-                      Perspective
+                      Persp.
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {calibrationData.mode === "simple"
-                      ? "Zoom uniforme basé sur les distances"
-                      : "Déforme l'image pour corriger la perspective"}
+                    {calibrationData.mode === "simple" && "Échelle uniforme (scaleX = scaleY)"}
+                    {calibrationData.mode === "anisotrope" && "Échelles X/Y séparées (pas de rotation)"}
+                    {calibrationData.mode === "affine" && "Échelle + rotation + cisaillement (min 3 pts)"}
+                    {calibrationData.mode === "perspective" && "Correction perspective complète (4 pts)"}
                   </p>
+                  
+                  {/* Indicateur de points requis pour affine */}
+                  {calibrationData.mode === "affine" && (
+                    <div className="text-xs">
+                      {(() => {
+                        const imgCalib = getSelectedImageCalibration();
+                        const pointCount = imgCalib.points.size;
+                        const pairCount = imgCalib.pairs.size;
+                        const isReady = pairCount >= 3;
+                        return (
+                          <div className={`p-2 rounded ${isReady ? 'bg-green-50' : 'bg-yellow-50'}`}>
+                            <p className={isReady ? 'text-green-700' : 'text-yellow-700'}>
+                              {pointCount} points, {pairCount}/3 paires min
+                            </p>
+                            {!isReady && (
+                              <p className="text-yellow-600 mt-1">
+                                Ajoutez {3 - pairCount} paire(s) de plus
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
 
                 {/* Mode Perspective - Choix méthode */}

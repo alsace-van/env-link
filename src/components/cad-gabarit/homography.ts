@@ -1,10 +1,455 @@
 // ============================================
-// HOMOGRAPHY: Calcul de transformation perspective
+// HOMOGRAPHY: Calcul de transformation perspective et affine
 // Correction de déformation d'image + distorsion radiale
-// VERSION: 1.1 - Ajout calibration par damier
+// VERSION: 1.2 - Ajout transformation affine avec preview live
 // ============================================
 
-import { HomographyMatrix } from "./types";
+import { HomographyMatrix, AffineMatrix } from "./types";
+
+// ============================================
+// TRANSFORMATION AFFINE (6 paramètres)
+// Gère: translation, rotation, échelle, cisaillement
+// Minimum: 3 paires de points non-colinéaires
+// ============================================
+
+export interface AffineResult {
+  matrix: AffineMatrix;
+  error: number; // Erreur RMS en pixels
+  errorMm: number; // Erreur RMS en mm
+  pointErrors: Map<string, number>; // Erreur par point (pour visualisation)
+  isValid: boolean;
+  warnings: string[];
+}
+
+/**
+ * Calcule la transformation affine par moindres carrés
+ * 
+ * @param srcPoints - Points source (image, en pixels)
+ * @param dstPoints - Points destination (monde réel, en mm)
+ * @param pointIds - IDs des points pour le mapping d'erreur
+ * @returns Résultat avec matrice, erreurs et warnings
+ */
+export function computeAffineTransform(
+  srcPoints: Array<{ x: number; y: number }>,
+  dstPoints: Array<{ x: number; y: number }>,
+  pointIds?: string[],
+): AffineResult {
+  const n = srcPoints.length;
+  const warnings: string[] = [];
+
+  // Vérification minimum 3 points
+  if (n < 3) {
+    return {
+      matrix: [[1, 0, 0], [0, 1, 0]],
+      error: Infinity,
+      errorMm: Infinity,
+      pointErrors: new Map(),
+      isValid: false,
+      warnings: ["Minimum 3 paires de points requis"],
+    };
+  }
+
+  // Vérifier la colinéarité des points source
+  if (arePointsCollinear(srcPoints)) {
+    warnings.push("Points sources colinéaires - résultat peut être instable");
+  }
+
+  // Vérifier la répartition spatiale
+  const coverage = computeSpatialCoverage(srcPoints);
+  if (coverage < 0.3) {
+    warnings.push("Points trop concentrés - meilleure répartition recommandée");
+  }
+
+  // Construction du système Ax = b pour les moindres carrés
+  // Pour chaque point: [x' = a*x + b*y + c, y' = d*x + e*y + f]
+  // Donc: A = [[x1, y1, 1, 0, 0, 0], [0, 0, 0, x1, y1, 1], ...]
+  //       b = [x'1, y'1, x'2, y'2, ...]
+  
+  const A: number[][] = [];
+  const b: number[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const sx = srcPoints[i].x;
+    const sy = srcPoints[i].y;
+    const dx = dstPoints[i].x;
+    const dy = dstPoints[i].y;
+
+    A.push([sx, sy, 1, 0, 0, 0]);
+    b.push(dx);
+    A.push([0, 0, 0, sx, sy, 1]);
+    b.push(dy);
+  }
+
+  // Résoudre par moindres carrés (A^T * A * x = A^T * b)
+  const params = solveAffineSystem(A, b);
+
+  const matrix: AffineMatrix = [
+    [params[0], params[1], params[2]],
+    [params[3], params[4], params[5]],
+  ];
+
+  // Calculer les erreurs par point
+  const pointErrors = new Map<string, number>();
+  let totalErrorSq = 0;
+
+  for (let i = 0; i < n; i++) {
+    const transformed = applyAffine(matrix, srcPoints[i]);
+    const errX = transformed.x - dstPoints[i].x;
+    const errY = transformed.y - dstPoints[i].y;
+    const errDist = Math.sqrt(errX * errX + errY * errY);
+    
+    if (pointIds && pointIds[i]) {
+      pointErrors.set(pointIds[i], errDist);
+    }
+    totalErrorSq += errDist * errDist;
+  }
+
+  const errorMm = Math.sqrt(totalErrorSq / n);
+  
+  // Estimer l'échelle moyenne pour convertir l'erreur en pixels
+  const scaleX = Math.sqrt(matrix[0][0] * matrix[0][0] + matrix[0][1] * matrix[0][1]);
+  const scaleY = Math.sqrt(matrix[1][0] * matrix[1][0] + matrix[1][1] * matrix[1][1]);
+  const avgScale = (scaleX + scaleY) / 2;
+  const errorPx = errorMm / avgScale;
+
+  // Détecter les outliers (erreur > 3x la moyenne)
+  const avgPointError = errorMm;
+  pointErrors.forEach((err, id) => {
+    if (err > avgPointError * 3) {
+      warnings.push(`Point ${id} semble mal placé (erreur: ${err.toFixed(2)}mm)`);
+    }
+  });
+
+  return {
+    matrix,
+    error: errorPx,
+    errorMm,
+    pointErrors,
+    isValid: true,
+    warnings,
+  };
+}
+
+/**
+ * Applique une transformation affine à un point
+ */
+export function applyAffine(M: AffineMatrix, point: { x: number; y: number }): { x: number; y: number } {
+  return {
+    x: M[0][0] * point.x + M[0][1] * point.y + M[0][2],
+    y: M[1][0] * point.x + M[1][1] * point.y + M[1][2],
+  };
+}
+
+/**
+ * Inverse une matrice affine
+ */
+export function invertAffine(M: AffineMatrix): AffineMatrix {
+  const [[a, b, c], [d, e, f]] = M;
+  const det = a * e - b * d;
+
+  if (Math.abs(det) < 1e-10) {
+    throw new Error("Matrice affine non inversible");
+  }
+
+  return [
+    [e / det, -b / det, (b * f - c * e) / det],
+    [-d / det, a / det, (c * d - a * f) / det],
+  ];
+}
+
+/**
+ * Décompose une matrice affine en ses composants
+ */
+export function decomposeAffine(M: AffineMatrix): {
+  translateX: number;
+  translateY: number;
+  scaleX: number;
+  scaleY: number;
+  rotation: number; // en radians
+  shearX: number;
+} {
+  const [[a, b, c], [d, e, f]] = M;
+
+  const translateX = c;
+  const translateY = f;
+  const scaleX = Math.sqrt(a * a + d * d);
+  const rotation = Math.atan2(d, a);
+  const sin = Math.sin(rotation);
+  const cos = Math.cos(rotation);
+  const scaleY = (a * e - b * d) / scaleX;
+  const shearX = (a * b + d * e) / (a * e - b * d);
+
+  return { translateX, translateY, scaleX, scaleY, rotation, shearX };
+}
+
+/**
+ * Applique une transformation affine à une image
+ */
+export function warpImageAffine(
+  srcImage: HTMLImageElement,
+  M: AffineMatrix,
+  outputWidth: number,
+  outputHeight: number,
+  offsetX: number = 0,
+  offsetY: number = 0,
+): ImageData {
+  const srcCanvas = document.createElement("canvas");
+  srcCanvas.width = srcImage.width;
+  srcCanvas.height = srcImage.height;
+  const srcCtx = srcCanvas.getContext("2d")!;
+  srcCtx.drawImage(srcImage, 0, 0);
+  const srcData = srcCtx.getImageData(0, 0, srcImage.width, srcImage.height);
+
+  const dstData = new ImageData(outputWidth, outputHeight);
+  const Minv = invertAffine(M);
+
+  for (let dy = 0; dy < outputHeight; dy++) {
+    for (let dx = 0; dx < outputWidth; dx++) {
+      const dstX = dx - offsetX;
+      const dstY = dy - offsetY;
+
+      const src = applyAffine(Minv, { x: dstX, y: dstY });
+      const srcX = src.x + srcImage.width / 2;
+      const srcY = src.y + srcImage.height / 2;
+
+      const pixel = bilinearInterpolateData(srcData, srcX, srcY);
+      const dstIdx = (dy * outputWidth + dx) * 4;
+      dstData.data[dstIdx] = pixel.r;
+      dstData.data[dstIdx + 1] = pixel.g;
+      dstData.data[dstIdx + 2] = pixel.b;
+      dstData.data[dstIdx + 3] = pixel.a;
+    }
+  }
+
+  return dstData;
+}
+
+/**
+ * Vérifie si les points sont colinéaires
+ */
+function arePointsCollinear(points: Array<{ x: number; y: number }>): boolean {
+  if (points.length < 3) return true;
+
+  const [p1, p2, ...rest] = points;
+  const dx12 = p2.x - p1.x;
+  const dy12 = p2.y - p1.y;
+
+  for (const p3 of rest) {
+    const dx13 = p3.x - p1.x;
+    const dy13 = p3.y - p1.y;
+    const cross = Math.abs(dx12 * dy13 - dy12 * dx13);
+    if (cross > 1e-6) return false;
+  }
+  return true;
+}
+
+/**
+ * Calcule la couverture spatiale des points (0-1)
+ */
+function computeSpatialCoverage(points: Array<{ x: number; y: number }>): number {
+  if (points.length < 3) return 0;
+
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
+  const rangeX = maxX - minX;
+  const rangeY = maxY - minY;
+
+  // Estimer la taille de l'image à partir de l'étendue des points
+  const estimatedSize = Math.max(rangeX, rangeY) * 1.5;
+  if (estimatedSize === 0) return 0;
+
+  const area = rangeX * rangeY;
+  const fullArea = estimatedSize * estimatedSize;
+
+  return Math.min(1, area / fullArea);
+}
+
+/**
+ * Résout le système par moindres carrés
+ */
+function solveAffineSystem(A: number[][], b: number[]): number[] {
+  const n = A[0].length; // 6 paramètres
+  const m = A.length; // 2 * nombre de points
+
+  // Calculer A^T * A
+  const AtA: number[][] = Array(n).fill(null).map(() => Array(n).fill(0));
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      for (let k = 0; k < m; k++) {
+        AtA[i][j] += A[k][i] * A[k][j];
+      }
+    }
+  }
+
+  // Calculer A^T * b
+  const Atb: number[] = Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    for (let k = 0; k < m; k++) {
+      Atb[i] += A[k][i] * b[k];
+    }
+  }
+
+  // Résoudre AtA * x = Atb par Gauss
+  return solveByGauss(AtA, Atb);
+}
+
+function solveByGauss(A: number[][], b: number[]): number[] {
+  const n = A.length;
+  const augmented: number[][] = A.map((row, i) => [...row, b[i]]);
+
+  for (let col = 0; col < n; col++) {
+    let maxRow = col;
+    for (let row = col + 1; row < n; row++) {
+      if (Math.abs(augmented[row][col]) > Math.abs(augmented[maxRow][col])) {
+        maxRow = row;
+      }
+    }
+    [augmented[col], augmented[maxRow]] = [augmented[maxRow], augmented[col]];
+
+    if (Math.abs(augmented[col][col]) < 1e-10) {
+      continue; // Skip near-zero pivot
+    }
+
+    for (let row = col + 1; row < n; row++) {
+      const factor = augmented[row][col] / augmented[col][col];
+      for (let j = col; j <= n; j++) {
+        augmented[row][j] -= factor * augmented[col][j];
+      }
+    }
+  }
+
+  const x = new Array(n).fill(0);
+  for (let row = n - 1; row >= 0; row--) {
+    let sum = augmented[row][n];
+    for (let col = row + 1; col < n; col++) {
+      sum -= augmented[row][col] * x[col];
+    }
+    x[row] = Math.abs(augmented[row][row]) > 1e-10 ? sum / augmented[row][row] : 0;
+  }
+
+  return x;
+}
+
+/**
+ * Interpolation bilinéaire pour ImageData
+ */
+function bilinearInterpolateData(
+  imageData: ImageData,
+  x: number,
+  y: number,
+): { r: number; g: number; b: number; a: number } {
+  const w = imageData.width;
+  const h = imageData.height;
+
+  if (x < 0 || x >= w - 1 || y < 0 || y >= h - 1) {
+    return { r: 0, g: 0, b: 0, a: 0 };
+  }
+
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const x1 = x0 + 1;
+  const y1 = y0 + 1;
+  const dx = x - x0;
+  const dy = y - y0;
+
+  const getPixel = (px: number, py: number) => {
+    const idx = (py * w + px) * 4;
+    return {
+      r: imageData.data[idx],
+      g: imageData.data[idx + 1],
+      b: imageData.data[idx + 2],
+      a: imageData.data[idx + 3],
+    };
+  };
+
+  const p00 = getPixel(x0, y0);
+  const p10 = getPixel(x1, y0);
+  const p01 = getPixel(x0, y1);
+  const p11 = getPixel(x1, y1);
+
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+  return {
+    r: Math.round(lerp(lerp(p00.r, p10.r, dx), lerp(p01.r, p11.r, dx), dy)),
+    g: Math.round(lerp(lerp(p00.g, p10.g, dx), lerp(p01.g, p11.g, dx), dy)),
+    b: Math.round(lerp(lerp(p00.b, p10.b, dx), lerp(p01.b, p11.b, dx), dy)),
+    a: Math.round(lerp(lerp(p00.a, p10.a, dx), lerp(p01.a, p11.a, dx), dy)),
+  };
+}
+
+/**
+ * Compare les résultats de différentes méthodes de calibration
+ */
+export function compareCalibrationMethods(
+  srcPoints: Array<{ x: number; y: number }>,
+  dstPoints: Array<{ x: number; y: number }>,
+  pointIds?: string[],
+): {
+  simple: { error: number; scaleX: number; scaleY: number };
+  anisotrope: { error: number; scaleX: number; scaleY: number };
+  affine: AffineResult;
+  recommended: "simple" | "anisotrope" | "affine";
+} {
+  const n = srcPoints.length;
+
+  // Calcul simple (moyenne)
+  let sumScaleX = 0, sumScaleY = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = Math.abs(dstPoints[i].x - (i > 0 ? dstPoints[i - 1].x : 0));
+    const dy = Math.abs(dstPoints[i].y - (i > 0 ? dstPoints[i - 1].y : 0));
+    const sx = Math.abs(srcPoints[i].x - (i > 0 ? srcPoints[i - 1].x : 0));
+    const sy = Math.abs(srcPoints[i].y - (i > 0 ? srcPoints[i - 1].y : 0));
+    if (sx > 0) sumScaleX += dx / sx;
+    if (sy > 0) sumScaleY += dy / sy;
+  }
+  const simpleScale = (sumScaleX + sumScaleY) / (2 * Math.max(1, n - 1));
+
+  // Calcul anisotrope
+  const anisotropeScaleX = sumScaleX / Math.max(1, n - 1);
+  const anisotropeScaleY = sumScaleY / Math.max(1, n - 1);
+
+  // Calcul affine
+  const affine = computeAffineTransform(srcPoints, dstPoints, pointIds);
+
+  // Calculer l'erreur pour simple/anisotrope
+  let simpleError = 0, anisoError = 0;
+  for (let i = 0; i < n; i++) {
+    const simpleTx = srcPoints[i].x * simpleScale;
+    const simpleTy = srcPoints[i].y * simpleScale;
+    const anisoTx = srcPoints[i].x * anisotropeScaleX;
+    const anisoTy = srcPoints[i].y * anisotropeScaleY;
+
+    simpleError += Math.sqrt(
+      Math.pow(simpleTx - dstPoints[i].x, 2) + Math.pow(simpleTy - dstPoints[i].y, 2)
+    );
+    anisoError += Math.sqrt(
+      Math.pow(anisoTx - dstPoints[i].x, 2) + Math.pow(anisoTy - dstPoints[i].y, 2)
+    );
+  }
+  simpleError /= n;
+  anisoError /= n;
+
+  // Recommandation basée sur l'amélioration relative
+  let recommended: "simple" | "anisotrope" | "affine" = "simple";
+  if (anisoError < simpleError * 0.8) {
+    recommended = "anisotrope";
+  }
+  if (affine.errorMm < anisoError * 0.7 && affine.isValid) {
+    recommended = "affine";
+  }
+
+  return {
+    simple: { error: simpleError, scaleX: simpleScale, scaleY: simpleScale },
+    anisotrope: { error: anisoError, scaleX: anisotropeScaleX, scaleY: anisotropeScaleY },
+    affine,
+    recommended,
+  };
+}
 
 /**
  * Calcule la matrice d'homographie à partir de 4 points source et destination

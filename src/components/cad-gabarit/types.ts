@@ -454,6 +454,13 @@ export interface CalibrationPair {
 // Matrice 3x3 pour transformation homographique
 export type HomographyMatrix = [[number, number, number], [number, number, number], [number, number, number]];
 
+// Matrice 2x3 pour transformation affine (6 paramètres)
+// [[a, b, tx], [c, d, ty]] où:
+// - a, d: échelle
+// - b, c: cisaillement/rotation
+// - tx, ty: translation
+export type AffineMatrix = [[number, number, number], [number, number, number]];
+
 // Rectangle de référence pour correction de perspective
 export interface ReferenceRectangle {
   // 4 points dans l'ordre (sens horaire à partir du coin supérieur gauche)
@@ -496,12 +503,15 @@ export interface CalibrationData {
   originalPoints?: Map<string, CalibrationPoint>;
   originalImageScale?: number; // Échelle image avant calibration
   applied: boolean; // Si la calibration a été appliquée
-  // Mode perspective (correction de déformation)
-  mode: "simple" | "perspective" | "checkerboard";
+  // Mode de calibration
+  mode: "simple" | "anisotrope" | "affine" | "perspective" | "checkerboard";
   perspectiveMethod?: "rectangle" | "checkerboard";
   referenceRect?: ReferenceRectangle;
   checkerboard?: CheckerboardConfig;
   homography?: HomographyMatrix;
+  affineMatrix?: AffineMatrix; // Matrice affine calculée
+  affineError?: number; // Erreur RMS en mm
+  affinePointErrors?: Map<string, number>; // Erreur par point pour visualisation
   distortion?: DistortionCoefficients;
   transformedImageData?: ImageData; // Image déformée en cache
 }
