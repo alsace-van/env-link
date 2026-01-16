@@ -383,71 +383,177 @@ function bilinearInterpolateData(
 }
 
 /**
+ * Calcule toutes les paires de distances (y compris diagonales)
+ * Retourne un tableau de { srcDist, dstDist, weight } pour chaque paire
+ */
+function computeAllPairDistances(
+  srcPoints: Array<{ x: number; y: number }>,
+  dstPoints: Array<{ x: number; y: number }>,
+): Array<{ srcDist: number; dstDist: number; srcDx: number; srcDy: number; dstDx: number; dstDy: number; weight: number }> {
+  const pairs: Array<{ srcDist: number; dstDist: number; srcDx: number; srcDy: number; dstDx: number; dstDy: number; weight: number }> = [];
+  const n = srcPoints.length;
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const srcDx = srcPoints[j].x - srcPoints[i].x;
+      const srcDy = srcPoints[j].y - srcPoints[i].y;
+      const dstDx = dstPoints[j].x - dstPoints[i].x;
+      const dstDy = dstPoints[j].y - dstPoints[i].y;
+
+      const srcDist = Math.sqrt(srcDx * srcDx + srcDy * srcDy);
+      const dstDist = Math.sqrt(dstDx * dstDx + dstDy * dstDy);
+
+      if (srcDist > 1e-6) {
+        // Pondérer par la distance (les grandes distances sont plus fiables)
+        pairs.push({
+          srcDist,
+          dstDist,
+          srcDx,
+          srcDy,
+          dstDx,
+          dstDy,
+          weight: srcDist, // Plus la distance est grande, plus le poids est élevé
+        });
+      }
+    }
+  }
+
+  return pairs;
+}
+
+/**
  * Compare les résultats de différentes méthodes de calibration
+ * UTILISE TOUTES LES PAIRES DE POINTS (y compris diagonales) pour une meilleure précision
  */
 export function compareCalibrationMethods(
   srcPoints: Array<{ x: number; y: number }>,
   dstPoints: Array<{ x: number; y: number }>,
   pointIds?: string[],
 ): {
-  simple: { error: number; scaleX: number; scaleY: number };
-  anisotrope: { error: number; scaleX: number; scaleY: number };
+  simple: { error: number; scaleX: number; scaleY: number; pairCount: number };
+  anisotrope: { error: number; scaleX: number; scaleY: number; pairCount: number };
   affine: AffineResult;
   recommended: "simple" | "anisotrope" | "affine";
+  diagnostics: {
+    totalPairs: number;
+    diagonalPairs: number;
+    maxDistance: number;
+    minDistance: number;
+  };
 } {
   const n = srcPoints.length;
+  const pairs = computeAllPairDistances(srcPoints, dstPoints);
+  const totalPairs = pairs.length;
+  const diagonalPairs = totalPairs - Math.max(0, n - 1); // Paires non-consécutives
 
-  // Calcul simple (moyenne)
-  let sumScaleX = 0, sumScaleY = 0;
-  for (let i = 0; i < n; i++) {
-    const dx = Math.abs(dstPoints[i].x - (i > 0 ? dstPoints[i - 1].x : 0));
-    const dy = Math.abs(dstPoints[i].y - (i > 0 ? dstPoints[i - 1].y : 0));
-    const sx = Math.abs(srcPoints[i].x - (i > 0 ? srcPoints[i - 1].x : 0));
-    const sy = Math.abs(srcPoints[i].y - (i > 0 ? srcPoints[i - 1].y : 0));
-    if (sx > 0) sumScaleX += dx / sx;
-    if (sy > 0) sumScaleY += dy / sy;
+  // Statistiques des distances
+  const distances = pairs.map(p => p.srcDist);
+  const maxDistance = distances.length > 0 ? Math.max(...distances) : 0;
+  const minDistance = distances.length > 0 ? Math.min(...distances) : 0;
+
+  // ============================================
+  // CALCUL SIMPLE: échelle uniforme pondérée
+  // ============================================
+  let sumWeightedScale = 0;
+  let sumWeights = 0;
+
+  for (const pair of pairs) {
+    const scale = pair.dstDist / pair.srcDist;
+    sumWeightedScale += scale * pair.weight;
+    sumWeights += pair.weight;
   }
-  const simpleScale = (sumScaleX + sumScaleY) / (2 * Math.max(1, n - 1));
 
-  // Calcul anisotrope
-  const anisotropeScaleX = sumScaleX / Math.max(1, n - 1);
-  const anisotropeScaleY = sumScaleY / Math.max(1, n - 1);
+  const simpleScale = sumWeights > 0 ? sumWeightedScale / sumWeights : 1;
 
-  // Calcul affine
+  // ============================================
+  // CALCUL ANISOTROPE: échelles X et Y séparées (pondérées)
+  // Utilise la projection des vecteurs sur les axes
+  // ============================================
+  let sumWeightedScaleX = 0;
+  let sumWeightsX = 0;
+  let sumWeightedScaleY = 0;
+  let sumWeightsY = 0;
+
+  for (const pair of pairs) {
+    const absSrcDx = Math.abs(pair.srcDx);
+    const absSrcDy = Math.abs(pair.srcDy);
+    const absDstDx = Math.abs(pair.dstDx);
+    const absDstDy = Math.abs(pair.dstDy);
+
+    // Contribution X (pondérée par la composante X relative)
+    if (absSrcDx > 1e-6) {
+      const scaleX = absDstDx / absSrcDx;
+      const weightX = absSrcDx; // Poids = importance de la composante X
+      sumWeightedScaleX += scaleX * weightX;
+      sumWeightsX += weightX;
+    }
+
+    // Contribution Y (pondérée par la composante Y relative)
+    if (absSrcDy > 1e-6) {
+      const scaleY = absDstDy / absSrcDy;
+      const weightY = absSrcDy;
+      sumWeightedScaleY += scaleY * weightY;
+      sumWeightsY += weightY;
+    }
+  }
+
+  const anisotropeScaleX = sumWeightsX > 0 ? sumWeightedScaleX / sumWeightsX : simpleScale;
+  const anisotropeScaleY = sumWeightsY > 0 ? sumWeightedScaleY / sumWeightsY : simpleScale;
+
+  // ============================================
+  // CALCUL AFFINE: transformation complète
+  // ============================================
   const affine = computeAffineTransform(srcPoints, dstPoints, pointIds);
 
-  // Calculer l'erreur pour simple/anisotrope
-  let simpleError = 0, anisoError = 0;
-  for (let i = 0; i < n; i++) {
-    const simpleTx = srcPoints[i].x * simpleScale;
-    const simpleTy = srcPoints[i].y * simpleScale;
-    const anisoTx = srcPoints[i].x * anisotropeScaleX;
-    const anisoTy = srcPoints[i].y * anisotropeScaleY;
+  // ============================================
+  // CALCUL DES ERREURS (sur toutes les paires, y compris diagonales)
+  // ============================================
+  let simpleErrorSum = 0;
+  let anisoErrorSum = 0;
 
-    simpleError += Math.sqrt(
-      Math.pow(simpleTx - dstPoints[i].x, 2) + Math.pow(simpleTy - dstPoints[i].y, 2)
-    );
-    anisoError += Math.sqrt(
-      Math.pow(anisoTx - dstPoints[i].x, 2) + Math.pow(anisoTy - dstPoints[i].y, 2)
-    );
+  for (const pair of pairs) {
+    // Erreur simple: distance transformée vs distance réelle
+    const simpleTransformedDist = pair.srcDist * simpleScale;
+    const simpleErr = Math.abs(simpleTransformedDist - pair.dstDist);
+    simpleErrorSum += simpleErr * simpleErr;
+
+    // Erreur anisotrope: utilise les composantes X et Y séparément
+    const anisoTransformedDx = pair.srcDx * anisotropeScaleX;
+    const anisoTransformedDy = pair.srcDy * anisotropeScaleY;
+    const anisoTransformedDist = Math.sqrt(anisoTransformedDx * anisoTransformedDx + anisoTransformedDy * anisoTransformedDy);
+    const anisoErr = Math.abs(anisoTransformedDist - pair.dstDist);
+    anisoErrorSum += anisoErr * anisoErr;
   }
-  simpleError /= n;
-  anisoError /= n;
 
-  // Recommandation basée sur l'amélioration relative
+  const simpleError = totalPairs > 0 ? Math.sqrt(simpleErrorSum / totalPairs) : 0;
+  const anisoError = totalPairs > 0 ? Math.sqrt(anisoErrorSum / totalPairs) : 0;
+
+  // ============================================
+  // RECOMMANDATION basée sur l'amélioration relative
+  // ============================================
   let recommended: "simple" | "anisotrope" | "affine" = "simple";
+
+  // Anisotrope recommandé si amélioration > 20%
   if (anisoError < simpleError * 0.8) {
     recommended = "anisotrope";
   }
-  if (affine.errorMm < anisoError * 0.7 && affine.isValid) {
+
+  // Affine recommandé si amélioration > 30% par rapport à anisotrope ET valide
+  if (affine.isValid && affine.errorMm < anisoError * 0.7) {
     recommended = "affine";
   }
 
   return {
-    simple: { error: simpleError, scaleX: simpleScale, scaleY: simpleScale },
-    anisotrope: { error: anisoError, scaleX: anisotropeScaleX, scaleY: anisotropeScaleY },
+    simple: { error: simpleError, scaleX: simpleScale, scaleY: simpleScale, pairCount: totalPairs },
+    anisotrope: { error: anisoError, scaleX: anisotropeScaleX, scaleY: anisotropeScaleY, pairCount: totalPairs },
     affine,
     recommended,
+    diagnostics: {
+      totalPairs,
+      diagonalPairs,
+      maxDistance,
+      minDistance,
+    },
   };
 }
 
