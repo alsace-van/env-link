@@ -739,9 +739,9 @@ export class CADRenderer {
       // Appliquer l'opacité
       this.ctx.globalAlpha = bgImage.opacity;
 
-      // MOD v80.17: Corriger l'ordre de priorité - adjustedCanvas doit être prioritaire
-      // car les ajustements sont appliqués sur le canvas le plus récent (crop inclus)
-      const imageToDraw = bgImage.adjustedCanvas || bgImage.croppedCanvas || bgImage.transformedCanvas || bgImage.image;
+      // MOD v80.18: Ordre de priorité corrigé pour calibration anisotrope
+      // transformedCanvas (calibration) > adjustedCanvas (luminosité) > croppedCanvas > image originale
+      const imageToDraw = bgImage.transformedCanvas || bgImage.adjustedCanvas || bgImage.croppedCanvas || bgImage.image;
 
       // FIX #85c: Vérifier que l'image existe avant de la dessiner
       if (!imageToDraw) {
