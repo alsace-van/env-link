@@ -346,130 +346,137 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
         
         <Separator />
         
-        {/* Étirement par paires de calibration */}
+        {/* Étirement par paires de calibration - dans un dropdown */}
         {hasPairs && (
           <>
-            <div className="space-y-2">
-              <Label className="text-xs font-medium flex items-center gap-1">
-                <Link2 className="h-3 w-3" />
-                Étirement par paire
-              </Label>
-              <p className="text-[10px] text-muted-foreground">
-                Ajustez la distance cible pour chaque paire de points
-              </p>
-              
-              <ScrollArea className="h-auto max-h-[300px]">
-                <div className="space-y-2 pr-3">
-                  {Array.from(calibrationPairs!.entries()).map(([id, pair]) => {
-                    const info = getPairInfo(pair);
-                    const adjustment = pairAdjustments.get(id);
-                    if (!info || !adjustment) return null;
-                    
-                    const targetMm = parseNumber(adjustment.targetDistanceMm);
-                    const hasChange = Math.abs(targetMm - info.currentDistMm) > 0.01;
-                    const stretchPreview = targetMm / info.currentDistMm;
-                    
-                    return (
-                      <div key={id} className="border rounded p-2 space-y-1 bg-muted/20">
-                        {/* En-tête de la paire */}
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium">
-                            {info.p1Label} ↔ {info.p2Label}
-                          </span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                            info.orientation === "H" ? "bg-blue-100 text-blue-700" :
-                            info.orientation === "V" ? "bg-green-100 text-green-700" :
-                            "bg-purple-100 text-purple-700"
-                          }`}>
-                            {info.orientation === "H" ? "Horizontal" :
-                             info.orientation === "V" ? "Vertical" : "Diagonal"}
-                          </span>
-                        </div>
-                        
-                        {/* Distance actuelle et initiale */}
-                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                          <span>Actuel: {info.currentDistMm.toFixed(2)} mm</span>
-                          {Math.abs(adjustment.initialDistanceMm - info.currentDistMm) > 0.1 && (
-                            <span className="text-orange-500">
-                              (init: {adjustment.initialDistanceMm.toFixed(1)} mm)
+            <Collapsible>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" className="w-full justify-between h-8 px-2">
+                  <span className="text-xs font-medium flex items-center gap-1">
+                    <Link2 className="h-3 w-3" />
+                    Étirement par paire ({calibrationPairs?.size || 0} paires)
+                  </span>
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-2">
+                <p className="text-[10px] text-muted-foreground mb-2">
+                  Ajustez la distance cible pour chaque paire de points
+                </p>
+                
+                <ScrollArea className="h-auto max-h-[300px]">
+                  <div className="space-y-2 pr-3">
+                    {Array.from(calibrationPairs!.entries()).map(([id, pair]) => {
+                      const info = getPairInfo(pair);
+                      const adjustment = pairAdjustments.get(id);
+                      if (!info || !adjustment) return null;
+                      
+                      const targetMm = parseNumber(adjustment.targetDistanceMm);
+                      const hasChange = Math.abs(targetMm - info.currentDistMm) > 0.01;
+                      const stretchPreview = targetMm / info.currentDistMm;
+                      
+                      return (
+                        <div key={id} className="border rounded p-2 space-y-1 bg-muted/20">
+                          {/* En-tête de la paire */}
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium">
+                              {info.p1Label} ↔ {info.p2Label}
                             </span>
-                          )}
-                        </div>
-                        
-                        {/* Contrôle de distance cible */}
-                        <div className="flex items-center gap-1">
-                          <Label className="text-[10px] w-10">Cible:</Label>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => handlePairIncrement(id, -getIncrement())}
-                          >
-                            <Minus className="h-2 w-2" />
-                          </Button>
-                          <Input
-                            type="text"
-                            inputMode="decimal"
-                            value={adjustment.targetDistanceMm}
-                            onChange={(e) => handlePairInputChange(id, e.target.value)}
-                            className="h-6 text-[10px] w-16 text-center"
-                          />
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => handlePairIncrement(id, getIncrement())}
-                          >
-                            <Plus className="h-2 w-2" />
-                          </Button>
-                          <span className="text-[10px] text-muted-foreground">mm</span>
-                          {/* Bouton reset pour cette paire */}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 ml-1"
-                            onClick={() => {
-                              setPairAdjustments((prev) => {
-                                const newMap = new Map(prev);
-                                const current = newMap.get(id);
-                                if (current) {
-                                  newMap.set(id, {
-                                    ...current,
-                                    targetDistanceMm: info.currentDistMm.toFixed(1),
-                                  });
-                                }
-                                return newMap;
-                              });
-                            }}
-                            title="Réinitialiser à la valeur actuelle"
-                          >
-                            <RotateCcw className="h-2.5 w-2.5" />
-                          </Button>
-                        </div>
-                        
-                        {/* Prévisualisation et bouton appliquer */}
-                        {hasChange && (
-                          <div className="flex items-center justify-between pt-1">
-                            <span className="text-[10px] text-blue-600">
-                              ×{stretchPreview.toFixed(4)} ({stretchPreview > 1 ? "+" : ""}{((stretchPreview - 1) * 100).toFixed(1)}%)
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                              info.orientation === "H" ? "bg-blue-100 text-blue-700" :
+                              info.orientation === "V" ? "bg-green-100 text-green-700" :
+                              "bg-purple-100 text-purple-700"
+                            }`}>
+                              {info.orientation === "H" ? "Horizontal" :
+                               info.orientation === "V" ? "Vertical" : "Diagonal"}
                             </span>
+                          </div>
+                          
+                          {/* Distance actuelle et initiale */}
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                            <span>Actuel: {info.currentDistMm.toFixed(2)} mm</span>
+                            {Math.abs(adjustment.initialDistanceMm - info.currentDistMm) > 0.1 && (
+                              <span className="text-orange-500">
+                                (init: {adjustment.initialDistanceMm.toFixed(1)} mm)
+                              </span>
+                            )}
+                          </div>
+                          
+                          {/* Contrôle de distance cible */}
+                          <div className="flex items-center gap-1">
+                            <Label className="text-[10px] w-10">Cible:</Label>
                             <Button
-                              variant="default"
-                              size="sm"
-                              className="h-5 text-[10px] px-2"
-                              onClick={() => handleApplyPairStretch(id)}
+                              variant="outline"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => handlePairIncrement(id, -getIncrement())}
                             >
-                              <Check className="h-2 w-2 mr-1" />
-                              Appliquer
+                              <Minus className="h-2 w-2" />
+                            </Button>
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              value={adjustment.targetDistanceMm}
+                              onChange={(e) => handlePairInputChange(id, e.target.value)}
+                              className="h-6 text-[10px] w-16 text-center"
+                            />
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => handlePairIncrement(id, getIncrement())}
+                            >
+                              <Plus className="h-2 w-2" />
+                            </Button>
+                            <span className="text-[10px] text-muted-foreground">mm</span>
+                            {/* Bouton reset pour cette paire */}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 ml-1"
+                              onClick={() => {
+                                setPairAdjustments((prev) => {
+                                  const newMap = new Map(prev);
+                                  const current = newMap.get(id);
+                                  if (current) {
+                                    newMap.set(id, {
+                                      ...current,
+                                      targetDistanceMm: info.currentDistMm.toFixed(1),
+                                    });
+                                  }
+                                  return newMap;
+                                });
+                              }}
+                              title="Réinitialiser à la valeur actuelle"
+                            >
+                              <RotateCcw className="h-2.5 w-2.5" />
                             </Button>
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </ScrollArea>
-            </div>
+                          
+                          {/* Prévisualisation et bouton appliquer */}
+                          {hasChange && (
+                            <div className="flex items-center justify-between pt-1">
+                              <span className="text-[10px] text-blue-600">
+                                ×{stretchPreview.toFixed(4)} ({stretchPreview > 1 ? "+" : ""}{((stretchPreview - 1) * 100).toFixed(1)}%)
+                              </span>
+                              <Button
+                                variant="default"
+                                size="sm"
+                                className="h-5 text-[10px] px-2"
+                                onClick={() => handleApplyPairStretch(id)}
+                              >
+                                <Check className="h-2 w-2 mr-1" />
+                                Appliquer
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
+              </CollapsibleContent>
+            </Collapsible>
             
             <Separator />
           </>
