@@ -13433,32 +13433,55 @@ export function CADGabaritCanvas({
       }
 
       const currentSketch = sketchRef.current;
-
-      // Calculer l'échelle moyenne (mm/px)
-      // Pour anisotrope : on utilise la moyenne pour l'affichage uniforme
-      const avgScale = (scaleX + scaleY) / 2;
-
-      // MOD #85: Sauvegarder l'échelle originale de l'image et les points originaux
       const oldImageScale = selectedImage.scale || 1;
-
-      // FIX #85d: Ne PAS transformer les points ici
-      // Le renderer doit multiplier par le scale de l'image
-      // Les points restent en coordonnées "pixels world relatifs à scale=1"
-      // Sauvegarder l'ancien scale pour le reset
       const originalPoints = new Map(imgCalib.points);
 
-      // FIX: Mettre à jour le scaleFactor du sketch pour que les outils de mesure
-      // et les règles utilisent la vraie échelle calibrée
-      // avgScale est en mm/px, donc le nouveau scaleFactor est 1/avgScale (px/mm)
-      const newScaleFactor = 1 / avgScale;
+      // Calculer si l'échelle est anisotrope (>2% de différence)
+      const avgScale = (scaleX + scaleY) / 2;
+      const isAnisotrope = Math.abs(scaleX - scaleY) / avgScale > 0.02;
+
+      // Si anisotrope, on doit étirer l'image pour corriger la déformation
+      // L'échelle de référence sera la plus petite (pour ne pas perdre de résolution)
+      const referenceScale = Math.min(scaleX, scaleY); // mm/px de référence
+      const newScaleFactor = 1 / referenceScale; // px/mm
+
+      // Calculer le ratio d'étirement pour chaque axe
+      // Si scaleX > scaleY, on doit étirer X pour que les pixels X "valent" autant que Y
+      // stretchX = scaleX / referenceScale = scaleX / scaleY (si scaleY est la ref)
+      const stretchX = scaleX / referenceScale;
+      const stretchY = scaleY / referenceScale;
+
+      // Créer un canvas transformé si anisotrope
+      let transformedCanvas: HTMLCanvasElement | null = null;
       
+      if (isAnisotrope) {
+        const sourceImage = selectedImage.croppedCanvas || selectedImage.image;
+        if (sourceImage) {
+          const srcWidth = sourceImage instanceof HTMLCanvasElement ? sourceImage.width : sourceImage.width;
+          const srcHeight = sourceImage instanceof HTMLCanvasElement ? sourceImage.height : sourceImage.height;
+
+          // Nouvelles dimensions après étirement
+          const newWidth = Math.round(srcWidth * stretchX);
+          const newHeight = Math.round(srcHeight * stretchY);
+
+          transformedCanvas = document.createElement("canvas");
+          transformedCanvas.width = newWidth;
+          transformedCanvas.height = newHeight;
+          const tctx = transformedCanvas.getContext("2d");
+          if (tctx) {
+            // Étirer l'image
+            tctx.drawImage(sourceImage, 0, 0, newWidth, newHeight);
+          }
+        }
+      }
+
       // Mettre à jour le sketch avec le nouveau scaleFactor
       setSketch((prev) => ({
         ...prev,
         scaleFactor: newScaleFactor,
       }));
 
-      // Mettre à jour l'image avec la nouvelle échelle (les points restent inchangés)
+      // Mettre à jour l'image avec le canvas transformé
       setBackgroundImages((prev) =>
         prev.map((img) => {
           if (img.id !== selectedImage.id) return img;
@@ -13466,41 +13489,46 @@ export function CADGabaritCanvas({
             ...img,
             // L'image scale devient 1 car maintenant le scaleFactor du sketch correspond à la réalité
             scale: 1,
+            // Si anisotrope, utiliser le canvas transformé (étiré)
+            transformedCanvas: transformedCanvas || img.transformedCanvas,
             calibrationData: {
               ...(img.calibrationData || { points: new Map(), pairs: new Map(), mode: "simple" as const }),
-              // FIX #85d: Les points ne sont PAS transformés, le renderer multiplie par scale
               points: imgCalib.points,
-              scale: avgScale,
+              scale: referenceScale,
               scaleX: scaleX,
               scaleY: scaleY,
-              // MOD #85: Sauvegarder pour reset
+              stretchX: stretchX,
+              stretchY: stretchY,
               originalPoints: originalPoints,
               originalImageScale: oldImageScale,
-              originalScaleFactor: currentSketch.scaleFactor, // Sauvegarder l'ancien scaleFactor
+              originalScaleFactor: currentSketch.scaleFactor,
               applied: true as const,
             },
           };
         }),
       );
 
-      // Mettre à jour calibrationData (les points ne sont pas transformés)
+      // Mettre à jour calibrationData
       setCalibrationData((prev) => ({
         ...prev,
         points: imgCalib.points,
         originalPoints: originalPoints,
         originalImageScale: oldImageScale,
-        originalScaleFactor: currentSketch.scaleFactor, // Sauvegarder pour reset
-        scale: avgScale,
+        originalScaleFactor: currentSketch.scaleFactor,
+        scale: referenceScale,
         scaleX: scaleX,
         scaleY: scaleY,
+        stretchX: stretchX,
+        stretchY: stretchY,
         applied: true,
       }));
 
-      const isAnisotrope = Math.abs(scaleX - scaleY) / avgScale > 0.02;
       if (isAnisotrope) {
-        toast.success(`Calibration anisotrope appliquée ! X=${scaleX.toFixed(4)}, Y=${scaleY.toFixed(4)} mm/px`);
+        toast.success(
+          `Calibration anisotrope appliquée ! Photo étirée (X×${stretchX.toFixed(2)}, Y×${stretchY.toFixed(2)}). Échelle: ${referenceScale.toFixed(4)} mm/px`
+        );
       } else {
-        toast.success(`Calibration appliquée ! Échelle: ${avgScale.toFixed(4)} mm/px (1px = ${avgScale.toFixed(3)} mm)`);
+        toast.success(`Calibration appliquée ! Échelle: ${referenceScale.toFixed(4)} mm/px (1px = ${referenceScale.toFixed(3)} mm)`);
       }
       return;
     }
