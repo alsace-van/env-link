@@ -194,6 +194,7 @@ import { PrintPreviewModal } from "./PrintPreviewModal";
 
 // MOD v7.14: Auto-backup sur Supabase pour protection contre les pertes
 import { useCADAutoBackup } from "./useCADAutoBackup";
+import { useCalibration } from "./useCalibration";
 
 // MOD v7.15: Contrôles d'étirement manuel
 import { ManualStretchControls } from "./ManualStretchControls";
@@ -808,6 +809,47 @@ export function CADGabaritCanvas({
   const [checkerCornersX, setCheckerCornersX] = useState<string>("7"); // Coins intérieurs en X (8 cases = 7 coins)
   const [checkerCornersY, setCheckerCornersY] = useState<string>("5"); // Coins intérieurs en Y (6 cases = 5 coins)
   const [checkerSquareSize, setCheckerSquareSize] = useState<string>("30"); // Taille d'une case en mm
+
+  // === HOOK DE CALIBRATION ===
+  // MOD: Extraction des fonctions de calibration dans useCalibration.ts
+  const {
+    getSelectedImage,
+    getSelectedImageCalibration,
+    updateSelectedImageCalibration,
+    calculateCalibration,
+    applyCalibration,
+    resetCalibration,
+    addCalibrationPoint,
+    removeCalibrationPoint,
+    addCalibrationPair,
+    removeCalibrationPair,
+    updatePairDistance,
+  } = useCalibration({
+    selectedImageId,
+    backgroundImages,
+    calibrationData,
+    sketch,
+    sketchRef,
+    backgroundImageRef,
+    rectPoints,
+    rectWidth,
+    rectHeight,
+    perspectiveMethod,
+    checkerCornersX,
+    checkerCornersY,
+    checkerSquareSize,
+    setBackgroundImages,
+    setCalibrationData,
+    setSketch,
+    setCalibrationMode,
+    setSelectedCalibrationPoint,
+    setRectPoints,
+    setRectWidth,
+    setRectHeight,
+    setImageScale,
+    setTransformedImage,
+  });
+
 
   // Mesure - utiliser un seul état pour éviter les problèmes de synchronisation
   const [measureState, setMeasureState] = useState<{
@@ -7910,12 +7952,6 @@ export function CADGabaritCanvas({
     [backgroundImages, sketch.layers],
   );
 
-  // === Helpers pour calibration de l'image sélectionnée ===
-  const getSelectedImage = useCallback(() => {
-    if (!selectedImageId) return null;
-    return backgroundImages.find((img) => img.id === selectedImageId) || null;
-  }, [backgroundImages, selectedImageId]);
-
   // Mémoriser l'image sélectionnée et ses ajustements pour le panneau
   const selectedImageData = useMemo(() => {
     if (!selectedImageId) return null;
@@ -7949,38 +7985,6 @@ export function CADGabaritCanvas({
     return points;
   }, [backgroundImages]);
 
-  const getSelectedImageCalibration = useCallback((): CalibrationData => {
-    const selectedImage = getSelectedImage();
-    if (selectedImage?.calibrationData) {
-      return selectedImage.calibrationData;
-    }
-    // Retourner les données par défaut
-    return {
-      points: new Map(),
-      pairs: new Map(),
-      applied: false,
-      mode: "simple",
-    };
-  }, [getSelectedImage]);
-
-  const updateSelectedImageCalibration = useCallback(
-    (updater: (prev: CalibrationData) => CalibrationData) => {
-      if (!selectedImageId) return;
-      setBackgroundImages((prev) =>
-        prev.map((img) => {
-          if (img.id !== selectedImageId) return img;
-          const currentCalib = img.calibrationData || {
-            points: new Map(),
-            pairs: new Map(),
-            applied: false,
-            mode: "simple" as const,
-          };
-          return { ...img, calibrationData: updater(currentCalib) };
-        }),
-      );
-    },
-    [selectedImageId],
-  );
 
   // Appliquer les ajustements d'image (contraste, luminosité, etc.) via manipulation de pixels
   const applyImageAdjustments = useCallback(
@@ -13296,592 +13300,8 @@ export function CADGabaritCanvas({
   );
 
   // Calculer l'échelle à partir des paires (utilise l'image sélectionnée)
-  // MOD #85: Calibration anisotrope - calcule scaleX et scaleY séparément
-  // FIX #85e: Utiliser les distances en coordonnées NORMALISÉES (scale=1)
-  // pour être cohérent avec l'affichage UI et les calculs de paires
-  const calculateCalibration = useCallback(() => {
-    const imgCalib = getSelectedImageCalibration();
 
-    if (imgCalib.pairs.size === 0) {
-      toast.error("Ajoutez au moins une paire de calibration");
-      return;
-    }
 
-    // Séparer les paires par orientation
-    let totalScaleX = 0;
-    let countX = 0;
-    let totalScaleY = 0;
-    let countY = 0;
-
-    imgCalib.pairs.forEach((pair) => {
-      const p1 = imgCalib.points.get(pair.point1Id);
-      const p2 = imgCalib.points.get(pair.point2Id);
-      if (p1 && p2 && pair.distanceMm > 0) {
-        // FIX #85e: Utiliser les distances en coordonnées normalisées
-        // C'est cohérent avec ce que l'UI affiche
-        const dx = Math.abs(p2.x - p1.x);
-        const dy = Math.abs(p2.y - p1.y);
-        const distPx = distance(p1, p2);
-        const scale = pair.distanceMm / distPx;
-
-        // Paire horizontale si |Δx| > |Δy|, sinon verticale
-        if (dx > dy) {
-          // Paire principalement horizontale → contribue à scaleX
-          totalScaleX += scale;
-          countX++;
-        } else {
-          // Paire principalement verticale → contribue à scaleY
-          totalScaleY += scale;
-          countY++;
-        }
-      }
-    });
-
-    if (countX === 0 && countY === 0) {
-      toast.error("Aucune paire valide");
-      return;
-    }
-
-    // Calculer les échelles (fallback sur l'autre axe si pas de paires)
-    const scaleX = countX > 0 ? totalScaleX / countX : countY > 0 ? totalScaleY / countY : 1 / sketch.scaleFactor;
-    const scaleY = countY > 0 ? totalScaleY / countY : countX > 0 ? totalScaleX / countX : 1 / sketch.scaleFactor;
-    const avgScale = (scaleX + scaleY) / 2;
-
-    // Calculer les erreurs par axe
-    let totalErrorX = 0;
-    let totalErrorY = 0;
-    let errorCountX = 0;
-    let errorCountY = 0;
-
-    imgCalib.pairs.forEach((pair) => {
-      const p1 = imgCalib.points.get(pair.point1Id);
-      const p2 = imgCalib.points.get(pair.point2Id);
-      if (p1 && p2 && pair.distanceMm > 0) {
-        // FIX #85e: Utiliser les distances normalisées
-        const dx = Math.abs(p2.x - p1.x);
-        const dy = Math.abs(p2.y - p1.y);
-        const distPx = distance(p1, p2);
-
-        if (dx > dy) {
-          const calculatedMm = distPx * scaleX;
-          const error = (Math.abs(calculatedMm - pair.distanceMm) / pair.distanceMm) * 100;
-          totalErrorX += error;
-          errorCountX++;
-        } else {
-          const calculatedMm = distPx * scaleY;
-          const error = (Math.abs(calculatedMm - pair.distanceMm) / pair.distanceMm) * 100;
-          totalErrorY += error;
-          errorCountY++;
-        }
-      }
-    });
-
-    const errorX = errorCountX > 0 ? totalErrorX / errorCountX : 0;
-    const errorY = errorCountY > 0 ? totalErrorY / errorCountY : 0;
-    const avgError = (errorX * errorCountX + errorY * errorCountY) / (errorCountX + errorCountY || 1);
-
-    // Mettre à jour la calibration de l'image
-    updateSelectedImageCalibration((prev) => ({
-      ...prev,
-      scale: avgScale,
-      scaleX: scaleX,
-      scaleY: scaleY,
-      error: avgError,
-      errorX: errorX,
-      errorY: errorY,
-    }));
-
-    // IMPORTANT: Aussi mettre à jour calibrationData.scale pour activer le bouton "Appliquer"
-    setCalibrationData((prev) => ({
-      ...prev,
-      scale: avgScale,
-      scaleX: scaleX,
-      scaleY: scaleY,
-      error: avgError,
-      errorX: errorX,
-      errorY: errorY,
-    }));
-
-    // Message différent selon si anisotrope ou pas
-    const isAnisotrope = Math.abs(scaleX - scaleY) / avgScale > 0.02; // >2% de différence
-    if (isAnisotrope) {
-      toast.success(
-        `Échelle anisotrope: X=${scaleX.toFixed(4)} mm/px (${countX} paires), Y=${scaleY.toFixed(4)} mm/px (${countY} paires)`,
-      );
-    } else {
-      toast.success(`Échelle: ${avgScale.toFixed(4)} mm/px (erreur: ${avgError.toFixed(1)}%)`);
-    }
-  }, [getSelectedImageCalibration, updateSelectedImageCalibration, sketch.scaleFactor]);
-
-  // Appliquer la calibration au sketch
-  // MOD #85: Transforme aussi les points pour qu'ils suivent le redimensionnement de l'image
-  const applyCalibration = useCallback(async () => {
-    // Récupérer les données de calibration de l'image sélectionnée
-    const imgCalib = getSelectedImageCalibration();
-    const selectedImage = getSelectedImage();
-
-    // Mode simple : échelle uniforme ou anisotrope
-    if (calibrationData.mode === "simple" || !calibrationData.mode) {
-      // Utiliser scaleX/scaleY si disponible, sinon scale moyen
-      const scaleX = imgCalib.scaleX || imgCalib.scale || calibrationData.scaleX || calibrationData.scale;
-      const scaleY = imgCalib.scaleY || imgCalib.scale || calibrationData.scaleY || calibrationData.scale;
-
-      if (!scaleX || !scaleY) {
-        toast.error("Calculez d'abord la calibration");
-        return;
-      }
-
-      if (!selectedImage) {
-        toast.error("Sélectionnez d'abord une image");
-        return;
-      }
-
-      const currentSketch = sketchRef.current;
-      const oldImageScale = selectedImage.scale || 1;
-      const originalPoints = new Map(imgCalib.points);
-
-      // Calculer si l'échelle est anisotrope (>2% de différence)
-      const avgScale = (scaleX + scaleY) / 2;
-      // MOD: Toujours étirer l'image pour correspondre aux mesures réelles
-      const isAnisotrope = true;
-
-      // Si anisotrope, on doit étirer l'image pour corriger la déformation
-      // L'échelle de référence sera la plus petite (pour ne pas perdre de résolution)
-      const referenceScale = Math.min(scaleX, scaleY); // mm/px de référence
-      const newScaleFactor = 1 / referenceScale; // px/mm
-
-      // Calculer le ratio d'étirement pour chaque axe
-      // Si scaleX > scaleY, on doit étirer X pour que les pixels X "valent" autant que Y
-      // stretchX = scaleX / referenceScale = scaleX / scaleY (si scaleY est la ref)
-      const stretchX = scaleX / referenceScale;
-      const stretchY = scaleY / referenceScale;
-
-      // MOD: Toujours créer un canvas transformé pour étirer l'image
-      let transformedCanvas: HTMLCanvasElement | null = null;
-
-      if (isAnisotrope) {
-        const sourceImage = selectedImage.croppedCanvas || selectedImage.image;
-        if (sourceImage) {
-          const srcWidth = sourceImage instanceof HTMLCanvasElement ? sourceImage.width : sourceImage.width;
-          const srcHeight = sourceImage instanceof HTMLCanvasElement ? sourceImage.height : sourceImage.height;
-
-          // Nouvelles dimensions après étirement
-          const newWidth = Math.round(srcWidth * stretchX);
-          const newHeight = Math.round(srcHeight * stretchY);
-
-          transformedCanvas = document.createElement("canvas");
-          transformedCanvas.width = newWidth;
-          transformedCanvas.height = newHeight;
-          const tctx = transformedCanvas.getContext("2d");
-          if (tctx) {
-            // Étirer l'image
-            tctx.drawImage(sourceImage, 0, 0, newWidth, newHeight);
-          }
-        }
-      }
-
-      // Transformer les points de calibration pour suivre l'étirement de l'image
-      const transformedPoints = new Map<string, any>();
-      imgCalib.points.forEach((point, id) => {
-        transformedPoints.set(id, {
-          ...point,
-          x: point.x * stretchX,
-          y: point.y * stretchY,
-        });
-      });
-
-      // Mettre à jour le sketch avec le nouveau scaleFactor
-      setSketch((prev) => ({
-        ...prev,
-        scaleFactor: newScaleFactor,
-      }));
-
-      // Mettre à jour l'image avec le canvas transformé
-      setBackgroundImages((prev) =>
-        prev.map((img) => {
-          if (img.id !== selectedImage.id) return img;
-          return {
-            ...img,
-            // L'image scale devient 1 car maintenant le scaleFactor du sketch correspond à la réalité
-            scale: 1,
-            // Si anisotrope, utiliser le canvas transformé (étiré)
-            transformedCanvas: transformedCanvas || img.transformedCanvas,
-            calibrationData: {
-              ...(img.calibrationData || { points: new Map(), pairs: new Map(), mode: "simple" as const }),
-              // Utiliser les points transformés
-              points: transformedPoints,
-              scale: referenceScale,
-              scaleX: scaleX,
-              scaleY: scaleY,
-              stretchX: stretchX,
-              stretchY: stretchY,
-              originalPoints: originalPoints,
-              originalImageScale: oldImageScale,
-              originalScaleFactor: currentSketch.scaleFactor,
-              applied: true as const,
-            },
-          };
-        }),
-      );
-
-      // Mettre à jour calibrationData avec les points transformés
-      setCalibrationData((prev) => ({
-        ...prev,
-        points: transformedPoints,
-        originalPoints: originalPoints,
-        originalImageScale: oldImageScale,
-        originalScaleFactor: currentSketch.scaleFactor,
-        scale: referenceScale,
-        scaleX: scaleX,
-        scaleY: scaleY,
-        stretchX: stretchX,
-        stretchY: stretchY,
-        applied: true,
-      }));
-
-      if (isAnisotrope) {
-        toast.success(
-          `Calibration anisotrope appliquée ! Photo étirée (X×${stretchX.toFixed(2)}, Y×${stretchY.toFixed(2)}). Échelle: ${referenceScale.toFixed(4)} mm/px`,
-        );
-      } else {
-        toast.success(
-          `Calibration appliquée ! Échelle: ${referenceScale.toFixed(4)} mm/px (1px = ${referenceScale.toFixed(3)} mm)`,
-        );
-      }
-      return;
-    }
-
-    // Mode perspective : correction de déformation
-    if (calibrationData.mode === "perspective") {
-      // Vérifier qu'on a les 4 points
-      if (rectPoints.length !== 4) {
-        toast.error("Sélectionnez 4 points pour la référence");
-        return;
-      }
-
-      // FIX: Utiliser l'image sélectionnée du système multi-photos OU le backgroundImageRef legacy
-      const perspectiveImage = selectedImage?.image || backgroundImageRef.current;
-      if (!perspectiveImage) {
-        toast.error("Aucune image de fond chargée");
-        return;
-      }
-
-      // Récupérer les coordonnées des 4 points
-      const quadPoints = rectPoints.map((id) => {
-        const point = calibrationData.points.get(id);
-        if (!point) throw new Error(`Point ${id} non trouvé`);
-        return { x: point.x, y: point.y };
-      });
-
-      try {
-        let H: HomographyMatrix;
-        let mmPerPx: number;
-        let distortion: DistortionCoefficients | undefined;
-
-        if (perspectiveMethod === "rectangle") {
-          // Mode Rectangle
-          const widthMm = parseFloat(rectWidth.replace(",", "."));
-          const heightMm = parseFloat(rectHeight.replace(",", "."));
-
-          if (isNaN(widthMm) || widthMm <= 0 || isNaN(heightMm) || heightMm <= 0) {
-            toast.error("Entrez les dimensions du rectangle (largeur et hauteur en mm)");
-            return;
-          }
-
-          // Calculer l'homographie
-          const result = createRectifyingHomography(
-            quadPoints,
-            widthMm,
-            heightMm,
-            perspectiveImage.width,
-            perspectiveImage.height,
-          );
-          H = result.H;
-          mmPerPx = 1 / result.scale;
-        } else {
-          // Mode Damier
-          const cornersX = parseInt(checkerCornersX);
-          const cornersY = parseInt(checkerCornersY);
-          const squareSize = parseFloat(checkerSquareSize.replace(",", "."));
-
-          if (isNaN(cornersX) || cornersX < 2 || isNaN(cornersY) || cornersY < 2) {
-            toast.error("Configuration du damier invalide");
-            return;
-          }
-          if (isNaN(squareSize) || squareSize <= 0) {
-            toast.error("Entrez la taille d'une case en mm");
-            return;
-          }
-
-          // Calibration par damier (homographie + distorsion)
-          const result = calibrateWithCheckerboard(
-            quadPoints,
-            cornersX,
-            cornersY,
-            squareSize,
-            perspectiveImage.width,
-            perspectiveImage.height,
-          );
-          H = result.homography;
-          mmPerPx = result.scale;
-          distortion = result.distortion;
-
-          // Log pour debug
-          console.log("Distorsion calculée:", distortion);
-        }
-
-        // Calculer les dimensions de l'image transformée
-        const bounds = computeTransformedBounds(H, perspectiveImage.width, perspectiveImage.height);
-
-        // Créer l'image déformée (avec correction de distorsion si damier)
-        let finalImageData: ImageData;
-
-        if (distortion && (Math.abs(distortion.k1) > 0.001 || Math.abs(distortion.k2) > 0.001)) {
-          // D'abord corriger la distorsion radiale
-          const undistorted = undistortImage(perspectiveImage, distortion);
-
-          // Créer un canvas temporaire
-          const tempCanvas = document.createElement("canvas");
-          tempCanvas.width = undistorted.width;
-          tempCanvas.height = undistorted.height;
-          const tempCtx = tempCanvas.getContext("2d")!;
-          tempCtx.putImageData(undistorted, 0, 0);
-
-          // Puis appliquer l'homographie
-          const tempImage = document.createElement("img") as HTMLImageElement;
-          tempImage.src = tempCanvas.toDataURL();
-          await new Promise<void>((resolve) => {
-            tempImage.onload = () => resolve();
-          });
-
-          finalImageData = warpImage(
-            tempImage,
-            H,
-            Math.ceil(bounds.width),
-            Math.ceil(bounds.height),
-            Math.ceil(bounds.width / 2),
-            Math.ceil(bounds.height / 2),
-          );
-        } else {
-          // Seulement l'homographie
-          finalImageData = warpImage(
-            perspectiveImage,
-            H,
-            Math.ceil(bounds.width),
-            Math.ceil(bounds.height),
-            Math.ceil(bounds.width / 2),
-            Math.ceil(bounds.height / 2),
-          );
-        }
-
-        // Créer un canvas pour l'image déformée
-        const warpedCanvas = document.createElement("canvas");
-        warpedCanvas.width = finalImageData.width;
-        warpedCanvas.height = finalImageData.height;
-        const ctx = warpedCanvas.getContext("2d")!;
-        ctx.putImageData(finalImageData, 0, 0);
-
-        setTransformedImage(warpedCanvas);
-
-        // Transformer les points de calibration vers le nouveau système de coordonnées
-        const newCalibPoints = new Map<string, CalibrationPoint>();
-        calibrationData.points.forEach((point, id) => {
-          // Convertir en coordonnées centrées
-          let srcX = point.x - perspectiveImage.width / 2;
-          let srcY = point.y - perspectiveImage.height / 2;
-
-          // Corriger la distorsion si nécessaire
-          if (distortion) {
-            const undist = undistortPoint(
-              { x: srcX, y: srcY },
-              distortion,
-              perspectiveImage.width,
-              perspectiveImage.height,
-            );
-            srcX = undist.x;
-            srcY = undist.y;
-          }
-
-          // Appliquer la transformation
-          const transformed = transformPoint(H, { x: srcX, y: srcY });
-          // Convertir en mm
-          newCalibPoints.set(id, {
-            ...point,
-            x: transformed.x * mmPerPx,
-            y: transformed.y * mmPerPx,
-          });
-        });
-
-        // Transformer les points du sketch
-        const newSketchPoints = new Map(sketch.points);
-        newSketchPoints.forEach((point, id) => {
-          let srcX = point.x - perspectiveImage.width / 2;
-          let srcY = point.y - perspectiveImage.height / 2;
-
-          if (distortion) {
-            const undist = undistortPoint(
-              { x: srcX, y: srcY },
-              distortion,
-              perspectiveImage.width,
-              perspectiveImage.height,
-            );
-            srcX = undist.x;
-            srcY = undist.y;
-          }
-
-          const transformed = transformPoint(H, { x: srcX, y: srcY });
-          newSketchPoints.set(id, {
-            ...point,
-            x: transformed.x * mmPerPx,
-            y: transformed.y * mmPerPx,
-          });
-        });
-
-        // Convertir les géométries avec rayon (cercles) - approximation
-        const newGeometries = new Map(sketch.geometries);
-        newGeometries.forEach((geo, id) => {
-          if (geo.type === "circle") {
-            const circle = geo as any;
-            newGeometries.set(id, {
-              ...circle,
-              radius: circle.radius * mmPerPx,
-            });
-          }
-        });
-
-        // Mettre à jour l'échelle pour le rendu
-        setImageScale(mmPerPx);
-
-        // Mettre à jour les données de calibration
-        setCalibrationData((prev) => ({
-          ...prev,
-          points: newCalibPoints,
-          applied: true,
-          perspectiveMethod,
-          homography: H,
-          distortion,
-          referenceRect:
-            perspectiveMethod === "rectangle"
-              ? {
-                  pointIds: rectPoints,
-                  widthMm: parseFloat(rectWidth.replace(",", ".")),
-                  heightMm: parseFloat(rectHeight.replace(",", ".")),
-                }
-              : undefined,
-          checkerboard:
-            perspectiveMethod === "checkerboard"
-              ? {
-                  cornersX: parseInt(checkerCornersX),
-                  cornersY: parseInt(checkerCornersY),
-                  squareSizeMm: parseFloat(checkerSquareSize.replace(",", ".")),
-                  cornerPointIds: rectPoints,
-                }
-              : undefined,
-        }));
-
-        // Mettre à jour le sketch
-        setSketch((prev) => ({
-          ...prev,
-          points: newSketchPoints,
-          geometries: newGeometries,
-          scaleFactor: 1,
-        }));
-
-        const methodLabel =
-          perspectiveMethod === "rectangle"
-            ? `Rectangle ${rectWidth}×${rectHeight} mm`
-            : `Damier ${parseInt(checkerCornersX) + 1}×${parseInt(checkerCornersY) + 1} cases`;
-        toast.success(`Correction de perspective appliquée ! ${methodLabel}`);
-
-        if (distortion && (Math.abs(distortion.k1) > 0.01 || Math.abs(distortion.k2) > 0.01)) {
-          toast.info(`Distorsion radiale corrigée (k1=${distortion.k1.toFixed(4)}, k2=${distortion.k2.toFixed(4)})`);
-        }
-      } catch (error) {
-        console.error("Erreur calibration:", error);
-        toast.error(`Erreur: ${error instanceof Error ? error.message : "Calcul impossible"}`);
-      }
-    }
-  }, [
-    calibrationData,
-    sketch,
-    rectPoints,
-    rectWidth,
-    rectHeight,
-    perspectiveMethod,
-    checkerCornersX,
-    checkerCornersY,
-    checkerSquareSize,
-    getSelectedImageCalibration,
-    getSelectedImage,
-    updateSelectedImageCalibration,
-  ]);
-
-  // Réinitialiser la calibration
-  // MOD #85: Restaure les points originaux et l'échelle de l'image
-  const resetCalibration = useCallback(() => {
-    const imgCalib = getSelectedImageCalibration();
-    const selectedImage = getSelectedImage();
-
-    // MOD #85: Restaurer l'état original si disponible
-    if (imgCalib.applied && imgCalib.originalPoints && imgCalib.originalImageScale !== undefined && selectedImage) {
-      // Restaurer les points originaux
-      const originalPoints = imgCalib.originalPoints;
-      const originalImageScale = imgCalib.originalImageScale;
-
-      // Mettre à jour l'image avec l'échelle originale et les points originaux
-      setBackgroundImages((prev) =>
-        prev.map((img) => {
-          if (img.id !== selectedImage.id) return img;
-          return {
-            ...img,
-            scale: originalImageScale,
-            calibrationData: {
-              ...(img.calibrationData || { points: new Map(), pairs: new Map(), mode: "simple" as const }),
-              points: originalPoints,
-              scale: undefined,
-              scaleX: undefined,
-              scaleY: undefined,
-              originalPoints: undefined,
-              originalImageScale: undefined,
-              applied: false,
-            },
-          };
-        }),
-      );
-
-      // Mettre à jour calibrationData
-      setCalibrationData((prev) => ({
-        ...prev,
-        points: originalPoints,
-        scale: undefined,
-        scaleX: undefined,
-        scaleY: undefined,
-        originalPoints: undefined,
-        originalImageScale: undefined,
-        applied: false,
-      }));
-
-      toast.success("Calibration annulée - image et points restaurés");
-    } else {
-      // Pas d'état original à restaurer, juste reset
-      setCalibrationData({
-        points: new Map(),
-        pairs: new Map(),
-        applied: false,
-        mode: "simple",
-      });
-      toast.success("Points de calibration supprimés");
-    }
-
-    setCalibrationMode("idle");
-    setSelectedCalibrationPoint(null);
-    // Reset du mode perspective
-    setRectPoints([]);
-    setRectWidth("");
-    setRectHeight("");
-    setImageScale(1);
-    setTransformedImage(null);
-  }, [getSelectedImageCalibration, getSelectedImage]);
 
   // === REMPLISSAGES / HACHURES ===
 
@@ -18551,9 +17971,7 @@ export function CADGabaritCanvas({
                                     <div
                                       className="w-3 h-3 rounded-full flex-shrink-0"
                                       style={{ backgroundColor: pair.color }}
-                                      title={
-                                        isHorizontal ? "Paire horizontale (→ scaleX)" : "Paire verticale (→ scaleY)"
-                                      }
+                                      title={isHorizontal ? "Paire horizontale (→ scaleX)" : "Paire verticale (→ scaleY)"}
                                     />
                                     <span className="font-medium text-xs whitespace-nowrap">
                                       {p1?.label}↔{p2?.label}
@@ -18752,7 +18170,7 @@ export function CADGabaritCanvas({
                     {calibrationData.mode === "affine" && "Échelle + rotation + cisaillement (min 3 pts)"}
                     {calibrationData.mode === "perspective" && "Correction perspective complète (4 pts)"}
                   </p>
-
+                  
                   {/* Indicateur de points requis pour affine */}
                   {calibrationData.mode === "affine" && (
                     <div className="text-xs">
@@ -18762,12 +18180,14 @@ export function CADGabaritCanvas({
                         const pairCount = imgCalib.pairs.size;
                         const isReady = pairCount >= 3;
                         return (
-                          <div className={`p-2 rounded ${isReady ? "bg-green-50" : "bg-yellow-50"}`}>
-                            <p className={isReady ? "text-green-700" : "text-yellow-700"}>
+                          <div className={`p-2 rounded ${isReady ? 'bg-green-50' : 'bg-yellow-50'}`}>
+                            <p className={isReady ? 'text-green-700' : 'text-yellow-700'}>
                               {pointCount} points, {pairCount}/3 paires min
                             </p>
                             {!isReady && (
-                              <p className="text-yellow-600 mt-1">Ajoutez {3 - pairCount} paire(s) de plus</p>
+                              <p className="text-yellow-600 mt-1">
+                                Ajoutez {3 - pairCount} paire(s) de plus
+                              </p>
                             )}
                           </div>
                         );
@@ -18782,19 +18202,18 @@ export function CADGabaritCanvas({
                 {(() => {
                   const selectedImage = getSelectedImage();
                   if (!selectedImage) return null;
-
-                  const sourceImage =
-                    selectedImage.transformedCanvas || selectedImage.croppedCanvas || selectedImage.image;
+                  
+                  const sourceImage = selectedImage.transformedCanvas || selectedImage.croppedCanvas || selectedImage.image;
                   if (!sourceImage) return null;
-
+                  
                   const imgWidth = sourceImage instanceof HTMLCanvasElement ? sourceImage.width : sourceImage.width;
                   const imgHeight = sourceImage instanceof HTMLCanvasElement ? sourceImage.height : sourceImage.height;
-
+                  
                   const handleManualStretch = (stretchX: number, stretchY: number) => {
                     // Créer un canvas étiré manuellement
                     const newWidth = Math.round(imgWidth * stretchX);
                     const newHeight = Math.round(imgHeight * stretchY);
-
+                    
                     const transformedCanvas = document.createElement("canvas");
                     transformedCanvas.width = newWidth;
                     transformedCanvas.height = newHeight;
@@ -18802,16 +18221,16 @@ export function CADGabaritCanvas({
                     if (ctx) {
                       ctx.drawImage(sourceImage, 0, 0, newWidth, newHeight);
                     }
-
+                    
                     // Mettre à jour l'image
                     setBackgroundImages((prev) =>
                       prev.map((img) => {
                         if (img.id !== selectedImage.id) return img;
-
+                        
                         // Transformer les points de calibration existants
-                        const imgCalib = img.calibrationData || {
-                          points: new Map(),
-                          pairs: new Map(),
+                        const imgCalib = img.calibrationData || { 
+                          points: new Map(), 
+                          pairs: new Map(), 
                           mode: "simple" as const,
                           applied: false,
                         };
@@ -18823,11 +18242,11 @@ export function CADGabaritCanvas({
                             y: point.y * stretchY,
                           });
                         });
-
+                        
                         // Récupérer les stretch existants de manière safe
                         const existingStretchX = (imgCalib as any).manualStretchX || 1;
                         const existingStretchY = (imgCalib as any).manualStretchY || 1;
-
+                        
                         return {
                           ...img,
                           transformedCanvas,
@@ -18841,7 +18260,7 @@ export function CADGabaritCanvas({
                         };
                       }),
                     );
-
+                    
                     // Mettre à jour calibrationData global
                     setCalibrationData((prev) => {
                       const transformedPoints = new Map<string, any>();
@@ -18852,7 +18271,7 @@ export function CADGabaritCanvas({
                           y: point.y * stretchY,
                         });
                       });
-
+                      
                       return {
                         ...prev,
                         points: transformedPoints,
@@ -18861,17 +18280,17 @@ export function CADGabaritCanvas({
                         applied: true,
                       };
                     });
-
+                    
                     toast.success(`Étirement appliqué: X×${stretchX.toFixed(3)}, Y×${stretchY.toFixed(3)}`);
                   };
-
+                  
                   const imgCalib = selectedImage.calibrationData;
                   const hasAppliedStretch = !!(imgCalib?.manualStretchX || imgCalib?.manualStretchY);
-
+                  
                   // Récupérer les points et paires de calibration
                   const calibPoints = imgCalib?.points || calibrationData.points;
                   const calibPairs = imgCalib?.pairs || calibrationData.pairs;
-
+                  
                   return (
                     <ManualStretchControls
                       currentWidth={imgWidth}
@@ -19209,24 +18628,28 @@ export function CADGabaritCanvas({
                         const scaleY = calibrationData.scaleY ?? imgCalib.scaleY;
                         const errorX = calibrationData.errorX ?? imgCalib.errorX;
                         const errorY = calibrationData.errorY ?? imgCalib.errorY;
-
+                        
                         if (!scaleX || !scaleY) return null;
-
+                        
                         const avgScale = (scaleX + scaleY) / 2;
                         const isAnisotrope = Math.abs(scaleX - scaleY) / avgScale > 0.02;
-
+                        
                         if (!isAnisotrope) return null;
-
+                        
                         return (
                           <div className="p-2 bg-blue-50 rounded text-xs space-y-1">
                             <p className="font-medium text-blue-700">Calibration anisotrope détectée</p>
                             <p className="text-blue-600">
-                              X: {scaleX.toFixed(4)} mm/px {errorX !== undefined && `(±${errorX.toFixed(1)}%)`}
+                              X: {scaleX.toFixed(4)} mm/px{" "}
+                              {errorX !== undefined && `(±${errorX.toFixed(1)}%)`}
                             </p>
                             <p className="text-blue-600">
-                              Y: {scaleY.toFixed(4)} mm/px {errorY !== undefined && `(±${errorY.toFixed(1)}%)`}
+                              Y: {scaleY.toFixed(4)} mm/px{" "}
+                              {errorY !== undefined && `(±${errorY.toFixed(1)}%)`}
                             </p>
-                            <p className="text-blue-500 text-[10px]">Ratio X/Y: {(scaleX / scaleY).toFixed(3)}</p>
+                            <p className="text-blue-500 text-[10px]">
+                              Ratio X/Y: {(scaleX / scaleY).toFixed(3)}
+                            </p>
                           </div>
                         );
                       })()}
