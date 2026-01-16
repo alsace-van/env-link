@@ -13475,6 +13475,16 @@ export function CADGabaritCanvas({
         }
       }
 
+      // Transformer les points de calibration pour suivre l'étirement de l'image
+      const transformedPoints = new Map<string, any>();
+      imgCalib.points.forEach((point, id) => {
+        transformedPoints.set(id, {
+          ...point,
+          x: point.x * stretchX,
+          y: point.y * stretchY,
+        });
+      });
+
       // Mettre à jour le sketch avec le nouveau scaleFactor
       setSketch((prev) => ({
         ...prev,
@@ -13493,7 +13503,8 @@ export function CADGabaritCanvas({
             transformedCanvas: transformedCanvas || img.transformedCanvas,
             calibrationData: {
               ...(img.calibrationData || { points: new Map(), pairs: new Map(), mode: "simple" as const }),
-              points: imgCalib.points,
+              // Utiliser les points transformés
+              points: transformedPoints,
               scale: referenceScale,
               scaleX: scaleX,
               scaleY: scaleY,
@@ -13508,10 +13519,10 @@ export function CADGabaritCanvas({
         }),
       );
 
-      // Mettre à jour calibrationData
+      // Mettre à jour calibrationData avec les points transformés
       setCalibrationData((prev) => ({
         ...prev,
-        points: imgCalib.points,
+        points: transformedPoints,
         originalPoints: originalPoints,
         originalImageScale: oldImageScale,
         originalScaleFactor: currentSketch.scaleFactor,
