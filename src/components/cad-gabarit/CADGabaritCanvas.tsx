@@ -1701,21 +1701,19 @@ export function CADGabaritCanvas({
   const render = useCallback(() => {
     if (!rendererRef.current) return;
 
-    // DEBUG: Vérifier les strokeWidth avant rendu (une fois toutes les 2 secondes)
+    // DEBUG: Vérifier les strokeWidth avant rendu (désactivé par défaut)
+    // Activer manuellement via: (window as any).__CAD_DEBUG_RENDER = true
     const now = Date.now();
-    if (!renderDebugTimeRef.current || now - renderDebugTimeRef.current > 2000) {
-      renderDebugTimeRef.current = now;
-      let hasStrokeWidth = false;
-      sketch.geometries.forEach((geo, id) => {
-        if ((geo as any).strokeWidth !== undefined) {
-          hasStrokeWidth = true;
-          console.log(
-            `[RENDER] Before render - geo ${id.slice(0, 8)} type=${geo.type} strokeWidth=${(geo as any).strokeWidth}`,
-          );
-        }
-      });
-      if (!hasStrokeWidth) {
-        console.log("[RENDER] No geometry has strokeWidth defined");
+    if (import.meta.env.DEV && (window as any).__CAD_DEBUG_RENDER) {
+      if (!renderDebugTimeRef.current || now - renderDebugTimeRef.current > 2000) {
+        renderDebugTimeRef.current = now;
+        sketch.geometries.forEach((geo, id) => {
+          if ((geo as any).strokeWidth !== undefined) {
+            console.log(
+              `[RENDER] Before render - geo ${id.slice(0, 8)} type=${geo.type} strokeWidth=${(geo as any).strokeWidth}`,
+            );
+          }
+        });
       }
     }
 

@@ -207,6 +207,8 @@ export function useCADAutoBackup(
   const lastSavedHashRef = useRef<string>("");
   const previousGeometryCountRef = useRef<number>(0);
   const isRestoringRef = useRef(false);
+  const pendingSaveTimeoutRef = useRef<number | null>(null);
+  const lastSeenHashRef = useRef<string>("");
 
   const [state, setState] = useState<AutoBackupState>({
     lastBackupTime: null,
@@ -217,22 +219,61 @@ export function useCADAutoBackup(
 
   // Calculer un hash simple pour détecter les changements
   // FIX #86: Inclure aussi les images de fond et les points de calibration
+  // FIX #87: Inclure les positions des points + propriétés de géométrie pour détecter les modifications (drag, resize, etc.)
   const computeHash = useCallback((sketch: Sketch, images: BackgroundImage[]): string => {
-    const geoCount = sketch.geometries.size;
-    const pointCount = sketch.points.size;
-    const geoIds = Array.from(sketch.geometries.keys()).sort().join(",");
+    const hashString = (input: string): string => {
+      // FNV-1a 32-bit (rapide, suffisant pour un hash de changement)
+      let hash = 0x811c9dc5;
+      for (let i = 0; i < input.length; i++) {
+        hash ^= input.charCodeAt(i);
+        hash = Math.imul(hash, 0x01000193);
+      }
+      return (hash >>> 0).toString(16);
+    };
+
+    const base = `${sketch.geometries.size}:${sketch.points.size}:${sketch.constraints.size}:${sketch.dimensions.size}`;
+
+    const pointsSig = Array.from(sketch.points.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([id, p]) => `${id}:${p.x.toFixed(2)},${p.y.toFixed(2)},${p.fixed ? 1 : 0}`)
+      .join("|");
+
+    const geometriesSig = Array.from(sketch.geometries.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([id, g]) => {
+        // On encode juste les champs structurants selon le type
+        if (g.type === "line") {
+          const line = g as any;
+          return `${id}:line:${line.p1}:${line.p2}:${line.construction ? 1 : 0}:${line.layerId || ""}`;
+        }
+        if (g.type === "circle") {
+          const c = g as any;
+          return `${id}:circle:${c.center}:${Number(c.radius || 0).toFixed(3)}:${c.construction ? 1 : 0}:${c.layerId || ""}`;
+        }
+        if (g.type === "arc") {
+          const a = g as any;
+          return `${id}:arc:${a.center}:${a.startPoint}:${a.endPoint}:${Number(a.radius || 0).toFixed(3)}:${a.counterClockwise ? 1 : 0}:${a.construction ? 1 : 0}:${a.layerId || ""}`;
+        }
+        if (g.type === "rectangle") {
+          const r = g as any;
+          return `${id}:rect:${r.p1}:${r.p2}:${r.p3}:${r.p4}:${r.construction ? 1 : 0}:${r.layerId || ""}`;
+        }
+        // fallback
+        return `${id}:${(g as any).type}`;
+      })
+      .join("|");
 
     // Ajouter les infos des images et calibration au hash
-    const imageHash = images
+    const imageSig = images
       .map((img) => {
         const calibPointCount = img.calibrationData?.points?.size || 0;
         const calibPairCount = img.calibrationData?.pairs?.size || 0;
         const calibApplied = img.calibrationData?.applied ? 1 : 0;
-        return `${img.id}:${img.scale.toFixed(2)}:${calibPointCount}:${calibPairCount}:${calibApplied}`;
+        return `${img.id}:${img.x.toFixed(2)},${img.y.toFixed(2)}:${img.scale.toFixed(4)}:${img.rotation.toFixed(2)}:${calibPointCount}:${calibPairCount}:${calibApplied}`;
       })
       .join("|");
 
-    return `${geoCount}:${pointCount}:${geoIds.slice(0, 100)}|img:${imageHash}`;
+    return `${base}|p:${hashString(pointsSig)}|g:${hashString(geometriesSig)}|img:${hashString(imageSig)}`;
   }, []);
 
   // Logger un événement dans Supabase (pour debug)
@@ -567,6 +608,39 @@ export function useCADAutoBackup(
 
     return () => clearInterval(interval);
   }, [enabled, intervalMs, saveBackup, sketch.geometries.size, minGeometryCount]);
+
+  // Sauvegarde rapide (debounce) quand le contenu change (anti-perte en cas de reload/crash)
+  useEffect(() => {
+    if (!enabled || isRestoringRef.current) return;
+
+    const currentHash = computeHash(sketch, backgroundImages);
+
+    // Aucun changement depuis le dernier render → rien à planifier
+    if (currentHash === lastSeenHashRef.current) return;
+    lastSeenHashRef.current = currentHash;
+
+    // Canvas vide → ne pas spammer de sauvegardes "vides"
+    const geometryCount = sketch.geometries.size;
+    const imageCount = backgroundImages.length;
+    const calibrationPointCount = backgroundImages.reduce((acc, img) => acc + (img.calibrationData?.points?.size || 0), 0);
+    const hasSignificantContent = geometryCount >= minGeometryCount || imageCount > 0 || calibrationPointCount > 0;
+    if (!hasSignificantContent) return;
+
+    if (pendingSaveTimeoutRef.current) {
+      window.clearTimeout(pendingSaveTimeoutRef.current);
+    }
+
+    pendingSaveTimeoutRef.current = window.setTimeout(() => {
+      saveBackup(false);
+    }, 1500);
+
+    return () => {
+      if (pendingSaveTimeoutRef.current) {
+        window.clearTimeout(pendingSaveTimeoutRef.current);
+        pendingSaveTimeoutRef.current = null;
+      }
+    };
+  }, [enabled, computeHash, sketch, backgroundImages, minGeometryCount, saveBackup]);
 
   // Sauvegarder avant de quitter la page
   useEffect(() => {
