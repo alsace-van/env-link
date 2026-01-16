@@ -19072,23 +19072,37 @@ export function CADGabaritCanvas({
                         </div>
                       )}
 
-                      {/* MOD #85: Afficher scaleX/scaleY si anisotrope */}
-                      {imgCalib.scaleX &&
-                        imgCalib.scaleY &&
-                        Math.abs(imgCalib.scaleX - imgCalib.scaleY) / ((imgCalib.scaleX + imgCalib.scaleY) / 2) >
-                          0.02 && (
+                      {/* MOD #85: Afficher scaleX/scaleY si anisotrope - utiliser calibrationData comme source principale */}
+                      {(() => {
+                        const scaleX = calibrationData.scaleX ?? imgCalib.scaleX;
+                        const scaleY = calibrationData.scaleY ?? imgCalib.scaleY;
+                        const errorX = calibrationData.errorX ?? imgCalib.errorX;
+                        const errorY = calibrationData.errorY ?? imgCalib.errorY;
+                        
+                        if (!scaleX || !scaleY) return null;
+                        
+                        const avgScale = (scaleX + scaleY) / 2;
+                        const isAnisotrope = Math.abs(scaleX - scaleY) / avgScale > 0.02;
+                        
+                        if (!isAnisotrope) return null;
+                        
+                        return (
                           <div className="p-2 bg-blue-50 rounded text-xs space-y-1">
                             <p className="font-medium text-blue-700">Calibration anisotrope détectée</p>
                             <p className="text-blue-600">
-                              X: {imgCalib.scaleX.toFixed(4)} mm/px{" "}
-                              {imgCalib.errorX !== undefined && `(±${imgCalib.errorX.toFixed(1)}%)`}
+                              X: {scaleX.toFixed(4)} mm/px{" "}
+                              {errorX !== undefined && `(±${errorX.toFixed(1)}%)`}
                             </p>
                             <p className="text-blue-600">
-                              Y: {imgCalib.scaleY.toFixed(4)} mm/px{" "}
-                              {imgCalib.errorY !== undefined && `(±${imgCalib.errorY.toFixed(1)}%)`}
+                              Y: {scaleY.toFixed(4)} mm/px{" "}
+                              {errorY !== undefined && `(±${errorY.toFixed(1)}%)`}
+                            </p>
+                            <p className="text-blue-500 text-[10px]">
+                              Ratio X/Y: {(scaleX / scaleY).toFixed(3)}
                             </p>
                           </div>
-                        )}
+                        );
+                      })()}
 
                       {/* Boutons Appliquer + Reset */}
                       <div className="flex gap-2">
