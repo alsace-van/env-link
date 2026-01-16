@@ -411,8 +411,8 @@ export function useCalibration({
     console.log("[applyCalibration] imgCalib:", imgCalib);
     console.log("[applyCalibration] calibrationData:", calibrationData);
 
-    // Mode simple : échelle uniforme ou anisotrope
-    if (calibrationData.mode === "simple" || !calibrationData.mode) {
+    // Mode simple ou anisotrope : échelle uniforme ou anisotrope
+    if (calibrationData.mode === "simple" || calibrationData.mode === "anisotrope" || !calibrationData.mode) {
       const scaleX = imgCalib.scaleX || imgCalib.scale || calibrationData.scaleX || calibrationData.scale;
       const scaleY = imgCalib.scaleY || imgCalib.scale || calibrationData.scaleY || calibrationData.scale;
 
@@ -444,25 +444,28 @@ export function useCalibration({
       const oldImageScale = selectedImage.scale || 1;
       const originalPoints = new Map(imgCalib.points);
 
-      const avgScale = (scaleX + scaleY) / 2;
+      console.log("[applyCalibration] Échelle actuelle du sketch:", currentSketch.scaleFactor, "px/mm");
+      console.log("[applyCalibration] Nouvelles échelles - scaleX:", scaleX, "mm/px, scaleY:", scaleY, "mm/px");
 
-      // MOD: Toujours étirer l'image pour correspondre aux mesures réelles
-      const isAnisotrope = true;
-
-      // L'échelle de référence sera la plus petite (pour ne pas perdre de résolution)
-      const referenceScale = Math.min(scaleX, scaleY);
-      const newScaleFactor = 1 / referenceScale;
+      // L'échelle de référence sera 1 mm/px (échelle standard)
+      // Si scaleX = 1.08 mm/px (500px = 540mm), pour afficher 540mm avec scaleFactor=1,
+      // il faut étirer l'image de 1.08x (500px → 540px)
+      const referenceScaleMmPerPx = 1; // 1 mm = 1 px comme référence
 
       // Calculer le ratio d'étirement pour chaque axe
-      const stretchX = scaleX / referenceScale;
-      const stretchY = scaleY / referenceScale;
+      // stretchX = scaleX (car on étire pour que distance_px × scaleX = distance_mm)
+      // Exemple : 500px × 1.08 = 540mm, donc stretch de 1.08x → 540px
+      const stretchX = scaleX / referenceScaleMmPerPx;
+      const stretchY = scaleY / referenceScaleMmPerPx;
 
-      // Debug log pour vérifier les valeurs
-      console.log("[Calibration] scaleX:", scaleX, "scaleY:", scaleY);
-      console.log("[Calibration] referenceScale:", referenceScale, "newScaleFactor:", newScaleFactor);
-      console.log("[Calibration] stretchX:", stretchX, "stretchY:", stretchY);
+      // Le nouveau scaleFactor sera 1 px/mm (car on a étiré l'image pour correspondre)
+      const newScaleFactor = 1 / referenceScaleMmPerPx; // = 1 px/mm
 
-      // MOD: Toujours créer un canvas transformé pour étirer l'image
+      console.log("[applyCalibration] stretchX:", stretchX, "(image ×", stretchX.toFixed(2), ")");
+      console.log("[applyCalibration] stretchY:", stretchY, "(image ×", stretchY.toFixed(2), ")");
+      console.log("[applyCalibration] newScaleFactor:", newScaleFactor, "px/mm");
+
+      // MOD: Toujours créer un canvas transformé pour appliquer l'étirement
       let transformedCanvas: HTMLCanvasElement | null = null;
 
       const sourceImage = selectedImage.croppedCanvas || selectedImage.image;
@@ -527,7 +530,7 @@ export function useCalibration({
             calibrationData: {
               ...(img.calibrationData || { points: new Map(), pairs: new Map(), mode: "simple" as const }),
               points: transformedPoints,
-              scale: referenceScale,
+              scale: referenceScaleMmPerPx,
               scaleX: scaleX,
               scaleY: scaleY,
               stretchX: stretchX,
@@ -548,7 +551,7 @@ export function useCalibration({
         originalPoints: originalPoints,
         originalImageScale: oldImageScale,
         originalScaleFactor: currentSketch.scaleFactor,
-        scale: referenceScale,
+        scale: referenceScaleMmPerPx,
         scaleX: scaleX,
         scaleY: scaleY,
         stretchX: stretchX,
@@ -559,17 +562,13 @@ export function useCalibration({
       // Message de succès avec détails sur l'étirement
       const hasStretch = stretchX !== 1 || stretchY !== 1;
       if (hasStretch) {
-        toast.success(
-          `Calibration appliquée ! Photo étirée (X×${stretchX.toFixed(3)}, Y×${stretchY.toFixed(3)}). Échelle: ${referenceScale.toFixed(4)} mm/px`,
-        );
+        toast.success(`Calibration appliquée ! Photo étirée (X×${stretchX.toFixed(2)}, Y×${stretchY.toFixed(2)})`);
       } else {
-        toast.success(
-          `Calibration appliquée ! Échelle uniforme: ${referenceScale.toFixed(4)} mm/px (1px = ${referenceScale.toFixed(3)} mm)`,
-        );
+        toast.success(`Calibration appliquée ! Pas d'étirement nécessaire (échelle = 1 mm/px)`);
       }
 
       console.log(
-        "[Calibration] Canvas transformé:",
+        "[applyCalibration] SUCCÈS - Canvas transformé:",
         transformedCanvas ? `${transformedCanvas.width}x${transformedCanvas.height}` : "non créé",
       );
       return;
