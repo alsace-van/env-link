@@ -13434,15 +13434,12 @@ export function CADGabaritCanvas({
 
       const currentSketch = sketchRef.current;
 
-      // Calculer les nouvelles échelles de l'image
-      // Pour anisotrope : on utilise la moyenne pour l'affichage uniforme de l'image
-      // (le vrai anisotrope nécessiterait de déformer l'image, ce qui est complexe)
+      // Calculer l'échelle moyenne (mm/px)
+      // Pour anisotrope : on utilise la moyenne pour l'affichage uniforme
       const avgScale = (scaleX + scaleY) / 2;
-      const newImageScale = currentSketch.scaleFactor * avgScale;
 
       // MOD #85: Sauvegarder l'échelle originale de l'image et les points originaux
       const oldImageScale = selectedImage.scale || 1;
-      const scaleFactor = newImageScale / oldImageScale;
 
       // FIX #85d: Ne PAS transformer les points ici
       // Le renderer doit multiplier par le scale de l'image
@@ -13450,13 +13447,25 @@ export function CADGabaritCanvas({
       // Sauvegarder l'ancien scale pour le reset
       const originalPoints = new Map(imgCalib.points);
 
+      // FIX: Mettre à jour le scaleFactor du sketch pour que les outils de mesure
+      // et les règles utilisent la vraie échelle calibrée
+      // avgScale est en mm/px, donc le nouveau scaleFactor est 1/avgScale (px/mm)
+      const newScaleFactor = 1 / avgScale;
+      
+      // Mettre à jour le sketch avec le nouveau scaleFactor
+      setSketch((prev) => ({
+        ...prev,
+        scaleFactor: newScaleFactor,
+      }));
+
       // Mettre à jour l'image avec la nouvelle échelle (les points restent inchangés)
       setBackgroundImages((prev) =>
         prev.map((img) => {
           if (img.id !== selectedImage.id) return img;
           return {
             ...img,
-            scale: newImageScale,
+            // L'image scale devient 1 car maintenant le scaleFactor du sketch correspond à la réalité
+            scale: 1,
             calibrationData: {
               ...(img.calibrationData || { points: new Map(), pairs: new Map(), mode: "simple" as const }),
               // FIX #85d: Les points ne sont PAS transformés, le renderer multiplie par scale
@@ -13467,6 +13476,7 @@ export function CADGabaritCanvas({
               // MOD #85: Sauvegarder pour reset
               originalPoints: originalPoints,
               originalImageScale: oldImageScale,
+              originalScaleFactor: currentSketch.scaleFactor, // Sauvegarder l'ancien scaleFactor
               applied: true as const,
             },
           };
@@ -13479,9 +13489,10 @@ export function CADGabaritCanvas({
         points: imgCalib.points,
         originalPoints: originalPoints,
         originalImageScale: oldImageScale,
-        scale: 1 / currentSketch.scaleFactor,
-        scaleX: 1 / currentSketch.scaleFactor,
-        scaleY: 1 / currentSketch.scaleFactor,
+        originalScaleFactor: currentSketch.scaleFactor, // Sauvegarder pour reset
+        scale: avgScale,
+        scaleX: scaleX,
+        scaleY: scaleY,
         applied: true,
       }));
 
@@ -13489,7 +13500,7 @@ export function CADGabaritCanvas({
       if (isAnisotrope) {
         toast.success(`Calibration anisotrope appliquée ! X=${scaleX.toFixed(4)}, Y=${scaleY.toFixed(4)} mm/px`);
       } else {
-        toast.success(`Calibration appliquée ! Échelle: ${newImageScale.toFixed(2)}x`);
+        toast.success(`Calibration appliquée ! Échelle: ${avgScale.toFixed(4)} mm/px (1px = ${avgScale.toFixed(3)} mm)`);
       }
       return;
     }
