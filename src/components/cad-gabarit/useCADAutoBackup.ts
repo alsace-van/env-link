@@ -269,7 +269,12 @@ export function useCADAutoBackup(
         const calibPointCount = img.calibrationData?.points?.size || 0;
         const calibPairCount = img.calibrationData?.pairs?.size || 0;
         const calibApplied = img.calibrationData?.applied ? 1 : 0;
-        return `${img.id}:${img.x.toFixed(2)},${img.y.toFixed(2)}:${img.scale.toFixed(4)}:${img.rotation.toFixed(2)}:${calibPointCount}:${calibPairCount}:${calibApplied}`;
+        // FIX: valeurs par défaut pour les propriétés potentiellement undefined
+        const x = Number(img.x) || 0;
+        const y = Number(img.y) || 0;
+        const scale = Number(img.scale) || 1;
+        const rotation = Number(img.rotation) || 0;
+        return `${img.id}:${x.toFixed(2)},${y.toFixed(2)}:${scale.toFixed(4)}:${rotation.toFixed(2)}:${calibPointCount}:${calibPairCount}:${calibApplied}`;
       })
       .join("|");
 
