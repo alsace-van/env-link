@@ -582,53 +582,66 @@ export function useCADAutoBackup(
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [enabled, state.lastBackupTime]);
 
-  // FIX: Charger automatiquement le dernier backup au démarrage si le canvas est vide
-  // Suppression de la limite de 5 minutes - on restaure toujours si disponible
+  // FIX: Proposer (sans auto-restaurer) le dernier backup au démarrage si le canvas est vide
+  // IMPORTANT: Ne JAMAIS restaurer automatiquement pour éviter d'écraser le travail en cours
   useEffect(() => {
     if (!enabled || state.hasRestoredThisSession) return;
 
-    const checkAndRestoreOnMount = async () => {
-      // Attendre un peu pour laisser le composant s'initialiser
-      await new Promise((resolve) => setTimeout(resolve, 500));
+    const checkAndOfferRestoreOnMount = async () => {
+      // Attendre que le composant soit complètement initialisé
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // Si le canvas est vide (pas de géométries ET pas d'images), chercher un backup
-      if (sketch.geometries.size === 0 && backgroundImages.length === 0) {
-        const backup = await getLatestBackup();
+      // Vérifier à nouveau après le délai (le canvas a pu être rempli entre temps)
+      const currentGeoCount = sketch.geometries.size;
+      const currentImageCount = backgroundImages.length;
+      
+      // Si le canvas a du contenu, ne rien faire
+      if (currentGeoCount > 0 || currentImageCount > 0) {
+        console.log("[AutoBackup] Canvas has content, skipping restore offer");
+        setState((prev) => ({ ...prev, hasRestoredThisSession: true }));
+        return;
+      }
+
+      // Chercher un backup
+      const backup = await getLatestBackup();
+      
+      if (backup) {
+        const backupGeoCount = backup.geometry_count || 0;
+        const backupImages = backup.background_images as unknown[] | null;
+        const backupImageCount = backupImages?.length || 0;
         
-        if (backup) {
-          const backupGeoCount = backup.geometry_count || 0;
-          const backupHasImages = backup.background_images && Array.isArray(backup.background_images) && backup.background_images.length > 0;
-          
-          if (backupGeoCount >= minGeometryCount || backupHasImages) {
-            const backupAge = Date.now() - new Date(backup.created_at).getTime();
-            const ageMinutes = Math.round(backupAge / 60000);
-            
-            console.log(`[AutoBackup] Found backup on mount: ${backupGeoCount} geometries, age: ${ageMinutes}min`);
-            
-            // Si le backup est récent (< 24h), restaurer automatiquement
-            if (backupAge < 24 * 60 * 60 * 1000) {
-              console.log("[AutoBackup] Auto-restoring recent backup");
-              await restoreFromBackup(true);
-            } else {
-              // Si plus ancien, proposer à l'utilisateur
-              toast.info("Sauvegarde trouvée", {
-                description: `Travail sauvegardé il y a ${ageMinutes > 60 ? Math.round(ageMinutes/60) + 'h' : ageMinutes + 'min'}`,
-                action: {
-                  label: "Restaurer",
-                  onClick: () => restoreFromBackup(true),
-                },
-                duration: 15000,
-              });
-            }
-          }
+        // Ignorer les backups complètement vides
+        if (backupGeoCount === 0 && backupImageCount === 0) {
+          console.log("[AutoBackup] Backup is empty, ignoring");
+          setState((prev) => ({ ...prev, hasRestoredThisSession: true }));
+          return;
         }
+        
+        const backupAge = Date.now() - new Date(backup.created_at).getTime();
+        const ageMinutes = Math.round(backupAge / 60000);
+        
+        console.log(`[AutoBackup] Found backup: ${backupGeoCount} geometries, ${backupImageCount} images, age: ${ageMinutes}min`);
+        
+        // TOUJOURS proposer, ne JAMAIS restaurer automatiquement
+        const ageText = ageMinutes > 60 
+          ? `${Math.round(ageMinutes / 60)}h` 
+          : `${ageMinutes}min`;
+        
+        toast.info("Sauvegarde trouvée", {
+          description: `${backupGeoCount} éléments, ${backupImageCount} images (il y a ${ageText})`,
+          action: {
+            label: "Restaurer",
+            onClick: () => restoreFromBackup(true),
+          },
+          duration: 15000,
+        });
       }
       
       // Marquer qu'on a vérifié pour cette session
       setState((prev) => ({ ...prev, hasRestoredThisSession: true }));
     };
 
-    checkAndRestoreOnMount();
+    checkAndOfferRestoreOnMount();
   }, [enabled]); // Dépendances minimales - exécuter une seule fois au montage
 
   return {
