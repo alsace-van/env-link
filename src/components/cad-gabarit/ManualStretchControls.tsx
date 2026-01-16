@@ -346,10 +346,10 @@ export const ManualStretchControls: React.FC<ManualStretchControlsProps> = ({
         
         <Separator />
         
-        {/* Étirement par paires de calibration - dans un dropdown */}
+        {/* Étirement par paires de calibration - dans un dropdown adaptatif */}
         {hasPairs && (
           <>
-            <Collapsible>
+            <Collapsible defaultOpen={(calibrationPairs?.size || 0) <= 3}>
               <CollapsibleTrigger asChild>
                 <Button variant="ghost" className="w-full justify-between h-8 px-2">
                   <span className="text-xs font-medium flex items-center gap-1">
