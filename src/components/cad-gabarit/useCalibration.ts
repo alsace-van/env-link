@@ -380,15 +380,14 @@ export function useCalibration({
       errorY: errorY,
     }));
 
-    // Message différent selon si anisotrope ou pas
-    const isAnisotrope = Math.abs(scaleX - scaleY) / avgScale > 0.02;
-    if (isAnisotrope) {
-      toast.success(
-        `Échelle anisotrope: X=${scaleX.toFixed(4)} mm/px (${countX} paires), Y=${scaleY.toFixed(4)} mm/px (${countY} paires)`,
-      );
-    } else {
-      toast.success(`Échelle: ${avgScale.toFixed(4)} mm/px (erreur: ${avgError.toFixed(1)}%)`);
-    }
+    // MOD: Toujours afficher les échelles X et Y séparément
+    // Même si la différence est faible, c'est utile pour le diagnostic
+    const diffPercent = (Math.abs(scaleX - scaleY) / avgScale) * 100;
+    toast.success(
+      `Échelle X=${scaleX.toFixed(4)} mm/px (${countX} paires), Y=${scaleY.toFixed(4)} mm/px (${countY} paires). Diff: ${diffPercent.toFixed(1)}%`,
+    );
+
+    console.log("[calculateCalibration] scaleX:", scaleX, "scaleY:", scaleY, "diff:", diffPercent.toFixed(2) + "%");
   }, [getSelectedImageCalibration, updateSelectedImageCalibration, sketch.scaleFactor, setCalibrationData]);
 
   // ============================================
@@ -431,6 +430,11 @@ export function useCalibration({
       // Calculer le ratio d'étirement pour chaque axe
       const stretchX = scaleX / referenceScale;
       const stretchY = scaleY / referenceScale;
+
+      // Debug log pour vérifier les valeurs
+      console.log("[Calibration] scaleX:", scaleX, "scaleY:", scaleY);
+      console.log("[Calibration] referenceScale:", referenceScale, "newScaleFactor:", newScaleFactor);
+      console.log("[Calibration] stretchX:", stretchX, "stretchY:", stretchY);
 
       // MOD: Toujours créer un canvas transformé pour étirer l'image
       let transformedCanvas: HTMLCanvasElement | null = null;
@@ -509,10 +513,22 @@ export function useCalibration({
         applied: true,
       }));
 
-      // Message de succès
-      const stretchInfo =
-        stretchX !== 1 || stretchY !== 1 ? ` Photo étirée (X×${stretchX.toFixed(3)}, Y×${stretchY.toFixed(3)}).` : "";
-      toast.success(`Calibration appliquée !${stretchInfo} Échelle: ${referenceScale.toFixed(4)} mm/px`);
+      // Message de succès avec détails sur l'étirement
+      const hasStretch = stretchX !== 1 || stretchY !== 1;
+      if (hasStretch) {
+        toast.success(
+          `Calibration appliquée ! Photo étirée (X×${stretchX.toFixed(3)}, Y×${stretchY.toFixed(3)}). Échelle: ${referenceScale.toFixed(4)} mm/px`,
+        );
+      } else {
+        toast.success(
+          `Calibration appliquée ! Échelle uniforme: ${referenceScale.toFixed(4)} mm/px (1px = ${referenceScale.toFixed(3)} mm)`,
+        );
+      }
+
+      console.log(
+        "[Calibration] Canvas transformé:",
+        transformedCanvas ? `${transformedCanvas.width}x${transformedCanvas.height}` : "non créé",
+      );
       return;
     }
 
