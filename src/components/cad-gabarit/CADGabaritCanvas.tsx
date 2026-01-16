@@ -13502,7 +13502,9 @@ export function CADGabaritCanvas({
         return;
       }
 
-      if (!backgroundImageRef.current) {
+      // FIX: Utiliser l'image sélectionnée du système multi-photos OU le backgroundImageRef legacy
+      const perspectiveImage = selectedImage?.image || backgroundImageRef.current;
+      if (!perspectiveImage) {
         toast.error("Aucune image de fond chargée");
         return;
       }
@@ -13534,8 +13536,8 @@ export function CADGabaritCanvas({
             quadPoints,
             widthMm,
             heightMm,
-            backgroundImageRef.current.width,
-            backgroundImageRef.current.height,
+            perspectiveImage.width,
+            perspectiveImage.height,
           );
           H = result.H;
           mmPerPx = 1 / result.scale;
@@ -13560,8 +13562,8 @@ export function CADGabaritCanvas({
             cornersX,
             cornersY,
             squareSize,
-            backgroundImageRef.current.width,
-            backgroundImageRef.current.height,
+            perspectiveImage.width,
+            perspectiveImage.height,
           );
           H = result.homography;
           mmPerPx = result.scale;
@@ -13572,14 +13574,14 @@ export function CADGabaritCanvas({
         }
 
         // Calculer les dimensions de l'image transformée
-        const bounds = computeTransformedBounds(H, backgroundImageRef.current.width, backgroundImageRef.current.height);
+        const bounds = computeTransformedBounds(H, perspectiveImage.width, perspectiveImage.height);
 
         // Créer l'image déformée (avec correction de distorsion si damier)
         let finalImageData: ImageData;
 
         if (distortion && (Math.abs(distortion.k1) > 0.001 || Math.abs(distortion.k2) > 0.001)) {
           // D'abord corriger la distorsion radiale
-          const undistorted = undistortImage(backgroundImageRef.current, distortion);
+          const undistorted = undistortImage(perspectiveImage, distortion);
 
           // Créer un canvas temporaire
           const tempCanvas = document.createElement("canvas");
@@ -13606,7 +13608,7 @@ export function CADGabaritCanvas({
         } else {
           // Seulement l'homographie
           finalImageData = warpImage(
-            backgroundImageRef.current,
+            perspectiveImage,
             H,
             Math.ceil(bounds.width),
             Math.ceil(bounds.height),
@@ -13628,16 +13630,16 @@ export function CADGabaritCanvas({
         const newCalibPoints = new Map<string, CalibrationPoint>();
         calibrationData.points.forEach((point, id) => {
           // Convertir en coordonnées centrées
-          let srcX = point.x - backgroundImageRef.current!.width / 2;
-          let srcY = point.y - backgroundImageRef.current!.height / 2;
+          let srcX = point.x - perspectiveImage.width / 2;
+          let srcY = point.y - perspectiveImage.height / 2;
 
           // Corriger la distorsion si nécessaire
           if (distortion) {
             const undist = undistortPoint(
               { x: srcX, y: srcY },
               distortion,
-              backgroundImageRef.current!.width,
-              backgroundImageRef.current!.height,
+              perspectiveImage.width,
+              perspectiveImage.height,
             );
             srcX = undist.x;
             srcY = undist.y;
@@ -13656,15 +13658,15 @@ export function CADGabaritCanvas({
         // Transformer les points du sketch
         const newSketchPoints = new Map(sketch.points);
         newSketchPoints.forEach((point, id) => {
-          let srcX = point.x - backgroundImageRef.current!.width / 2;
-          let srcY = point.y - backgroundImageRef.current!.height / 2;
+          let srcX = point.x - perspectiveImage.width / 2;
+          let srcY = point.y - perspectiveImage.height / 2;
 
           if (distortion) {
             const undist = undistortPoint(
               { x: srcX, y: srcY },
               distortion,
-              backgroundImageRef.current!.width,
-              backgroundImageRef.current!.height,
+              perspectiveImage.width,
+              perspectiveImage.height,
             );
             srcX = undist.x;
             srcY = undist.y;
