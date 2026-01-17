@@ -1,6 +1,11 @@
 // ============================================
-// VERSION 1.2.0 - ExpenseTableForm.tsx
+// VERSION 1.3.0 - ExpenseTableForm.tsx
 // ============================================
+// Modifications v1.3.0:
+// - Détection de doublons à l'import (date + montant + libellé)
+// - Pagination du tableau avec choix du nombre de lignes (10, 25, 50, 100)
+// - Affichage du nombre de doublons ignorés
+//
 // Modifications v1.2.0:
 // - Projet optionnel pour les entrées (ne bloque plus la sauvegarde)
 // - Ajout indicateur orange si entrée sans projet associé
@@ -30,6 +35,10 @@ import {
   Receipt,
   AlertTriangle,
   CircleAlert,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SupplierInvoiceScannerDialog } from "@/components/evoliz/SupplierInvoiceScannerDialog";
@@ -134,6 +143,15 @@ interface BankLineRow {
   facture_url?: string;
 }
 
+// v1.3.0: Générer un hash unique pour détecter les doublons
+const generateLineHash = (date: string, amount: number, label: string): string => {
+  // Normaliser les données pour la comparaison
+  const normalizedDate = date.split("T")[0]; // Prendre seulement YYYY-MM-DD
+  const normalizedAmount = Math.abs(amount).toFixed(2);
+  const normalizedLabel = label.trim().toLowerCase().replace(/\s+/g, " ");
+  return `${normalizedDate}|${normalizedAmount}|${normalizedLabel}`;
+};
+
 const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   const [rows, setRows] = useState<BankLineRow[]>([]);
   const [fournisseurs, setFournisseurs] = useState<string[]>([]);
@@ -142,6 +160,13 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   const [showScannerDialog, setShowScannerDialog] = useState(false);
   const [showBankImportDialog, setShowBankImportDialog] = useState(false);
   const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+
+  // v1.3.0: États pour la pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+
+  // v1.3.0: État pour stocker les hash des lignes existantes en base
+  const [existingHashes, setExistingHashes] = useState<Set<string>>(new Set());
 
   // DEBUG: Log au montage
   useEffect(() => {
@@ -152,11 +177,55 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   useEffect(() => {
     loadFournisseurs();
     loadProjects();
+    loadExistingHashes(); // v1.3.0: Charger les hash existants
     // Ajouter une ligne vide au démarrage pour permettre la saisie immédiate
     if (rows.length === 0) {
       addNewRow();
     }
   }, [projectId]);
+
+  // v1.3.0: Charger les hash des lignes existantes pour détecter les doublons
+  const loadExistingHashes = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Charger les dépenses existantes
+    const { data: expenses } = await supabase
+      .from("project_expenses")
+      .select("date_achat, prix_vente_ttc, nom_accessoire")
+      .eq("user_id", user.id);
+
+    // Charger les paiements existants
+    const { data: payments } = await supabase
+      .from("project_payment_transactions")
+      .select("date_paiement, montant, notes")
+      .eq("user_id", user.id);
+
+    const hashes = new Set<string>();
+
+    // Ajouter les hash des dépenses
+    if (expenses) {
+      expenses.forEach((e) => {
+        if (e.date_achat && e.prix_vente_ttc && e.nom_accessoire) {
+          hashes.add(generateLineHash(e.date_achat, Math.abs(e.prix_vente_ttc), e.nom_accessoire));
+        }
+      });
+    }
+
+    // Ajouter les hash des paiements
+    if (payments) {
+      payments.forEach((p) => {
+        if (p.date_paiement && p.montant && p.notes) {
+          hashes.add(generateLineHash(p.date_paiement, p.montant, p.notes));
+        }
+      });
+    }
+
+    setExistingHashes(hashes);
+    console.log(`[DEBUG] ${hashes.size} lignes existantes chargées pour détection doublons`);
+  };
 
   const loadProjects = async () => {
     const {
@@ -269,6 +338,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
         prix_vente_ttc: "",
       },
     ]);
+    setCurrentPage(1); // v1.3.0: Reset pagination
     toast.success("Tableau réinitialisé");
   };
 
@@ -457,6 +527,9 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       }
     }
 
+    // v1.3.0: Mettre à jour les hash après sauvegarde
+    await loadExistingHashes();
+
     // v1.2.0: Message de succès avec warning si entrées sans projet
     if (entreesWithoutProject > 0) {
       toast.warning(
@@ -482,6 +555,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
         prix_vente_ttc: "",
       },
     ]);
+    setCurrentPage(1); // v1.3.0: Reset pagination
     onSuccess();
   };
 
@@ -527,6 +601,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
 
   // Callback quand des lignes sont importées depuis un relevé bancaire
   // v1.1.0: Fix format date - ajout T12:00 pour compatibilité datetime-local
+  // v1.3.0: Détection des doublons
   const handleBankLinesImported = (
     importedLines: Array<{
       id: string;
@@ -537,21 +612,46 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       bankLineId: string;
     }>,
   ) => {
-    const newRows: BankLineRow[] = importedLines.map((line) => ({
-      id: line.id,
-      type: line.type,
-      nom_accessoire: line.label,
-      fournisseur: line.type === "sortie" ? extractSupplierFromLabel(line.label) : "",
-      // v1.1.0: Ajout T12:00 pour format datetime-local (YYYY-MM-DDTHH:MM)
-      date_achat: line.date ? `${line.date}T12:00` : new Date().toISOString().slice(0, 16),
-      date_paiement: line.date ? `${line.date}T12:00` : new Date().toISOString().slice(0, 16),
-      statut_paiement: "paye",
-      delai_paiement: "immediat",
-      prix_vente_ttc: line.amount.toFixed(2),
-    }));
+    let duplicatesCount = 0;
+    const newHashes = new Set(existingHashes);
+
+    const newRows: BankLineRow[] = importedLines
+      .filter((line) => {
+        // v1.3.0: Vérifier si la ligne existe déjà
+        const hash = generateLineHash(line.date, line.amount, line.label);
+        if (existingHashes.has(hash) || newHashes.has(hash)) {
+          duplicatesCount++;
+          console.log(`[DEBUG] Doublon détecté: ${line.label} (${line.date}, ${line.amount}€)`);
+          return false;
+        }
+        // Ajouter au set pour éviter les doublons dans le même import
+        newHashes.add(hash);
+        return true;
+      })
+      .map((line) => ({
+        id: line.id,
+        type: line.type,
+        nom_accessoire: line.label,
+        fournisseur: line.type === "sortie" ? extractSupplierFromLabel(line.label) : "",
+        // v1.1.0: Ajout T12:00 pour format datetime-local (YYYY-MM-DDTHH:MM)
+        date_achat: line.date ? `${line.date}T12:00` : new Date().toISOString().slice(0, 16),
+        date_paiement: line.date ? `${line.date}T12:00` : new Date().toISOString().slice(0, 16),
+        statut_paiement: "paye",
+        delai_paiement: "immediat",
+        prix_vente_ttc: line.amount.toFixed(2),
+      }));
 
     setRows((prev) => [...prev, ...newRows]);
     setShowBankImportDialog(false);
+
+    // v1.3.0: Message avec info sur les doublons
+    if (duplicatesCount > 0) {
+      toast.warning(`${newRows.length} ligne(s) importée(s). ${duplicatesCount} doublon(s) ignoré(s).`);
+    } else if (newRows.length > 0) {
+      toast.success(`${newRows.length} ligne(s) importée(s)`);
+    } else {
+      toast.info("Aucune nouvelle ligne à importer");
+    }
   };
 
   // Extraire un nom de fournisseur depuis le libellé bancaire
@@ -568,6 +668,15 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     const words = cleaned.split(/\s+/).filter((w) => w.length > 2);
     return words.slice(0, 3).join(" ");
   };
+
+  // v1.3.0: Calculs pour la pagination
+  const totalRows = rows.filter(
+    (row) => row.nom_accessoire || row.fournisseur || row.project_id || row.prix_vente_ttc,
+  ).length;
+  const totalPages = Math.max(1, Math.ceil(rows.length / rowsPerPage));
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const endIndex = startIndex + rowsPerPage;
+  const displayedRows = rows.slice(startIndex, endIndex);
 
   // DEBUG: Log au rendu
   console.log("[DEBUG] 🔄 ExpenseTableForm rendu");
@@ -665,7 +774,8 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                   </TableCell>
                 </TableRow>
               ) : (
-                rows.map((row) => (
+                // v1.3.0: Afficher seulement les lignes de la page courante
+                displayedRows.map((row) => (
                   <TableRow key={row.id} className="border-b border-gray-300">
                     <TableCell className="border-r-2 border-gray-300">
                       <Select
@@ -833,6 +943,76 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
             </TableBody>
           </Table>
         </div>
+
+        {/* v1.3.0: Contrôles de pagination */}
+        {rows.length > 10 && (
+          <div className="flex items-center justify-between mt-3 px-2">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>Lignes par page:</span>
+              <Select
+                value={rowsPerPage.toString()}
+                onValueChange={(value) => {
+                  setRowsPerPage(parseInt(value));
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="h-8 w-[70px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="25">25</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="ml-2">
+                {startIndex + 1}-{Math.min(endIndex, rows.length)} sur {rows.length}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+              >
+                <ChevronsLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="px-3 text-sm">
+                Page {currentPage} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+              >
+                <ChevronsRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
 
         <div className="flex gap-2 mt-4">
           <Button
