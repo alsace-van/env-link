@@ -1,3 +1,12 @@
+// ============================================
+// VERSION 1.1.0 - BilanComptable.tsx
+// ============================================
+// Modifications v1.1.0:
+// - Ajout pagination du tableau des lignes bancaires
+// - Choix du nombre de lignes par page (10, 25, 50, 100)
+// - Navigation première/précédente/suivante/dernière page
+// ============================================
+
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -13,7 +22,22 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Edit, Plus, Euro, FileText, Trash2, ChevronDown, ChevronUp, Receipt, Link, FileUp } from "lucide-react";
+import {
+  Edit,
+  Plus,
+  Euro,
+  FileText,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  Receipt,
+  Link,
+  FileUp,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+} from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import ExpenseTableForm from "@/components/ExpenseTableForm";
@@ -79,6 +103,10 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
   // State pour le dialog d'import en masse
   const [batchImportOpen, setBatchImportOpen] = useState(false);
   const [pendingInvoicesCount, setPendingInvoicesCount] = useState(0);
+
+  // State pour la pagination des lignes bancaires
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
 
   // Charger le compteur de factures en attente
   const loadPendingInvoicesCount = async () => {
@@ -346,6 +374,19 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
 
   // Afficher toutes les lignes bancaires (pas de filtre par date)
   const filteredBankLines = bankLines;
+
+  // Pagination des lignes bancaires
+  const totalPages = Math.max(1, Math.ceil(filteredBankLines.length / rowsPerPage));
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const endIndex = startIndex + rowsPerPage;
+  const paginatedBankLines = filteredBankLines.slice(startIndex, endIndex);
+
+  // Reset page quand les lignes changent
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(1);
+    }
+  }, [filteredBankLines.length, totalPages]);
 
   const now = new Date();
 
@@ -676,7 +717,7 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredBankLines.map((line) => (
+                    {paginatedBankLines.map((line) => (
                       <tr
                         key={`${line.type}-${line.id}`}
                         className={`border-b hover:bg-muted/50 ${line.type === "entree" ? "bg-green-50 dark:bg-green-950/20" : ""}`}
@@ -788,6 +829,76 @@ export const BilanComptable = ({ projectId, projectName }: BilanComptableProps) 
                   </tfoot>
                 </table>
               </div>
+
+              {/* Contrôles de pagination */}
+              {filteredBankLines.length > 10 && (
+                <div className="flex items-center justify-between mt-4 px-2">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span>Lignes par page:</span>
+                    <Select
+                      value={rowsPerPage.toString()}
+                      onValueChange={(value) => {
+                        setRowsPerPage(parseInt(value));
+                        setCurrentPage(1);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-[70px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="25">25</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                        <SelectItem value="100">100</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <span className="ml-2">
+                      {startIndex + 1}-{Math.min(endIndex, filteredBankLines.length)} sur {filteredBankLines.length}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronsLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="px-3 text-sm">
+                      Page {currentPage} / {totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setCurrentPage(totalPages)}
+                      disabled={currentPage === totalPages}
+                    >
+                      <ChevronsRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <p className="text-center py-4 text-muted-foreground">Aucune ligne bancaire enregistrée</p>
