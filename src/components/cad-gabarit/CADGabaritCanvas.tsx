@@ -1,12 +1,16 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.17 - Drag & drop d'images sur le canvas
+// VERSION: 7.18 - Cotations automatiques
 // ============================================
+//
+// CHANGELOG v7.18 (17/01/2026):
+// - Cotations automatiques lors de la création de rectangles (useAutoDimensions.ts)
+// - Affiche automatiquement largeur et hauteur en mm
+// - État autoDimensionsEnabled pour activer/désactiver
 //
 // CHANGELOG v7.17 (17/01/2026):
 // - Drag & drop d'images directement sur le canvas (useImageDragDrop.ts)
-// - Overlay visuel lors du survol avec des fichiers
 // - Support multi-images en une seule action
 // - Position de drop utilisée pour placer la première image
 //
@@ -232,6 +236,9 @@ import { ManualStretchControls } from "./ManualStretchControls";
 // MOD v7.17: Drag & drop d'images directement sur le canvas
 import { useImageDragDrop } from "./useImageDragDrop";
 
+// MOD v7.18: Cotations automatiques lors de la création de géométries
+import { useAutoDimensions } from "./useAutoDimensions";
+
 interface CADGabaritCanvasProps {
   imageUrl?: string;
   scaleFactor?: number;
@@ -456,6 +463,9 @@ export function CADGabaritCanvas({
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [showBackgroundImage, setShowBackgroundImage] = useState(true);
   const [imageOpacity, setImageOpacity] = useState(0.5);
+
+  // MOD v7.18: Cotations automatiques
+  const [autoDimensionsEnabled, setAutoDimensionsEnabled] = useState(true);
 
   // === Grille A4 pour export panoramique ===
   const [showA4Grid, setShowA4Grid] = useState(false);
@@ -3854,6 +3864,12 @@ export function CADGabaritCanvas({
       setBackgroundImages((prev) => [...prev, ...newImages]);
     },
     setShowBackgroundImage,
+  });
+
+  // MOD v7.18: Cotations automatiques lors de la création de géométries
+  const { addRectangleDimensions, addLineDimension } = useAutoDimensions({
+    enabled: autoDimensionsEnabled,
+    sketchRef,
   });
 
   // Résoudre le sketch
@@ -7929,6 +7945,12 @@ export function CADGabaritCanvas({
       newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[1].id] });
       newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[3].id] });
 
+      // MOD v7.18: Ajouter cotations automatiques pour le rectangle
+      const autoDims = addRectangleDimensions(corner1.id, corner2.id, corner3.id, corner4.id);
+      autoDims.forEach((dim) => {
+        newSketch.dimensions.set(dim.id, dim);
+      });
+
       const wMm = width / currentSketch.scaleFactor;
       const hMm = height / currentSketch.scaleFactor;
       const modeLabel = isCenter ? " (centre)" : "";
@@ -7951,7 +7973,7 @@ export function CADGabaritCanvas({
 
       toast.success(`Rectangle ${wMm.toFixed(1)} × ${hMm.toFixed(1)} mm${modeLabel}`);
     },
-    [tempPoints, tempGeometry, rectInputs, createIntersectionPoints, solveSketch, addToHistory],
+    [tempPoints, tempGeometry, rectInputs, createIntersectionPoints, solveSketch, addToHistory, addRectangleDimensions],
   );
 
   // === Multi-photos: détection de clic sur une image ===
