@@ -1,27 +1,33 @@
 // ============================================
 // COMPOSANT: MeasurePanel
 // Panneau d'historique des mesures flottant et draggable
-// VERSION: 1.0 - Création initiale
+// VERSION: 1.1 - Noms éditables + visibilité + sauvegarde
 // ============================================
+//
+// CHANGELOG v1.1 (17/01/2026):
+// - Ajout du champ name éditable sur chaque mesure
+// - Toggle visibilité individuelle des mesures sur le canvas
+// - Bouton "Tout afficher/masquer"
+// - Noms auto-générés (M1, M2, M3...)
 //
 // CHANGELOG v1.0 (17/01/2026):
 // - Création du panneau d'historique des mesures
-// - Modale flottante draggable (comme CalibrationPanel)
+// - Modale flottante draggable
 // - Liste des mesures avec distance px, mm, angle
-// - Actions: supprimer une mesure, tout effacer, copier valeur
-// - Total des mesures affiché
-// - Export CSV des mesures
+// - Actions: supprimer, copier, exporter CSV
 // ============================================
 
 import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { Ruler, X, GripVertical, Trash2, Copy, Download, CornerDownRight } from "lucide-react";
+import { Ruler, X, GripVertical, Trash2, Copy, Download, CornerDownRight, Eye, EyeOff, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 // Type pour une mesure
 export interface Measurement {
   id: string;
+  name: string; // Nom éditable de la mesure
   start: { x: number; y: number };
   end: { x: number; y: number };
   px: number;
@@ -29,6 +35,7 @@ export interface Measurement {
   angle?: number; // en degrés (si entre 2 segments)
   segment1Id?: string;
   segment2Id?: string;
+  visible?: boolean; // Afficher sur le canvas (default: true)
 }
 
 interface MeasurePanelProps {
@@ -61,10 +68,12 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
 }) => {
   const dragStartRef = useRef({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
 
   // Handler pour le drag de la fenêtre
   const handleDragStart = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest("button")) return;
+    if ((e.target as HTMLElement).closest("button") || (e.target as HTMLElement).closest("input")) return;
     setIsDragging(true);
     dragStartRef.current = {
       x: e.clientX - position.x,
@@ -95,6 +104,7 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
 
   // Tout effacer
   const clearAll = () => {
+    if (measurements.length === 0) return;
     setMeasurements([]);
     toast.success("Toutes les mesures effacées");
   };
@@ -102,7 +112,35 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
   // Copier une valeur
   const copyValue = (value: string) => {
     navigator.clipboard.writeText(value);
-    toast.success("Copié dans le presse-papier");
+    toast.success("Copié");
+  };
+
+  // Toggle visibilité d'une mesure
+  const toggleVisibility = (id: string) => {
+    setMeasurements((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, visible: m.visible === false ? true : false } : m)),
+    );
+  };
+
+  // Tout afficher/masquer
+  const toggleAllVisibility = () => {
+    const allVisible = measurements.every((m) => m.visible !== false);
+    setMeasurements((prev) => prev.map((m) => ({ ...m, visible: !allVisible })));
+  };
+
+  // Commencer l'édition du nom
+  const startEditing = (m: Measurement) => {
+    setEditingId(m.id);
+    setEditingName(m.name);
+  };
+
+  // Sauvegarder le nom
+  const saveName = () => {
+    if (editingId) {
+      setMeasurements((prev) => prev.map((m) => (m.id === editingId ? { ...m, name: editingName || m.name } : m)));
+      setEditingId(null);
+      setEditingName("");
+    }
   };
 
   // Export CSV
@@ -112,11 +150,11 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
       return;
     }
 
-    const headers = ["#", "Distance (px)", "Distance (mm)", "Angle (°)", "X1", "Y1", "X2", "Y2"];
-    const rows = measurements.map((m, i) => [
-      i + 1,
-      m.px.toFixed(1),
+    const headers = ["Nom", "Distance (mm)", "Distance (px)", "Angle (°)", "X1", "Y1", "X2", "Y2"];
+    const rows = measurements.map((m) => [
+      m.name,
       m.mm.toFixed(2),
+      m.px.toFixed(1),
       m.angle !== undefined ? m.angle.toFixed(1) : "",
       m.start.x.toFixed(1),
       m.start.y.toFixed(1),
@@ -135,13 +173,14 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
     toast.success(`${measurements.length} mesures exportées`);
   };
 
-  // Calcul du total
-  const totalMm = measurements.reduce((acc, m) => acc + m.mm, 0);
-  const totalPx = measurements.reduce((acc, m) => acc + m.px, 0);
+  // Calcul du total (uniquement visibles)
+  const visibleMeasurements = measurements.filter((m) => m.visible !== false);
+  const totalMm = visibleMeasurements.reduce((acc, m) => acc + m.mm, 0);
+  const allVisible = measurements.length > 0 && measurements.every((m) => m.visible !== false);
 
   return (
     <div
-      className="fixed z-50 w-72 bg-white rounded-lg shadow-xl border flex flex-col overflow-hidden"
+      className="fixed z-50 w-80 bg-white rounded-lg shadow-xl border flex flex-col overflow-hidden"
       style={{
         left: position.x,
         top: position.y,
@@ -160,9 +199,22 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
             <span className="text-xs text-muted-foreground">({measurements.length})</span>
             <GripVertical className="h-3 w-3 text-gray-400" />
           </div>
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            {measurements.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0"
+                onClick={toggleAllVisibility}
+                title={allVisible ? "Tout masquer" : "Tout afficher"}
+              >
+                {allVisible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         {/* État actuel */}
@@ -192,27 +244,53 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
               {measurements.map((m, index) => (
                 <div
                   key={m.id}
-                  className="p-2 bg-gray-50 rounded text-xs space-y-1 hover:bg-gray-100 transition-colors"
+                  className={`p-2 rounded text-xs space-y-1 transition-colors ${
+                    m.visible === false ? "bg-gray-100 opacity-60" : "bg-green-50 hover:bg-green-100"
+                  }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-medium text-gray-500">#{index + 1}</span>
-                      <span
-                        className="font-bold text-green-700 cursor-pointer hover:underline"
-                        onClick={() => copyValue(m.mm.toFixed(2))}
-                        title="Cliquer pour copier"
+                  {/* Ligne 1: Nom + Actions */}
+                  <div className="flex items-center justify-between gap-1">
+                    {editingId === m.id ? (
+                      <Input
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        onBlur={saveName}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") saveName();
+                          if (e.key === "Escape") {
+                            setEditingId(null);
+                            setEditingName("");
+                          }
+                        }}
+                        className="h-5 text-xs px-1 flex-1"
+                        autoFocus
+                      />
+                    ) : (
+                      <div
+                        className="flex items-center gap-1 cursor-pointer hover:text-green-700 flex-1"
+                        onClick={() => startEditing(m)}
+                        title="Cliquer pour renommer"
                       >
-                        {m.mm.toFixed(2)} mm
-                      </span>
-                      <span className="text-muted-foreground">({m.px.toFixed(0)}px)</span>
-                    </div>
-                    <div className="flex items-center gap-1">
+                        <span className="font-bold text-green-800">{m.name}</span>
+                        <Pencil className="h-2.5 w-2.5 text-gray-400" />
+                      </div>
+                    )}
+                    <div className="flex items-center gap-0.5">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={`h-5 w-5 p-0 ${m.visible === false ? "text-gray-400" : "text-green-600"}`}
+                        onClick={() => toggleVisibility(m.id)}
+                        title={m.visible === false ? "Afficher" : "Masquer"}
+                      >
+                        {m.visible === false ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
                         className="h-5 w-5 p-0 text-gray-500 hover:text-blue-600"
                         onClick={() => copyValue(m.mm.toFixed(2))}
-                        title="Copier la valeur"
+                        title="Copier"
                       >
                         <Copy className="h-3 w-3" />
                       </Button>
@@ -228,17 +306,21 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
                     </div>
                   </div>
 
-                  {/* Angle si disponible */}
-                  {m.angle !== undefined && (
-                    <div className="flex items-center gap-1 text-orange-600">
-                      <CornerDownRight className="h-3 w-3" />
-                      <span>Angle: {m.angle.toFixed(1)}°</span>
-                    </div>
-                  )}
-
-                  {/* Coordonnées (collapsées par défaut) */}
-                  <div className="text-[10px] text-muted-foreground">
-                    ({m.start.x.toFixed(0)}, {m.start.y.toFixed(0)}) → ({m.end.x.toFixed(0)}, {m.end.y.toFixed(0)})
+                  {/* Ligne 2: Valeurs */}
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="font-bold text-green-700 cursor-pointer hover:underline"
+                      onClick={() => copyValue(m.mm.toFixed(2))}
+                    >
+                      {m.mm.toFixed(2)} mm
+                    </span>
+                    <span className="text-muted-foreground">({m.px.toFixed(0)}px)</span>
+                    {m.angle !== undefined && (
+                      <span className="text-orange-600 flex items-center gap-0.5">
+                        <CornerDownRight className="h-3 w-3" />
+                        {m.angle.toFixed(1)}°
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -252,7 +334,9 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
         <div className="border-t p-2 bg-gray-50 space-y-2">
           {/* Total */}
           <div className="flex items-center justify-between text-xs">
-            <span className="font-medium">Total ({measurements.length}):</span>
+            <span className="font-medium">
+              Total ({visibleMeasurements.length}/{measurements.length}):
+            </span>
             <span className="font-bold text-green-700">{totalMm.toFixed(2)} mm</span>
           </div>
 
@@ -266,7 +350,7 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
           <div className="flex gap-1">
             <Button variant="outline" size="sm" className="flex-1 h-7 text-xs" onClick={exportCSV}>
               <Download className="h-3 w-3 mr-1" />
-              Export CSV
+              CSV
             </Button>
             <Button
               variant="outline"
@@ -275,7 +359,7 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
               onClick={clearAll}
             >
               <Trash2 className="h-3 w-3 mr-1" />
-              Effacer
+              Tout effacer
             </Button>
           </div>
         </div>
