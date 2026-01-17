@@ -1,8 +1,15 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.15 - Extraction CalibrationPanel + UX calibration
+// VERSION: 7.16 - Panneau d'historique des mesures
 // ============================================
+//
+// CHANGELOG v7.16 (17/01/2026):
+// - Ajout du panneau d'historique des mesures (MeasurePanel.tsx)
+// - Panneau flottant draggable avec liste des mesures
+// - Bouton "Historique" dans l'indicateur de mesure
+// - Export CSV des mesures
+// - Total des mesures affiché
 //
 // CHANGELOG v7.15 (17/01/2026):
 // - Extraction du panneau de calibration dans CalibrationPanel.tsx (~1000 lignes)
@@ -207,6 +214,7 @@ import { PrintPreviewModal } from "./PrintPreviewModal";
 import { useCADAutoBackup } from "./useCADAutoBackup";
 import { useCalibration } from "./useCalibration";
 import { CalibrationPanel } from "./CalibrationPanel";
+import { MeasurePanel } from "./MeasurePanel";
 
 // MOD v7.15: Contrôles d'étirement manuel
 import { ManualStretchControls } from "./ManualStretchControls";
@@ -739,6 +747,9 @@ export function CADGabaritCanvas({
   const [showCalibrationPanel, setShowCalibrationPanel] = useState(false);
   // MOD UX: Position du panneau de calibration flottant
   const [calibrationPanelPos, setCalibrationPanelPos] = useState({ x: window.innerWidth - 320, y: 100 });
+  // MOD v7.16: Panneau d'historique des mesures flottant
+  const [showMeasurePanel, setShowMeasurePanel] = useState(false);
+  const [measurePanelPos, setMeasurePanelPos] = useState({ x: window.innerWidth - 320, y: 400 });
   const [showAdjustmentsDialog, setShowAdjustmentsDialog] = useState(false);
   const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
   // MOD v80.13: Modale d'impression avec duplication
@@ -17722,8 +17733,23 @@ export function CADGabaritCanvas({
                       : ""}
                 </span>
                 {measurements.length > 0 && (
-                  <span className="text-green-600 font-medium ml-1">({measurements.length})</span>
+                  <button
+                    className="text-green-600 font-medium ml-1 hover:text-green-800 hover:underline"
+                    onClick={() => setShowMeasurePanel(true)}
+                    title="Voir l'historique des mesures"
+                  >
+                    ({measurements.length})
+                  </button>
                 )}
+                {/* MOD v7.16: Bouton pour ouvrir le panneau d'historique */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs text-green-700 hover:text-green-900 hover:bg-green-100"
+                  onClick={() => setShowMeasurePanel(!showMeasurePanel)}
+                >
+                  {showMeasurePanel ? "Masquer" : "Historique"}
+                </Button>
               </div>
             )}
 
@@ -17821,6 +17847,19 @@ export function CADGabaritCanvas({
             checkerSquareSize={checkerSquareSize}
             setCheckerSquareSize={setCheckerSquareSize}
             sketch={sketch}
+          />
+        )}
+
+        {/* MOD v7.16: Panneau d'historique des mesures - Composant externe */}
+        {showMeasurePanel && (
+          <MeasurePanel
+            position={measurePanelPos}
+            setPosition={setMeasurePanelPos}
+            onClose={() => setShowMeasurePanel(false)}
+            measurements={measurements}
+            setMeasurements={setMeasurements}
+            measurePhase={measureState.phase}
+            hasCalibration={!!calibrationData.scale || !!getSelectedImageCalibration().scale}
           />
         )}
       </div>
