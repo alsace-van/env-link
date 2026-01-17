@@ -804,10 +804,9 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                         // v1.2.0: Indicateur orange si pas de projet + option "Aucun projet"
                         <div className="flex items-center gap-1">
                           {!row.project_id && (
-                            <CircleAlert
-                              className="h-4 w-4 text-orange-500 flex-shrink-0"
-                              title="Aucun projet assigné"
-                            />
+                            <span title="Aucun projet assigné">
+                              <CircleAlert className="h-4 w-4 text-orange-500 flex-shrink-0" />
+                            </span>
                           )}
                           <Select
                             value={row.project_id || "none"}
