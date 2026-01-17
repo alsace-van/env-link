@@ -195,6 +195,7 @@ import { PrintPreviewModal } from "./PrintPreviewModal";
 // MOD v7.14: Auto-backup sur Supabase pour protection contre les pertes
 import { useCADAutoBackup } from "./useCADAutoBackup";
 import { useCalibration } from "./useCalibration";
+import { CalibrationPanel } from "./CalibrationPanel";
 
 // MOD v7.15: Contrôles d'étirement manuel
 import { ManualStretchControls } from "./ManualStretchControls";
@@ -725,6 +726,8 @@ export function CADGabaritCanvas({
     mode: "simple",
   });
   const [showCalibrationPanel, setShowCalibrationPanel] = useState(false);
+  // MOD UX: Position du panneau de calibration flottant
+  const [calibrationPanelPos, setCalibrationPanelPos] = useState({ x: window.innerWidth - 320, y: 100 });
   const [showAdjustmentsDialog, setShowAdjustmentsDialog] = useState(false);
   const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
   // MOD v80.13: Modale d'impression avec duplication
@@ -849,6 +852,7 @@ export function CADGabaritCanvas({
     setImageScale,
     setTransformedImage,
   });
+
 
   // Mesure - utiliser un seul état pour éviter les problèmes de synchronisation
   const [measureState, setMeasureState] = useState<{
@@ -7984,6 +7988,7 @@ export function CADGabaritCanvas({
     return points;
   }, [backgroundImages]);
 
+
   // Appliquer les ajustements d'image (contraste, luminosité, etc.) via manipulation de pixels
   const applyImageAdjustments = useCallback(
     (sourceImage: HTMLImageElement | HTMLCanvasElement, adjustments: ImageAdjustments): HTMLCanvasElement => {
@@ -9856,11 +9861,11 @@ export function CADGabaritCanvas({
           const snapTolerance = 25 / viewport.scale; // Augmenté pour meilleur snap
 
           // MOD UX: Snap sur les points de calibration de l'image sélectionnée
-          const imageCalibPoints = selectedImageId
-            ? backgroundImages.find((img) => img.id === selectedImageId)?.calibrationData?.points
+          const imageCalibPoints = selectedImageId 
+            ? backgroundImages.find(img => img.id === selectedImageId)?.calibrationData?.points 
             : null;
           const calibPoints = imageCalibPoints || calibrationData.points;
-
+          
           if (showCalibrationPanel || calibPoints.size > 0) {
             let closestCalibPoint: CalibrationPoint | null = null;
             let closestDist = Infinity;
@@ -13273,6 +13278,8 @@ export function CADGabaritCanvas({
     },
     [updateSelectedImageCalibration],
   );
+
+
 
   // Réinitialiser la calibration
   // MOD #85: Restaure les points originaux et l'échelle de l'image
@@ -17760,988 +17767,55 @@ export function CADGabaritCanvas({
           </div>
         </div>
 
-        {/* Panneau de calibration - Sidebar fixe à droite */}
+
+        {/* Panneau de calibration - Composant externe */}
         {showCalibrationPanel && (
-          <div className="w-72 min-w-[288px] border-l bg-white flex flex-col overflow-hidden flex-shrink-0">
-            {/* En-tête */}
-            <div className="p-2 border-b flex flex-col gap-1 bg-gray-50">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Target className="h-4 w-4 text-red-500" />
-                  <span className="font-semibold text-sm">Calibration</span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0"
-                  onClick={() => {
-                    setShowCalibrationPanel(false);
-                    setCalibrationMode("idle");
-                    setSelectedCalibrationPoint(null);
-                  }}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-              {/* Photo sélectionnée */}
-              {selectedImageId && getSelectedImage() ? (
-                <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded truncate">
-                  📷 {getSelectedImage()?.name}
-                </div>
-              ) : backgroundImages.length > 0 ? (
-                <div className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">⚠️ Sélectionnez une photo</div>
-              ) : null}
-            </div>
-
-            {/* Contenu */}
-            <ScrollArea className="flex-1">
-              <div className="p-3 space-y-4">
-                {/* Actions - Ajouter point seulement */}
-                <div className="space-y-2">
-                  <Button
-                    variant={calibrationMode === "addPoint" ? "default" : "outline"}
-                    size="sm"
-                    className="w-full"
-                    onClick={() => setCalibrationMode(calibrationMode === "addPoint" ? "idle" : "addPoint")}
-                  >
-                    <Plus className="h-4 w-4 mr-1" />
-                    Ajouter point
-                  </Button>
-
-                  {/* Mode actif pour addPoint */}
-                  {calibrationMode === "addPoint" && (
-                    <div className="p-2 bg-blue-50 rounded text-sm text-blue-700 flex items-center justify-between">
-                      <span>📍 Cliquez sur l'image</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-xs"
-                        onClick={() => {
-                          setCalibrationMode("idle");
-                          setSelectedCalibrationPoint(null);
-                        }}
-                      >
-                        ✕
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                <Separator />
-
-                {/* Points de calibration - dans un dropdown */}
-                {(() => {
-                  const imgCalib = getSelectedImageCalibration();
-                  return (
-                    <Collapsible defaultOpen={imgCalib.points.size > 0 && imgCalib.points.size <= 4}>
-                      <div className="flex items-center justify-between">
-                        <CollapsibleTrigger asChild>
-                          <Button variant="ghost" className="h-7 px-2 gap-1">
-                            <ChevronDown className="h-3 w-3" />
-                            <span className="text-sm font-medium">Points ({imgCalib.points.size})</span>
-                          </Button>
-                        </CollapsibleTrigger>
-                        {imgCalib.points.size > 0 && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              updateSelectedImageCalibration(() => ({
-                                points: new Map(),
-                                pairs: new Map(),
-                                applied: false,
-                                mode: "simple",
-                              }));
-                              toast.success("Calibration réinitialisée");
-                            }}
-                            className="h-6 text-xs text-red-500 hover:text-red-700"
-                          >
-                            Tout supprimer
-                          </Button>
-                        )}
-                      </div>
-
-                      <CollapsibleContent>
-                        {imgCalib.points.size === 0 ? (
-                          <p className="text-xs text-muted-foreground italic pl-2">Aucun point</p>
-                        ) : (
-                          <div className="space-y-1 mt-1">
-                            {Array.from(imgCalib.points.values()).map((point) => (
-                              <div
-                                key={point.id}
-                                className="flex items-center justify-between p-1.5 bg-gray-50 rounded text-sm"
-                              >
-                                <span>
-                                  <span className="font-medium text-red-500">Point {point.label}</span>
-                                  <span className="text-xs text-muted-foreground ml-2">
-                                    ({point.x.toFixed(0)}, {point.y.toFixed(0)})
-                                  </span>
-                                </span>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    updateSelectedImageCalibration((prev) => {
-                                      const newPoints = new Map(prev.points);
-                                      newPoints.delete(point.id);
-                                      // Supprimer aussi les paires qui utilisent ce point
-                                      const newPairs = new Map(prev.pairs);
-                                      prev.pairs.forEach((pair, id) => {
-                                        if (pair.point1Id === point.id || pair.point2Id === point.id) {
-                                          newPairs.delete(id);
-                                        }
-                                      });
-                                      return { ...prev, points: newPoints, pairs: newPairs };
-                                    });
-                                  }}
-                                  className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </CollapsibleContent>
-                    </Collapsible>
-                  );
-                })()}
-
-                <Separator />
-
-                {/* Paires de calibration - dans un dropdown */}
-                {/* MOD #85: UI compacte - 2 lignes par paire au lieu de 6 */}
-                {(() => {
-                  const imgCalib = getSelectedImageCalibration();
-                  return (
-                    <Collapsible defaultOpen={imgCalib.pairs.size > 0 && imgCalib.pairs.size <= 4}>
-                      <CollapsibleTrigger asChild>
-                        <Button variant="ghost" className="h-7 px-2 gap-1">
-                          <ChevronDown className="h-3 w-3" />
-                          <span className="text-sm font-medium">Paires ({imgCalib.pairs.size})</span>
-                        </Button>
-                      </CollapsibleTrigger>
-
-                      <CollapsibleContent>
-                        {imgCalib.pairs.size === 0 ? (
-                          <p className="text-xs text-muted-foreground italic pl-2">Aucune paire</p>
-                        ) : (
-                          <div className="space-y-1.5 mt-1">
-                            {(() => {
-                              // MOD UX: Calculer l'échelle moyenne à partir des paires définies
-                              // pour afficher les suggestions en temps réel
-                              let avgScaleFromPairs = 0;
-                              let countValidPairs = 0;
-                              imgCalib.pairs.forEach((pair) => {
-                                if (pair.distanceMm > 0) {
-                                  const pp1 = imgCalib.points.get(pair.point1Id);
-                                  const pp2 = imgCalib.points.get(pair.point2Id);
-                                  if (pp1 && pp2) {
-                                    const d = distance(pp1, pp2);
-                                    if (d > 0) {
-                                      avgScaleFromPairs += pair.distanceMm / d;
-                                      countValidPairs++;
-                                    }
-                                  }
-                                }
-                              });
-                              avgScaleFromPairs = countValidPairs > 0 ? avgScaleFromPairs / countValidPairs : 0;
-                              const displayScale = imgCalib.scale || avgScaleFromPairs;
-
-                              return Array.from(imgCalib.pairs.values()).map((pair) => {
-                                const p1 = imgCalib.points.get(pair.point1Id);
-                                const p2 = imgCalib.points.get(pair.point2Id);
-                                const distPx = p1 && p2 ? distance(p1, p2) : 0;
-                                const pairScale = distPx > 0 ? pair.distanceMm / distPx : 0;
-                                // MOD UX: Utiliser displayScale pour les estimations
-                                const measuredWithAvgScale = displayScale > 0 ? distPx * displayScale : 0;
-                                const errorMm = measuredWithAvgScale - pair.distanceMm;
-                                // Déterminer si paire horizontale ou verticale
-                                const dx = p1 && p2 ? Math.abs(p2.x - p1.x) : 0;
-                                const dy = p1 && p2 ? Math.abs(p2.y - p1.y) : 0;
-                                const isHorizontal = dx > dy;
-
-                                return (
-                                  <div key={pair.id} className="p-1.5 bg-gray-50 rounded space-y-1">
-                                    {/* Ligne 1: Couleur + Labels + Input + Estimation + Delete */}
-                                    <div className="flex items-center gap-1.5">
-                                      <div
-                                        className="w-3 h-3 rounded-full flex-shrink-0"
-                                        style={{ backgroundColor: pair.color }}
-                                        title={
-                                          isHorizontal ? "Paire horizontale (→ scaleX)" : "Paire verticale (→ scaleY)"
-                                        }
-                                      />
-                                      <span className="font-medium text-xs whitespace-nowrap">
-                                        {p1?.label}↔{p2?.label}
-                                      </span>
-                                      <Input
-                                        type="text"
-                                        inputMode="decimal"
-                                        value={pair.distanceMm}
-                                        onChange={(e) => {
-                                          const val = e.target.value.replace(",", ".").replace(/[^0-9.]/g, "");
-                                          updatePairDistance(pair.id, parseFloat(val) || 0);
-                                        }}
-                                        onFocus={(e) => e.target.value === "0" && e.target.select()}
-                                        className="h-6 text-xs w-16 px-1.5"
-                                        placeholder={displayScale > 0 ? `~${(distPx * displayScale).toFixed(0)}` : "mm"}
-                                      />
-                                      <span className="text-xs text-muted-foreground">mm</span>
-                                      {/* MOD UX: Afficher suggestion si pas de valeur définie */}
-                                      {pair.distanceMm === 0 && displayScale > 0 && (
-                                        <button
-                                          className="text-xs text-blue-600 hover:text-blue-700"
-                                          onClick={() =>
-                                            updatePairDistance(pair.id, Math.round(distPx * displayScale * 10) / 10)
-                                          }
-                                          title="Appliquer l'estimation"
-                                        >
-                                          ≈{(distPx * displayScale).toFixed(0)}
-                                        </button>
-                                      )}
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => deleteCalibrationPair(pair.id)}
-                                        className="h-5 w-5 p-0 ml-auto text-red-500 hover:text-red-700"
-                                      >
-                                        <Trash2 className="h-3 w-3" />
-                                      </Button>
-                                    </div>
-                                    {/* Ligne 2: Stats compactes + Utiliser */}
-                                    <div className="flex items-center justify-between text-xs">
-                                      <div className="flex items-center gap-1 text-muted-foreground">
-                                        <span>{distPx.toFixed(0)}px</span>
-                                        {pair.distanceMm > 0 && (
-                                          <>
-                                            <span>·</span>
-                                            <span>{pairScale.toFixed(4)}</span>
-                                          </>
-                                        )}
-                                        {displayScale > 0 && pair.distanceMm > 0 && (
-                                          <>
-                                            <span>·</span>
-                                            <span
-                                              className={`font-medium ${Math.abs(errorMm) < 0.5 ? "text-green-600" : Math.abs(errorMm) < 2 ? "text-orange-500" : "text-red-500"}`}
-                                            >
-                                              Δ{errorMm >= 0 ? "+" : ""}
-                                              {errorMm.toFixed(1)}
-                                            </span>
-                                            {Math.abs(errorMm) >= 0.1 && (
-                                              <button
-                                                className="text-green-600 hover:text-green-700"
-                                                onClick={() => {
-                                                  updatePairDistance(
-                                                    pair.id,
-                                                    Math.round(measuredWithAvgScale * 10) / 10,
-                                                  );
-                                                }}
-                                                title="Utiliser la valeur estimée"
-                                              >
-                                                ✓
-                                              </button>
-                                            )}
-                                          </>
-                                        )}
-                                      </div>
-                                      {/* MOD UX: Bouton Utiliser - définit cette paire comme référence */}
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="h-5 text-xs px-1.5"
-                                        onClick={() => {
-                                          // Déterminer si paire horizontale ou verticale
-                                          const dx = p1 && p2 ? Math.abs(p2.x - p1.x) : 0;
-                                          const dy = p1 && p2 ? Math.abs(p2.y - p1.y) : 0;
-                                          const isHoriz = dx > dy;
-
-                                          // En mode anisotrope, définir scaleX ou scaleY selon l'orientation
-                                          if (calibrationData.mode === "anisotrope") {
-                                            if (isHoriz) {
-                                              updateSelectedImageCalibration((prev) => ({
-                                                ...prev,
-                                                scaleX: pairScale,
-                                              }));
-                                              setCalibrationData((prev) => ({
-                                                ...prev,
-                                                scaleX: pairScale,
-                                                scale: prev.scaleY ? (pairScale + prev.scaleY) / 2 : pairScale,
-                                              }));
-                                              toast.success(`Échelle X: ${pairScale.toFixed(4)} mm/px`);
-                                            } else {
-                                              updateSelectedImageCalibration((prev) => ({
-                                                ...prev,
-                                                scaleY: pairScale,
-                                              }));
-                                              setCalibrationData((prev) => ({
-                                                ...prev,
-                                                scaleY: pairScale,
-                                                scale: prev.scaleX ? (prev.scaleX + pairScale) / 2 : pairScale,
-                                              }));
-                                              toast.success(`Échelle Y: ${pairScale.toFixed(4)} mm/px`);
-                                            }
-                                          } else {
-                                            // Mode simple : définir l'échelle globale
-                                            updateSelectedImageCalibration((prev) => ({
-                                              ...prev,
-                                              scale: pairScale,
-                                              error: 0,
-                                            }));
-                                            setCalibrationData((prev) => ({
-                                              ...prev,
-                                              scale: pairScale,
-                                            }));
-                                            toast.success(`Échelle: ${pairScale.toFixed(4)} mm/px`);
-                                          }
-                                        }}
-                                        title={isHorizontal ? "Définir comme échelle X" : "Définir comme échelle Y"}
-                                      >
-                                        {calibrationData.mode === "anisotrope"
-                                          ? isHorizontal
-                                            ? "→ X"
-                                            : "→ Y"
-                                          : "Utiliser"}
-                                      </Button>
-                                    </div>
-                                  </div>
-                                );
-                              });
-                            })()}
-                          </div>
-                        )}
-                      </CollapsibleContent>
-                    </Collapsible>
-                  );
-                })()}
-
-                {/* MOD #85b: Bouton Créer paire déplacé ici (après la liste des paires) */}
-                {(() => {
-                  const imgCalib = getSelectedImageCalibration();
-                  return (
-                    <div className="space-y-2">
-                      <Button
-                        variant={
-                          calibrationMode === "selectPair1" || calibrationMode === "selectPair2" ? "default" : "outline"
-                        }
-                        size="sm"
-                        className="w-full"
-                        onClick={() => {
-                          if (calibrationMode === "selectPair1" || calibrationMode === "selectPair2") {
-                            setCalibrationMode("idle");
-                            setSelectedCalibrationPoint(null);
-                            return;
-                          }
-                          if (imgCalib.points.size < 2) {
-                            toast.error("Ajoutez au moins 2 points");
-                            return;
-                          }
-                          setCalibrationMode("selectPair1");
-                          setSelectedCalibrationPoint(null);
-                        }}
-                      >
-                        <Link className="h-4 w-4 mr-1" />
-                        {calibrationMode === "selectPair1" || calibrationMode === "selectPair2"
-                          ? "Annuler"
-                          : "Créer paire"}
-                      </Button>
-
-                      {/* Mode actif pour création paire */}
-                      {(calibrationMode === "selectPair1" || calibrationMode === "selectPair2") && (
-                        <div className="space-y-2">
-                          <div className="p-2 bg-blue-50 rounded text-sm text-blue-700">
-                            {calibrationMode === "selectPair1" && "1️⃣ Cliquez sur le 1er point"}
-                            {calibrationMode === "selectPair2" && "2️⃣ Cliquez sur le 2ème point"}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="text"
-                              inputMode="decimal"
-                              value={newPairDistance}
-                              onChange={(e) => {
-                                const val = e.target.value.replace(/[^0-9.,]/g, "");
-                                setNewPairDistance(val);
-                              }}
-                              onFocus={(e) => e.target.value === "0" && setNewPairDistance("")}
-                              placeholder="Distance (auto)"
-                              className="h-7 text-xs flex-1"
-                            />
-                            <span className="text-xs text-muted-foreground">mm</span>
-                          </div>
-                          <div className="flex gap-1">
-                            {CALIBRATION_COLORS.slice(0, 6).map((color) => (
-                              <button
-                                key={color}
-                                className={`w-4 h-4 rounded-full border ${newPairColor === color ? "border-gray-800 border-2" : "border-gray-300"}`}
-                                style={{ backgroundColor: color }}
-                                onClick={() => setNewPairColor(color)}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-
-                <Separator />
-
-                {/* Mode de calibration */}
-                <div className="space-y-2">
-                  <span className="text-sm font-medium">Mode</span>
-                  <div className="flex gap-1">
-                    <Button
-                      variant={calibrationData.mode === "simple" ? "default" : "outline"}
-                      size="sm"
-                      className="flex-1 text-xs px-2"
-                      onClick={() => setCalibrationData((prev) => ({ ...prev, mode: "simple" }))}
-                    >
-                      Simple
-                    </Button>
-                    <Button
-                      variant={calibrationData.mode === "anisotrope" ? "default" : "outline"}
-                      size="sm"
-                      className="flex-1 text-xs px-2"
-                      onClick={() => setCalibrationData((prev) => ({ ...prev, mode: "anisotrope" }))}
-                    >
-                      Aniso
-                    </Button>
-                    <Button
-                      variant={calibrationData.mode === "affine" ? "default" : "outline"}
-                      size="sm"
-                      className="flex-1 text-xs px-2"
-                      onClick={() => setCalibrationData((prev) => ({ ...prev, mode: "affine" }))}
-                    >
-                      Affine
-                    </Button>
-                    <Button
-                      variant={calibrationData.mode === "perspective" ? "default" : "outline"}
-                      size="sm"
-                      className="flex-1 text-xs px-2"
-                      onClick={() => setCalibrationData((prev) => ({ ...prev, mode: "perspective" }))}
-                    >
-                      Persp.
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {calibrationData.mode === "simple" && "Échelle uniforme (scaleX = scaleY)"}
-                    {calibrationData.mode === "anisotrope" && "Échelles X/Y séparées (pas de rotation)"}
-                    {calibrationData.mode === "affine" && "Échelle + rotation + cisaillement (min 3 pts)"}
-                    {calibrationData.mode === "perspective" && "Correction perspective complète (4 pts)"}
-                  </p>
-
-                  {/* Indicateur de points requis pour affine */}
-                  {calibrationData.mode === "affine" && (
-                    <div className="text-xs">
-                      {(() => {
-                        const imgCalib = getSelectedImageCalibration();
-                        const pointCount = imgCalib.points.size;
-                        const pairCount = imgCalib.pairs.size;
-                        const isReady = pairCount >= 3;
-                        return (
-                          <div className={`p-2 rounded ${isReady ? "bg-green-50" : "bg-yellow-50"}`}>
-                            <p className={isReady ? "text-green-700" : "text-yellow-700"}>
-                              {pointCount} points, {pairCount}/3 paires min
-                            </p>
-                            {!isReady && (
-                              <p className="text-yellow-600 mt-1">Ajoutez {3 - pairCount} paire(s) de plus</p>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  )}
-                </div>
-
-                <Separator />
-
-                {/* MOD v7.15: Contrôles d'étirement manuel */}
-                {(() => {
-                  const selectedImage = getSelectedImage();
-                  if (!selectedImage) return null;
-
-                  const sourceImage =
-                    selectedImage.transformedCanvas || selectedImage.croppedCanvas || selectedImage.image;
-                  if (!sourceImage) return null;
-
-                  const imgWidth = sourceImage instanceof HTMLCanvasElement ? sourceImage.width : sourceImage.width;
-                  const imgHeight = sourceImage instanceof HTMLCanvasElement ? sourceImage.height : sourceImage.height;
-
-                  const handleManualStretch = (stretchX: number, stretchY: number) => {
-                    // Créer un canvas étiré manuellement
-                    const newWidth = Math.round(imgWidth * stretchX);
-                    const newHeight = Math.round(imgHeight * stretchY);
-
-                    const transformedCanvas = document.createElement("canvas");
-                    transformedCanvas.width = newWidth;
-                    transformedCanvas.height = newHeight;
-                    const ctx = transformedCanvas.getContext("2d");
-                    if (ctx) {
-                      ctx.drawImage(sourceImage, 0, 0, newWidth, newHeight);
-                    }
-
-                    // Mettre à jour l'image
-                    setBackgroundImages((prev) =>
-                      prev.map((img) => {
-                        if (img.id !== selectedImage.id) return img;
-
-                        // Transformer les points de calibration existants
-                        const imgCalib = img.calibrationData || {
-                          points: new Map(),
-                          pairs: new Map(),
-                          mode: "simple" as const,
-                          applied: false,
-                        };
-                        const transformedPoints = new Map<string, any>();
-                        imgCalib.points.forEach((point: any, id: string) => {
-                          transformedPoints.set(id, {
-                            ...point,
-                            x: point.x * stretchX,
-                            y: point.y * stretchY,
-                          });
-                        });
-
-                        // Récupérer les stretch existants de manière safe
-                        const existingStretchX = (imgCalib as any).manualStretchX || 1;
-                        const existingStretchY = (imgCalib as any).manualStretchY || 1;
-
-                        return {
-                          ...img,
-                          transformedCanvas,
-                          calibrationData: {
-                            ...imgCalib,
-                            points: transformedPoints,
-                            manualStretchX: existingStretchX * stretchX,
-                            manualStretchY: existingStretchY * stretchY,
-                            applied: true,
-                          },
-                        };
-                      }),
-                    );
-
-                    // Mettre à jour calibrationData global
-                    setCalibrationData((prev) => {
-                      const transformedPoints = new Map<string, any>();
-                      prev.points.forEach((point: any, id: string) => {
-                        transformedPoints.set(id, {
-                          ...point,
-                          x: point.x * stretchX,
-                          y: point.y * stretchY,
-                        });
-                      });
-
-                      return {
-                        ...prev,
-                        points: transformedPoints,
-                        manualStretchX: (prev.manualStretchX || 1) * stretchX,
-                        manualStretchY: (prev.manualStretchY || 1) * stretchY,
-                        applied: true,
-                      };
-                    });
-
-                    toast.success(`Étirement appliqué: X×${stretchX.toFixed(3)}, Y×${stretchY.toFixed(3)}`);
-                  };
-
-                  const imgCalib = selectedImage.calibrationData;
-                  const hasAppliedStretch = !!(imgCalib?.manualStretchX || imgCalib?.manualStretchY);
-
-                  // Récupérer les points et paires de calibration
-                  const calibPoints = imgCalib?.points || calibrationData.points;
-                  const calibPairs = imgCalib?.pairs || calibrationData.pairs;
-
-                  return (
-                    <ManualStretchControls
-                      currentWidth={imgWidth}
-                      currentHeight={imgHeight}
-                      scaleFactor={sketch.scaleFactor}
-                      onApplyStretch={handleManualStretch}
-                      hasAppliedStretch={hasAppliedStretch}
-                      onReset={resetCalibration}
-                      calibrationPoints={calibPoints}
-                      calibrationPairs={calibPairs}
-                    />
-                  );
-                })()}
-
-                {/* Mode Perspective - Choix méthode */}
-                {calibrationData.mode === "perspective" && (
-                  <>
-                    <Separator />
-                    <div className="space-y-3">
-                      <span className="text-sm font-medium">Méthode de correction</span>
-                      <div className="flex gap-2">
-                        <Button
-                          variant={perspectiveMethod === "rectangle" ? "default" : "outline"}
-                          size="sm"
-                          className="flex-1"
-                          onClick={() => setPerspectiveMethod("rectangle")}
-                        >
-                          Rectangle
-                        </Button>
-                        <Button
-                          variant={perspectiveMethod === "checkerboard" ? "default" : "outline"}
-                          size="sm"
-                          className="flex-1"
-                          onClick={() => setPerspectiveMethod("checkerboard")}
-                        >
-                          Damier
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {perspectiveMethod === "rectangle"
-                          ? "Corrige la perspective (pas la distorsion de l'objectif)"
-                          : "Corrige perspective + distorsion radiale (barrel)"}
-                      </p>
-                    </div>
-
-                    <Separator />
-
-                    {/* Mode Rectangle */}
-                    {perspectiveMethod === "rectangle" && (
-                      <div className="space-y-3">
-                        <span className="text-sm font-medium">Rectangle de référence</span>
-                        <p className="text-xs text-muted-foreground">
-                          Sélectionnez 4 points formant un rectangle réel (sens horaire à partir du coin supérieur
-                          gauche)
-                        </p>
-
-                        {/* Points sélectionnés */}
-                        <div className="flex gap-1 flex-wrap">
-                          {[0, 1, 2, 3].map((idx) => {
-                            const pointId = rectPoints[idx];
-                            // Utiliser les points de l'image sélectionnée ou les points globaux
-                            const imgCalib = getSelectedImageCalibration();
-                            const pointsMap = imgCalib.points.size > 0 ? imgCalib.points : calibrationData.points;
-                            const point = pointId ? pointsMap.get(pointId) : null;
-                            return (
-                              <div
-                                key={idx}
-                                className={`w-8 h-8 rounded border-2 flex items-center justify-center text-xs font-bold ${
-                                  point
-                                    ? "bg-blue-100 border-blue-500 text-blue-700"
-                                    : "bg-gray-100 border-gray-300 text-gray-400"
-                                }`}
-                              >
-                                {point ? point.label : idx + 1}
-                              </div>
-                            );
-                          })}
-                          <Button
-                            variant={calibrationMode === "selectRect" ? "default" : "outline"}
-                            size="sm"
-                            className="ml-2"
-                            onClick={() => {
-                              // Utiliser les points de l'image sélectionnée ou les points globaux
-                              const imgCalib = getSelectedImageCalibration();
-                              const pointsCount =
-                                imgCalib.points.size > 0 ? imgCalib.points.size : calibrationData.points.size;
-                              if (pointsCount < 4) {
-                                toast.error("Ajoutez au moins 4 points");
-                                return;
-                              }
-                              setCalibrationMode("selectRect");
-                              setRectPoints([]);
-                            }}
-                          >
-                            {rectPoints.length === 4 ? "Modifier" : "Sélectionner"}
-                          </Button>
-                        </div>
-
-                        {calibrationMode === "selectRect" && (
-                          <div className="p-2 bg-blue-50 rounded text-sm text-blue-700">
-                            {rectPoints.length < 4
-                              ? `Point ${rectPoints.length + 1}/4 - Cliquez sur un point`
-                              : "4 points sélectionnés ✓"}
-                          </div>
-                        )}
-
-                        {/* Dimensions du rectangle */}
-                        {rectPoints.length === 4 && (
-                          <div className="space-y-2 p-2 bg-gray-50 rounded">
-                            <div className="flex items-center gap-2">
-                              <Label className="text-xs w-16">Largeur:</Label>
-                              <Input
-                                type="text"
-                                inputMode="decimal"
-                                value={rectWidth}
-                                onChange={(e) => setRectWidth(e.target.value.replace(/[^0-9.,]/g, ""))}
-                                placeholder="ex: 500"
-                                className="h-8 text-sm flex-1"
-                              />
-                              <span className="text-xs text-muted-foreground">mm</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Label className="text-xs w-16">Hauteur:</Label>
-                              <Input
-                                type="text"
-                                inputMode="decimal"
-                                value={rectHeight}
-                                onChange={(e) => setRectHeight(e.target.value.replace(/[^0-9.,]/g, ""))}
-                                placeholder="ex: 300"
-                                className="h-8 text-sm flex-1"
-                              />
-                              <span className="text-xs text-muted-foreground">mm</span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Mode Damier */}
-                    {perspectiveMethod === "checkerboard" && (
-                      <div className="space-y-3">
-                        <span className="text-sm font-medium">Damier de calibration</span>
-
-                        {/* Instructions claires */}
-                        <div className="p-2 bg-blue-50 rounded border border-blue-200">
-                          <p className="text-xs text-blue-700 font-medium mb-1">📋 Instructions :</p>
-                          <ol className="text-xs text-blue-600 list-decimal list-inside space-y-0.5">
-                            <li>Cliquez "Ajouter point" ci-dessus</li>
-                            <li>Placez 4 points sur les coins extérieurs du damier</li>
-                            <li>Cliquez "Sélectionner" et choisissez-les dans l'ordre</li>
-                          </ol>
-                        </div>
-
-                        {/* Configuration du damier */}
-                        <div className="space-y-2 p-2 bg-gray-50 rounded">
-                          <div className="flex items-center gap-2">
-                            <Label className="text-xs w-16">Cases X:</Label>
-                            <Input
-                              type="number"
-                              min="2"
-                              max="20"
-                              value={checkerCornersX}
-                              onChange={(e) => setCheckerCornersX(e.target.value)}
-                              className="h-8 text-sm w-14"
-                            />
-                            <Label className="text-xs w-16">Cases Y:</Label>
-                            <Input
-                              type="number"
-                              min="2"
-                              max="20"
-                              value={checkerCornersY}
-                              onChange={(e) => setCheckerCornersY(e.target.value)}
-                              className="h-8 text-sm w-14"
-                            />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Label className="text-xs w-16">Taille:</Label>
-                            <Input
-                              type="text"
-                              inputMode="decimal"
-                              value={checkerSquareSize}
-                              onChange={(e) => setCheckerSquareSize(e.target.value.replace(/[^0-9.,]/g, ""))}
-                              placeholder="30"
-                              className="h-8 text-sm w-20"
-                            />
-                            <span className="text-xs text-muted-foreground">mm/case</span>
-                          </div>
-                          <p className="text-xs text-muted-foreground italic">
-                            Damier {checkerCornersX}×{checkerCornersY} ={" "}
-                            {(parseInt(checkerCornersX) * parseFloat(checkerSquareSize.replace(",", ".")) || 0).toFixed(
-                              0,
-                            )}
-                            ×
-                            {(parseInt(checkerCornersY) * parseFloat(checkerSquareSize.replace(",", ".")) || 0).toFixed(
-                              0,
-                            )}{" "}
-                            mm
-                          </p>
-                        </div>
-
-                        {/* Points sélectionnés */}
-                        <div className="space-y-2">
-                          <Label className="text-xs">Coins du damier ({rectPoints.length}/4) :</Label>
-                          <div className="flex gap-1 flex-wrap items-center">
-                            {["TL", "TR", "BR", "BL"].map((label, idx) => {
-                              const pointId = rectPoints[idx];
-                              // Utiliser les points de l'image sélectionnée ou les points globaux
-                              const imgCalib = getSelectedImageCalibration();
-                              const pointsMap = imgCalib.points.size > 0 ? imgCalib.points : calibrationData.points;
-                              const point = pointId ? pointsMap.get(pointId) : null;
-                              return (
-                                <div
-                                  key={idx}
-                                  className={`w-10 h-8 rounded border-2 flex items-center justify-center text-xs font-bold ${
-                                    point
-                                      ? "bg-purple-100 border-purple-500 text-purple-700"
-                                      : idx === rectPoints.length && calibrationMode === "selectRect"
-                                        ? "bg-yellow-100 border-yellow-500 text-yellow-700 animate-pulse"
-                                        : "bg-gray-100 border-gray-300 text-gray-400"
-                                  }`}
-                                  title={["Haut-Gauche", "Haut-Droit", "Bas-Droit", "Bas-Gauche"][idx]}
-                                >
-                                  {point ? "✓" : label}
-                                </div>
-                              );
-                            })}
-                            <Button
-                              variant={calibrationMode === "selectRect" ? "default" : "outline"}
-                              size="sm"
-                              className="ml-1 h-8 text-xs"
-                              onClick={() => {
-                                // Utiliser les points de l'image sélectionnée ou les points globaux
-                                const imgCalib = getSelectedImageCalibration();
-                                const pointsCount =
-                                  imgCalib.points.size > 0 ? imgCalib.points.size : calibrationData.points.size;
-                                if (pointsCount < 4) {
-                                  toast.error("Ajoutez d'abord 4 points sur l'image");
-                                  return;
-                                }
-                                setCalibrationMode("selectRect");
-                                setRectPoints([]);
-                              }}
-                            >
-                              {calibrationMode === "selectRect"
-                                ? "Annuler"
-                                : rectPoints.length === 4
-                                  ? "Refaire"
-                                  : "Sélectionner"}
-                            </Button>
-                          </div>
-                        </div>
-
-                        {calibrationMode === "selectRect" && (
-                          <div className="p-2 bg-purple-50 rounded text-sm text-purple-700">
-                            👆 Cliquez sur le coin{" "}
-                            <strong>
-                              {["Haut-Gauche", "Haut-Droit", "Bas-Droit", "Bas-Gauche"][rectPoints.length]}
-                            </strong>{" "}
-                            ({rectPoints.length + 1}/4)
-                          </div>
-                        )}
-
-                        {rectPoints.length === 4 && calibrationMode !== "selectRect" && (
-                          <div className="p-2 bg-green-50 rounded text-sm text-green-700">
-                            ✓ 4 coins sélectionnés - Cliquez "Calculer l'échelle"
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
-
-                <Separator />
-
-                {/* Résultats et actions */}
-                {(() => {
-                  const imgCalib = getSelectedImageCalibration();
-                  const hasPairs = imgCalib.pairs.size > 0;
-                  return (
-                    <div className="space-y-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full"
-                        onClick={calculateCalibration}
-                        disabled={!hasPairs}
-                      >
-                        Calculer l'échelle
-                      </Button>
-
-                      {calibrationData.scale && (
-                        <div className="p-2 bg-green-50 rounded space-y-2">
-                          <p className="text-sm font-medium text-green-700">
-                            Échelle: {calibrationData.scale.toFixed(4)} mm/px
-                          </p>
-                          {calibrationData.error !== undefined && (
-                            <p className="text-xs text-green-600">
-                              Erreur moyenne: {calibrationData.error.toFixed(1)}%
-                            </p>
-                          )}
-                          {/* Bouton pour appliquer toutes les valeurs estimées */}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full text-xs h-7 border-green-300 text-green-700 hover:bg-green-100"
-                            onClick={() => {
-                              const scale = imgCalib.scale || calibrationData.scale;
-                              if (!scale) return;
-
-                              let count = 0;
-                              imgCalib.pairs.forEach((pair) => {
-                                const p1 = imgCalib.points.get(pair.point1Id);
-                                const p2 = imgCalib.points.get(pair.point2Id);
-                                if (p1 && p2) {
-                                  const distPx = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-                                  const estimatedMm = Math.round(distPx * scale * 10) / 10;
-                                  updatePairDistance(pair.id, estimatedMm);
-                                  count++;
-                                }
-                              });
-
-                              toast.success(`${count} paires mises à jour`);
-                              // Recalculer après pour ajuster l'erreur
-                              setTimeout(() => calculateCalibration(), 100);
-                            }}
-                          >
-                            ✓ Appliquer estimations
-                          </Button>
-                        </div>
-                      )}
-
-                      {/* MOD #85: Afficher scaleX/scaleY si anisotrope - utiliser calibrationData comme source principale */}
-                      {(() => {
-                        const scaleX = calibrationData.scaleX ?? imgCalib.scaleX;
-                        const scaleY = calibrationData.scaleY ?? imgCalib.scaleY;
-                        const errorX = calibrationData.errorX ?? imgCalib.errorX;
-                        const errorY = calibrationData.errorY ?? imgCalib.errorY;
-
-                        if (!scaleX || !scaleY) return null;
-
-                        const avgScale = (scaleX + scaleY) / 2;
-                        // MOD: Toujours afficher les échelles X/Y séparément (suppression seuil 2%)
-                        const diffPercent = (Math.abs(scaleX - scaleY) / avgScale) * 100;
-
-                        return (
-                          <div className="p-2 bg-blue-50 rounded text-xs space-y-1">
-                            <p className="font-medium text-blue-700">Échelles X/Y (diff: {diffPercent.toFixed(1)}%)</p>
-                            <p className="text-blue-600">
-                              X: {scaleX.toFixed(4)} mm/px {errorX !== undefined && `(±${errorX.toFixed(1)}%)`}
-                            </p>
-                            <p className="text-blue-600">
-                              Y: {scaleY.toFixed(4)} mm/px {errorY !== undefined && `(±${errorY.toFixed(1)}%)`}
-                            </p>
-                            <p className="text-blue-500 text-[10px]">Ratio X/Y: {(scaleX / scaleY).toFixed(3)}</p>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Boutons Appliquer + Reset */}
-                      <div className="flex gap-2">
-                        <Button
-                          variant="default"
-                          size="sm"
-                          className="flex-1"
-                          onClick={applyCalibration}
-                          disabled={!calibrationData.scale && !imgCalib.scale}
-                        >
-                          <Check className="h-4 w-4 mr-1" />
-                          Appliquer
-                        </Button>
-                        {/* MOD #85: Bouton Reset */}
-                        {(calibrationData.applied || imgCalib.applied) && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={resetCalibration}
-                            className="text-orange-600 border-orange-300 hover:bg-orange-50"
-                            title="Annuler la calibration et restaurer l'image"
-                          >
-                            <RotateCcw className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-
-                      {calibrationData.applied && (
-                        <p className="text-xs text-center text-green-600 font-medium">✓ Calibration appliquée</p>
-                      )}
-                    </div>
-                  );
-                })()}
-              </div>
-            </ScrollArea>
-          </div>
+          <CalibrationPanel
+            position={calibrationPanelPos}
+            setPosition={setCalibrationPanelPos}
+            onClose={() => {
+              setShowCalibrationPanel(false);
+              setCalibrationMode("idle");
+              setSelectedCalibrationPoint(null);
+            }}
+            selectedImageId={selectedImageId}
+            backgroundImages={backgroundImages}
+            getSelectedImage={getSelectedImage}
+            setBackgroundImages={setBackgroundImages}
+            calibrationData={calibrationData}
+            setCalibrationData={setCalibrationData}
+            getSelectedImageCalibration={getSelectedImageCalibration}
+            updateSelectedImageCalibration={updateSelectedImageCalibration}
+            calibrationMode={calibrationMode}
+            setCalibrationMode={setCalibrationMode}
+            selectedCalibrationPoint={selectedCalibrationPoint}
+            setSelectedCalibrationPoint={setSelectedCalibrationPoint}
+            newPairDistance={newPairDistance}
+            setNewPairDistance={setNewPairDistance}
+            newPairColor={newPairColor}
+            setNewPairColor={setNewPairColor}
+            calculateCalibration={calculateCalibration}
+            applyCalibration={applyCalibration}
+            resetCalibration={resetCalibration}
+            updatePairDistance={updatePairDistance}
+            deleteCalibrationPair={deleteCalibrationPair}
+            deleteCalibrationPoint={deleteCalibrationPoint}
+            perspectiveMethod={perspectiveMethod}
+            setPerspectiveMethod={setPerspectiveMethod}
+            rectPoints={rectPoints}
+            setRectPoints={setRectPoints}
+            rectWidth={rectWidth}
+            setRectWidth={setRectWidth}
+            rectHeight={rectHeight}
+            setRectHeight={setRectHeight}
+            checkerCornersX={checkerCornersX}
+            setCheckerCornersX={setCheckerCornersX}
+            checkerCornersY={checkerCornersY}
+            setCheckerCornersY={setCheckerCornersY}
+            checkerSquareSize={checkerSquareSize}
+            setCheckerSquareSize={setCheckerSquareSize}
+            sketch={sketch}
+          />
         )}
       </div>
 
