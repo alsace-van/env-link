@@ -7,7 +7,8 @@
 // CHANGELOG v7.16 (17/01/2026):
 // - Ajout du panneau d'historique des mesures (MeasurePanel.tsx)
 // - Panneau flottant draggable avec liste des mesures
-// - Bouton "Historique" dans l'indicateur de mesure
+// - Bouton "Historique" dans l'indicateur de mesure (quand outil actif)
+// - Bouton dans la toolbar visible dès qu'il y a des mesures
 // - Export CSV des mesures
 // - Total des mesures affiché
 //
@@ -16357,6 +16358,28 @@ export function CADGabaritCanvas({
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+
+            {/* MOD v7.16: Bouton historique des mesures - visible si mesures existent */}
+            {measurements.length > 0 && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={showMeasurePanel ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setShowMeasurePanel(!showMeasurePanel)}
+                      className="h-9 px-2 gap-1"
+                    >
+                      <Ruler className="h-4 w-4" />
+                      <span className="text-xs font-medium">{measurements.length}</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Historique des mesures ({measurements.length})</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
 
             {/* Ajuster contours */}
             <TooltipProvider>
