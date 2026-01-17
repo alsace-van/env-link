@@ -2,7 +2,11 @@
 // HOOK: useCADAutoBackup
 // Sauvegarde automatique du canvas CAD sur Supabase
 // Protection contre les pertes de données spontanées
-// VERSION: 1.1 - Fix types Supabase
+// VERSION: 1.2 - Restauration automatique au chargement
+// ============================================
+// CHANGELOG:
+// v1.2 - Restauration automatique quand canvas vide et backup existe
+// v1.1 - Fix types Supabase
 // ============================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -627,7 +631,10 @@ export function useCADAutoBackup(
     // Canvas vide → ne pas spammer de sauvegardes "vides"
     const geometryCount = sketch.geometries.size;
     const imageCount = backgroundImages.length;
-    const calibrationPointCount = backgroundImages.reduce((acc, img) => acc + (img.calibrationData?.points?.size || 0), 0);
+    const calibrationPointCount = backgroundImages.reduce(
+      (acc, img) => acc + (img.calibrationData?.points?.size || 0),
+      0,
+    );
     const hasSignificantContent = geometryCount >= minGeometryCount || imageCount > 0 || calibrationPointCount > 0;
     if (!hasSignificantContent) return;
 
@@ -661,66 +668,67 @@ export function useCADAutoBackup(
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [enabled, state.lastBackupTime]);
 
-  // FIX: Proposer (sans auto-restaurer) le dernier backup au démarrage si le canvas est vide
-  // IMPORTANT: Ne JAMAIS restaurer automatiquement pour éviter d'écraser le travail en cours
+  // v1.2: Restauration AUTOMATIQUE au chargement si le canvas est vide et qu'un backup existe
+  // L'utilisateur n'a plus besoin de cliquer sur "Restaurer"
   useEffect(() => {
     if (!enabled || state.hasRestoredThisSession) return;
 
-    const checkAndOfferRestoreOnMount = async () => {
+    const checkAndAutoRestoreOnMount = async () => {
       // Attendre que le composant soit complètement initialisé
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Vérifier à nouveau après le délai (le canvas a pu être rempli entre temps)
       const currentGeoCount = sketch.geometries.size;
       const currentImageCount = backgroundImages.length;
-      
+
       // Si le canvas a du contenu, ne rien faire
       if (currentGeoCount > 0 || currentImageCount > 0) {
-        console.log("[AutoBackup] Canvas has content, skipping restore offer");
+        console.log("[AutoBackup] Canvas has content, skipping auto-restore");
         setState((prev) => ({ ...prev, hasRestoredThisSession: true }));
         return;
       }
 
       // Chercher un backup
       const backup = await getLatestBackup();
-      
+
       if (backup) {
         const backupGeoCount = backup.geometry_count || 0;
         const backupImages = backup.background_images as unknown[] | null;
         const backupImageCount = backupImages?.length || 0;
-        
+
         // Ignorer les backups complètement vides
         if (backupGeoCount === 0 && backupImageCount === 0) {
           console.log("[AutoBackup] Backup is empty, ignoring");
           setState((prev) => ({ ...prev, hasRestoredThisSession: true }));
           return;
         }
-        
+
         const backupAge = Date.now() - new Date(backup.created_at).getTime();
         const ageMinutes = Math.round(backupAge / 60000);
-        
-        console.log(`[AutoBackup] Found backup: ${backupGeoCount} geometries, ${backupImageCount} images, age: ${ageMinutes}min`);
-        
-        // TOUJOURS proposer, ne JAMAIS restaurer automatiquement
-        const ageText = ageMinutes > 60 
-          ? `${Math.round(ageMinutes / 60)}h` 
-          : `${ageMinutes}min`;
-        
-        toast.info("Sauvegarde trouvée", {
-          description: `${backupGeoCount} éléments, ${backupImageCount} images (il y a ${ageText})`,
-          action: {
-            label: "Restaurer",
-            onClick: () => restoreFromBackup(true),
-          },
-          duration: 15000,
-        });
+
+        console.log(
+          `[AutoBackup] Found backup: ${backupGeoCount} geometries, ${backupImageCount} images, age: ${ageMinutes}min`,
+        );
+        console.log("[AutoBackup] Auto-restoring because canvas is empty...");
+
+        // v1.2: Restauration AUTOMATIQUE - plus besoin de cliquer
+        const success = await restoreFromBackup(false); // false = pas de toast de succès
+
+        if (success) {
+          const ageText = ageMinutes > 60 ? `${Math.round(ageMinutes / 60)}h` : `${ageMinutes}min`;
+
+          toast.success("Canvas restauré automatiquement", {
+            description: `${backupGeoCount} éléments, ${backupImageCount} images (sauvegarde de ${ageText})`,
+            duration: 5000,
+          });
+        }
       }
-      
+
       // Marquer qu'on a vérifié pour cette session
       setState((prev) => ({ ...prev, hasRestoredThisSession: true }));
     };
 
-    checkAndOfferRestoreOnMount();
+    checkAndAutoRestoreOnMount();
   }, [enabled]); // Dépendances minimales - exécuter une seule fois au montage
 
   return {
