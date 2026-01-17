@@ -2289,9 +2289,9 @@ export class CADRenderer {
     const distPx = distance(start, end);
     const distMm = precomputedMm !== undefined ? precomputedMm : scale ? distPx * scale : distPx;
 
-    // Ligne de mesure
+    // MOD UX: Ligne de mesure plus fine et plus discrète
     this.ctx.strokeStyle = "#00AA00";
-    this.ctx.lineWidth = 1.5 / this.viewport.scale;
+    this.ctx.lineWidth = 1 / this.viewport.scale;
     this.ctx.setLineDash([6 / this.viewport.scale, 3 / this.viewport.scale]);
 
     this.ctx.beginPath();
@@ -2301,13 +2301,13 @@ export class CADRenderer {
     this.ctx.setLineDash([]);
 
     // Croix de visée aux extrémités (plus précis que des cercles)
-    const crossSize = 8 / this.viewport.scale;
-    const innerCircle = 2 / this.viewport.scale;
+    const crossSize = 6 / this.viewport.scale;
+    const innerCircle = 1.5 / this.viewport.scale;
 
     // Fonction pour dessiner une croix de visée
     const drawCrosshair = (x: number, y: number) => {
       this.ctx.strokeStyle = "#00AA00";
-      this.ctx.lineWidth = 1.5 / this.viewport.scale;
+      this.ctx.lineWidth = 1 / this.viewport.scale;
 
       // Croix
       this.ctx.beginPath();
@@ -2330,31 +2330,29 @@ export class CADRenderer {
     drawCrosshair(start.x, start.y);
     drawCrosshair(end.x, end.y);
 
-    // Texte avec les distances (et angle si disponible)
+    // MOD UX: Texte simplifié - uniquement mm (et angle si disponible)
     const mid = midpoint(start, end);
-    const fontSize = 14 / this.viewport.scale;
-    const textPx = `${distPx.toFixed(1)} px`;
+    const fontSize = 12 / this.viewport.scale;
     const textMm = `${distMm.toFixed(1)} mm`;
     const textAngle = angleDeg !== undefined ? `∠ ${angleDeg.toFixed(1)}°` : null;
 
-    // Fond pour le texte
+    // MOD UX: Pas de fond blanc, juste le texte avec une légère ombre
     this.ctx.font = `bold ${fontSize}px Arial`;
-    const textWidthPx = this.ctx.measureText(textPx).width;
     const textWidthMm = this.ctx.measureText(textMm).width;
     const textWidthAngle = textAngle ? this.ctx.measureText(textAngle).width : 0;
-    const textWidth = Math.max(textWidthPx, textWidthMm, textWidthAngle);
-    const padding = 4 / this.viewport.scale;
-    const lineHeight = fontSize * 1.2;
-    const numLines = textAngle ? 3 : 2;
+    const textWidth = Math.max(textWidthMm, textWidthAngle);
+    const padding = 3 / this.viewport.scale;
+    const lineHeight = fontSize * 1.1;
+    const numLines = textAngle ? 2 : 1;
 
     // Calculer l'angle de la ligne pour orienter le texte
     const ang = Math.atan2(end.y - start.y, end.x - start.x);
-    const offset = 15 / this.viewport.scale;
+    const offset = 12 / this.viewport.scale;
     const textX = mid.x + Math.cos(ang + Math.PI / 2) * offset;
     const textY = mid.y + Math.sin(ang + Math.PI / 2) * offset;
 
-    // Fond blanc
-    this.ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+    // MOD UX: Fond semi-transparent très léger au lieu de blanc opaque
+    this.ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
     this.ctx.fillRect(
       textX - textWidth / 2 - padding,
       textY - lineHeight * (numLines / 2) - padding,
@@ -2362,9 +2360,9 @@ export class CADRenderer {
       lineHeight * numLines + padding * 2,
     );
 
-    // Bordure
-    this.ctx.strokeStyle = "#00AA00";
-    this.ctx.lineWidth = 1 / this.viewport.scale;
+    // Bordure fine
+    this.ctx.strokeStyle = "#00AA0080";
+    this.ctx.lineWidth = 0.5 / this.viewport.scale;
     this.ctx.strokeRect(
       textX - textWidth / 2 - padding,
       textY - lineHeight * (numLines / 2) - padding,
@@ -2377,19 +2375,15 @@ export class CADRenderer {
     this.ctx.textBaseline = "middle";
 
     if (textAngle) {
-      // 3 lignes: px, mm, angle
-      this.ctx.fillStyle = "#00AA00";
-      this.ctx.fillText(textPx, textX, textY - lineHeight);
+      // 2 lignes: mm, angle
+      this.ctx.fillStyle = "#006600";
+      this.ctx.fillText(textMm, textX, textY - lineHeight / 2);
+      this.ctx.fillStyle = "#FF6600"; // Orange pour l'angle
+      this.ctx.fillText(textAngle, textX, textY + lineHeight / 2);
+    } else {
+      // 1 ligne: mm uniquement
       this.ctx.fillStyle = "#006600";
       this.ctx.fillText(textMm, textX, textY);
-      this.ctx.fillStyle = "#FF6600"; // Orange pour l'angle
-      this.ctx.fillText(textAngle, textX, textY + lineHeight);
-    } else {
-      // 2 lignes: px, mm
-      this.ctx.fillStyle = "#00AA00";
-      this.ctx.fillText(textPx, textX, textY - lineHeight / 2);
-      this.ctx.fillStyle = "#006600";
-      this.ctx.fillText(textMm, textX, textY + lineHeight / 2);
     }
   }
 

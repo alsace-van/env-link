@@ -9306,7 +9306,8 @@ export function CADGabaritCanvas({
               // Reset le champ pour la prochaine paire
               setNewPairDistance("");
             }
-            setCalibrationMode("idle");
+            // MOD UX: Rester en mode création de paires (selectPair1) au lieu de idle
+            setCalibrationMode("selectPair1");
             setSelectedCalibrationPoint(null);
             // Passer à la couleur suivante
             const currentIndex = CALIBRATION_COLORS.indexOf(newPairColor);
@@ -9854,11 +9855,17 @@ export function CADGabaritCanvas({
           let snapPos = worldPos;
           const snapTolerance = 25 / viewport.scale; // Augmenté pour meilleur snap
 
-          if (showCalibrationPanel || calibrationData.points.size > 0) {
+          // MOD UX: Snap sur les points de calibration de l'image sélectionnée
+          const imageCalibPoints = selectedImageId
+            ? backgroundImages.find((img) => img.id === selectedImageId)?.calibrationData?.points
+            : null;
+          const calibPoints = imageCalibPoints || calibrationData.points;
+
+          if (showCalibrationPanel || calibPoints.size > 0) {
             let closestCalibPoint: CalibrationPoint | null = null;
             let closestDist = Infinity;
 
-            calibrationData.points.forEach((point) => {
+            calibPoints.forEach((point) => {
               const d = distance(worldPos, point);
               if (d < snapTolerance && d < closestDist) {
                 closestDist = d;
@@ -17919,105 +17926,187 @@ export function CADGabaritCanvas({
                           <p className="text-xs text-muted-foreground italic pl-2">Aucune paire</p>
                         ) : (
                           <div className="space-y-1.5 mt-1">
-                            {Array.from(imgCalib.pairs.values()).map((pair) => {
-                              const p1 = imgCalib.points.get(pair.point1Id);
-                              const p2 = imgCalib.points.get(pair.point2Id);
-                              const distPx = p1 && p2 ? distance(p1, p2) : 0;
-                              const pairScale = distPx > 0 ? pair.distanceMm / distPx : 0;
-                              const measuredWithAvgScale = imgCalib.scale ? distPx * imgCalib.scale : 0;
-                              const errorMm = measuredWithAvgScale - pair.distanceMm;
-                              // Déterminer si paire horizontale ou verticale
-                              const dx = p1 && p2 ? Math.abs(p2.x - p1.x) : 0;
-                              const dy = p1 && p2 ? Math.abs(p2.y - p1.y) : 0;
-                              const isHorizontal = dx > dy;
+                            {(() => {
+                              // MOD UX: Calculer l'échelle moyenne à partir des paires définies
+                              // pour afficher les suggestions en temps réel
+                              let avgScaleFromPairs = 0;
+                              let countValidPairs = 0;
+                              imgCalib.pairs.forEach((pair) => {
+                                if (pair.distanceMm > 0) {
+                                  const pp1 = imgCalib.points.get(pair.point1Id);
+                                  const pp2 = imgCalib.points.get(pair.point2Id);
+                                  if (pp1 && pp2) {
+                                    const d = distance(pp1, pp2);
+                                    if (d > 0) {
+                                      avgScaleFromPairs += pair.distanceMm / d;
+                                      countValidPairs++;
+                                    }
+                                  }
+                                }
+                              });
+                              avgScaleFromPairs = countValidPairs > 0 ? avgScaleFromPairs / countValidPairs : 0;
+                              const displayScale = imgCalib.scale || avgScaleFromPairs;
 
-                              return (
-                                <div key={pair.id} className="p-1.5 bg-gray-50 rounded space-y-1">
-                                  {/* Ligne 1: Couleur + Labels + Input + Delete */}
-                                  <div className="flex items-center gap-1.5">
-                                    <div
-                                      className="w-3 h-3 rounded-full flex-shrink-0"
-                                      style={{ backgroundColor: pair.color }}
-                                      title={
-                                        isHorizontal ? "Paire horizontale (→ scaleX)" : "Paire verticale (→ scaleY)"
-                                      }
-                                    />
-                                    <span className="font-medium text-xs whitespace-nowrap">
-                                      {p1?.label}↔{p2?.label}
-                                    </span>
-                                    <Input
-                                      type="text"
-                                      inputMode="decimal"
-                                      value={pair.distanceMm}
-                                      onChange={(e) => {
-                                        const val = e.target.value.replace(",", ".").replace(/[^0-9.]/g, "");
-                                        updatePairDistance(pair.id, parseFloat(val) || 0);
-                                      }}
-                                      onFocus={(e) => e.target.value === "0" && e.target.select()}
-                                      className="h-6 text-xs w-16 px-1.5"
-                                    />
-                                    <span className="text-xs text-muted-foreground">mm</span>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => deleteCalibrationPair(pair.id)}
-                                      className="h-5 w-5 p-0 ml-auto text-red-500 hover:text-red-700"
-                                    >
-                                      <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                  {/* Ligne 2: Stats compactes + Utiliser */}
-                                  <div className="flex items-center justify-between text-xs">
-                                    <div className="flex items-center gap-1 text-muted-foreground">
-                                      <span>{distPx.toFixed(0)}px</span>
-                                      <span>·</span>
-                                      <span>{pairScale.toFixed(4)}</span>
-                                      {imgCalib.scale && (
-                                        <>
-                                          <span>·</span>
-                                          <span
-                                            className={`font-medium ${Math.abs(errorMm) < 0.5 ? "text-green-600" : Math.abs(errorMm) < 2 ? "text-orange-500" : "text-red-500"}`}
-                                          >
-                                            Δ{errorMm >= 0 ? "+" : ""}
-                                            {errorMm.toFixed(1)}
-                                          </span>
-                                          {Math.abs(errorMm) >= 0.1 && (
-                                            <button
-                                              className="text-green-600 hover:text-green-700"
-                                              onClick={() => {
-                                                updatePairDistance(pair.id, Math.round(measuredWithAvgScale * 10) / 10);
-                                              }}
-                                              title="Utiliser la valeur estimée"
-                                            >
-                                              ✓
-                                            </button>
-                                          )}
-                                        </>
+                              return Array.from(imgCalib.pairs.values()).map((pair) => {
+                                const p1 = imgCalib.points.get(pair.point1Id);
+                                const p2 = imgCalib.points.get(pair.point2Id);
+                                const distPx = p1 && p2 ? distance(p1, p2) : 0;
+                                const pairScale = distPx > 0 ? pair.distanceMm / distPx : 0;
+                                // MOD UX: Utiliser displayScale pour les estimations
+                                const measuredWithAvgScale = displayScale > 0 ? distPx * displayScale : 0;
+                                const errorMm = measuredWithAvgScale - pair.distanceMm;
+                                // Déterminer si paire horizontale ou verticale
+                                const dx = p1 && p2 ? Math.abs(p2.x - p1.x) : 0;
+                                const dy = p1 && p2 ? Math.abs(p2.y - p1.y) : 0;
+                                const isHorizontal = dx > dy;
+
+                                return (
+                                  <div key={pair.id} className="p-1.5 bg-gray-50 rounded space-y-1">
+                                    {/* Ligne 1: Couleur + Labels + Input + Estimation + Delete */}
+                                    <div className="flex items-center gap-1.5">
+                                      <div
+                                        className="w-3 h-3 rounded-full flex-shrink-0"
+                                        style={{ backgroundColor: pair.color }}
+                                        title={
+                                          isHorizontal ? "Paire horizontale (→ scaleX)" : "Paire verticale (→ scaleY)"
+                                        }
+                                      />
+                                      <span className="font-medium text-xs whitespace-nowrap">
+                                        {p1?.label}↔{p2?.label}
+                                      </span>
+                                      <Input
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={pair.distanceMm}
+                                        onChange={(e) => {
+                                          const val = e.target.value.replace(",", ".").replace(/[^0-9.]/g, "");
+                                          updatePairDistance(pair.id, parseFloat(val) || 0);
+                                        }}
+                                        onFocus={(e) => e.target.value === "0" && e.target.select()}
+                                        className="h-6 text-xs w-16 px-1.5"
+                                        placeholder={displayScale > 0 ? `~${(distPx * displayScale).toFixed(0)}` : "mm"}
+                                      />
+                                      <span className="text-xs text-muted-foreground">mm</span>
+                                      {/* MOD UX: Afficher suggestion si pas de valeur définie */}
+                                      {pair.distanceMm === 0 && displayScale > 0 && (
+                                        <button
+                                          className="text-xs text-blue-600 hover:text-blue-700"
+                                          onClick={() =>
+                                            updatePairDistance(pair.id, Math.round(distPx * displayScale * 10) / 10)
+                                          }
+                                          title="Appliquer l'estimation"
+                                        >
+                                          ≈{(distPx * displayScale).toFixed(0)}
+                                        </button>
                                       )}
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => deleteCalibrationPair(pair.id)}
+                                        className="h-5 w-5 p-0 ml-auto text-red-500 hover:text-red-700"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
                                     </div>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-5 text-xs px-1.5"
-                                      onClick={() => {
-                                        updateSelectedImageCalibration((prev) => ({
-                                          ...prev,
-                                          scale: pairScale,
-                                          error: 0,
-                                        }));
-                                        setCalibrationData((prev) => ({
-                                          ...prev,
-                                          scale: pairScale,
-                                        }));
-                                        toast.success(`Échelle: ${pairScale.toFixed(4)} mm/px`);
-                                      }}
-                                    >
-                                      Utiliser
-                                    </Button>
+                                    {/* Ligne 2: Stats compactes + Utiliser */}
+                                    <div className="flex items-center justify-between text-xs">
+                                      <div className="flex items-center gap-1 text-muted-foreground">
+                                        <span>{distPx.toFixed(0)}px</span>
+                                        {pair.distanceMm > 0 && (
+                                          <>
+                                            <span>·</span>
+                                            <span>{pairScale.toFixed(4)}</span>
+                                          </>
+                                        )}
+                                        {displayScale > 0 && pair.distanceMm > 0 && (
+                                          <>
+                                            <span>·</span>
+                                            <span
+                                              className={`font-medium ${Math.abs(errorMm) < 0.5 ? "text-green-600" : Math.abs(errorMm) < 2 ? "text-orange-500" : "text-red-500"}`}
+                                            >
+                                              Δ{errorMm >= 0 ? "+" : ""}
+                                              {errorMm.toFixed(1)}
+                                            </span>
+                                            {Math.abs(errorMm) >= 0.1 && (
+                                              <button
+                                                className="text-green-600 hover:text-green-700"
+                                                onClick={() => {
+                                                  updatePairDistance(
+                                                    pair.id,
+                                                    Math.round(measuredWithAvgScale * 10) / 10,
+                                                  );
+                                                }}
+                                                title="Utiliser la valeur estimée"
+                                              >
+                                                ✓
+                                              </button>
+                                            )}
+                                          </>
+                                        )}
+                                      </div>
+                                      {/* MOD UX: Bouton Utiliser - définit cette paire comme référence */}
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-5 text-xs px-1.5"
+                                        onClick={() => {
+                                          // Déterminer si paire horizontale ou verticale
+                                          const dx = p1 && p2 ? Math.abs(p2.x - p1.x) : 0;
+                                          const dy = p1 && p2 ? Math.abs(p2.y - p1.y) : 0;
+                                          const isHoriz = dx > dy;
+
+                                          // En mode anisotrope, définir scaleX ou scaleY selon l'orientation
+                                          if (calibrationData.mode === "anisotrope") {
+                                            if (isHoriz) {
+                                              updateSelectedImageCalibration((prev) => ({
+                                                ...prev,
+                                                scaleX: pairScale,
+                                              }));
+                                              setCalibrationData((prev) => ({
+                                                ...prev,
+                                                scaleX: pairScale,
+                                                scale: prev.scaleY ? (pairScale + prev.scaleY) / 2 : pairScale,
+                                              }));
+                                              toast.success(`Échelle X: ${pairScale.toFixed(4)} mm/px`);
+                                            } else {
+                                              updateSelectedImageCalibration((prev) => ({
+                                                ...prev,
+                                                scaleY: pairScale,
+                                              }));
+                                              setCalibrationData((prev) => ({
+                                                ...prev,
+                                                scaleY: pairScale,
+                                                scale: prev.scaleX ? (prev.scaleX + pairScale) / 2 : pairScale,
+                                              }));
+                                              toast.success(`Échelle Y: ${pairScale.toFixed(4)} mm/px`);
+                                            }
+                                          } else {
+                                            // Mode simple : définir l'échelle globale
+                                            updateSelectedImageCalibration((prev) => ({
+                                              ...prev,
+                                              scale: pairScale,
+                                              error: 0,
+                                            }));
+                                            setCalibrationData((prev) => ({
+                                              ...prev,
+                                              scale: pairScale,
+                                            }));
+                                            toast.success(`Échelle: ${pairScale.toFixed(4)} mm/px`);
+                                          }
+                                        }}
+                                        title={isHorizontal ? "Définir comme échelle X" : "Définir comme échelle Y"}
+                                      >
+                                        {calibrationData.mode === "anisotrope"
+                                          ? isHorizontal
+                                            ? "→ X"
+                                            : "→ Y"
+                                          : "Utiliser"}
+                                      </Button>
+                                    </div>
                                   </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              });
+                            })()}
                           </div>
                         )}
                       </CollapsibleContent>
