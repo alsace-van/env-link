@@ -1,8 +1,14 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.16 - Historique des mesures complet
+// VERSION: 7.17 - Drag & drop d'images sur le canvas
 // ============================================
+//
+// CHANGELOG v7.17 (17/01/2026):
+// - Drag & drop d'images directement sur le canvas (useImageDragDrop.ts)
+// - Overlay visuel lors du survol avec des fichiers
+// - Support multi-images en une seule action
+// - Position de drop utilisée pour placer la première image
 //
 // CHANGELOG v7.16 (17/01/2026):
 // - Ajout du panneau d'historique des mesures (MeasurePanel.tsx)
@@ -222,6 +228,9 @@ import { MeasurePanel, type Measurement } from "./MeasurePanel";
 
 // MOD v7.15: Contrôles d'étirement manuel
 import { ManualStretchControls } from "./ManualStretchControls";
+
+// MOD v7.17: Drag & drop d'images directement sur le canvas
+import { useImageDragDrop } from "./useImageDragDrop";
 
 interface CADGabaritCanvasProps {
   imageUrl?: string;
@@ -3833,6 +3842,18 @@ export function CADGabaritCanvas({
     intervalMs: 30000, // Sauvegarde toutes les 30 secondes
     minGeometryCount: 1, // Sauvegarder dès qu'il y a au moins 1 géométrie
     templateId,
+  });
+
+  // MOD v7.17: Drag & drop d'images directement sur le canvas
+  useImageDragDrop({
+    containerRef,
+    viewport,
+    imageOpacity,
+    activeLayerId: sketch.activeLayerId,
+    onImagesAdded: (newImages) => {
+      setBackgroundImages((prev) => [...prev, ...newImages]);
+    },
+    setShowBackgroundImage,
   });
 
   // Résoudre le sketch
