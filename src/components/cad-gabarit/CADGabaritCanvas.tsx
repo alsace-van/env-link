@@ -17210,7 +17210,7 @@ export function CADGabaritCanvas({
       {/* Zone principale avec Canvas + Panneau latéral */}
       <div className="flex-1 flex overflow-hidden">
         {/* Canvas + Onglets calques */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           {/* Barre d'onglets des calques EN HAUT (style Excel) */}
           <div className="h-8 border-b bg-gray-100 flex items-end px-1 gap-0.5 overflow-x-auto">
             {Array.from(sketch.layers.values())
@@ -17760,19 +17760,20 @@ export function CADGabaritCanvas({
           </div>
         </div>
 
-        {/* Panneau de calibration */}
+        {/* Panneau de calibration - Sidebar fixe à droite */}
         {showCalibrationPanel && (
-          <div className="w-80 min-w-[320px] border-l bg-white flex flex-col overflow-hidden">
+          <div className="w-72 min-w-[288px] border-l bg-white flex flex-col overflow-hidden flex-shrink-0">
             {/* En-tête */}
-            <div className="p-3 border-b flex flex-col gap-1 bg-gray-50">
+            <div className="p-2 border-b flex flex-col gap-1 bg-gray-50">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Target className="h-5 w-5 text-red-500" />
-                  <span className="font-semibold">Calibration</span>
+                  <Target className="h-4 w-4 text-red-500" />
+                  <span className="font-semibold text-sm">Calibration</span>
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
+                  className="h-6 w-6 p-0"
                   onClick={() => {
                     setShowCalibrationPanel(false);
                     setCalibrationMode("idle");
