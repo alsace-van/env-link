@@ -1,7 +1,18 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.14 - Auto-backup Supabase pour protection contre les pertes de données
+// VERSION: 7.15 - Extraction CalibrationPanel + UX calibration
+// ============================================
+//
+// CHANGELOG v7.15 (17/01/2026):
+// - Extraction du panneau de calibration dans CalibrationPanel.tsx (~1000 lignes)
+// - Panneau de calibration flottant et draggable (position: fixed)
+// - Réduction du fichier de 23186 à 22257 lignes (-929 lignes)
+// - Import du nouveau composant CalibrationPanel
+// - Suppression des états isDraggingCalibPanel et calibPanelDragStart (gérés dans CalibrationPanel)
+//
+// CHANGELOG v7.14:
+// - Auto-backup Supabase pour protection contre les pertes de données
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";

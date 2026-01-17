@@ -1,7 +1,18 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.69 - Fix sens arc indicateur d'angle
+// VERSION: 3.70 - Amélioration outil mesure UX
+// ============================================
+//
+// CHANGELOG v3.70 (17/01/2026):
+// - Outil mesure: suppression affichage pixels (uniquement mm)
+// - Outil mesure: trait plus fin (lineWidth 1 au lieu de 1.5)
+// - Outil mesure: fond semi-transparent (60% au lieu de 95%)
+// - Outil mesure: texte plus compact (fontSize 12 au lieu de 14)
+// - Outil mesure: croix de visée plus petites (6px au lieu de 8px)
+//
+// CHANGELOG v3.69:
+// - Fix sens arc indicateur d'angle
 // ============================================
 
 import {

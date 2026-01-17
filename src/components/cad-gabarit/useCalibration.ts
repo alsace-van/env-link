@@ -1,7 +1,18 @@
 // ============================================
 // HOOK: useCalibration
 // Gestion de la calibration des images CAD
-// VERSION: 1.0 - Extraction depuis CADGabaritCanvas
+// VERSION: 1.1 - Correction mode anisotrope + logs debug
+// ============================================
+//
+// CHANGELOG v1.1 (17/01/2026):
+// - Correction du bug mode anisotrope (condition mode === "anisotrope" manquante)
+// - Correction formule stretchX/stretchY (referenceScale = 1 mm/px)
+// - Ajout de 21 console.log pour debug détaillé
+// - Message toast amélioré avec scaleX/scaleY séparés
+// - Classification des paires par orientation (dx > dy = X)
+//
+// CHANGELOG v1.0:
+// - Extraction depuis CADGabaritCanvas.tsx (~850 lignes)
 // ============================================
 
 import { useCallback } from "react";

@@ -1,5 +1,24 @@
+// ============================================
+// COMPOSANT: CalibrationPanel
+// Panneau de calibration flottant et draggable pour CAD Gabarit
+// VERSION: 1.0 - Extraction initiale depuis CADGabaritCanvas.tsx
+// ============================================
+//
+// CHANGELOG v1.0 (17/01/2026):
+// - Extraction depuis CADGabaritCanvas.tsx (~1000 lignes)
+// - Panneau flottant avec position: fixed
+// - Draggable via l'en-tête (onMouseDown)
+// - Gestion complète des points et paires de calibration
+// - Support des modes: Simple, Aniso, Affine, Perspective
+// - Suggestions de distance en temps réel
+// - Bouton "Utiliser" intelligent (→ X ou → Y en mode Aniso)
+// - Mode création de paires persistant (reste actif après création)
+// - Étirement manuel pour mode anisotrope
+// - Configuration perspective (4 points ou damier)
+// ============================================
+//
 // CalibrationPanel.tsx
-// MOD: Composant extrait de CADGabaritCanvas.tsx (~1000 lignes) pour alléger le fichier principal
+// MOD v1.0: Composant extrait de CADGabaritCanvas.tsx pour alléger le fichier principal
 // Panneau de calibration flottant et draggable
 
 import React, { useRef, useState } from "react";
@@ -65,10 +84,7 @@ export interface BackgroundImage {
 }
 
 // Couleurs pour les paires de calibration
-const CALIBRATION_COLORS = [
-  "#EF4444", "#22C55E", "#3B82F6", "#F59E0B",
-  "#8B5CF6", "#EC4899", "#06B6D4", "#F97316",
-];
+const CALIBRATION_COLORS = ["#EF4444", "#22C55E", "#3B82F6", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4", "#F97316"];
 
 // Fonction distance
 const distance = (p1: { x: number; y: number }, p2: { x: number; y: number }): number => {
@@ -79,44 +95,46 @@ interface CalibrationPanelProps {
   // Position et drag
   position: { x: number; y: number };
   setPosition: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>;
-  
+
   // Fermeture
   onClose: () => void;
-  
+
   // Image sélectionnée
   selectedImageId: string | null;
   backgroundImages: BackgroundImage[];
   getSelectedImage: () => BackgroundImage | null;
   setBackgroundImages: React.Dispatch<React.SetStateAction<BackgroundImage[]>>;
-  
+
   // Données de calibration
   calibrationData: CalibrationData;
   setCalibrationData: React.Dispatch<React.SetStateAction<CalibrationData>>;
   getSelectedImageCalibration: () => CalibrationData;
   updateSelectedImageCalibration: (updater: (prev: CalibrationData) => CalibrationData) => void;
-  
+
   // Mode de calibration
   calibrationMode: "idle" | "addPoint" | "selectPair1" | "selectPair2" | "selectRect";
-  setCalibrationMode: React.Dispatch<React.SetStateAction<"idle" | "addPoint" | "selectPair1" | "selectPair2" | "selectRect">>;
+  setCalibrationMode: React.Dispatch<
+    React.SetStateAction<"idle" | "addPoint" | "selectPair1" | "selectPair2" | "selectRect">
+  >;
   selectedCalibrationPoint: string | null;
   setSelectedCalibrationPoint: React.Dispatch<React.SetStateAction<string | null>>;
-  
+
   // Création de paires
   newPairDistance: string;
   setNewPairDistance: React.Dispatch<React.SetStateAction<string>>;
   newPairColor: string;
   setNewPairColor: React.Dispatch<React.SetStateAction<string>>;
-  
+
   // Fonctions de calibration (du hook useCalibration)
   calculateCalibration: () => void;
   applyCalibration: () => void;
   resetCalibration: () => void;
   updatePairDistance: (pairId: string, distanceMm: number) => void;
-  
+
   // Fonctions locales
   deleteCalibrationPair: (pairId: string) => void;
   deleteCalibrationPoint: (pointId: string) => void;
-  
+
   // Perspective
   perspectiveMethod: "4points" | "checker";
   setPerspectiveMethod: React.Dispatch<React.SetStateAction<"4points" | "checker">>;
@@ -132,7 +150,7 @@ interface CalibrationPanelProps {
   setCheckerCornersY: React.Dispatch<React.SetStateAction<string>>;
   checkerSquareSize: string;
   setCheckerSquareSize: React.Dispatch<React.SetStateAction<string>>;
-  
+
   // Sketch
   sketch: { scaleFactor: number };
 }
@@ -181,7 +199,7 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
 }) => {
   const dragStartRef = useRef({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  
+
   const imgCalib = getSelectedImageCalibration();
   const selectedImage = getSelectedImage();
   const hasPairs = imgCalib.pairs.size > 0;
@@ -207,40 +225,40 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
 
   // Handler pour le drag de la fenêtre
   const handleDragStart = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return;
+    if ((e.target as HTMLElement).closest("button")) return;
     setIsDragging(true);
     dragStartRef.current = {
       x: e.clientX - position.x,
       y: e.clientY - position.y,
     };
-    
+
     const handleMouseMove = (ev: MouseEvent) => {
       const newX = Math.max(0, Math.min(window.innerWidth - 288, ev.clientX - dragStartRef.current.x));
       const newY = Math.max(0, Math.min(window.innerHeight - 100, ev.clientY - dragStartRef.current.y));
       setPosition({ x: newX, y: newY });
     };
-    
+
     const handleMouseUp = () => {
       setIsDragging(false);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
     };
-    
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
   };
 
   return (
-    <div 
+    <div
       className="fixed z-50 w-72 bg-white rounded-lg shadow-xl border flex flex-col overflow-hidden"
       style={{
         left: position.x,
         top: position.y,
-        maxHeight: 'calc(100vh - 120px)',
+        maxHeight: "calc(100vh - 120px)",
       }}
     >
       {/* En-tête draggable */}
-      <div 
+      <div
         className="p-2 border-b flex flex-col gap-1 bg-gray-50 cursor-move select-none rounded-t-lg"
         onMouseDown={handleDragStart}
       >
@@ -256,9 +274,7 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
         </div>
         {/* Photo sélectionnée */}
         {selectedImageId && selectedImage ? (
-          <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded truncate">
-            📷 {selectedImage.name}
-          </div>
+          <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded truncate">📷 {selectedImage.name}</div>
         ) : backgroundImages.length > 0 ? (
           <div className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">⚠️ Sélectionnez une photo</div>
         ) : null}
@@ -267,7 +283,6 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
       {/* Contenu scrollable */}
       <ScrollArea className="flex-1">
         <div className="p-3 space-y-3">
-          
           {/* === SECTION POINTS === */}
           <Collapsible defaultOpen={imgCalib.points.size > 0 && imgCalib.points.size <= 6}>
             <CollapsibleTrigger asChild>
@@ -284,7 +299,12 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
                   {Array.from(imgCalib.points.values()).map((point) => (
                     <div key={point.id} className="flex items-center gap-1 px-1.5 py-0.5 bg-gray-100 rounded text-xs">
                       <span className="font-medium">{point.label}</span>
-                      <button className="text-red-500 hover:text-red-700" onClick={() => deleteCalibrationPoint(point.id)}>×</button>
+                      <button
+                        className="text-red-500 hover:text-red-700"
+                        onClick={() => deleteCalibrationPoint(point.id)}
+                      >
+                        ×
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -301,7 +321,9 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
               {calibrationMode === "addPoint" && (
                 <p className="text-xs text-blue-600 mt-1 text-center">
                   Cliquez sur l'image pour ajouter un point
-                  <button className="ml-2 text-gray-500 hover:text-gray-700" onClick={() => setCalibrationMode("idle")}>(Annuler)</button>
+                  <button className="ml-2 text-gray-500 hover:text-gray-700" onClick={() => setCalibrationMode("idle")}>
+                    (Annuler)
+                  </button>
                 </p>
               )}
             </CollapsibleContent>
@@ -342,7 +364,9 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
                             style={{ backgroundColor: pair.color }}
                             title={isHorizontal ? "Horizontale (→ X)" : "Verticale (→ Y)"}
                           />
-                          <span className="font-medium text-xs whitespace-nowrap">{p1?.label}↔{p2?.label}</span>
+                          <span className="font-medium text-xs whitespace-nowrap">
+                            {p1?.label}↔{p2?.label}
+                          </span>
                           <Input
                             type="text"
                             inputMode="decimal"
@@ -387,15 +411,22 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
                             {displayScale > 0 && pair.distanceMm > 0 && (
                               <>
                                 <span>·</span>
-                                <span className={`font-medium ${Math.abs(errorMm) < 0.5 ? "text-green-600" : Math.abs(errorMm) < 2 ? "text-orange-500" : "text-red-500"}`}>
-                                  Δ{errorMm >= 0 ? "+" : ""}{errorMm.toFixed(1)}
+                                <span
+                                  className={`font-medium ${Math.abs(errorMm) < 0.5 ? "text-green-600" : Math.abs(errorMm) < 2 ? "text-orange-500" : "text-red-500"}`}
+                                >
+                                  Δ{errorMm >= 0 ? "+" : ""}
+                                  {errorMm.toFixed(1)}
                                 </span>
                                 {Math.abs(errorMm) >= 0.1 && (
                                   <button
                                     className="text-green-600 hover:text-green-700"
-                                    onClick={() => updatePairDistance(pair.id, Math.round(measuredWithAvgScale * 10) / 10)}
+                                    onClick={() =>
+                                      updatePairDistance(pair.id, Math.round(measuredWithAvgScale * 10) / 10)
+                                    }
                                     title="Utiliser l'estimation"
-                                  >✓</button>
+                                  >
+                                    ✓
+                                  </button>
                                 )}
                               </>
                             )}
@@ -409,14 +440,16 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
                                 if (isHorizontal) {
                                   updateSelectedImageCalibration((prev) => ({ ...prev, scaleX: pairScale }));
                                   setCalibrationData((prev) => ({
-                                    ...prev, scaleX: pairScale,
+                                    ...prev,
+                                    scaleX: pairScale,
                                     scale: prev.scaleY ? (pairScale + prev.scaleY) / 2 : pairScale,
                                   }));
                                   toast.success(`Échelle X: ${pairScale.toFixed(4)} mm/px`);
                                 } else {
                                   updateSelectedImageCalibration((prev) => ({ ...prev, scaleY: pairScale }));
                                   setCalibrationData((prev) => ({
-                                    ...prev, scaleY: pairScale,
+                                    ...prev,
+                                    scaleY: pairScale,
                                     scale: prev.scaleX ? (prev.scaleX + pairScale) / 2 : pairScale,
                                   }));
                                   toast.success(`Échelle Y: ${pairScale.toFixed(4)} mm/px`);
@@ -479,7 +512,13 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
                   className="flex-1 h-7 text-xs"
                   onClick={() => setCalibrationData((prev) => ({ ...prev, mode }))}
                 >
-                  {mode === "simple" ? "Simple" : mode === "anisotrope" ? "Aniso" : mode === "affine" ? "Affine" : "Persp."}
+                  {mode === "simple"
+                    ? "Simple"
+                    : mode === "anisotrope"
+                      ? "Aniso"
+                      : mode === "affine"
+                        ? "Affine"
+                        : "Persp."}
                 </Button>
               ))}
             </div>
@@ -547,7 +586,10 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
                 </Button>
               </CollapsibleTrigger>
               <CollapsibleContent className="space-y-2 pt-2">
-                <Select value={perspectiveMethod} onValueChange={(v) => setPerspectiveMethod(v as "4points" | "checker")}>
+                <Select
+                  value={perspectiveMethod}
+                  onValueChange={(v) => setPerspectiveMethod(v as "4points" | "checker")}
+                >
                   <SelectTrigger className="h-7 text-xs">
                     <SelectValue />
                   </SelectTrigger>
@@ -667,9 +709,7 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
             {/* Échelle calculée */}
             {calibrationData.scale && (
               <div className="p-2 bg-green-50 rounded space-y-1">
-                <p className="text-sm font-medium text-green-700">
-                  Échelle: {calibrationData.scale.toFixed(4)} mm/px
-                </p>
+                <p className="text-sm font-medium text-green-700">Échelle: {calibrationData.scale.toFixed(4)} mm/px</p>
                 {calibrationData.error !== undefined && (
                   <p className="text-xs text-green-600">Erreur moyenne: {calibrationData.error.toFixed(1)}%</p>
                 )}
@@ -707,17 +747,21 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
               const scaleY = calibrationData.scaleY ?? imgCalib.scaleY;
               const errorX = calibrationData.errorX ?? imgCalib.errorX;
               const errorY = calibrationData.errorY ?? imgCalib.errorY;
-              
+
               if (!scaleX || !scaleY) return null;
-              
+
               const avgScale = (scaleX + scaleY) / 2;
-              const diffPercent = Math.abs(scaleX - scaleY) / avgScale * 100;
-              
+              const diffPercent = (Math.abs(scaleX - scaleY) / avgScale) * 100;
+
               return (
                 <div className="p-2 bg-blue-50 rounded text-xs space-y-1">
                   <p className="font-medium text-blue-700">Échelles X/Y (diff: {diffPercent.toFixed(1)}%)</p>
-                  <p className="text-blue-600">X: {scaleX.toFixed(4)} mm/px {errorX !== undefined && `(±${errorX.toFixed(1)}%)`}</p>
-                  <p className="text-blue-600">Y: {scaleY.toFixed(4)} mm/px {errorY !== undefined && `(±${errorY.toFixed(1)}%)`}</p>
+                  <p className="text-blue-600">
+                    X: {scaleX.toFixed(4)} mm/px {errorX !== undefined && `(±${errorX.toFixed(1)}%)`}
+                  </p>
+                  <p className="text-blue-600">
+                    Y: {scaleY.toFixed(4)} mm/px {errorY !== undefined && `(±${errorY.toFixed(1)}%)`}
+                  </p>
                   <p className="text-blue-500 text-[10px]">Ratio X/Y: {(scaleX / scaleY).toFixed(3)}</p>
                 </div>
               );
