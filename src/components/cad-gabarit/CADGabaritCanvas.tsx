@@ -853,7 +853,6 @@ export function CADGabaritCanvas({
     setTransformedImage,
   });
 
-
   // Mesure - utiliser un seul état pour éviter les problèmes de synchronisation
   const [measureState, setMeasureState] = useState<{
     phase: "idle" | "waitingSecond" | "complete";
@@ -7988,7 +7987,6 @@ export function CADGabaritCanvas({
     return points;
   }, [backgroundImages]);
 
-
   // Appliquer les ajustements d'image (contraste, luminosité, etc.) via manipulation de pixels
   const applyImageAdjustments = useCallback(
     (sourceImage: HTMLImageElement | HTMLCanvasElement, adjustments: ImageAdjustments): HTMLCanvasElement => {
@@ -9861,11 +9859,11 @@ export function CADGabaritCanvas({
           const snapTolerance = 25 / viewport.scale; // Augmenté pour meilleur snap
 
           // MOD UX: Snap sur les points de calibration de l'image sélectionnée
-          const imageCalibPoints = selectedImageId 
-            ? backgroundImages.find(img => img.id === selectedImageId)?.calibrationData?.points 
+          const imageCalibPoints = selectedImageId
+            ? backgroundImages.find((img) => img.id === selectedImageId)?.calibrationData?.points
             : null;
           const calibPoints = imageCalibPoints || calibrationData.points;
-          
+
           if (showCalibrationPanel || calibPoints.size > 0) {
             let closestCalibPoint: CalibrationPoint | null = null;
             let closestDist = Infinity;
@@ -13278,8 +13276,6 @@ export function CADGabaritCanvas({
     },
     [updateSelectedImageCalibration],
   );
-
-
 
   // Réinitialiser la calibration
   // MOD #85: Restaure les points originaux et l'échelle de l'image
@@ -17766,7 +17762,6 @@ export function CADGabaritCanvas({
               })()}
           </div>
         </div>
-
 
         {/* Panneau de calibration - Composant externe */}
         {showCalibrationPanel && (
