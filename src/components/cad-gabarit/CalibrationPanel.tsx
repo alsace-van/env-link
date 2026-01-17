@@ -1,8 +1,14 @@
 // ============================================
 // COMPOSANT: CalibrationPanel
 // Panneau de calibration flottant et draggable pour CAD Gabarit
-// VERSION: 1.0 - Extraction initiale depuis CADGabaritCanvas.tsx
+// VERSION: 1.1 - Correction types TypeScript
 // ============================================
+//
+// CHANGELOG v1.1 (17/01/2026):
+// - Import des types depuis types.ts au lieu de définitions locales
+// - Correction perspectiveMethod: "rectangle" | "checkerboard" (au lieu de "4points" | "checker")
+// - Correction rectPoints: string[] (IDs des points, pas coordonnées)
+// - Suppression des définitions de types dupliquées
 //
 // CHANGELOG v1.0 (17/01/2026):
 // - Extraction depuis CADGabaritCanvas.tsx (~1000 lignes)
@@ -16,9 +22,8 @@
 // - Étirement manuel pour mode anisotrope
 // - Configuration perspective (4 points ou damier)
 // ============================================
-//
 // CalibrationPanel.tsx
-// MOD v1.0: Composant extrait de CADGabaritCanvas.tsx pour alléger le fichier principal
+// MOD v1.1: Composant extrait de CADGabaritCanvas.tsx - types corrigés pour cohérence avec types.ts
 // Panneau de calibration flottant et draggable
 
 import React, { useRef, useState } from "react";
@@ -44,52 +49,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-// Types
-export interface CalibrationPoint {
-  id: string;
-  x: number;
-  y: number;
-  label: string;
-}
-
-export interface CalibrationPair {
-  id: string;
-  point1Id: string;
-  point2Id: string;
-  distanceMm: number;
-  distancePx?: number;
-  color: string;
-}
-
-export interface CalibrationData {
-  points: Map<string, CalibrationPoint>;
-  pairs: Map<string, CalibrationPair>;
-  scale?: number;
-  scaleX?: number;
-  scaleY?: number;
-  error?: number;
-  errorX?: number;
-  errorY?: number;
-  mode?: "simple" | "anisotrope" | "affine" | "perspective";
-  applied?: boolean;
-  transformMatrix?: number[];
-}
-
-export interface BackgroundImage {
-  id: string;
-  name: string;
-  image: HTMLImageElement;
-  calibrationData?: CalibrationData;
-  [key: string]: unknown;
-}
-
-// Couleurs pour les paires de calibration
-const CALIBRATION_COLORS = ["#EF4444", "#22C55E", "#3B82F6", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4", "#F97316"];
-
-// Fonction distance
-const distance = (p1: { x: number; y: number }, p2: { x: number; y: number }): number => {
-  return Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-};
+// Importer les types depuis types.ts pour cohérence
+import { CalibrationData, CalibrationPoint, CalibrationPair, BackgroundImage, distance } from "./types";
 
 interface CalibrationPanelProps {
   // Position et drag
@@ -136,10 +97,10 @@ interface CalibrationPanelProps {
   deleteCalibrationPoint: (pointId: string) => void;
 
   // Perspective
-  perspectiveMethod: "4points" | "checker";
-  setPerspectiveMethod: React.Dispatch<React.SetStateAction<"4points" | "checker">>;
-  rectPoints: { x: number; y: number }[];
-  setRectPoints: React.Dispatch<React.SetStateAction<{ x: number; y: number }[]>>;
+  perspectiveMethod: "rectangle" | "checkerboard";
+  setPerspectiveMethod: React.Dispatch<React.SetStateAction<"rectangle" | "checkerboard">>;
+  rectPoints: string[]; // IDs des 4 points du rectangle
+  setRectPoints: React.Dispatch<React.SetStateAction<string[]>>;
   rectWidth: string;
   setRectWidth: React.Dispatch<React.SetStateAction<string>>;
   rectHeight: string;
@@ -588,18 +549,18 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
               <CollapsibleContent className="space-y-2 pt-2">
                 <Select
                   value={perspectiveMethod}
-                  onValueChange={(v) => setPerspectiveMethod(v as "4points" | "checker")}
+                  onValueChange={(v) => setPerspectiveMethod(v as "rectangle" | "checkerboard")}
                 >
                   <SelectTrigger className="h-7 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="4points">4 points (rectangle)</SelectItem>
-                    <SelectItem value="checker">Damier (automatique)</SelectItem>
+                    <SelectItem value="rectangle">4 points (rectangle)</SelectItem>
+                    <SelectItem value="checkerboard">Damier (automatique)</SelectItem>
                   </SelectContent>
                 </Select>
 
-                {perspectiveMethod === "4points" && (
+                {perspectiveMethod === "rectangle" && (
                   <div className="space-y-2">
                     <div className="flex gap-2">
                       <div className="flex-1">
@@ -649,7 +610,7 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
                   </div>
                 )}
 
-                {perspectiveMethod === "checker" && (
+                {perspectiveMethod === "checkerboard" && (
                   <div className="space-y-2">
                     <div className="flex gap-2">
                       <div className="flex-1">
