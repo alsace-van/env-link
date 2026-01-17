@@ -1,8 +1,13 @@
 // ============================================
 // COMPOSANT: CalibrationPanel
 // Panneau de calibration flottant et draggable pour CAD Gabarit
-// VERSION: 1.1 - Correction types TypeScript
+// VERSION: 1.2 - Affichage estimation mm + correction scroll
 // ============================================
+//
+// CHANGELOG v1.2 (17/01/2026):
+// - Affichage de l'estimation en mm à côté des px (ex: "682px ≈273mm")
+// - Correction du scroll dans la modale (remplacement ScrollArea par div overflow-y-auto)
+// - Suppression de l'import ScrollArea inutilisé
 //
 // CHANGELOG v1.1 (17/01/2026):
 // - Import des types depuis types.ts au lieu de définitions locales
@@ -23,14 +28,13 @@
 // - Configuration perspective (4 points ou damier)
 // ============================================
 // CalibrationPanel.tsx
-// MOD v1.1: Composant extrait de CADGabaritCanvas.tsx - types corrigés pour cohérence avec types.ts
+// MOD v1.2: Affichage estimation mm + correction scroll modale
 // Panneau de calibration flottant et draggable
 
 import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -241,8 +245,8 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
         ) : null}
       </div>
 
-      {/* Contenu scrollable */}
-      <ScrollArea className="flex-1">
+      {/* Contenu scrollable - MOD v1.2: Correction scroll */}
+      <div className="flex-1 overflow-y-auto" style={{ maxHeight: "calc(100vh - 200px)" }}>
         <div className="p-3 space-y-3">
           {/* === SECTION POINTS === */}
           <Collapsible defaultOpen={imgCalib.points.size > 0 && imgCalib.points.size <= 6}>
@@ -363,6 +367,10 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
                         <div className="flex items-center justify-between text-xs">
                           <div className="flex items-center gap-1 text-muted-foreground">
                             <span>{distPx.toFixed(0)}px</span>
+                            {/* MOD v1.2: Afficher l'estimation en mm si on a une échelle */}
+                            {displayScale > 0 && (
+                              <span className="text-blue-600">≈{(distPx * displayScale).toFixed(0)}mm</span>
+                            )}
                             {pair.distanceMm > 0 && (
                               <>
                                 <span>·</span>
@@ -758,7 +766,7 @@ export const CalibrationPanel: React.FC<CalibrationPanelProps> = ({
             )}
           </div>
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 };
