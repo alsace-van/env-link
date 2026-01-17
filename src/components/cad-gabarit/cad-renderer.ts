@@ -1,8 +1,13 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.71 - Nom des mesures + visibilité
+// VERSION: 3.72 - Cotations fines avec fond transparent
 // ============================================
+//
+// CHANGELOG v3.72 (17/01/2026):
+// - Cotations: traits plus fins (0.5 au lieu de 1)
+// - Cotations: fond semi-transparent pour le texte (rgba)
+// - Cotations: petite boîte de texte qui ne cache pas le dessin
 //
 // CHANGELOG v3.71 (17/01/2026):
 // - Ajout du champ name aux mesures
@@ -3146,11 +3151,13 @@ export class CADRenderer {
 
   /**
    * Dessine une cotation
+   * v3.72: Traits fins + fond semi-transparent
    */
   private drawDimension(dimension: Dimension, sketch: Sketch): void {
     this.ctx.strokeStyle = this.styles.dimensionColor;
     this.ctx.fillStyle = this.styles.dimensionColor;
-    this.ctx.lineWidth = 1 / this.viewport.scale;
+    // v3.72: Trait plus fin pour les cotations
+    this.ctx.lineWidth = 0.5 / this.viewport.scale;
     this.ctx.font = `${this.styles.dimensionFont.replace(/\d+/, (m) => String(parseInt(m) / this.viewport.scale))}`;
 
     switch (dimension.type) {
@@ -3214,7 +3221,7 @@ export class CADRenderer {
     this.drawArrow(dimLine1, dimLine2, arrowSize);
     this.drawArrow(dimLine2, dimLine1, arrowSize);
 
-    // Texte
+    // Texte avec fond semi-transparent (v3.72)
     const textPos = midpoint(dimLine1, dimLine2);
     const text = `${dimension.value.toFixed(2)}`;
 
@@ -3228,8 +3235,21 @@ export class CADRenderer {
 
     this.ctx.rotate(textAngle);
     this.ctx.textAlign = "center";
-    this.ctx.textBaseline = "bottom";
-    this.ctx.fillText(text, 0, -3 / this.viewport.scale);
+    this.ctx.textBaseline = "middle";
+
+    // v3.72: Mesurer le texte et dessiner un fond semi-transparent
+    const textMetrics = this.ctx.measureText(text);
+    const padding = 2 / this.viewport.scale;
+    const boxWidth = textMetrics.width + padding * 2;
+    const boxHeight = 10 / this.viewport.scale;
+
+    // Fond semi-transparent (blanc à 50%)
+    this.ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+    this.ctx.fillRect(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight);
+
+    // Texte
+    this.ctx.fillStyle = this.styles.dimensionColor;
+    this.ctx.fillText(text, 0, 0);
     this.ctx.restore();
   }
 
@@ -3263,13 +3283,28 @@ export class CADRenderer {
     }
     this.ctx.stroke();
 
-    // Texte
+    // Texte avec fond semi-transparent (v3.72)
     const prefix = dimension.type === "diameter" ? "Ø" : "R";
     const text = `${prefix}${dimension.value.toFixed(2)}`;
 
+    const textX = endPoint.x + 5 / this.viewport.scale;
+    const textY = endPoint.y;
+
+    // Mesurer le texte et dessiner un fond semi-transparent
+    const textMetrics = this.ctx.measureText(text);
+    const padding = 2 / this.viewport.scale;
+    const boxWidth = textMetrics.width + padding * 2;
+    const boxHeight = 10 / this.viewport.scale;
+
+    // Fond semi-transparent (blanc à 50%)
+    this.ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+    this.ctx.fillRect(textX - padding, textY - boxHeight, boxWidth, boxHeight);
+
+    // Texte
+    this.ctx.fillStyle = this.styles.dimensionColor;
     this.ctx.textAlign = "left";
     this.ctx.textBaseline = "bottom";
-    this.ctx.fillText(text, endPoint.x + 5 / this.viewport.scale, endPoint.y);
+    this.ctx.fillText(text, textX, textY);
   }
 
   private drawAngularDimension(dimension: Dimension, sketch: Sketch): void {
