@@ -1,3 +1,25 @@
+/**
+ * ExpenseTableForm.tsx
+ *
+ * VERSION: 1.1.0
+ * DATE: 2026-01-17
+ *
+ * CHANGELOG:
+ * -----------
+ * v1.1.0 (2026-01-17):
+ *   - FIX: Correction du format de date pour l'import des relevés bancaires
+ *   - PROBLÈME: Les dates importées depuis Gemini (format "YYYY-MM-DD") n'étaient pas
+ *     compatibles avec l'input datetime-local (qui attend "YYYY-MM-DDTHH:MM")
+ *   - SOLUTION: Ajout de "T12:00" aux dates importées dans handleBankLinesImported()
+ *   - LIGNES MODIFIÉES: 489-490
+ *
+ * v1.0.0 (version initiale):
+ *   - Formulaire d'ajout de lignes bancaires (entrées/sorties)
+ *   - Import de relevé bancaire PDF via OCR Gemini
+ *   - Scanner de factures fournisseurs
+ *   - Gestion des factures reçues
+ */
+
 import { useState, useEffect, useRef, Component, ErrorInfo, ReactNode, lazy, Suspense } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -470,7 +492,11 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     toast.success("Facture ajoutée à la liste");
   };
 
-  // Callback quand des lignes sont importées depuis un relevé bancaire
+  // ============================================
+  // v1.1.0 FIX: Callback import relevé bancaire
+  // MODIFICATION: Ajout de "T12:00" aux dates pour
+  // compatibilité avec input datetime-local
+  // ============================================
   const handleBankLinesImported = (
     importedLines: Array<{
       id: string;
@@ -486,8 +512,9 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       type: line.type,
       nom_accessoire: line.label,
       fournisseur: line.type === "sortie" ? extractSupplierFromLabel(line.label) : "",
-      date_achat: line.date,
-      date_paiement: line.date,
+      // v1.1.0 FIX: Convertir "YYYY-MM-DD" en "YYYY-MM-DDTHH:MM" pour datetime-local
+      date_achat: line.date ? `${line.date}T12:00` : new Date().toISOString().slice(0, 16),
+      date_paiement: line.date || "",
       statut_paiement: "paye",
       delai_paiement: "immediat",
       prix_vente_ttc: line.amount.toFixed(2),
