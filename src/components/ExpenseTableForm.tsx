@@ -1,11 +1,16 @@
 /**
  * ExpenseTableForm.tsx
  *
- * VERSION: 1.1.0
+ * VERSION: 1.2.0
  * DATE: 2026-01-17
  *
  * CHANGELOG:
  * -----------
+ * v1.2.0 (2026-01-17):
+ *   - AMÉLIORATION: Projet optionnel pour les entrées d'argent
+ *   - AJOUT: Voyant orange si une entrée n'a pas de projet associé
+ *   - LIGNES MODIFIÉES: 283-286 (validation), 636-655 (indicateur visuel)
+ *
  * v1.1.0 (2026-01-17):
  *   - FIX: Correction du format de date pour l'import des relevés bancaires
  *   - PROBLÈME: Les dates importées depuis Gemini (format "YYYY-MM-DD") n'étaient pas
@@ -39,6 +44,7 @@ import {
   FileUp,
   Receipt,
   AlertTriangle,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SupplierInvoiceScannerDialog } from "@/components/evoliz/SupplierInvoiceScannerDialog";
@@ -302,14 +308,18 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
         toast.error("Le fournisseur est requis pour les sorties d'argent");
         return;
       }
-      if (row.type === "entree" && !row.project_id) {
-        toast.error("Le projet est requis pour les entrées d'argent");
-        return;
-      }
+      // v1.2.0: Projet optionnel pour les entrées - on ne bloque plus
+      // On affiche juste un warning visuel (voyant orange)
       if (!row.prix_vente_ttc || parseFloat(row.prix_vente_ttc) <= 0) {
         toast.error("Le montant est requis et doit être positif");
         return;
       }
+    }
+
+    // Compter les entrées sans projet pour afficher un warning
+    const entreesWithoutProject = rowsToSave.filter((row) => row.type === "entree" && !row.project_id);
+    if (entreesWithoutProject.length > 0) {
+      toast.warning(`${entreesWithoutProject.length} entrée(s) sans projet associé`);
     }
 
     const {
@@ -354,9 +364,10 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
     const entries = rowsWithUrls.filter((row) => row.type === "entree");
     const expenses = rowsWithUrls.filter((row) => row.type === "sortie");
 
-    // Insérer les entrées d'argent (paiements)
-    if (entries.length > 0) {
-      const paymentsToInsert = entries.map((row) => ({
+    // Insérer les entrées d'argent (paiements) - seulement celles avec un projet
+    const entriesWithProject = entries.filter((row) => row.project_id);
+    if (entriesWithProject.length > 0) {
+      const paymentsToInsert = entriesWithProject.map((row) => ({
         project_id: row.project_id!,
         user_id: user.id,
         montant: parseFloat(row.prix_vente_ttc),
@@ -372,6 +383,33 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
         toast.error("Erreur lors de l'enregistrement des entrées d'argent");
         console.error(paymentError);
         return;
+      }
+    }
+
+    // v1.2.0: Insérer les entrées SANS projet comme dépenses génériques (pour historique)
+    const entriesWithoutProject = entries.filter((row) => !row.project_id);
+    if (entriesWithoutProject.length > 0) {
+      const genericEntriesToInsert = entriesWithoutProject.map((row) => ({
+        project_id: null,
+        user_id: user.id,
+        nom_accessoire: row.nom_accessoire,
+        fournisseur: "Entrée bancaire",
+        date_achat: row.date_achat,
+        date_paiement: row.date_achat.split("T")[0],
+        statut_paiement: "paye",
+        delai_paiement: "immediat",
+        prix: -parseFloat(row.prix_vente_ttc), // Négatif pour une entrée
+        prix_vente_ttc: -parseFloat(row.prix_vente_ttc),
+        quantite: 1,
+        categorie: "Entrée bancaire",
+        statut_livraison: "livre",
+      }));
+
+      const { error: genericEntryError } = await supabase.from("project_expenses").insert(genericEntriesToInsert);
+
+      if (genericEntryError) {
+        console.error("Erreur entrées génériques:", genericEntryError);
+        // Ne pas bloquer, on continue
       }
     }
 
@@ -481,7 +519,9 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       type: "sortie",
       nom_accessoire: `Facture ${invoiceData.invoice_number || invoiceData.supplier_name}`,
       fournisseur: invoiceData.supplier_name,
-      date_achat: invoiceData.invoice_date || new Date().toISOString().split("T")[0],
+      date_achat: invoiceData.invoice_date
+        ? `${invoiceData.invoice_date}T12:00`
+        : new Date().toISOString().slice(0, 16),
       date_paiement: "",
       statut_paiement: "non_paye",
       delai_paiement: "immediat",
@@ -507,18 +547,25 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
       bankLineId: string;
     }>,
   ) => {
-    const newRows: BankLineRow[] = importedLines.map((line) => ({
-      id: line.id,
-      type: line.type,
-      nom_accessoire: line.label,
-      fournisseur: line.type === "sortie" ? extractSupplierFromLabel(line.label) : "",
+    console.log("[DEBUG] Lignes importées:", importedLines);
+
+    const newRows: BankLineRow[] = importedLines.map((line) => {
       // v1.1.0 FIX: Convertir "YYYY-MM-DD" en "YYYY-MM-DDTHH:MM" pour datetime-local
-      date_achat: line.date ? `${line.date}T12:00` : new Date().toISOString().slice(0, 16),
-      date_paiement: line.date || "",
-      statut_paiement: "paye",
-      delai_paiement: "immediat",
-      prix_vente_ttc: line.amount.toFixed(2),
-    }));
+      const formattedDate = line.date ? `${line.date}T12:00` : new Date().toISOString().slice(0, 16);
+      console.log("[DEBUG] Date formatée:", line.date, "→", formattedDate);
+
+      return {
+        id: line.id,
+        type: line.type,
+        nom_accessoire: line.label,
+        fournisseur: line.type === "sortie" ? extractSupplierFromLabel(line.label) : "",
+        date_achat: formattedDate,
+        date_paiement: line.date || "",
+        statut_paiement: "paye",
+        delai_paiement: "immediat",
+        prix_vente_ttc: line.amount.toFixed(2),
+      };
+    });
 
     setRows((prev) => [...prev, ...newRows]);
     setShowBankImportDialog(false);
@@ -540,7 +587,7 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
   };
 
   // DEBUG: Log au rendu
-  console.log("[DEBUG] 🔄 ExpenseTableForm rendu");
+  console.log("[DEBUG] 🔄 ExpenseTableForm rendu, rows:", rows.length);
 
   return (
     <Card>
@@ -661,21 +708,31 @@ const ExpenseTableForm = ({ projectId, onSuccess }: ExpenseTableFormProps) => {
                     </TableCell>
                     <TableCell className="border-r-2 border-gray-300">
                       {row.type === "entree" ? (
-                        <Select
-                          value={row.project_id || ""}
-                          onValueChange={(value) => updateRow(row.id, "project_id", value)}
-                        >
-                          <SelectTrigger className="h-9">
-                            <SelectValue placeholder="Sélectionner projet..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {projects.map((project) => (
-                              <SelectItem key={project.id} value={project.id}>
-                                {project.nom}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="flex items-center gap-2">
+                          {/* v1.2.0: Voyant orange si pas de projet associé */}
+                          {!row.project_id && (
+                            <span
+                              className="h-3 w-3 rounded-full bg-orange-400 flex-shrink-0"
+                              title="Projet non associé - optionnel"
+                            />
+                          )}
+                          <Select
+                            value={row.project_id || ""}
+                            onValueChange={(value) => updateRow(row.id, "project_id", value)}
+                          >
+                            <SelectTrigger className="h-9 flex-1">
+                              <SelectValue placeholder="Projet (optionnel)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="">Aucun projet</SelectItem>
+                              {projects.map((project) => (
+                                <SelectItem key={project.id} value={project.id}>
+                                  {project.nom}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       ) : (
                         <>
                           <Input
