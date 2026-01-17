@@ -16,15 +16,7 @@
 import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import {
-  Ruler,
-  X,
-  GripVertical,
-  Trash2,
-  Copy,
-  Download,
-  CornerDownRight,
-} from "lucide-react";
+import { Ruler, X, GripVertical, Trash2, Copy, Download, CornerDownRight } from "lucide-react";
 import { toast } from "sonner";
 
 // Type pour une mesure
@@ -43,17 +35,17 @@ interface MeasurePanelProps {
   // Position et drag
   position: { x: number; y: number };
   setPosition: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>;
-  
+
   // Fermeture
   onClose: () => void;
-  
+
   // Mesures
   measurements: Measurement[];
   setMeasurements: React.Dispatch<React.SetStateAction<Measurement[]>>;
-  
+
   // État de mesure actuel
   measurePhase: "idle" | "waitingSecond" | "complete";
-  
+
   // Calibration pour affichage
   hasCalibration: boolean;
 }
@@ -72,27 +64,27 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
 
   // Handler pour le drag de la fenêtre
   const handleDragStart = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return;
+    if ((e.target as HTMLElement).closest("button")) return;
     setIsDragging(true);
     dragStartRef.current = {
       x: e.clientX - position.x,
       y: e.clientY - position.y,
     };
-    
+
     const handleMouseMove = (ev: MouseEvent) => {
       const newX = Math.max(0, Math.min(window.innerWidth - 280, ev.clientX - dragStartRef.current.x));
       const newY = Math.max(0, Math.min(window.innerHeight - 100, ev.clientY - dragStartRef.current.y));
       setPosition({ x: newX, y: newY });
     };
-    
+
     const handleMouseUp = () => {
       setIsDragging(false);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
     };
-    
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
   };
 
   // Supprimer une mesure
@@ -148,16 +140,16 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
   const totalPx = measurements.reduce((acc, m) => acc + m.px, 0);
 
   return (
-    <div 
+    <div
       className="fixed z-50 w-72 bg-white rounded-lg shadow-xl border flex flex-col overflow-hidden"
       style={{
         left: position.x,
         top: position.y,
-        maxHeight: 'calc(100vh - 120px)',
+        maxHeight: "calc(100vh - 120px)",
       }}
     >
       {/* En-tête draggable */}
-      <div 
+      <div
         className="p-2 border-b flex flex-col gap-1 bg-gray-50 cursor-move select-none rounded-t-lg"
         onMouseDown={handleDragStart}
       >
@@ -172,13 +164,13 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
             <X className="h-4 w-4" />
           </Button>
         </div>
-        
+
         {/* État actuel */}
-        <div className={`text-xs px-2 py-1 rounded ${
-          measurePhase === "idle" 
-            ? "text-gray-600 bg-gray-100" 
-            : "text-blue-600 bg-blue-50"
-        }`}>
+        <div
+          className={`text-xs px-2 py-1 rounded ${
+            measurePhase === "idle" ? "text-gray-600 bg-gray-100" : "text-blue-600 bg-blue-50"
+          }`}
+        >
           {measurePhase === "idle" && "Cliquez pour mesurer"}
           {measurePhase === "waitingSecond" && "📍 Cliquez le 2ème point"}
           {measurePhase === "complete" && "✓ Mesure terminée"}
@@ -186,35 +178,33 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
       </div>
 
       {/* Contenu scrollable */}
-      <div className="flex-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+      <div className="flex-1 overflow-y-auto" style={{ maxHeight: "calc(100vh - 280px)" }}>
         <div className="p-2 space-y-1">
-          
           {measurements.length === 0 ? (
             <p className="text-xs text-muted-foreground italic text-center py-4">
-              Aucune mesure<br/>
+              Aucune mesure
+              <br />
               <span className="text-[10px]">Cliquez 2 points sur le canvas</span>
             </p>
           ) : (
             <>
               {/* Liste des mesures */}
               {measurements.map((m, index) => (
-                <div 
-                  key={m.id} 
+                <div
+                  key={m.id}
                   className="p-2 bg-gray-50 rounded text-xs space-y-1 hover:bg-gray-100 transition-colors"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <span className="font-medium text-gray-500">#{index + 1}</span>
-                      <span 
+                      <span
                         className="font-bold text-green-700 cursor-pointer hover:underline"
                         onClick={() => copyValue(m.mm.toFixed(2))}
                         title="Cliquer pour copier"
                       >
                         {m.mm.toFixed(2)} mm
                       </span>
-                      <span className="text-muted-foreground">
-                        ({m.px.toFixed(0)}px)
-                      </span>
+                      <span className="text-muted-foreground">({m.px.toFixed(0)}px)</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <Button
@@ -237,7 +227,7 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
                       </Button>
                     </div>
                   </div>
-                  
+
                   {/* Angle si disponible */}
                   {m.angle !== undefined && (
                     <div className="flex items-center gap-1 text-orange-600">
@@ -245,7 +235,7 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
                       <span>Angle: {m.angle.toFixed(1)}°</span>
                     </div>
                   )}
-                  
+
                   {/* Coordonnées (collapsées par défaut) */}
                   <div className="text-[10px] text-muted-foreground">
                     ({m.start.x.toFixed(0)}, {m.start.y.toFixed(0)}) → ({m.end.x.toFixed(0)}, {m.end.y.toFixed(0)})
@@ -265,23 +255,16 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
             <span className="font-medium">Total ({measurements.length}):</span>
             <span className="font-bold text-green-700">{totalMm.toFixed(2)} mm</span>
           </div>
-          
+
           {!hasCalibration && (
-            <p className="text-[10px] text-orange-600 text-center">
-              ⚠️ Sans calibration, les mm sont estimés
-            </p>
+            <p className="text-[10px] text-orange-600 text-center">⚠️ Sans calibration, les mm sont estimés</p>
           )}
-          
+
           <Separator />
-          
+
           {/* Actions */}
           <div className="flex gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1 h-7 text-xs"
-              onClick={exportCSV}
-            >
+            <Button variant="outline" size="sm" className="flex-1 h-7 text-xs" onClick={exportCSV}>
               <Download className="h-3 w-3 mr-1" />
               Export CSV
             </Button>
