@@ -6,11 +6,11 @@
 //
 // CHANGELOG v7.16 (17/01/2026):
 // - Ajout du panneau d'historique des mesures (MeasurePanel.tsx)
-// - Panneau flottant draggable avec liste des mesures
-// - Bouton "Historique" dans l'indicateur de mesure (quand outil actif)
-// - Bouton dans la toolbar visible dès qu'il y a des mesures
+// - Ouverture automatique du panneau quand outil mesure activé (clic ou M)
+// - Bouton compteur à côté de l'outil mesure
+// - Import type Measurement depuis MeasurePanel.tsx
+// - Indicateur simplifié avec toggle [n] ▼/▲
 // - Export CSV des mesures
-// - Total des mesures affiché
 //
 // CHANGELOG v7.15 (17/01/2026):
 // - Extraction du panneau de calibration dans CalibrationPanel.tsx (~1000 lignes)
@@ -215,7 +215,7 @@ import { PrintPreviewModal } from "./PrintPreviewModal";
 import { useCADAutoBackup } from "./useCADAutoBackup";
 import { useCalibration } from "./useCalibration";
 import { CalibrationPanel } from "./CalibrationPanel";
-import { MeasurePanel } from "./MeasurePanel";
+import { MeasurePanel, type Measurement } from "./MeasurePanel";
 
 // MOD v7.15: Contrôles d'étirement manuel
 import { ManualStretchControls } from "./ManualStretchControls";
@@ -892,20 +892,8 @@ export function CADGabaritCanvas({
   });
   const [measurePreviewEnd, setMeasurePreviewEnd] = useState<{ x: number; y: number } | null>(null);
 
-  // Tableau des mesures persistantes
-  const [measurements, setMeasurements] = useState<
-    Array<{
-      id: string;
-      start: { x: number; y: number };
-      end: { x: number; y: number };
-      px: number;
-      mm: number;
-      // Optionnel: si les 2 points sont sur des segments, stocker l'angle
-      angle?: number; // en degrés
-      segment1Id?: string;
-      segment2Id?: string;
-    }>
-  >([]);
+  // Tableau des mesures persistantes - MOD v7.16: Type importé depuis MeasurePanel
+  const [measurements, setMeasurements] = useState<Measurement[]>([]);
 
   // État pour le déplacement d'un point de mesure
   const [draggingMeasurePoint, setDraggingMeasurePoint] = useState<{
@@ -13158,6 +13146,7 @@ export function CADGabaritCanvas({
             break;
           case "m":
             setActiveTool("measure");
+            setShowMeasurePanel(true); // MOD v7.16: Ouvrir automatiquement le panneau
             resetMarkerMode();
             break;
           case "f":
@@ -16359,28 +16348,6 @@ export function CADGabaritCanvas({
               </Tooltip>
             </TooltipProvider>
 
-            {/* MOD v7.16: Bouton historique des mesures - visible si mesures existent */}
-            {measurements.length > 0 && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant={showMeasurePanel ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setShowMeasurePanel(!showMeasurePanel)}
-                      className="h-9 px-2 gap-1"
-                    >
-                      <Ruler className="h-4 w-4" />
-                      <span className="text-xs font-medium">{measurements.length}</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Historique des mesures ({measurements.length})</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-
             {/* Ajuster contours */}
             <TooltipProvider>
               <Tooltip>
@@ -16502,7 +16469,45 @@ export function CADGabaritCanvas({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <ToolButton tool="measure" icon={Ruler} label="Mesurer" shortcut="M" />
+          {/* MOD v7.16: Outil mesure avec bouton historique intégré */}
+          <div className="flex items-center">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={activeTool === "measure" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setActiveTool("measure");
+                      setTempPoints([]);
+                      setTempGeometry(null);
+                      setFilletFirstLine(null);
+                      setMarkerMode("idle");
+                      setPendingLink(null);
+                      // Ouvrir automatiquement le panneau de mesure
+                      setShowMeasurePanel(true);
+                    }}
+                    className="h-9 w-9 p-0 rounded-r-none border-r-0"
+                  >
+                    <Ruler className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Mesurer (M)</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            {/* Bouton historique des mesures */}
+            <Button
+              variant={showMeasurePanel ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowMeasurePanel(!showMeasurePanel)}
+              className="h-9 px-1.5 rounded-l-none"
+              title="Historique des mesures"
+            >
+              <span className="text-xs font-medium">{measurements.length > 0 ? measurements.length : "∅"}</span>
+            </Button>
+          </div>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -17750,29 +17755,19 @@ export function CADGabaritCanvas({
                 <Ruler className="h-4 w-4 text-green-600" />
                 <span className="text-green-700">
                   {measureState.phase === "idle"
-                    ? "1er point"
+                    ? "Cliquez 1er point"
                     : measureState.phase === "waitingSecond"
-                      ? "2ème point"
+                      ? "Cliquez 2ème point"
                       : ""}
                 </span>
-                {measurements.length > 0 && (
-                  <button
-                    className="text-green-600 font-medium ml-1 hover:text-green-800 hover:underline"
-                    onClick={() => setShowMeasurePanel(true)}
-                    title="Voir l'historique des mesures"
-                  >
-                    ({measurements.length})
-                  </button>
-                )}
-                {/* MOD v7.16: Bouton pour ouvrir le panneau d'historique */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-xs text-green-700 hover:text-green-900 hover:bg-green-100"
+                {/* MOD v7.16: Bouton pour masquer/afficher le panneau */}
+                <button
+                  className="text-green-600 font-medium hover:text-green-800 hover:underline text-xs"
                   onClick={() => setShowMeasurePanel(!showMeasurePanel)}
+                  title={showMeasurePanel ? "Masquer le panneau" : "Afficher le panneau"}
                 >
-                  {showMeasurePanel ? "Masquer" : "Historique"}
-                </Button>
+                  [{measurements.length}] {showMeasurePanel ? "▼" : "▲"}
+                </button>
               </div>
             )}
 
