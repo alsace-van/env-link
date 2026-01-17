@@ -1,16 +1,19 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.16 - Panneau d'historique des mesures
+// VERSION: 7.16 - Historique des mesures complet
 // ============================================
 //
 // CHANGELOG v7.16 (17/01/2026):
 // - Ajout du panneau d'historique des mesures (MeasurePanel.tsx)
-// - Ouverture automatique du panneau quand outil mesure activé (clic ou M)
+// - Ouverture automatique du panneau quand outil mesure activé
 // - Bouton compteur à côté de l'outil mesure
 // - Import type Measurement depuis MeasurePanel.tsx
-// - Indicateur simplifié avec toggle [n] ▼/▲
-// - Export CSV des mesures
+// - Sauvegarde des mesures avec le template (saveSketch)
+// - Chargement des mesures (loadSketchData)
+// - Affichage conditionnel: mesures visibles si panneau ouvert OU outil actif
+// - Filtrage des mesures masquées (visible !== false)
+// - Noms auto-générés (M1, M2, M3...)
 //
 // CHANGELOG v7.15 (17/01/2026):
 // - Extraction du panneau de calibration dans CalibrationPanel.tsx (~1000 lignes)
@@ -1817,8 +1820,8 @@ export function CADGabaritCanvas({
             scale: calibrationData.scale || 1 / sketch.scaleFactor,
           }
         : null,
-      // Tableau des mesures terminées
-      measurements: measurements,
+      // Tableau des mesures terminées - MOD v7.16: Afficher seulement si panneau ouvert ou outil actif
+      measurements: showMeasurePanel || activeTool === "measure" ? measurements.filter((m) => m.visible !== false) : [],
       // measureScale en mm/px pour le renderer
       measureScale: calibrationData.scale || 1 / sketch.scaleFactor,
       // scaleFactor en px/mm pour les règles
@@ -3772,6 +3775,11 @@ export function CADGabaritCanvas({
         if (data.a4Grid.cutMode !== undefined) setA4CutMode(data.a4Grid.cutMode);
       }
 
+      // MOD v7.16: Charger les mesures si présentes
+      if (data.measurements && Array.isArray(data.measurements)) {
+        setMeasurements(data.measurements);
+      }
+
       // NE PAS appeler solveSketch ici - on veut restaurer l'état exact de l'historique
       // sans que le solver "corrige" les contraintes H/V
       // solveSketch(newSketch);
@@ -3797,6 +3805,8 @@ export function CADGabaritCanvas({
         overlapMm: a4OverlapMm,
         cutMode: a4CutMode,
       },
+      // MOD v7.16: Sauvegarder les mesures avec le template
+      measurements: measurements,
     };
 
     if (onSave) {
@@ -3805,7 +3815,7 @@ export function CADGabaritCanvas({
     }
 
     return data;
-  }, [sketch, onSave, a4GridOrigin, a4GridOrientation, a4GridRows, a4GridCols, a4OverlapMm, a4CutMode]);
+  }, [sketch, onSave, a4GridOrigin, a4GridOrientation, a4GridRows, a4GridCols, a4OverlapMm, a4CutMode, measurements]);
 
   // ============================================
   // MOD v7.14: AUTO-BACKUP SUPABASE
@@ -9954,10 +9964,11 @@ export function CADGabaritCanvas({
             }
 
             // Ajouter la mesure au tableau
-            setMeasurements((prev) => [
-              ...prev,
-              {
+            setMeasurements((prev) => {
+              const measureIndex = prev.length + 1;
+              const newMeasure: Measurement = {
                 id: generateId(),
+                name: `M${measureIndex}`,
                 start: measureState.start!,
                 end: snapPos,
                 px: distPx,
@@ -9965,8 +9976,10 @@ export function CADGabaritCanvas({
                 angle: angleDeg,
                 segment1Id: segment1Id || undefined,
                 segment2Id: segment2Id || undefined,
-              },
-            ]);
+                visible: true,
+              };
+              return [...prev, newMeasure];
+            });
 
             // Reset pour nouvelle mesure
             setMeasureState({
