@@ -1,8 +1,12 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.26 - Extraction hook offset
+// VERSION: 7.27 - Extraction hook array/repeat
 // ============================================
+//
+// CHANGELOG v7.27 (18/01/2026):
+// - Extraction des fonctions répétition/array dans useArrayRepeat.ts (~450 lignes)
+// - Hook useArrayRepeat gère arrayDialog, arrayPreview et fonctions repeat
 //
 // CHANGELOG v7.26 (18/01/2026):
 // - Extraction des fonctions offset dans useOffset.ts (~523 lignes)
@@ -286,6 +290,8 @@ import { useAutoDimensions } from "./useAutoDimensions";
 import { useFilletChamfer } from "./hooks/useFilletChamfer";
 // MOD v7.26: Hook pour offset (extrait pour alléger le fichier)
 import { useOffset } from "./hooks/useOffset";
+// MOD v7.27: Hook pour répétition/array (extrait pour alléger le fichier)
+import { useArrayRepeat } from "./hooks/useArrayRepeat";
 
 interface CADGabaritCanvasProps {
   imageUrl?: string;
@@ -1240,222 +1246,11 @@ export function CADGabaritCanvas({
     [lineLengthDialog, angleEditDialog, setFilletDialog, setChamferDialog],
   );
 
-  // Modale pour répétition/array
-  const [arrayDialog, setArrayDialog] = useState<{
-    open: boolean;
-    type: "linear" | "grid" | "circular" | "checkerboard";
-    // Linéaire
-    linearCount: number;
-    linearSpacing: string; // mm - string pour permettre la saisie
-    linearSpacingMode: "spacing" | "distance";
-    linearDirection: "x" | "y" | "custom"; // Direction de la répétition
-    linearAngle: string; // Angle personnalisé en degrés
-    // Grille
-    countX: number;
-    spacingX: string; // mm - string pour permettre la saisie
-    spacingModeX: "spacing" | "distance";
-    countY: number;
-    spacingY: string; // mm - string pour permettre la saisie
-    spacingModeY: "spacing" | "distance";
-    // Circulaire
-    circularCount: number;
-    circularAngle: string; // angle total en degrés (360 = cercle complet) - string
-    circularCenter: { x: number; y: number } | null;
-    // Damier (checkerboard)
-    checkerCountX: string; // Nombre de cases en X (string pour saisie fluide)
-    checkerCountY: string; // Nombre de cases en Y (string pour saisie fluide)
-    checkerSize: string; // Taille d'une case en mm
-    checkerColor: string; // Couleur des cases noires
-    // Général
-    includeOriginal: boolean;
-    createIntersections: boolean; // Créer les points d'intersection
-  } | null>(null);
+  // Modale pour répétition/array - États et fonctions dans useArrayRepeat hook
+  // Note: arrayDialog, setArrayDialog, arrayPreview, arrayPreviewData viennent du hook useArrayRepeat
   const [arrayPanelPos, setArrayPanelPos] = useState({ x: 100, y: 100 });
   const [arrayPanelDragging, setArrayPanelDragging] = useState(false);
   const [arrayPanelDragStart, setArrayPanelDragStart] = useState({ x: 0, y: 0 });
-
-  // Prévisualisation de la répétition en temps réel (useMemo pour performance)
-  // Extraire uniquement les valeurs nécessaires pour éviter les recalculs inutiles
-  const arrayPreviewData = useMemo(() => {
-    if (!arrayDialog?.open) {
-      return null;
-    }
-
-    // Le mode damier ne nécessite pas de sélection
-    if (arrayDialog.type === "checkerboard") {
-      return { centerX: 0, centerY: 0, scaleFactor: sketch.scaleFactor, isCheckerboard: true };
-    }
-
-    if (selectedEntities.size === 0) {
-      return null;
-    }
-
-    // Extraire les points des entités sélectionnées une seule fois
-    const selectedPoints: Array<{ x: number; y: number }> = [];
-    selectedEntities.forEach((id) => {
-      const geo = sketch.geometries.get(id);
-      if (geo) {
-        if (geo.type === "line") {
-          const line = geo as Line;
-          const p1 = sketch.points.get(line.p1);
-          const p2 = sketch.points.get(line.p2);
-          if (p1) selectedPoints.push({ x: p1.x, y: p1.y });
-          if (p2) selectedPoints.push({ x: p2.x, y: p2.y });
-        } else if (geo.type === "circle") {
-          const center = sketch.points.get((geo as CircleType).center);
-          if (center) selectedPoints.push({ x: center.x, y: center.y });
-        } else if (geo.type === "arc") {
-          const arc = geo as Arc;
-          const center = sketch.points.get(arc.center);
-          if (center) selectedPoints.push({ x: center.x, y: center.y });
-        } else if (geo.type === "rectangle") {
-          const rect = geo as Rectangle;
-          [rect.p1, rect.p2, rect.p3, rect.p4].forEach((pid) => {
-            const p = sketch.points.get(pid);
-            if (p) selectedPoints.push({ x: p.x, y: p.y });
-          });
-        }
-      }
-    });
-
-    if (selectedPoints.length === 0) return null;
-
-    let centerX = 0,
-      centerY = 0;
-    selectedPoints.forEach((p) => {
-      centerX += p.x;
-      centerY += p.y;
-    });
-    centerX /= selectedPoints.length;
-    centerY /= selectedPoints.length;
-
-    return { centerX, centerY, scaleFactor: sketch.scaleFactor };
-  }, [arrayDialog?.open, selectedEntities, sketch.geometries, sketch.points, sketch.scaleFactor]);
-
-  // Calcul du preview séparé (ne dépend que de arrayDialog et des données extraites)
-  const arrayPreview = useMemo(() => {
-    if (!arrayDialog?.open || !arrayPreviewData) {
-      return null;
-    }
-
-    const {
-      type,
-      linearCount,
-      linearSpacing,
-      linearSpacingMode,
-      linearDirection,
-      linearAngle,
-      countX,
-      spacingX,
-      spacingModeX,
-      countY,
-      spacingY,
-      spacingModeY,
-      circularCount,
-      circularAngle,
-      circularCenter,
-      includeOriginal,
-    } = arrayDialog;
-
-    const { centerX: baseCenterX, centerY: baseCenterY, scaleFactor } = arrayPreviewData;
-
-    // Parser les valeurs (peuvent être string ou number pour compatibilité)
-    const linearSpacingStr = typeof linearSpacing === "string" ? linearSpacing : String(linearSpacing || "50");
-    const spacingXStr = typeof spacingX === "string" ? spacingX : String(spacingX || "50");
-    const spacingYStr = typeof spacingY === "string" ? spacingY : String(spacingY || "50");
-    const circularAngleStr = typeof circularAngle === "string" ? circularAngle : String(circularAngle || "360");
-    const linearAngleStr = typeof linearAngle === "string" ? linearAngle : String(linearAngle || "0");
-
-    const linearSpacingNum = parseFloat(linearSpacingStr.replace(",", ".")) || 0;
-    const spacingXNum = parseFloat(spacingXStr.replace(",", ".")) || 0;
-    const spacingYNum = parseFloat(spacingYStr.replace(",", ".")) || 0;
-    const circularAngleNum = parseFloat(circularAngleStr.replace(",", ".")) || 360;
-    const linearAngleNum = parseFloat(linearAngleStr.replace(",", ".")) || 0;
-
-    // Calculer l'espacement réel selon le mode
-    const realLinearSpacing =
-      linearSpacingMode === "distance" && (linearCount || 3) > 1
-        ? linearSpacingNum / ((linearCount || 3) - 1)
-        : linearSpacingNum;
-    const realSpacingX = spacingModeX === "distance" && countX > 1 ? spacingXNum / (countX - 1) : spacingXNum;
-    const realSpacingY = spacingModeY === "distance" && countY > 1 ? spacingYNum / (countY - 1) : spacingYNum;
-
-    // Utiliser le centre personnalisé pour circulaire
-    let centerX = baseCenterX;
-    let centerY = baseCenterY;
-    if (type === "circular" && circularCenter) {
-      centerX = circularCenter.x;
-      centerY = circularCenter.y;
-    }
-
-    const transforms: Array<{ offsetX: number; offsetY: number; rotation: number }> = [];
-
-    if (type === "linear") {
-      // Calculer la direction en radians
-      let dirAngle = 0; // Par défaut X (0°)
-      if (linearDirection === "y") {
-        dirAngle = Math.PI / 2; // 90°
-      } else if (linearDirection === "custom") {
-        dirAngle = (linearAngleNum * Math.PI) / 180;
-      }
-
-      const dirX = Math.cos(dirAngle);
-      const dirY = Math.sin(dirAngle);
-
-      const startIdx = includeOriginal ? 1 : 0;
-      const count = linearCount || 3;
-      for (let i = startIdx; i < count; i++) {
-        const dist = i * realLinearSpacing * scaleFactor;
-        transforms.push({
-          offsetX: dist * dirX,
-          offsetY: dist * dirY,
-          rotation: 0,
-        });
-      }
-    } else if (type === "grid") {
-      for (let row = 0; row < countY; row++) {
-        for (let col = 0; col < countX; col++) {
-          if (row === 0 && col === 0) continue; // Ne pas afficher l'original en preview
-          transforms.push({
-            offsetX: col * realSpacingX * scaleFactor,
-            offsetY: row * realSpacingY * scaleFactor,
-            rotation: 0,
-          });
-        }
-      }
-    } else if (type === "circular") {
-      const angleStep = (circularAngleNum / circularCount) * (Math.PI / 180);
-      const startIdx = includeOriginal ? 1 : 0;
-      for (let i = startIdx; i < circularCount; i++) {
-        const rotation = i * angleStep;
-        transforms.push({ offsetX: 0, offsetY: 0, rotation });
-      }
-    } else if (type === "checkerboard") {
-      // Mode damier - retourner les données du damier pour le preview
-      const { checkerCountX, checkerCountY, checkerSize, checkerColor } = arrayDialog;
-      const countXStr = typeof checkerCountX === "string" ? checkerCountX : String(checkerCountX || "8");
-      const countYStr = typeof checkerCountY === "string" ? checkerCountY : String(checkerCountY || "6");
-      const sizeStr = typeof checkerSize === "string" ? checkerSize : String(checkerSize || "20");
-
-      const countXNum = parseInt(countXStr) || 8;
-      const countYNum = parseInt(countYStr) || 6;
-      const sizePx = (parseFloat(sizeStr.replace(",", ".")) || 20) * scaleFactor;
-
-      return {
-        transforms: [],
-        centerX: 0,
-        centerY: 0,
-        checkerboard: {
-          countX: Math.max(1, countXNum),
-          countY: Math.max(1, countYNum),
-          sizePx,
-          color: checkerColor ?? "#000000",
-        },
-      };
-    }
-
-    return { transforms, centerX, centerY };
-  }, [arrayDialog, arrayPreviewData]);
 
   // Dialogue pour export PDF professionnel (éditeur plein écran)
   const [pdfPlanEditorOpen, setPdfPlanEditorOpen] = useState(false);
@@ -5114,6 +4909,7 @@ export function CADGabaritCanvas({
     [],
   );
 
+
   // Calculer l'intersection de deux lignes (prolongées)
   const lineIntersection = useCallback(
     (
@@ -5453,6 +5249,26 @@ export function CADGabaritCanvas({
     },
     [segmentIntersection],
   );
+
+  // === HOOK ARRAY/REPEAT ===
+  // MOD v7.27: Extraction des fonctions répétition dans useArrayRepeat.ts
+  const {
+    arrayDialog,
+    setArrayDialog,
+    arrayPreview,
+    arrayPreviewData,
+    openArrayDialog,
+    executeArray,
+    closeArrayDialog,
+  } = useArrayRepeat({
+    sketch,
+    setSketch,
+    addToHistory,
+    selectedEntities,
+    createIntersectionPoints,
+    defaultStrokeWidthRef,
+    defaultStrokeColorRef,
+  });
 
   // Modifier le rayon d'un arc existant (recalcul complet du congé)
   const updateArcRadius = useCallback(
@@ -9110,7 +8926,7 @@ export function CADGabaritCanvas({
 
           // v7.24: Mettre à jour l'input de mesure en temps réel pour la ligne
           const lineLengthPx = Math.sqrt(
-            (finalLineTarget.x - startPoint.x) ** 2 + (finalLineTarget.y - startPoint.y) ** 2,
+            (finalLineTarget.x - startPoint.x) ** 2 + (finalLineTarget.y - startPoint.y) ** 2
           );
           const lineLengthMm = lineLengthPx / (sketchRef.current.scaleFactor || 1);
           // Position écran au milieu de la ligne avec offset perpendiculaire
@@ -9727,10 +9543,7 @@ export function CADGabaritCanvas({
 
   // v7.24: Fonction pour trouver une cotation (dimension text) à une position écran
   const findDimensionAtScreenPos = useCallback(
-    (
-      screenX: number,
-      screenY: number,
-    ): { dimensionId: string; entityId: string; type: "line" | "circle"; value: number } | null => {
+    (screenX: number, screenY: number): { dimensionId: string; entityId: string; type: "line" | "circle"; value: number } | null => {
       const currentSketch = sketchRef.current;
 
       // v7.25: Parcourir les dimensions existantes (cotations vertes)
@@ -9783,10 +9596,8 @@ export function CADGabaritCanvas({
             for (const [geoId, geo] of currentSketch.geometries) {
               if (geo.type === "line") {
                 const line = geo as Line;
-                if (
-                  (line.p1 === dimension.entities[0] && line.p2 === dimension.entities[1]) ||
-                  (line.p1 === dimension.entities[1] && line.p2 === dimension.entities[0])
-                ) {
+                if ((line.p1 === dimension.entities[0] && line.p2 === dimension.entities[1]) ||
+                    (line.p1 === dimension.entities[1] && line.p2 === dimension.entities[0])) {
                   foundLineId = geoId;
                   break;
                 }
@@ -9798,7 +9609,7 @@ export function CADGabaritCanvas({
       }
       return null;
     },
-    [viewport],
+    [viewport]
   );
 
   // Double-clic pour éditer un arc OU sélectionner une figure entière
@@ -11079,453 +10890,7 @@ export function CADGabaritCanvas({
   }, [sketch, selectedEntities, addToHistory]);
 
   // === RÉPÉTITION/ARRAY ===
-
-  // Ouvrir la modale de répétition
-  const openArrayDialog = useCallback(
-    (forceCheckerboard = false) => {
-      // Si pas de sélection, basculer automatiquement en mode damier
-      const noSelection = selectedEntities.size === 0;
-      const useCheckerboard = forceCheckerboard || noSelection;
-
-      // Calculer le centre de la sélection pour le mode circulaire
-      let sumX = 0,
-        sumY = 0,
-        count = 0;
-      selectedEntities.forEach((id) => {
-        const geo = sketch.geometries.get(id);
-        if (geo) {
-          if (geo.type === "line") {
-            const line = geo as Line;
-            const p1 = sketch.points.get(line.p1);
-            const p2 = sketch.points.get(line.p2);
-            if (p1 && p2) {
-              sumX += (p1.x + p2.x) / 2;
-              sumY += (p1.y + p2.y) / 2;
-              count++;
-            }
-          } else if (geo.type === "circle") {
-            const circle = geo as CircleType;
-            const center = sketch.points.get(circle.center);
-            if (center) {
-              sumX += center.x;
-              sumY += center.y;
-              count++;
-            }
-          } else if (geo.type === "arc") {
-            const arc = geo as Arc;
-            const center = sketch.points.get(arc.center);
-            if (center) {
-              sumX += center.x;
-              sumY += center.y;
-              count++;
-            }
-          }
-        }
-      });
-
-      const selectionCenter = count > 0 ? { x: sumX / count, y: sumY / count } : { x: 0, y: 0 };
-
-      setArrayDialog({
-        open: true,
-        type: useCheckerboard ? "checkerboard" : "linear",
-        // Linéaire
-        linearCount: 3,
-        linearSpacing: "50",
-        linearSpacingMode: "spacing",
-        linearDirection: "x",
-        linearAngle: "0",
-        // Grille
-        countX: 3,
-        spacingX: "50",
-        spacingModeX: "spacing",
-        countY: 3,
-        spacingY: "50",
-        spacingModeY: "spacing",
-        // Circulaire
-        circularCount: 6,
-        circularAngle: "360",
-        circularCenter: selectionCenter,
-        // Damier
-        checkerCountX: "8",
-        checkerCountY: "6",
-        checkerSize: "20",
-        checkerColor: "#000000",
-        // Général
-        includeOriginal: true,
-        createIntersections: true,
-      });
-    },
-    [selectedEntities, sketch],
-  );
-
-  // Exécuter la répétition
-  const executeArray = useCallback(() => {
-    if (!arrayDialog) return;
-
-    // Le mode checkerboard ne nécessite pas de sélection
-    if (arrayDialog.type !== "checkerboard" && selectedEntities.size === 0) return;
-
-    const {
-      type,
-      linearCount,
-      linearSpacing,
-      linearSpacingMode,
-      linearDirection,
-      linearAngle,
-      countX,
-      spacingX,
-      spacingModeX,
-      countY,
-      spacingY,
-      spacingModeY,
-      circularCount,
-      circularAngle,
-      circularCenter,
-      includeOriginal,
-      createIntersections,
-    } = arrayDialog;
-
-    // Parser les valeurs
-    const linearSpacingStr = typeof linearSpacing === "string" ? linearSpacing : String(linearSpacing || "50");
-    const spacingXStr = typeof spacingX === "string" ? spacingX : String(spacingX || "50");
-    const spacingYStr = typeof spacingY === "string" ? spacingY : String(spacingY || "50");
-    const circularAngleStr = typeof circularAngle === "string" ? circularAngle : String(circularAngle || "360");
-    const linearAngleStr = typeof linearAngle === "string" ? linearAngle : String(linearAngle || "0");
-
-    const linearSpacingNum = parseFloat(linearSpacingStr.replace(",", ".")) || 0;
-    const spacingXNum = parseFloat(spacingXStr.replace(",", ".")) || 0;
-    const spacingYNum = parseFloat(spacingYStr.replace(",", ".")) || 0;
-    const circularAngleNum = parseFloat(circularAngleStr.replace(",", ".")) || 360;
-    const linearAngleNum = parseFloat(linearAngleStr.replace(",", ".")) || 0;
-
-    // Calculer l'espacement réel selon le mode
-    const count = linearCount || 3;
-    const realLinearSpacing =
-      linearSpacingMode === "distance" && count > 1 ? linearSpacingNum / (count - 1) : linearSpacingNum;
-    const realSpacingX = spacingModeX === "distance" && countX > 1 ? spacingXNum / (countX - 1) : spacingXNum;
-    const realSpacingY = spacingModeY === "distance" && countY > 1 ? spacingYNum / (countY - 1) : spacingYNum;
-
-    // Collecter les points et géométries sélectionnés
-    const copiedPoints = new Map<string, Point>();
-    const copiedGeometries = new Map<string, Geometry>();
-    const pointsUsed = new Set<string>();
-
-    selectedEntities.forEach((id) => {
-      const geo = sketch.geometries.get(id);
-      if (geo) {
-        copiedGeometries.set(id, { ...geo });
-        if (geo.type === "line") {
-          const line = geo as Line;
-          pointsUsed.add(line.p1);
-          pointsUsed.add(line.p2);
-        } else if (geo.type === "circle") {
-          pointsUsed.add((geo as CircleType).center);
-        } else if (geo.type === "arc") {
-          const arc = geo as Arc;
-          pointsUsed.add(arc.center);
-          pointsUsed.add(arc.startPoint);
-          pointsUsed.add(arc.endPoint);
-        } else if (geo.type === "rectangle") {
-          const rect = geo as Rectangle;
-          [rect.p1, rect.p2, rect.p3, rect.p4].forEach((pid) => pointsUsed.add(pid));
-        } else if (geo.type === "bezier") {
-          const bezier = geo as Bezier;
-          [bezier.p1, bezier.p2, bezier.cp1, bezier.cp2].forEach((pid) => pointsUsed.add(pid));
-        } else if (geo.type === "text") {
-          const text = geo as TextAnnotation;
-          pointsUsed.add(text.position);
-        }
-      }
-    });
-
-    pointsUsed.forEach((pointId) => {
-      const point = sketch.points.get(pointId);
-      if (point) {
-        copiedPoints.set(pointId, { ...point });
-      }
-    });
-
-    // Calculer le centre de la sélection pour la rotation
-    let centerX = 0,
-      centerY = 0;
-    copiedPoints.forEach((p) => {
-      centerX += p.x;
-      centerY += p.y;
-    });
-    centerX /= copiedPoints.size || 1;
-    centerY /= copiedPoints.size || 1;
-
-    // Utiliser le centre personnalisé pour circulaire
-    if (type === "circular" && circularCenter) {
-      centerX = circularCenter.x;
-      centerY = circularCenter.y;
-    }
-
-    const newSketch = { ...sketch };
-    newSketch.points = new Map(sketch.points);
-    newSketch.geometries = new Map(sketch.geometries);
-
-    // Liste des nouvelles géométries créées (pour les intersections)
-    const newGeometryIds: string[] = [];
-
-    // Fonction pour créer une copie avec offset/rotation
-    const createCopy = (offsetX: number, offsetY: number, rotation: number = 0) => {
-      const pointIdMapping = new Map<string, string>();
-
-      copiedPoints.forEach((point, oldId) => {
-        const newId = generateId();
-        pointIdMapping.set(oldId, newId);
-
-        let newX = point.x;
-        let newY = point.y;
-
-        if (rotation !== 0) {
-          // Rotation autour du centre
-          const dx = point.x - centerX;
-          const dy = point.y - centerY;
-          const cos = Math.cos(rotation);
-          const sin = Math.sin(rotation);
-          newX = centerX + dx * cos - dy * sin;
-          newY = centerY + dx * sin + dy * cos;
-        }
-
-        newSketch.points.set(newId, {
-          ...point,
-          id: newId,
-          x: newX + offsetX,
-          y: newY + offsetY,
-          fixed: false,
-        });
-      });
-
-      copiedGeometries.forEach((geo) => {
-        const newId = generateId();
-        newGeometryIds.push(newId);
-
-        if (geo.type === "line") {
-          const line = geo as Line;
-          newSketch.geometries.set(newId, {
-            ...line,
-            id: newId,
-            p1: pointIdMapping.get(line.p1) || line.p1,
-            p2: pointIdMapping.get(line.p2) || line.p2,
-          });
-        } else if (geo.type === "circle") {
-          const circle = geo as CircleType;
-          newSketch.geometries.set(newId, {
-            ...circle,
-            id: newId,
-            center: pointIdMapping.get(circle.center) || circle.center,
-          });
-        } else if (geo.type === "arc") {
-          const arc = geo as Arc;
-          newSketch.geometries.set(newId, {
-            ...arc,
-            id: newId,
-            center: pointIdMapping.get(arc.center) || arc.center,
-            startPoint: pointIdMapping.get(arc.startPoint) || arc.startPoint,
-            endPoint: pointIdMapping.get(arc.endPoint) || arc.endPoint,
-          });
-        } else if (geo.type === "rectangle") {
-          const rect = geo as Rectangle;
-          newSketch.geometries.set(newId, {
-            ...rect,
-            id: newId,
-            p1: pointIdMapping.get(rect.p1) || rect.p1,
-            p2: pointIdMapping.get(rect.p2) || rect.p2,
-            p3: pointIdMapping.get(rect.p3) || rect.p3,
-            p4: pointIdMapping.get(rect.p4) || rect.p4,
-          });
-        } else if (geo.type === "bezier") {
-          const bezier = geo as Bezier;
-          newSketch.geometries.set(newId, {
-            ...bezier,
-            id: newId,
-            p1: pointIdMapping.get(bezier.p1) || bezier.p1,
-            p2: pointIdMapping.get(bezier.p2) || bezier.p2,
-            cp1: pointIdMapping.get(bezier.cp1) || bezier.cp1,
-            cp2: pointIdMapping.get(bezier.cp2) || bezier.cp2,
-          });
-        } else if (geo.type === "text") {
-          const text = geo as TextAnnotation;
-          newSketch.geometries.set(newId, {
-            ...text,
-            id: newId,
-            position: pointIdMapping.get(text.position) || text.position,
-          });
-        }
-      });
-    };
-
-    let totalCopies = 0;
-
-    if (type === "linear") {
-      // Calculer la direction en radians
-      let dirAngle = 0;
-      if (linearDirection === "y") {
-        dirAngle = Math.PI / 2; // 90°
-      } else if (linearDirection === "custom") {
-        dirAngle = (linearAngleNum * Math.PI) / 180;
-      }
-
-      const dirX = Math.cos(dirAngle);
-      const dirY = Math.sin(dirAngle);
-
-      const startIdx = includeOriginal ? 1 : 0;
-      for (let i = startIdx; i < count; i++) {
-        const dist = i * realLinearSpacing * sketch.scaleFactor;
-        createCopy(dist * dirX, dist * dirY);
-        totalCopies++;
-      }
-    } else if (type === "grid") {
-      // Répétition en grille
-      for (let row = 0; row < countY; row++) {
-        for (let col = 0; col < countX; col++) {
-          if (row === 0 && col === 0 && includeOriginal) continue;
-          createCopy(col * realSpacingX * sketch.scaleFactor, row * realSpacingY * sketch.scaleFactor);
-          totalCopies++;
-        }
-      }
-    } else if (type === "circular") {
-      // Répétition circulaire
-      const angleStep = (circularAngleNum * Math.PI) / 180 / circularCount;
-      const startIdx = includeOriginal ? 1 : 0;
-      for (let i = startIdx; i < circularCount; i++) {
-        const rotation = angleStep * i;
-        createCopy(0, 0, rotation);
-        totalCopies++;
-      }
-    } else if (type === "checkerboard") {
-      // Mode damier - création spéciale (ne nécessite pas de sélection)
-      const { checkerCountX, checkerCountY, checkerSize, checkerColor } = arrayDialog;
-
-      // Parser les valeurs (peuvent être string ou number)
-      const countXStr = typeof checkerCountX === "string" ? checkerCountX : String(checkerCountX || "8");
-      const countYStr = typeof checkerCountY === "string" ? checkerCountY : String(checkerCountY || "6");
-      const sizeStr = typeof checkerSize === "string" ? checkerSize : String(checkerSize || "20");
-
-      const cX = Math.max(1, parseInt(countXStr) || 8);
-      const cY = Math.max(1, parseInt(countYStr) || 6);
-      const sizePx = (parseFloat(sizeStr.replace(",", ".")) || 20) * sketch.scaleFactor;
-
-      // Point de départ (centre du viewport ou origine)
-      const startX = 0;
-      const startY = 0;
-
-      // Créer les points de la grille
-      const pointGrid: string[][] = [];
-      for (let row = 0; row <= cY; row++) {
-        pointGrid[row] = [];
-        for (let col = 0; col <= cX; col++) {
-          const pointId = generateId();
-          newSketch.points.set(pointId, {
-            id: pointId,
-            x: startX + col * sizePx,
-            y: startY + row * sizePx,
-          });
-          pointGrid[row][col] = pointId;
-        }
-      }
-
-      // Créer les lignes horizontales
-      for (let row = 0; row <= cY; row++) {
-        for (let col = 0; col < cX; col++) {
-          const lineId = generateId();
-          newSketch.geometries.set(lineId, {
-            id: lineId,
-            type: "line",
-            p1: pointGrid[row][col],
-            p2: pointGrid[row][col + 1],
-            layerId: sketch.activeLayerId,
-            strokeWidth: defaultStrokeWidthRef.current,
-            strokeColor: defaultStrokeColorRef.current,
-          });
-          newGeometryIds.push(lineId);
-        }
-      }
-
-      // Créer les lignes verticales
-      for (let col = 0; col <= cX; col++) {
-        for (let row = 0; row < cY; row++) {
-          const lineId = generateId();
-          newSketch.geometries.set(lineId, {
-            id: lineId,
-            type: "line",
-            p1: pointGrid[row][col],
-            p2: pointGrid[row + 1][col],
-            layerId: sketch.activeLayerId,
-            strokeWidth: defaultStrokeWidthRef.current,
-            strokeColor: defaultStrokeColorRef.current,
-          });
-          newGeometryIds.push(lineId);
-        }
-      }
-
-      // Créer les remplissages pour les cases noires (pattern damier)
-      // Initialiser shapeFills si nécessaire
-      if (!newSketch.shapeFills) {
-        newSketch.shapeFills = new Map();
-      } else {
-        newSketch.shapeFills = new Map(newSketch.shapeFills);
-      }
-
-      for (let row = 0; row < cY; row++) {
-        for (let col = 0; col < cX; col++) {
-          // Case noire si (row + col) est pair
-          if ((row + col) % 2 === 0) {
-            // Trouver les 4 lignes qui forment cette case
-            // Lignes horizontales: row à col et row+1 à col
-            // Lignes verticales: col à row et col+1 à row
-
-            // On va identifier les geoIds des 4 côtés de la case
-            const topLineIdx = row * cX + col;
-            const bottomLineIdx = (row + 1) * cX + col;
-            const leftLineIdx = cX * (cY + 1) + col * cY + row;
-            const rightLineIdx = cX * (cY + 1) + (col + 1) * cY + row;
-
-            // Récupérer les IDs depuis newGeometryIds
-            const geoIds = new Set<string>();
-            if (newGeometryIds[topLineIdx]) geoIds.add(newGeometryIds[topLineIdx]);
-            if (newGeometryIds[bottomLineIdx]) geoIds.add(newGeometryIds[bottomLineIdx]);
-            if (newGeometryIds[leftLineIdx]) geoIds.add(newGeometryIds[leftLineIdx]);
-            if (newGeometryIds[rightLineIdx]) geoIds.add(newGeometryIds[rightLineIdx]);
-
-            if (geoIds.size === 4) {
-              const fillId = generateId();
-              newSketch.shapeFills.set(fillId, {
-                id: fillId,
-                geoIds: Array.from(geoIds),
-                fillType: "solid",
-                color: checkerColor || "#000000",
-                opacity: 1,
-              });
-            }
-          }
-        }
-      }
-
-      totalCopies = cX * cY;
-    }
-
-    // Créer les points d'intersection si demandé
-    if (createIntersections) {
-      // Collecter toutes les géométries (originales + nouvelles)
-      const allLineIds = [...Array.from(selectedEntities), ...newGeometryIds].filter((id) => {
-        const geo = newSketch.geometries.get(id);
-        return geo && geo.type === "line";
-      });
-
-      // Créer les intersections pour chaque nouvelle géométrie
-      for (const geoId of newGeometryIds) {
-        createIntersectionPoints(geoId, newSketch);
-      }
-    }
-
-    setSketch(newSketch);
-    addToHistory(newSketch, `Répétition ${type} (${totalCopies} copies)`);
-    setArrayDialog(null);
-    toast.success(`${totalCopies} copie(s) créée(s)`);
-  }, [arrayDialog, selectedEntities, sketch, addToHistory, createIntersectionPoints]);
+  // Note: openArrayDialog, executeArray et états viennent du hook useArrayRepeat (ligne ~5464)
 
   // Créer ou modifier un texte/annotation
   const commitTextInput = useCallback(() => {
@@ -14318,25 +13683,11 @@ export function CADGabaritCanvas({
                   className="h-8 w-8 p-0"
                 >
                   {showConstruction ? (
-                    <svg
-                      className="h-4 w-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeDasharray="4 2"
-                    >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 2">
                       <line x1="4" y1="20" x2="20" y2="4" />
                     </svg>
                   ) : (
-                    <svg
-                      className="h-4 w-4 opacity-40"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeDasharray="4 2"
-                    >
+                    <svg className="h-4 w-4 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 2">
                       <line x1="4" y1="20" x2="20" y2="4" />
                     </svg>
                   )}
@@ -15083,7 +14434,9 @@ export function CADGabaritCanvas({
                   <Image className="h-4 w-4 mr-1" />
                   <span className="text-xs">Outils</span>
                   <ChevronDown className="h-3 w-3 ml-1" />
-                  {selectedImageId && <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />}
+                  {selectedImageId && (
+                    <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />
+                  )}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56">
@@ -15254,9 +14607,7 @@ export function CADGabaritCanvas({
                 >
                   <Link2 className="h-4 w-4 mr-2" />
                   Lier deux marqueurs
-                  {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && (
-                    <Check className="h-4 w-4 ml-auto" />
-                  )}
+                  {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && <Check className="h-4 w-4 ml-auto" />}
                 </DropdownMenuItem>
 
                 <DropdownMenuSeparator />
@@ -16071,13 +15422,11 @@ export function CADGabaritCanvas({
                     transform: "translate(-50%, -50%)",
                   }}
                 >
-                  <div
-                    className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
-                      liveInputMeasure.isEditing
-                        ? "bg-blue-100 border-2 border-blue-500 shadow-md"
-                        : "bg-blue-50/90 border border-blue-300"
-                    }`}
-                  >
+                  <div className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
+                    liveInputMeasure.isEditing
+                      ? "bg-blue-100 border-2 border-blue-500 shadow-md"
+                      : "bg-blue-50/90 border border-blue-300"
+                  }`}>
                     {liveInputMeasure.isEditing && liveInputMeasure.userValue !== "" && (
                       <span className="text-xs text-blue-600">🔒</span>
                     )}
@@ -16085,9 +15434,7 @@ export function CADGabaritCanvas({
                       ref={liveInputRef}
                       type="text"
                       inputMode="decimal"
-                      value={
-                        liveInputMeasure.isEditing ? liveInputMeasure.userValue : liveInputMeasure.liveValue.toFixed(1)
-                      }
+                      value={liveInputMeasure.isEditing ? liveInputMeasure.userValue : liveInputMeasure.liveValue.toFixed(1)}
                       placeholder={liveInputMeasure.liveValue.toFixed(1)}
                       onChange={(e) => {
                         let rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
@@ -16101,10 +15448,9 @@ export function CADGabaritCanvas({
                         setLiveInputMeasure((prev) => ({ ...prev, userValue: rawVal, isEditing: true }));
                         // Mise à jour en temps réel du rectangle
                         const widthMm = parseFloat(rawVal) || 0;
-                        const heightMm =
-                          liveInputMeasure.userValue2 !== ""
-                            ? parseFloat(liveInputMeasure.userValue2) || 0
-                            : liveInputMeasure.liveValue2 || 0;
+                        const heightMm = liveInputMeasure.userValue2 !== ""
+                          ? parseFloat(liveInputMeasure.userValue2) || 0
+                          : liveInputMeasure.liveValue2 || 0;
                         if (widthMm > 0 && liveInputMeasure.rectP1) {
                           const scaleFactor = sketchRef.current.scaleFactor || 1;
                           const widthPx = widthMm * scaleFactor;
@@ -16114,7 +15460,7 @@ export function CADGabaritCanvas({
                           const newCursor = isCenter
                             ? { x: p1.x + widthPx / 2, y: p1.y + heightPx / 2 }
                             : { x: p1.x + widthPx, y: p1.y + heightPx };
-                          setTempGeometry((prev: any) => (prev ? { ...prev, cursor: newCursor } : prev));
+                          setTempGeometry((prev: any) => prev ? { ...prev, cursor: newCursor } : prev);
                         }
                       }}
                       onFocus={() => {
@@ -16134,20 +15480,13 @@ export function CADGabaritCanvas({
                         } else if (e.key === "Enter") {
                           e.preventDefault();
                           const wVal = liveInputMeasure.userValue || liveInputMeasure.liveValue.toFixed(1);
-                          const hVal = liveInputMeasure.userValue2 || liveInputMeasure.liveValue2?.toFixed(1) || "0";
+                          const hVal = liveInputMeasure.userValue2 || (liveInputMeasure.liveValue2?.toFixed(1) || "0");
                           createRectangleFromInputs(undefined, { width: wVal, height: hVal });
                         } else if (e.key === "Escape") {
                           e.preventDefault();
                           setTempPoints([]);
                           setTempGeometry(null);
-                          setLiveInputMeasure((prev) => ({
-                            ...prev,
-                            active: false,
-                            userValue: "",
-                            userValue2: "",
-                            isEditing: false,
-                            isEditing2: false,
-                          }));
+                          setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", userValue2: "", isEditing: false, isEditing2: false }));
                         }
                       }}
                       className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none placeholder:text-blue-400"
@@ -16165,13 +15504,11 @@ export function CADGabaritCanvas({
                     transform: "translate(-50%, -50%)",
                   }}
                 >
-                  <div
-                    className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
-                      liveInputMeasure.isEditing2
-                        ? "bg-blue-100 border-2 border-blue-500 shadow-md"
-                        : "bg-blue-50/90 border border-blue-300"
-                    }`}
-                  >
+                  <div className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
+                    liveInputMeasure.isEditing2
+                      ? "bg-blue-100 border-2 border-blue-500 shadow-md"
+                      : "bg-blue-50/90 border border-blue-300"
+                  }`}>
                     {liveInputMeasure.isEditing2 && liveInputMeasure.userValue2 !== "" && (
                       <span className="text-xs text-blue-600">🔒</span>
                     )}
@@ -16179,11 +15516,7 @@ export function CADGabaritCanvas({
                       ref={liveInputRef2}
                       type="text"
                       inputMode="decimal"
-                      value={
-                        liveInputMeasure.isEditing2
-                          ? liveInputMeasure.userValue2
-                          : liveInputMeasure.liveValue2?.toFixed(1) || "0"
-                      }
+                      value={liveInputMeasure.isEditing2 ? liveInputMeasure.userValue2 : (liveInputMeasure.liveValue2?.toFixed(1) || "0")}
                       placeholder={liveInputMeasure.liveValue2?.toFixed(1) || "0"}
                       onChange={(e) => {
                         let rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
@@ -16197,10 +15530,9 @@ export function CADGabaritCanvas({
                         setLiveInputMeasure((prev) => ({ ...prev, userValue2: rawVal, isEditing2: true }));
                         // Mise à jour en temps réel du rectangle
                         const heightMm = parseFloat(rawVal) || 0;
-                        const widthMm =
-                          liveInputMeasure.userValue !== ""
-                            ? parseFloat(liveInputMeasure.userValue) || 0
-                            : liveInputMeasure.liveValue || 0;
+                        const widthMm = liveInputMeasure.userValue !== ""
+                          ? parseFloat(liveInputMeasure.userValue) || 0
+                          : liveInputMeasure.liveValue || 0;
                         if (heightMm > 0 && liveInputMeasure.rectP1) {
                           const scaleFactor = sketchRef.current.scaleFactor || 1;
                           const widthPx = widthMm * scaleFactor;
@@ -16210,7 +15542,7 @@ export function CADGabaritCanvas({
                           const newCursor = isCenter
                             ? { x: p1.x + widthPx / 2, y: p1.y + heightPx / 2 }
                             : { x: p1.x + widthPx, y: p1.y + heightPx };
-                          setTempGeometry((prev: any) => (prev ? { ...prev, cursor: newCursor } : prev));
+                          setTempGeometry((prev: any) => prev ? { ...prev, cursor: newCursor } : prev);
                         }
                       }}
                       onFocus={() => {
@@ -16230,20 +15562,13 @@ export function CADGabaritCanvas({
                         } else if (e.key === "Enter") {
                           e.preventDefault();
                           const wVal = liveInputMeasure.userValue || liveInputMeasure.liveValue.toFixed(1);
-                          const hVal = liveInputMeasure.userValue2 || liveInputMeasure.liveValue2?.toFixed(1) || "0";
+                          const hVal = liveInputMeasure.userValue2 || (liveInputMeasure.liveValue2?.toFixed(1) || "0");
                           createRectangleFromInputs(undefined, { width: wVal, height: hVal });
                         } else if (e.key === "Escape") {
                           e.preventDefault();
                           setTempPoints([]);
                           setTempGeometry(null);
-                          setLiveInputMeasure((prev) => ({
-                            ...prev,
-                            active: false,
-                            userValue: "",
-                            userValue2: "",
-                            isEditing: false,
-                            isEditing2: false,
-                          }));
+                          setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", userValue2: "", isEditing: false, isEditing2: false }));
                         }
                       }}
                       className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none placeholder:text-blue-400"
@@ -16265,13 +15590,11 @@ export function CADGabaritCanvas({
                   transform: "translate(-50%, -50%)",
                 }}
               >
-                <div
-                  className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
-                    liveInputMeasure.isEditing
-                      ? "bg-blue-100 border-2 border-blue-500 shadow-md"
-                      : "bg-blue-50/90 border border-blue-300"
-                  }`}
-                >
+                <div className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
+                  liveInputMeasure.isEditing
+                    ? "bg-blue-100 border-2 border-blue-500 shadow-md"
+                    : "bg-blue-50/90 border border-blue-300"
+                }`}>
                   {liveInputMeasure.isEditing && liveInputMeasure.userValue !== "" && (
                     <span className="text-xs text-blue-600">🔒</span>
                   )}
@@ -16280,9 +15603,7 @@ export function CADGabaritCanvas({
                     ref={liveInputRef}
                     type="text"
                     inputMode="decimal"
-                    value={
-                      liveInputMeasure.isEditing ? liveInputMeasure.userValue : liveInputMeasure.liveValue.toFixed(1)
-                    }
+                    value={liveInputMeasure.isEditing ? liveInputMeasure.userValue : liveInputMeasure.liveValue.toFixed(1)}
                     placeholder={liveInputMeasure.liveValue.toFixed(1)}
                     onChange={(e) => {
                       let rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
@@ -16311,11 +15632,11 @@ export function CADGabaritCanvas({
                               x: startPoint.x + (dx / currentLen) * valuePx,
                               y: startPoint.y + (dy / currentLen) * valuePx,
                             };
-                            setTempGeometry((prev: any) => (prev ? { ...prev, cursor: newCursor } : prev));
+                            setTempGeometry((prev: any) => prev ? { ...prev, cursor: newCursor } : prev);
                           }
                         } else if (liveInputMeasure.type === "circle") {
                           // Mettre à jour le rayon du cercle
-                          setTempGeometry((prev: any) => (prev ? { ...prev, radius: valuePx } : prev));
+                          setTempGeometry((prev: any) => prev ? { ...prev, radius: valuePx } : prev);
                         }
                       }
                     }}
@@ -16332,10 +15653,9 @@ export function CADGabaritCanvas({
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        const inputValue =
-                          liveInputMeasure.userValue !== ""
-                            ? parseFloat(liveInputMeasure.userValue)
-                            : liveInputMeasure.liveValue;
+                        const inputValue = liveInputMeasure.userValue !== ""
+                          ? parseFloat(liveInputMeasure.userValue)
+                          : liveInputMeasure.liveValue;
                         if (liveInputMeasure.type === "line" && liveInputMeasure.startPoint && tempGeometry?.cursor) {
                           createLineWithLength(liveInputMeasure.startPoint, tempGeometry.cursor, inputValue);
                         } else if (liveInputMeasure.type === "circle" && liveInputMeasure.centerPoint) {
@@ -16400,16 +15720,10 @@ export function CADGabaritCanvas({
 
                                 // Trouver les lignes connectées à CE segment uniquement
                                 const connectedToP1 = Array.from(newSketch.geometries.values()).filter(
-                                  (g) =>
-                                    g.type === "line" &&
-                                    g.id !== line.id &&
-                                    ((g as Line).p1 === line.p1 || (g as Line).p2 === line.p1),
+                                  (g) => g.type === "line" && g.id !== line.id && ((g as Line).p1 === line.p1 || (g as Line).p2 === line.p1)
                                 ) as Line[];
                                 const connectedToP2 = Array.from(newSketch.geometries.values()).filter(
-                                  (g) =>
-                                    g.type === "line" &&
-                                    g.id !== line.id &&
-                                    ((g as Line).p1 === line.p2 || (g as Line).p2 === line.p2),
+                                  (g) => g.type === "line" && g.id !== line.id && ((g as Line).p1 === line.p2 || (g as Line).p2 === line.p2)
                                 ) as Line[];
 
                                 // Vérifier si ça forme un rectangle (lignes perpendiculaires aux deux extrémités)
