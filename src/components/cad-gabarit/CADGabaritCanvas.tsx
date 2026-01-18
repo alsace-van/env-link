@@ -674,6 +674,15 @@ export function CADGabaritCanvas({
     initialValue: number;
   } | null>(null);
 
+  // v7.24: État pour édition inline d'une dimension (double-clic sur cotation)
+  const [editingDimension, setEditingDimension] = useState<{
+    dimensionId: string;
+    entityId: string; // ID de la géométrie à modifier
+    type: "line" | "circle";
+    currentValue: number; // Valeur actuelle en mm
+    screenPos: { x: number; y: number };
+  } | null>(null);
+
   // Dialog pour contrainte d'angle
   const [angleConstraintDialog, setAngleConstraintDialog] = useState<{
     open: boolean;
@@ -11837,6 +11846,45 @@ export function CADGabaritCanvas({
             return;
           }
 
+          // v7.24: Double-clic sur ligne ou cercle → édition inline de la dimension
+          if (geo.type === "line" && activeTool === "select") {
+            const line = geo as Line;
+            const p1 = sketch.points.get(line.p1);
+            const p2 = sketch.points.get(line.p2);
+            if (p1 && p2) {
+              const lengthPx = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+              const lengthMm = lengthPx / sketch.scaleFactor;
+              const midX = (p1.x + p2.x) / 2;
+              const midY = (p1.y + p2.y) / 2;
+              const screenPos = worldToScreen(midX, midY);
+              setEditingDimension({
+                dimensionId: "",
+                entityId: entityId,
+                type: "line",
+                currentValue: lengthMm,
+                screenPos: { x: screenPos.x, y: screenPos.y - 25 },
+              });
+              return;
+            }
+          }
+
+          if (geo.type === "circle" && activeTool === "select") {
+            const circle = geo as CircleType;
+            const center = sketch.points.get(circle.center);
+            if (center) {
+              const radiusMm = circle.radius / sketch.scaleFactor;
+              const screenPos = worldToScreen(center.x, center.y);
+              setEditingDimension({
+                dimensionId: "",
+                entityId: entityId,
+                type: "circle",
+                currentValue: radiusMm,
+                screenPos: { x: screenPos.x + 30, y: screenPos.y },
+              });
+              return;
+            }
+          }
+
           if (geo.type === "arc" || geo.type === "line" || geo.type === "bezier") {
             // Double-clic → sélectionner toute la figure connectée
             const connectedGeos = findConnectedGeometries(entityId);
@@ -13445,6 +13493,21 @@ export function CADGabaritCanvas({
 
       // Pour les touches de saisie (Delete, Backspace, lettres), ne pas interférer avec les inputs
       if (isInputFocused && e.key !== "Escape") {
+        return;
+      }
+
+      // v7.24: Raccourci clavier - taper un chiffre pendant le tracé focus l'input de dimension
+      const isDigitOrDecimal = /^[0-9.,]$/.test(e.key);
+      if (isDigitOrDecimal && liveInputMeasureRef.current.active && !isInputFocused) {
+        e.preventDefault();
+        // Focus l'input principal (largeur pour rectangle, longueur/rayon pour ligne/cercle)
+        if (liveInputRef.current) {
+          liveInputRef.current.focus();
+          // La valeur sera gérée par le onFocus + onChange de l'input
+          // On simule la saisie du chiffre
+          const char = e.key === "," ? "." : e.key;
+          setLiveInputMeasure((prev) => ({ ...prev, userValue: char, isEditing: true }));
+        }
         return;
       }
 
@@ -17909,7 +17972,16 @@ export function CADGabaritCanvas({
                     transform: "translate(-50%, -50%)",
                   }}
                 >
-                  <div className="flex items-center gap-0 bg-blue-50/90 border border-blue-300 rounded px-1.5 py-0.5">
+                  <div
+                    className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
+                      liveInputMeasure.isEditing
+                        ? "bg-blue-100 border-2 border-blue-500 shadow-md"
+                        : "bg-blue-50/90 border border-blue-300"
+                    }`}
+                  >
+                    {liveInputMeasure.isEditing && liveInputMeasure.userValue !== "" && (
+                      <span className="text-xs text-blue-600">🔒</span>
+                    )}
                     <input
                       ref={liveInputRef}
                       type="text"
@@ -17919,7 +17991,14 @@ export function CADGabaritCanvas({
                       }
                       placeholder={liveInputMeasure.liveValue.toFixed(1)}
                       onChange={(e) => {
-                        const rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
+                        let rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
+                        // Conversion auto des unités
+                        const match = e.target.value.match(/^([0-9.,]+)\s*(cm|m)$/i);
+                        if (match) {
+                          const num = parseFloat(match[1].replace(",", ".")) || 0;
+                          if (match[2].toLowerCase() === "cm") rawVal = (num * 10).toString();
+                          else if (match[2].toLowerCase() === "m") rawVal = (num * 1000).toString();
+                        }
                         setLiveInputMeasure((prev) => ({ ...prev, userValue: rawVal, isEditing: true }));
                         // Mise à jour en temps réel du rectangle
                         const widthMm = parseFloat(rawVal) || 0;
@@ -17990,7 +18069,16 @@ export function CADGabaritCanvas({
                     transform: "translate(-50%, -50%)",
                   }}
                 >
-                  <div className="flex items-center gap-0 bg-blue-50/90 border border-blue-300 rounded px-1.5 py-0.5">
+                  <div
+                    className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
+                      liveInputMeasure.isEditing2
+                        ? "bg-blue-100 border-2 border-blue-500 shadow-md"
+                        : "bg-blue-50/90 border border-blue-300"
+                    }`}
+                  >
+                    {liveInputMeasure.isEditing2 && liveInputMeasure.userValue2 !== "" && (
+                      <span className="text-xs text-blue-600">🔒</span>
+                    )}
                     <input
                       ref={liveInputRef2}
                       type="text"
@@ -18002,7 +18090,14 @@ export function CADGabaritCanvas({
                       }
                       placeholder={liveInputMeasure.liveValue2?.toFixed(1) || "0"}
                       onChange={(e) => {
-                        const rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
+                        let rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
+                        // Conversion auto des unités
+                        const match = e.target.value.match(/^([0-9.,]+)\s*(cm|m)$/i);
+                        if (match) {
+                          const num = parseFloat(match[1].replace(",", ".")) || 0;
+                          if (match[2].toLowerCase() === "cm") rawVal = (num * 10).toString();
+                          else if (match[2].toLowerCase() === "m") rawVal = (num * 1000).toString();
+                        }
                         setLiveInputMeasure((prev) => ({ ...prev, userValue2: rawVal, isEditing2: true }));
                         // Mise à jour en temps réel du rectangle
                         const heightMm = parseFloat(rawVal) || 0;
@@ -18077,7 +18172,16 @@ export function CADGabaritCanvas({
                   transform: "translate(-50%, -50%)",
                 }}
               >
-                <div className="flex items-center gap-0 bg-blue-50/90 border border-blue-300 rounded px-1.5 py-0.5">
+                <div
+                  className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
+                    liveInputMeasure.isEditing
+                      ? "bg-blue-100 border-2 border-blue-500 shadow-md"
+                      : "bg-blue-50/90 border border-blue-300"
+                  }`}
+                >
+                  {liveInputMeasure.isEditing && liveInputMeasure.userValue !== "" && (
+                    <span className="text-xs text-blue-600">🔒</span>
+                  )}
                   {liveInputMeasure.type === "circle" && <span className="text-sm text-blue-600 font-bold">R</span>}
                   <input
                     ref={liveInputRef}
@@ -18088,7 +18192,14 @@ export function CADGabaritCanvas({
                     }
                     placeholder={liveInputMeasure.liveValue.toFixed(1)}
                     onChange={(e) => {
-                      const rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
+                      let rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
+                      // Conversion auto des unités
+                      const match = e.target.value.match(/^([0-9.,]+)\s*(cm|m)$/i);
+                      if (match) {
+                        const num = parseFloat(match[1].replace(",", ".")) || 0;
+                        if (match[2].toLowerCase() === "cm") rawVal = (num * 10).toString();
+                        else if (match[2].toLowerCase() === "m") rawVal = (num * 1000).toString();
+                      }
                       setLiveInputMeasure((prev) => ({ ...prev, userValue: rawVal, isEditing: true }));
                       // Mise à jour en temps réel de la figure
                       const valueMm = parseFloat(rawVal) || 0;
@@ -18148,6 +18259,82 @@ export function CADGabaritCanvas({
                     style={{ caretColor: "#2563eb" }}
                   />
                   <span className="text-sm text-blue-600 font-bold">mm</span>
+                </div>
+              </div>
+            )}
+
+            {/* v7.24: Input inline pour édition de dimension existante (double-clic) */}
+            {editingDimension && (
+              <div
+                className="absolute z-50 pointer-events-auto"
+                style={{
+                  left: `${editingDimension.screenPos.x}px`,
+                  top: `${editingDimension.screenPos.y}px`,
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                <div className="flex items-center gap-0.5 bg-amber-100 border-2 border-amber-500 rounded px-1.5 py-0.5 shadow-lg">
+                  <span className="text-xs text-amber-600">✏️</span>
+                  {editingDimension.type === "circle" && <span className="text-sm text-amber-700 font-bold">R</span>}
+                  <input
+                    autoFocus
+                    type="text"
+                    inputMode="decimal"
+                    defaultValue={editingDimension.currentValue.toFixed(1)}
+                    onFocus={(e) => e.target.select()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const newValue = parseFloat((e.target as HTMLInputElement).value.replace(",", ".")) || 0;
+                        if (newValue > 0) {
+                          const scaleFactor = sketchRef.current.scaleFactor || 1;
+                          const newValuePx = newValue * scaleFactor;
+                          const geo = sketchRef.current.geometries.get(editingDimension.entityId);
+                          if (geo) {
+                            const newSketch = { ...sketchRef.current };
+                            newSketch.points = new Map(sketchRef.current.points);
+                            newSketch.geometries = new Map(sketchRef.current.geometries);
+
+                            if (editingDimension.type === "line" && geo.type === "line") {
+                              const line = geo as Line;
+                              const p1 = newSketch.points.get(line.p1);
+                              const p2 = newSketch.points.get(line.p2);
+                              if (p1 && p2) {
+                                // Garder p1 fixe, déplacer p2 à la nouvelle longueur
+                                const dx = p2.x - p1.x;
+                                const dy = p2.y - p1.y;
+                                const currentLen = Math.sqrt(dx * dx + dy * dy);
+                                if (currentLen > 0) {
+                                  const newP2 = {
+                                    ...p2,
+                                    x: p1.x + (dx / currentLen) * newValuePx,
+                                    y: p1.y + (dy / currentLen) * newValuePx,
+                                  };
+                                  newSketch.points.set(line.p2, newP2);
+                                }
+                              }
+                            } else if (editingDimension.type === "circle" && geo.type === "circle") {
+                              const circle = geo as CircleType;
+                              const newCircle = { ...circle, radius: newValuePx };
+                              newSketch.geometries.set(circle.id, newCircle);
+                            }
+
+                            setSketch(newSketch);
+                            addToHistory(newSketch, `Dimension modifiée: ${newValue.toFixed(1)}mm`);
+                            toast.success(`Dimension modifiée: ${newValue.toFixed(1)} mm`);
+                          }
+                        }
+                        setEditingDimension(null);
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setEditingDimension(null);
+                      }
+                    }}
+                    onBlur={() => setEditingDimension(null)}
+                    className="w-14 h-5 px-1 text-center text-sm font-bold border-0 bg-transparent text-amber-700 outline-none"
+                    style={{ caretColor: "#d97706" }}
+                  />
+                  <span className="text-sm text-amber-700 font-bold">mm</span>
                 </div>
               </div>
             )}
@@ -21162,6 +21349,17 @@ export function CADGabaritCanvas({
                     Modifier la longueur
                   </button>
                   <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      setSelectedEntities(new Set([contextMenu.entityId]));
+                      duplicateSelectedEntities();
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Plus className="h-4 w-4 text-green-500" />
+                    Dupliquer
+                  </button>
+                  <button
                     className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
                     onClick={() => {
                       setSelectedEntities(new Set([contextMenu.entityId]));
@@ -21175,7 +21373,71 @@ export function CADGabaritCanvas({
                 </>
               );
             })()}
-          {(contextMenu.entityType === "circle" || contextMenu.entityType === "bezier") && (
+          {contextMenu.entityType === "circle" &&
+            (() => {
+              const circle = sketch.geometries.get(contextMenu.entityId) as CircleType | undefined;
+              const center = circle ? sketch.points.get(circle.center) : undefined;
+              const radiusMm = circle ? circle.radius / sketch.scaleFactor : 0;
+              return (
+                <>
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      setSelectedEntities(new Set([contextMenu.entityId]));
+                      setContextMenu(null);
+                    }}
+                  >
+                    <MousePointer className="h-4 w-4" />
+                    Sélectionner
+                  </button>
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      if (center) {
+                        const screenPos = worldToScreen(center.x, center.y);
+                        setEditingDimension({
+                          dimensionId: "",
+                          entityId: contextMenu.entityId,
+                          type: "circle",
+                          currentValue: radiusMm,
+                          screenPos: { x: screenPos.x + 30, y: screenPos.y },
+                        });
+                      }
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Ruler className="h-4 w-4 text-blue-500" />
+                    Modifier le rayon
+                  </button>
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      if (circle) {
+                        copySelectedEntities();
+                        toast.success("Cercle copié");
+                      }
+                      setSelectedEntities(new Set([contextMenu.entityId]));
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Plus className="h-4 w-4 text-green-500" />
+                    Dupliquer
+                  </button>
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
+                    onClick={() => {
+                      setSelectedEntities(new Set([contextMenu.entityId]));
+                      deleteSelectedEntities();
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Supprimer
+                  </button>
+                </>
+              );
+            })()}
+          {contextMenu.entityType === "bezier" && (
             <button
               className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
               onClick={() => {
