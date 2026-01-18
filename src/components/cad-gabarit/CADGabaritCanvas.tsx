@@ -7996,11 +7996,12 @@ export function CADGabaritCanvas({
       newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[1].id] });
       newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[3].id] });
 
-      // MOD v7.31: Ajouter cotations automatiques pour le rectangle
+      // MOD v7.31: Ajouter cotations automatiques pour le rectangle (avec contraintes pour l'interactivité)
       newSketch.dimensions = new Map(currentSketch.dimensions);
-      const autoDims = addRectangleDimensions(corner1.id, corner2.id, corner3.id, corner4.id, newSketch);
-      autoDims.forEach((dim) => {
-        newSketch.dimensions.set(dim.id, dim);
+      const autoDimsResults = addRectangleDimensions(corner1.id, corner2.id, corner3.id, corner4.id, newSketch);
+      autoDimsResults.forEach(({ dimension, constraint }) => {
+        newSketch.dimensions.set(dimension.id, dimension);
+        newSketch.constraints.set(constraint.id, constraint);
       });
 
       const wMm = width / currentSketch.scaleFactor;
