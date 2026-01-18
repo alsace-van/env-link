@@ -86,7 +86,7 @@ export { parseDXF, loadDXFFile } from "./dxf-parser";
 export type { DXFParseResult } from "./dxf-parser";
 
 // Composant principal
-export { default as CADGabaritCanvas } from "./CADGabaritCanvas";
+export { CADGabaritCanvas } from "./CADGabaritCanvas";
 
 // Toolbar configurable
 export type {

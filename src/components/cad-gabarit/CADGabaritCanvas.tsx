@@ -22401,6 +22401,7 @@ function deserializeSketch(data: any): Sketch {
     dimensions: new Map(Object.entries(data.dimensions || {})),
     scaleFactor: data.scaleFactor || 1,
     layers: data.layers ? new Map(Object.entries(data.layers)) : new Map(),
+    layerGroups: data.layerGroups ? new Map(Object.entries(data.layerGroups)) : new Map(),
     groups: data.groups ? new Map(Object.entries(data.groups)) : new Map(),
     shapeFills: data.shapeFills ? new Map(Object.entries(data.shapeFills)) : new Map(),
     activeLayerId: data.activeLayerId || "trace",
@@ -22429,3 +22430,9 @@ function exportToSVG(sketch: Sketch): string {
       if (center) {
         svg += `  <circle cx="${center.x}" cy="${center.y}" r="${circle.radius}"/>\n`;
       }
+    }
+  });
+
+  svg += `</g>\n</svg>`;
+  return svg;
+}
