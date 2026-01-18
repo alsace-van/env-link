@@ -15883,6 +15883,34 @@ export function CADGabaritCanvas({
 
             <ToolButton tool="bezier" icon={Spline} label="Courbe Bézier" shortcut="B" />
 
+            {/* v7.21: Mode construction déplacé ici avec les outils de traçage */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={isConstructionMode ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setIsConstructionMode(!isConstructionMode)}
+                    className={`h-9 w-9 p-0 ${isConstructionMode ? "bg-amber-500 hover:bg-amber-600" : ""}`}
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeDasharray="4 2"
+                    >
+                      <line x1="4" y1="20" x2="20" y2="4" />
+                    </svg>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Mode construction (lignes pointillées)</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
             {/* Outil Spline (courbe libre) */}
             <TooltipProvider>
               <Tooltip>
@@ -17172,37 +17200,7 @@ export function CADGabaritCanvas({
             </Tooltip>
           </TooltipProvider>
 
-          <Separator orientation="vertical" className="h-6 mx-1" />
-
-          {/* Toggle mode construction */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={isConstructionMode ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setIsConstructionMode(!isConstructionMode)}
-                  className={`h-8 px-2 ${isConstructionMode ? "bg-amber-500 hover:bg-amber-600" : ""}`}
-                >
-                  <svg
-                    className="h-4 w-4"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeDasharray="4 2"
-                  >
-                    <line x1="4" y1="20" x2="20" y2="4" />
-                  </svg>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Mode construction (lignes pointillées)</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Toggle afficher/masquer construction */}
+          {/* v7.21: Toggle afficher/masquer construction - à côté du bouton cotations */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -17210,9 +17208,31 @@ export function CADGabaritCanvas({
                   variant={showConstruction ? "default" : "outline"}
                   size="sm"
                   onClick={() => setShowConstruction(!showConstruction)}
-                  className="h-8 px-2"
+                  className="h-8 w-8 p-0"
                 >
-                  {showConstruction ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                  {showConstruction ? (
+                    <svg
+                      className="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeDasharray="4 2"
+                    >
+                      <line x1="4" y1="20" x2="20" y2="4" />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="h-4 w-4 opacity-40"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeDasharray="4 2"
+                    >
+                      <line x1="4" y1="20" x2="20" y2="4" />
+                    </svg>
+                  )}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
