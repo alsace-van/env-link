@@ -7,7 +7,9 @@
 // CHANGELOG v7.21 (18/01/2026):
 // - Import unifié : un seul bouton "Importer" qui ouvre l'explorateur (accepte DXF + images)
 // - Handler handleUnifiedImport qui dispatche selon le type de fichier
-// - Suppression de dxfInputRef (plus nécessaire)
+// - Outils photos regroupés dans un menu déroulant (opacité, rotation, recadrage, etc.)
+// - Bouton imprimante sans texte (icône seule)
+// - Icône "Ajuster au contenu" changée de Scan à Target
 //
 // CHANGELOG v7.20 (18/01/2026):
 // - Regroupement des 4 boutons d'export (SVG, PNG, DXF, PDF) en un seul menu déroulant "Exporter"
@@ -16189,9 +16191,10 @@ export function CADGabaritCanvas({
           className="hidden"
         />
 
-        {/* Outils photos (si des images sont chargées) */}
+        {/* v7.21: Outils photos regroupés dans un menu déroulant */}
         {toolbarConfig.line2.photoTools && backgroundImages.length > 0 && (
           <ToolbarGroupWrapper groupId="grp_photo" groupName="Photos" groupColor="#EC4899" lineIndex={1}>
+            {/* Toggle afficher/masquer - toujours visible */}
             <Button
               variant={showBackgroundImage ? "default" : "outline"}
               size="sm"
@@ -16202,310 +16205,208 @@ export function CADGabaritCanvas({
               {showBackgroundImage ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
             </Button>
 
-            {/* Opacité */}
-            <div className="flex items-center gap-1 px-1">
-              <input
-                type="range"
-                min="0.1"
-                max="1"
-                step="0.1"
-                value={imageOpacity}
-                onChange={(e) => {
-                  const newOpacity = parseFloat(e.target.value);
-                  setImageOpacity(newOpacity);
-                  setBackgroundImages((prev) => prev.map((img) => ({ ...img, opacity: newOpacity })));
-                }}
-                className="w-12 h-1"
-                title={`Opacité: ${Math.round(imageOpacity * 100)}%`}
-              />
-            </div>
+            {/* Menu déroulant avec tous les outils photos */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 px-2 relative">
+                  <Image className="h-4 w-4 mr-1" />
+                  <span className="text-xs">Outils</span>
+                  <ChevronDown className="h-3 w-3 ml-1" />
+                  {selectedImageId && <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                {/* Opacité */}
+                <div className="px-2 py-2">
+                  <label className="text-xs text-muted-foreground mb-1 block">
+                    Opacité: {Math.round(imageOpacity * 100)}%
+                  </label>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1"
+                    step="0.1"
+                    value={imageOpacity}
+                    onChange={(e) => {
+                      const newOpacity = parseFloat(e.target.value);
+                      setImageOpacity(newOpacity);
+                      setBackgroundImages((prev) => prev.map((img) => ({ ...img, opacity: newOpacity })));
+                    }}
+                    className="w-full h-2"
+                  />
+                </div>
 
-            {/* Rotation de l'image sélectionnée */}
-            {/* MOD v80.10: Afficher aussi quand multi-sélection active */}
-            {(selectedImageId || selectedImageIds.size > 0) && (
-              <div className="flex items-center gap-0.5 px-1 border-l border-gray-200 ml-1 flex-shrink-0">
-                {/* MOD v80.10: Badge indicateur du nombre d'images multi-sélectionnées */}
-                {selectedImageIds.size > 0 && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="bg-green-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full mr-1">
-                          {selectedImageIds.size}
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>{selectedImageIds.size} photo(s) sélectionnée(s) - Ctrl+clic pour ajouter/retirer</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                <DropdownMenuSeparator />
+
+                {/* Rotation (si image sélectionnée) */}
+                {(selectedImageId || selectedImageIds.size > 0) && (
+                  <>
+                    <div className="px-2 py-2">
+                      <label className="text-xs text-muted-foreground mb-1 block">
+                        Rotation {selectedImageIds.size > 0 && `(${selectedImageIds.size} photos)`}
+                      </label>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          onClick={() => updateSelectedImageRotation(getSelectedImageRotation() - 90)}
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-1"
+                          onClick={() => updateSelectedImageRotation(getSelectedImageRotation() - 1)}
+                        >
+                          <span className="text-xs">-1°</span>
+                        </Button>
+                        <input
+                          type="number"
+                          value={Math.round(getSelectedImageRotation() * 10) / 10}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            if (!isNaN(val)) updateSelectedImageRotation(val);
+                          }}
+                          className="h-7 w-12 text-xs text-center border rounded"
+                          step="0.1"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 px-1"
+                          onClick={() => updateSelectedImageRotation(getSelectedImageRotation() + 1)}
+                        >
+                          <span className="text-xs">+1°</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 w-7 p-0"
+                          onClick={() => updateSelectedImageRotation(getSelectedImageRotation() + 90)}
+                        >
+                          <RotateCw className="h-3 w-3" />
+                        </Button>
+                        {getSelectedImageRotation() !== 0 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-red-500"
+                            onClick={() => updateSelectedImageRotation(0)}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <DropdownMenuSeparator />
+                  </>
                 )}
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        onClick={() => updateSelectedImageRotation(getSelectedImageRotation() - 90)}
-                      >
-                        <RotateCcw className="h-3 w-3" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>-90°</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
 
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        onClick={() => updateSelectedImageRotation(getSelectedImageRotation() - 1)}
-                      >
-                        <span className="text-xs">-1</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>-1°</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-
-                <input
-                  type="number"
-                  value={Math.round(getSelectedImageRotation() * 10) / 10}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val)) updateSelectedImageRotation(val);
+                {/* Actions sur image sélectionnée */}
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (!selectedImageId) {
+                      toast.error("Sélectionnez d'abord une photo");
+                      return;
+                    }
+                    setShowAdjustmentsDialog(true);
                   }}
-                  className="h-7 text-xs text-center border rounded px-1"
-                  style={{ width: "52px" }}
-                  title="Rotation (degrés)"
-                  step="0.1"
-                />
+                  disabled={!selectedImageId}
+                >
+                  <Contrast className="h-4 w-4 mr-2" />
+                  Ajuster les contours
+                </DropdownMenuItem>
 
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        onClick={() => updateSelectedImageRotation(getSelectedImageRotation() + 1)}
-                      >
-                        <span className="text-xs">+1</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>+1°</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (!selectedImageId) {
+                      toast.error("Sélectionnez d'abord une photo");
+                      return;
+                    }
+                    openCropDialog();
+                  }}
+                  disabled={!selectedImageId}
+                >
+                  <Crop className="h-4 w-4 mr-2" />
+                  Recadrer
+                </DropdownMenuItem>
 
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        onClick={() => updateSelectedImageRotation(getSelectedImageRotation() + 90)}
-                      >
-                        <RotateCw className="h-3 w-3" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>+90°</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (!showCalibrationPanel && backgroundImages.length > 0 && !selectedImageId) {
+                      toast.error("Sélectionnez d'abord une photo à calibrer");
+                      return;
+                    }
+                    setShowCalibrationPanel(!showCalibrationPanel);
+                  }}
+                >
+                  <Ruler className="h-4 w-4 mr-2" />
+                  Calibration
+                  {showCalibrationPanel && <Check className="h-4 w-4 ml-auto" />}
+                </DropdownMenuItem>
 
-                {/* MODIFICATION v7.11: Bouton toujours présent pour éviter le décalage des icônes */}
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={`h-7 w-7 p-0 ${getSelectedImageRotation() !== 0 ? "text-red-500" : "text-gray-300 cursor-default"}`}
-                        onClick={() => getSelectedImageRotation() !== 0 && updateSelectedImageRotation(0)}
-                        disabled={getSelectedImageRotation() === 0}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Reset rotation</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-            )}
+                <DropdownMenuSeparator />
 
-            {/* Marqueur */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={markerMode === "addMarker" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => {
-                      if (markerMode === "addMarker") {
-                        setMarkerMode("idle");
-                      } else {
-                        setMarkerMode("addMarker");
-                        toast.info("Cliquez sur une photo pour ajouter un marqueur");
-                      }
-                    }}
-                    className="h-9 w-9 p-0"
-                  >
-                    <MapPin className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Ajouter un marqueur</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+                {/* Marqueurs */}
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (markerMode === "addMarker") {
+                      setMarkerMode("idle");
+                    } else {
+                      setMarkerMode("addMarker");
+                      toast.info("Cliquez sur une photo pour ajouter un marqueur");
+                    }
+                  }}
+                >
+                  <MapPin className="h-4 w-4 mr-2" />
+                  Ajouter un marqueur
+                  {markerMode === "addMarker" && <Check className="h-4 w-4 ml-auto" />}
+                </DropdownMenuItem>
 
-            {/* Lien */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={markerMode === "linkMarker1" || markerMode === "linkMarker2" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => {
-                      if (markerMode === "linkMarker1" || markerMode === "linkMarker2") {
-                        setMarkerMode("idle");
-                        setPendingLink(null);
-                      } else {
-                        const imagesWithMarkers = backgroundImages.filter((img) => img.markers.length > 0);
-                        if (imagesWithMarkers.length < 2) {
-                          toast.error("Ajoutez au moins 1 marqueur sur 2 photos différentes");
-                          return;
-                        }
-                        setMarkerMode("linkMarker1");
-                        toast.info("Cliquez sur le premier marqueur");
-                      }
-                    }}
-                    className="h-9 w-9 p-0"
-                  >
-                    <Link2 className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Lier deux marqueurs</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            {/* Calibrer */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={showCalibrationPanel ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => {
-                      if (!showCalibrationPanel && backgroundImages.length > 0 && !selectedImageId) {
-                        toast.error("Sélectionnez d'abord une photo à calibrer");
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (markerMode === "linkMarker1" || markerMode === "linkMarker2") {
+                      setMarkerMode("idle");
+                      setPendingLink(null);
+                    } else {
+                      const imagesWithMarkers = backgroundImages.filter((img) => img.markers.length > 0);
+                      if (imagesWithMarkers.length < 2) {
+                        toast.error("Ajoutez au moins 1 marqueur sur 2 photos différentes");
                         return;
                       }
-                      setShowCalibrationPanel(!showCalibrationPanel);
-                    }}
-                    className="h-9 w-9 p-0"
-                  >
-                    <Target className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Calibration</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+                      setMarkerMode("linkMarker1");
+                      toast.info("Cliquez sur le premier marqueur");
+                    }
+                  }}
+                >
+                  <Link2 className="h-4 w-4 mr-2" />
+                  Lier deux marqueurs
+                  {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && (
+                    <Check className="h-4 w-4 ml-auto" />
+                  )}
+                </DropdownMenuItem>
 
-            {/* Ajuster contours */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (!selectedImageId) {
-                        toast.error("Sélectionnez d'abord une photo");
-                        return;
-                      }
-                      setShowAdjustmentsDialog(true);
-                    }}
-                    disabled={!selectedImageId}
-                    className="h-9 w-9 p-0"
-                  >
-                    <Contrast className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Ajuster les contours</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+                <DropdownMenuSeparator />
 
-            {/* Recadrer l'image */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (!selectedImageId) {
-                        toast.error("Sélectionnez d'abord une photo");
-                        return;
-                      }
-                      openCropDialog();
-                    }}
-                    disabled={!selectedImageId}
-                    className="h-9 w-9 p-0"
-                  >
-                    <Crop className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Recadrer l'image</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            {/* Supprimer toutes les photos */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      addToImageHistory(backgroundImages, markerLinks);
-                      setBackgroundImages([]);
-                      setMarkerLinks([]);
-                      setSelectedImageId(null);
-                      setSelectedMarkerId(null);
-                      toast.success("Toutes les photos supprimées");
-                    }}
-                    className="h-9 w-9 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Supprimer toutes les photos</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+                {/* Supprimer */}
+                <DropdownMenuItem
+                  onClick={() => {
+                    addToImageHistory(backgroundImages, markerLinks);
+                    setBackgroundImages([]);
+                    setMarkerLinks([]);
+                    setSelectedImageId(null);
+                    setSelectedMarkerId(null);
+                    toast.success("Toutes les photos supprimées");
+                  }}
+                  className="text-red-500 focus:text-red-500"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Supprimer toutes les photos
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </ToolbarGroupWrapper>
         )}
 
