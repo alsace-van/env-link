@@ -11846,7 +11846,18 @@ export function CADGabaritCanvas({
             return;
           }
 
-          // v7.24: Double-clic sur ligne ou cercle → édition inline de la dimension
+          // v7.24: Shift + double-clic → sélectionner toute la figure connectée
+          if (e.shiftKey && (geo.type === "arc" || geo.type === "line" || geo.type === "bezier")) {
+            const connectedGeos = findConnectedGeometries(entityId);
+            setSelectedEntities(connectedGeos);
+            setReferenceHighlight(null);
+            if (connectedGeos.size > 1) {
+              toast.success(`${connectedGeos.size} élément(s) sélectionné(s)`);
+            }
+            return;
+          }
+
+          // v7.24: Double-clic sur ligne → édition inline de la dimension
           if (geo.type === "line" && activeTool === "select") {
             const line = geo as Line;
             const p1 = sketch.points.get(line.p1);
@@ -11868,6 +11879,7 @@ export function CADGabaritCanvas({
             }
           }
 
+          // v7.24: Double-clic sur cercle → édition inline du rayon
           if (geo.type === "circle" && activeTool === "select") {
             const circle = geo as CircleType;
             const center = sketch.points.get(circle.center);
@@ -11882,28 +11894,6 @@ export function CADGabaritCanvas({
                 screenPos: { x: screenPos.x + 30, y: screenPos.y },
               });
               return;
-            }
-          }
-
-          if (geo.type === "arc" || geo.type === "line" || geo.type === "bezier") {
-            // Double-clic → sélectionner toute la figure connectée
-            const connectedGeos = findConnectedGeometries(entityId);
-
-            // Si Shift est enfoncé, AJOUTER à la sélection existante
-            if (e.shiftKey) {
-              setSelectedEntities((prev) => {
-                const newSelection = new Set(prev);
-                connectedGeos.forEach((id) => newSelection.add(id));
-                return newSelection;
-              });
-              toast.success(`${connectedGeos.size} élément(s) ajouté(s) à la sélection`);
-            } else {
-              // Sans Shift, REMPLACER la sélection
-              setSelectedEntities(connectedGeos);
-              setReferenceHighlight(null); // Reset le highlight vert
-              if (connectedGeos.size > 1) {
-                toast.success(`${connectedGeos.size} élément(s) sélectionné(s)`);
-              }
             }
           }
         }
