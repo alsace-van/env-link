@@ -454,6 +454,11 @@ export function CADGabaritCanvas({
   });
   const liveInputRef = useRef<HTMLInputElement>(null);
   const liveInputRef2 = useRef<HTMLInputElement>(null); // Pour hauteur rectangle
+  // Ref pour accéder aux valeurs dans les callbacks sans stale closure
+  const liveInputMeasureRef = useRef(liveInputMeasure);
+  useEffect(() => {
+    liveInputMeasureRef.current = liveInputMeasure;
+  }, [liveInputMeasure]);
 
   // Détection de perpendicularité pendant le tracé
   const [perpendicularInfo, setPerpendicularInfo] = useState<{
@@ -11092,20 +11097,44 @@ export function CADGabaritCanvas({
 
           setPerpendicularInfo(perpInfo);
 
+          // v7.24: Si une longueur est verrouillée (userValue non vide), garder cette longueur
+          // mais suivre la direction de la souris
+          const liveInput = liveInputMeasureRef.current;
+          let finalLineTarget = lineTargetPos;
+          if (liveInput.isEditing && liveInput.userValue !== "") {
+            const lockedLengthMm = parseFloat(liveInput.userValue) || 0;
+            if (lockedLengthMm > 0) {
+              const scaleFactor = sketchRef.current.scaleFactor || 1;
+              const lockedLengthPx = lockedLengthMm * scaleFactor;
+              // Calculer la direction vers la souris
+              const dx = lineTargetPos.x - startPoint.x;
+              const dy = lineTargetPos.y - startPoint.y;
+              const currentLen = Math.sqrt(dx * dx + dy * dy);
+              if (currentLen > 0) {
+                finalLineTarget = {
+                  x: startPoint.x + (dx / currentLen) * lockedLengthPx,
+                  y: startPoint.y + (dy / currentLen) * lockedLengthPx,
+                };
+              }
+            }
+          }
+
           setTempGeometry({
             ...tempGeometry,
-            cursor: lineTargetPos,
+            cursor: finalLineTarget,
           });
 
           // v7.24: Mettre à jour l'input de mesure en temps réel pour la ligne
-          const lineLengthPx = Math.sqrt((lineTargetPos.x - startPoint.x) ** 2 + (lineTargetPos.y - startPoint.y) ** 2);
+          const lineLengthPx = Math.sqrt(
+            (finalLineTarget.x - startPoint.x) ** 2 + (finalLineTarget.y - startPoint.y) ** 2,
+          );
           const lineLengthMm = lineLengthPx / (sketchRef.current.scaleFactor || 1);
           // Position écran au milieu de la ligne avec offset perpendiculaire
-          const midX = (startPoint.x + lineTargetPos.x) / 2;
-          const midY = (startPoint.y + lineTargetPos.y) / 2;
+          const midX = (startPoint.x + finalLineTarget.x) / 2;
+          const midY = (startPoint.y + finalLineTarget.y) / 2;
           // Offset perpendiculaire comme dans le renderer
-          const dx = lineTargetPos.x - startPoint.x;
-          const dy = lineTargetPos.y - startPoint.y;
+          const dx = finalLineTarget.x - startPoint.x;
+          const dy = finalLineTarget.y - startPoint.y;
           const len = Math.sqrt(dx * dx + dy * dy);
           const offsetDist = 25; // Pixels d'offset
           const offsetX = len > 0 ? (-dy / len) * offsetDist : 0;
@@ -11127,15 +11156,30 @@ export function CADGabaritCanvas({
           if (snapEnabled && currentSnapPoint && currentSnapPoint.type !== "grid") {
             circleTargetPos = { x: currentSnapPoint.x, y: currentSnapPoint.y };
           }
-          const radius = distance(tempPoints[0], circleTargetPos);
+
+          // v7.24: Si un rayon est verrouillé (userValue non vide), garder ce rayon
+          const liveInput = liveInputMeasureRef.current;
+          let finalRadius: number;
+          if (liveInput.isEditing && liveInput.userValue !== "") {
+            const lockedRadiusMm = parseFloat(liveInput.userValue) || 0;
+            if (lockedRadiusMm > 0) {
+              const scaleFactor = sketchRef.current.scaleFactor || 1;
+              finalRadius = lockedRadiusMm * scaleFactor;
+            } else {
+              finalRadius = distance(tempPoints[0], circleTargetPos);
+            }
+          } else {
+            finalRadius = distance(tempPoints[0], circleTargetPos);
+          }
+
           setTempGeometry({
             ...tempGeometry,
-            radius,
+            radius: finalRadius,
           });
 
           // v7.24: Mettre à jour l'input de mesure en temps réel pour le cercle
           const center = tempPoints[0];
-          const radiusMm = radius / (sketchRef.current.scaleFactor || 1);
+          const radiusMm = finalRadius / (sketchRef.current.scaleFactor || 1);
           // Position écran à droite du centre
           const screenX = center.x * viewport.scale + viewport.offsetX + 20;
           const screenY = center.y * viewport.scale + viewport.offsetY;
@@ -11153,7 +11197,47 @@ export function CADGabaritCanvas({
 
           // IMPORTANT: Pour le rectangle, NE PAS utiliser le snap (évite les sauts de 10mm sur la grille)
           // On utilise worldPos directement (position brute de la souris)
-          const rectTargetPos = worldPos;
+          let rectTargetPos = worldPos;
+
+          // v7.24: Respecter les dimensions verrouillées (X et/ou Y indépendamment)
+          const liveInput = liveInputMeasureRef.current;
+          const p1 = tempGeometry.p1;
+          if (p1) {
+            const scaleFactor = sketchRef.current.scaleFactor || 1;
+            const isCenter = tempGeometry.mode === "center";
+
+            // Calculer les dimensions de la souris
+            let mouseWidthPx = Math.abs(rectTargetPos.x - p1.x);
+            let mouseHeightPx = Math.abs(rectTargetPos.y - p1.y);
+
+            // Direction de la souris par rapport à p1
+            const dirX = rectTargetPos.x >= p1.x ? 1 : -1;
+            const dirY = rectTargetPos.y >= p1.y ? 1 : -1;
+
+            // Si largeur verrouillée (userValue non vide)
+            let finalWidthPx = mouseWidthPx;
+            if (liveInput.isEditing && liveInput.userValue !== "") {
+              const lockedWidthMm = parseFloat(liveInput.userValue) || 0;
+              if (lockedWidthMm > 0) {
+                finalWidthPx = isCenter ? (lockedWidthMm * scaleFactor) / 2 : lockedWidthMm * scaleFactor;
+              }
+            }
+
+            // Si hauteur verrouillée (userValue2 non vide)
+            let finalHeightPx = mouseHeightPx;
+            if (liveInput.isEditing2 && liveInput.userValue2 !== "") {
+              const lockedHeightMm = parseFloat(liveInput.userValue2) || 0;
+              if (lockedHeightMm > 0) {
+                finalHeightPx = isCenter ? (lockedHeightMm * scaleFactor) / 2 : lockedHeightMm * scaleFactor;
+              }
+            }
+
+            // Recalculer la position du curseur avec les dimensions finales
+            rectTargetPos = {
+              x: p1.x + finalWidthPx * dirX,
+              y: p1.y + finalHeightPx * dirY,
+            };
+          }
 
           // Utiliser callback pour éviter re-render si curseur identique
           setTempGeometry((prev: any) => {
@@ -11171,8 +11255,7 @@ export function CADGabaritCanvas({
           });
 
           // v7.24: Mettre à jour l'input de mesure en temps réel pour le rectangle
-          if (tempGeometry.p1) {
-            const p1 = tempGeometry.p1;
+          if (p1) {
             const p2 = rectTargetPos;
             const isCenter = tempGeometry.mode === "center";
             const scaleFactor = sketchRef.current.scaleFactor || 1;
