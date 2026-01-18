@@ -4822,16 +4822,13 @@ export function CADGabaritCanvas({
       const layerColors = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4", "#84CC16", "#EF4444"];
       const newLayerId = generateId();
 
-      // Extraire le nom du fichier sans extension pour le nom du calque
-      const fileName = image.name.replace(/\.[^/.]+$/, "");
-      const shortName = fileName.length > 20 ? fileName.substring(0, 17) + "..." : fileName;
-
-      // Créer le nouveau calque
+      // Créer le nouveau calque avec nom simple "Calque N"
       setSketch((prev) => {
         const newLayers = new Map(prev.layers);
+        const layerNumber = prev.layers.size + 1;
         const newLayer: Layer = {
           id: newLayerId,
-          name: `📷 ${shortName}`,
+          name: `Calque ${layerNumber}`,
           color: layerColors[prev.layers.size % layerColors.length],
           visible: true,
           locked: false,
@@ -4844,7 +4841,7 @@ export function CADGabaritCanvas({
       // Déplacer l'image vers ce calque
       setBackgroundImages((prev) => prev.map((img) => (img.id === imageId ? { ...img, layerId: newLayerId } : img)));
 
-      toast.success(`Image déplacée vers le calque "📷 ${shortName}"`);
+      toast.success(`Image déplacée vers nouveau calque`);
     },
     [backgroundImages],
   );
@@ -17349,7 +17346,9 @@ export function CADGabaritCanvas({
                     style={{ backgroundColor: layer.color }}
                   />
                   {/* Nom du calque */}
-                  <span className="whitespace-nowrap">{layer.name}</span>
+                  <span className="max-w-[80px] truncate" title={layer.name}>
+                    {layer.name}
+                  </span>
                   {/* Bouton visibilité */}
                   <button
                     className={`p-0.5 rounded hover:bg-blue-100 ${!layer.visible ? "opacity-40" : ""}`}
