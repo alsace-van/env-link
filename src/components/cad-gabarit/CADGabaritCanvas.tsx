@@ -1,8 +1,12 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.19 - Fix cotations automatiques (passage du sketch correct)
+// VERSION: 7.20 - Bouton export unifié + toggle cotations
 // ============================================
+//
+// CHANGELOG v7.20 (18/01/2026):
+// - Regroupement des 4 boutons d'export (SVG, PNG, DXF, PDF) en un seul menu déroulant "Exporter"
+// - Bouton toggle cotations avec icône Sliders (section Affichage)
 //
 // CHANGELOG v7.19 (18/01/2026):
 // - Fix: passage du newSketch à addRectangleDimensions (les points n'existaient pas encore dans sketchRef)
@@ -15588,57 +15592,47 @@ export function CADGabaritCanvas({
             </TooltipProvider>
           )}
 
-          {/* Export SVG */}
-          {toolbarConfig.line1.exportSvg && (
-            <Button variant="outline" size="sm" onClick={handleExportSVG} className="h-9 px-2">
-              <FileDown className="h-4 w-4 mr-1" />
-              <span className="text-xs">SVG</span>
-            </Button>
-          )}
+          {/* v7.20: Export unifié - un seul bouton avec menu déroulant */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="default" size="sm" className="h-9 px-2">
+                <Download className="h-4 w-4 mr-1" />
+                <span className="text-xs">Exporter</span>
+                <ChevronDown className="h-3 w-3 ml-1" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              {/* DXF - Format CAO */}
+              <DropdownMenuItem onClick={handleExportDXF}>
+                <Download className="h-4 w-4 mr-2" />
+                DXF (CAO/CNC)
+              </DropdownMenuItem>
 
-          {/* Export PNG */}
-          {toolbarConfig.line1.exportPng && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 px-2">
-                  <FileImage className="h-4 w-4 mr-1" />
-                  <span className="text-xs">PNG</span>
-                  <ChevronDown className="h-3 w-3 ml-1" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => handleExportPNG(false)}>
-                  <FileImage className="h-4 w-4 mr-2" />
-                  PNG (fond blanc)
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExportPNG(true)}>
-                  <FileImage className="h-4 w-4 mr-2 opacity-50" />
-                  PNG (fond transparent)
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+              {/* PDF Professionnel */}
+              <DropdownMenuItem onClick={() => setPdfPlanEditorOpen(true)}>
+                <FileDown className="h-4 w-4 mr-2 text-red-500" />
+                PDF (plans)
+              </DropdownMenuItem>
 
-          {/* Export DXF */}
-          {toolbarConfig.line1.exportDxf && (
-            <Button variant="default" size="sm" onClick={handleExportDXF} className="h-9 px-2">
-              <Download className="h-4 w-4 mr-1" />
-              <span className="text-xs">DXF</span>
-            </Button>
-          )}
+              <DropdownMenuSeparator />
 
-          {/* Export PDF Professionnel */}
-          {toolbarConfig.line1.exportPdf && (
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() => setPdfPlanEditorOpen(true)}
-              className="h-9 px-2 bg-red-600 hover:bg-red-700"
-            >
-              <FileDown className="h-4 w-4 mr-1" />
-              <span className="text-xs">PDF</span>
-            </Button>
-          )}
+              {/* SVG */}
+              <DropdownMenuItem onClick={handleExportSVG}>
+                <FileDown className="h-4 w-4 mr-2" />
+                SVG (vectoriel)
+              </DropdownMenuItem>
+
+              {/* PNG options */}
+              <DropdownMenuItem onClick={() => handleExportPNG(false)}>
+                <FileImage className="h-4 w-4 mr-2" />
+                PNG (fond blanc)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExportPNG(true)}>
+                <FileImage className="h-4 w-4 mr-2 opacity-50" />
+                PNG (transparent)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* MOD v80.14: Bouton impression directe avec duplication */}
           <TooltipProvider>
