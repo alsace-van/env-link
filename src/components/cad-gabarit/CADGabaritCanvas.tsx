@@ -18092,12 +18092,9 @@ export function CADGabaritCanvas({
                           const heightPx = heightMm * scaleFactor;
                           const p1 = liveInputMeasure.rectP1;
                           const isCenter = (tempGeometry as any)?.mode === "center";
-                          let newCursor: Point;
-                          if (isCenter) {
-                            newCursor = { x: p1.x + widthPx / 2, y: p1.y + heightPx / 2 };
-                          } else {
-                            newCursor = { x: p1.x + widthPx, y: p1.y + heightPx };
-                          }
+                          const newCursor = isCenter
+                            ? { x: p1.x + widthPx / 2, y: p1.y + heightPx / 2 }
+                            : { x: p1.x + widthPx, y: p1.y + heightPx };
                           setTempGeometry((prev: any) => (prev ? { ...prev, cursor: newCursor } : prev));
                         }
                       }}
@@ -18191,12 +18188,9 @@ export function CADGabaritCanvas({
                           const heightPx = heightMm * scaleFactor;
                           const p1 = liveInputMeasure.rectP1;
                           const isCenter = (tempGeometry as any)?.mode === "center";
-                          let newCursor: Point;
-                          if (isCenter) {
-                            newCursor = { x: p1.x + widthPx / 2, y: p1.y + heightPx / 2 };
-                          } else {
-                            newCursor = { x: p1.x + widthPx, y: p1.y + heightPx };
-                          }
+                          const newCursor = isCenter
+                            ? { x: p1.x + widthPx / 2, y: p1.y + heightPx / 2 }
+                            : { x: p1.x + widthPx, y: p1.y + heightPx };
                           setTempGeometry((prev: any) => (prev ? { ...prev, cursor: newCursor } : prev));
                         }
                       }}
