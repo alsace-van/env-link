@@ -17838,6 +17838,26 @@ export function CADGabaritCanvas({
                       onChange={(e) => {
                         const rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
                         setLiveInputMeasure((prev) => ({ ...prev, userValue: rawVal, isEditing: true }));
+                        // Mise à jour en temps réel du rectangle
+                        const widthMm = parseFloat(rawVal) || 0;
+                        const heightMm =
+                          liveInputMeasure.userValue2 !== ""
+                            ? parseFloat(liveInputMeasure.userValue2) || 0
+                            : liveInputMeasure.liveValue2 || 0;
+                        if (widthMm > 0 && liveInputMeasure.rectP1) {
+                          const scaleFactor = sketchRef.current.scaleFactor || 1;
+                          const widthPx = widthMm * scaleFactor;
+                          const heightPx = heightMm * scaleFactor;
+                          const p1 = liveInputMeasure.rectP1;
+                          const isCenter = (tempGeometry as any)?.mode === "center";
+                          let newCursor: Point;
+                          if (isCenter) {
+                            newCursor = { x: p1.x + widthPx / 2, y: p1.y + heightPx / 2 };
+                          } else {
+                            newCursor = { x: p1.x + widthPx, y: p1.y + heightPx };
+                          }
+                          setTempGeometry((prev: any) => (prev ? { ...prev, cursor: newCursor } : prev));
+                        }
                       }}
                       onFocus={() => {
                         // Passer en mode édition avec champ vide pour que la première frappe commence fresh
@@ -17901,6 +17921,26 @@ export function CADGabaritCanvas({
                       onChange={(e) => {
                         const rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
                         setLiveInputMeasure((prev) => ({ ...prev, userValue2: rawVal, isEditing2: true }));
+                        // Mise à jour en temps réel du rectangle
+                        const heightMm = parseFloat(rawVal) || 0;
+                        const widthMm =
+                          liveInputMeasure.userValue !== ""
+                            ? parseFloat(liveInputMeasure.userValue) || 0
+                            : liveInputMeasure.liveValue || 0;
+                        if (heightMm > 0 && liveInputMeasure.rectP1) {
+                          const scaleFactor = sketchRef.current.scaleFactor || 1;
+                          const widthPx = widthMm * scaleFactor;
+                          const heightPx = heightMm * scaleFactor;
+                          const p1 = liveInputMeasure.rectP1;
+                          const isCenter = (tempGeometry as any)?.mode === "center";
+                          let newCursor: Point;
+                          if (isCenter) {
+                            newCursor = { x: p1.x + widthPx / 2, y: p1.y + heightPx / 2 };
+                          } else {
+                            newCursor = { x: p1.x + widthPx, y: p1.y + heightPx };
+                          }
+                          setTempGeometry((prev: any) => (prev ? { ...prev, cursor: newCursor } : prev));
+                        }
                       }}
                       onFocus={() => {
                         // Passer en mode édition avec champ vide pour que la première frappe commence fresh
@@ -17967,6 +18007,30 @@ export function CADGabaritCanvas({
                     onChange={(e) => {
                       const rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
                       setLiveInputMeasure((prev) => ({ ...prev, userValue: rawVal, isEditing: true }));
+                      // Mise à jour en temps réel de la figure
+                      const valueMm = parseFloat(rawVal) || 0;
+                      if (valueMm > 0) {
+                        const scaleFactor = sketchRef.current.scaleFactor || 1;
+                        const valuePx = valueMm * scaleFactor;
+                        if (liveInputMeasure.type === "line" && liveInputMeasure.startPoint && tempGeometry?.cursor) {
+                          // Calculer le nouveau point de fin sur la même direction
+                          const startPoint = liveInputMeasure.startPoint;
+                          const currentCursor = tempGeometry.cursor;
+                          const dx = currentCursor.x - startPoint.x;
+                          const dy = currentCursor.y - startPoint.y;
+                          const currentLen = Math.sqrt(dx * dx + dy * dy);
+                          if (currentLen > 0) {
+                            const newCursor = {
+                              x: startPoint.x + (dx / currentLen) * valuePx,
+                              y: startPoint.y + (dy / currentLen) * valuePx,
+                            };
+                            setTempGeometry((prev: any) => (prev ? { ...prev, cursor: newCursor } : prev));
+                          }
+                        } else if (liveInputMeasure.type === "circle") {
+                          // Mettre à jour le rayon du cercle
+                          setTempGeometry((prev: any) => (prev ? { ...prev, radius: valuePx } : prev));
+                        }
+                      }
                     }}
                     onFocus={() => {
                       // Passer en mode édition avec champ vide pour que la première frappe commence fresh
