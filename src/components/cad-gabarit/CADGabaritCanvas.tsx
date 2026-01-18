@@ -1,8 +1,19 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.21 - Import/Export unifiés + toggle cotations
+// VERSION: 7.23 - Outils intégrés dans groupe dessin
 // ============================================
+//
+// CHANGELOG v7.23 (18/01/2026):
+// - Intégration congé/chanfrein, offset, épaisseur et couleur de trait dans le groupe outils de dessin
+// - Suppression du groupe "Modifications" (grp_modify) maintenant redondant
+// - Réorganisation de la barre d'outils plus compacte
+//
+// CHANGELOG v7.22 (18/01/2026):
+// - Séparateurs visuels entre les groupes d'outils
+// - Déplacement du groupe affichage en ligne 0
+// - Bouton contraintes avec icône + chevron seulement
+// - Bouton mode construction déplacé avec les outils de dessin
 //
 // CHANGELOG v7.21 (18/01/2026):
 // - Import unifié : un seul bouton "Importer" qui ouvre l'explorateur (accepte DXF + images)
@@ -16067,6 +16078,171 @@ export function CADGabaritCanvas({
               </Tooltip>
             </TooltipProvider>
 
+            {/* v7.22: Congé/Chanfrein intégré dans les outils de dessin */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 w-9 p-0">
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
+                  </svg>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuItem onClick={openFilletDialog}>
+                  <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
+                  </svg>
+                  Congé (R{filletRadius}mm)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={openChamferDialog}>
+                  <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M4 20 L4 10 L10 4 L20 4" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  Chanfrein ({chamferDistance}mm)
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <div className="px-2 py-2">
+                  <Label className="text-xs text-muted-foreground">Paramètres</Label>
+                  <div className="flex items-center gap-2 mt-2">
+                    <div className="flex-1">
+                      <Label className="text-xs">Congé (mm)</Label>
+                      <Input
+                        type="number"
+                        value={filletRadius}
+                        onChange={(e) => setFilletRadius(Math.max(1, parseFloat(e.target.value) || 1))}
+                        onKeyDown={(e) => e.stopPropagation()}
+                        className="w-full h-7 mt-1"
+                        min="1"
+                        step="1"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <Label className="text-xs">Chanfrein (mm)</Label>
+                      <Input
+                        type="number"
+                        value={chamferDistance}
+                        onChange={(e) => setChamferDistance(Math.max(1, parseFloat(e.target.value) || 1))}
+                        onKeyDown={(e) => e.stopPropagation()}
+                        className="w-full h-7 mt-1"
+                        min="1"
+                        step="1"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* v7.23: Offset intégré dans les outils de dessin */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={offsetDialog?.open ? "default" : "outline"}
+                    size="sm"
+                    className="h-9 px-2"
+                    onClick={openOffsetDialog}
+                  >
+                    {/* Icône offset: deux rectangles décalés */}
+                    <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="3" width="12" height="12" rx="1" />
+                      <rect x="9" y="9" width="12" height="12" rx="1" strokeDasharray="3 2" />
+                    </svg>
+                    <span className="text-xs">{offsetDistance}</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Offset - Copie parallèle à distance</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {/* v7.23: Épaisseur de trait intégré dans les outils de dessin */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 px-2 gap-1">
+                  <svg
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={defaultStrokeWidth * 1.5}
+                  >
+                    <line x1="4" y1="12" x2="20" y2="12" />
+                  </svg>
+                  <span className="text-xs">{defaultStrokeWidth}</span>
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <div className="p-1">
+                  <div className="text-xs text-gray-500 px-2 py-1 mb-1">Épaisseur du trait</div>
+                  {STROKE_WIDTH_OPTIONS.map((width) => (
+                    <DropdownMenuItem
+                      key={width}
+                      onClick={() => setDefaultStrokeWidth(width)}
+                      className={defaultStrokeWidth === width ? "bg-accent" : ""}
+                    >
+                      <svg
+                        className="h-4 w-12 mr-2"
+                        viewBox="0 0 48 16"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={width * 1.5}
+                      >
+                        <line x1="4" y1="8" x2="44" y2="8" />
+                      </svg>
+                      <span>{width}px</span>
+                    </DropdownMenuItem>
+                  ))}
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* v7.23: Couleur du trait intégrée dans les outils de dessin */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="relative">
+                    <input
+                      type="color"
+                      value={defaultStrokeColor}
+                      onChange={(e) => {
+                        const newColor = e.target.value;
+                        setDefaultStrokeColor(newColor);
+                        // Si des figures sont sélectionnées, les mettre à jour
+                        if (selectedEntities.size > 0) {
+                          const currentSketch = sketchRef.current;
+                          const newGeometries = new Map(currentSketch.geometries);
+                          selectedEntities.forEach((id) => {
+                            const geo = newGeometries.get(id);
+                            if (geo) {
+                              // Pour les textes, utiliser 'color', pour les autres 'strokeColor'
+                              if (geo.type === "text") {
+                                newGeometries.set(id, { ...geo, color: newColor } as typeof geo);
+                              } else {
+                                newGeometries.set(id, { ...geo, strokeColor: newColor } as typeof geo);
+                              }
+                            }
+                          });
+                          const newSketch = { ...currentSketch, geometries: newGeometries };
+                          setSketch(newSketch);
+                          addToHistory(newSketch, `Couleur → ${newColor}`);
+                        }
+                      }}
+                      className="w-9 h-9 p-1 rounded border border-gray-300 cursor-pointer"
+                      title="Couleur du trait"
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>
+                    Couleur du trait {selectedEntities.size > 0 ? "(modifie la sélection)" : "(pour nouvelles figures)"}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
             {/* Outil Spline (courbe libre) */}
             <TooltipProvider>
               <Tooltip>
@@ -16838,230 +17014,6 @@ export function CADGabaritCanvas({
         <DropZoneBetweenGroups targetIndex={5} lineIndex={1} />
 
         <Separator orientation="vertical" className="h-6" />
-
-        {/* v7.21: Modifications: Congé et Chanfrein regroupés */}
-        <ToolbarGroupWrapper groupId="grp_modify" groupName="Modifications" groupColor="#EF4444" lineIndex={1}>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 px-2">
-                {/* Icône combinée congé/chanfrein */}
-                <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
-                </svg>
-                <ChevronDown className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
-              {/* Congé */}
-              <DropdownMenuItem onClick={openFilletDialog}>
-                <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
-                </svg>
-                Congé (R{filletRadius}mm)
-              </DropdownMenuItem>
-
-              {/* Chanfrein */}
-              <DropdownMenuItem onClick={openChamferDialog}>
-                <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M4 20 L4 10 L10 4 L20 4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Chanfrein ({chamferDistance}mm)
-              </DropdownMenuItem>
-
-              <DropdownMenuSeparator />
-
-              {/* Paramètres */}
-              <div className="px-2 py-2">
-                <Label className="text-xs text-muted-foreground">Paramètres</Label>
-                <div className="flex items-center gap-2 mt-2">
-                  <div className="flex-1">
-                    <Label className="text-xs">Congé (mm)</Label>
-                    <Input
-                      type="number"
-                      value={filletRadius}
-                      onChange={(e) => setFilletRadius(Math.max(1, parseFloat(e.target.value) || 1))}
-                      onKeyDown={(e) => e.stopPropagation()}
-                      className="w-full h-7 mt-1"
-                      min="1"
-                      step="1"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <Label className="text-xs">Chanfrein (mm)</Label>
-                    <Input
-                      type="number"
-                      value={chamferDistance}
-                      onChange={(e) => setChamferDistance(Math.max(1, parseFloat(e.target.value) || 1))}
-                      onKeyDown={(e) => e.stopPropagation()}
-                      className="w-full h-7 mt-1"
-                      min="1"
-                      step="1"
-                    />
-                  </div>
-                </div>
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <Separator orientation="vertical" className="h-6 mx-1" />
-
-          {/* Offset */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={offsetDialog?.open ? "default" : "outline"}
-                  size="sm"
-                  className="h-9 px-2"
-                  onClick={openOffsetDialog}
-                >
-                  {/* Icône offset: deux rectangles décalés */}
-                  <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="3" width="12" height="12" rx="1" />
-                    <rect x="9" y="9" width="12" height="12" rx="1" strokeDasharray="3 2" />
-                  </svg>
-                  <span className="text-xs">{offsetDistance}</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Offset - Copie parallèle à distance</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <Separator orientation="vertical" className="h-6 mx-1" />
-
-          {/* Épaisseur de trait */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex items-center">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-9 px-2 gap-1">
-                        <svg
-                          className="h-4 w-4"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth={defaultStrokeWidth * 1.5}
-                        >
-                          <line x1="4" y1="12" x2="20" y2="12" />
-                        </svg>
-                        <span className="text-xs">{defaultStrokeWidth}</span>
-                        <ChevronDown className="h-3 w-3" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <div className="p-1">
-                        <div className="text-xs text-gray-500 px-2 py-1 mb-1">Épaisseur du trait</div>
-                        {STROKE_WIDTH_OPTIONS.map((width) => (
-                          <DropdownMenuItem
-                            key={width}
-                            onClick={() => {
-                              console.log("[CAD] StrokeWidth dropdown clicked:", width);
-                              setDefaultStrokeWidth(width);
-                              defaultStrokeWidthRef.current = width; // Mettre à jour la ref immédiatement
-                              console.log("[CAD] defaultStrokeWidthRef.current now:", defaultStrokeWidthRef.current);
-                              // Si des figures sont sélectionnées, les mettre à jour
-                              if (selectedEntities.size > 0) {
-                                console.log("[CAD] Updating selected entities:", Array.from(selectedEntities));
-                                const currentSketch = sketchRef.current;
-                                const newGeometries = new Map(currentSketch.geometries);
-                                selectedEntities.forEach((id) => {
-                                  const geo = newGeometries.get(id);
-                                  // Ne pas appliquer strokeWidth aux textes
-                                  if (geo && geo.type !== "text") {
-                                    console.log("[CAD] Updating geo", id.slice(0, 8), "strokeWidth to", width);
-                                    newGeometries.set(id, { ...geo, strokeWidth: width } as typeof geo);
-                                  }
-                                });
-                                const newSketch = { ...currentSketch, geometries: newGeometries };
-                                setSketch(newSketch);
-                                addToHistory(newSketch, `Épaisseur → ${width}px`);
-                                // DEBUG: Vérifier les strokeWidth après mise à jour
-                                console.log("[CAD] After update - checking strokeWidths:");
-                                newGeometries.forEach((geo, id) => {
-                                  if ((geo as any).strokeWidth !== undefined) {
-                                    console.log(
-                                      `  Geo ${id.slice(0, 8)} type=${geo.type} strokeWidth=${(geo as any).strokeWidth}`,
-                                    );
-                                  }
-                                });
-                              }
-                            }}
-                            className="flex items-center gap-2"
-                          >
-                            <svg className="w-8 h-4" viewBox="0 0 32 16">
-                              <line x1="2" y1="8" x2="30" y2="8" stroke="currentColor" strokeWidth={width * 2} />
-                            </svg>
-                            <span className={`text-sm ${defaultStrokeWidth === width ? "font-bold" : ""}`}>
-                              {width}px
-                            </span>
-                            {defaultStrokeWidth === width && <Check className="h-3 w-3 ml-auto" />}
-                          </DropdownMenuItem>
-                        ))}
-                      </div>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>
-                  Épaisseur du trait {selectedEntities.size > 0 ? "(modifie la sélection)" : "(pour nouvelles figures)"}
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Couleur du trait */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="relative">
-                  <input
-                    type="color"
-                    value={defaultStrokeColor}
-                    onChange={(e) => {
-                      const newColor = e.target.value;
-                      setDefaultStrokeColor(newColor);
-                      // Si des figures sont sélectionnées, les mettre à jour
-                      if (selectedEntities.size > 0) {
-                        const currentSketch = sketchRef.current;
-                        const newGeometries = new Map(currentSketch.geometries);
-                        selectedEntities.forEach((id) => {
-                          const geo = newGeometries.get(id);
-                          if (geo) {
-                            // Pour les textes, utiliser 'color', pour les autres 'strokeColor'
-                            if (geo.type === "text") {
-                              newGeometries.set(id, { ...geo, color: newColor } as typeof geo);
-                            } else {
-                              newGeometries.set(id, { ...geo, strokeColor: newColor } as typeof geo);
-                            }
-                          }
-                        });
-                        const newSketch = { ...currentSketch, geometries: newGeometries };
-                        setSketch(newSketch);
-                        addToHistory(newSketch, `Couleur → ${newColor}`);
-                      }
-                    }}
-                    className="w-9 h-9 p-1 rounded border border-gray-300 cursor-pointer"
-                    title="Couleur du trait"
-                  />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>
-                  Couleur du trait {selectedEntities.size > 0 ? "(modifie la sélection)" : "(pour nouvelles figures)"}
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </ToolbarGroupWrapper>
-
-        <DropZoneBetweenGroups targetIndex={6} lineIndex={1} />
-
-        <Separator orientation="vertical" className="h-6" />
         <ToolbarGroupWrapper groupId="grp_view" groupName="Vue" groupColor="#8B5CF6" lineIndex={1}>
           <div className="flex items-center gap-0">
             <Button
@@ -17092,7 +17044,7 @@ export function CADGabaritCanvas({
           </div>
         </ToolbarGroupWrapper>
 
-        <DropZoneBetweenGroups targetIndex={7} lineIndex={1} />
+        <DropZoneBetweenGroups targetIndex={6} lineIndex={1} />
 
         <Separator orientation="vertical" className="h-6" />
 
@@ -17259,7 +17211,7 @@ export function CADGabaritCanvas({
           </DropdownMenu>
         </ToolbarGroupWrapper>
 
-        <DropZoneBetweenGroups targetIndex={8} lineIndex={1} />
+        <DropZoneBetweenGroups targetIndex={7} lineIndex={1} />
       </div>
 
       {/* Zone principale avec Canvas + Panneau latéral */}
