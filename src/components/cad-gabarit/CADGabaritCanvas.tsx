@@ -17241,7 +17241,7 @@ export function CADGabaritCanvas({
                   onClick={() => setShowDimensions(!showDimensions)}
                   className={`h-8 px-2 ${showDimensions ? "bg-cyan-500 hover:bg-cyan-600" : ""}`}
                 >
-                  <Ruler className="h-4 w-4" />
+                  <Sliders className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
