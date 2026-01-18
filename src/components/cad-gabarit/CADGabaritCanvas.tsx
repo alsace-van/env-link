@@ -4880,9 +4880,7 @@ export function CADGabaritCanvas({
       });
 
       // Déplacer l'image vers ce calque
-      setBackgroundImages((prev) =>
-        prev.map((img) => (img.id === imageId ? { ...img, layerId: newLayerId } : img))
-      );
+      setBackgroundImages((prev) => prev.map((img) => (img.id === imageId ? { ...img, layerId: newLayerId } : img)));
 
       toast.success(`Image déplacée vers nouveau calque`);
     },
@@ -20806,17 +20804,14 @@ export function CADGabaritCanvas({
                               onClick={() => {
                                 setBackgroundImages((prev) =>
                                   prev.map((img) =>
-                                    img.id === contextMenu.entityId ? { ...img, layerId: layer.id } : img
-                                  )
+                                    img.id === contextMenu.entityId ? { ...img, layerId: layer.id } : img,
+                                  ),
                                 );
                                 toast.success(`Image déplacée vers "${layer.name}"`);
                                 setContextMenu(null);
                               }}
                             >
-                              <div
-                                className="w-2.5 h-2.5 rounded-sm"
-                                style={{ backgroundColor: layer.color }}
-                              />
+                              <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: layer.color }} />
                               {layer.name}
                             </button>
                           ))}
@@ -20828,9 +20823,7 @@ export function CADGabaritCanvas({
                     className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
                     onClick={() => {
                       setBackgroundImages((prev) =>
-                        prev.map((img) =>
-                          img.id === contextMenu.entityId ? { ...img, locked: !img.locked } : img
-                        )
+                        prev.map((img) => (img.id === contextMenu.entityId ? { ...img, locked: !img.locked } : img)),
                       );
                       toast.success(image.locked ? "Image déverrouillée" : "Image verrouillée");
                       setContextMenu(null);
@@ -20852,9 +20845,7 @@ export function CADGabaritCanvas({
                     className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
                     onClick={() => {
                       setBackgroundImages((prev) =>
-                        prev.map((img) =>
-                          img.id === contextMenu.entityId ? { ...img, visible: !img.visible } : img
-                        )
+                        prev.map((img) => (img.id === contextMenu.entityId ? { ...img, visible: !img.visible } : img)),
                       );
                       toast.success(image.visible ? "Image masquée" : "Image affichée");
                       setContextMenu(null);
@@ -20890,9 +20881,7 @@ export function CADGabaritCanvas({
                     Supprimer
                   </button>
                   {currentLayer && (
-                    <div className="px-3 py-1 text-xs text-gray-400 border-t mt-1">
-                      Calque: {currentLayer.name}
-                    </div>
+                    <div className="px-3 py-1 text-xs text-gray-400 border-t mt-1">Calque: {currentLayer.name}</div>
                   )}
                 </>
               );
