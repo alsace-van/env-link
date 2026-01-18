@@ -1,8 +1,15 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.74 - Style cotations bleu clair, trait fin, texte décalé
+// VERSION: 3.75 - Option hideTempMeasure pour input HTML
 // ============================================
+//
+// CHANGELOG v3.75 (18/01/2026):
+// - Ajout option hideTempMeasure pour masquer le texte de mesure temporaire
+// - Permet d'afficher un input HTML à la place du texte canvas
+//
+// CHANGELOG v3.74 (18/01/2026):
+// - Style cotations: bleu clair (#5BC0DE), trait fin, texte décalé
 //
 // CHANGELOG v3.73 (18/01/2026):
 // - Fix: taille du texte des cotations maintenant visible (12px écran)
@@ -197,6 +204,8 @@ export class CADRenderer {
       showConstruction?: boolean;
       // Highlight de référence (vert)
       referenceHighlight?: string | null;
+      // v7.24: Masquer le texte de mesure temporaire (input HTML affiché à la place)
+      hideTempMeasure?: boolean;
     } = {},
   ): void {
     const {
@@ -244,6 +253,8 @@ export class CADRenderer {
       revealPosition = 50,
       // Construction
       showConstruction = true,
+      // v7.24: Masquer texte mesure temporaire
+      hideTempMeasure = false,
     } = options;
 
     // Stocker scaleFactor pour drawRulers
@@ -587,7 +598,7 @@ export class CADRenderer {
 
     // 5. Temp geometry (during drawing)
     if (tempGeometry) {
-      this.drawTempGeometry(tempGeometry, sketch);
+      this.drawTempGeometry(tempGeometry, sketch, hideTempMeasure);
     }
 
     // 6. Constraints
@@ -2418,8 +2429,9 @@ export class CADRenderer {
 
   /**
    * Dessine la géométrie temporaire (pendant le dessin)
+   * @param hideTempMeasure - v7.24: Si true, ne pas afficher le texte de mesure (input HTML affiché à la place)
    */
-  private drawTempGeometry(temp: any, sketch: Sketch): void {
+  private drawTempGeometry(temp: any, sketch: Sketch, hideTempMeasure: boolean = false): void {
     this.ctx.strokeStyle = this.styles.selectedColor;
     this.ctx.lineWidth = this.styles.lineWidth / this.viewport.scale;
     this.ctx.setLineDash([5 / this.viewport.scale, 5 / this.viewport.scale]);
@@ -2438,8 +2450,8 @@ export class CADRenderer {
       }
       this.ctx.stroke();
 
-      // Afficher la longueur en mm
-      if (p2) {
+      // v7.24: Afficher la longueur en mm SEULEMENT si hideTempMeasure est false
+      if (p2 && !hideTempMeasure) {
         const lengthPx = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
         const lengthMm = lengthPx / scaleFactor;
         const midX = (p1.x + p2.x) / 2;
@@ -2474,8 +2486,10 @@ export class CADRenderer {
         this.ctx.fillStyle = "#3B82F6";
         this.ctx.fillText(text, midX + offsetX, midY + offsetY);
         this.ctx.restore();
+      }
 
-        // Calculer l'angle si le point de départ est connecté à un segment existant
+      // Calculer l'angle si le point de départ est connecté à un segment existant
+      if (p2) {
         this.drawAngleWithPreviousSegment(p1, p2, sketch, scaleFactor, fontSize);
       }
     } else if (temp.type === "circle" && temp.center) {
@@ -2486,8 +2500,8 @@ export class CADRenderer {
       this.ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
       this.ctx.stroke();
 
-      // Afficher le rayon en mm
-      if (radius > 0) {
+      // v7.24: Afficher le rayon en mm SEULEMENT si hideTempMeasure est false
+      if (radius > 0 && !hideTempMeasure) {
         const radiusMm = radius / scaleFactor;
 
         this.ctx.save();
@@ -4558,17 +4572,3 @@ export class CADRenderer {
           this.ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, p2.x, p2.y);
           this.ctx.stroke();
         }
-      }
-    });
-
-    // Dessiner les points de la branche (petits cercles)
-    const pointRadius = 3 / this.viewport.scale;
-    this.ctx.fillStyle = color;
-
-    branchSketch.points.forEach((point) => {
-      this.ctx.beginPath();
-      this.ctx.arc(point.x, point.y, pointRadius, 0, Math.PI * 2);
-      this.ctx.fill();
-    });
-  }
-}

@@ -1930,6 +1930,8 @@ export function CADGabaritCanvas({
       revealPosition,
       // Lignes de construction
       showConstruction,
+      // v7.24: Masquer le texte de mesure temporaire quand l'input HTML est affiché
+      hideTempMeasure: liveInputMeasure.active,
     });
 
     // Dessiner les indicateurs de points verrouillés
@@ -11084,15 +11086,20 @@ export function CADGabaritCanvas({
           });
 
           // v7.24: Mettre à jour l'input de mesure en temps réel pour la ligne
-          const lineLengthPx = Math.sqrt(
-            (lineTargetPos.x - startPoint.x) ** 2 + (lineTargetPos.y - startPoint.y) ** 2
-          );
+          const lineLengthPx = Math.sqrt((lineTargetPos.x - startPoint.x) ** 2 + (lineTargetPos.y - startPoint.y) ** 2);
           const lineLengthMm = lineLengthPx / (sketchRef.current.scaleFactor || 1);
-          // Position écran au milieu de la ligne avec offset
+          // Position écran au milieu de la ligne avec offset perpendiculaire
           const midX = (startPoint.x + lineTargetPos.x) / 2;
           const midY = (startPoint.y + lineTargetPos.y) / 2;
-          const screenX = midX * viewport.scale + viewport.offsetX;
-          const screenY = midY * viewport.scale + viewport.offsetY - 30; // Décalé vers le haut
+          // Offset perpendiculaire comme dans le renderer
+          const dx = lineTargetPos.x - startPoint.x;
+          const dy = lineTargetPos.y - startPoint.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          const offsetDist = 25; // Pixels d'offset
+          const offsetX = len > 0 ? (-dy / len) * offsetDist : 0;
+          const offsetY = len > 0 ? (dx / len) * offsetDist : -offsetDist;
+          const screenX = midX * viewport.scale + viewport.offsetX + offsetX;
+          const screenY = midY * viewport.scale + viewport.offsetY + offsetY;
           setLiveInputMeasure((prev) => ({
             ...prev,
             active: true,
@@ -16004,11 +16011,25 @@ export function CADGabaritCanvas({
                   className="h-8 w-8 p-0"
                 >
                   {showConstruction ? (
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 2">
+                    <svg
+                      className="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeDasharray="4 2"
+                    >
                       <line x1="4" y1="20" x2="20" y2="4" />
                     </svg>
                   ) : (
-                    <svg className="h-4 w-4 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 2">
+                    <svg
+                      className="h-4 w-4 opacity-40"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeDasharray="4 2"
+                    >
                       <line x1="4" y1="20" x2="20" y2="4" />
                     </svg>
                   )}
@@ -16755,9 +16776,7 @@ export function CADGabaritCanvas({
                   <Image className="h-4 w-4 mr-1" />
                   <span className="text-xs">Outils</span>
                   <ChevronDown className="h-3 w-3 ml-1" />
-                  {selectedImageId && (
-                    <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />
-                  )}
+                  {selectedImageId && <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56">
@@ -16928,7 +16947,9 @@ export function CADGabaritCanvas({
                 >
                   <Link2 className="h-4 w-4 mr-2" />
                   Lier deux marqueurs
-                  {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && <Check className="h-4 w-4 ml-auto" />}
+                  {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && (
+                    <Check className="h-4 w-4 ml-auto" />
+                  )}
                 </DropdownMenuItem>
 
                 <DropdownMenuSeparator />
@@ -17832,14 +17853,18 @@ export function CADGabaritCanvas({
               </div>
             )}
 
-            {/* v7.24: Input de mesure en temps réel pour ligne/cercle */}
+            {/* v7.24: Input de mesure positionné directement sur le canvas */}
             {liveInputMeasure.active && (tempGeometry?.type === "line" || tempGeometry?.type === "circle") && (
-              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-3 bg-white/95 backdrop-blur-sm border border-gray-300 rounded-lg shadow-lg px-4 py-2">
-                <span className="text-xs text-gray-500 font-medium">
-                  {liveInputMeasure.type === "line" ? "Longueur:" : "Rayon:"}
-                </span>
-                <div className="flex items-center gap-1">
-                  {liveInputMeasure.type === "circle" && <span className="text-xs text-gray-500">R</span>}
+              <div
+                className="absolute z-50 pointer-events-auto"
+                style={{
+                  left: `${liveInputMeasure.screenPos.x}px`,
+                  top: `${liveInputMeasure.screenPos.y}px`,
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                <div className="flex items-center gap-1 bg-white/95 backdrop-blur-sm border border-blue-400 rounded shadow-lg px-2 py-1">
+                  {liveInputMeasure.type === "circle" && <span className="text-xs text-blue-600 font-medium">R</span>}
                   <input
                     ref={liveInputRef}
                     type="text"
@@ -17850,21 +17875,16 @@ export function CADGabaritCanvas({
                       setLiveInputMeasure((prev) => ({ ...prev, userValue: val }));
                     }}
                     onFocus={(e) => {
-                      // Quand on focus, sélectionner tout pour faciliter la saisie
                       e.target.select();
-                      // Passer en mode saisie (vider userValue pour montrer qu'on attend une saisie)
                       setLiveInputMeasure((prev) => ({ ...prev, userValue: prev.liveValue.toFixed(1) }));
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        // Valider avec la valeur saisie
                         const inputValue = parseFloat(liveInputMeasure.userValue) || liveInputMeasure.liveValue;
                         if (liveInputMeasure.type === "line" && liveInputMeasure.startPoint && tempGeometry?.cursor) {
-                          // Créer la ligne avec la longueur spécifiée
                           createLineWithLength(liveInputMeasure.startPoint, tempGeometry.cursor, inputValue);
                         } else if (liveInputMeasure.type === "circle" && liveInputMeasure.centerPoint) {
-                          // Créer le cercle avec le rayon spécifié
                           createCircleWithRadius(liveInputMeasure.centerPoint, inputValue);
                         }
                       } else if (e.key === "Escape") {
@@ -17874,12 +17894,11 @@ export function CADGabaritCanvas({
                         setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "" }));
                       }
                     }}
-                    className="w-24 h-7 px-2 text-center text-sm font-medium rounded border-2 border-blue-500 bg-blue-50 text-blue-700 outline-none"
-                    placeholder={liveInputMeasure.type === "line" ? "longueur" : "rayon"}
+                    className="w-16 h-6 px-1 text-center text-sm font-bold rounded border-0 bg-transparent text-blue-600 outline-none"
+                    style={{ caretColor: "#2563eb" }}
                   />
-                  <span className="text-xs text-gray-500">mm</span>
+                  <span className="text-xs text-blue-600 font-medium">mm</span>
                 </div>
-                <span className="text-xs text-gray-400 ml-2">Entrée: valider • Clic: utiliser curseur</span>
               </div>
             )}
 
