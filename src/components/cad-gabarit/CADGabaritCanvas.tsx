@@ -1,65 +1,15 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.27 - Extraction hook array/repeat
+// VERSION: 7.28 - Menu contextuel images + optimisations backup
 // ============================================
 //
-// CHANGELOG v7.27 (18/01/2026):
-// - Extraction des fonctions répétition/array dans useArrayRepeat.ts (~450 lignes)
-// - Hook useArrayRepeat gère arrayDialog, arrayPreview et fonctions repeat
-//
-// CHANGELOG v7.26 (18/01/2026):
-// - Extraction des fonctions offset dans useOffset.ts (~523 lignes)
-// - Réduction du fichier de 21652 à 21129 lignes
-// - Hook useOffset gère offsetDialog, offsetPreview et fonctions offset
-//
-// CHANGELOG v7.25 (18/01/2026):
-// - Extraction des fonctions congé/chanfrein dans useFilletChamfer.ts (~1575 lignes)
-// - Réduction du fichier de 23158 à 21582 lignes
-// - Hook useFilletChamfer gère tous les états et fonctions fillet/chamfer
-//
-// CHANGELOG v7.24 (18/01/2026):
-// - Input de mesure en temps réel pendant le tracé (ligne, cercle)
-// - Affiche la dimension en temps réel, devient éditable quand l'utilisateur tape
-// - Validation avec Enter ou clic pour créer la figure avec la dimension spécifiée
-// - Fonctions createLineWithLength et createCircleWithRadius pour création précise
-// - Plus besoin de modale pour saisir les dimensions
-//
-// CHANGELOG v7.23 (18/01/2026):
-// - Intégration congé/chanfrein, offset, épaisseur et couleur de trait dans le groupe outils de dessin
-// - Suppression du groupe "Modifications" (grp_modify) maintenant redondant
-// - Réorganisation de la barre d'outils plus compacte
-//
-// CHANGELOG v7.22 (18/01/2026):
-// - Séparateurs visuels entre les groupes d'outils
-// - Déplacement du groupe affichage en ligne 0
-// - Bouton contraintes avec icône + chevron seulement
-// - Bouton mode construction déplacé avec les outils de dessin
-//
-// CHANGELOG v7.21 (18/01/2026):
-// - Import unifié : un seul bouton "Importer" qui ouvre l'explorateur (accepte DXF + images)
-// - Handler handleUnifiedImport qui dispatche selon le type de fichier
-// - Outils photos regroupés dans un menu déroulant (opacité, rotation, recadrage, etc.)
-// - Bouton imprimante sans texte (icône seule)
-// - Icône "Ajuster au contenu" changée de Scan à Target
-//
-// CHANGELOG v7.20 (18/01/2026):
-// - Regroupement des 4 boutons d'export (SVG, PNG, DXF, PDF) en un seul menu déroulant "Exporter"
-// - Bouton toggle cotations avec icône Sliders (section Affichage)
-//
-// CHANGELOG v7.19 (18/01/2026):
-// - Fix: passage du newSketch à addRectangleDimensions (les points n'existaient pas encore dans sketchRef)
-// - Les cotations s'affichent maintenant correctement après création du rectangle
-//
-// CHANGELOG v7.18 (17/01/2026):
-// - Cotations automatiques lors de la création de rectangles (useAutoDimensions.ts)
-// - Affiche automatiquement largeur et hauteur en mm
-// - État autoDimensionsEnabled pour activer/désactiver
-//
-// CHANGELOG v7.17 (17/01/2026):
-// - Drag & drop d'images directement sur le canvas (useImageDragDrop.ts)
-// - Support multi-images en une seule action
-// - Position de drop utilisée pour placer la première image
+// CHANGELOG v7.28 (18/01/2026):
+// - Menu contextuel (clic droit) sur les images
+// - Option "Envoyer vers nouveau calque" pour les images
+// - Option "Déplacer vers calque existant" pour les images
+// - Optimisations autobackup (fréquence réduite, nettoyage auto)
+// - Fix sauvegarde des images en base64 dans les backups
 //
 // CHANGELOG v7.16 (17/01/2026):
 // - Ajout du panneau d'historique des mesures (MeasurePanel.tsx)
@@ -183,6 +133,7 @@ import {
   Maximize2,
   GripVertical,
   ArrowRight,
+  ChevronRight,
   Printer,
   Cloud,
   CloudOff,
@@ -280,18 +231,8 @@ import { MeasurePanel, type Measurement } from "./MeasurePanel";
 // MOD v7.15: Contrôles d'étirement manuel
 import { ManualStretchControls } from "./ManualStretchControls";
 
-// MOD v7.17: Drag & drop d'images directement sur le canvas
-import { useImageDragDrop } from "./useImageDragDrop";
-
-// MOD v7.18: Cotations automatiques lors de la création de géométries
-import { useAutoDimensions } from "./useAutoDimensions";
-
-// MOD v7.25: Hook pour congés et chanfreins (extrait pour alléger le fichier)
-import { useFilletChamfer } from "./hooks/useFilletChamfer";
-// MOD v7.26: Hook pour offset (extrait pour alléger le fichier)
-import { useOffset } from "./hooks/useOffset";
-// MOD v7.27: Hook pour répétition/array (extrait pour alléger le fichier)
-import { useArrayRepeat } from "./hooks/useArrayRepeat";
+// MOD v7.28: Menu contextuel extrait (composant de rendu seulement)
+import { ContextMenuRenderer } from "./components/ContextMenuRenderer";
 
 interface CADGabaritCanvasProps {
   imageUrl?: string;
@@ -348,7 +289,8 @@ export function CADGabaritCanvas({
     solverRef.current = new CADSolver();
   }
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null); // v7.21: Input unifié pour DXF + images
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dxfInputRef = useRef<HTMLInputElement>(null);
   const lastMiddleClickRef = useRef<number>(0); // Pour détecter le double-clic molette
   const renderRequestRef = useRef<number | null>(null); // Pour throttler le rendu avec RAF
   const renderDebugTimeRef = useRef<number>(0); // Pour limiter les logs debug
@@ -444,43 +386,6 @@ export function CADGabaritCanvas({
   const widthInputRef = useRef<HTMLInputElement>(null);
   const heightInputRef = useRef<HTMLInputElement>(null);
 
-  // v7.24: Input de mesure en temps réel (remplace la modale)
-  const [liveInputMeasure, setLiveInputMeasure] = useState<{
-    active: boolean;
-    type: "line" | "circle" | "rectangle" | "polygon" | "arc";
-    // Valeur en temps réel (calculée depuis la géométrie)
-    liveValue: number;
-    // Valeur saisie par l'utilisateur (vide = utiliser liveValue)
-    userValue: string;
-    // Position écran de l'input
-    screenPos: { x: number; y: number };
-    // Données supplémentaires selon le type
-    startPoint?: Point;
-    centerPoint?: Point;
-    // Pour rectangle: deuxième mesure (hauteur)
-    liveValue2?: number;
-    userValue2?: string;
-    screenPos2?: { x: number; y: number };
-    // Rectangle: point de départ
-    rectP1?: Point;
-    // Flag pour savoir si on est en mode édition (première frappe remplace tout)
-    isEditing?: boolean;
-    isEditing2?: boolean;
-  }>({
-    active: false,
-    type: "line",
-    liveValue: 0,
-    userValue: "",
-    screenPos: { x: 0, y: 0 },
-  });
-  const liveInputRef = useRef<HTMLInputElement>(null);
-  const liveInputRef2 = useRef<HTMLInputElement>(null); // Pour hauteur rectangle
-  // Ref pour accéder aux valeurs dans les callbacks sans stale closure
-  const liveInputMeasureRef = useRef(liveInputMeasure);
-  useEffect(() => {
-    liveInputMeasureRef.current = liveInputMeasure;
-  }, [liveInputMeasure]);
-
   // Détection de perpendicularité pendant le tracé
   const [perpendicularInfo, setPerpendicularInfo] = useState<{
     isActive: boolean;
@@ -542,16 +447,6 @@ export function CADGabaritCanvas({
     gizmoDragRef.current = gizmoDrag;
   }, [gizmoDrag]);
 
-  // v7.24: Réinitialiser l'input de mesure quand tempGeometry change ou devient null
-  useEffect(() => {
-    if (!tempGeometry) {
-      setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "" }));
-    } else if (tempGeometry.type !== liveInputMeasure.type) {
-      // Type a changé, réinitialiser userValue
-      setLiveInputMeasure((prev) => ({ ...prev, userValue: "" }));
-    }
-  }, [tempGeometry?.type]);
-
   // Ref pour throttle du gizmoDrag (fluidité)
   const gizmoDragRAFRef = useRef<number | null>(null);
   const pendingGizmoDragPosRef = useRef<{ x: number; y: number } | null>(null);
@@ -563,9 +458,6 @@ export function CADGabaritCanvas({
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [showBackgroundImage, setShowBackgroundImage] = useState(true);
   const [imageOpacity, setImageOpacity] = useState(0.5);
-
-  // MOD v7.18: Cotations automatiques
-  const [autoDimensionsEnabled, setAutoDimensionsEnabled] = useState(true);
 
   // === Grille A4 pour export panoramique ===
   const [showA4Grid, setShowA4Grid] = useState(false);
@@ -693,15 +585,6 @@ export function CADGabaritCanvas({
     type: "distance" | "radius" | "angle";
     entities: string[];
     initialValue: number;
-  } | null>(null);
-
-  // v7.24: État pour édition inline d'une dimension (double-clic sur cotation)
-  const [editingDimension, setEditingDimension] = useState<{
-    dimensionId: string;
-    entityId: string; // ID de la géométrie à modifier
-    type: "line" | "circle";
-    currentValue: number; // Valeur actuelle en mm
-    screenPos: { x: number; y: number };
   } | null>(null);
 
   // Dialog pour contrainte d'angle
@@ -868,120 +751,6 @@ export function CADGabaritCanvas({
       historyRef.current = { history: [initialEntry], index: 0 };
     }
   }, []);
-
-  // Historique - défini tôt car utilisé par plusieurs callbacks
-  const addToHistory = useCallback((newSketch: Sketch, description: string = "Modification") => {
-    const { branches: currentBranches, activeBranchId: currentActiveBranchId } = branchesRef.current;
-    const branchIndex = currentBranches.findIndex((b) => b.id === currentActiveBranchId);
-    if (branchIndex === -1) return;
-
-    const branch = currentBranches[branchIndex];
-    const newEntry: HistoryEntry = {
-      sketch: serializeSketch(newSketch),
-      description,
-      timestamp: Date.now(),
-    };
-
-    // Couper l'historique au point actuel et ajouter le nouvel état
-    const newHistory = [...branch.history.slice(0, branch.historyIndex + 1), newEntry];
-    const newIndex = branch.historyIndex + 1;
-
-    const updatedBranch = { ...branch, history: newHistory, historyIndex: newIndex };
-    const newBranches = [...currentBranches];
-    newBranches[branchIndex] = updatedBranch;
-
-    setBranches(newBranches);
-    branchesRef.current = { branches: newBranches, activeBranchId: currentActiveBranchId };
-    historyRef.current = { history: newHistory, index: newIndex };
-  }, []);
-
-  // === HOOK FILLET/CHAMFER ===
-  // MOD v7.25: Extraction des fonctions congé/chanfrein dans useFilletChamfer.ts
-  const {
-    filletDialog,
-    setFilletDialog,
-    chamferDialog,
-    setChamferDialog,
-    filletPreview,
-    chamferPreview,
-    filletRadius,
-    setFilletRadius,
-    chamferDistance,
-    setChamferDistance,
-    findSharedPoint,
-    findLinesConnectedToPoint,
-    applyFillet,
-    applyChamfer,
-    applyFilletToSketch,
-    applyChamferToSketch,
-    calculateCornerParams,
-    calculateFilletGeometry,
-    calculateChamferGeometry,
-    openFilletDialog,
-    openFilletDialogForPoint,
-    openChamferDialog,
-    openChamferDialogForPoint,
-    applyFilletFromDialog,
-    applyChamferFromDialog,
-    removeFilletFromArc,
-    switchFilletToChamfer,
-    switchChamferToFillet,
-  } = useFilletChamfer({
-    sketch,
-    setSketch,
-    addToHistory,
-    selectedEntities,
-    setSelectedEntities,
-  });
-
-  // Résoudre le sketch (défini tôt car utilisé par useOffset)
-  const solveSketch = useCallback(async (sketchToSolve: Sketch) => {
-    const result = await solverRef.current.solve(sketchToSolve);
-
-    const updatedPoints = new Map(sketchToSolve.points);
-    const updatedGeometries = new Map(sketchToSolve.geometries);
-
-    setSketch((s) => ({
-      ...s,
-      points: updatedPoints,
-      geometries: updatedGeometries,
-      constraints: sketchToSolve.constraints,
-      dof: result.dof,
-      status: result.status,
-    }));
-  }, []);
-
-  // === ÉTATS OFFSET (définis tôt car utilisés par useOffset) ===
-  const [offsetDistance, setOffsetDistance] = useState<number>(10); // Distance en mm
-  const [offsetDirection, setOffsetDirection] = useState<"outside" | "inside">("outside");
-
-  // === HOOK OFFSET ===
-  // MOD v7.26: Extraction des fonctions offset dans useOffset.ts
-  const {
-    offsetDialog,
-    setOffsetDialog,
-    offsetPreview,
-    setOffsetPreview,
-    findConnectedGeometries,
-    offsetLine,
-    openOffsetDialog,
-    calculateOffsetPreviewForSelection,
-    applyOffsetToSelection,
-    toggleOffsetSelection,
-    selectContourForOffset,
-  } = useOffset({
-    sketch,
-    setSketch,
-    addToHistory,
-    selectedEntities,
-    setSelectedEntities,
-    solveSketch,
-    setActiveTool,
-    offsetDistance,
-    offsetDirection,
-  });
-
-  // Note: closeAllEditPanels est défini plus bas, après les états lineLengthDialog et angleEditDialog
 
   // Calibration
   const [calibrationData, setCalibrationData] = useState<CalibrationData>({
@@ -1153,18 +922,104 @@ export function CADGabaritCanvas({
     center: { x: number; y: number };
   } | null>(null);
 
-  // Note: filletRadius, chamferDistance, filletPreview, chamferPreview viennent du hook useFilletChamfer
+  // Fillet et Chamfer
+  const [filletRadius, setFilletRadius] = useState<number>(5); // Rayon en mm
+  const [chamferDistance, setChamferDistance] = useState<number>(5); // Distance en mm
   const [filletFirstLine, setFilletFirstLine] = useState<string | null>(null); // ID de la première ligne sélectionnée
 
-  // Offset - paramètres de panneau (offsetDistance, offsetDirection, offsetDialog et offsetPreview définis plus haut)
+  // Offset
+  const [offsetDistance, setOffsetDistance] = useState<number>(10); // Distance en mm
+  const [offsetDirection, setOffsetDirection] = useState<"outside" | "inside">("outside");
+  const [offsetDialog, setOffsetDialog] = useState<{
+    open: boolean;
+    selectedEntities: Set<string>;
+  } | null>(null);
   const [offsetPanelPos, setOffsetPanelPos] = useState({ x: 100, y: 100 });
   const [offsetPanelDragging, setOffsetPanelDragging] = useState(false);
   const [offsetPanelDragStart, setOffsetPanelDragStart] = useState({ x: 0, y: 0 });
+  const [offsetPreview, setOffsetPreview] = useState<
+    Array<{
+      type: "line" | "circle" | "arc";
+      points?: Array<{ x: number; y: number }>;
+      center?: { x: number; y: number };
+      radius?: number;
+      startAngle?: number;
+      endAngle?: number;
+      counterClockwise?: boolean;
+    }>
+  >([]);
 
-  // États de position des panneaux congé/chanfrein (filletPreview, chamferPreview viennent du hook useFilletChamfer)
+  // Preview pour congé/chanfrein (temps réel)
+  const [filletPreview, setFilletPreview] = useState<
+    Array<{
+      type: "arc";
+      center: { x: number; y: number };
+      radius: number;
+      startAngle: number;
+      endAngle: number;
+      counterClockwise: boolean;
+      tan1: { x: number; y: number };
+      tan2: { x: number; y: number };
+    }>
+  >([]);
+  const [chamferPreview, setChamferPreview] = useState<
+    Array<{
+      type: "line";
+      p1: { x: number; y: number };
+      p2: { x: number; y: number };
+    }>
+  >([]);
+
+  // Modale pour congé
+  const [filletDialog, setFilletDialog] = useState<{
+    open: boolean;
+    corners: Array<{
+      pointId: string;
+      maxRadius: number;
+      angleDeg: number;
+      radius: number;
+      // Pour congé asymétrique: distances sur chaque branche (en mm)
+      dist1: number;
+      dist2: number;
+      maxDist1: number;
+      maxDist2: number;
+      line1Id: string;
+      line2Id: string;
+    }>;
+    globalRadius: number;
+    minMaxRadius: number;
+    hoveredCornerIdx: number | null;
+    asymmetric: boolean; // Mode asymétrique
+    addDimension: boolean; // Ajouter cotation auto
+    repeatMode: boolean; // Mode répétition
+  } | null>(null);
   const [filletPanelPos, setFilletPanelPos] = useState({ x: 100, y: 100 });
   const [filletPanelDragging, setFilletPanelDragging] = useState(false);
   const [filletPanelDragStart, setFilletPanelDragStart] = useState({ x: 0, y: 0 });
+
+  // Modale pour chanfrein
+  const [chamferDialog, setChamferDialog] = useState<{
+    open: boolean;
+    corners: Array<{
+      pointId: string;
+      maxDistance: number;
+      angleDeg: number;
+      distance: number;
+      // Pour chanfrein asymétrique
+      dist1: number;
+      dist2: number;
+      maxDist1: number;
+      maxDist2: number;
+      line1Id: string;
+      line2Id: string;
+    }>;
+    globalDistance: number;
+    minMaxDistance: number;
+    hoveredCornerIdx: number | null;
+    asymmetric: boolean;
+    addDimension: boolean;
+    repeatMode: boolean;
+  } | null>(null);
   const [chamferPanelPos, setChamferPanelPos] = useState({ x: 100, y: 150 });
   const [chamferPanelDragging, setChamferPanelDragging] = useState(false);
   const [chamferPanelDragStart, setChamferPanelDragStart] = useState({ x: 0, y: 0 });
@@ -1216,7 +1071,6 @@ export function CADGabaritCanvas({
 
   // === FONCTION POUR FERMER TOUS LES PANNEAUX D'ÉDITION ===
   // Évite la confusion quand plusieurs panneaux sont ouverts
-  // Note: Défini ici (après les états lineLengthDialog/angleEditDialog) et utilise setFilletDialog/setChamferDialog du hook
   const closeAllEditPanels = useCallback(
     (except?: string) => {
       if (except !== "fillet") setFilletDialog(null);
@@ -1243,14 +1097,225 @@ export function CADGabaritCanvas({
       if (except !== "text") setTextInput(null);
       if (except !== "context") setContextMenu(null);
     },
-    [lineLengthDialog, angleEditDialog, setFilletDialog, setChamferDialog],
+    [lineLengthDialog, angleEditDialog],
   );
 
-  // Modale pour répétition/array - États et fonctions dans useArrayRepeat hook
-  // Note: arrayDialog, setArrayDialog, arrayPreview, arrayPreviewData viennent du hook useArrayRepeat
+  // Modale pour répétition/array
+  const [arrayDialog, setArrayDialog] = useState<{
+    open: boolean;
+    type: "linear" | "grid" | "circular" | "checkerboard";
+    // Linéaire
+    linearCount: number;
+    linearSpacing: string; // mm - string pour permettre la saisie
+    linearSpacingMode: "spacing" | "distance";
+    linearDirection: "x" | "y" | "custom"; // Direction de la répétition
+    linearAngle: string; // Angle personnalisé en degrés
+    // Grille
+    countX: number;
+    spacingX: string; // mm - string pour permettre la saisie
+    spacingModeX: "spacing" | "distance";
+    countY: number;
+    spacingY: string; // mm - string pour permettre la saisie
+    spacingModeY: "spacing" | "distance";
+    // Circulaire
+    circularCount: number;
+    circularAngle: string; // angle total en degrés (360 = cercle complet) - string
+    circularCenter: { x: number; y: number } | null;
+    // Damier (checkerboard)
+    checkerCountX: string; // Nombre de cases en X (string pour saisie fluide)
+    checkerCountY: string; // Nombre de cases en Y (string pour saisie fluide)
+    checkerSize: string; // Taille d'une case en mm
+    checkerColor: string; // Couleur des cases noires
+    // Général
+    includeOriginal: boolean;
+    createIntersections: boolean; // Créer les points d'intersection
+  } | null>(null);
   const [arrayPanelPos, setArrayPanelPos] = useState({ x: 100, y: 100 });
   const [arrayPanelDragging, setArrayPanelDragging] = useState(false);
   const [arrayPanelDragStart, setArrayPanelDragStart] = useState({ x: 0, y: 0 });
+
+  // Prévisualisation de la répétition en temps réel (useMemo pour performance)
+  // Extraire uniquement les valeurs nécessaires pour éviter les recalculs inutiles
+  const arrayPreviewData = useMemo(() => {
+    if (!arrayDialog?.open) {
+      return null;
+    }
+
+    // Le mode damier ne nécessite pas de sélection
+    if (arrayDialog.type === "checkerboard") {
+      return { centerX: 0, centerY: 0, scaleFactor: sketch.scaleFactor, isCheckerboard: true };
+    }
+
+    if (selectedEntities.size === 0) {
+      return null;
+    }
+
+    // Extraire les points des entités sélectionnées une seule fois
+    const selectedPoints: Array<{ x: number; y: number }> = [];
+    selectedEntities.forEach((id) => {
+      const geo = sketch.geometries.get(id);
+      if (geo) {
+        if (geo.type === "line") {
+          const line = geo as Line;
+          const p1 = sketch.points.get(line.p1);
+          const p2 = sketch.points.get(line.p2);
+          if (p1) selectedPoints.push({ x: p1.x, y: p1.y });
+          if (p2) selectedPoints.push({ x: p2.x, y: p2.y });
+        } else if (geo.type === "circle") {
+          const center = sketch.points.get((geo as CircleType).center);
+          if (center) selectedPoints.push({ x: center.x, y: center.y });
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          const center = sketch.points.get(arc.center);
+          if (center) selectedPoints.push({ x: center.x, y: center.y });
+        } else if (geo.type === "rectangle") {
+          const rect = geo as Rectangle;
+          [rect.p1, rect.p2, rect.p3, rect.p4].forEach((pid) => {
+            const p = sketch.points.get(pid);
+            if (p) selectedPoints.push({ x: p.x, y: p.y });
+          });
+        }
+      }
+    });
+
+    if (selectedPoints.length === 0) return null;
+
+    let centerX = 0,
+      centerY = 0;
+    selectedPoints.forEach((p) => {
+      centerX += p.x;
+      centerY += p.y;
+    });
+    centerX /= selectedPoints.length;
+    centerY /= selectedPoints.length;
+
+    return { centerX, centerY, scaleFactor: sketch.scaleFactor };
+  }, [arrayDialog?.open, selectedEntities, sketch.geometries, sketch.points, sketch.scaleFactor]);
+
+  // Calcul du preview séparé (ne dépend que de arrayDialog et des données extraites)
+  const arrayPreview = useMemo(() => {
+    if (!arrayDialog?.open || !arrayPreviewData) {
+      return null;
+    }
+
+    const {
+      type,
+      linearCount,
+      linearSpacing,
+      linearSpacingMode,
+      linearDirection,
+      linearAngle,
+      countX,
+      spacingX,
+      spacingModeX,
+      countY,
+      spacingY,
+      spacingModeY,
+      circularCount,
+      circularAngle,
+      circularCenter,
+      includeOriginal,
+    } = arrayDialog;
+
+    const { centerX: baseCenterX, centerY: baseCenterY, scaleFactor } = arrayPreviewData;
+
+    // Parser les valeurs (peuvent être string ou number pour compatibilité)
+    const linearSpacingStr = typeof linearSpacing === "string" ? linearSpacing : String(linearSpacing || "50");
+    const spacingXStr = typeof spacingX === "string" ? spacingX : String(spacingX || "50");
+    const spacingYStr = typeof spacingY === "string" ? spacingY : String(spacingY || "50");
+    const circularAngleStr = typeof circularAngle === "string" ? circularAngle : String(circularAngle || "360");
+    const linearAngleStr = typeof linearAngle === "string" ? linearAngle : String(linearAngle || "0");
+
+    const linearSpacingNum = parseFloat(linearSpacingStr.replace(",", ".")) || 0;
+    const spacingXNum = parseFloat(spacingXStr.replace(",", ".")) || 0;
+    const spacingYNum = parseFloat(spacingYStr.replace(",", ".")) || 0;
+    const circularAngleNum = parseFloat(circularAngleStr.replace(",", ".")) || 360;
+    const linearAngleNum = parseFloat(linearAngleStr.replace(",", ".")) || 0;
+
+    // Calculer l'espacement réel selon le mode
+    const realLinearSpacing =
+      linearSpacingMode === "distance" && (linearCount || 3) > 1
+        ? linearSpacingNum / ((linearCount || 3) - 1)
+        : linearSpacingNum;
+    const realSpacingX = spacingModeX === "distance" && countX > 1 ? spacingXNum / (countX - 1) : spacingXNum;
+    const realSpacingY = spacingModeY === "distance" && countY > 1 ? spacingYNum / (countY - 1) : spacingYNum;
+
+    // Utiliser le centre personnalisé pour circulaire
+    let centerX = baseCenterX;
+    let centerY = baseCenterY;
+    if (type === "circular" && circularCenter) {
+      centerX = circularCenter.x;
+      centerY = circularCenter.y;
+    }
+
+    const transforms: Array<{ offsetX: number; offsetY: number; rotation: number }> = [];
+
+    if (type === "linear") {
+      // Calculer la direction en radians
+      let dirAngle = 0; // Par défaut X (0°)
+      if (linearDirection === "y") {
+        dirAngle = Math.PI / 2; // 90°
+      } else if (linearDirection === "custom") {
+        dirAngle = (linearAngleNum * Math.PI) / 180;
+      }
+
+      const dirX = Math.cos(dirAngle);
+      const dirY = Math.sin(dirAngle);
+
+      const startIdx = includeOriginal ? 1 : 0;
+      const count = linearCount || 3;
+      for (let i = startIdx; i < count; i++) {
+        const dist = i * realLinearSpacing * scaleFactor;
+        transforms.push({
+          offsetX: dist * dirX,
+          offsetY: dist * dirY,
+          rotation: 0,
+        });
+      }
+    } else if (type === "grid") {
+      for (let row = 0; row < countY; row++) {
+        for (let col = 0; col < countX; col++) {
+          if (row === 0 && col === 0) continue; // Ne pas afficher l'original en preview
+          transforms.push({
+            offsetX: col * realSpacingX * scaleFactor,
+            offsetY: row * realSpacingY * scaleFactor,
+            rotation: 0,
+          });
+        }
+      }
+    } else if (type === "circular") {
+      const angleStep = (circularAngleNum / circularCount) * (Math.PI / 180);
+      const startIdx = includeOriginal ? 1 : 0;
+      for (let i = startIdx; i < circularCount; i++) {
+        const rotation = i * angleStep;
+        transforms.push({ offsetX: 0, offsetY: 0, rotation });
+      }
+    } else if (type === "checkerboard") {
+      // Mode damier - retourner les données du damier pour le preview
+      const { checkerCountX, checkerCountY, checkerSize, checkerColor } = arrayDialog;
+      const countXStr = typeof checkerCountX === "string" ? checkerCountX : String(checkerCountX || "8");
+      const countYStr = typeof checkerCountY === "string" ? checkerCountY : String(checkerCountY || "6");
+      const sizeStr = typeof checkerSize === "string" ? checkerSize : String(checkerSize || "20");
+
+      const countXNum = parseInt(countXStr) || 8;
+      const countYNum = parseInt(countYStr) || 6;
+      const sizePx = (parseFloat(sizeStr.replace(",", ".")) || 20) * scaleFactor;
+
+      return {
+        transforms: [],
+        centerX: 0,
+        centerY: 0,
+        checkerboard: {
+          countX: Math.max(1, countXNum),
+          countY: Math.max(1, countYNum),
+          sizePx,
+          color: checkerColor ?? "#000000",
+        },
+      };
+    }
+
+    return { transforms, centerX, centerY };
+  }, [arrayDialog, arrayPreviewData]);
 
   // Dialogue pour export PDF professionnel (éditeur plein écran)
   const [pdfPlanEditorOpen, setPdfPlanEditorOpen] = useState(false);
@@ -1793,8 +1858,6 @@ export function CADGabaritCanvas({
       revealPosition,
       // Lignes de construction
       showConstruction,
-      // v7.24: Masquer le texte de mesure temporaire quand l'input HTML est affiché
-      hideTempMeasure: liveInputMeasure.active,
     });
 
     // Dessiner les indicateurs de points verrouillés
@@ -3783,23 +3846,50 @@ export function CADGabaritCanvas({
     templateId,
   });
 
-  // MOD v7.17: Drag & drop d'images directement sur le canvas
-  useImageDragDrop({
-    containerRef,
-    viewport,
-    imageOpacity,
-    activeLayerId: sketch.activeLayerId,
-    onImagesAdded: (newImages) => {
-      setBackgroundImages((prev) => [...prev, ...newImages]);
-    },
-    setShowBackgroundImage,
-  });
+  // Résoudre le sketch
+  const solveSketch = useCallback(async (sketchToSolve: Sketch) => {
+    const result = await solverRef.current.solve(sketchToSolve);
 
-  // MOD v7.18: Cotations automatiques lors de la création de géométries
-  const { addRectangleDimensions, addLineDimension } = useAutoDimensions({
-    enabled: autoDimensionsEnabled,
-    sketchRef,
-  });
+    // Le solveur modifie sketchToSolve en place, on doit propager ces modifications
+    // On crée une nouvelle Map pour déclencher le re-render
+    const updatedPoints = new Map(sketchToSolve.points);
+    const updatedGeometries = new Map(sketchToSolve.geometries);
+
+    setSketch((s) => ({
+      ...s,
+      points: updatedPoints,
+      geometries: updatedGeometries,
+      constraints: sketchToSolve.constraints,
+      dof: result.dof,
+      status: result.status,
+    }));
+  }, []);
+
+  // Historique - défini tôt car utilisé par plusieurs callbacks
+  const addToHistory = useCallback((newSketch: Sketch, description: string = "Modification") => {
+    const { branches: currentBranches, activeBranchId: currentActiveBranchId } = branchesRef.current;
+    const branchIndex = currentBranches.findIndex((b) => b.id === currentActiveBranchId);
+    if (branchIndex === -1) return;
+
+    const branch = currentBranches[branchIndex];
+    const newEntry: HistoryEntry = {
+      sketch: serializeSketch(newSketch),
+      description,
+      timestamp: Date.now(),
+    };
+
+    // Couper l'historique au point actuel et ajouter le nouvel état
+    const newHistory = [...branch.history.slice(0, branch.historyIndex + 1), newEntry];
+    const newIndex = branch.historyIndex + 1;
+
+    const updatedBranch = { ...branch, history: newHistory, historyIndex: newIndex };
+    const newBranches = [...currentBranches];
+    newBranches[branchIndex] = updatedBranch;
+
+    setBranches(newBranches);
+    branchesRef.current = { branches: newBranches, activeBranchId: currentActiveBranchId };
+    historyRef.current = { history: newHistory, index: newIndex };
+  }, []);
 
   // Appliquer la symétrie avec un axe donné (2 points)
   const applyMirrorWithAxis = useCallback(
@@ -4709,6 +4799,11 @@ export function CADGabaritCanvas({
             if (loadedCount === fileArray.length) {
               setShowBackgroundImage(true);
               toast.success(fileArray.length === 1 ? "Photo chargée !" : `${fileArray.length} photos chargées !`);
+              // FIX #89: Forcer une sauvegarde après ajout d'images (délai pour laisser le state se mettre à jour)
+              setTimeout(() => {
+                console.log("[CAD] Images loaded, triggering backup...");
+                autoBackupSave(true); // Force backup
+              }, 2000);
             }
           };
           img.src = event.target?.result as string;
@@ -4719,7 +4814,43 @@ export function CADGabaritCanvas({
       // Reset l'input pour permettre de re-sélectionner les mêmes fichiers
       e.target.value = "";
     },
-    [imageOpacity, viewport],
+    [imageOpacity, viewport, autoBackupSave],
+  );
+
+  // FIX #90: Envoyer une image vers un nouveau calque
+  const moveImageToNewLayer = useCallback(
+    (imageId: string) => {
+      const image = backgroundImages.find((img) => img.id === imageId);
+      if (!image) return;
+
+      const layerColors = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4", "#84CC16", "#EF4444"];
+      const newLayerId = generateId();
+
+      // Extraire le nom du fichier sans extension pour le nom du calque
+      const fileName = image.name.replace(/\.[^/.]+$/, "");
+      const shortName = fileName.length > 20 ? fileName.substring(0, 17) + "..." : fileName;
+
+      // Créer le nouveau calque
+      setSketch((prev) => {
+        const newLayers = new Map(prev.layers);
+        const newLayer: Layer = {
+          id: newLayerId,
+          name: `📷 ${shortName}`,
+          color: layerColors[prev.layers.size % layerColors.length],
+          visible: true,
+          locked: false,
+          order: prev.layers.size,
+        };
+        newLayers.set(newLayerId, newLayer);
+        return { ...prev, layers: newLayers };
+      });
+
+      // Déplacer l'image vers ce calque
+      setBackgroundImages((prev) => prev.map((img) => (img.id === imageId ? { ...img, layerId: newLayerId } : img)));
+
+      toast.success(`Image déplacée vers le calque "📷 ${shortName}"`);
+    },
+    [backgroundImages],
   );
 
   // Import DXF
@@ -4798,8 +4929,8 @@ export function CADGabaritCanvas({
         });
 
         // Reset l'input pour permettre de réimporter le même fichier
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
+        if (dxfInputRef.current) {
+          dxfInputRef.current.value = "";
         }
       } catch (error) {
         console.error("Erreur import DXF:", error);
@@ -4807,48 +4938,6 @@ export function CADGabaritCanvas({
       }
     },
     [render],
-  );
-
-  // v7.21: Handler unifié pour import (DXF + images)
-  const handleUnifiedImport = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = e.target.files;
-      if (!files || files.length === 0) return;
-
-      const dxfFiles: File[] = [];
-      const imageFiles: File[] = [];
-
-      // Trier les fichiers par type
-      Array.from(files).forEach((file) => {
-        if (file.name.toLowerCase().endsWith(".dxf")) {
-          dxfFiles.push(file);
-        } else if (file.type.startsWith("image/")) {
-          imageFiles.push(file);
-        }
-      });
-
-      // Traiter les fichiers DXF (un seul à la fois)
-      if (dxfFiles.length > 0) {
-        const fakeEvent = {
-          target: { files: [dxfFiles[0]] },
-        } as unknown as React.ChangeEvent<HTMLInputElement>;
-        await handleDXFImport(fakeEvent);
-      }
-
-      // Traiter les images
-      if (imageFiles.length > 0) {
-        const fakeEvent = {
-          target: { files: imageFiles, value: "" },
-        } as unknown as React.ChangeEvent<HTMLInputElement>;
-        handleImageUpload(fakeEvent);
-      }
-
-      // Reset l'input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    },
-    [handleDXFImport, handleImageUpload],
   );
 
   // Helper: récupère un point existant si snap endpoint, sinon crée un nouveau point
@@ -4909,6 +4998,2029 @@ export function CADGabaritCanvas({
     [],
   );
 
+  // === FILLET ET CHAMFER ===
+
+  // Trouve le point commun entre deux lignes (même ID ou mêmes coordonnées)
+  const findSharedPoint = useCallback(
+    (
+      line1: Line,
+      line2: Line,
+    ): {
+      sharedPointId: string;
+      line1OtherId: string;
+      line2OtherId: string;
+      needsMerge?: { point1Id: string; point2Id: string };
+    } | null => {
+      // D'abord vérifier si les lignes partagent le même point (ID identique)
+      if (line1.p1 === line2.p1) return { sharedPointId: line1.p1, line1OtherId: line1.p2, line2OtherId: line2.p2 };
+      if (line1.p1 === line2.p2) return { sharedPointId: line1.p1, line1OtherId: line1.p2, line2OtherId: line2.p1 };
+      if (line1.p2 === line2.p1) return { sharedPointId: line1.p2, line1OtherId: line1.p1, line2OtherId: line2.p2 };
+      if (line1.p2 === line2.p2) return { sharedPointId: line1.p2, line1OtherId: line1.p1, line2OtherId: line2.p1 };
+
+      // Sinon, vérifier si des extrémités sont aux mêmes coordonnées
+      const tolerance = 0.5; // 0.5mm de tolérance
+      const p1_1 = sketch.points.get(line1.p1);
+      const p1_2 = sketch.points.get(line1.p2);
+      const p2_1 = sketch.points.get(line2.p1);
+      const p2_2 = sketch.points.get(line2.p2);
+
+      if (!p1_1 || !p1_2 || !p2_1 || !p2_2) return null;
+
+      const dist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+        Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+
+      // Vérifier toutes les combinaisons de points
+      if (dist(p1_1, p2_1) < tolerance) {
+        return {
+          sharedPointId: line1.p1,
+          line1OtherId: line1.p2,
+          line2OtherId: line2.p2,
+          needsMerge: { point1Id: line1.p1, point2Id: line2.p1 },
+        };
+      }
+      if (dist(p1_1, p2_2) < tolerance) {
+        return {
+          sharedPointId: line1.p1,
+          line1OtherId: line1.p2,
+          line2OtherId: line2.p1,
+          needsMerge: { point1Id: line1.p1, point2Id: line2.p2 },
+        };
+      }
+      if (dist(p1_2, p2_1) < tolerance) {
+        return {
+          sharedPointId: line1.p2,
+          line1OtherId: line1.p1,
+          line2OtherId: line2.p2,
+          needsMerge: { point1Id: line1.p2, point2Id: line2.p1 },
+        };
+      }
+      if (dist(p1_2, p2_2) < tolerance) {
+        return {
+          sharedPointId: line1.p2,
+          line1OtherId: line1.p1,
+          line2OtherId: line2.p1,
+          needsMerge: { point1Id: line1.p2, point2Id: line2.p2 },
+        };
+      }
+
+      return null;
+    },
+    [sketch.points],
+  );
+
+  // Fonction interne pour appliquer un congé sur un sketch donné (retourne le nouveau sketch ou null si erreur)
+  const applyFilletToSketch = useCallback(
+    (inputSketch: Sketch, line1Id: string, line2Id: string, radius: number, silent: boolean = false): Sketch | null => {
+      let currentLine1 = inputSketch.geometries.get(line1Id) as Line | undefined;
+      let currentLine2 = inputSketch.geometries.get(line2Id) as Line | undefined;
+
+      if (!currentLine1 || !currentLine2 || currentLine1.type !== "line" || currentLine2.type !== "line") {
+        if (!silent) toast.error("Sélectionnez deux lignes");
+        return null;
+      }
+
+      const shared = findSharedPoint(currentLine1, currentLine2);
+      if (!shared) {
+        if (!silent) toast.error("Les lignes doivent partager un point commun");
+        return null;
+      }
+
+      const newSketch = {
+        ...inputSketch,
+        points: new Map(inputSketch.points),
+        geometries: new Map(inputSketch.geometries),
+      };
+
+      // Si les points sont proches mais pas le même, fusionner
+      if (shared.needsMerge) {
+        const { point1Id, point2Id } = shared.needsMerge;
+        const line2Geo = newSketch.geometries.get(line2Id) as Line;
+        if (line2Geo) {
+          if (line2Geo.p1 === point2Id) {
+            newSketch.geometries.set(line2Id, { ...line2Geo, p1: point1Id });
+          } else if (line2Geo.p2 === point2Id) {
+            newSketch.geometries.set(line2Id, { ...line2Geo, p2: point1Id });
+          }
+        }
+        newSketch.points.delete(point2Id);
+        currentLine1 = newSketch.geometries.get(line1Id) as Line;
+        currentLine2 = newSketch.geometries.get(line2Id) as Line;
+      }
+
+      const cornerPt = newSketch.points.get(shared.sharedPointId);
+      const endPt1 = newSketch.points.get(shared.line1OtherId);
+      const endPt2 = newSketch.points.get(shared.line2OtherId);
+
+      if (!cornerPt || !endPt1 || !endPt2) return null;
+
+      const vec1 = { x: endPt1.x - cornerPt.x, y: endPt1.y - cornerPt.y };
+      const vec2 = { x: endPt2.x - cornerPt.x, y: endPt2.y - cornerPt.y };
+
+      const len1 = Math.sqrt(vec1.x * vec1.x + vec1.y * vec1.y);
+      const len2 = Math.sqrt(vec2.x * vec2.x + vec2.y * vec2.y);
+
+      if (len1 < 0.001 || len2 < 0.001) {
+        if (!silent) toast.error(`Lignes trop courtes`);
+        return null;
+      }
+
+      const u1 = { x: vec1.x / len1, y: vec1.y / len1 };
+      const u2 = { x: vec2.x / len2, y: vec2.y / len2 };
+
+      const dot = u1.x * u2.x + u1.y * u2.y;
+      const angleRad = Math.acos(Math.max(-1, Math.min(1, dot)));
+
+      if (angleRad < 0.05 || angleRad > Math.PI - 0.05) {
+        if (!silent) toast.error(`Angle trop faible pour un congé`);
+        return null;
+      }
+
+      const halfAngle = angleRad / 2;
+      const tangentDist = radius / Math.tan(halfAngle);
+
+      if (tangentDist > len1 * 0.95 || tangentDist > len2 * 0.95) {
+        if (!silent) toast.error(`Rayon trop grand`);
+        return null;
+      }
+
+      const tan1 = { x: cornerPt.x + u1.x * tangentDist, y: cornerPt.y + u1.y * tangentDist };
+      const tan2 = { x: cornerPt.x + u2.x * tangentDist, y: cornerPt.y + u2.y * tangentDist };
+
+      // Calculer le centre du congé sur la bissectrice
+      // La bissectrice de l'angle est u1 + u2 normalisé
+      const bisector = { x: u1.x + u2.x, y: u1.y + u2.y };
+      const bisectorLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
+
+      if (bisectorLen < 0.001) {
+        if (!silent) toast.error("Lignes parallèles");
+        return null;
+      }
+
+      const bisectorNorm = { x: bisector.x / bisectorLen, y: bisector.y / bisectorLen };
+
+      // Distance du coin au centre = radius / sin(halfAngle)
+      const centerDist = radius / Math.sin(halfAngle);
+
+      // Deux centres possibles sur la bissectrice (de part et d'autre du coin)
+      const centerA = {
+        x: cornerPt.x + bisectorNorm.x * centerDist,
+        y: cornerPt.y + bisectorNorm.y * centerDist,
+      };
+      const centerB = {
+        x: cornerPt.x - bisectorNorm.x * centerDist,
+        y: cornerPt.y - bisectorNorm.y * centerDist,
+      };
+
+      // Le bon centre est celui qui est à distance R des deux points de tangence
+      const distAToTan1 = Math.sqrt((centerA.x - tan1.x) ** 2 + (centerA.y - tan1.y) ** 2);
+      const distAToTan2 = Math.sqrt((centerA.x - tan2.x) ** 2 + (centerA.y - tan2.y) ** 2);
+      const distBToTan1 = Math.sqrt((centerB.x - tan1.x) ** 2 + (centerB.y - tan1.y) ** 2);
+      const distBToTan2 = Math.sqrt((centerB.x - tan2.x) ** 2 + (centerB.y - tan2.y) ** 2);
+
+      const errorA = Math.abs(distAToTan1 - radius) + Math.abs(distAToTan2 - radius);
+      const errorB = Math.abs(distBToTan1 - radius) + Math.abs(distBToTan2 - radius);
+
+      const arcCenter = errorA < errorB ? centerA : centerB;
+
+      const tan1Id = generateId();
+      const tan2Id = generateId();
+      const centerId = generateId();
+
+      newSketch.points.set(tan1Id, { id: tan1Id, x: tan1.x, y: tan1.y });
+      newSketch.points.set(tan2Id, { id: tan2Id, x: tan2.x, y: tan2.y });
+      newSketch.points.set(centerId, { id: centerId, x: arcCenter.x, y: arcCenter.y });
+
+      const updatedLine1: Line = {
+        ...currentLine1,
+        p1: currentLine1.p1 === shared.sharedPointId ? tan1Id : currentLine1.p1,
+        p2: currentLine1.p2 === shared.sharedPointId ? tan1Id : currentLine1.p2,
+      };
+
+      const updatedLine2: Line = {
+        ...currentLine2,
+        p1: currentLine2.p1 === shared.sharedPointId ? tan2Id : currentLine2.p1,
+        p2: currentLine2.p2 === shared.sharedPointId ? tan2Id : currentLine2.p2,
+      };
+
+      newSketch.geometries.set(line1Id, updatedLine1);
+      newSketch.geometries.set(line2Id, updatedLine2);
+
+      // Déterminer le sens de l'arc (counterClockwise)
+      const cross = u1.x * u2.y - u1.y * u2.x;
+      const counterClockwise = cross > 0;
+
+      const arcId = generateId();
+      const arc: Arc = {
+        id: arcId,
+        type: "arc",
+        center: centerId,
+        startPoint: tan1Id,
+        endPoint: tan2Id,
+        radius: radius,
+        layerId: currentLine1.layerId || "trace",
+        counterClockwise: counterClockwise,
+        isFillet: true, // Marquer comme congé pour permettre la restauration du coin
+      };
+      newSketch.geometries.set(arcId, arc);
+
+      let cornerStillUsed = false;
+      newSketch.geometries.forEach((geo) => {
+        if (geo.type === "line") {
+          const l = geo as Line;
+          if (l.p1 === shared.sharedPointId || l.p2 === shared.sharedPointId) {
+            cornerStillUsed = true;
+          }
+        }
+      });
+      if (!cornerStillUsed) {
+        newSketch.points.delete(shared.sharedPointId);
+      }
+
+      return newSketch;
+    },
+    [findSharedPoint],
+  );
+
+  // Applique un congé (fillet) entre deux lignes
+  const applyFillet = useCallback(
+    (line1Id: string, line2Id: string, radius: number) => {
+      const newSketch = applyFilletToSketch(sketch, line1Id, line2Id, radius, false);
+      if (newSketch) {
+        setSketch(newSketch);
+        addToHistory(newSketch, `Congé R${radius}mm`);
+        toast.success(`Congé R${radius}mm appliqué`);
+      }
+    },
+    [sketch, applyFilletToSketch, addToHistory],
+  );
+
+  // Fonction interne pour appliquer un chanfrein sur un sketch donné
+  const applyChamferToSketch = useCallback(
+    (inputSketch: Sketch, line1Id: string, line2Id: string, dist: number, silent: boolean = false): Sketch | null => {
+      let currentLine1 = inputSketch.geometries.get(line1Id) as Line | undefined;
+      let currentLine2 = inputSketch.geometries.get(line2Id) as Line | undefined;
+
+      if (!currentLine1 || !currentLine2 || currentLine1.type !== "line" || currentLine2.type !== "line") {
+        if (!silent) toast.error("Sélectionnez deux lignes");
+        return null;
+      }
+
+      const shared = findSharedPoint(currentLine1, currentLine2);
+      if (!shared) {
+        if (!silent) toast.error("Les lignes doivent partager un point commun");
+        return null;
+      }
+
+      const newSketch = {
+        ...inputSketch,
+        points: new Map(inputSketch.points),
+        geometries: new Map(inputSketch.geometries),
+      };
+
+      if (shared.needsMerge) {
+        const { point1Id, point2Id } = shared.needsMerge;
+        const line2Geo = newSketch.geometries.get(line2Id) as Line;
+        if (line2Geo) {
+          if (line2Geo.p1 === point2Id) {
+            newSketch.geometries.set(line2Id, { ...line2Geo, p1: point1Id });
+          } else if (line2Geo.p2 === point2Id) {
+            newSketch.geometries.set(line2Id, { ...line2Geo, p2: point1Id });
+          }
+        }
+        newSketch.points.delete(point2Id);
+        currentLine1 = newSketch.geometries.get(line1Id) as Line;
+        currentLine2 = newSketch.geometries.get(line2Id) as Line;
+      }
+
+      const sharedPt = newSketch.points.get(shared.sharedPointId);
+      const other1 = newSketch.points.get(shared.line1OtherId);
+      const other2 = newSketch.points.get(shared.line2OtherId);
+
+      if (!sharedPt || !other1 || !other2) return null;
+
+      const len1 = distance(sharedPt, other1);
+      const len2 = distance(sharedPt, other2);
+
+      if (len1 < dist || len2 < dist) {
+        if (!silent) toast.error("Distance trop grande pour ces lignes");
+        return null;
+      }
+
+      const dir1 = { x: (other1.x - sharedPt.x) / len1, y: (other1.y - sharedPt.y) / len1 };
+      const dir2 = { x: (other2.x - sharedPt.x) / len2, y: (other2.y - sharedPt.y) / len2 };
+
+      const cham1 = { x: sharedPt.x + dir1.x * dist, y: sharedPt.y + dir1.y * dist };
+      const cham2 = { x: sharedPt.x + dir2.x * dist, y: sharedPt.y + dir2.y * dist };
+
+      const cham1Id = generateId();
+      const cham2Id = generateId();
+
+      newSketch.points.set(cham1Id, { id: cham1Id, x: cham1.x, y: cham1.y });
+      newSketch.points.set(cham2Id, { id: cham2Id, x: cham2.x, y: cham2.y });
+
+      const newLine1: Line = { ...currentLine1 };
+      const newLine2: Line = { ...currentLine2 };
+
+      if (currentLine1.p1 === shared.sharedPointId) {
+        newLine1.p1 = cham1Id;
+      } else {
+        newLine1.p2 = cham1Id;
+      }
+
+      if (currentLine2.p1 === shared.sharedPointId) {
+        newLine2.p1 = cham2Id;
+      } else {
+        newLine2.p2 = cham2Id;
+      }
+
+      newSketch.geometries.set(line1Id, newLine1);
+      newSketch.geometries.set(line2Id, newLine2);
+
+      const chamferLineId = generateId();
+      const chamferLine: Line = {
+        id: chamferLineId,
+        type: "line",
+        p1: cham1Id,
+        p2: cham2Id,
+        layerId: currentLine1.layerId || "trace",
+      };
+      newSketch.geometries.set(chamferLineId, chamferLine);
+
+      let pointStillUsed = false;
+      newSketch.geometries.forEach((geo) => {
+        if (geo.type === "line") {
+          const l = geo as Line;
+          if (l.p1 === shared.sharedPointId || l.p2 === shared.sharedPointId) pointStillUsed = true;
+        }
+      });
+      if (!pointStillUsed) {
+        newSketch.points.delete(shared.sharedPointId);
+      }
+
+      return newSketch;
+    },
+    [findSharedPoint],
+  );
+
+  // Applique un chanfrein entre deux lignes
+  const applyChamfer = useCallback(
+    (line1Id: string, line2Id: string, dist: number) => {
+      const newSketch = applyChamferToSketch(sketch, line1Id, line2Id, dist, false);
+      if (newSketch) {
+        setSketch(newSketch);
+        addToHistory(newSketch, `Chanfrein ${dist}mm`);
+        toast.success(`Chanfrein ${dist}mm appliqué`);
+      }
+    },
+    [sketch, applyChamferToSketch, addToHistory],
+  );
+
+  // Trouver les lignes connectées à un point
+  const findLinesConnectedToPoint = useCallback(
+    (pointId: string, excludeConstruction: boolean = true): Line[] => {
+      const lines: Line[] = [];
+      sketch.geometries.forEach((geo) => {
+        if (geo.type === "line") {
+          const line = geo as Line;
+          // Exclure les lignes de construction si demandé (pour les congés/chanfreins)
+          if (excludeConstruction && line.isConstruction) {
+            return;
+          }
+          if (line.p1 === pointId || line.p2 === pointId) {
+            lines.push(line);
+          }
+        }
+      });
+      return lines;
+    },
+    [sketch.geometries],
+  );
+
+  // Trouver toutes les géométries connectées à une géométrie (pour sélection de figure)
+  const findConnectedGeometries = useCallback(
+    (startGeoId: string): Set<string> => {
+      const visited = new Set<string>();
+      const queue: string[] = [startGeoId];
+
+      // Fonction helper pour obtenir les points d'une géométrie
+      const getPointsOfGeometry = (geoId: string): string[] => {
+        const geo = sketch.geometries.get(geoId);
+        if (!geo) return [];
+
+        if (geo.type === "line") {
+          const line = geo as Line;
+          return [line.p1, line.p2];
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          return [arc.startPoint, arc.endPoint]; // Ne pas inclure le centre
+        } else if (geo.type === "circle") {
+          return []; // Les cercles ne sont pas connectés
+        } else if (geo.type === "bezier") {
+          const bezier = geo as Bezier;
+          return [bezier.p1, bezier.p2]; // Points d'ancrage uniquement
+        }
+        return [];
+      };
+
+      // Fonction helper pour trouver les géométries connectées à un point
+      const getGeometriesAtPoint = (pointId: string): string[] => {
+        const result: string[] = [];
+        sketch.geometries.forEach((geo, id) => {
+          if (geo.type === "line") {
+            const line = geo as Line;
+            if (line.p1 === pointId || line.p2 === pointId) {
+              result.push(id);
+            }
+          } else if (geo.type === "arc") {
+            const arc = geo as Arc;
+            if (arc.startPoint === pointId || arc.endPoint === pointId) {
+              result.push(id);
+            }
+          } else if (geo.type === "bezier") {
+            const bezier = geo as Bezier;
+            if (bezier.p1 === pointId || bezier.p2 === pointId) {
+              result.push(id);
+            }
+          }
+        });
+        return result;
+      };
+
+      // BFS pour trouver toutes les géométries connectées
+      while (queue.length > 0) {
+        const currentGeoId = queue.shift()!;
+        if (visited.has(currentGeoId)) continue;
+        visited.add(currentGeoId);
+
+        // Obtenir les points de cette géométrie
+        const points = getPointsOfGeometry(currentGeoId);
+
+        // Pour chaque point, trouver les géométries connectées
+        for (const pointId of points) {
+          const connectedGeos = getGeometriesAtPoint(pointId);
+          for (const geoId of connectedGeos) {
+            if (!visited.has(geoId)) {
+              queue.push(geoId);
+            }
+          }
+        }
+      }
+
+      return visited;
+    },
+    [sketch.geometries],
+  );
+
+  // Calculer les paramètres géométriques d'un coin (angle, longueurs, rayon max)
+  const calculateCornerParams = useCallback(
+    (
+      line1Id: string,
+      line2Id: string,
+    ): {
+      angleDeg: number;
+      maxRadius: number;
+      maxDistance: number;
+      len1: number;
+      len2: number;
+    } | null => {
+      const line1 = sketch.geometries.get(line1Id) as Line | undefined;
+      const line2 = sketch.geometries.get(line2Id) as Line | undefined;
+
+      if (!line1 || !line2) return null;
+
+      const shared = findSharedPoint(line1, line2);
+      if (!shared) return null;
+
+      const cornerPt = sketch.points.get(shared.sharedPointId);
+      const endPt1 = sketch.points.get(shared.line1OtherId);
+      const endPt2 = sketch.points.get(shared.line2OtherId);
+
+      if (!cornerPt || !endPt1 || !endPt2) return null;
+
+      const vec1 = { x: endPt1.x - cornerPt.x, y: endPt1.y - cornerPt.y };
+      const vec2 = { x: endPt2.x - cornerPt.x, y: endPt2.y - cornerPt.y };
+
+      const len1 = Math.sqrt(vec1.x * vec1.x + vec1.y * vec1.y);
+      const len2 = Math.sqrt(vec2.x * vec2.x + vec2.y * vec2.y);
+
+      if (len1 < 0.001 || len2 < 0.001) return null;
+
+      const u1 = { x: vec1.x / len1, y: vec1.y / len1 };
+      const u2 = { x: vec2.x / len2, y: vec2.y / len2 };
+
+      const dot = u1.x * u2.x + u1.y * u2.y;
+      const angleRad = Math.acos(Math.max(-1, Math.min(1, dot)));
+      const angleDeg = (angleRad * 180) / Math.PI;
+
+      const halfAngle = angleRad / 2;
+      const minLen = Math.min(len1, len2);
+
+      // Rayon max: tangentDist <= minLen * 0.9, donc R <= minLen * 0.9 * tan(halfAngle)
+      const maxRadius = minLen * 0.9 * Math.tan(halfAngle);
+
+      // Distance max chanfrein: simplement la longueur min * 0.9
+      const maxDistance = minLen * 0.9;
+
+      return { angleDeg, maxRadius, maxDistance, len1, len2 };
+    },
+    [sketch.geometries, sketch.points, findSharedPoint],
+  );
+
+  // Calculer la géométrie d'un congé sans l'appliquer (pour preview)
+  const calculateFilletGeometry = useCallback(
+    (
+      pointId: string,
+      radiusMm: number,
+    ): {
+      center: { x: number; y: number };
+      radius: number;
+      startAngle: number;
+      endAngle: number;
+      counterClockwise: boolean;
+      tan1: { x: number; y: number };
+      tan2: { x: number; y: number };
+    } | null => {
+      // Trouver les lignes connectées à ce point
+      const connectedLines = findLinesConnectedToPoint(pointId);
+      if (connectedLines.length !== 2) return null;
+
+      const line1 = connectedLines[0];
+      const line2 = connectedLines[1];
+
+      const cornerPt = sketch.points.get(pointId);
+      const endPt1 = sketch.points.get(line1.p1 === pointId ? line1.p2 : line1.p1);
+      const endPt2 = sketch.points.get(line2.p1 === pointId ? line2.p2 : line2.p1);
+
+      if (!cornerPt || !endPt1 || !endPt2) return null;
+
+      const vec1 = { x: endPt1.x - cornerPt.x, y: endPt1.y - cornerPt.y };
+      const vec2 = { x: endPt2.x - cornerPt.x, y: endPt2.y - cornerPt.y };
+
+      const len1 = Math.sqrt(vec1.x * vec1.x + vec1.y * vec1.y);
+      const len2 = Math.sqrt(vec2.x * vec2.x + vec2.y * vec2.y);
+
+      if (len1 < 0.001 || len2 < 0.001) return null;
+
+      const u1 = { x: vec1.x / len1, y: vec1.y / len1 };
+      const u2 = { x: vec2.x / len2, y: vec2.y / len2 };
+
+      const dot = u1.x * u2.x + u1.y * u2.y;
+      const angleRad = Math.acos(Math.max(-1, Math.min(1, dot)));
+
+      if (angleRad < 0.05 || angleRad > Math.PI - 0.05) return null;
+
+      // Convertir rayon mm en px
+      const radiusPx = radiusMm * sketch.scaleFactor;
+      const halfAngle = angleRad / 2;
+      const tangentDist = radiusPx / Math.tan(halfAngle);
+
+      if (tangentDist > len1 * 0.95 || tangentDist > len2 * 0.95) return null;
+
+      const tan1 = { x: cornerPt.x + u1.x * tangentDist, y: cornerPt.y + u1.y * tangentDist };
+      const tan2 = { x: cornerPt.x + u2.x * tangentDist, y: cornerPt.y + u2.y * tangentDist };
+
+      // Calculer le centre du congé sur la bissectrice
+      const bisector = { x: u1.x + u2.x, y: u1.y + u2.y };
+      const bisectorLen = Math.sqrt(bisector.x * bisector.x + bisector.y * bisector.y);
+
+      if (bisectorLen < 0.001) return null;
+
+      const bisectorUnit = { x: bisector.x / bisectorLen, y: bisector.y / bisectorLen };
+      const centerDist = radiusPx / Math.sin(halfAngle);
+      const center = {
+        x: cornerPt.x + bisectorUnit.x * centerDist,
+        y: cornerPt.y + bisectorUnit.y * centerDist,
+      };
+
+      // Calculer les angles de début et fin
+      const startAngle = Math.atan2(tan1.y - center.y, tan1.x - center.x);
+      const endAngle = Math.atan2(tan2.y - center.y, tan2.x - center.x);
+
+      // Déterminer si counterClockwise
+      const cross = u1.x * u2.y - u1.y * u2.x;
+      const counterClockwise = cross > 0;
+
+      return {
+        center,
+        radius: radiusPx,
+        startAngle,
+        endAngle,
+        counterClockwise,
+        tan1,
+        tan2,
+      };
+    },
+    [sketch.points, sketch.scaleFactor, findLinesConnectedToPoint],
+  );
+
+  // Calculer la géométrie d'un chanfrein sans l'appliquer (pour preview)
+  // Supporte le mode asymétrique avec dist1Mm et dist2Mm différents
+  const calculateChamferGeometry = useCallback(
+    (
+      pointId: string,
+      distanceMm: number,
+      dist1Mm?: number,
+      dist2Mm?: number,
+    ): {
+      p1: { x: number; y: number };
+      p2: { x: number; y: number };
+    } | null => {
+      const connectedLines = findLinesConnectedToPoint(pointId);
+      if (connectedLines.length !== 2) return null;
+
+      const line1 = connectedLines[0];
+      const line2 = connectedLines[1];
+
+      const cornerPt = sketch.points.get(pointId);
+      const endPt1 = sketch.points.get(line1.p1 === pointId ? line1.p2 : line1.p1);
+      const endPt2 = sketch.points.get(line2.p1 === pointId ? line2.p2 : line2.p1);
+
+      if (!cornerPt || !endPt1 || !endPt2) return null;
+
+      const vec1 = { x: endPt1.x - cornerPt.x, y: endPt1.y - cornerPt.y };
+      const vec2 = { x: endPt2.x - cornerPt.x, y: endPt2.y - cornerPt.y };
+
+      const len1 = Math.sqrt(vec1.x * vec1.x + vec1.y * vec1.y);
+      const len2 = Math.sqrt(vec2.x * vec2.x + vec2.y * vec2.y);
+
+      if (len1 < 0.001 || len2 < 0.001) return null;
+
+      // Utiliser les distances asymétriques si fournies, sinon la distance symétrique
+      const d1Mm = dist1Mm !== undefined ? dist1Mm : distanceMm;
+      const d2Mm = dist2Mm !== undefined ? dist2Mm : distanceMm;
+
+      // Convertir distances mm en px
+      const dist1Px = d1Mm * sketch.scaleFactor;
+      const dist2Px = d2Mm * sketch.scaleFactor;
+
+      if (dist1Px > len1 * 0.95 || dist2Px > len2 * 0.95) return null;
+
+      const u1 = { x: vec1.x / len1, y: vec1.y / len1 };
+      const u2 = { x: vec2.x / len2, y: vec2.y / len2 };
+
+      const p1 = { x: cornerPt.x + u1.x * dist1Px, y: cornerPt.y + u1.y * dist1Px };
+      const p2 = { x: cornerPt.x + u2.x * dist2Px, y: cornerPt.y + u2.y * dist2Px };
+
+      return { p1, p2 };
+    },
+    [sketch.points, sketch.scaleFactor, findLinesConnectedToPoint],
+  );
+
+  // Mettre à jour la preview des congés en temps réel
+  useEffect(() => {
+    if (!filletDialog?.open) {
+      setFilletPreview([]);
+      return;
+    }
+
+    const previews: typeof filletPreview = [];
+    for (const corner of filletDialog.corners) {
+      if (corner.radius > 0 && corner.radius <= corner.maxRadius) {
+        const geom = calculateFilletGeometry(corner.pointId, corner.radius);
+        if (geom) {
+          previews.push({
+            type: "arc",
+            ...geom,
+          });
+        }
+      }
+    }
+    setFilletPreview(previews);
+  }, [filletDialog, calculateFilletGeometry]);
+
+  // Mettre à jour la preview des chanfreins en temps réel
+  useEffect(() => {
+    if (!chamferDialog?.open) {
+      setChamferPreview([]);
+      return;
+    }
+
+    const previews: typeof chamferPreview = [];
+    for (const corner of chamferDialog.corners) {
+      // En mode asymétrique, utiliser dist1 et dist2
+      if (chamferDialog.asymmetric) {
+        const valid =
+          corner.dist1 > 0 && corner.dist1 <= corner.maxDist1 && corner.dist2 > 0 && corner.dist2 <= corner.maxDist2;
+        if (valid) {
+          const geom = calculateChamferGeometry(corner.pointId, corner.distance, corner.dist1, corner.dist2);
+          if (geom) {
+            previews.push({
+              type: "line",
+              ...geom,
+            });
+          }
+        }
+      } else {
+        if (corner.distance > 0 && corner.distance <= corner.maxDistance) {
+          const geom = calculateChamferGeometry(corner.pointId, corner.distance);
+          if (geom) {
+            previews.push({
+              type: "line",
+              ...geom,
+            });
+          }
+        }
+      }
+    }
+    setChamferPreview(previews);
+  }, [chamferDialog, calculateChamferGeometry]);
+
+  // Ouvrir le dialogue de congé si 2 lignes OU 1+ points (coins) sont sélectionnés
+  // Ouvrir le dialogue de congé pour un point spécifique (double-clic sur coin)
+  const openFilletDialogForPoint = useCallback(
+    (pointId: string) => {
+      const connectedLines = findLinesConnectedToPoint(pointId);
+      if (connectedLines.length !== 2) {
+        toast.warning("Ce point n'est pas un coin valide");
+        return;
+      }
+
+      const params = calculateCornerParams(connectedLines[0].id, connectedLines[1].id);
+      if (!params) {
+        toast.error("Impossible de calculer les paramètres du coin");
+        return;
+      }
+
+      const maxRadiusMm = params.maxRadius / sketch.scaleFactor;
+      const len1Mm = params.len1 / sketch.scaleFactor;
+      const len2Mm = params.len2 / sketch.scaleFactor;
+      const suggestedRadius = Math.min(filletRadius, Math.floor(maxRadiusMm));
+
+      // Fermer les autres panneaux d'édition avant d'ouvrir celui-ci
+      closeAllEditPanels("fillet");
+
+      setFilletDialog({
+        open: true,
+        corners: [
+          {
+            pointId,
+            maxRadius: maxRadiusMm,
+            angleDeg: params.angleDeg,
+            radius: suggestedRadius > 0 ? suggestedRadius : 1,
+            dist1: suggestedRadius > 0 ? suggestedRadius : 1,
+            dist2: suggestedRadius > 0 ? suggestedRadius : 1,
+            maxDist1: len1Mm * 0.9,
+            maxDist2: len2Mm * 0.9,
+            line1Id: connectedLines[0].id,
+            line2Id: connectedLines[1].id,
+          },
+        ],
+        globalRadius: suggestedRadius > 0 ? suggestedRadius : 1,
+        minMaxRadius: maxRadiusMm,
+        hoveredCornerIdx: null,
+        asymmetric: false,
+        addDimension: false,
+        repeatMode: false,
+      });
+    },
+    [sketch.scaleFactor, filletRadius, findLinesConnectedToPoint, calculateCornerParams, closeAllEditPanels],
+  );
+
+  const openFilletDialog = useCallback(() => {
+    const corners: Array<{
+      pointId: string;
+      maxRadius: number;
+      angleDeg: number;
+      radius: number;
+      dist1: number;
+      dist2: number;
+      maxDist1: number;
+      maxDist2: number;
+      line1Id: string;
+      line2Id: string;
+    }> = [];
+
+    // Collecter tous les coins valides
+    const selectedIds = Array.from(selectedEntities);
+
+    // Vérifier si ce sont des points (coins)
+    let allAreCornerPoints = true;
+    for (const id of selectedIds) {
+      if (!sketch.points.has(id)) {
+        allAreCornerPoints = false;
+        break;
+      }
+      const connectedLines = findLinesConnectedToPoint(id);
+      if (connectedLines.length !== 2) {
+        allAreCornerPoints = false;
+        break;
+      }
+    }
+
+    // Calculer le rayon suggéré (en mm)
+    const getSuggestedRadius = (maxRadiusMm: number) => {
+      return Math.min(filletRadius, Math.floor(maxRadiusMm));
+    };
+
+    if (allAreCornerPoints && selectedIds.length >= 1) {
+      // Tous sont des points de coin valides
+      for (const pointId of selectedIds) {
+        const connectedLines = findLinesConnectedToPoint(pointId);
+        const params = calculateCornerParams(connectedLines[0].id, connectedLines[1].id);
+        if (params) {
+          const maxRadiusMm = params.maxRadius / sketch.scaleFactor;
+          const len1Mm = params.len1 / sketch.scaleFactor;
+          const len2Mm = params.len2 / sketch.scaleFactor;
+          const suggested = getSuggestedRadius(maxRadiusMm);
+          corners.push({
+            pointId,
+            maxRadius: maxRadiusMm,
+            angleDeg: params.angleDeg,
+            radius: suggested,
+            dist1: suggested,
+            dist2: suggested,
+            maxDist1: len1Mm * 0.9,
+            maxDist2: len2Mm * 0.9,
+            line1Id: connectedLines[0].id,
+            line2Id: connectedLines[1].id,
+          });
+        }
+      }
+    } else if (selectedEntities.size === 2) {
+      // Deux éléments - vérifier que ce sont des lignes
+      const geo1 = sketch.geometries.get(selectedIds[0]);
+      const geo2 = sketch.geometries.get(selectedIds[1]);
+
+      if (geo1 && geo2 && geo1.type === "line" && geo2.type === "line") {
+        const line1 = geo1 as Line;
+        const line2 = geo2 as Line;
+        const shared = findSharedPoint(line1, line2);
+
+        if (shared) {
+          const params = calculateCornerParams(selectedIds[0], selectedIds[1]);
+          if (params) {
+            const maxRadiusMm = params.maxRadius / sketch.scaleFactor;
+            const len1Mm = params.len1 / sketch.scaleFactor;
+            const len2Mm = params.len2 / sketch.scaleFactor;
+            const suggested = getSuggestedRadius(maxRadiusMm);
+            corners.push({
+              pointId: shared.sharedPointId,
+              maxRadius: maxRadiusMm,
+              angleDeg: params.angleDeg,
+              radius: suggested,
+              dist1: suggested,
+              dist2: suggested,
+              maxDist1: len1Mm * 0.9,
+              maxDist2: len2Mm * 0.9,
+              line1Id: selectedIds[0],
+              line2Id: selectedIds[1],
+            });
+          }
+        } else {
+          toast.warning("Les lignes doivent partager un point commun (un coin)");
+          return;
+        }
+      } else {
+        toast.warning("Sélectionnez 2 lignes ou des points (coins)");
+        return;
+      }
+    } else if (selectedEntities.size > 2) {
+      // Plus de 2 éléments - chercher tous les coins partagés entre les lignes sélectionnées
+      const selectedLines: Line[] = [];
+      for (const id of selectedIds) {
+        const geo = sketch.geometries.get(id);
+        if (geo && geo.type === "line") {
+          selectedLines.push(geo as Line);
+        }
+      }
+
+      if (selectedLines.length < 2) {
+        toast.warning("Sélectionnez au moins 2 lignes pour créer des congés");
+        return;
+      }
+
+      // Trouver tous les points partagés entre les lignes sélectionnées
+      const pointUsage = new Map<string, string[]>(); // pointId -> [lineIds]
+
+      selectedLines.forEach((line) => {
+        [line.p1, line.p2].forEach((ptId) => {
+          if (!pointUsage.has(ptId)) pointUsage.set(ptId, []);
+          pointUsage.get(ptId)!.push(line.id);
+        });
+      });
+
+      // Les coins sont les points utilisés par exactement 2 lignes sélectionnées
+      const cornerPointIds: string[] = [];
+      pointUsage.forEach((lineIds, pointId) => {
+        if (lineIds.length === 2) {
+          cornerPointIds.push(pointId);
+        }
+      });
+
+      if (cornerPointIds.length === 0) {
+        toast.warning("Aucun coin trouvé entre les lignes sélectionnées");
+        return;
+      }
+
+      // Calculer les paramètres pour chaque coin
+      for (const pointId of cornerPointIds) {
+        const lineIds = pointUsage.get(pointId)!;
+        const params = calculateCornerParams(lineIds[0], lineIds[1]);
+        if (params) {
+          const maxRadiusMm = params.maxRadius / sketch.scaleFactor;
+          const len1Mm = params.len1 / sketch.scaleFactor;
+          const len2Mm = params.len2 / sketch.scaleFactor;
+          const suggested = getSuggestedRadius(maxRadiusMm);
+          corners.push({
+            pointId,
+            maxRadius: maxRadiusMm,
+            angleDeg: params.angleDeg,
+            radius: suggested,
+            dist1: suggested,
+            dist2: suggested,
+            maxDist1: len1Mm * 0.9,
+            maxDist2: len2Mm * 0.9,
+            line1Id: lineIds[0],
+            line2Id: lineIds[1],
+          });
+        }
+      }
+    } else {
+      toast.warning("Sélectionnez 2 lignes, des points (coins), ou une figure complète");
+      return;
+    }
+
+    if (corners.length === 0) {
+      toast.error("Aucun coin valide trouvé");
+      return;
+    }
+
+    // Trouver le plus petit maxRadius parmi tous les coins (déjà en mm)
+    const minMaxRadius = Math.min(...corners.map((c) => c.maxRadius));
+    const suggestedRadius = Math.min(filletRadius, Math.floor(minMaxRadius));
+
+    setFilletDialog({
+      open: true,
+      corners,
+      globalRadius: suggestedRadius > 0 ? suggestedRadius : 1,
+      minMaxRadius,
+      hoveredCornerIdx: null,
+      asymmetric: false,
+      addDimension: false,
+      repeatMode: false,
+    });
+  }, [
+    selectedEntities,
+    sketch.geometries,
+    sketch.points,
+    sketch.scaleFactor,
+    findSharedPoint,
+    findLinesConnectedToPoint,
+    filletRadius,
+    calculateCornerParams,
+  ]);
+
+  // Ouvrir le dialogue de chanfrein si 2 lignes OU 1+ points (coins) sont sélectionnés
+  // Ouvrir le dialogue de chanfrein pour un point spécifique (double-clic sur coin)
+  const openChamferDialogForPoint = useCallback(
+    (pointId: string) => {
+      const connectedLines = findLinesConnectedToPoint(pointId);
+      if (connectedLines.length !== 2) {
+        toast.warning("Ce point n'est pas un coin valide");
+        return;
+      }
+
+      const params = calculateCornerParams(connectedLines[0].id, connectedLines[1].id);
+      if (!params) {
+        toast.error("Impossible de calculer les paramètres du coin");
+        return;
+      }
+
+      const maxDistanceMm = params.maxDistance / sketch.scaleFactor;
+      const len1Mm = params.len1 / sketch.scaleFactor;
+      const len2Mm = params.len2 / sketch.scaleFactor;
+      const suggestedDistance = Math.min(chamferDistance, Math.floor(maxDistanceMm));
+
+      setChamferDialog({
+        open: true,
+        corners: [
+          {
+            pointId,
+            maxDistance: maxDistanceMm,
+            angleDeg: params.angleDeg,
+            distance: suggestedDistance > 0 ? suggestedDistance : 1,
+            dist1: suggestedDistance > 0 ? suggestedDistance : 1,
+            dist2: suggestedDistance > 0 ? suggestedDistance : 1,
+            maxDist1: len1Mm * 0.9,
+            maxDist2: len2Mm * 0.9,
+            line1Id: connectedLines[0].id,
+            line2Id: connectedLines[1].id,
+          },
+        ],
+        globalDistance: suggestedDistance > 0 ? suggestedDistance : 1,
+        minMaxDistance: maxDistanceMm,
+        hoveredCornerIdx: null,
+        asymmetric: false,
+        addDimension: false,
+        repeatMode: false,
+      });
+    },
+    [sketch.scaleFactor, chamferDistance, findLinesConnectedToPoint, calculateCornerParams],
+  );
+
+  const openChamferDialog = useCallback(() => {
+    const corners: Array<{
+      pointId: string;
+      maxDistance: number;
+      angleDeg: number;
+      distance: number;
+      dist1: number;
+      dist2: number;
+      maxDist1: number;
+      maxDist2: number;
+      line1Id: string;
+      line2Id: string;
+    }> = [];
+
+    // Collecter tous les coins valides
+    const selectedIds = Array.from(selectedEntities);
+
+    // Calculer la distance suggérée (en mm)
+    const getSuggestedDistance = (maxDistanceMm: number) => {
+      return Math.min(chamferDistance, Math.floor(maxDistanceMm));
+    };
+
+    // Vérifier si ce sont des points (coins)
+    let allAreCornerPoints = true;
+    for (const id of selectedIds) {
+      if (!sketch.points.has(id)) {
+        allAreCornerPoints = false;
+        break;
+      }
+      const connectedLines = findLinesConnectedToPoint(id);
+      if (connectedLines.length !== 2) {
+        allAreCornerPoints = false;
+        break;
+      }
+    }
+
+    if (allAreCornerPoints && selectedIds.length >= 1) {
+      // Tous sont des points de coin valides
+      for (const pointId of selectedIds) {
+        const connectedLines = findLinesConnectedToPoint(pointId);
+        const params = calculateCornerParams(connectedLines[0].id, connectedLines[1].id);
+        if (params) {
+          const maxDistanceMm = params.maxDistance / sketch.scaleFactor;
+          const len1Mm = params.len1 / sketch.scaleFactor;
+          const len2Mm = params.len2 / sketch.scaleFactor;
+          const suggested = getSuggestedDistance(maxDistanceMm);
+          corners.push({
+            pointId,
+            maxDistance: maxDistanceMm,
+            angleDeg: params.angleDeg,
+            distance: suggested,
+            dist1: suggested,
+            dist2: suggested,
+            maxDist1: len1Mm * 0.9,
+            maxDist2: len2Mm * 0.9,
+            line1Id: connectedLines[0].id,
+            line2Id: connectedLines[1].id,
+          });
+        }
+      }
+    } else if (selectedEntities.size === 2) {
+      // Deux éléments - vérifier que ce sont des lignes
+      const geo1 = sketch.geometries.get(selectedIds[0]);
+      const geo2 = sketch.geometries.get(selectedIds[1]);
+
+      if (geo1 && geo2 && geo1.type === "line" && geo2.type === "line") {
+        const line1 = geo1 as Line;
+        const line2 = geo2 as Line;
+        const shared = findSharedPoint(line1, line2);
+
+        if (shared) {
+          const params = calculateCornerParams(selectedIds[0], selectedIds[1]);
+          if (params) {
+            const maxDistanceMm = params.maxDistance / sketch.scaleFactor;
+            const len1Mm = params.len1 / sketch.scaleFactor;
+            const len2Mm = params.len2 / sketch.scaleFactor;
+            const suggested = getSuggestedDistance(maxDistanceMm);
+            corners.push({
+              pointId: shared.sharedPointId,
+              maxDistance: maxDistanceMm,
+              angleDeg: params.angleDeg,
+              distance: suggested,
+              dist1: suggested,
+              dist2: suggested,
+              maxDist1: len1Mm * 0.9,
+              maxDist2: len2Mm * 0.9,
+              line1Id: selectedIds[0],
+              line2Id: selectedIds[1],
+            });
+          }
+        } else {
+          toast.warning("Les lignes doivent partager un point commun (un coin)");
+          return;
+        }
+      } else {
+        toast.warning("Sélectionnez 2 lignes ou des points (coins)");
+        return;
+      }
+    } else if (selectedEntities.size > 2) {
+      // Plus de 2 éléments - chercher tous les coins partagés entre les lignes sélectionnées
+      const selectedLines: Line[] = [];
+      for (const id of selectedIds) {
+        const geo = sketch.geometries.get(id);
+        if (geo && geo.type === "line") {
+          selectedLines.push(geo as Line);
+        }
+      }
+
+      if (selectedLines.length < 2) {
+        toast.warning("Sélectionnez au moins 2 lignes pour créer des chanfreins");
+        return;
+      }
+
+      // Trouver tous les points partagés entre les lignes sélectionnées
+      const pointUsage = new Map<string, string[]>(); // pointId -> [lineIds]
+
+      selectedLines.forEach((line) => {
+        [line.p1, line.p2].forEach((ptId) => {
+          if (!pointUsage.has(ptId)) pointUsage.set(ptId, []);
+          pointUsage.get(ptId)!.push(line.id);
+        });
+      });
+
+      // Les coins sont les points utilisés par exactement 2 lignes sélectionnées
+      const cornerPointIds: string[] = [];
+      pointUsage.forEach((lineIds, pointId) => {
+        if (lineIds.length === 2) {
+          cornerPointIds.push(pointId);
+        }
+      });
+
+      if (cornerPointIds.length === 0) {
+        toast.warning("Aucun coin trouvé entre les lignes sélectionnées");
+        return;
+      }
+
+      // Calculer les paramètres pour chaque coin
+      for (const pointId of cornerPointIds) {
+        const lineIds = pointUsage.get(pointId)!;
+        const params = calculateCornerParams(lineIds[0], lineIds[1]);
+        if (params) {
+          const maxDistanceMm = params.maxDistance / sketch.scaleFactor;
+          const len1Mm = params.len1 / sketch.scaleFactor;
+          const len2Mm = params.len2 / sketch.scaleFactor;
+          const suggested = getSuggestedDistance(maxDistanceMm);
+          corners.push({
+            pointId,
+            maxDistance: maxDistanceMm,
+            angleDeg: params.angleDeg,
+            distance: suggested,
+            dist1: suggested,
+            dist2: suggested,
+            maxDist1: len1Mm * 0.9,
+            maxDist2: len2Mm * 0.9,
+            line1Id: lineIds[0],
+            line2Id: lineIds[1],
+          });
+        }
+      }
+    } else {
+      toast.warning("Sélectionnez 2 lignes, des points (coins), ou une figure complète");
+      return;
+    }
+
+    if (corners.length === 0) {
+      toast.error("Aucun coin valide trouvé");
+      return;
+    }
+
+    // Trouver le plus petit maxDistance parmi tous les coins (déjà en mm)
+    const minMaxDistance = Math.min(...corners.map((c) => c.maxDistance));
+    const suggestedDistance = Math.min(chamferDistance, Math.floor(minMaxDistance));
+
+    setChamferDialog({
+      open: true,
+      corners,
+      globalDistance: suggestedDistance > 0 ? suggestedDistance : 1,
+      minMaxDistance,
+      hoveredCornerIdx: null,
+      asymmetric: false,
+      addDimension: false,
+      repeatMode: false,
+    });
+  }, [
+    selectedEntities,
+    sketch.geometries,
+    sketch.points,
+    sketch.scaleFactor,
+    findSharedPoint,
+    findLinesConnectedToPoint,
+    chamferDistance,
+    calculateCornerParams,
+  ]);
+
+  // Appliquer le congé depuis la modale (sur tous les coins)
+  const applyFilletFromDialog = useCallback(() => {
+    if (!filletDialog) return;
+
+    // Accumuler les changements dans un seul sketch
+    let currentSketch: Sketch = {
+      ...sketch,
+      points: new Map(sketch.points),
+      geometries: new Map(sketch.geometries),
+      layers: new Map(sketch.layers),
+      constraints: new Map(sketch.constraints),
+    };
+    let successCount = 0;
+
+    for (const corner of filletDialog.corners) {
+      // Retrouver les lignes connectées à ce point dans le sketch COURANT
+      // IMPORTANT: Exclure les lignes de construction (ex: diagonales des rectangles par le centre)
+      const connectedLines: Line[] = [];
+      currentSketch.geometries.forEach((geo) => {
+        if (geo.type === "line") {
+          const line = geo as Line;
+          // Exclure les lignes de construction pour ne garder que les 2 côtés du coin
+          if (!line.isConstruction && (line.p1 === corner.pointId || line.p2 === corner.pointId)) {
+            connectedLines.push(line);
+          }
+        }
+      });
+
+      if (connectedLines.length !== 2) {
+        continue;
+      }
+
+      // Vérifier que le rayon ne dépasse pas le max de ce coin (tout en mm)
+      if (corner.radius <= corner.maxRadius) {
+        // Convertir le rayon de mm en px pour applyFilletToSketch
+        const radiusPx = corner.radius * sketch.scaleFactor;
+        const newSketch = applyFilletToSketch(
+          currentSketch,
+          connectedLines[0].id,
+          connectedLines[1].id,
+          radiusPx,
+          true,
+        );
+        if (newSketch) {
+          currentSketch = newSketch;
+          successCount++;
+        }
+      }
+    }
+
+    if (successCount > 0) {
+      // Ajouter les cotations si demandé
+      if (filletDialog.addDimension) {
+        // Trouver les arcs créés (les derniers ajoutés)
+        const newArcs: Arc[] = [];
+        currentSketch.geometries.forEach((geo) => {
+          if (geo.type === "arc") {
+            newArcs.push(geo as Arc);
+          }
+        });
+        // Prendre les N derniers arcs (N = successCount)
+        const createdArcs = newArcs.slice(-successCount);
+        for (const arc of createdArcs) {
+          const center = currentSketch.points.get(arc.center);
+          if (center) {
+            const radiusMm = arc.radius / sketch.scaleFactor;
+            // Ajouter une dimension de type "radius" pour cet arc
+            const dimId = generateId();
+            const dimension: Dimension = {
+              id: dimId,
+              type: "radius",
+              entities: [arc.id],
+              value: radiusMm,
+              position: { x: center.x + arc.radius + 20, y: center.y },
+            };
+            if (!currentSketch.dimensions) {
+              (currentSketch as any).dimensions = new Map();
+            }
+            (currentSketch as any).dimensions.set(dimId, dimension);
+          }
+        }
+      }
+
+      setSketch(currentSketch);
+      addToHistory(currentSketch);
+      if (successCount === 1) {
+        toast.success(`Congé R${filletDialog.corners[0].radius}mm appliqué`);
+      } else {
+        toast.success(`${successCount} congés appliqués`);
+      }
+    } else {
+      toast.error("Aucun congé n'a pu être appliqué");
+    }
+
+    setFilletRadius(filletDialog.globalRadius);
+
+    // Mode répétition : ne pas fermer le panneau, juste vider la sélection
+    if (filletDialog.repeatMode) {
+      setFilletDialog(null);
+      // Le panneau sera réouvert au prochain double-clic
+    } else {
+      setFilletDialog(null);
+    }
+    setSelectedEntities(new Set());
+  }, [filletDialog, sketch, applyFilletToSketch, addToHistory]);
+
+  // Appliquer le chanfrein depuis la modale (sur tous les coins)
+  const applyChamferFromDialog = useCallback(() => {
+    if (!chamferDialog) return;
+
+    // Accumuler les changements dans un seul sketch
+    let currentSketch: Sketch = {
+      ...sketch,
+      points: new Map(sketch.points),
+      geometries: new Map(sketch.geometries),
+      layers: new Map(sketch.layers),
+      constraints: new Map(sketch.constraints),
+    };
+    let successCount = 0;
+
+    for (const corner of chamferDialog.corners) {
+      // Retrouver les lignes connectées à ce point dans le sketch COURANT
+      // IMPORTANT: Exclure les lignes de construction (ex: diagonales des rectangles par le centre)
+      const connectedLines: Line[] = [];
+      currentSketch.geometries.forEach((geo) => {
+        if (geo.type === "line") {
+          const line = geo as Line;
+          // Exclure les lignes de construction pour ne garder que les 2 côtés du coin
+          if (!line.isConstruction && (line.p1 === corner.pointId || line.p2 === corner.pointId)) {
+            connectedLines.push(line);
+          }
+        }
+      });
+
+      if (connectedLines.length !== 2) {
+        console.log(`Point ${corner.pointId} n'a plus exactement 2 lignes connectées (${connectedLines.length})`);
+        continue;
+      }
+
+      // Vérifier que la distance ne dépasse pas le max de ce coin (tout en mm)
+      if (corner.distance <= corner.maxDistance) {
+        // Convertir la distance de mm en px pour applyChamferToSketch
+        const distancePx = corner.distance * sketch.scaleFactor;
+        const newSketch = applyChamferToSketch(
+          currentSketch,
+          connectedLines[0].id,
+          connectedLines[1].id,
+          distancePx,
+          true,
+        );
+        if (newSketch) {
+          currentSketch = newSketch;
+          successCount++;
+        }
+      }
+    }
+
+    if (successCount > 0) {
+      setSketch(currentSketch);
+      addToHistory(currentSketch);
+      if (successCount === 1) {
+        toast.success(`Chanfrein ${chamferDialog.corners[0].distance}mm appliqué`);
+      } else {
+        toast.success(`${successCount} chanfreins appliqués`);
+      }
+    } else {
+      toast.error("Aucun chanfrein n'a pu être appliqué");
+    }
+
+    setChamferDistance(chamferDialog.globalDistance);
+
+    // Mode répétition : ne pas fermer le panneau
+    if (chamferDialog.repeatMode) {
+      setChamferDialog(null);
+    } else {
+      setChamferDialog(null);
+    }
+    setSelectedEntities(new Set());
+  }, [chamferDialog, sketch, applyChamferToSketch, addToHistory]);
+
+  // Supprimer un congé (arc) et revenir au coin original
+  const removeFilletFromArc = useCallback(
+    (arcId: string) => {
+      const arc = sketch.geometries.get(arcId) as Arc | undefined;
+      if (!arc || arc.type !== "arc") {
+        toast.error("Sélectionnez un arc (congé)");
+        return;
+      }
+
+      const center = sketch.points.get(arc.center);
+      const startPt = sketch.points.get(arc.startPoint);
+      const endPt = sketch.points.get(arc.endPoint);
+
+      if (!center || !startPt || !endPt) {
+        toast.error("Points de l'arc introuvables");
+        return;
+      }
+
+      // Trouver les lignes connectées aux points de début et fin de l'arc
+      const linesAtStart: Line[] = [];
+      const linesAtEnd: Line[] = [];
+
+      sketch.geometries.forEach((geo) => {
+        if (geo.type === "line") {
+          const line = geo as Line;
+          if (line.p1 === arc.startPoint || line.p2 === arc.startPoint) {
+            linesAtStart.push(line);
+          }
+          if (line.p1 === arc.endPoint || line.p2 === arc.endPoint) {
+            linesAtEnd.push(line);
+          }
+        }
+      });
+
+      if (linesAtStart.length !== 1 || linesAtEnd.length !== 1) {
+        toast.error("Cet arc n'est pas un congé valide");
+        return;
+      }
+
+      const line1 = linesAtStart[0];
+      const line2 = linesAtEnd[0];
+
+      // Calculer le point d'intersection des deux lignes prolongées
+      // Ligne 1: passe par startPt et son autre extrémité
+      const line1OtherId = line1.p1 === arc.startPoint ? line1.p2 : line1.p1;
+      const line1Other = sketch.points.get(line1OtherId);
+
+      // Ligne 2: passe par endPt et son autre extrémité
+      const line2OtherId = line2.p1 === arc.endPoint ? line2.p2 : line2.p1;
+      const line2Other = sketch.points.get(line2OtherId);
+
+      if (!line1Other || !line2Other) {
+        toast.error("Extrémités des lignes introuvables");
+        return;
+      }
+
+      // Calculer l'intersection
+      const d1 = { x: startPt.x - line1Other.x, y: startPt.y - line1Other.y };
+      const d2 = { x: endPt.x - line2Other.x, y: endPt.y - line2Other.y };
+
+      const cross = d1.x * d2.y - d1.y * d2.x;
+      if (Math.abs(cross) < 0.0001) {
+        toast.error("Les lignes sont parallèles");
+        return;
+      }
+
+      // Paramètre t pour la ligne 1
+      const t = ((line2Other.x - line1Other.x) * d2.y - (line2Other.y - line1Other.y) * d2.x) / cross;
+
+      const intersection = {
+        x: line1Other.x + t * d1.x,
+        y: line1Other.y + t * d1.y,
+      };
+
+      // Créer le nouveau sketch
+      const newSketch = {
+        ...sketch,
+        points: new Map(sketch.points),
+        geometries: new Map(sketch.geometries),
+      };
+
+      // Créer le nouveau point de coin
+      const cornerPointId = generateId();
+      newSketch.points.set(cornerPointId, { id: cornerPointId, x: intersection.x, y: intersection.y });
+
+      // Modifier la ligne 1 pour pointer vers le nouveau coin
+      const newLine1: Line = {
+        ...line1,
+        [line1.p1 === arc.startPoint ? "p1" : "p2"]: cornerPointId,
+      };
+      newSketch.geometries.set(line1.id, newLine1);
+
+      // Modifier la ligne 2 pour pointer vers le nouveau coin
+      const newLine2: Line = {
+        ...line2,
+        [line2.p1 === arc.endPoint ? "p1" : "p2"]: cornerPointId,
+      };
+      newSketch.geometries.set(line2.id, newLine2);
+
+      // Supprimer l'arc et ses points
+      newSketch.geometries.delete(arcId);
+      newSketch.points.delete(arc.startPoint);
+      newSketch.points.delete(arc.endPoint);
+      newSketch.points.delete(arc.center);
+
+      setSketch(newSketch);
+      addToHistory(newSketch);
+      setSelectedEntities(new Set());
+      toast.success("Congé supprimé, coin restauré");
+    },
+    [sketch, addToHistory],
+  );
+
+  // Switch du panneau congé vers chanfrein (et vice versa)
+  const switchFilletToChamfer = useCallback(() => {
+    if (!filletDialog) return;
+
+    // Convertir les corners de fillet en chamfer
+    const chamferCorners = filletDialog.corners.map((c) => ({
+      pointId: c.pointId,
+      maxDistance: Math.min(c.maxDist1, c.maxDist2),
+      angleDeg: c.angleDeg,
+      distance: c.radius,
+      dist1: c.dist1,
+      dist2: c.dist2,
+      maxDist1: c.maxDist1,
+      maxDist2: c.maxDist2,
+      line1Id: c.line1Id,
+      line2Id: c.line2Id,
+    }));
+
+    setFilletDialog(null);
+    setChamferDialog({
+      open: true,
+      corners: chamferCorners,
+      globalDistance: filletDialog.globalRadius,
+      minMaxDistance: Math.min(...chamferCorners.map((c) => c.maxDistance)),
+      hoveredCornerIdx: null,
+      asymmetric: filletDialog.asymmetric,
+      addDimension: filletDialog.addDimension,
+      repeatMode: filletDialog.repeatMode,
+    });
+  }, [filletDialog]);
+
+  const switchChamferToFillet = useCallback(() => {
+    if (!chamferDialog) return;
+
+    // Convertir les corners de chamfer en fillet
+    const filletCorners = chamferDialog.corners.map((c) => {
+      // Calculer le rayon max à partir des distances
+      const minDist = Math.min(c.maxDist1, c.maxDist2);
+      const halfAngle = (c.angleDeg * Math.PI) / 180 / 2;
+      const maxRadius = minDist * Math.tan(halfAngle);
+
+      return {
+        pointId: c.pointId,
+        maxRadius: maxRadius,
+        angleDeg: c.angleDeg,
+        radius: c.distance,
+        dist1: c.dist1,
+        dist2: c.dist2,
+        maxDist1: c.maxDist1,
+        maxDist2: c.maxDist2,
+        line1Id: c.line1Id,
+        line2Id: c.line2Id,
+      };
+    });
+
+    setChamferDialog(null);
+    setFilletDialog({
+      open: true,
+      corners: filletCorners,
+      globalRadius: chamferDialog.globalDistance,
+      minMaxRadius: Math.min(...filletCorners.map((c) => c.maxRadius)),
+      hoveredCornerIdx: null,
+      asymmetric: chamferDialog.asymmetric,
+      addDimension: chamferDialog.addDimension,
+      repeatMode: chamferDialog.repeatMode,
+    });
+  }, [chamferDialog]);
+
+  // ============ OFFSET FUNCTIONS ============
+
+  // Calculer l'offset d'une ligne (retourne les deux points décalés)
+  const offsetLine = useCallback(
+    (
+      p1: { x: number; y: number },
+      p2: { x: number; y: number },
+      distancePx: number,
+      direction: "outside" | "inside", // outside = vers l'extérieur du contour
+    ): { p1: { x: number; y: number }; p2: { x: number; y: number } } => {
+      // Vecteur direction de la ligne
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      if (length < 0.001) return { p1, p2 };
+
+      // Vecteur normal (perpendiculaire) - outside = vers la droite en regardant de p1 vers p2
+      const sign = direction === "outside" ? 1 : -1;
+      const nx = (sign * dy) / length;
+      const ny = (sign * -dx) / length;
+
+      return {
+        p1: { x: p1.x + nx * distancePx, y: p1.y + ny * distancePx },
+        p2: { x: p2.x + nx * distancePx, y: p2.y + ny * distancePx },
+      };
+    },
+    [],
+  );
+
+  // Ouvrir la modale offset
+  const openOffsetDialog = useCallback(() => {
+    setActiveTool("offset");
+    setOffsetDialog({
+      open: true,
+      selectedEntities: new Set(selectedEntities),
+    });
+  }, [selectedEntities]);
+
+  // Calculer la preview de l'offset pour toutes les entités sélectionnées
+  const calculateOffsetPreviewForSelection = useCallback(
+    (entities: Set<string>, dist: number, dir: "outside" | "inside"): typeof offsetPreview => {
+      const previews: typeof offsetPreview = [];
+      const distancePx = dist * sketch.scaleFactor;
+
+      entities.forEach((entityId) => {
+        const geo = sketch.geometries.get(entityId);
+        if (!geo) return;
+
+        if (geo.type === "line") {
+          const line = geo as Line;
+          const p1 = sketch.points.get(line.p1);
+          const p2 = sketch.points.get(line.p2);
+          if (!p1 || !p2) return;
+
+          const offset = offsetLine(p1, p2, distancePx, dir);
+          previews.push({
+            type: "line",
+            points: [offset.p1, offset.p2],
+          });
+        } else if (geo.type === "circle") {
+          const circle = geo as CircleType;
+          const center = sketch.points.get(circle.center);
+          if (!center) return;
+
+          const newRadius = dir === "outside" ? circle.radius + distancePx : Math.max(1, circle.radius - distancePx);
+
+          previews.push({
+            type: "circle",
+            center,
+            radius: newRadius,
+          });
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          const center = sketch.points.get(arc.center);
+          const startPt = sketch.points.get(arc.startPoint);
+          const endPt = sketch.points.get(arc.endPoint);
+          if (!center || !startPt || !endPt) return;
+
+          const newRadius = dir === "outside" ? arc.radius + distancePx : Math.max(1, arc.radius - distancePx);
+
+          const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
+          const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
+
+          previews.push({
+            type: "arc",
+            center,
+            radius: newRadius,
+            startAngle,
+            endAngle,
+            counterClockwise: arc.counterClockwise,
+          });
+        }
+      });
+
+      return previews;
+    },
+    [sketch, offsetLine],
+  );
+
+  // Mettre à jour la preview quand les paramètres changent
+  useEffect(() => {
+    if (offsetDialog?.open && offsetDialog.selectedEntities.size > 0) {
+      const preview = calculateOffsetPreviewForSelection(
+        offsetDialog.selectedEntities,
+        offsetDistance,
+        offsetDirection,
+      );
+      setOffsetPreview(preview);
+    } else {
+      setOffsetPreview([]);
+    }
+  }, [offsetDialog, offsetDistance, offsetDirection, calculateOffsetPreviewForSelection]);
+
+  // Appliquer l'offset à la sélection
+  const applyOffsetToSelection = useCallback(() => {
+    if (!offsetDialog || offsetDialog.selectedEntities.size === 0) {
+      toast.error("Sélectionnez au moins une entité");
+      return;
+    }
+
+    const distancePx = offsetDistance * sketch.scaleFactor;
+    const newSketch = { ...sketch };
+    newSketch.points = new Map(sketch.points);
+    newSketch.geometries = new Map(sketch.geometries);
+
+    // Séparer les lignes des autres types
+    const lineIds: string[] = [];
+    const circleIds: string[] = [];
+    const arcIds: string[] = [];
+
+    offsetDialog.selectedEntities.forEach((entityId) => {
+      const geo = sketch.geometries.get(entityId);
+      if (geo?.type === "line") lineIds.push(entityId);
+      else if (geo?.type === "circle") circleIds.push(entityId);
+      else if (geo?.type === "arc") arcIds.push(entityId);
+    });
+
+    let createdCount = 0;
+
+    // Traiter les cercles
+    circleIds.forEach((entityId) => {
+      const circle = sketch.geometries.get(entityId) as CircleType;
+      const center = sketch.points.get(circle.center);
+      if (!center) return;
+
+      const newRadius =
+        offsetDirection === "outside" ? Math.max(1, circle.radius - distancePx) : circle.radius + distancePx;
+
+      const newCircle: CircleType = {
+        id: generateId(),
+        type: "circle",
+        center: circle.center,
+        radius: newRadius,
+        layerId: circle.layerId,
+      };
+      newSketch.geometries.set(newCircle.id, newCircle);
+      createdCount++;
+    });
+
+    // Traiter les arcs
+    arcIds.forEach((entityId) => {
+      const arc = sketch.geometries.get(entityId) as Arc;
+      const center = sketch.points.get(arc.center);
+      const startPt = sketch.points.get(arc.startPoint);
+      const endPt = sketch.points.get(arc.endPoint);
+      if (!center || !startPt || !endPt) return;
+
+      const newRadius = offsetDirection === "outside" ? Math.max(1, arc.radius - distancePx) : arc.radius + distancePx;
+
+      const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
+      const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
+
+      const newStartPt: Point = {
+        id: generateId(),
+        x: center.x + Math.cos(startAngle) * newRadius,
+        y: center.y + Math.sin(startAngle) * newRadius,
+      };
+      const newEndPt: Point = {
+        id: generateId(),
+        x: center.x + Math.cos(endAngle) * newRadius,
+        y: center.y + Math.sin(endAngle) * newRadius,
+      };
+      newSketch.points.set(newStartPt.id, newStartPt);
+      newSketch.points.set(newEndPt.id, newEndPt);
+
+      const newArc: Arc = {
+        id: generateId(),
+        type: "arc",
+        center: arc.center,
+        startPoint: newStartPt.id,
+        endPoint: newEndPt.id,
+        radius: newRadius,
+        layerId: arc.layerId,
+        counterClockwise: arc.counterClockwise,
+      };
+      newSketch.geometries.set(newArc.id, newArc);
+      createdCount++;
+    });
+
+    // Traiter les lignes - avec calcul des intersections
+    if (lineIds.length > 0) {
+      // Récupérer les infos des segments
+      type SegInfo = {
+        id: string;
+        p1Id: string;
+        p2Id: string;
+        p1: { x: number; y: number };
+        p2: { x: number; y: number };
+        layerId?: string;
+      };
+
+      const segments: SegInfo[] = [];
+      lineIds.forEach((lineId) => {
+        const line = sketch.geometries.get(lineId) as Line;
+        const p1 = sketch.points.get(line.p1);
+        const p2 = sketch.points.get(line.p2);
+        if (p1 && p2) {
+          segments.push({
+            id: lineId,
+            p1Id: line.p1,
+            p2Id: line.p2,
+            p1: { x: p1.x, y: p1.y },
+            p2: { x: p2.x, y: p2.y },
+            layerId: line.layerId,
+          });
+        }
+      });
+
+      // Construire un graphe point -> segments
+      const pointToSegs = new Map<string, number[]>();
+      segments.forEach((seg, idx) => {
+        if (!pointToSegs.has(seg.p1Id)) pointToSegs.set(seg.p1Id, []);
+        if (!pointToSegs.has(seg.p2Id)) pointToSegs.set(seg.p2Id, []);
+        pointToSegs.get(seg.p1Id)!.push(idx);
+        pointToSegs.get(seg.p2Id)!.push(idx);
+      });
+
+      // Ordonner les segments en suivant le contour
+      const orderedSegs: Array<{ seg: SegInfo; reversed: boolean }> = [];
+      const used = new Set<number>();
+
+      // Trouver un point de départ (point avec un seul segment = extrémité, sinon n'importe lequel)
+      let startIdx = 0;
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        const count1 = pointToSegs.get(seg.p1Id)?.length || 0;
+        const count2 = pointToSegs.get(seg.p2Id)?.length || 0;
+        if (count1 === 1 || count2 === 1) {
+          startIdx = i;
+          break;
+        }
+      }
+
+      // Commencer par le premier segment
+      const firstSeg = segments[startIdx];
+      const firstP1Count = pointToSegs.get(firstSeg.p1Id)?.length || 0;
+      // Si p1 est une extrémité (1 seul segment), on commence par p1
+      const startReversed = firstP1Count !== 1;
+      orderedSegs.push({ seg: firstSeg, reversed: startReversed });
+      used.add(startIdx);
+
+      let currentEndPtId = startReversed ? firstSeg.p1Id : firstSeg.p2Id;
+
+      // Suivre la chaîne
+      while (orderedSegs.length < segments.length) {
+        const connectedIdxs = pointToSegs.get(currentEndPtId) || [];
+        let found = false;
+
+        for (const idx of connectedIdxs) {
+          if (used.has(idx)) continue;
+
+          const seg = segments[idx];
+          if (seg.p1Id === currentEndPtId) {
+            orderedSegs.push({ seg, reversed: false });
+            currentEndPtId = seg.p2Id;
+            found = true;
+          } else if (seg.p2Id === currentEndPtId) {
+            orderedSegs.push({ seg, reversed: true });
+            currentEndPtId = seg.p1Id;
+            found = true;
+          }
+
+          if (found) {
+            used.add(idx);
+            break;
+          }
+        }
+
+        if (!found) break;
+      }
+
+      // Calculer les lignes décalées
+      const offsetLines: Array<{
+        p1: { x: number; y: number };
+        p2: { x: number; y: number };
+        layerId?: string;
+      }> = [];
+
+      orderedSegs.forEach(({ seg, reversed }) => {
+        const start = reversed ? seg.p2 : seg.p1;
+        const end = reversed ? seg.p1 : seg.p2;
+        const off = offsetLine(start, end, distancePx, offsetDirection === "outside" ? "inside" : "outside");
+        offsetLines.push({ p1: off.p1, p2: off.p2, layerId: seg.layerId });
+      });
+
+      // Vérifier si fermé
+      const firstOs = orderedSegs[0];
+      const lastOs = orderedSegs[orderedSegs.length - 1];
+      const startPtId = firstOs.reversed ? firstOs.seg.p2Id : firstOs.seg.p1Id;
+      const endPtId = lastOs.reversed ? lastOs.seg.p1Id : lastOs.seg.p2Id;
+      const isClosed = startPtId === endPtId;
+
+      // Calculer les points d'intersection entre segments adjacents
+      const computeIntersection = (
+        l1: { p1: { x: number; y: number }; p2: { x: number; y: number } },
+        l2: { p1: { x: number; y: number }; p2: { x: number; y: number } },
+      ): { x: number; y: number } => {
+        const d1x = l1.p2.x - l1.p1.x;
+        const d1y = l1.p2.y - l1.p1.y;
+        const d2x = l2.p2.x - l2.p1.x;
+        const d2y = l2.p2.y - l2.p1.y;
+
+        const cross = d1x * d2y - d1y * d2x;
+        if (Math.abs(cross) < 0.0001) {
+          // Parallèles - utiliser le milieu entre les deux points adjacents
+          return {
+            x: (l1.p2.x + l2.p1.x) / 2,
+            y: (l1.p2.y + l2.p1.y) / 2,
+          };
+        }
+
+        const t = ((l2.p1.x - l1.p1.x) * d2y - (l2.p1.y - l1.p1.y) * d2x) / cross;
+        return {
+          x: l1.p1.x + t * d1x,
+          y: l1.p1.y + t * d1y,
+        };
+      };
+
+      // Créer les nouveaux points et lignes
+      const newPtIds: string[] = [];
+
+      if (isClosed) {
+        // Contour fermé - tous les sommets sont des intersections
+        for (let i = 0; i < offsetLines.length; i++) {
+          const curr = offsetLines[i];
+          const next = offsetLines[(i + 1) % offsetLines.length];
+          const inter = computeIntersection(curr, next);
+          const pt: Point = { id: generateId(), x: inter.x, y: inter.y };
+          newSketch.points.set(pt.id, pt);
+          newPtIds.push(pt.id);
+        }
+
+        // Créer les lignes
+        for (let i = 0; i < offsetLines.length; i++) {
+          const newLine: Line = {
+            id: generateId(),
+            type: "line",
+            p1: newPtIds[i],
+            p2: newPtIds[(i + 1) % newPtIds.length],
+            layerId: offsetLines[i].layerId,
+          };
+          newSketch.geometries.set(newLine.id, newLine);
+          createdCount++;
+        }
+      } else {
+        // Contour ouvert
+        // Premier point = début du premier segment décalé
+        const firstPt: Point = { id: generateId(), x: offsetLines[0].p1.x, y: offsetLines[0].p1.y };
+        newSketch.points.set(firstPt.id, firstPt);
+        newPtIds.push(firstPt.id);
+
+        // Points intermédiaires = intersections
+        for (let i = 0; i < offsetLines.length - 1; i++) {
+          const inter = computeIntersection(offsetLines[i], offsetLines[i + 1]);
+          const pt: Point = { id: generateId(), x: inter.x, y: inter.y };
+          newSketch.points.set(pt.id, pt);
+          newPtIds.push(pt.id);
+        }
+
+        // Dernier point = fin du dernier segment décalé
+        const lastLine = offsetLines[offsetLines.length - 1];
+        const lastPt: Point = { id: generateId(), x: lastLine.p2.x, y: lastLine.p2.y };
+        newSketch.points.set(lastPt.id, lastPt);
+        newPtIds.push(lastPt.id);
+
+        // Créer les lignes
+        for (let i = 0; i < offsetLines.length; i++) {
+          const newLine: Line = {
+            id: generateId(),
+            type: "line",
+            p1: newPtIds[i],
+            p2: newPtIds[i + 1],
+            layerId: offsetLines[i].layerId,
+          };
+          newSketch.geometries.set(newLine.id, newLine);
+          createdCount++;
+        }
+      }
+    }
+
+    if (createdCount > 0) {
+      setSketch(newSketch);
+      solveSketch(newSketch);
+      addToHistory(newSketch);
+      toast.success(`Offset ${offsetDistance}mm créé (${createdCount} élément${createdCount > 1 ? "s" : ""})`);
+    }
+
+    setOffsetDialog(null);
+    setOffsetPreview([]);
+    setSelectedEntities(new Set());
+  }, [offsetDialog, offsetDistance, offsetDirection, sketch, offsetLine, addToHistory, solveSketch]);
+
+  // Ajouter/retirer une entité de la sélection offset
+  const toggleOffsetSelection = useCallback(
+    (entityId: string) => {
+      if (!offsetDialog) return;
+
+      const newSelection = new Set(offsetDialog.selectedEntities);
+      if (newSelection.has(entityId)) {
+        newSelection.delete(entityId);
+      } else {
+        newSelection.add(entityId);
+      }
+
+      setOffsetDialog({
+        ...offsetDialog,
+        selectedEntities: newSelection,
+      });
+      setSelectedEntities(newSelection);
+    },
+    [offsetDialog],
+  );
+
+  // Sélectionner tout le contour connecté pour l'offset
+  const selectContourForOffset = useCallback(
+    (startEntityId: string) => {
+      const connectedGeos = findConnectedGeometries(startEntityId);
+
+      if (offsetDialog) {
+        setOffsetDialog({
+          ...offsetDialog,
+          selectedEntities: connectedGeos,
+        });
+      }
+      setSelectedEntities(connectedGeos);
+    },
+    [offsetDialog, findConnectedGeometries],
+  );
 
   // Calculer l'intersection de deux lignes (prolongées)
   const lineIntersection = useCallback(
@@ -5249,26 +7361,6 @@ export function CADGabaritCanvas({
     },
     [segmentIntersection],
   );
-
-  // === HOOK ARRAY/REPEAT ===
-  // MOD v7.27: Extraction des fonctions répétition dans useArrayRepeat.ts
-  const {
-    arrayDialog,
-    setArrayDialog,
-    arrayPreview,
-    arrayPreviewData,
-    openArrayDialog,
-    executeArray,
-    closeArrayDialog,
-  } = useArrayRepeat({
-    sketch,
-    setSketch,
-    addToHistory,
-    selectedEntities,
-    createIntersectionPoints,
-    defaultStrokeWidthRef,
-    defaultStrokeColorRef,
-  });
 
   // Modifier le rayon d'un arc existant (recalcul complet du congé)
   const updateArcRadius = useCallback(
@@ -5643,110 +7735,6 @@ export function CADGabaritCanvas({
     [sketch, findLinesConnectedToPoint, lineIntersection, addToHistory],
   );
 
-  // v7.24: Création d'une ligne avec une longueur spécifiée
-  const createLineWithLength = useCallback(
-    (startPoint: Point, cursorPos: { x: number; y: number }, lengthMm: number) => {
-      const currentSketch = sketchRef.current;
-      const scaleFactor = currentSketch.scaleFactor || 1;
-      const lengthPx = lengthMm * scaleFactor;
-
-      // Calculer la direction depuis startPoint vers cursorPos
-      const dx = cursorPos.x - startPoint.x;
-      const dy = cursorPos.y - startPoint.y;
-      const currentLength = Math.sqrt(dx * dx + dy * dy);
-
-      if (currentLength < 0.001) return; // Éviter la division par zéro
-
-      // Normaliser et appliquer la longueur désirée
-      const dirX = dx / currentLength;
-      const dirY = dy / currentLength;
-      const endX = startPoint.x + dirX * lengthPx;
-      const endY = startPoint.y + dirY * lengthPx;
-
-      // Créer le nouveau sketch
-      const newSketch = { ...currentSketch };
-      newSketch.points = new Map(currentSketch.points);
-      newSketch.geometries = new Map(currentSketch.geometries);
-
-      // Point de départ (peut déjà exister)
-      const p1: Point = { ...startPoint };
-      if (!newSketch.points.has(p1.id)) {
-        newSketch.points.set(p1.id, p1);
-      }
-
-      // Point d'arrivée
-      const p2: Point = { id: generateId(), x: endX, y: endY };
-      newSketch.points.set(p2.id, p2);
-
-      // Créer la ligne
-      const line: Line = {
-        id: generateId(),
-        type: "line",
-        p1: p1.id,
-        p2: p2.id,
-        layerId: currentSketch.activeLayerId,
-        strokeWidth: defaultStrokeWidthRef.current,
-        strokeColor: defaultStrokeColorRef.current,
-        isConstruction: isConstructionModeRef.current,
-      };
-      newSketch.geometries.set(line.id, line);
-
-      // Détecter les intersections
-      createIntersectionPoints(line.id, newSketch);
-
-      setSketch(newSketch);
-      addToHistory(newSketch, `Ligne ${lengthMm.toFixed(1)}mm`);
-
-      // Reset et continuer depuis p2
-      setTempPoints([p2]);
-      setTempGeometry({ type: "line", points: [p2] });
-      setLiveInputMeasure((prev) => ({ ...prev, active: true, userValue: "", startPoint: p2 }));
-
-      toast.success(`Ligne ${lengthMm.toFixed(1)} mm créée`);
-    },
-    [addToHistory, createIntersectionPoints],
-  );
-
-  // v7.24: Création d'un cercle avec un rayon spécifié
-  const createCircleWithRadius = useCallback(
-    (centerPoint: Point, radiusMm: number) => {
-      const currentSketch = sketchRef.current;
-      const scaleFactor = currentSketch.scaleFactor || 1;
-      const radiusPx = radiusMm * scaleFactor;
-
-      // Créer le nouveau sketch
-      const newSketch = { ...currentSketch };
-      newSketch.points = new Map(currentSketch.points);
-      newSketch.geometries = new Map(currentSketch.geometries);
-
-      // Point centre
-      newSketch.points.set(centerPoint.id, centerPoint);
-
-      // Créer le cercle
-      const circle: CircleType = {
-        id: generateId(),
-        type: "circle",
-        center: centerPoint.id,
-        radius: radiusPx,
-        layerId: currentSketch.activeLayerId,
-        strokeWidth: defaultStrokeWidthRef.current,
-        strokeColor: defaultStrokeColorRef.current,
-      };
-      newSketch.geometries.set(circle.id, circle);
-
-      setSketch(newSketch);
-      addToHistory(newSketch, `Cercle R${radiusMm.toFixed(1)}mm`);
-
-      // Reset
-      setTempPoints([]);
-      setTempGeometry(null);
-      setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "" }));
-
-      toast.success(`Cercle R${radiusMm.toFixed(1)} mm créé`);
-    },
-    [addToHistory],
-  );
-
   // Création du rectangle avec les dimensions saisies ou le curseur
   const createRectangleFromInputs = useCallback(
     (clickPos?: { x: number; y: number }, inputValues?: { width: string; height: string }) => {
@@ -5972,13 +7960,6 @@ export function CADGabaritCanvas({
       newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[1].id] });
       newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[3].id] });
 
-      // MOD v7.18: Ajouter cotations automatiques pour le rectangle
-      // v7.19: Passer newSketch explicitement car les points n'existent pas encore dans sketchRef
-      const autoDims = addRectangleDimensions(corner1.id, corner2.id, corner3.id, corner4.id, newSketch);
-      autoDims.forEach((dim) => {
-        newSketch.dimensions.set(dim.id, dim);
-      });
-
       const wMm = width / currentSketch.scaleFactor;
       const hMm = height / currentSketch.scaleFactor;
       const modeLabel = isCenter ? " (centre)" : "";
@@ -5998,12 +7979,10 @@ export function CADGabaritCanvas({
         widthInputPos: { x: 0, y: 0 },
         heightInputPos: { x: 0, y: 0 },
       });
-      // v7.24: Reset liveInputMeasure
-      setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", userValue2: "" }));
 
       toast.success(`Rectangle ${wMm.toFixed(1)} × ${hMm.toFixed(1)} mm${modeLabel}`);
     },
-    [tempPoints, tempGeometry, rectInputs, createIntersectionPoints, solveSketch, addToHistory, addRectangleDimensions],
+    [tempPoints, tempGeometry, rectInputs, createIntersectionPoints, solveSketch, addToHistory],
   );
 
   // === Multi-photos: détection de clic sur une image ===
@@ -7545,15 +9524,6 @@ export function CADGabaritCanvas({
             // Deuxième point - créer la ligne - utiliser sketchRef.current
             const p1 = tempPoints[0];
 
-            // v7.24: Si l'utilisateur a saisi une longueur, utiliser createLineWithLength
-            if (liveInputMeasure.active && liveInputMeasure.userValue && liveInputMeasure.type === "line") {
-              const inputLength = parseFloat(liveInputMeasure.userValue);
-              if (!isNaN(inputLength) && inputLength > 0) {
-                createLineWithLength(p1, targetPos, inputLength);
-                break;
-              }
-            }
-
             // Ajouter les points
             const currentSketch = sketchRef.current;
             const newSketch = { ...currentSketch };
@@ -7629,16 +9599,6 @@ export function CADGabaritCanvas({
           } else {
             // Rayon défini
             const center = tempPoints[0];
-
-            // v7.24: Si l'utilisateur a saisi un rayon, utiliser createCircleWithRadius
-            if (liveInputMeasure.active && liveInputMeasure.userValue && liveInputMeasure.type === "circle") {
-              const inputRadius = parseFloat(liveInputMeasure.userValue);
-              if (!isNaN(inputRadius) && inputRadius > 0) {
-                createCircleWithRadius(center, inputRadius);
-                break;
-              }
-            }
-
             const radius = distance(center, targetPos);
 
             // Utiliser sketchRef.current pour éviter les closures stales
@@ -8897,58 +10857,10 @@ export function CADGabaritCanvas({
 
           setPerpendicularInfo(perpInfo);
 
-          // v7.24: Si une longueur est verrouillée (userValue non vide), garder cette longueur
-          // mais suivre la direction de la souris
-          const liveInput = liveInputMeasureRef.current;
-          let finalLineTarget = lineTargetPos;
-          if (liveInput.isEditing && liveInput.userValue !== "") {
-            const lockedLengthMm = parseFloat(liveInput.userValue) || 0;
-            if (lockedLengthMm > 0) {
-              const scaleFactor = sketchRef.current.scaleFactor || 1;
-              const lockedLengthPx = lockedLengthMm * scaleFactor;
-              // Calculer la direction vers la souris
-              const dx = lineTargetPos.x - startPoint.x;
-              const dy = lineTargetPos.y - startPoint.y;
-              const currentLen = Math.sqrt(dx * dx + dy * dy);
-              if (currentLen > 0) {
-                finalLineTarget = {
-                  x: startPoint.x + (dx / currentLen) * lockedLengthPx,
-                  y: startPoint.y + (dy / currentLen) * lockedLengthPx,
-                };
-              }
-            }
-          }
-
           setTempGeometry({
             ...tempGeometry,
-            cursor: finalLineTarget,
+            cursor: lineTargetPos,
           });
-
-          // v7.24: Mettre à jour l'input de mesure en temps réel pour la ligne
-          const lineLengthPx = Math.sqrt(
-            (finalLineTarget.x - startPoint.x) ** 2 + (finalLineTarget.y - startPoint.y) ** 2
-          );
-          const lineLengthMm = lineLengthPx / (sketchRef.current.scaleFactor || 1);
-          // Position écran au milieu de la ligne avec offset perpendiculaire
-          const midX = (startPoint.x + finalLineTarget.x) / 2;
-          const midY = (startPoint.y + finalLineTarget.y) / 2;
-          // Offset perpendiculaire comme dans le renderer
-          const dx = finalLineTarget.x - startPoint.x;
-          const dy = finalLineTarget.y - startPoint.y;
-          const len = Math.sqrt(dx * dx + dy * dy);
-          const offsetDist = 25; // Pixels d'offset
-          const offsetX = len > 0 ? (-dy / len) * offsetDist : 0;
-          const offsetY = len > 0 ? (dx / len) * offsetDist : -offsetDist;
-          const screenX = midX * viewport.scale + viewport.offsetX + offsetX;
-          const screenY = midY * viewport.scale + viewport.offsetY + offsetY;
-          setLiveInputMeasure((prev) => ({
-            ...prev,
-            active: true,
-            type: "line",
-            liveValue: lineLengthMm,
-            screenPos: { x: screenX, y: screenY },
-            startPoint: startPoint,
-          }));
         } else if (tempGeometry.type === "circle" && tempPoints.length > 0) {
           setPerpendicularInfo(null);
           // IMPORTANT: Pour le cercle, NE PAS utiliser le snap grille (évite les sauts de 10mm)
@@ -8956,88 +10868,18 @@ export function CADGabaritCanvas({
           if (snapEnabled && currentSnapPoint && currentSnapPoint.type !== "grid") {
             circleTargetPos = { x: currentSnapPoint.x, y: currentSnapPoint.y };
           }
-
-          // v7.24: Si un rayon est verrouillé (userValue non vide), garder ce rayon
-          const liveInput = liveInputMeasureRef.current;
-          let finalRadius: number;
-          if (liveInput.isEditing && liveInput.userValue !== "") {
-            const lockedRadiusMm = parseFloat(liveInput.userValue) || 0;
-            if (lockedRadiusMm > 0) {
-              const scaleFactor = sketchRef.current.scaleFactor || 1;
-              finalRadius = lockedRadiusMm * scaleFactor;
-            } else {
-              finalRadius = distance(tempPoints[0], circleTargetPos);
-            }
-          } else {
-            finalRadius = distance(tempPoints[0], circleTargetPos);
-          }
-
+          const radius = distance(tempPoints[0], circleTargetPos);
           setTempGeometry({
             ...tempGeometry,
-            radius: finalRadius,
+            radius,
           });
-
-          // v7.24: Mettre à jour l'input de mesure en temps réel pour le cercle
-          const center = tempPoints[0];
-          const radiusMm = finalRadius / (sketchRef.current.scaleFactor || 1);
-          // Position écran à droite du centre
-          const screenX = center.x * viewport.scale + viewport.offsetX + 20;
-          const screenY = center.y * viewport.scale + viewport.offsetY;
-          setLiveInputMeasure((prev) => ({
-            ...prev,
-            active: true,
-            type: "circle",
-            liveValue: radiusMm,
-            screenPos: { x: screenX, y: screenY },
-            centerPoint: center,
-          }));
         } else if (tempGeometry.type === "rectangle") {
           // OPTIMISATION: Utiliser callback pour éviter re-render si déjà null
           setPerpendicularInfo((prev) => (prev === null ? prev : null));
 
           // IMPORTANT: Pour le rectangle, NE PAS utiliser le snap (évite les sauts de 10mm sur la grille)
           // On utilise worldPos directement (position brute de la souris)
-          let rectTargetPos = worldPos;
-
-          // v7.24: Respecter les dimensions verrouillées (X et/ou Y indépendamment)
-          const liveInput = liveInputMeasureRef.current;
-          const p1 = tempGeometry.p1;
-          if (p1) {
-            const scaleFactor = sketchRef.current.scaleFactor || 1;
-            const isCenter = tempGeometry.mode === "center";
-
-            // Calculer les dimensions de la souris
-            let mouseWidthPx = Math.abs(rectTargetPos.x - p1.x);
-            let mouseHeightPx = Math.abs(rectTargetPos.y - p1.y);
-
-            // Direction de la souris par rapport à p1
-            const dirX = rectTargetPos.x >= p1.x ? 1 : -1;
-            const dirY = rectTargetPos.y >= p1.y ? 1 : -1;
-
-            // Si largeur verrouillée (userValue non vide)
-            let finalWidthPx = mouseWidthPx;
-            if (liveInput.isEditing && liveInput.userValue !== "") {
-              const lockedWidthMm = parseFloat(liveInput.userValue) || 0;
-              if (lockedWidthMm > 0) {
-                finalWidthPx = isCenter ? (lockedWidthMm * scaleFactor) / 2 : lockedWidthMm * scaleFactor;
-              }
-            }
-
-            // Si hauteur verrouillée (userValue2 non vide)
-            let finalHeightPx = mouseHeightPx;
-            if (liveInput.isEditing2 && liveInput.userValue2 !== "") {
-              const lockedHeightMm = parseFloat(liveInput.userValue2) || 0;
-              if (lockedHeightMm > 0) {
-                finalHeightPx = isCenter ? (lockedHeightMm * scaleFactor) / 2 : lockedHeightMm * scaleFactor;
-              }
-            }
-
-            // Recalculer la position du curseur avec les dimensions finales
-            rectTargetPos = {
-              x: p1.x + finalWidthPx * dirX,
-              y: p1.y + finalHeightPx * dirY,
-            };
-          }
+          const rectTargetPos = worldPos;
 
           // Utiliser callback pour éviter re-render si curseur identique
           setTempGeometry((prev: any) => {
@@ -9054,57 +10896,8 @@ export function CADGabaritCanvas({
             };
           });
 
-          // v7.24: Mettre à jour l'input de mesure en temps réel pour le rectangle
-          if (p1) {
-            const p2 = rectTargetPos;
-            const isCenter = tempGeometry.mode === "center";
-            const scaleFactor = sketchRef.current.scaleFactor || 1;
-
-            let widthPx: number, heightPx: number;
-            let topY: number, leftX: number, rightX: number, bottomY: number;
-
-            if (isCenter) {
-              const halfW = Math.abs(p2.x - p1.x);
-              const halfH = Math.abs(p2.y - p1.y);
-              widthPx = halfW * 2;
-              heightPx = halfH * 2;
-              topY = p1.y - halfH;
-              leftX = p1.x - halfW;
-              rightX = p1.x + halfW;
-              bottomY = p1.y + halfH;
-            } else {
-              widthPx = Math.abs(p2.x - p1.x);
-              heightPx = Math.abs(p2.y - p1.y);
-              topY = Math.min(p1.y, p2.y);
-              leftX = Math.min(p1.x, p2.x);
-              rightX = Math.max(p1.x, p2.x);
-              bottomY = Math.max(p1.y, p2.y);
-            }
-
-            const widthMm = widthPx / scaleFactor;
-            const heightMm = heightPx / scaleFactor;
-
-            // Position pour la largeur (en haut, au milieu)
-            const midX = (leftX + rightX) / 2;
-            const screenX1 = midX * viewport.scale + viewport.offsetX;
-            const screenY1 = topY * viewport.scale + viewport.offsetY - 15;
-
-            // Position pour la hauteur (à gauche, au milieu)
-            const midY = (topY + bottomY) / 2;
-            const screenX2 = leftX * viewport.scale + viewport.offsetX - 15;
-            const screenY2 = midY * viewport.scale + viewport.offsetY;
-
-            setLiveInputMeasure((prev) => ({
-              ...prev,
-              active: true,
-              type: "rectangle",
-              liveValue: widthMm,
-              liveValue2: heightMm,
-              screenPos: { x: screenX1, y: screenY1 },
-              screenPos2: { x: screenX2, y: screenY2 },
-              rectP1: p1,
-            }));
-          }
+          // Activer les inputs une seule fois (callback retourne même obj si déjà actif)
+          setRectInputs((prev) => (prev.active ? prev : { ...prev, active: true }));
         } else if (tempGeometry.type === "bezier") {
           setPerpendicularInfo(null);
           // IMPORTANT: Pour Bézier, NE PAS utiliser le snap grille
@@ -9541,77 +11334,6 @@ export function CADGabaritCanvas({
     ],
   );
 
-  // v7.24: Fonction pour trouver une cotation (dimension text) à une position écran
-  const findDimensionAtScreenPos = useCallback(
-    (screenX: number, screenY: number): { dimensionId: string; entityId: string; type: "line" | "circle"; value: number } | null => {
-      const currentSketch = sketchRef.current;
-
-      // v7.25: Parcourir les dimensions existantes (cotations vertes)
-      for (const [dimId, dimension] of currentSketch.dimensions) {
-        if (dimension.type === "horizontal" || dimension.type === "vertical" || dimension.type === "linear") {
-          if (dimension.entities.length < 2) continue;
-
-          const p1 = currentSketch.points.get(dimension.entities[0]);
-          const p2 = currentSketch.points.get(dimension.entities[1]);
-          if (!p1 || !p2) continue;
-
-          const offset = 20 / viewport.scale;
-
-          // Calculer la position de la ligne de cote (comme dans drawLinearDimension)
-          let dimLine1: { x: number; y: number };
-          let dimLine2: { x: number; y: number };
-
-          if (dimension.type === "horizontal") {
-            dimLine1 = { x: p1.x, y: Math.min(p1.y, p2.y) - offset };
-            dimLine2 = { x: p2.x, y: Math.min(p1.y, p2.y) - offset };
-          } else if (dimension.type === "vertical") {
-            dimLine1 = { x: Math.max(p1.x, p2.x) + offset, y: p1.y };
-            dimLine2 = { x: Math.max(p1.x, p2.x) + offset, y: p2.y };
-          } else {
-            // Linear - perpendiculaire
-            const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x) + Math.PI / 2;
-            dimLine1 = { x: p1.x + Math.cos(ang) * offset, y: p1.y + Math.sin(ang) * offset };
-            dimLine2 = { x: p2.x + Math.cos(ang) * offset, y: p2.y + Math.sin(ang) * offset };
-          }
-
-          // Position du texte (milieu de la ligne de cote)
-          const textWorldX = (dimLine1.x + dimLine2.x) / 2;
-          const textWorldY = (dimLine1.y + dimLine2.y) / 2;
-          const textScreenX = textWorldX * viewport.scale + viewport.offsetX;
-          const textScreenY = textWorldY * viewport.scale + viewport.offsetY;
-
-          // Zone de hit pour la cotation
-          const hitWidth = 70;
-          const hitHeight = 25;
-          if (
-            screenX >= textScreenX - hitWidth / 2 &&
-            screenX <= textScreenX + hitWidth / 2 &&
-            screenY >= textScreenY - hitHeight / 2 &&
-            screenY <= textScreenY + hitHeight / 2
-          ) {
-            // Trouver la ligne associée à cette dimension
-            const lineId = dimension.entities[0] + "_" + dimension.entities[1];
-            // Chercher la ligne qui utilise ces deux points
-            let foundLineId = "";
-            for (const [geoId, geo] of currentSketch.geometries) {
-              if (geo.type === "line") {
-                const line = geo as Line;
-                if ((line.p1 === dimension.entities[0] && line.p2 === dimension.entities[1]) ||
-                    (line.p1 === dimension.entities[1] && line.p2 === dimension.entities[0])) {
-                  foundLineId = geoId;
-                  break;
-                }
-              }
-            }
-            return { dimensionId: dimId, entityId: foundLineId, type: "line", value: dimension.value };
-          }
-        }
-      }
-      return null;
-    },
-    [viewport]
-  );
-
   // Double-clic pour éditer un arc OU sélectionner une figure entière
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -9621,58 +11343,6 @@ export function CADGabaritCanvas({
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
       const worldPos = screenToWorld(screenX, screenY);
-
-      // v7.25: Double-clic sur les cotations du rectangle temporaire
-      if (activeTool === "rectangle" && tempGeometry?.type === "rectangle" && liveInputMeasure.active) {
-        // Vérifier si on clique sur la cotation largeur (en haut)
-        const widthPos = liveInputMeasure.screenPos;
-        if (widthPos) {
-          const hitWidth = 70;
-          const hitHeight = 25;
-          if (
-            screenX >= widthPos.x - hitWidth / 2 &&
-            screenX <= widthPos.x + hitWidth / 2 &&
-            screenY >= widthPos.y - hitHeight / 2 &&
-            screenY <= widthPos.y + hitHeight / 2
-          ) {
-            // Focus l'input de largeur
-            liveInputRef.current?.focus();
-            return;
-          }
-        }
-        // Vérifier si on clique sur la cotation hauteur (à gauche)
-        const heightPos = liveInputMeasure.screenPos2;
-        if (heightPos) {
-          const hitWidth = 70;
-          const hitHeight = 25;
-          if (
-            screenX >= heightPos.x - hitWidth / 2 &&
-            screenX <= heightPos.x + hitWidth / 2 &&
-            screenY >= heightPos.y - hitHeight / 2 &&
-            screenY <= heightPos.y + hitHeight / 2
-          ) {
-            // Focus l'input de hauteur
-            liveInputRef2.current?.focus();
-            return;
-          }
-        }
-      }
-
-      // v7.25: Vérifier d'abord si on double-clic sur une cotation existante (système vert)
-      if (activeTool === "select" && showDimensions) {
-        const dimHit = findDimensionAtScreenPos(screenX, screenY);
-        if (dimHit) {
-          const screenPos = { x: screenX, y: screenY };
-          setEditingDimension({
-            dimensionId: dimHit.dimensionId,
-            entityId: dimHit.entityId,
-            type: dimHit.type,
-            currentValue: dimHit.value,
-            screenPos: screenPos,
-          });
-          return;
-        }
-      }
 
       // Double-clic pour terminer la spline
       if (activeTool === "spline" && tempPoints.length >= 2) {
@@ -9760,54 +11430,25 @@ export function CADGabaritCanvas({
             return;
           }
 
-          // v7.24: Shift + double-clic → sélectionner toute la figure connectée
-          if (e.shiftKey && (geo.type === "arc" || geo.type === "line" || geo.type === "bezier")) {
+          if (geo.type === "arc" || geo.type === "line" || geo.type === "bezier") {
+            // Double-clic → sélectionner toute la figure connectée
             const connectedGeos = findConnectedGeometries(entityId);
-            setSelectedEntities(connectedGeos);
-            setReferenceHighlight(null);
-            if (connectedGeos.size > 1) {
-              toast.success(`${connectedGeos.size} élément(s) sélectionné(s)`);
-            }
-            return;
-          }
 
-          // v7.24: Double-clic sur ligne → édition inline de la dimension
-          if (geo.type === "line" && activeTool === "select") {
-            const line = geo as Line;
-            const p1 = sketch.points.get(line.p1);
-            const p2 = sketch.points.get(line.p2);
-            if (p1 && p2) {
-              const lengthPx = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-              const lengthMm = lengthPx / sketch.scaleFactor;
-              const midX = (p1.x + p2.x) / 2;
-              const midY = (p1.y + p2.y) / 2;
-              const screenPos = worldToScreen(midX, midY);
-              setEditingDimension({
-                dimensionId: "",
-                entityId: entityId,
-                type: "line",
-                currentValue: lengthMm,
-                screenPos: { x: screenPos.x, y: screenPos.y - 25 },
+            // Si Shift est enfoncé, AJOUTER à la sélection existante
+            if (e.shiftKey) {
+              setSelectedEntities((prev) => {
+                const newSelection = new Set(prev);
+                connectedGeos.forEach((id) => newSelection.add(id));
+                return newSelection;
               });
-              return;
-            }
-          }
-
-          // v7.24: Double-clic sur cercle → édition inline du rayon
-          if (geo.type === "circle" && activeTool === "select") {
-            const circle = geo as CircleType;
-            const center = sketch.points.get(circle.center);
-            if (center) {
-              const radiusMm = circle.radius / sketch.scaleFactor;
-              const screenPos = worldToScreen(center.x, center.y);
-              setEditingDimension({
-                dimensionId: "",
-                entityId: entityId,
-                type: "circle",
-                currentValue: radiusMm,
-                screenPos: { x: screenPos.x + 30, y: screenPos.y },
-              });
-              return;
+              toast.success(`${connectedGeos.size} élément(s) ajouté(s) à la sélection`);
+            } else {
+              // Sans Shift, REMPLACER la sélection
+              setSelectedEntities(connectedGeos);
+              setReferenceHighlight(null); // Reset le highlight vert
+              if (connectedGeos.size > 1) {
+                toast.success(`${connectedGeos.size} élément(s) sélectionné(s)`);
+              }
             }
           }
         }
@@ -9828,12 +11469,6 @@ export function CADGabaritCanvas({
       activeTool,
       addToHistory,
       tempPoints,
-      findDimensionAtScreenPos,
-      showDimensions,
-      tempGeometry,
-      liveInputMeasure.active,
-      liveInputMeasure.screenPos,
-      liveInputMeasure.screenPos2,
     ],
   );
 
@@ -10890,7 +12525,453 @@ export function CADGabaritCanvas({
   }, [sketch, selectedEntities, addToHistory]);
 
   // === RÉPÉTITION/ARRAY ===
-  // Note: openArrayDialog, executeArray et états viennent du hook useArrayRepeat (ligne ~5464)
+
+  // Ouvrir la modale de répétition
+  const openArrayDialog = useCallback(
+    (forceCheckerboard = false) => {
+      // Si pas de sélection, basculer automatiquement en mode damier
+      const noSelection = selectedEntities.size === 0;
+      const useCheckerboard = forceCheckerboard || noSelection;
+
+      // Calculer le centre de la sélection pour le mode circulaire
+      let sumX = 0,
+        sumY = 0,
+        count = 0;
+      selectedEntities.forEach((id) => {
+        const geo = sketch.geometries.get(id);
+        if (geo) {
+          if (geo.type === "line") {
+            const line = geo as Line;
+            const p1 = sketch.points.get(line.p1);
+            const p2 = sketch.points.get(line.p2);
+            if (p1 && p2) {
+              sumX += (p1.x + p2.x) / 2;
+              sumY += (p1.y + p2.y) / 2;
+              count++;
+            }
+          } else if (geo.type === "circle") {
+            const circle = geo as CircleType;
+            const center = sketch.points.get(circle.center);
+            if (center) {
+              sumX += center.x;
+              sumY += center.y;
+              count++;
+            }
+          } else if (geo.type === "arc") {
+            const arc = geo as Arc;
+            const center = sketch.points.get(arc.center);
+            if (center) {
+              sumX += center.x;
+              sumY += center.y;
+              count++;
+            }
+          }
+        }
+      });
+
+      const selectionCenter = count > 0 ? { x: sumX / count, y: sumY / count } : { x: 0, y: 0 };
+
+      setArrayDialog({
+        open: true,
+        type: useCheckerboard ? "checkerboard" : "linear",
+        // Linéaire
+        linearCount: 3,
+        linearSpacing: "50",
+        linearSpacingMode: "spacing",
+        linearDirection: "x",
+        linearAngle: "0",
+        // Grille
+        countX: 3,
+        spacingX: "50",
+        spacingModeX: "spacing",
+        countY: 3,
+        spacingY: "50",
+        spacingModeY: "spacing",
+        // Circulaire
+        circularCount: 6,
+        circularAngle: "360",
+        circularCenter: selectionCenter,
+        // Damier
+        checkerCountX: "8",
+        checkerCountY: "6",
+        checkerSize: "20",
+        checkerColor: "#000000",
+        // Général
+        includeOriginal: true,
+        createIntersections: true,
+      });
+    },
+    [selectedEntities, sketch],
+  );
+
+  // Exécuter la répétition
+  const executeArray = useCallback(() => {
+    if (!arrayDialog) return;
+
+    // Le mode checkerboard ne nécessite pas de sélection
+    if (arrayDialog.type !== "checkerboard" && selectedEntities.size === 0) return;
+
+    const {
+      type,
+      linearCount,
+      linearSpacing,
+      linearSpacingMode,
+      linearDirection,
+      linearAngle,
+      countX,
+      spacingX,
+      spacingModeX,
+      countY,
+      spacingY,
+      spacingModeY,
+      circularCount,
+      circularAngle,
+      circularCenter,
+      includeOriginal,
+      createIntersections,
+    } = arrayDialog;
+
+    // Parser les valeurs
+    const linearSpacingStr = typeof linearSpacing === "string" ? linearSpacing : String(linearSpacing || "50");
+    const spacingXStr = typeof spacingX === "string" ? spacingX : String(spacingX || "50");
+    const spacingYStr = typeof spacingY === "string" ? spacingY : String(spacingY || "50");
+    const circularAngleStr = typeof circularAngle === "string" ? circularAngle : String(circularAngle || "360");
+    const linearAngleStr = typeof linearAngle === "string" ? linearAngle : String(linearAngle || "0");
+
+    const linearSpacingNum = parseFloat(linearSpacingStr.replace(",", ".")) || 0;
+    const spacingXNum = parseFloat(spacingXStr.replace(",", ".")) || 0;
+    const spacingYNum = parseFloat(spacingYStr.replace(",", ".")) || 0;
+    const circularAngleNum = parseFloat(circularAngleStr.replace(",", ".")) || 360;
+    const linearAngleNum = parseFloat(linearAngleStr.replace(",", ".")) || 0;
+
+    // Calculer l'espacement réel selon le mode
+    const count = linearCount || 3;
+    const realLinearSpacing =
+      linearSpacingMode === "distance" && count > 1 ? linearSpacingNum / (count - 1) : linearSpacingNum;
+    const realSpacingX = spacingModeX === "distance" && countX > 1 ? spacingXNum / (countX - 1) : spacingXNum;
+    const realSpacingY = spacingModeY === "distance" && countY > 1 ? spacingYNum / (countY - 1) : spacingYNum;
+
+    // Collecter les points et géométries sélectionnés
+    const copiedPoints = new Map<string, Point>();
+    const copiedGeometries = new Map<string, Geometry>();
+    const pointsUsed = new Set<string>();
+
+    selectedEntities.forEach((id) => {
+      const geo = sketch.geometries.get(id);
+      if (geo) {
+        copiedGeometries.set(id, { ...geo });
+        if (geo.type === "line") {
+          const line = geo as Line;
+          pointsUsed.add(line.p1);
+          pointsUsed.add(line.p2);
+        } else if (geo.type === "circle") {
+          pointsUsed.add((geo as CircleType).center);
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          pointsUsed.add(arc.center);
+          pointsUsed.add(arc.startPoint);
+          pointsUsed.add(arc.endPoint);
+        } else if (geo.type === "rectangle") {
+          const rect = geo as Rectangle;
+          [rect.p1, rect.p2, rect.p3, rect.p4].forEach((pid) => pointsUsed.add(pid));
+        } else if (geo.type === "bezier") {
+          const bezier = geo as Bezier;
+          [bezier.p1, bezier.p2, bezier.cp1, bezier.cp2].forEach((pid) => pointsUsed.add(pid));
+        } else if (geo.type === "text") {
+          const text = geo as TextAnnotation;
+          pointsUsed.add(text.position);
+        }
+      }
+    });
+
+    pointsUsed.forEach((pointId) => {
+      const point = sketch.points.get(pointId);
+      if (point) {
+        copiedPoints.set(pointId, { ...point });
+      }
+    });
+
+    // Calculer le centre de la sélection pour la rotation
+    let centerX = 0,
+      centerY = 0;
+    copiedPoints.forEach((p) => {
+      centerX += p.x;
+      centerY += p.y;
+    });
+    centerX /= copiedPoints.size || 1;
+    centerY /= copiedPoints.size || 1;
+
+    // Utiliser le centre personnalisé pour circulaire
+    if (type === "circular" && circularCenter) {
+      centerX = circularCenter.x;
+      centerY = circularCenter.y;
+    }
+
+    const newSketch = { ...sketch };
+    newSketch.points = new Map(sketch.points);
+    newSketch.geometries = new Map(sketch.geometries);
+
+    // Liste des nouvelles géométries créées (pour les intersections)
+    const newGeometryIds: string[] = [];
+
+    // Fonction pour créer une copie avec offset/rotation
+    const createCopy = (offsetX: number, offsetY: number, rotation: number = 0) => {
+      const pointIdMapping = new Map<string, string>();
+
+      copiedPoints.forEach((point, oldId) => {
+        const newId = generateId();
+        pointIdMapping.set(oldId, newId);
+
+        let newX = point.x;
+        let newY = point.y;
+
+        if (rotation !== 0) {
+          // Rotation autour du centre
+          const dx = point.x - centerX;
+          const dy = point.y - centerY;
+          const cos = Math.cos(rotation);
+          const sin = Math.sin(rotation);
+          newX = centerX + dx * cos - dy * sin;
+          newY = centerY + dx * sin + dy * cos;
+        }
+
+        newSketch.points.set(newId, {
+          ...point,
+          id: newId,
+          x: newX + offsetX,
+          y: newY + offsetY,
+          fixed: false,
+        });
+      });
+
+      copiedGeometries.forEach((geo) => {
+        const newId = generateId();
+        newGeometryIds.push(newId);
+
+        if (geo.type === "line") {
+          const line = geo as Line;
+          newSketch.geometries.set(newId, {
+            ...line,
+            id: newId,
+            p1: pointIdMapping.get(line.p1) || line.p1,
+            p2: pointIdMapping.get(line.p2) || line.p2,
+          });
+        } else if (geo.type === "circle") {
+          const circle = geo as CircleType;
+          newSketch.geometries.set(newId, {
+            ...circle,
+            id: newId,
+            center: pointIdMapping.get(circle.center) || circle.center,
+          });
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          newSketch.geometries.set(newId, {
+            ...arc,
+            id: newId,
+            center: pointIdMapping.get(arc.center) || arc.center,
+            startPoint: pointIdMapping.get(arc.startPoint) || arc.startPoint,
+            endPoint: pointIdMapping.get(arc.endPoint) || arc.endPoint,
+          });
+        } else if (geo.type === "rectangle") {
+          const rect = geo as Rectangle;
+          newSketch.geometries.set(newId, {
+            ...rect,
+            id: newId,
+            p1: pointIdMapping.get(rect.p1) || rect.p1,
+            p2: pointIdMapping.get(rect.p2) || rect.p2,
+            p3: pointIdMapping.get(rect.p3) || rect.p3,
+            p4: pointIdMapping.get(rect.p4) || rect.p4,
+          });
+        } else if (geo.type === "bezier") {
+          const bezier = geo as Bezier;
+          newSketch.geometries.set(newId, {
+            ...bezier,
+            id: newId,
+            p1: pointIdMapping.get(bezier.p1) || bezier.p1,
+            p2: pointIdMapping.get(bezier.p2) || bezier.p2,
+            cp1: pointIdMapping.get(bezier.cp1) || bezier.cp1,
+            cp2: pointIdMapping.get(bezier.cp2) || bezier.cp2,
+          });
+        } else if (geo.type === "text") {
+          const text = geo as TextAnnotation;
+          newSketch.geometries.set(newId, {
+            ...text,
+            id: newId,
+            position: pointIdMapping.get(text.position) || text.position,
+          });
+        }
+      });
+    };
+
+    let totalCopies = 0;
+
+    if (type === "linear") {
+      // Calculer la direction en radians
+      let dirAngle = 0;
+      if (linearDirection === "y") {
+        dirAngle = Math.PI / 2; // 90°
+      } else if (linearDirection === "custom") {
+        dirAngle = (linearAngleNum * Math.PI) / 180;
+      }
+
+      const dirX = Math.cos(dirAngle);
+      const dirY = Math.sin(dirAngle);
+
+      const startIdx = includeOriginal ? 1 : 0;
+      for (let i = startIdx; i < count; i++) {
+        const dist = i * realLinearSpacing * sketch.scaleFactor;
+        createCopy(dist * dirX, dist * dirY);
+        totalCopies++;
+      }
+    } else if (type === "grid") {
+      // Répétition en grille
+      for (let row = 0; row < countY; row++) {
+        for (let col = 0; col < countX; col++) {
+          if (row === 0 && col === 0 && includeOriginal) continue;
+          createCopy(col * realSpacingX * sketch.scaleFactor, row * realSpacingY * sketch.scaleFactor);
+          totalCopies++;
+        }
+      }
+    } else if (type === "circular") {
+      // Répétition circulaire
+      const angleStep = (circularAngleNum * Math.PI) / 180 / circularCount;
+      const startIdx = includeOriginal ? 1 : 0;
+      for (let i = startIdx; i < circularCount; i++) {
+        const rotation = angleStep * i;
+        createCopy(0, 0, rotation);
+        totalCopies++;
+      }
+    } else if (type === "checkerboard") {
+      // Mode damier - création spéciale (ne nécessite pas de sélection)
+      const { checkerCountX, checkerCountY, checkerSize, checkerColor } = arrayDialog;
+
+      // Parser les valeurs (peuvent être string ou number)
+      const countXStr = typeof checkerCountX === "string" ? checkerCountX : String(checkerCountX || "8");
+      const countYStr = typeof checkerCountY === "string" ? checkerCountY : String(checkerCountY || "6");
+      const sizeStr = typeof checkerSize === "string" ? checkerSize : String(checkerSize || "20");
+
+      const cX = Math.max(1, parseInt(countXStr) || 8);
+      const cY = Math.max(1, parseInt(countYStr) || 6);
+      const sizePx = (parseFloat(sizeStr.replace(",", ".")) || 20) * sketch.scaleFactor;
+
+      // Point de départ (centre du viewport ou origine)
+      const startX = 0;
+      const startY = 0;
+
+      // Créer les points de la grille
+      const pointGrid: string[][] = [];
+      for (let row = 0; row <= cY; row++) {
+        pointGrid[row] = [];
+        for (let col = 0; col <= cX; col++) {
+          const pointId = generateId();
+          newSketch.points.set(pointId, {
+            id: pointId,
+            x: startX + col * sizePx,
+            y: startY + row * sizePx,
+          });
+          pointGrid[row][col] = pointId;
+        }
+      }
+
+      // Créer les lignes horizontales
+      for (let row = 0; row <= cY; row++) {
+        for (let col = 0; col < cX; col++) {
+          const lineId = generateId();
+          newSketch.geometries.set(lineId, {
+            id: lineId,
+            type: "line",
+            p1: pointGrid[row][col],
+            p2: pointGrid[row][col + 1],
+            layerId: sketch.activeLayerId,
+            strokeWidth: defaultStrokeWidthRef.current,
+            strokeColor: defaultStrokeColorRef.current,
+          });
+          newGeometryIds.push(lineId);
+        }
+      }
+
+      // Créer les lignes verticales
+      for (let col = 0; col <= cX; col++) {
+        for (let row = 0; row < cY; row++) {
+          const lineId = generateId();
+          newSketch.geometries.set(lineId, {
+            id: lineId,
+            type: "line",
+            p1: pointGrid[row][col],
+            p2: pointGrid[row + 1][col],
+            layerId: sketch.activeLayerId,
+            strokeWidth: defaultStrokeWidthRef.current,
+            strokeColor: defaultStrokeColorRef.current,
+          });
+          newGeometryIds.push(lineId);
+        }
+      }
+
+      // Créer les remplissages pour les cases noires (pattern damier)
+      // Initialiser shapeFills si nécessaire
+      if (!newSketch.shapeFills) {
+        newSketch.shapeFills = new Map();
+      } else {
+        newSketch.shapeFills = new Map(newSketch.shapeFills);
+      }
+
+      for (let row = 0; row < cY; row++) {
+        for (let col = 0; col < cX; col++) {
+          // Case noire si (row + col) est pair
+          if ((row + col) % 2 === 0) {
+            // Trouver les 4 lignes qui forment cette case
+            // Lignes horizontales: row à col et row+1 à col
+            // Lignes verticales: col à row et col+1 à row
+
+            // On va identifier les geoIds des 4 côtés de la case
+            const topLineIdx = row * cX + col;
+            const bottomLineIdx = (row + 1) * cX + col;
+            const leftLineIdx = cX * (cY + 1) + col * cY + row;
+            const rightLineIdx = cX * (cY + 1) + (col + 1) * cY + row;
+
+            // Récupérer les IDs depuis newGeometryIds
+            const geoIds = new Set<string>();
+            if (newGeometryIds[topLineIdx]) geoIds.add(newGeometryIds[topLineIdx]);
+            if (newGeometryIds[bottomLineIdx]) geoIds.add(newGeometryIds[bottomLineIdx]);
+            if (newGeometryIds[leftLineIdx]) geoIds.add(newGeometryIds[leftLineIdx]);
+            if (newGeometryIds[rightLineIdx]) geoIds.add(newGeometryIds[rightLineIdx]);
+
+            if (geoIds.size === 4) {
+              const fillId = generateId();
+              newSketch.shapeFills.set(fillId, {
+                id: fillId,
+                geoIds: Array.from(geoIds),
+                fillType: "solid",
+                color: checkerColor || "#000000",
+                opacity: 1,
+              });
+            }
+          }
+        }
+      }
+
+      totalCopies = cX * cY;
+    }
+
+    // Créer les points d'intersection si demandé
+    if (createIntersections) {
+      // Collecter toutes les géométries (originales + nouvelles)
+      const allLineIds = [...Array.from(selectedEntities), ...newGeometryIds].filter((id) => {
+        const geo = newSketch.geometries.get(id);
+        return geo && geo.type === "line";
+      });
+
+      // Créer les intersections pour chaque nouvelle géométrie
+      for (const geoId of newGeometryIds) {
+        createIntersectionPoints(geoId, newSketch);
+      }
+    }
+
+    setSketch(newSketch);
+    addToHistory(newSketch, `Répétition ${type} (${totalCopies} copies)`);
+    setArrayDialog(null);
+    toast.success(`${totalCopies} copie(s) créée(s)`);
+  }, [arrayDialog, selectedEntities, sketch, addToHistory, createIntersectionPoints]);
 
   // Créer ou modifier un texte/annotation
   const commitTextInput = useCallback(() => {
@@ -10957,21 +13038,6 @@ export function CADGabaritCanvas({
 
       // Pour les touches de saisie (Delete, Backspace, lettres), ne pas interférer avec les inputs
       if (isInputFocused && e.key !== "Escape") {
-        return;
-      }
-
-      // v7.24: Raccourci clavier - taper un chiffre pendant le tracé focus l'input de dimension
-      const isDigitOrDecimal = /^[0-9.,]$/.test(e.key);
-      if (isDigitOrDecimal && liveInputMeasureRef.current.active && !isInputFocused) {
-        e.preventDefault();
-        // Focus l'input principal (largeur pour rectangle, longueur/rayon pour ligne/cercle)
-        if (liveInputRef.current) {
-          liveInputRef.current.focus();
-          // La valeur sera gérée par le onFocus + onChange de l'input
-          // On simule la saisie du chiffre
-          const char = e.key === "," ? "." : e.key;
-          setLiveInputMeasure((prev) => ({ ...prev, userValue: char, isEditing: true }));
-        }
         return;
       }
 
@@ -13483,83 +15549,112 @@ export function CADGabaritCanvas({
 
         {/* Import/Export fichiers */}
         <ToolbarGroupWrapper groupId="grp_import_export" groupName="Import/Export" groupColor="#10B981" lineIndex={0}>
-          {/* v7.21: Import unifié - un seul bouton qui ouvre l'explorateur (DXF + images) */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 px-2 relative"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <FileUp className="h-4 w-4 mr-1" />
-                  <span className="text-xs">Importer</span>
-                  {backgroundImages.length > 0 && (
-                    <Badge variant="secondary" className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-xs">
-                      {backgroundImages.length}
-                    </Badge>
-                  )}
+          {/* Import DXF */}
+          {toolbarConfig.line1.import && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" size="sm" onClick={() => dxfInputRef.current?.click()} className="h-9 px-2">
+                    <FileUp className="h-4 w-4 mr-1" />
+                    <span className="text-xs">Import</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Importer un fichier DXF</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
+          {/* Photos */}
+          {toolbarConfig.line1.photos && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="h-9 w-9 p-0 relative"
+                  >
+                    <Image className="h-4 w-4" />
+                    {backgroundImages.length > 0 && (
+                      <Badge variant="secondary" className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-xs">
+                        {backgroundImages.length}
+                      </Badge>
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Charger des photos de référence</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
+          {/* Export SVG */}
+          {toolbarConfig.line1.exportSvg && (
+            <Button variant="outline" size="sm" onClick={handleExportSVG} className="h-9 px-2">
+              <FileDown className="h-4 w-4 mr-1" />
+              <span className="text-xs">SVG</span>
+            </Button>
+          )}
+
+          {/* Export PNG */}
+          {toolbarConfig.line1.exportPng && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 px-2">
+                  <FileImage className="h-4 w-4 mr-1" />
+                  <span className="text-xs">PNG</span>
+                  <ChevronDown className="h-3 w-3 ml-1" />
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Importer fichiers (DXF, images)</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => handleExportPNG(false)}>
+                  <FileImage className="h-4 w-4 mr-2" />
+                  PNG (fond blanc)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExportPNG(true)}>
+                  <FileImage className="h-4 w-4 mr-2 opacity-50" />
+                  PNG (fond transparent)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
-          {/* v7.20: Export unifié - un seul bouton avec menu déroulant */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="default" size="sm" className="h-9 px-2">
-                <Download className="h-4 w-4 mr-1" />
-                <span className="text-xs">Exporter</span>
-                <ChevronDown className="h-3 w-3 ml-1" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-48">
-              {/* DXF - Format CAO */}
-              <DropdownMenuItem onClick={handleExportDXF}>
-                <Download className="h-4 w-4 mr-2" />
-                DXF (CAO/CNC)
-              </DropdownMenuItem>
+          {/* Export DXF */}
+          {toolbarConfig.line1.exportDxf && (
+            <Button variant="default" size="sm" onClick={handleExportDXF} className="h-9 px-2">
+              <Download className="h-4 w-4 mr-1" />
+              <span className="text-xs">DXF</span>
+            </Button>
+          )}
 
-              {/* PDF Professionnel */}
-              <DropdownMenuItem onClick={() => setPdfPlanEditorOpen(true)}>
-                <FileDown className="h-4 w-4 mr-2 text-red-500" />
-                PDF (plans)
-              </DropdownMenuItem>
-
-              <DropdownMenuSeparator />
-
-              {/* SVG */}
-              <DropdownMenuItem onClick={handleExportSVG}>
-                <FileDown className="h-4 w-4 mr-2" />
-                SVG (vectoriel)
-              </DropdownMenuItem>
-
-              {/* PNG options */}
-              <DropdownMenuItem onClick={() => handleExportPNG(false)}>
-                <FileImage className="h-4 w-4 mr-2" />
-                PNG (fond blanc)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExportPNG(true)}>
-                <FileImage className="h-4 w-4 mr-2 opacity-50" />
-                PNG (transparent)
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Export PDF Professionnel */}
+          {toolbarConfig.line1.exportPdf && (
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => setPdfPlanEditorOpen(true)}
+              className="h-9 px-2 bg-red-600 hover:bg-red-700"
+            >
+              <FileDown className="h-4 w-4 mr-1" />
+              <span className="text-xs">PDF</span>
+            </Button>
+          )}
 
           {/* MOD v80.14: Bouton impression directe avec duplication */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={() => setShowPrintDialog(true)} className="h-9 w-9 p-0">
-                  <Printer className="h-4 w-4" />
+                <Button variant="outline" size="sm" onClick={() => setShowPrintDialog(true)} className="h-9 px-2">
+                  <Printer className="h-4 w-4 mr-1" />
+                  <span className="text-xs">Imprimer</span>
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Imprimer</p>
+                <p>Impression directe avec duplication de motifs</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -13575,148 +15670,6 @@ export function CADGabaritCanvas({
 
         {/* Zone de drop après Import/Export */}
         <DropZoneBetweenGroups targetIndex={2} lineIndex={0} />
-
-        {/* Espace entre Import/Export et Affichage */}
-        <div className="w-4" />
-
-        <Separator orientation="vertical" className="h-6" />
-
-        {/* v7.22: Groupe Affichage déplacé sur la ligne 0 */}
-        <ToolbarGroupWrapper groupId="grp_display" groupName="Affichage" groupColor="#06B6D4" lineIndex={0}>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={showGrid ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setShowGrid(!showGrid)}
-                  className="h-8 w-8 p-0"
-                >
-                  <Grid3X3 className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Grille</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={showA4Grid ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setShowA4Grid(!showA4Grid)}
-                  className={`h-8 w-8 p-0 ${showA4Grid ? "bg-blue-500 hover:bg-blue-600" : ""}`}
-                >
-                  <FileDown className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Grille A4 (export PDF)</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={snapEnabled ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSnapEnabled(!snapEnabled)}
-                  className="h-8 w-8 p-0"
-                >
-                  <Magnet className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Snap (aimantation)</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={showDimensions ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setShowDimensions(!showDimensions)}
-                  className={`h-8 w-8 p-0 ${showDimensions ? "bg-cyan-500 hover:bg-cyan-600" : ""}`}
-                >
-                  <Sliders className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Cotations</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={snapToActiveLayerOnly ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSnapToActiveLayerOnly(!snapToActiveLayerOnly)}
-                  className={`h-8 w-8 p-0 ${snapToActiveLayerOnly ? "bg-purple-500 hover:bg-purple-600" : ""}`}
-                >
-                  <Layers className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Snap calque actif uniquement</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={showConstruction ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setShowConstruction(!showConstruction)}
-                  className="h-8 w-8 p-0"
-                >
-                  {showConstruction ? (
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 2">
-                      <line x1="4" y1="20" x2="20" y2="4" />
-                    </svg>
-                  ) : (
-                    <svg className="h-4 w-4 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 2">
-                      <line x1="4" y1="20" x2="20" y2="4" />
-                    </svg>
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{showConstruction ? "Masquer" : "Afficher"} lignes construction</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Slider opacité surbrillance */}
-          <div className="flex items-center gap-1 ml-1 px-1.5 py-1 bg-blue-50 rounded">
-            <span className="text-xs text-blue-600" title="Surbrillance formes fermées">
-              🔹
-            </span>
-            <input
-              type="range"
-              min="0"
-              max="0.3"
-              step="0.02"
-              value={highlightOpacity}
-              onChange={(e) => setHighlightOpacity(parseFloat(e.target.value))}
-              className="w-12 h-1 accent-blue-500"
-              title={`Opacité surbrillance: ${Math.round(highlightOpacity * 100)}%`}
-            />
-            <span className="text-xs text-blue-500 w-6">{Math.round(highlightOpacity * 100)}%</span>
-          </div>
-        </ToolbarGroupWrapper>
 
         {/* Bouton raccourcis clavier */}
         {toolbarConfig.line1.help && (
@@ -13910,199 +15863,6 @@ export function CADGabaritCanvas({
             </DropdownMenu>
 
             <ToolButton tool="bezier" icon={Spline} label="Courbe Bézier" shortcut="B" />
-
-            {/* v7.21: Mode construction déplacé ici avec les outils de traçage */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={isConstructionMode ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setIsConstructionMode(!isConstructionMode)}
-                    className={`h-9 w-9 p-0 ${isConstructionMode ? "bg-amber-500 hover:bg-amber-600" : ""}`}
-                  >
-                    <svg
-                      className="h-4 w-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeDasharray="4 2"
-                    >
-                      <line x1="4" y1="20" x2="20" y2="4" />
-                    </svg>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Mode construction (lignes pointillées)</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            {/* v7.22: Congé/Chanfrein intégré dans les outils de dessin */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 w-9 p-0">
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
-                  </svg>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
-                <DropdownMenuItem onClick={openFilletDialog}>
-                  <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
-                  </svg>
-                  Congé (R{filletRadius}mm)
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={openChamferDialog}>
-                  <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 20 L4 10 L10 4 L20 4" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  Chanfrein ({chamferDistance}mm)
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <div className="px-2 py-2">
-                  <Label className="text-xs text-muted-foreground">Paramètres</Label>
-                  <div className="flex items-center gap-2 mt-2">
-                    <div className="flex-1">
-                      <Label className="text-xs">Congé (mm)</Label>
-                      <Input
-                        type="number"
-                        value={filletRadius}
-                        onChange={(e) => setFilletRadius(Math.max(1, parseFloat(e.target.value) || 1))}
-                        onKeyDown={(e) => e.stopPropagation()}
-                        className="w-full h-7 mt-1"
-                        min="1"
-                        step="1"
-                      />
-                    </div>
-                    <div className="flex-1">
-                      <Label className="text-xs">Chanfrein (mm)</Label>
-                      <Input
-                        type="number"
-                        value={chamferDistance}
-                        onChange={(e) => setChamferDistance(Math.max(1, parseFloat(e.target.value) || 1))}
-                        onKeyDown={(e) => e.stopPropagation()}
-                        className="w-full h-7 mt-1"
-                        min="1"
-                        step="1"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {/* v7.23: Offset intégré dans les outils de dessin */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={offsetDialog?.open ? "default" : "outline"}
-                    size="sm"
-                    className="h-9 px-2"
-                    onClick={openOffsetDialog}
-                  >
-                    {/* Icône offset: deux rectangles décalés */}
-                    <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="3" width="12" height="12" rx="1" />
-                      <rect x="9" y="9" width="12" height="12" rx="1" strokeDasharray="3 2" />
-                    </svg>
-                    <span className="text-xs">{offsetDistance}</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Offset - Copie parallèle à distance</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            {/* v7.23: Épaisseur de trait intégré dans les outils de dessin */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 px-2 gap-1">
-                  <svg
-                    className="h-4 w-4"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={defaultStrokeWidth * 1.5}
-                  >
-                    <line x1="4" y1="12" x2="20" y2="12" />
-                  </svg>
-                  <span className="text-xs">{defaultStrokeWidth}</span>
-                  <ChevronDown className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <div className="p-1">
-                  <div className="text-xs text-gray-500 px-2 py-1 mb-1">Épaisseur du trait</div>
-                  {STROKE_WIDTH_OPTIONS.map((width) => (
-                    <DropdownMenuItem
-                      key={width}
-                      onClick={() => setDefaultStrokeWidth(width)}
-                      className={defaultStrokeWidth === width ? "bg-accent" : ""}
-                    >
-                      <svg
-                        className="h-4 w-12 mr-2"
-                        viewBox="0 0 48 16"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={width * 1.5}
-                      >
-                        <line x1="4" y1="8" x2="44" y2="8" />
-                      </svg>
-                      <span>{width}px</span>
-                    </DropdownMenuItem>
-                  ))}
-                </div>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {/* v7.23: Couleur du trait intégrée dans les outils de dessin */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="relative">
-                    <input
-                      type="color"
-                      value={defaultStrokeColor}
-                      onChange={(e) => {
-                        const newColor = e.target.value;
-                        setDefaultStrokeColor(newColor);
-                        // Si des figures sont sélectionnées, les mettre à jour
-                        if (selectedEntities.size > 0) {
-                          const currentSketch = sketchRef.current;
-                          const newGeometries = new Map(currentSketch.geometries);
-                          selectedEntities.forEach((id) => {
-                            const geo = newGeometries.get(id);
-                            if (geo) {
-                              // Pour les textes, utiliser 'color', pour les autres 'strokeColor'
-                              if (geo.type === "text") {
-                                newGeometries.set(id, { ...geo, color: newColor } as typeof geo);
-                              } else {
-                                newGeometries.set(id, { ...geo, strokeColor: newColor } as typeof geo);
-                              }
-                            }
-                          });
-                          const newSketch = { ...currentSketch, geometries: newGeometries };
-                          setSketch(newSketch);
-                          addToHistory(newSketch, `Couleur → ${newColor}`);
-                        }
-                      }}
-                      className="w-9 h-9 p-1 rounded border border-gray-300 cursor-pointer"
-                      title="Couleur du trait"
-                    />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>
-                    Couleur du trait {selectedEntities.size > 0 ? "(modifie la sélection)" : "(pour nouvelles figures)"}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
 
             {/* Outil Spline (courbe libre) */}
             <TooltipProvider>
@@ -14400,23 +16160,22 @@ export function CADGabaritCanvas({
 
         <DropZoneBetweenGroups targetIndex={3} lineIndex={1} />
 
-        {/* Séparateur visible entre Dessin et Photos */}
-        <div className="h-6 w-px bg-gray-300 mx-1" />
+        <Separator orientation="vertical" className="h-6" />
 
-        {/* v7.21: Input unifié pour import de fichiers (DXF + images) */}
+        {/* Inputs cachés pour import de fichiers */}
+        <input ref={dxfInputRef} type="file" accept=".dxf" onChange={handleDXFImport} className="hidden" />
         <input
           ref={fileInputRef}
           type="file"
-          accept=".dxf,image/*"
+          accept="image/*"
           multiple
-          onChange={handleUnifiedImport}
+          onChange={handleImageUpload}
           className="hidden"
         />
 
-        {/* v7.21: Outils photos regroupés dans un menu déroulant */}
+        {/* Outils photos (si des images sont chargées) */}
         {toolbarConfig.line2.photoTools && backgroundImages.length > 0 && (
           <ToolbarGroupWrapper groupId="grp_photo" groupName="Photos" groupColor="#EC4899" lineIndex={1}>
-            {/* Toggle afficher/masquer - toujours visible */}
             <Button
               variant={showBackgroundImage ? "default" : "outline"}
               size="sm"
@@ -14427,215 +16186,316 @@ export function CADGabaritCanvas({
               {showBackgroundImage ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
             </Button>
 
-            {/* Menu déroulant avec tous les outils photos */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 px-2 relative">
-                  <Image className="h-4 w-4 mr-1" />
-                  <span className="text-xs">Outils</span>
-                  <ChevronDown className="h-3 w-3 ml-1" />
-                  {selectedImageId && (
-                    <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />
-                  )}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
-                {/* Opacité */}
-                <div className="px-2 py-2">
-                  <label className="text-xs text-muted-foreground mb-1 block">
-                    Opacité: {Math.round(imageOpacity * 100)}%
-                  </label>
-                  <input
-                    type="range"
-                    min="0.1"
-                    max="1"
-                    step="0.1"
-                    value={imageOpacity}
-                    onChange={(e) => {
-                      const newOpacity = parseFloat(e.target.value);
-                      setImageOpacity(newOpacity);
-                      setBackgroundImages((prev) => prev.map((img) => ({ ...img, opacity: newOpacity })));
-                    }}
-                    className="w-full h-2"
-                  />
-                </div>
+            {/* Opacité */}
+            <div className="flex items-center gap-1 px-1">
+              <input
+                type="range"
+                min="0.1"
+                max="1"
+                step="0.1"
+                value={imageOpacity}
+                onChange={(e) => {
+                  const newOpacity = parseFloat(e.target.value);
+                  setImageOpacity(newOpacity);
+                  setBackgroundImages((prev) => prev.map((img) => ({ ...img, opacity: newOpacity })));
+                }}
+                className="w-12 h-1"
+                title={`Opacité: ${Math.round(imageOpacity * 100)}%`}
+              />
+            </div>
 
-                <DropdownMenuSeparator />
-
-                {/* Rotation (si image sélectionnée) */}
-                {(selectedImageId || selectedImageIds.size > 0) && (
-                  <>
-                    <div className="px-2 py-2">
-                      <label className="text-xs text-muted-foreground mb-1 block">
-                        Rotation {selectedImageIds.size > 0 && `(${selectedImageIds.size} photos)`}
-                      </label>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 w-7 p-0"
-                          onClick={() => updateSelectedImageRotation(getSelectedImageRotation() - 90)}
-                        >
-                          <RotateCcw className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 px-1"
-                          onClick={() => updateSelectedImageRotation(getSelectedImageRotation() - 1)}
-                        >
-                          <span className="text-xs">-1°</span>
-                        </Button>
-                        <input
-                          type="number"
-                          value={Math.round(getSelectedImageRotation() * 10) / 10}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value);
-                            if (!isNaN(val)) updateSelectedImageRotation(val);
-                          }}
-                          className="h-7 w-12 text-xs text-center border rounded"
-                          step="0.1"
-                        />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 px-1"
-                          onClick={() => updateSelectedImageRotation(getSelectedImageRotation() + 1)}
-                        >
-                          <span className="text-xs">+1°</span>
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 w-7 p-0"
-                          onClick={() => updateSelectedImageRotation(getSelectedImageRotation() + 90)}
-                        >
-                          <RotateCw className="h-3 w-3" />
-                        </Button>
-                        {getSelectedImageRotation() !== 0 && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-red-500"
-                            onClick={() => updateSelectedImageRotation(0)}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                    <DropdownMenuSeparator />
-                  </>
+            {/* Rotation de l'image sélectionnée */}
+            {/* MOD v80.10: Afficher aussi quand multi-sélection active */}
+            {(selectedImageId || selectedImageIds.size > 0) && (
+              <div className="flex items-center gap-0.5 px-1 border-l border-gray-200 ml-1 flex-shrink-0">
+                {/* MOD v80.10: Badge indicateur du nombre d'images multi-sélectionnées */}
+                {selectedImageIds.size > 0 && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="bg-green-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full mr-1">
+                          {selectedImageIds.size}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{selectedImageIds.size} photo(s) sélectionnée(s) - Ctrl+clic pour ajouter/retirer</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 )}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        onClick={() => updateSelectedImageRotation(getSelectedImageRotation() - 90)}
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>-90°</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
 
-                {/* Actions sur image sélectionnée */}
-                <DropdownMenuItem
-                  onClick={() => {
-                    if (!selectedImageId) {
-                      toast.error("Sélectionnez d'abord une photo");
-                      return;
-                    }
-                    setShowAdjustmentsDialog(true);
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        onClick={() => updateSelectedImageRotation(getSelectedImageRotation() - 1)}
+                      >
+                        <span className="text-xs">-1</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>-1°</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                <input
+                  type="number"
+                  value={Math.round(getSelectedImageRotation() * 10) / 10}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val)) updateSelectedImageRotation(val);
                   }}
-                  disabled={!selectedImageId}
-                >
-                  <Contrast className="h-4 w-4 mr-2" />
-                  Ajuster les contours
-                </DropdownMenuItem>
+                  className="h-7 text-xs text-center border rounded px-1"
+                  style={{ width: "52px" }}
+                  title="Rotation (degrés)"
+                  step="0.1"
+                />
 
-                <DropdownMenuItem
-                  onClick={() => {
-                    if (!selectedImageId) {
-                      toast.error("Sélectionnez d'abord une photo");
-                      return;
-                    }
-                    openCropDialog();
-                  }}
-                  disabled={!selectedImageId}
-                >
-                  <Crop className="h-4 w-4 mr-2" />
-                  Recadrer
-                </DropdownMenuItem>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        onClick={() => updateSelectedImageRotation(getSelectedImageRotation() + 1)}
+                      >
+                        <span className="text-xs">+1</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>+1°</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
 
-                <DropdownMenuItem
-                  onClick={() => {
-                    if (!showCalibrationPanel && backgroundImages.length > 0 && !selectedImageId) {
-                      toast.error("Sélectionnez d'abord une photo à calibrer");
-                      return;
-                    }
-                    setShowCalibrationPanel(!showCalibrationPanel);
-                  }}
-                >
-                  <Ruler className="h-4 w-4 mr-2" />
-                  Calibration
-                  {showCalibrationPanel && <Check className="h-4 w-4 ml-auto" />}
-                </DropdownMenuItem>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        onClick={() => updateSelectedImageRotation(getSelectedImageRotation() + 90)}
+                      >
+                        <RotateCw className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>+90°</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
 
-                <DropdownMenuSeparator />
+                {/* MODIFICATION v7.11: Bouton toujours présent pour éviter le décalage des icônes */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className={`h-7 w-7 p-0 ${getSelectedImageRotation() !== 0 ? "text-red-500" : "text-gray-300 cursor-default"}`}
+                        onClick={() => getSelectedImageRotation() !== 0 && updateSelectedImageRotation(0)}
+                        disabled={getSelectedImageRotation() === 0}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Reset rotation</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            )}
 
-                {/* Marqueurs */}
-                <DropdownMenuItem
-                  onClick={() => {
-                    if (markerMode === "addMarker") {
-                      setMarkerMode("idle");
-                    } else {
-                      setMarkerMode("addMarker");
-                      toast.info("Cliquez sur une photo pour ajouter un marqueur");
-                    }
-                  }}
-                >
-                  <MapPin className="h-4 w-4 mr-2" />
-                  Ajouter un marqueur
-                  {markerMode === "addMarker" && <Check className="h-4 w-4 ml-auto" />}
-                </DropdownMenuItem>
+            {/* Marqueur */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={markerMode === "addMarker" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      if (markerMode === "addMarker") {
+                        setMarkerMode("idle");
+                      } else {
+                        setMarkerMode("addMarker");
+                        toast.info("Cliquez sur une photo pour ajouter un marqueur");
+                      }
+                    }}
+                    className="h-9 w-9 p-0"
+                  >
+                    <MapPin className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Ajouter un marqueur</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
 
-                <DropdownMenuItem
-                  onClick={() => {
-                    if (markerMode === "linkMarker1" || markerMode === "linkMarker2") {
-                      setMarkerMode("idle");
-                      setPendingLink(null);
-                    } else {
-                      const imagesWithMarkers = backgroundImages.filter((img) => img.markers.length > 0);
-                      if (imagesWithMarkers.length < 2) {
-                        toast.error("Ajoutez au moins 1 marqueur sur 2 photos différentes");
+            {/* Lien */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={markerMode === "linkMarker1" || markerMode === "linkMarker2" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      if (markerMode === "linkMarker1" || markerMode === "linkMarker2") {
+                        setMarkerMode("idle");
+                        setPendingLink(null);
+                      } else {
+                        const imagesWithMarkers = backgroundImages.filter((img) => img.markers.length > 0);
+                        if (imagesWithMarkers.length < 2) {
+                          toast.error("Ajoutez au moins 1 marqueur sur 2 photos différentes");
+                          return;
+                        }
+                        setMarkerMode("linkMarker1");
+                        toast.info("Cliquez sur le premier marqueur");
+                      }
+                    }}
+                    className="h-9 w-9 p-0"
+                  >
+                    <Link2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Lier deux marqueurs</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {/* Calibrer */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={showCalibrationPanel ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      if (!showCalibrationPanel && backgroundImages.length > 0 && !selectedImageId) {
+                        toast.error("Sélectionnez d'abord une photo à calibrer");
                         return;
                       }
-                      setMarkerMode("linkMarker1");
-                      toast.info("Cliquez sur le premier marqueur");
-                    }
-                  }}
-                >
-                  <Link2 className="h-4 w-4 mr-2" />
-                  Lier deux marqueurs
-                  {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && <Check className="h-4 w-4 ml-auto" />}
-                </DropdownMenuItem>
+                      setShowCalibrationPanel(!showCalibrationPanel);
+                    }}
+                    className="h-9 w-9 p-0"
+                  >
+                    <Target className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Calibration</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
 
-                <DropdownMenuSeparator />
+            {/* Ajuster contours */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (!selectedImageId) {
+                        toast.error("Sélectionnez d'abord une photo");
+                        return;
+                      }
+                      setShowAdjustmentsDialog(true);
+                    }}
+                    disabled={!selectedImageId}
+                    className="h-9 w-9 p-0"
+                  >
+                    <Contrast className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Ajuster les contours</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
 
-                {/* Supprimer */}
-                <DropdownMenuItem
-                  onClick={() => {
-                    addToImageHistory(backgroundImages, markerLinks);
-                    setBackgroundImages([]);
-                    setMarkerLinks([]);
-                    setSelectedImageId(null);
-                    setSelectedMarkerId(null);
-                    toast.success("Toutes les photos supprimées");
-                  }}
-                  className="text-red-500 focus:text-red-500"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Supprimer toutes les photos
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* Recadrer l'image */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (!selectedImageId) {
+                        toast.error("Sélectionnez d'abord une photo");
+                        return;
+                      }
+                      openCropDialog();
+                    }}
+                    disabled={!selectedImageId}
+                    className="h-9 w-9 p-0"
+                  >
+                    <Crop className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Recadrer l'image</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {/* Supprimer toutes les photos */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      addToImageHistory(backgroundImages, markerLinks);
+                      setBackgroundImages([]);
+                      setMarkerLinks([]);
+                      setSelectedImageId(null);
+                      setSelectedMarkerId(null);
+                      toast.success("Toutes les photos supprimées");
+                    }}
+                    className="h-9 w-9 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Supprimer toutes les photos</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </ToolbarGroupWrapper>
         )}
 
         <DropZoneBetweenGroups targetIndex={4} lineIndex={1} />
 
-        {/* Séparateur visible entre Photos et Cotations */}
-        <div className="h-6 w-px bg-gray-300 mx-1" />
+        <Separator orientation="vertical" className="h-6" />
 
         {/* Cotations et contraintes */}
         <ToolbarGroupWrapper groupId="grp_dimension" groupName="Cotations" groupColor="#06B6D4" lineIndex={1}>
@@ -14716,9 +16576,9 @@ export function CADGabaritCanvas({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 px-1.5">
-                <Link className="h-4 w-4" />
-                <ChevronDown className="h-3 w-3 ml-0.5" />
+              <Button variant="outline" size="sm" className="h-9 px-2">
+                <Link className="h-4 w-4 mr-1" />
+                <span className="text-xs">Contraintes</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
@@ -14875,37 +16735,279 @@ export function CADGabaritCanvas({
         <DropZoneBetweenGroups targetIndex={5} lineIndex={1} />
 
         <Separator orientation="vertical" className="h-6" />
-        <ToolbarGroupWrapper groupId="grp_view" groupName="Vue" groupColor="#8B5CF6" lineIndex={1}>
-          <div className="flex items-center gap-0">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setViewport((v) => ({ ...v, scale: v.scale * 0.8 }))}
-              className="h-7 w-7 p-0"
-            >
-              <ZoomOut className="h-3.5 w-3.5" />
-            </Button>
-            <span className="text-xs font-mono w-12 text-center" title={`1mm = ${viewport.scale.toFixed(1)}px`}>
-              {Math.round(viewport.scale * 100)}%
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setViewport((v) => ({ ...v, scale: v.scale * 1.2 }))}
-              className="h-7 w-7 p-0"
-            >
-              <ZoomIn className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="sm" onClick={fitToContent} title="Ajuster au contenu" className="h-7 w-7 p-0">
-              <Target className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="ghost" size="sm" onClick={resetView} title="Reset vue" className="h-7 w-7 p-0">
-              <RotateCcw className="h-3.5 w-3.5" />
-            </Button>
-          </div>
+
+        {/* Modifications: Fillet et Chamfer */}
+        <ToolbarGroupWrapper groupId="grp_modify" groupName="Modifications" groupColor="#EF4444" lineIndex={1}>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 px-2" onClick={openFilletDialog}>
+                  {/* Icône congé: angle arrondi */}
+                  <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
+                  </svg>
+                  <span className="text-xs">R{filletRadius}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Congé - Sélectionnez 2 lignes, 1 coin, ou une figure entière</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Réglage rayon congé */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-9 w-5 p-0">
+                <Settings className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <div className="p-2">
+                <Label className="text-xs">Rayon congé (mm)</Label>
+                <Input
+                  type="number"
+                  value={filletRadius}
+                  onChange={(e) => setFilletRadius(Math.max(1, parseFloat(e.target.value) || 1))}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  className="w-20 h-7 mt-1"
+                  min="1"
+                  step="1"
+                />
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Separator orientation="vertical" className="h-6 mx-1" />
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 px-2" onClick={openChamferDialog}>
+                  {/* Icône chanfrein: angle coupé */}
+                  <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M4 20 L4 10 L10 4 L20 4" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <span className="text-xs">{chamferDistance}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Chanfrein - Sélectionnez 2 lignes, 1 coin, ou une figure entière</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Réglage distance chanfrein */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-9 w-5 p-0">
+                <Settings className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <div className="p-2">
+                <Label className="text-xs">Distance chanfrein (mm)</Label>
+                <Input
+                  type="number"
+                  value={chamferDistance}
+                  onChange={(e) => setChamferDistance(Math.max(1, parseFloat(e.target.value) || 1))}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  className="w-20 h-7 mt-1"
+                  min="1"
+                  step="1"
+                />
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Separator orientation="vertical" className="h-6 mx-1" />
+
+          {/* Offset */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={offsetDialog?.open ? "default" : "outline"}
+                  size="sm"
+                  className="h-9 px-2"
+                  onClick={openOffsetDialog}
+                >
+                  {/* Icône offset: deux rectangles décalés */}
+                  <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="12" height="12" rx="1" />
+                    <rect x="9" y="9" width="12" height="12" rx="1" strokeDasharray="3 2" />
+                  </svg>
+                  <span className="text-xs">{offsetDistance}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Offset - Copie parallèle à distance</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <Separator orientation="vertical" className="h-6 mx-1" />
+
+          {/* Épaisseur de trait */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-9 px-2 gap-1">
+                        <svg
+                          className="h-4 w-4"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={defaultStrokeWidth * 1.5}
+                        >
+                          <line x1="4" y1="12" x2="20" y2="12" />
+                        </svg>
+                        <span className="text-xs">{defaultStrokeWidth}</span>
+                        <ChevronDown className="h-3 w-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <div className="p-1">
+                        <div className="text-xs text-gray-500 px-2 py-1 mb-1">Épaisseur du trait</div>
+                        {STROKE_WIDTH_OPTIONS.map((width) => (
+                          <DropdownMenuItem
+                            key={width}
+                            onClick={() => {
+                              console.log("[CAD] StrokeWidth dropdown clicked:", width);
+                              setDefaultStrokeWidth(width);
+                              defaultStrokeWidthRef.current = width; // Mettre à jour la ref immédiatement
+                              console.log("[CAD] defaultStrokeWidthRef.current now:", defaultStrokeWidthRef.current);
+                              // Si des figures sont sélectionnées, les mettre à jour
+                              if (selectedEntities.size > 0) {
+                                console.log("[CAD] Updating selected entities:", Array.from(selectedEntities));
+                                const currentSketch = sketchRef.current;
+                                const newGeometries = new Map(currentSketch.geometries);
+                                selectedEntities.forEach((id) => {
+                                  const geo = newGeometries.get(id);
+                                  // Ne pas appliquer strokeWidth aux textes
+                                  if (geo && geo.type !== "text") {
+                                    console.log("[CAD] Updating geo", id.slice(0, 8), "strokeWidth to", width);
+                                    newGeometries.set(id, { ...geo, strokeWidth: width } as typeof geo);
+                                  }
+                                });
+                                const newSketch = { ...currentSketch, geometries: newGeometries };
+                                setSketch(newSketch);
+                                addToHistory(newSketch, `Épaisseur → ${width}px`);
+                                // DEBUG: Vérifier les strokeWidth après mise à jour
+                                console.log("[CAD] After update - checking strokeWidths:");
+                                newGeometries.forEach((geo, id) => {
+                                  if ((geo as any).strokeWidth !== undefined) {
+                                    console.log(
+                                      `  Geo ${id.slice(0, 8)} type=${geo.type} strokeWidth=${(geo as any).strokeWidth}`,
+                                    );
+                                  }
+                                });
+                              }
+                            }}
+                            className="flex items-center gap-2"
+                          >
+                            <svg className="w-8 h-4" viewBox="0 0 32 16">
+                              <line x1="2" y1="8" x2="30" y2="8" stroke="currentColor" strokeWidth={width * 2} />
+                            </svg>
+                            <span className={`text-sm ${defaultStrokeWidth === width ? "font-bold" : ""}`}>
+                              {width}px
+                            </span>
+                            {defaultStrokeWidth === width && <Check className="h-3 w-3 ml-auto" />}
+                          </DropdownMenuItem>
+                        ))}
+                      </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>
+                  Épaisseur du trait {selectedEntities.size > 0 ? "(modifie la sélection)" : "(pour nouvelles figures)"}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Couleur du trait */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="relative">
+                  <input
+                    type="color"
+                    value={defaultStrokeColor}
+                    onChange={(e) => {
+                      const newColor = e.target.value;
+                      setDefaultStrokeColor(newColor);
+                      // Si des figures sont sélectionnées, les mettre à jour
+                      if (selectedEntities.size > 0) {
+                        const currentSketch = sketchRef.current;
+                        const newGeometries = new Map(currentSketch.geometries);
+                        selectedEntities.forEach((id) => {
+                          const geo = newGeometries.get(id);
+                          if (geo) {
+                            // Pour les textes, utiliser 'color', pour les autres 'strokeColor'
+                            if (geo.type === "text") {
+                              newGeometries.set(id, { ...geo, color: newColor } as typeof geo);
+                            } else {
+                              newGeometries.set(id, { ...geo, strokeColor: newColor } as typeof geo);
+                            }
+                          }
+                        });
+                        const newSketch = { ...currentSketch, geometries: newGeometries };
+                        setSketch(newSketch);
+                        addToHistory(newSketch, `Couleur → ${newColor}`);
+                      }
+                    }}
+                    className="w-9 h-9 p-1 rounded border border-gray-300 cursor-pointer"
+                    title="Couleur du trait"
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>
+                  Couleur du trait {selectedEntities.size > 0 ? "(modifie la sélection)" : "(pour nouvelles figures)"}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </ToolbarGroupWrapper>
 
         <DropZoneBetweenGroups targetIndex={6} lineIndex={1} />
+
+        <Separator orientation="vertical" className="h-6" />
+        <ToolbarGroupWrapper groupId="grp_view" groupName="Vue" groupColor="#8B5CF6" lineIndex={1}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setViewport((v) => ({ ...v, scale: v.scale * 0.8 }))}
+            className="h-8 w-8 p-0"
+          >
+            <ZoomOut className="h-4 w-4" />
+          </Button>
+          <span className="text-xs font-mono w-14 text-center" title={`1mm = ${viewport.scale.toFixed(1)}px`}>
+            {viewport.scale >= 10 ? `${Math.round(viewport.scale)}x` : `${viewport.scale.toFixed(1)}x`}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setViewport((v) => ({ ...v, scale: v.scale * 1.2 }))}
+            className="h-8 w-8 p-0"
+          >
+            <ZoomIn className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={fitToContent} title="Ajuster au contenu" className="h-8 w-8 p-0">
+            <Scan className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={resetView} title="Reset vue">
+            <RotateCcw className="h-4 w-4" />
+          </Button>
+        </ToolbarGroupWrapper>
+
+        <DropZoneBetweenGroups targetIndex={7} lineIndex={1} />
 
         <Separator orientation="vertical" className="h-6" />
 
@@ -15072,7 +17174,155 @@ export function CADGabaritCanvas({
           </DropdownMenu>
         </ToolbarGroupWrapper>
 
-        <DropZoneBetweenGroups targetIndex={7} lineIndex={1} />
+        <DropZoneBetweenGroups targetIndex={8} lineIndex={1} />
+
+        <Separator orientation="vertical" className="h-6" />
+
+        {/* Toggles */}
+        <ToolbarGroupWrapper groupId="grp_display" groupName="Affichage" groupColor="#06B6D4" lineIndex={1}>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={showGrid ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowGrid(!showGrid)}
+                  className="h-8 px-2"
+                >
+                  <Grid3X3 className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Grille</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Grille A4 pour export panoramique */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={showA4Grid ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowA4Grid(!showA4Grid)}
+                  className={`h-8 px-2 ${showA4Grid ? "bg-blue-500 hover:bg-blue-600" : ""}`}
+                >
+                  <FileDown className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Grille A4 (export PDF)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={snapEnabled ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSnapEnabled(!snapEnabled)}
+                  className="h-8 px-2"
+                >
+                  <Magnet className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Snap (aimantation)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Toggle snap calque actif uniquement */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={snapToActiveLayerOnly ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSnapToActiveLayerOnly(!snapToActiveLayerOnly)}
+                  className={`h-8 px-2 ${snapToActiveLayerOnly ? "bg-purple-500 hover:bg-purple-600" : ""}`}
+                >
+                  <Layers className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Snap calque actif uniquement</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <Separator orientation="vertical" className="h-6 mx-1" />
+
+          {/* Toggle mode construction */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={isConstructionMode ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setIsConstructionMode(!isConstructionMode)}
+                  className={`h-8 px-2 ${isConstructionMode ? "bg-amber-500 hover:bg-amber-600" : ""}`}
+                >
+                  <svg
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeDasharray="4 2"
+                  >
+                    <line x1="4" y1="20" x2="20" y2="4" />
+                  </svg>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Mode construction (lignes pointillées)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Toggle afficher/masquer construction */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={showConstruction ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowConstruction(!showConstruction)}
+                  className="h-8 px-2"
+                >
+                  {showConstruction ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{showConstruction ? "Masquer" : "Afficher"} lignes construction</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Slider opacité surbrillance */}
+          <div className="flex items-center gap-1 ml-2 px-2 py-1 bg-blue-50 rounded">
+            <span className="text-xs text-blue-600" title="Surbrillance formes fermées">
+              🔹
+            </span>
+            <input
+              type="range"
+              min="0"
+              max="0.3"
+              step="0.02"
+              value={highlightOpacity}
+              onChange={(e) => setHighlightOpacity(parseFloat(e.target.value))}
+              className="w-14 h-1 accent-blue-500"
+              title={`Opacité surbrillance: ${Math.round(highlightOpacity * 100)}%`}
+            />
+            <span className="text-xs text-blue-500 w-6">{Math.round(highlightOpacity * 100)}%</span>
+          </div>
+        </ToolbarGroupWrapper>
+
+        <DropZoneBetweenGroups targetIndex={9} lineIndex={1} />
       </div>
 
       {/* Zone principale avec Canvas + Panneau latéral */}
@@ -15298,6 +17548,18 @@ export function CADGabaritCanvas({
                   }
                 }
 
+                // FIX #90: D'abord chercher si on clique sur une image
+                const clickedImage = findImageAtPosition(worldPos.x, worldPos.y);
+                if (clickedImage) {
+                  setContextMenu({
+                    x: e.clientX,
+                    y: e.clientY,
+                    entityId: clickedImage.id,
+                    entityType: "image",
+                  });
+                  return;
+                }
+
                 // Sinon chercher une entité géométrique
                 const entityId = findEntityAtPosition(worldPos.x, worldPos.y);
                 if (entityId) {
@@ -15410,397 +17672,104 @@ export function CADGabaritCanvas({
               </div>
             )}
 
-            {/* v7.24: Inputs de mesure rectangle positionnés sur le canvas */}
-            {/* Input largeur (en haut) */}
-            {liveInputMeasure.active && tempGeometry?.type === "rectangle" && (
-              <>
-                <div
-                  className="absolute z-50 pointer-events-auto"
-                  style={{
-                    left: `${liveInputMeasure.screenPos.x}px`,
-                    top: `${liveInputMeasure.screenPos.y}px`,
-                    transform: "translate(-50%, -50%)",
-                  }}
-                >
-                  <div className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
-                    liveInputMeasure.isEditing
-                      ? "bg-blue-100 border-2 border-blue-500 shadow-md"
-                      : "bg-blue-50/90 border border-blue-300"
-                  }`}>
-                    {liveInputMeasure.isEditing && liveInputMeasure.userValue !== "" && (
-                      <span className="text-xs text-blue-600">🔒</span>
-                    )}
-                    <input
-                      ref={liveInputRef}
-                      type="text"
-                      inputMode="decimal"
-                      value={liveInputMeasure.isEditing ? liveInputMeasure.userValue : liveInputMeasure.liveValue.toFixed(1)}
-                      placeholder={liveInputMeasure.liveValue.toFixed(1)}
-                      onChange={(e) => {
-                        let rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
-                        // Conversion auto des unités
-                        const match = e.target.value.match(/^([0-9.,]+)\s*(cm|m)$/i);
-                        if (match) {
-                          const num = parseFloat(match[1].replace(",", ".")) || 0;
-                          if (match[2].toLowerCase() === "cm") rawVal = (num * 10).toString();
-                          else if (match[2].toLowerCase() === "m") rawVal = (num * 1000).toString();
-                        }
-                        setLiveInputMeasure((prev) => ({ ...prev, userValue: rawVal, isEditing: true }));
-                        // Mise à jour en temps réel du rectangle
-                        const widthMm = parseFloat(rawVal) || 0;
-                        const heightMm = liveInputMeasure.userValue2 !== ""
-                          ? parseFloat(liveInputMeasure.userValue2) || 0
-                          : liveInputMeasure.liveValue2 || 0;
-                        if (widthMm > 0 && liveInputMeasure.rectP1) {
-                          const scaleFactor = sketchRef.current.scaleFactor || 1;
-                          const widthPx = widthMm * scaleFactor;
-                          const heightPx = heightMm * scaleFactor;
-                          const p1 = liveInputMeasure.rectP1;
-                          const isCenter = (tempGeometry as any)?.mode === "center";
-                          const newCursor = isCenter
-                            ? { x: p1.x + widthPx / 2, y: p1.y + heightPx / 2 }
-                            : { x: p1.x + widthPx, y: p1.y + heightPx };
-                          setTempGeometry((prev: any) => prev ? { ...prev, cursor: newCursor } : prev);
-                        }
-                      }}
-                      onFocus={() => {
-                        // Passer en mode édition avec champ vide pour que la première frappe commence fresh
-                        setLiveInputMeasure((prev) => ({ ...prev, userValue: "", isEditing: true }));
-                      }}
-                      onBlur={() => {
-                        // Si vide, revenir au mode live
-                        if (liveInputMeasure.userValue === "") {
-                          setLiveInputMeasure((prev) => ({ ...prev, isEditing: false }));
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Tab") {
-                          e.preventDefault();
-                          liveInputRef2.current?.focus();
-                        } else if (e.key === "Enter") {
-                          e.preventDefault();
-                          const wVal = liveInputMeasure.userValue || liveInputMeasure.liveValue.toFixed(1);
-                          const hVal = liveInputMeasure.userValue2 || (liveInputMeasure.liveValue2?.toFixed(1) || "0");
-                          createRectangleFromInputs(undefined, { width: wVal, height: hVal });
-                        } else if (e.key === "Escape") {
-                          e.preventDefault();
-                          setTempPoints([]);
-                          setTempGeometry(null);
-                          setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", userValue2: "", isEditing: false, isEditing2: false }));
-                        }
-                      }}
-                      className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none placeholder:text-blue-400"
-                      style={{ caretColor: "#2563eb" }}
-                    />
-                    <span className="text-sm text-blue-600 font-bold">mm</span>
-                  </div>
-                </div>
-                {/* Input hauteur (à gauche) */}
-                <div
-                  className="absolute z-50 pointer-events-auto"
-                  style={{
-                    left: `${liveInputMeasure.screenPos2?.x || 0}px`,
-                    top: `${liveInputMeasure.screenPos2?.y || 0}px`,
-                    transform: "translate(-50%, -50%)",
-                  }}
-                >
-                  <div className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
-                    liveInputMeasure.isEditing2
-                      ? "bg-blue-100 border-2 border-blue-500 shadow-md"
-                      : "bg-blue-50/90 border border-blue-300"
-                  }`}>
-                    {liveInputMeasure.isEditing2 && liveInputMeasure.userValue2 !== "" && (
-                      <span className="text-xs text-blue-600">🔒</span>
-                    )}
-                    <input
-                      ref={liveInputRef2}
-                      type="text"
-                      inputMode="decimal"
-                      value={liveInputMeasure.isEditing2 ? liveInputMeasure.userValue2 : (liveInputMeasure.liveValue2?.toFixed(1) || "0")}
-                      placeholder={liveInputMeasure.liveValue2?.toFixed(1) || "0"}
-                      onChange={(e) => {
-                        let rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
-                        // Conversion auto des unités
-                        const match = e.target.value.match(/^([0-9.,]+)\s*(cm|m)$/i);
-                        if (match) {
-                          const num = parseFloat(match[1].replace(",", ".")) || 0;
-                          if (match[2].toLowerCase() === "cm") rawVal = (num * 10).toString();
-                          else if (match[2].toLowerCase() === "m") rawVal = (num * 1000).toString();
-                        }
-                        setLiveInputMeasure((prev) => ({ ...prev, userValue2: rawVal, isEditing2: true }));
-                        // Mise à jour en temps réel du rectangle
-                        const heightMm = parseFloat(rawVal) || 0;
-                        const widthMm = liveInputMeasure.userValue !== ""
-                          ? parseFloat(liveInputMeasure.userValue) || 0
-                          : liveInputMeasure.liveValue || 0;
-                        if (heightMm > 0 && liveInputMeasure.rectP1) {
-                          const scaleFactor = sketchRef.current.scaleFactor || 1;
-                          const widthPx = widthMm * scaleFactor;
-                          const heightPx = heightMm * scaleFactor;
-                          const p1 = liveInputMeasure.rectP1;
-                          const isCenter = (tempGeometry as any)?.mode === "center";
-                          const newCursor = isCenter
-                            ? { x: p1.x + widthPx / 2, y: p1.y + heightPx / 2 }
-                            : { x: p1.x + widthPx, y: p1.y + heightPx };
-                          setTempGeometry((prev: any) => prev ? { ...prev, cursor: newCursor } : prev);
-                        }
-                      }}
-                      onFocus={() => {
-                        // Passer en mode édition avec champ vide pour que la première frappe commence fresh
-                        setLiveInputMeasure((prev) => ({ ...prev, userValue2: "", isEditing2: true }));
-                      }}
-                      onBlur={() => {
-                        // Si vide, revenir au mode live
-                        if (liveInputMeasure.userValue2 === "") {
-                          setLiveInputMeasure((prev) => ({ ...prev, isEditing2: false }));
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Tab") {
-                          e.preventDefault();
-                          liveInputRef.current?.focus();
-                        } else if (e.key === "Enter") {
-                          e.preventDefault();
-                          const wVal = liveInputMeasure.userValue || liveInputMeasure.liveValue.toFixed(1);
-                          const hVal = liveInputMeasure.userValue2 || (liveInputMeasure.liveValue2?.toFixed(1) || "0");
-                          createRectangleFromInputs(undefined, { width: wVal, height: hVal });
-                        } else if (e.key === "Escape") {
-                          e.preventDefault();
-                          setTempPoints([]);
-                          setTempGeometry(null);
-                          setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", userValue2: "", isEditing: false, isEditing2: false }));
-                        }
-                      }}
-                      className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none placeholder:text-blue-400"
-                      style={{ caretColor: "#2563eb" }}
-                    />
-                    <span className="text-sm text-blue-600 font-bold">mm</span>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* v7.24: Input de mesure positionné directement sur le canvas */}
-            {liveInputMeasure.active && (tempGeometry?.type === "line" || tempGeometry?.type === "circle") && (
-              <div
-                className="absolute z-50 pointer-events-auto"
-                style={{
-                  left: `${liveInputMeasure.screenPos.x}px`,
-                  top: `${liveInputMeasure.screenPos.y}px`,
-                  transform: "translate(-50%, -50%)",
-                }}
-              >
-                <div className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
-                  liveInputMeasure.isEditing
-                    ? "bg-blue-100 border-2 border-blue-500 shadow-md"
-                    : "bg-blue-50/90 border border-blue-300"
-                }`}>
-                  {liveInputMeasure.isEditing && liveInputMeasure.userValue !== "" && (
-                    <span className="text-xs text-blue-600">🔒</span>
-                  )}
-                  {liveInputMeasure.type === "circle" && <span className="text-sm text-blue-600 font-bold">R</span>}
+            {/* Panneau de saisie rectangle FIXE (en bas du canvas) */}
+            {rectInputs.active && tempGeometry?.type === "rectangle" && (
+              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-3 bg-white/95 backdrop-blur-sm border border-gray-300 rounded-lg shadow-lg px-4 py-2">
+                <span className="text-xs text-gray-500 font-medium">Rectangle:</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-gray-500">L</span>
                   <input
-                    ref={liveInputRef}
+                    ref={widthInputRef}
                     type="text"
                     inputMode="decimal"
-                    value={liveInputMeasure.isEditing ? liveInputMeasure.userValue : liveInputMeasure.liveValue.toFixed(1)}
-                    placeholder={liveInputMeasure.liveValue.toFixed(1)}
-                    onChange={(e) => {
-                      let rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
-                      // Conversion auto des unités
-                      const match = e.target.value.match(/^([0-9.,]+)\s*(cm|m)$/i);
-                      if (match) {
-                        const num = parseFloat(match[1].replace(",", ".")) || 0;
-                        if (match[2].toLowerCase() === "cm") rawVal = (num * 10).toString();
-                        else if (match[2].toLowerCase() === "m") rawVal = (num * 1000).toString();
-                      }
-                      setLiveInputMeasure((prev) => ({ ...prev, userValue: rawVal, isEditing: true }));
-                      // Mise à jour en temps réel de la figure
-                      const valueMm = parseFloat(rawVal) || 0;
-                      if (valueMm > 0) {
-                        const scaleFactor = sketchRef.current.scaleFactor || 1;
-                        const valuePx = valueMm * scaleFactor;
-                        if (liveInputMeasure.type === "line" && liveInputMeasure.startPoint && tempGeometry?.cursor) {
-                          // Calculer le nouveau point de fin sur la même direction
-                          const startPoint = liveInputMeasure.startPoint;
-                          const currentCursor = tempGeometry.cursor;
-                          const dx = currentCursor.x - startPoint.x;
-                          const dy = currentCursor.y - startPoint.y;
-                          const currentLen = Math.sqrt(dx * dx + dy * dy);
-                          if (currentLen > 0) {
-                            const newCursor = {
-                              x: startPoint.x + (dx / currentLen) * valuePx,
-                              y: startPoint.y + (dy / currentLen) * valuePx,
-                            };
-                            setTempGeometry((prev: any) => prev ? { ...prev, cursor: newCursor } : prev);
-                          }
-                        } else if (liveInputMeasure.type === "circle") {
-                          // Mettre à jour le rayon du cercle
-                          setTempGeometry((prev: any) => prev ? { ...prev, radius: valuePx } : prev);
-                        }
-                      }
-                    }}
-                    onFocus={() => {
-                      // Passer en mode édition avec champ vide pour que la première frappe commence fresh
-                      setLiveInputMeasure((prev) => ({ ...prev, userValue: "", isEditing: true }));
-                    }}
-                    onBlur={() => {
-                      // Si vide, revenir au mode live
-                      if (liveInputMeasure.userValue === "") {
-                        setLiveInputMeasure((prev) => ({ ...prev, isEditing: false }));
-                      }
+                    defaultValue=""
+                    onFocus={(e) => {
+                      setRectInputs((prev) => ({ ...prev, activeField: "width" }));
+                      e.target.select();
                     }}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") {
+                      if (e.key === "Tab") {
                         e.preventDefault();
-                        const inputValue = liveInputMeasure.userValue !== ""
-                          ? parseFloat(liveInputMeasure.userValue)
-                          : liveInputMeasure.liveValue;
-                        if (liveInputMeasure.type === "line" && liveInputMeasure.startPoint && tempGeometry?.cursor) {
-                          createLineWithLength(liveInputMeasure.startPoint, tempGeometry.cursor, inputValue);
-                        } else if (liveInputMeasure.type === "circle" && liveInputMeasure.centerPoint) {
-                          createCircleWithRadius(liveInputMeasure.centerPoint, inputValue);
-                        }
+                        setRectInputs((prev) => ({ ...prev, activeField: "height" }));
+                        heightInputRef.current?.focus();
+                        heightInputRef.current?.select();
+                      } else if (e.key === "Enter") {
+                        e.preventDefault();
+                        const wVal = widthInputRef.current?.value || "";
+                        const hVal = heightInputRef.current?.value || "";
+                        // Passer les valeurs directement pour éviter le problème de timing
+                        createRectangleFromInputs(undefined, { width: wVal, height: hVal });
                       } else if (e.key === "Escape") {
                         e.preventDefault();
                         setTempPoints([]);
                         setTempGeometry(null);
-                        setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", isEditing: false }));
+                        setRectInputs({
+                          active: false,
+                          widthValue: "",
+                          heightValue: "",
+                          activeField: "width",
+                          widthInputPos: { x: 0, y: 0 },
+                          heightInputPos: { x: 0, y: 0 },
+                        });
                       }
                     }}
-                    className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none placeholder:text-blue-400"
-                    style={{ caretColor: "#2563eb" }}
+                    className={`w-20 h-7 px-2 text-center text-sm font-medium rounded border-2 outline-none ${
+                      rectInputs.activeField === "width"
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-gray-300 bg-white text-gray-700"
+                    }`}
+                    placeholder="largeur"
                   />
-                  <span className="text-sm text-blue-600 font-bold">mm</span>
+                  <span className="text-xs text-gray-500">mm</span>
                 </div>
-              </div>
-            )}
-
-            {/* v7.24: Input inline pour édition de dimension existante (double-clic) */}
-            {editingDimension && (
-              <div
-                className="absolute z-50 pointer-events-auto"
-                style={{
-                  left: `${editingDimension.screenPos.x}px`,
-                  top: `${editingDimension.screenPos.y}px`,
-                  transform: "translate(-50%, -50%)",
-                }}
-              >
-                <div className="flex items-center gap-0.5 bg-amber-100 border-2 border-amber-500 rounded px-1.5 py-0.5 shadow-lg">
-                  <span className="text-xs text-amber-600">✏️</span>
-                  {editingDimension.type === "circle" && <span className="text-sm text-amber-700 font-bold">R</span>}
+                <span className="text-gray-400">×</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-gray-500">H</span>
                   <input
-                    autoFocus
+                    ref={heightInputRef}
                     type="text"
                     inputMode="decimal"
-                    defaultValue={editingDimension.currentValue.toFixed(1)}
-                    onFocus={(e) => e.target.select()}
+                    defaultValue=""
+                    onFocus={(e) => {
+                      setRectInputs((prev) => ({ ...prev, activeField: "height" }));
+                      e.target.select();
+                    }}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") {
+                      if (e.key === "Tab") {
                         e.preventDefault();
-                        const newValue = parseFloat((e.target as HTMLInputElement).value.replace(",", ".")) || 0;
-                        if (newValue > 0) {
-                          const scaleFactor = sketchRef.current.scaleFactor || 1;
-                          const newValuePx = newValue * scaleFactor;
-                          const geo = sketchRef.current.geometries.get(editingDimension.entityId);
-                          if (geo) {
-                            const newSketch = { ...sketchRef.current };
-                            newSketch.points = new Map(sketchRef.current.points);
-                            newSketch.geometries = new Map(sketchRef.current.geometries);
-
-                            if (editingDimension.type === "line" && geo.type === "line") {
-                              const line = geo as Line;
-                              const p1 = newSketch.points.get(line.p1);
-                              const p2 = newSketch.points.get(line.p2);
-                              if (p1 && p2) {
-                                const dx = p2.x - p1.x;
-                                const dy = p2.y - p1.y;
-                                const currentLen = Math.sqrt(dx * dx + dy * dy);
-                                const delta = newValuePx - currentLen;
-
-                                // Trouver les lignes connectées à CE segment uniquement
-                                const connectedToP1 = Array.from(newSketch.geometries.values()).filter(
-                                  (g) => g.type === "line" && g.id !== line.id && ((g as Line).p1 === line.p1 || (g as Line).p2 === line.p1)
-                                ) as Line[];
-                                const connectedToP2 = Array.from(newSketch.geometries.values()).filter(
-                                  (g) => g.type === "line" && g.id !== line.id && ((g as Line).p1 === line.p2 || (g as Line).p2 === line.p2)
-                                ) as Line[];
-
-                                // Vérifier si ça forme un rectangle (lignes perpendiculaires aux deux extrémités)
-                                const isRectangle = connectedToP1.length >= 1 && connectedToP2.length >= 1;
-
-                                if (isRectangle && currentLen > 0) {
-                                  // Rectangle : garder p1 fixe, déplacer p2 et les lignes connectées à p2
-                                  const moveDir = { x: dx / currentLen, y: dy / currentLen };
-
-                                  // Déplacer p2 dans la direction de la ligne (p1 reste fixe)
-                                  const newP2Pos = {
-                                    ...p2,
-                                    x: p2.x + moveDir.x * delta,
-                                    y: p2.y + moveDir.y * delta,
-                                  };
-                                  newSketch.points.set(line.p2, newP2Pos);
-
-                                  // Déplacer les points connectés à p2 (les coins du rectangle côté p2)
-                                  // Ce sont les lignes perpendiculaires qui partent de p2
-                                  for (const connLine of connectedToP2) {
-                                    // Trouver l'autre point de cette ligne connectée
-                                    const otherPointId = connLine.p1 === line.p2 ? connLine.p2 : connLine.p1;
-                                    const otherPoint = newSketch.points.get(otherPointId);
-                                    if (otherPoint) {
-                                      const newOtherPoint = {
-                                        ...otherPoint,
-                                        x: otherPoint.x + moveDir.x * delta,
-                                        y: otherPoint.y + moveDir.y * delta,
-                                      };
-                                      newSketch.points.set(otherPointId, newOtherPoint);
-                                    }
-                                  }
-                                } else if (currentLen > 0) {
-                                  // Ligne simple : garder p1 fixe, déplacer p2
-                                  const newP2 = {
-                                    ...p2,
-                                    x: p1.x + (dx / currentLen) * newValuePx,
-                                    y: p1.y + (dy / currentLen) * newValuePx,
-                                  };
-                                  newSketch.points.set(line.p2, newP2);
-                                }
-                              }
-                            } else if (editingDimension.type === "circle" && geo.type === "circle") {
-                              const circle = geo as CircleType;
-                              const newCircle = { ...circle, radius: newValuePx };
-                              newSketch.geometries.set(circle.id, newCircle);
-                            }
-
-                            // v7.25: Mettre à jour la valeur de la dimension (cotation verte)
-                            if (editingDimension.dimensionId) {
-                              newSketch.dimensions = new Map(sketchRef.current.dimensions);
-                              const dim = newSketch.dimensions.get(editingDimension.dimensionId);
-                              if (dim) {
-                                newSketch.dimensions.set(editingDimension.dimensionId, {
-                                  ...dim,
-                                  value: newValue,
-                                });
-                              }
-                            }
-
-                            setSketch(newSketch);
-                            addToHistory(newSketch, `Dimension modifiée: ${newValue.toFixed(1)}mm`);
-                            toast.success(`Dimension modifiée: ${newValue.toFixed(1)} mm`);
-                          }
-                        }
-                        setEditingDimension(null);
+                        setRectInputs((prev) => ({ ...prev, activeField: "width" }));
+                        widthInputRef.current?.focus();
+                        widthInputRef.current?.select();
+                      } else if (e.key === "Enter") {
+                        e.preventDefault();
+                        const wVal = widthInputRef.current?.value || "";
+                        const hVal = heightInputRef.current?.value || "";
+                        // Passer les valeurs directement pour éviter le problème de timing
+                        createRectangleFromInputs(undefined, { width: wVal, height: hVal });
                       } else if (e.key === "Escape") {
                         e.preventDefault();
-                        setEditingDimension(null);
+                        setTempPoints([]);
+                        setTempGeometry(null);
+                        setRectInputs({
+                          active: false,
+                          widthValue: "",
+                          heightValue: "",
+                          activeField: "width",
+                          widthInputPos: { x: 0, y: 0 },
+                          heightInputPos: { x: 0, y: 0 },
+                        });
                       }
                     }}
-                    onBlur={() => setEditingDimension(null)}
-                    className="w-14 h-5 px-1 text-center text-sm font-bold border-0 bg-transparent text-amber-700 outline-none"
-                    style={{ caretColor: "#d97706" }}
+                    className={`w-20 h-7 px-2 text-center text-sm font-medium rounded border-2 outline-none ${
+                      rectInputs.activeField === "height"
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-gray-300 bg-white text-gray-700"
+                    }`}
+                    placeholder="hauteur"
                   />
-                  <span className="text-sm text-amber-700 font-bold">mm</span>
+                  <span className="text-xs text-gray-500">mm</span>
                 </div>
+                <span className="text-xs text-gray-400 ml-2">Tab: changer • Entrée: valider</span>
               </div>
             )}
 
@@ -18814,17 +20783,6 @@ export function CADGabaritCanvas({
                     Modifier la longueur
                   </button>
                   <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => {
-                      setSelectedEntities(new Set([contextMenu.entityId]));
-                      duplicateSelectedEntities();
-                      setContextMenu(null);
-                    }}
-                  >
-                    <Plus className="h-4 w-4 text-green-500" />
-                    Dupliquer
-                  </button>
-                  <button
                     className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
                     onClick={() => {
                       setSelectedEntities(new Set([contextMenu.entityId]));
@@ -18838,71 +20796,7 @@ export function CADGabaritCanvas({
                 </>
               );
             })()}
-          {contextMenu.entityType === "circle" &&
-            (() => {
-              const circle = sketch.geometries.get(contextMenu.entityId) as CircleType | undefined;
-              const center = circle ? sketch.points.get(circle.center) : undefined;
-              const radiusMm = circle ? circle.radius / sketch.scaleFactor : 0;
-              return (
-                <>
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => {
-                      setSelectedEntities(new Set([contextMenu.entityId]));
-                      setContextMenu(null);
-                    }}
-                  >
-                    <MousePointer className="h-4 w-4" />
-                    Sélectionner
-                  </button>
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => {
-                      if (center) {
-                        const screenPos = worldToScreen(center.x, center.y);
-                        setEditingDimension({
-                          dimensionId: "",
-                          entityId: contextMenu.entityId,
-                          type: "circle",
-                          currentValue: radiusMm,
-                          screenPos: { x: screenPos.x + 30, y: screenPos.y },
-                        });
-                      }
-                      setContextMenu(null);
-                    }}
-                  >
-                    <Ruler className="h-4 w-4 text-blue-500" />
-                    Modifier le rayon
-                  </button>
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => {
-                      if (circle) {
-                        copySelectedEntities();
-                        toast.success("Cercle copié");
-                      }
-                      setSelectedEntities(new Set([contextMenu.entityId]));
-                      setContextMenu(null);
-                    }}
-                  >
-                    <Plus className="h-4 w-4 text-green-500" />
-                    Dupliquer
-                  </button>
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
-                    onClick={() => {
-                      setSelectedEntities(new Set([contextMenu.entityId]));
-                      deleteSelectedEntities();
-                      setContextMenu(null);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Supprimer
-                  </button>
-                </>
-              );
-            })()}
-          {contextMenu.entityType === "bezier" && (
+          {(contextMenu.entityType === "circle" || contextMenu.entityType === "bezier") && (
             <button
               className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
               onClick={() => {
@@ -18915,6 +20809,139 @@ export function CADGabaritCanvas({
               Supprimer
             </button>
           )}
+          {/* FIX #90: Menu contextuel pour les images */}
+          {contextMenu.entityType === "image" &&
+            (() => {
+              const image = backgroundImages.find((img) => img.id === contextMenu.entityId);
+              if (!image) return null;
+              const currentLayer = sketch.layers.get(image.layerId || "");
+
+              return (
+                <>
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      setSelectedImageId(contextMenu.entityId);
+                      setSelectedImageIds(new Set([contextMenu.entityId]));
+                      setContextMenu(null);
+                    }}
+                  >
+                    <MousePointer className="h-4 w-4" />
+                    Sélectionner
+                  </button>
+                  <div className="border-t my-1" />
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      moveImageToNewLayer(contextMenu.entityId);
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Layers className="h-4 w-4 text-blue-500" />
+                    Envoyer vers nouveau calque
+                  </button>
+                  {/* Sous-menu pour déplacer vers un calque existant */}
+                  {sketch.layers.size > 1 && (
+                    <div className="relative group">
+                      <button className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 justify-between">
+                        <span className="flex items-center gap-2">
+                          <ArrowRight className="h-4 w-4 text-gray-500" />
+                          Déplacer vers calque
+                        </span>
+                        <ChevronRight className="h-3 w-3" />
+                      </button>
+                      <div className="absolute left-full top-0 ml-1 bg-white rounded-lg shadow-xl border py-1 min-w-[140px] hidden group-hover:block">
+                        {Array.from(sketch.layers.values())
+                          .filter((layer) => layer.id !== image.layerId)
+                          .map((layer) => (
+                            <button
+                              key={layer.id}
+                              className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                              onClick={() => {
+                                setBackgroundImages((prev) =>
+                                  prev.map((img) =>
+                                    img.id === contextMenu.entityId ? { ...img, layerId: layer.id } : img,
+                                  ),
+                                );
+                                toast.success(`Image déplacée vers "${layer.name}"`);
+                                setContextMenu(null);
+                              }}
+                            >
+                              <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: layer.color }} />
+                              {layer.name}
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="border-t my-1" />
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      setBackgroundImages((prev) =>
+                        prev.map((img) => (img.id === contextMenu.entityId ? { ...img, locked: !img.locked } : img)),
+                      );
+                      toast.success(image.locked ? "Image déverrouillée" : "Image verrouillée");
+                      setContextMenu(null);
+                    }}
+                  >
+                    {image.locked ? (
+                      <>
+                        <Unlock className="h-4 w-4 text-green-500" />
+                        Déverrouiller
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="h-4 w-4 text-orange-500" />
+                        Verrouiller
+                      </>
+                    )}
+                  </button>
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      setBackgroundImages((prev) =>
+                        prev.map((img) => (img.id === contextMenu.entityId ? { ...img, visible: !img.visible } : img)),
+                      );
+                      toast.success(image.visible ? "Image masquée" : "Image affichée");
+                      setContextMenu(null);
+                    }}
+                  >
+                    {image.visible ? (
+                      <>
+                        <EyeOff className="h-4 w-4 text-gray-500" />
+                        Masquer
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="h-4 w-4 text-blue-500" />
+                        Afficher
+                      </>
+                    )}
+                  </button>
+                  <div className="border-t my-1" />
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
+                    onClick={() => {
+                      setBackgroundImages((prev) => prev.filter((img) => img.id !== contextMenu.entityId));
+                      if (selectedImageId === contextMenu.entityId) {
+                        setSelectedImageId(null);
+                      }
+                      selectedImageIds.delete(contextMenu.entityId);
+                      setSelectedImageIds(new Set(selectedImageIds));
+                      toast.success("Image supprimée");
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Supprimer
+                  </button>
+                  {currentLayer && (
+                    <div className="px-3 py-1 text-xs text-gray-400 border-t mt-1">Calque: {currentLayer.name}</div>
+                  )}
+                </>
+              );
+            })()}
           {contextMenu.entityType === "point" && (
             <button
               className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
