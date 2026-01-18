@@ -22474,3 +22474,13 @@ function exportToSVG(sketch: Sketch): string {
       if (center) {
         svg += `  <circle cx="${center.x}" cy="${center.y}" r="${circle.radius}"/>\n`;
       }
+    }
+  });
+
+  svg += `</g>
+</svg>`;
+
+  return svg;
+}
+
+export default CADGabaritCanvas;
