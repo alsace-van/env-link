@@ -17832,24 +17832,22 @@ export function CADGabaritCanvas({
                       type="text"
                       inputMode="decimal"
                       value={
-                        liveInputMeasure.userValue !== ""
-                          ? liveInputMeasure.userValue
-                          : liveInputMeasure.liveValue.toFixed(1)
+                        liveInputMeasure.isEditing ? liveInputMeasure.userValue : liveInputMeasure.liveValue.toFixed(1)
                       }
+                      placeholder={liveInputMeasure.liveValue.toFixed(1)}
                       onChange={(e) => {
                         const rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
-                        if (!liveInputMeasure.isEditing) {
-                          const lastChar = rawVal.slice(-1);
-                          setLiveInputMeasure((prev) => ({ ...prev, userValue: lastChar, isEditing: true }));
-                        } else {
-                          setLiveInputMeasure((prev) => ({ ...prev, userValue: rawVal }));
-                        }
+                        setLiveInputMeasure((prev) => ({ ...prev, userValue: rawVal, isEditing: true }));
                       }}
                       onFocus={() => {
-                        setLiveInputMeasure((prev) => ({ ...prev, isEditing: false }));
+                        // Passer en mode édition avec champ vide pour que la première frappe commence fresh
+                        setLiveInputMeasure((prev) => ({ ...prev, userValue: "", isEditing: true }));
                       }}
                       onBlur={() => {
-                        setLiveInputMeasure((prev) => ({ ...prev, isEditing: false }));
+                        // Si vide, revenir au mode live
+                        if (liveInputMeasure.userValue === "") {
+                          setLiveInputMeasure((prev) => ({ ...prev, isEditing: false }));
+                        }
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "Tab") {
@@ -17857,8 +17855,8 @@ export function CADGabaritCanvas({
                           liveInputRef2.current?.focus();
                         } else if (e.key === "Enter") {
                           e.preventDefault();
-                          const wVal = liveInputMeasure.userValue || "";
-                          const hVal = liveInputMeasure.userValue2 || "";
+                          const wVal = liveInputMeasure.userValue || liveInputMeasure.liveValue.toFixed(1);
+                          const hVal = liveInputMeasure.userValue2 || liveInputMeasure.liveValue2?.toFixed(1) || "0";
                           createRectangleFromInputs(undefined, { width: wVal, height: hVal });
                         } else if (e.key === "Escape") {
                           e.preventDefault();
@@ -17874,7 +17872,7 @@ export function CADGabaritCanvas({
                           }));
                         }
                       }}
-                      className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none"
+                      className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none placeholder:text-blue-400"
                       style={{ caretColor: "#2563eb" }}
                     />
                     <span className="text-sm text-blue-600 font-bold">mm</span>
@@ -17895,24 +17893,24 @@ export function CADGabaritCanvas({
                       type="text"
                       inputMode="decimal"
                       value={
-                        liveInputMeasure.userValue2 !== ""
+                        liveInputMeasure.isEditing2
                           ? liveInputMeasure.userValue2
                           : liveInputMeasure.liveValue2?.toFixed(1) || "0"
                       }
+                      placeholder={liveInputMeasure.liveValue2?.toFixed(1) || "0"}
                       onChange={(e) => {
                         const rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
-                        if (!liveInputMeasure.isEditing2) {
-                          const lastChar = rawVal.slice(-1);
-                          setLiveInputMeasure((prev) => ({ ...prev, userValue2: lastChar, isEditing2: true }));
-                        } else {
-                          setLiveInputMeasure((prev) => ({ ...prev, userValue2: rawVal }));
-                        }
+                        setLiveInputMeasure((prev) => ({ ...prev, userValue2: rawVal, isEditing2: true }));
                       }}
                       onFocus={() => {
-                        setLiveInputMeasure((prev) => ({ ...prev, isEditing2: false }));
+                        // Passer en mode édition avec champ vide pour que la première frappe commence fresh
+                        setLiveInputMeasure((prev) => ({ ...prev, userValue2: "", isEditing2: true }));
                       }}
                       onBlur={() => {
-                        setLiveInputMeasure((prev) => ({ ...prev, isEditing2: false }));
+                        // Si vide, revenir au mode live
+                        if (liveInputMeasure.userValue2 === "") {
+                          setLiveInputMeasure((prev) => ({ ...prev, isEditing2: false }));
+                        }
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "Tab") {
@@ -17920,8 +17918,8 @@ export function CADGabaritCanvas({
                           liveInputRef.current?.focus();
                         } else if (e.key === "Enter") {
                           e.preventDefault();
-                          const wVal = liveInputMeasure.userValue || "";
-                          const hVal = liveInputMeasure.userValue2 || "";
+                          const wVal = liveInputMeasure.userValue || liveInputMeasure.liveValue.toFixed(1);
+                          const hVal = liveInputMeasure.userValue2 || liveInputMeasure.liveValue2?.toFixed(1) || "0";
                           createRectangleFromInputs(undefined, { width: wVal, height: hVal });
                         } else if (e.key === "Escape") {
                           e.preventDefault();
@@ -17937,7 +17935,7 @@ export function CADGabaritCanvas({
                           }));
                         }
                       }}
-                      className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none"
+                      className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none placeholder:text-blue-400"
                       style={{ caretColor: "#2563eb" }}
                     />
                     <span className="text-sm text-blue-600 font-bold">mm</span>
@@ -17963,29 +17961,22 @@ export function CADGabaritCanvas({
                     type="text"
                     inputMode="decimal"
                     value={
-                      liveInputMeasure.userValue !== ""
-                        ? liveInputMeasure.userValue
-                        : liveInputMeasure.liveValue.toFixed(1)
+                      liveInputMeasure.isEditing ? liveInputMeasure.userValue : liveInputMeasure.liveValue.toFixed(1)
                     }
+                    placeholder={liveInputMeasure.liveValue.toFixed(1)}
                     onChange={(e) => {
-                      // Extraire seulement les chiffres de la nouvelle saisie
                       const rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
-                      // Si pas encore en mode édition, la première frappe remplace tout
-                      if (!liveInputMeasure.isEditing) {
-                        // Prendre seulement le dernier caractère tapé (la nouvelle saisie)
-                        const lastChar = rawVal.slice(-1);
-                        setLiveInputMeasure((prev) => ({ ...prev, userValue: lastChar, isEditing: true }));
-                      } else {
-                        setLiveInputMeasure((prev) => ({ ...prev, userValue: rawVal }));
-                      }
+                      setLiveInputMeasure((prev) => ({ ...prev, userValue: rawVal, isEditing: true }));
                     }}
                     onFocus={() => {
-                      // Reset le mode édition pour que la prochaine frappe remplace
-                      setLiveInputMeasure((prev) => ({ ...prev, isEditing: false }));
+                      // Passer en mode édition avec champ vide pour que la première frappe commence fresh
+                      setLiveInputMeasure((prev) => ({ ...prev, userValue: "", isEditing: true }));
                     }}
                     onBlur={() => {
-                      // Reset le mode édition quand on quitte
-                      setLiveInputMeasure((prev) => ({ ...prev, isEditing: false }));
+                      // Si vide, revenir au mode live
+                      if (liveInputMeasure.userValue === "") {
+                        setLiveInputMeasure((prev) => ({ ...prev, isEditing: false }));
+                      }
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
@@ -18006,7 +17997,7 @@ export function CADGabaritCanvas({
                         setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", isEditing: false }));
                       }
                     }}
-                    className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none"
+                    className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none placeholder:text-blue-400"
                     style={{ caretColor: "#2563eb" }}
                   />
                   <span className="text-sm text-blue-600 font-bold">mm</span>
