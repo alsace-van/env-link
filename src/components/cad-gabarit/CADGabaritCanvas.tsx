@@ -1,8 +1,13 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.30 - Solo, Guide, Groupes de calques
+// VERSION: 7.31 - Restauration cotations automatiques
 // ============================================
+//
+// CHANGELOG v7.31 (18/01/2026):
+// - Restauration des cotations automatiques (useAutoDimensions.ts)
+// - Affiche automatiquement largeur et hauteur en mm lors de la création de rectangles
+// - État autoDimensionsEnabled pour activer/désactiver (actif par défaut)
 //
 // CHANGELOG v7.30 (18/01/2026):
 // - Mode Solo: icône pour isoler un calque (masque les autres temporairement)
@@ -253,6 +258,9 @@ import { ManualStretchControls } from "./ManualStretchControls";
 // MOD v7.29: Gestion avancée des calques
 import { LayerTabs } from "./LayerTabs";
 
+// MOD v7.31: Cotations automatiques lors de la création de géométries
+import { useAutoDimensions } from "./useAutoDimensions";
+
 interface CADGabaritCanvasProps {
   imageUrl?: string;
   scaleFactor?: number;
@@ -478,6 +486,9 @@ export function CADGabaritCanvas({
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [showBackgroundImage, setShowBackgroundImage] = useState(true);
   const [imageOpacity, setImageOpacity] = useState(0.5);
+
+  // MOD v7.31: Cotations automatiques
+  const [autoDimensionsEnabled, setAutoDimensionsEnabled] = useState(true);
 
   // === Grille A4 pour export panoramique ===
   const [showA4Grid, setShowA4Grid] = useState(false);
@@ -908,6 +919,12 @@ export function CADGabaritCanvas({
     setRectHeight,
     setImageScale,
     setTransformedImage,
+  });
+
+  // MOD v7.31: Cotations automatiques lors de la création de géométries
+  const { addRectangleDimensions, addLineDimension } = useAutoDimensions({
+    enabled: autoDimensionsEnabled,
+    sketchRef,
   });
 
   // Mesure - utiliser un seul état pour éviter les problèmes de synchronisation
@@ -7979,6 +7996,13 @@ export function CADGabaritCanvas({
       newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[1].id] });
       newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[3].id] });
 
+      // MOD v7.31: Ajouter cotations automatiques pour le rectangle
+      newSketch.dimensions = new Map(currentSketch.dimensions);
+      const autoDims = addRectangleDimensions(corner1.id, corner2.id, corner3.id, corner4.id, newSketch);
+      autoDims.forEach((dim) => {
+        newSketch.dimensions.set(dim.id, dim);
+      });
+
       const wMm = width / currentSketch.scaleFactor;
       const hMm = height / currentSketch.scaleFactor;
       const modeLabel = isCenter ? " (centre)" : "";
@@ -8001,7 +8025,7 @@ export function CADGabaritCanvas({
 
       toast.success(`Rectangle ${wMm.toFixed(1)} × ${hMm.toFixed(1)} mm${modeLabel}`);
     },
-    [tempPoints, tempGeometry, rectInputs, createIntersectionPoints, solveSketch, addToHistory],
+    [tempPoints, tempGeometry, rectInputs, createIntersectionPoints, solveSketch, addToHistory, addRectangleDimensions],
   );
 
   // === Multi-photos: détection de clic sur une image ===
@@ -17322,6 +17346,25 @@ export function CADGabaritCanvas({
             </Tooltip>
           </TooltipProvider>
 
+          {/* MOD v7.31: Toggle cotations automatiques */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={autoDimensionsEnabled ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAutoDimensionsEnabled(!autoDimensionsEnabled)}
+                  className={`h-8 px-2 ${autoDimensionsEnabled ? "bg-cyan-500 hover:bg-cyan-600" : ""}`}
+                >
+                  <Sliders className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Cotations auto {autoDimensionsEnabled ? "(actif)" : "(inactif)"}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
           {/* Slider opacité surbrillance */}
           <div className="flex items-center gap-1 ml-2 px-2 py-1 bg-blue-50 rounded">
             <span className="text-xs text-blue-600" title="Surbrillance formes fermées">
@@ -22355,6 +22398,7 @@ function serializeSketch(sketch: Sketch): any {
     dimensions: Object.fromEntries(sketch.dimensions),
     scaleFactor: sketch.scaleFactor,
     layers: sketch.layers ? Object.fromEntries(sketch.layers) : undefined,
+    layerGroups: sketch.layerGroups ? Object.fromEntries(sketch.layerGroups) : undefined,
     groups: sketch.groups ? Object.fromEntries(sketch.groups) : undefined,
     shapeFills: sketch.shapeFills ? Object.fromEntries(sketch.shapeFills) : undefined,
     activeLayerId: sketch.activeLayerId,
@@ -22430,9 +22474,3 @@ function exportToSVG(sketch: Sketch): string {
       if (center) {
         svg += `  <circle cx="${center.x}" cy="${center.y}" r="${circle.radius}"/>\n`;
       }
-    }
-  });
-
-  svg += `</g>\n</svg>`;
-  return svg;
-}
