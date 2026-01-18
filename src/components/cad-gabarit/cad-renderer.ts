@@ -1,7 +1,7 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.73 - Fix affichage cotations
+// VERSION: 3.74 - Style cotations bleu clair, trait fin, texte décalé
 // ============================================
 //
 // CHANGELOG v3.73 (18/01/2026):
@@ -3157,14 +3157,17 @@ export class CADRenderer {
    * Dessine une cotation
    * v3.72: Traits fins + fond semi-transparent
    * v3.73: Fix taille du texte et épaisseur des traits
+   * v3.74: Style bleu clair, trait très fin, texte décalé et plus petit
    */
   private drawDimension(dimension: Dimension, sketch: Sketch): void {
-    this.ctx.strokeStyle = this.styles.dimensionColor;
-    this.ctx.fillStyle = this.styles.dimensionColor;
-    // v3.73: Trait fin mais visible (min 0.5px à l'écran)
-    this.ctx.lineWidth = Math.max(0.5, 1 / this.viewport.scale);
-    // v3.73: Font size fixe en pixels écran (12px), pas en coordonnées monde
-    const fontSize = 12 / this.viewport.scale;
+    // v3.74: Couleur bleu clair pour les cotations
+    const dimensionColor = "#5BC0DE"; // Bleu clair
+    this.ctx.strokeStyle = dimensionColor;
+    this.ctx.fillStyle = dimensionColor;
+    // v3.74: Trait très fin (0.5px max à l'écran)
+    this.ctx.lineWidth = 0.5 / this.viewport.scale;
+    // v3.74: Font size plus petit (10px au lieu de 12px)
+    const fontSize = 10 / this.viewport.scale;
     this.ctx.font = `${fontSize}px Arial`;
 
     switch (dimension.type) {
@@ -3228,9 +3231,12 @@ export class CADRenderer {
     this.drawArrow(dimLine1, dimLine2, arrowSize);
     this.drawArrow(dimLine2, dimLine1, arrowSize);
 
-    // Texte avec fond semi-transparent (v3.72)
+    // v3.74: Texte décalé au-dessus du trait (pas de fond)
     const textPos = midpoint(dimLine1, dimLine2);
     const text = `${dimension.value.toFixed(2)}`;
+
+    // v3.74: Couleur bleu clair
+    const dimensionColor = "#5BC0DE";
 
     this.ctx.save();
     this.ctx.translate(textPos.x, textPos.y);
@@ -3242,21 +3248,15 @@ export class CADRenderer {
 
     this.ctx.rotate(textAngle);
     this.ctx.textAlign = "center";
-    this.ctx.textBaseline = "middle";
+    // v3.74: Texte au-dessus du trait (baseline = bottom pour que le texte soit au-dessus)
+    this.ctx.textBaseline = "bottom";
 
-    // v3.72: Mesurer le texte et dessiner un fond semi-transparent
-    const textMetrics = this.ctx.measureText(text);
-    const padding = 2 / this.viewport.scale;
-    const boxWidth = textMetrics.width + padding * 2;
-    const boxHeight = 10 / this.viewport.scale;
+    // v3.74: Décalage vertical du texte (8px au-dessus du trait)
+    const textOffsetY = -4 / this.viewport.scale;
 
-    // Fond semi-transparent (blanc à 50%)
-    this.ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-    this.ctx.fillRect(-boxWidth / 2, -boxHeight / 2, boxWidth, boxHeight);
-
-    // Texte
-    this.ctx.fillStyle = this.styles.dimensionColor;
-    this.ctx.fillText(text, 0, 0);
+    // v3.74: Texte en bleu clair, sans fond
+    this.ctx.fillStyle = dimensionColor;
+    this.ctx.fillText(text, 0, textOffsetY);
     this.ctx.restore();
   }
 

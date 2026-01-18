@@ -17231,6 +17231,25 @@ export function CADGabaritCanvas({
             </Tooltip>
           </TooltipProvider>
 
+          {/* v7.19: Toggle cotations */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={showDimensions ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowDimensions(!showDimensions)}
+                  className={`h-8 px-2 ${showDimensions ? "bg-cyan-500 hover:bg-cyan-600" : ""}`}
+                >
+                  <Ruler className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Cotations</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
           {/* Toggle snap calque actif uniquement */}
           <TooltipProvider>
             <Tooltip>
