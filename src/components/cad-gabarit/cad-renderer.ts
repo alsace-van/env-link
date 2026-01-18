@@ -615,8 +615,8 @@ export class CADRenderer {
       });
 
       // v7.25: Afficher automatiquement les longueurs des lignes existantes
-      // Seulement si pas de géométrie temporaire (évite le doublon pendant le dessin)
-      if (!tempGeometry) {
+      // Seulement si pas de géométrie temporaire ET pas d'input HTML actif (évite le doublon)
+      if (!tempGeometry && !hideTempMeasure) {
         const fontSize = 11 / this.viewport.scale;
 
         // Détecter les rectangles pour éviter les doublons de cotations
