@@ -1,8 +1,12 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.18 - Cotations automatiques
+// VERSION: 7.19 - Fix cotations automatiques (passage du sketch correct)
 // ============================================
+//
+// CHANGELOG v7.19 (18/01/2026):
+// - Fix: passage du newSketch à addRectangleDimensions (les points n'existaient pas encore dans sketchRef)
+// - Les cotations s'affichent maintenant correctement après création du rectangle
 //
 // CHANGELOG v7.18 (17/01/2026):
 // - Cotations automatiques lors de la création de rectangles (useAutoDimensions.ts)
@@ -7946,7 +7950,8 @@ export function CADGabaritCanvas({
       newSketch.constraints.set(generateId(), { id: generateId(), type: "vertical", entities: [lines[3].id] });
 
       // MOD v7.18: Ajouter cotations automatiques pour le rectangle
-      const autoDims = addRectangleDimensions(corner1.id, corner2.id, corner3.id, corner4.id);
+      // v7.19: Passer newSketch explicitement car les points n'existent pas encore dans sketchRef
+      const autoDims = addRectangleDimensions(corner1.id, corner2.id, corner3.id, corner4.id, newSketch);
       autoDims.forEach((dim) => {
         newSketch.dimensions.set(dim.id, dim);
       });
