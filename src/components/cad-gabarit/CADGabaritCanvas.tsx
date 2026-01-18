@@ -400,6 +400,9 @@ export function CADGabaritCanvas({
     widthValue: string;
     heightValue: string;
     activeField: "width" | "height";
+    // v7.32: Flags pour savoir si l'utilisateur est en train d'éditer (pour éviter que la valeur temps réel reprenne)
+    editingWidth: boolean;
+    editingHeight: boolean;
     // Position écran pour afficher les inputs
     widthInputPos: { x: number; y: number };
     heightInputPos: { x: number; y: number };
@@ -408,6 +411,8 @@ export function CADGabaritCanvas({
     widthValue: "",
     heightValue: "",
     activeField: "width",
+    editingWidth: false,
+    editingHeight: false,
     widthInputPos: { x: 0, y: 0 },
     heightInputPos: { x: 0, y: 0 },
   });
@@ -3713,6 +3718,8 @@ export function CADGabaritCanvas({
         widthValue: "",
         heightValue: "",
         activeField: "width",
+        editingWidth: false,
+        editingHeight: false,
         widthInputPos: { x: 0, y: 0 },
         heightInputPos: { x: 0, y: 0 },
       });
@@ -8029,6 +8036,8 @@ export function CADGabaritCanvas({
         widthValue: "",
         heightValue: "",
         activeField: "width",
+        editingWidth: false,
+        editingHeight: false,
         widthInputPos: { x: 0, y: 0 },
         heightInputPos: { x: 0, y: 0 },
       });
@@ -9801,6 +9810,8 @@ export function CADGabaritCanvas({
               widthValue: "",
               heightValue: "",
               activeField: "width",
+              editingWidth: false,
+              editingHeight: false,
               widthInputPos: { x: 0, y: 0 },
               heightInputPos: { x: 0, y: 0 },
             });
@@ -17780,13 +17791,13 @@ export function CADGabaritCanvas({
                       ref={widthInputRef}
                       type="text"
                       inputMode="decimal"
-                      value={lockedWidth ? rectInputs.widthValue : widthMm.toFixed(1)}
+                      value={rectInputs.editingWidth || lockedWidth ? rectInputs.widthValue : widthMm.toFixed(1)}
                       onChange={(e) => {
                         const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
-                        setRectInputs((prev) => ({ ...prev, widthValue: val }));
+                        setRectInputs((prev) => ({ ...prev, widthValue: val, editingWidth: true }));
                       }}
                       onFocus={(e) => {
-                        setRectInputs((prev) => ({ ...prev, activeField: "width" }));
+                        setRectInputs((prev) => ({ ...prev, activeField: "width", editingWidth: true }));
                         e.target.select();
                       }}
                       onKeyDown={(e) => {
@@ -17809,11 +17820,17 @@ export function CADGabaritCanvas({
                             widthValue: "",
                             heightValue: "",
                             activeField: "width",
+                            editingWidth: false,
+                            editingHeight: false,
                             widthInputPos: { x: 0, y: 0 },
                             heightInputPos: { x: 0, y: 0 },
                           });
-                        } else if (e.key === "Backspace" && (e.target as HTMLInputElement).value === "") {
-                          setRectInputs((prev) => ({ ...prev, widthValue: "" }));
+                        }
+                      }}
+                      onBlur={() => {
+                        // v7.32: Quand on quitte le champ, si vide, désactiver le mode édition
+                        if (!rectInputs.widthValue) {
+                          setRectInputs((prev) => ({ ...prev, editingWidth: false }));
                         }
                       }}
                       className={`absolute z-50 pointer-events-auto w-14 h-5 px-1 text-xs font-mono text-center rounded-sm outline-none
@@ -17831,13 +17848,13 @@ export function CADGabaritCanvas({
                       ref={heightInputRef}
                       type="text"
                       inputMode="decimal"
-                      value={lockedHeight ? rectInputs.heightValue : heightMm.toFixed(1)}
+                      value={rectInputs.editingHeight || lockedHeight ? rectInputs.heightValue : heightMm.toFixed(1)}
                       onChange={(e) => {
                         const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
-                        setRectInputs((prev) => ({ ...prev, heightValue: val }));
+                        setRectInputs((prev) => ({ ...prev, heightValue: val, editingHeight: true }));
                       }}
                       onFocus={(e) => {
-                        setRectInputs((prev) => ({ ...prev, activeField: "height" }));
+                        setRectInputs((prev) => ({ ...prev, activeField: "height", editingHeight: true }));
                         e.target.select();
                       }}
                       onKeyDown={(e) => {
@@ -17860,11 +17877,17 @@ export function CADGabaritCanvas({
                             widthValue: "",
                             heightValue: "",
                             activeField: "width",
+                            editingWidth: false,
+                            editingHeight: false,
                             widthInputPos: { x: 0, y: 0 },
                             heightInputPos: { x: 0, y: 0 },
                           });
-                        } else if (e.key === "Backspace" && (e.target as HTMLInputElement).value === "") {
-                          setRectInputs((prev) => ({ ...prev, heightValue: "" }));
+                        }
+                      }}
+                      onBlur={() => {
+                        // v7.32: Quand on quitte le champ, si vide, désactiver le mode édition
+                        if (!rectInputs.heightValue) {
+                          setRectInputs((prev) => ({ ...prev, editingHeight: false }));
                         }
                       }}
                       className={`absolute z-50 pointer-events-auto w-14 h-5 px-1 text-xs font-mono text-center rounded-sm outline-none
