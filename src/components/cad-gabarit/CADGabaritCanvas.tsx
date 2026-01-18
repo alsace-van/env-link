@@ -16877,31 +16877,33 @@ export function CADGabaritCanvas({
 
         <Separator orientation="vertical" className="h-6" />
         <ToolbarGroupWrapper groupId="grp_view" groupName="Vue" groupColor="#8B5CF6" lineIndex={1}>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setViewport((v) => ({ ...v, scale: v.scale * 0.8 }))}
-            className="h-8 w-8 p-0"
-          >
-            <ZoomOut className="h-4 w-4" />
-          </Button>
-          <span className="text-xs font-mono w-14 text-center" title={`1mm = ${viewport.scale.toFixed(1)}px`}>
-            {viewport.scale >= 10 ? `${Math.round(viewport.scale)}x` : `${viewport.scale.toFixed(1)}x`}
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setViewport((v) => ({ ...v, scale: v.scale * 1.2 }))}
-            className="h-8 w-8 p-0"
-          >
-            <ZoomIn className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={fitToContent} title="Ajuster au contenu" className="h-8 w-8 p-0">
-            <Target className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={resetView} title="Reset vue">
-            <RotateCcw className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setViewport((v) => ({ ...v, scale: v.scale * 0.8 }))}
+              className="h-7 w-7 p-0"
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+            </Button>
+            <span className="text-xs font-mono w-10 text-center" title={`1mm = ${viewport.scale.toFixed(1)}px`}>
+              {viewport.scale >= 10 ? `${Math.round(viewport.scale)}x` : `${viewport.scale.toFixed(1)}x`}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setViewport((v) => ({ ...v, scale: v.scale * 1.2 }))}
+              className="h-7 w-7 p-0"
+            >
+              <ZoomIn className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={fitToContent} title="Ajuster au contenu" className="h-7 w-7 p-0">
+              <Target className="h-3.5 w-3.5" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={resetView} title="Reset vue" className="h-7 w-7 p-0">
+              <RotateCcw className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </ToolbarGroupWrapper>
 
         <DropZoneBetweenGroups targetIndex={7} lineIndex={1} />
