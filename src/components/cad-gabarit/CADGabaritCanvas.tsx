@@ -856,6 +856,103 @@ export function CADGabaritCanvas({
     }
   }, []);
 
+  // Historique - défini tôt car utilisé par plusieurs callbacks
+  const addToHistory = useCallback((newSketch: Sketch, description: string = "Modification") => {
+    const { branches: currentBranches, activeBranchId: currentActiveBranchId } = branchesRef.current;
+    const branchIndex = currentBranches.findIndex((b) => b.id === currentActiveBranchId);
+    if (branchIndex === -1) return;
+
+    const branch = currentBranches[branchIndex];
+    const newEntry: HistoryEntry = {
+      sketch: serializeSketch(newSketch),
+      description,
+      timestamp: Date.now(),
+    };
+
+    // Couper l'historique au point actuel et ajouter le nouvel état
+    const newHistory = [...branch.history.slice(0, branch.historyIndex + 1), newEntry];
+    const newIndex = branch.historyIndex + 1;
+
+    const updatedBranch = { ...branch, history: newHistory, historyIndex: newIndex };
+    const newBranches = [...currentBranches];
+    newBranches[branchIndex] = updatedBranch;
+
+    setBranches(newBranches);
+    branchesRef.current = { branches: newBranches, activeBranchId: currentActiveBranchId };
+    historyRef.current = { history: newHistory, index: newIndex };
+  }, []);
+
+  // === HOOK FILLET/CHAMFER ===
+  // MOD v7.25: Extraction des fonctions congé/chanfrein dans useFilletChamfer.ts
+  const {
+    filletDialog,
+    setFilletDialog,
+    chamferDialog,
+    setChamferDialog,
+    filletPreview,
+    chamferPreview,
+    filletRadius,
+    setFilletRadius,
+    chamferDistance,
+    setChamferDistance,
+    findSharedPoint,
+    findLinesConnectedToPoint,
+    applyFillet,
+    applyChamfer,
+    applyFilletToSketch,
+    applyChamferToSketch,
+    calculateCornerParams,
+    calculateFilletGeometry,
+    calculateChamferGeometry,
+    openFilletDialog,
+    openFilletDialogForPoint,
+    openChamferDialog,
+    openChamferDialogForPoint,
+    applyFilletFromDialog,
+    applyChamferFromDialog,
+    removeFilletFromArc,
+    switchFilletToChamfer,
+    switchChamferToFillet,
+  } = useFilletChamfer({
+    sketch,
+    setSketch,
+    addToHistory,
+    selectedEntities,
+    setSelectedEntities,
+  });
+
+  // === FONCTION POUR FERMER TOUS LES PANNEAUX D'ÉDITION ===
+  // Évite la confusion quand plusieurs panneaux sont ouverts
+  // Note: Défini ici car utilise setFilletDialog/setChamferDialog du hook useFilletChamfer
+  const closeAllEditPanels = useCallback(
+    (except?: string) => {
+      if (except !== "fillet") setFilletDialog(null);
+      if (except !== "chamfer") setChamferDialog(null);
+      if (except !== "arcEdit") setArcEditDialog(null);
+      if (except !== "lineLength") {
+        // Si on ferme le panneau longueur, restaurer le sketch original si nécessaire
+        if (lineLengthDialog?.originalSketch) {
+          setSketch(lineLengthDialog.originalSketch);
+        }
+        setLineLengthDialog(null);
+      }
+      if (except !== "angle") {
+        // Si on ferme le panneau angle, restaurer le sketch original si nécessaire
+        if (angleEditDialog?.originalSketch) {
+          setSketch(angleEditDialog.originalSketch);
+        }
+        setAngleEditDialog(null);
+      }
+      if (except !== "fill") {
+        setFillDialogOpen(false);
+        setFillDialogTarget(null);
+      }
+      if (except !== "text") setTextInput(null);
+      if (except !== "context") setContextMenu(null);
+    },
+    [lineLengthDialog, angleEditDialog, setFilletDialog, setChamferDialog],
+  );
+
   // Calibration
   const [calibrationData, setCalibrationData] = useState<CalibrationData>({
     points: new Map(),
@@ -3890,103 +3987,6 @@ export function CADGabaritCanvas({
       status: result.status,
     }));
   }, []);
-
-  // Historique - défini tôt car utilisé par plusieurs callbacks
-  const addToHistory = useCallback((newSketch: Sketch, description: string = "Modification") => {
-    const { branches: currentBranches, activeBranchId: currentActiveBranchId } = branchesRef.current;
-    const branchIndex = currentBranches.findIndex((b) => b.id === currentActiveBranchId);
-    if (branchIndex === -1) return;
-
-    const branch = currentBranches[branchIndex];
-    const newEntry: HistoryEntry = {
-      sketch: serializeSketch(newSketch),
-      description,
-      timestamp: Date.now(),
-    };
-
-    // Couper l'historique au point actuel et ajouter le nouvel état
-    const newHistory = [...branch.history.slice(0, branch.historyIndex + 1), newEntry];
-    const newIndex = branch.historyIndex + 1;
-
-    const updatedBranch = { ...branch, history: newHistory, historyIndex: newIndex };
-    const newBranches = [...currentBranches];
-    newBranches[branchIndex] = updatedBranch;
-
-    setBranches(newBranches);
-    branchesRef.current = { branches: newBranches, activeBranchId: currentActiveBranchId };
-    historyRef.current = { history: newHistory, index: newIndex };
-  }, []);
-
-  // === HOOK FILLET/CHAMFER ===
-  // MOD v7.25: Extraction des fonctions congé/chanfrein dans useFilletChamfer.ts
-  const {
-    filletDialog,
-    setFilletDialog,
-    chamferDialog,
-    setChamferDialog,
-    filletPreview,
-    chamferPreview,
-    filletRadius,
-    setFilletRadius,
-    chamferDistance,
-    setChamferDistance,
-    findSharedPoint,
-    findLinesConnectedToPoint,
-    applyFillet,
-    applyChamfer,
-    applyFilletToSketch,
-    applyChamferToSketch,
-    calculateCornerParams,
-    calculateFilletGeometry,
-    calculateChamferGeometry,
-    openFilletDialog,
-    openFilletDialogForPoint,
-    openChamferDialog,
-    openChamferDialogForPoint,
-    applyFilletFromDialog,
-    applyChamferFromDialog,
-    removeFilletFromArc,
-    switchFilletToChamfer,
-    switchChamferToFillet,
-  } = useFilletChamfer({
-    sketch,
-    setSketch,
-    addToHistory,
-    selectedEntities,
-    setSelectedEntities,
-  });
-
-  // === FONCTION POUR FERMER TOUS LES PANNEAUX D'ÉDITION ===
-  // Évite la confusion quand plusieurs panneaux sont ouverts
-  // Note: Défini ici car utilise setFilletDialog/setChamferDialog du hook useFilletChamfer
-  const closeAllEditPanels = useCallback(
-    (except?: string) => {
-      if (except !== "fillet") setFilletDialog(null);
-      if (except !== "chamfer") setChamferDialog(null);
-      if (except !== "arcEdit") setArcEditDialog(null);
-      if (except !== "lineLength") {
-        // Si on ferme le panneau longueur, restaurer le sketch original si nécessaire
-        if (lineLengthDialog?.originalSketch) {
-          setSketch(lineLengthDialog.originalSketch);
-        }
-        setLineLengthDialog(null);
-      }
-      if (except !== "angle") {
-        // Si on ferme le panneau angle, restaurer le sketch original si nécessaire
-        if (angleEditDialog?.originalSketch) {
-          setSketch(angleEditDialog.originalSketch);
-        }
-        setAngleEditDialog(null);
-      }
-      if (except !== "fill") {
-        setFillDialogOpen(false);
-        setFillDialogTarget(null);
-      }
-      if (except !== "text") setTextInput(null);
-      if (except !== "context") setContextMenu(null);
-    },
-    [lineLengthDialog, angleEditDialog, setFilletDialog, setChamferDialog],
-  );
 
   // Appliquer la symétrie avec un axe donné (2 points)
   const applyMirrorWithAxis = useCallback(
