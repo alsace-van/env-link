@@ -625,6 +625,15 @@ export function CADGabaritCanvas({
     currentAngle: number; // Angle actuel en degrés
   } | null>(null);
 
+  // v7.31: État pour édition inline d'une dimension (double-clic sur cotation)
+  const [editingDimension, setEditingDimension] = useState<{
+    dimensionId: string;
+    entityId: string; // ID de la géométrie à modifier
+    type: "line" | "circle";
+    currentValue: number; // Valeur actuelle en mm
+    screenPos: { x: number; y: number };
+  } | null>(null);
+
   // Interface pour les entrées d'historique avec description
   interface HistoryEntry {
     sketch: any; // Sketch sérialisé
@@ -11376,6 +11385,80 @@ export function CADGabaritCanvas({
     ],
   );
 
+  // v7.31: Fonction pour trouver une cotation (dimension text) à une position écran
+  const findDimensionAtScreenPos = useCallback(
+    (
+      screenX: number,
+      screenY: number,
+    ): { dimensionId: string; entityId: string; type: "line" | "circle"; value: number } | null => {
+      const currentSketch = sketchRef.current;
+
+      // Parcourir les dimensions existantes
+      for (const [dimId, dimension] of currentSketch.dimensions) {
+        if (dimension.type === "horizontal" || dimension.type === "vertical" || dimension.type === "linear") {
+          if (dimension.entities.length < 2) continue;
+
+          const p1 = currentSketch.points.get(dimension.entities[0]);
+          const p2 = currentSketch.points.get(dimension.entities[1]);
+          if (!p1 || !p2) continue;
+
+          const offset = 20 / viewport.scale;
+
+          // Calculer la position de la ligne de cote (comme dans drawLinearDimension)
+          let dimLine1: { x: number; y: number };
+          let dimLine2: { x: number; y: number };
+
+          if (dimension.type === "horizontal") {
+            dimLine1 = { x: p1.x, y: Math.min(p1.y, p2.y) - offset };
+            dimLine2 = { x: p2.x, y: Math.min(p1.y, p2.y) - offset };
+          } else if (dimension.type === "vertical") {
+            dimLine1 = { x: Math.max(p1.x, p2.x) + offset, y: p1.y };
+            dimLine2 = { x: Math.max(p1.x, p2.x) + offset, y: p2.y };
+          } else {
+            // Linear - perpendiculaire
+            const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x) + Math.PI / 2;
+            dimLine1 = { x: p1.x + Math.cos(ang) * offset, y: p1.y + Math.sin(ang) * offset };
+            dimLine2 = { x: p2.x + Math.cos(ang) * offset, y: p2.y + Math.sin(ang) * offset };
+          }
+
+          // Position du texte (milieu de la ligne de cote)
+          const textWorldX = (dimLine1.x + dimLine2.x) / 2;
+          const textWorldY = (dimLine1.y + dimLine2.y) / 2;
+          const textScreenX = textWorldX * viewport.scale + viewport.offsetX;
+          const textScreenY = textWorldY * viewport.scale + viewport.offsetY;
+
+          // Zone de hit pour la cotation
+          const hitWidth = 70;
+          const hitHeight = 25;
+          if (
+            screenX >= textScreenX - hitWidth / 2 &&
+            screenX <= textScreenX + hitWidth / 2 &&
+            screenY >= textScreenY - hitHeight / 2 &&
+            screenY <= textScreenY + hitHeight / 2
+          ) {
+            // Chercher la ligne qui utilise ces deux points
+            let foundLineId = "";
+            for (const [geoId, geo] of currentSketch.geometries) {
+              if (geo.type === "line") {
+                const line = geo as Line;
+                if (
+                  (line.p1 === dimension.entities[0] && line.p2 === dimension.entities[1]) ||
+                  (line.p1 === dimension.entities[1] && line.p2 === dimension.entities[0])
+                ) {
+                  foundLineId = geoId;
+                  break;
+                }
+              }
+            }
+            return { dimensionId: dimId, entityId: foundLineId, type: "line", value: dimension.value };
+          }
+        }
+      }
+      return null;
+    },
+    [viewport],
+  );
+
   // Double-clic pour éditer un arc OU sélectionner une figure entière
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -11385,6 +11468,21 @@ export function CADGabaritCanvas({
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
       const worldPos = screenToWorld(screenX, screenY);
+
+      // v7.31: Vérifier d'abord si on double-clic sur une cotation existante
+      if (activeTool === "select" && showDimensions) {
+        const dimHit = findDimensionAtScreenPos(screenX, screenY);
+        if (dimHit) {
+          setEditingDimension({
+            dimensionId: dimHit.dimensionId,
+            entityId: dimHit.entityId,
+            type: dimHit.type,
+            currentValue: dimHit.value,
+            screenPos: { x: screenX, y: screenY },
+          });
+          return;
+        }
+      }
 
       // Double-clic pour terminer la spline
       if (activeTool === "spline" && tempPoints.length >= 2) {
@@ -11511,6 +11609,8 @@ export function CADGabaritCanvas({
       activeTool,
       addToHistory,
       tempPoints,
+      findDimensionAtScreenPos,
+      showDimensions,
     ],
   );
 
@@ -17965,6 +18065,90 @@ export function CADGabaritCanvas({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      )}
+
+      {/* v7.31: Input inline pour édition de dimension existante (double-clic sur cotation) */}
+      {editingDimension && (
+        <div
+          className="fixed z-[9999] pointer-events-auto"
+          style={{
+            left: `${editingDimension.screenPos.x + (canvasRef.current?.getBoundingClientRect().left || 0)}px`,
+            top: `${editingDimension.screenPos.y + (canvasRef.current?.getBoundingClientRect().top || 0)}px`,
+            transform: "translate(-50%, -50%)",
+          }}
+        >
+          <div className="flex items-center gap-0.5 bg-amber-100 border-2 border-amber-500 rounded px-1.5 py-0.5 shadow-lg">
+            <span className="text-xs text-amber-600">✏️</span>
+            {editingDimension.type === "circle" && <span className="text-sm text-amber-700 font-bold">R</span>}
+            <input
+              autoFocus
+              type="text"
+              inputMode="decimal"
+              defaultValue={editingDimension.currentValue.toFixed(1)}
+              onFocus={(e) => e.target.select()}
+              onBlur={() => setEditingDimension(null)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setEditingDimension(null);
+                  return;
+                }
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  const newValue = parseFloat((e.target as HTMLInputElement).value.replace(",", ".")) || 0;
+                  if (newValue > 0 && editingDimension.entityId) {
+                    const scaleFactor = sketchRef.current.scaleFactor || 1;
+                    const newValuePx = newValue * scaleFactor;
+                    const geo = sketchRef.current.geometries.get(editingDimension.entityId);
+                    if (geo) {
+                      const newSketch = { ...sketchRef.current };
+                      newSketch.points = new Map(sketchRef.current.points);
+                      newSketch.geometries = new Map(sketchRef.current.geometries);
+                      newSketch.dimensions = new Map(sketchRef.current.dimensions);
+
+                      if (editingDimension.type === "line" && geo.type === "line") {
+                        const line = geo as Line;
+                        const p1 = newSketch.points.get(line.p1);
+                        const p2 = newSketch.points.get(line.p2);
+                        if (p1 && p2) {
+                          const dx = p2.x - p1.x;
+                          const dy = p2.y - p1.y;
+                          const currentLen = Math.sqrt(dx * dx + dy * dy);
+                          if (currentLen > 0) {
+                            // Garder p1 fixe, déplacer p2
+                            const newP2 = {
+                              ...p2,
+                              x: p1.x + (dx / currentLen) * newValuePx,
+                              y: p1.y + (dy / currentLen) * newValuePx,
+                            };
+                            newSketch.points.set(line.p2, newP2);
+                          }
+                        }
+                      } else if (editingDimension.type === "circle" && geo.type === "circle") {
+                        const circle = geo as CircleType;
+                        const newCircle = { ...circle, radius: newValuePx };
+                        newSketch.geometries.set(circle.id, newCircle);
+                      }
+
+                      // Mettre à jour la dimension
+                      if (editingDimension.dimensionId) {
+                        const dim = newSketch.dimensions.get(editingDimension.dimensionId);
+                        if (dim) {
+                          newSketch.dimensions.set(editingDimension.dimensionId, { ...dim, value: newValue });
+                        }
+                      }
+
+                      setSketch(newSketch);
+                      addToHistory(newSketch, `Dimension modifiée: ${newValue.toFixed(1)} mm`);
+                    }
+                  }
+                  setEditingDimension(null);
+                }
+              }}
+              className="w-16 px-1 py-0.5 text-sm font-mono bg-white border border-amber-400 rounded text-center focus:outline-none focus:ring-1 focus:ring-amber-500"
+            />
+            <span className="text-xs text-amber-600 ml-0.5">mm</span>
+          </div>
+        </div>
       )}
 
       {/* Dialog contrainte d'angle */}
