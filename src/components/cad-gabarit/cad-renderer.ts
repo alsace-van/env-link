@@ -4572,3 +4572,17 @@ export class CADRenderer {
           this.ctx.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, p2.x, p2.y);
           this.ctx.stroke();
         }
+      }
+    });
+
+    // Dessiner les points de la branche (petits cercles)
+    const pointRadius = 3 / this.viewport.scale;
+    this.ctx.fillStyle = color;
+
+    branchSketch.points.forEach((point) => {
+      this.ctx.beginPath();
+      this.ctx.arc(point.x, point.y, pointRadius, 0, Math.PI * 2);
+      this.ctx.fill();
+    });
+  }
+}
