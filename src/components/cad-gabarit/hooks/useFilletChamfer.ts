@@ -5,8 +5,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import type { Sketch, Line, Arc, Point, Dimension } from "../cad-types";
-import { generateId, distance } from "../cad-utils";
+import type { Sketch, Line, Arc, Point, Dimension } from "../types";
+import { generateId, distance } from "../types";
 
 // Types pour les dialogues
 export interface FilletCorner {
@@ -80,7 +80,7 @@ interface UseFilletChamferProps {
   addToHistory: (sketch: Sketch, description?: string) => void;
   selectedEntities: Set<string>;
   setSelectedEntities: (entities: Set<string>) => void;
-  closeAllEditPanels: (except?: string) => void;
+  closeAllEditPanels?: (except?: string) => void;
 }
 
 export function useFilletChamfer({
@@ -551,10 +551,7 @@ export function useFilletChamfer({
 
   // Calculer la géométrie d'un congé sans l'appliquer (pour preview)
   const calculateFilletGeometry = useCallback(
-    (
-      pointId: string,
-      radiusMm: number,
-    ): FilletPreview | null => {
+    (pointId: string, radiusMm: number): FilletPreview | null => {
       const connectedLines = findLinesConnectedToPoint(pointId);
       if (connectedLines.length !== 2) return null;
 
@@ -626,12 +623,7 @@ export function useFilletChamfer({
 
   // Calculer la géométrie d'un chanfrein sans l'appliquer (pour preview)
   const calculateChamferGeometry = useCallback(
-    (
-      pointId: string,
-      distanceMm: number,
-      dist1Mm?: number,
-      dist2Mm?: number,
-    ): ChamferPreview | null => {
+    (pointId: string, distanceMm: number, dist1Mm?: number, dist2Mm?: number): ChamferPreview | null => {
       const connectedLines = findLinesConnectedToPoint(pointId);
       if (connectedLines.length !== 2) return null;
 
@@ -740,7 +732,7 @@ export function useFilletChamfer({
       const len2Mm = params.len2 / sketch.scaleFactor;
       const suggestedRadius = Math.min(filletRadius, Math.floor(maxRadiusMm));
 
-      closeAllEditPanels("fillet");
+      closeAllEditPanels?.("fillet");
 
       setFilletDialog({
         open: true,
