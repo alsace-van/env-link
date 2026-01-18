@@ -1,11 +1,11 @@
 // ============================================
 // HOOK: useLayerManager
 // Gestion complète des calques CAD
-// VERSION: 1.0
+// VERSION: 2.0 - Solo, Guide, Groupes
 // ============================================
 
-import { useCallback } from "react";
-import { Layer, Sketch, generateId } from "./types";
+import { useCallback, useMemo } from "react";
+import { Layer, LayerGroup, Sketch, generateId } from "./types";
 import { toast } from "sonner";
 
 // Couleurs disponibles pour les calques
@@ -27,10 +27,24 @@ interface UseLayerManagerProps {
   setSketch: React.Dispatch<React.SetStateAction<Sketch>>;
 }
 
+// Type pour représenter un élément dans la liste (calque ou groupe)
+export interface LayerListItem {
+  type: "layer" | "group";
+  id: string;
+  layer?: Layer;
+  group?: LayerGroup;
+  depth: number; // Niveau d'imbrication (0 = racine)
+  children?: LayerListItem[]; // Pour les groupes
+}
+
 export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
+  // ==========================================
+  // GESTION DES CALQUES
+  // ==========================================
+
   // Créer un nouveau calque
   const createLayer = useCallback(
-    (name?: string) => {
+    (name?: string, groupId?: string) => {
       const newLayerId = generateId();
       const layerCount = sketch.layers.size;
       const newLayer: Layer = {
@@ -41,6 +55,9 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
         locked: false,
         order: layerCount,
         opacity: 1,
+        solo: false,
+        isGuide: false,
+        groupId: groupId,
       };
 
       setSketch((prev) => {
@@ -133,6 +150,267 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
     [setSketch]
   );
 
+  // ==========================================
+  // SOLO MODE - Isoler un calque
+  // ==========================================
+
+  const toggleSolo = useCallback(
+    (layerId: string) => {
+      setSketch((prev) => {
+        const newLayers = new Map(prev.layers);
+        const layer = newLayers.get(layerId);
+        if (!layer) return prev;
+
+        const isCurrentlySolo = layer.solo;
+
+        // Si on désactive le solo, on remet tout à false
+        if (isCurrentlySolo) {
+          newLayers.forEach((l, id) => {
+            newLayers.set(id, { ...l, solo: false });
+          });
+        } else {
+          // Sinon on active le solo uniquement pour ce calque
+          newLayers.forEach((l, id) => {
+            newLayers.set(id, { ...l, solo: id === layerId });
+          });
+        }
+
+        return { ...prev, layers: newLayers };
+      });
+    },
+    [setSketch]
+  );
+
+  // Vérifier si un calque en mode solo existe
+  const hasSoloLayer = useMemo(() => {
+    return Array.from(sketch.layers.values()).some((l) => l.solo);
+  }, [sketch.layers]);
+
+  // ==========================================
+  // GUIDE MODE - Calque non exporté
+  // ==========================================
+
+  const toggleGuide = useCallback(
+    (layerId: string) => {
+      setSketch((prev) => {
+        const newLayers = new Map(prev.layers);
+        const layer = newLayers.get(layerId);
+        if (layer) {
+          const newIsGuide = !layer.isGuide;
+          newLayers.set(layerId, { ...layer, isGuide: newIsGuide });
+          toast.success(newIsGuide ? `"${layer.name}" est maintenant un guide` : `"${layer.name}" n'est plus un guide`);
+        }
+        return { ...prev, layers: newLayers };
+      });
+    },
+    [setSketch]
+  );
+
+  // ==========================================
+  // GESTION DES GROUPES
+  // ==========================================
+
+  // Créer un nouveau groupe
+  const createGroup = useCallback(
+    (name?: string, parentGroupId?: string) => {
+      const newGroupId = generateId();
+      const groupCount = sketch.layerGroups?.size || 0;
+      const newGroup: LayerGroup = {
+        id: newGroupId,
+        name: name || `Groupe ${groupCount + 1}`,
+        color: LAYER_COLORS[(groupCount + 3) % LAYER_COLORS.length],
+        visible: true,
+        locked: false,
+        opacity: 1,
+        expanded: true,
+        order: groupCount,
+        parentGroupId: parentGroupId,
+      };
+
+      setSketch((prev) => {
+        const newLayerGroups = new Map(prev.layerGroups || new Map());
+        newLayerGroups.set(newGroupId, newGroup);
+        return { ...prev, layerGroups: newLayerGroups };
+      });
+
+      toast.success(`Groupe "${newGroup.name}" créé`);
+      return newGroupId;
+    },
+    [sketch.layerGroups, setSketch]
+  );
+
+  // Renommer un groupe
+  const renameGroup = useCallback(
+    (groupId: string, newName: string) => {
+      if (!newName.trim()) return;
+
+      setSketch((prev) => {
+        const newLayerGroups = new Map(prev.layerGroups || new Map());
+        const group = newLayerGroups.get(groupId);
+        if (group) {
+          newLayerGroups.set(groupId, { ...group, name: newName.trim() });
+        }
+        return { ...prev, layerGroups: newLayerGroups };
+      });
+    },
+    [setSketch]
+  );
+
+  // Toggle expansion du groupe (plier/déplier)
+  const toggleGroupExpanded = useCallback(
+    (groupId: string) => {
+      setSketch((prev) => {
+        const newLayerGroups = new Map(prev.layerGroups || new Map());
+        const group = newLayerGroups.get(groupId);
+        if (group) {
+          newLayerGroups.set(groupId, { ...group, expanded: !group.expanded });
+        }
+        return { ...prev, layerGroups: newLayerGroups };
+      });
+    },
+    [setSketch]
+  );
+
+  // Toggle visibilité du groupe (affecte tous les calques du groupe)
+  const toggleGroupVisibility = useCallback(
+    (groupId: string) => {
+      setSketch((prev) => {
+        const newLayerGroups = new Map(prev.layerGroups || new Map());
+        const group = newLayerGroups.get(groupId);
+        if (!group) return prev;
+
+        const newVisible = !group.visible;
+        newLayerGroups.set(groupId, { ...group, visible: newVisible });
+
+        // Appliquer aux calques du groupe
+        const newLayers = new Map(prev.layers);
+        newLayers.forEach((layer, id) => {
+          if (layer.groupId === groupId) {
+            newLayers.set(id, { ...layer, visible: newVisible });
+          }
+        });
+
+        return { ...prev, layerGroups: newLayerGroups, layers: newLayers };
+      });
+    },
+    [setSketch]
+  );
+
+  // Toggle verrouillage du groupe
+  const toggleGroupLock = useCallback(
+    (groupId: string) => {
+      setSketch((prev) => {
+        const newLayerGroups = new Map(prev.layerGroups || new Map());
+        const group = newLayerGroups.get(groupId);
+        if (!group) return prev;
+
+        const newLocked = !group.locked;
+        newLayerGroups.set(groupId, { ...group, locked: newLocked });
+
+        // Appliquer aux calques du groupe
+        const newLayers = new Map(prev.layers);
+        newLayers.forEach((layer, id) => {
+          if (layer.groupId === groupId) {
+            newLayers.set(id, { ...layer, locked: newLocked });
+          }
+        });
+
+        toast.success(newLocked ? `Groupe verrouillé` : `Groupe déverrouillé`);
+        return { ...prev, layerGroups: newLayerGroups, layers: newLayers };
+      });
+    },
+    [setSketch]
+  );
+
+  // Changer l'opacité du groupe
+  const setGroupOpacity = useCallback(
+    (groupId: string, opacity: number) => {
+      setSketch((prev) => {
+        const newLayerGroups = new Map(prev.layerGroups || new Map());
+        const group = newLayerGroups.get(groupId);
+        if (group) {
+          newLayerGroups.set(groupId, { ...group, opacity: Math.max(0, Math.min(1, opacity)) });
+        }
+        return { ...prev, layerGroups: newLayerGroups };
+      });
+    },
+    [setSketch]
+  );
+
+  // Changer la couleur du groupe
+  const setGroupColor = useCallback(
+    (groupId: string, color: string) => {
+      setSketch((prev) => {
+        const newLayerGroups = new Map(prev.layerGroups || new Map());
+        const group = newLayerGroups.get(groupId);
+        if (group) {
+          newLayerGroups.set(groupId, { ...group, color });
+        }
+        return { ...prev, layerGroups: newLayerGroups };
+      });
+    },
+    [setSketch]
+  );
+
+  // Supprimer un groupe (les calques reviennent à la racine)
+  const deleteGroup = useCallback(
+    (groupId: string) => {
+      setSketch((prev) => {
+        const newLayerGroups = new Map(prev.layerGroups || new Map());
+        const group = newLayerGroups.get(groupId);
+        if (!group) return prev;
+
+        newLayerGroups.delete(groupId);
+
+        // Remettre les calques du groupe à la racine
+        const newLayers = new Map(prev.layers);
+        newLayers.forEach((layer, id) => {
+          if (layer.groupId === groupId) {
+            newLayers.set(id, { ...layer, groupId: undefined });
+          }
+        });
+
+        toast.success(`Groupe "${group.name}" supprimé`);
+        return { ...prev, layerGroups: newLayerGroups, layers: newLayers };
+      });
+    },
+    [setSketch]
+  );
+
+  // Ajouter un calque à un groupe
+  const addLayerToGroup = useCallback(
+    (layerId: string, groupId: string) => {
+      setSketch((prev) => {
+        const newLayers = new Map(prev.layers);
+        const layer = newLayers.get(layerId);
+        if (layer) {
+          newLayers.set(layerId, { ...layer, groupId });
+        }
+        return { ...prev, layers: newLayers };
+      });
+    },
+    [setSketch]
+  );
+
+  // Retirer un calque d'un groupe
+  const removeLayerFromGroup = useCallback(
+    (layerId: string) => {
+      setSketch((prev) => {
+        const newLayers = new Map(prev.layers);
+        const layer = newLayers.get(layerId);
+        if (layer) {
+          newLayers.set(layerId, { ...layer, groupId: undefined });
+        }
+        return { ...prev, layers: newLayers };
+      });
+    },
+    [setSketch]
+  );
+
+  // ==========================================
+  // AUTRES FONCTIONS DE CALQUES
+  // ==========================================
+
   // Supprimer un calque
   const deleteLayer = useCallback(
     (layerId: string) => {
@@ -146,13 +424,11 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
         const newLayers = new Map(prev.layers);
         newLayers.delete(layerId);
 
-        // Si on supprime le calque actif, sélectionner le premier restant
         let newActiveLayerId = prev.activeLayerId;
         if (prev.activeLayerId === layerId) {
           newActiveLayerId = Array.from(newLayers.keys())[0];
         }
 
-        // Réorganiser les orders
         const sortedLayers = Array.from(newLayers.values()).sort((a, b) => a.order - b.order);
         sortedLayers.forEach((l, index) => {
           newLayers.set(l.id, { ...l, order: index });
@@ -180,21 +456,19 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
         id: newLayerId,
         name: `${sourceLayer.name} (copie)`,
         order: sketch.layers.size,
+        solo: false,
       };
 
       setSketch((prev) => {
         const newLayers = new Map(prev.layers);
         newLayers.set(newLayerId, newLayer);
 
-        // Dupliquer aussi les géométries et points de ce calque
         const newGeometries = new Map(prev.geometries);
         const newPoints = new Map(prev.points);
-        const pointIdMap = new Map<string, string>(); // ancien ID -> nouveau ID
+        const pointIdMap = new Map<string, string>();
 
-        // D'abord dupliquer les points associés aux géométries du calque
         prev.geometries.forEach((geo) => {
           if (geo.layerId === layerId) {
-            // Trouver tous les points de cette géométrie
             const pointIds: string[] = [];
             if ("p1" in geo && geo.p1) pointIds.push(geo.p1);
             if ("p2" in geo && geo.p2) pointIds.push(geo.p2);
@@ -221,13 +495,11 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
           }
         });
 
-        // Ensuite dupliquer les géométries avec les nouveaux IDs de points
         prev.geometries.forEach((geo) => {
           if (geo.layerId === layerId) {
             const newGeoId = generateId();
             const newGeo = { ...geo, id: newGeoId, layerId: newLayerId };
 
-            // Remplacer les IDs de points
             if ("p1" in newGeo && newGeo.p1) newGeo.p1 = pointIdMap.get(newGeo.p1) || newGeo.p1;
             if ("p2" in newGeo && newGeo.p2) newGeo.p2 = pointIdMap.get(newGeo.p2) || newGeo.p2;
             if ("p3" in newGeo && newGeo.p3) (newGeo as any).p3 = pointIdMap.get(newGeo.p3 as string) || newGeo.p3;
@@ -261,7 +533,7 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
     [sketch.layers, setSketch]
   );
 
-  // Déplacer un calque vers l'avant (order +1)
+  // Déplacer un calque vers l'avant
   const moveLayerUp = useCallback(
     (layerId: string) => {
       setSketch((prev) => {
@@ -270,10 +542,8 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
         const layerIndex = sortedLayers.findIndex((l) => l.id === layerId);
 
         if (layerIndex < sortedLayers.length - 1) {
-          // Échanger avec le calque suivant
           const currentLayer = sortedLayers[layerIndex];
           const nextLayer = sortedLayers[layerIndex + 1];
-
           newLayers.set(currentLayer.id, { ...currentLayer, order: nextLayer.order });
           newLayers.set(nextLayer.id, { ...nextLayer, order: currentLayer.order });
         }
@@ -284,7 +554,7 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
     [setSketch]
   );
 
-  // Déplacer un calque vers l'arrière (order -1)
+  // Déplacer un calque vers l'arrière
   const moveLayerDown = useCallback(
     (layerId: string) => {
       setSketch((prev) => {
@@ -293,10 +563,8 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
         const layerIndex = sortedLayers.findIndex((l) => l.id === layerId);
 
         if (layerIndex > 0) {
-          // Échanger avec le calque précédent
           const currentLayer = sortedLayers[layerIndex];
           const prevLayer = sortedLayers[layerIndex - 1];
-
           newLayers.set(currentLayer.id, { ...currentLayer, order: prevLayer.order });
           newLayers.set(prevLayer.id, { ...prevLayer, order: currentLayer.order });
         }
@@ -307,7 +575,7 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
     [setSketch]
   );
 
-  // Mettre un calque au premier plan
+  // Premier plan
   const bringLayerToFront = useCallback(
     (layerId: string) => {
       setSketch((prev) => {
@@ -317,7 +585,6 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
 
         const layer = newLayers.get(layerId);
         if (layer && layer.order < maxOrder) {
-          // Décaler tous les calques au-dessus
           sortedLayers.forEach((l) => {
             if (l.order > layer.order) {
               newLayers.set(l.id, { ...l, order: l.order - 1 });
@@ -333,7 +600,7 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
     [setSketch]
   );
 
-  // Mettre un calque en arrière-plan
+  // Arrière-plan
   const sendLayerToBack = useCallback(
     (layerId: string) => {
       setSketch((prev) => {
@@ -342,7 +609,6 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
 
         const layer = newLayers.get(layerId);
         if (layer && layer.order > 0) {
-          // Décaler tous les calques en-dessous
           sortedLayers.forEach((l) => {
             if (l.order < layer.order) {
               newLayers.set(l.id, { ...l, order: l.order + 1 });
@@ -358,7 +624,7 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
     [setSketch]
   );
 
-  // Réordonner les calques (pour drag & drop)
+  // Réordonner (drag & drop)
   const reorderLayers = useCallback(
     (sourceId: string, targetId: string) => {
       if (sourceId === targetId) return;
@@ -372,12 +638,9 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
 
         if (sourceIndex === -1 || targetIndex === -1) return prev;
 
-        // Retirer le calque source
         const [movedLayer] = sortedLayers.splice(sourceIndex, 1);
-        // L'insérer à la position cible
         sortedLayers.splice(targetIndex, 0, movedLayer);
 
-        // Réassigner les orders
         sortedLayers.forEach((layer, index) => {
           newLayers.set(layer.id, { ...layer, order: index });
         });
@@ -398,7 +661,6 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
       if (!sourceLayer || !targetLayer) return;
 
       setSketch((prev) => {
-        // Déplacer toutes les géométries du calque source vers le calque cible
         const newGeometries = new Map(prev.geometries);
         newGeometries.forEach((geo, id) => {
           if (geo.layerId === sourceLayerId) {
@@ -406,17 +668,14 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
           }
         });
 
-        // Supprimer le calque source
         const newLayers = new Map(prev.layers);
         newLayers.delete(sourceLayerId);
 
-        // Réorganiser les orders
         const sortedLayers = Array.from(newLayers.values()).sort((a, b) => a.order - b.order);
         sortedLayers.forEach((l, index) => {
           newLayers.set(l.id, { ...l, order: index });
         });
 
-        // Si le calque actif était le source, passer au target
         const newActiveLayerId = prev.activeLayerId === sourceLayerId ? targetLayerId : prev.activeLayerId;
 
         return {
@@ -440,13 +699,128 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
     [setSketch]
   );
 
+  // ==========================================
+  // HELPERS
+  // ==========================================
+
   // Obtenir les calques triés
   const getSortedLayers = useCallback(() => {
     return Array.from(sketch.layers.values()).sort((a, b) => a.order - b.order);
   }, [sketch.layers]);
 
+  // Obtenir les groupes triés
+  const getSortedGroups = useCallback(() => {
+    if (!sketch.layerGroups) return [];
+    return Array.from(sketch.layerGroups.values()).sort((a, b) => a.order - b.order);
+  }, [sketch.layerGroups]);
+
+  // Obtenir les calques d'un groupe
+  const getLayersInGroup = useCallback(
+    (groupId: string) => {
+      return Array.from(sketch.layers.values())
+        .filter((l) => l.groupId === groupId)
+        .sort((a, b) => a.order - b.order);
+    },
+    [sketch.layers]
+  );
+
+  // Obtenir les calques sans groupe (racine)
+  const getRootLayers = useCallback(() => {
+    return Array.from(sketch.layers.values())
+      .filter((l) => !l.groupId)
+      .sort((a, b) => a.order - b.order);
+  }, [sketch.layers]);
+
+  // Calculer l'opacité effective d'un calque (incluant l'opacité du groupe parent)
+  const getEffectiveOpacity = useCallback(
+    (layerId: string) => {
+      const layer = sketch.layers.get(layerId);
+      if (!layer) return 1;
+
+      let opacity = layer.opacity ?? 1;
+
+      if (layer.groupId && sketch.layerGroups) {
+        const group = sketch.layerGroups.get(layer.groupId);
+        if (group) {
+          opacity *= group.opacity;
+        }
+      }
+
+      return opacity;
+    },
+    [sketch.layers, sketch.layerGroups]
+  );
+
+  // Vérifier si un calque est effectivement visible (incluant groupe parent et solo)
+  const isLayerEffectivelyVisible = useCallback(
+    (layerId: string) => {
+      const layer = sketch.layers.get(layerId);
+      if (!layer) return false;
+
+      // Si un calque est en solo, seul celui-ci est visible
+      if (hasSoloLayer) {
+        return layer.solo === true;
+      }
+
+      // Vérifier la visibilité du calque
+      if (!layer.visible) return false;
+
+      // Vérifier la visibilité du groupe parent
+      if (layer.groupId && sketch.layerGroups) {
+        const group = sketch.layerGroups.get(layer.groupId);
+        if (group && !group.visible) return false;
+      }
+
+      return true;
+    },
+    [sketch.layers, sketch.layerGroups, hasSoloLayer]
+  );
+
+  // Construire la liste hiérarchique des calques et groupes
+  const getLayerHierarchy = useCallback((): LayerListItem[] => {
+    const result: LayerListItem[] = [];
+    const groups = getSortedGroups();
+    const rootLayers = getRootLayers();
+
+    // Ajouter les groupes avec leurs calques
+    groups.forEach((group) => {
+      const groupItem: LayerListItem = {
+        type: "group",
+        id: group.id,
+        group,
+        depth: 0,
+        children: [],
+      };
+
+      // Ajouter les calques du groupe
+      const layersInGroup = getLayersInGroup(group.id);
+      layersInGroup.forEach((layer) => {
+        groupItem.children!.push({
+          type: "layer",
+          id: layer.id,
+          layer,
+          depth: 1,
+        });
+      });
+
+      result.push(groupItem);
+    });
+
+    // Ajouter les calques sans groupe
+    rootLayers.forEach((layer) => {
+      result.push({
+        type: "layer",
+        id: layer.id,
+        layer,
+        depth: 0,
+      });
+    });
+
+    return result;
+  }, [getSortedGroups, getRootLayers, getLayersInGroup]);
+
   return {
-    // Actions
+    // Actions calques
     createLayer,
     renameLayer,
     setLayerColor,
@@ -462,8 +836,33 @@ export function useLayerManager({ sketch, setSketch }: UseLayerManagerProps) {
     reorderLayers,
     mergeLayers,
     selectLayer,
+
+    // Solo & Guide
+    toggleSolo,
+    toggleGuide,
+    hasSoloLayer,
+
+    // Actions groupes
+    createGroup,
+    renameGroup,
+    toggleGroupExpanded,
+    toggleGroupVisibility,
+    toggleGroupLock,
+    setGroupOpacity,
+    setGroupColor,
+    deleteGroup,
+    addLayerToGroup,
+    removeLayerFromGroup,
+
     // Helpers
     getSortedLayers,
+    getSortedGroups,
+    getLayersInGroup,
+    getRootLayers,
+    getEffectiveOpacity,
+    isLayerEffectivelyVisible,
+    getLayerHierarchy,
+
     // Constantes
     LAYER_COLORS,
   };
