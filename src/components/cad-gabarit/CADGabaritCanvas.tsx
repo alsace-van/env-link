@@ -921,37 +921,7 @@ export function CADGabaritCanvas({
     setSelectedEntities,
   });
 
-  // === FONCTION POUR FERMER TOUS LES PANNEAUX D'ÉDITION ===
-  // Évite la confusion quand plusieurs panneaux sont ouverts
-  // Note: Défini ici car utilise setFilletDialog/setChamferDialog du hook useFilletChamfer
-  const closeAllEditPanels = useCallback(
-    (except?: string) => {
-      if (except !== "fillet") setFilletDialog(null);
-      if (except !== "chamfer") setChamferDialog(null);
-      if (except !== "arcEdit") setArcEditDialog(null);
-      if (except !== "lineLength") {
-        // Si on ferme le panneau longueur, restaurer le sketch original si nécessaire
-        if (lineLengthDialog?.originalSketch) {
-          setSketch(lineLengthDialog.originalSketch);
-        }
-        setLineLengthDialog(null);
-      }
-      if (except !== "angle") {
-        // Si on ferme le panneau angle, restaurer le sketch original si nécessaire
-        if (angleEditDialog?.originalSketch) {
-          setSketch(angleEditDialog.originalSketch);
-        }
-        setAngleEditDialog(null);
-      }
-      if (except !== "fill") {
-        setFillDialogOpen(false);
-        setFillDialogTarget(null);
-      }
-      if (except !== "text") setTextInput(null);
-      if (except !== "context") setContextMenu(null);
-    },
-    [lineLengthDialog, angleEditDialog, setFilletDialog, setChamferDialog],
-  );
+  // Note: closeAllEditPanels est défini plus bas, après les états lineLengthDialog et angleEditDialog
 
   // Calibration
   const [calibrationData, setCalibrationData] = useState<CalibrationData>({
@@ -1201,7 +1171,37 @@ export function CADGabaritCanvas({
   const [anglePanelDragging, setAnglePanelDragging] = useState(false);
   const [anglePanelDragStart, setAnglePanelDragStart] = useState({ x: 0, y: 0 });
 
-  // Note: closeAllEditPanels est défini après le hook useFilletChamfer (car il utilise setFilletDialog/setChamferDialog du hook)
+  // === FONCTION POUR FERMER TOUS LES PANNEAUX D'ÉDITION ===
+  // Évite la confusion quand plusieurs panneaux sont ouverts
+  // Note: Défini ici (après les états lineLengthDialog/angleEditDialog) et utilise setFilletDialog/setChamferDialog du hook
+  const closeAllEditPanels = useCallback(
+    (except?: string) => {
+      if (except !== "fillet") setFilletDialog(null);
+      if (except !== "chamfer") setChamferDialog(null);
+      if (except !== "arcEdit") setArcEditDialog(null);
+      if (except !== "lineLength") {
+        // Si on ferme le panneau longueur, restaurer le sketch original si nécessaire
+        if (lineLengthDialog?.originalSketch) {
+          setSketch(lineLengthDialog.originalSketch);
+        }
+        setLineLengthDialog(null);
+      }
+      if (except !== "angle") {
+        // Si on ferme le panneau angle, restaurer le sketch original si nécessaire
+        if (angleEditDialog?.originalSketch) {
+          setSketch(angleEditDialog.originalSketch);
+        }
+        setAngleEditDialog(null);
+      }
+      if (except !== "fill") {
+        setFillDialogOpen(false);
+        setFillDialogTarget(null);
+      }
+      if (except !== "text") setTextInput(null);
+      if (except !== "context") setContextMenu(null);
+    },
+    [lineLengthDialog, angleEditDialog, setFilletDialog, setChamferDialog],
+  );
 
   // Modale pour répétition/array
   const [arrayDialog, setArrayDialog] = useState<{
@@ -5097,6 +5097,81 @@ export function CADGabaritCanvas({
   );
 
   // ============ OFFSET FUNCTIONS ============
+
+  // Trouver toutes les géométries connectées à partir d'une géométrie (BFS)
+  const findConnectedGeometries = useCallback(
+    (startGeoId: string): Set<string> => {
+      const visited = new Set<string>();
+      const queue: string[] = [startGeoId];
+
+      // Fonction helper pour obtenir les points d'une géométrie
+      const getPointsOfGeometry = (geoId: string): string[] => {
+        const geo = sketch.geometries.get(geoId);
+        if (!geo) return [];
+
+        if (geo.type === "line") {
+          const line = geo as Line;
+          return [line.p1, line.p2];
+        } else if (geo.type === "arc") {
+          const arc = geo as Arc;
+          return [arc.startPoint, arc.endPoint]; // Ne pas inclure le centre
+        } else if (geo.type === "circle") {
+          return []; // Les cercles ne sont pas connectés
+        } else if (geo.type === "bezier") {
+          const bezier = geo as Bezier;
+          return [bezier.p1, bezier.p2]; // Points d'ancrage uniquement
+        }
+        return [];
+      };
+
+      // Fonction helper pour trouver les géométries connectées à un point
+      const getGeometriesAtPoint = (pointId: string): string[] => {
+        const result: string[] = [];
+        sketch.geometries.forEach((geo, id) => {
+          if (geo.type === "line") {
+            const line = geo as Line;
+            if (line.p1 === pointId || line.p2 === pointId) {
+              result.push(id);
+            }
+          } else if (geo.type === "arc") {
+            const arc = geo as Arc;
+            if (arc.startPoint === pointId || arc.endPoint === pointId) {
+              result.push(id);
+            }
+          } else if (geo.type === "bezier") {
+            const bezier = geo as Bezier;
+            if (bezier.p1 === pointId || bezier.p2 === pointId) {
+              result.push(id);
+            }
+          }
+        });
+        return result;
+      };
+
+      // BFS pour trouver toutes les géométries connectées
+      while (queue.length > 0) {
+        const currentGeoId = queue.shift()!;
+        if (visited.has(currentGeoId)) continue;
+        visited.add(currentGeoId);
+
+        // Obtenir les points de cette géométrie
+        const points = getPointsOfGeometry(currentGeoId);
+
+        // Pour chaque point, trouver les géométries connectées
+        for (const pointId of points) {
+          const connectedGeos = getGeometriesAtPoint(pointId);
+          for (const geoId of connectedGeos) {
+            if (!visited.has(geoId)) {
+              queue.push(geoId);
+            }
+          }
+        }
+      }
+
+      return visited;
+    },
+    [sketch.geometries],
+  );
 
   // Calculer l'offset d'une ligne (retourne les deux points décalés)
   const offsetLine = useCallback(
