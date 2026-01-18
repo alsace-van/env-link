@@ -11095,9 +11095,7 @@ export function CADGabaritCanvas({
           });
 
           // v7.24: Mettre à jour l'input de mesure en temps réel pour la ligne
-          const lineLengthPx = Math.sqrt(
-            (lineTargetPos.x - startPoint.x) ** 2 + (lineTargetPos.y - startPoint.y) ** 2
-          );
+          const lineLengthPx = Math.sqrt((lineTargetPos.x - startPoint.x) ** 2 + (lineTargetPos.y - startPoint.y) ** 2);
           const lineLengthMm = lineLengthPx / (sketchRef.current.scaleFactor || 1);
           // Position écran au milieu de la ligne avec offset perpendiculaire
           const midX = (startPoint.x + lineTargetPos.x) / 2;
@@ -16072,11 +16070,25 @@ export function CADGabaritCanvas({
                   className="h-8 w-8 p-0"
                 >
                   {showConstruction ? (
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 2">
+                    <svg
+                      className="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeDasharray="4 2"
+                    >
                       <line x1="4" y1="20" x2="20" y2="4" />
                     </svg>
                   ) : (
-                    <svg className="h-4 w-4 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 2">
+                    <svg
+                      className="h-4 w-4 opacity-40"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeDasharray="4 2"
+                    >
                       <line x1="4" y1="20" x2="20" y2="4" />
                     </svg>
                   )}
@@ -16823,9 +16835,7 @@ export function CADGabaritCanvas({
                   <Image className="h-4 w-4 mr-1" />
                   <span className="text-xs">Outils</span>
                   <ChevronDown className="h-3 w-3 ml-1" />
-                  {selectedImageId && (
-                    <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />
-                  )}
+                  {selectedImageId && <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56">
@@ -16996,7 +17006,9 @@ export function CADGabaritCanvas({
                 >
                   <Link2 className="h-4 w-4 mr-2" />
                   Lier deux marqueurs
-                  {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && <Check className="h-4 w-4 ml-auto" />}
+                  {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && (
+                    <Check className="h-4 w-4 ml-auto" />
+                  )}
                 </DropdownMenuItem>
 
                 <DropdownMenuSeparator />
@@ -22512,3 +22524,59 @@ function serializeBackgroundImages(images: BackgroundImage[]): any[] {
           points: Object.fromEntries(img.calibrationData.points || new Map()),
           pairs: Object.fromEntries(img.calibrationData.pairs || new Map()),
           scale: img.calibrationData.scale,
+          error: img.calibrationData.error,
+          applied: img.calibrationData.applied,
+          mode: img.calibrationData.mode,
+        }
+      : undefined,
+  }));
+}
+
+function deserializeSketch(data: any): Sketch {
+  return {
+    id: data.id || "sketch-1",
+    name: data.name || "Sketch",
+    points: new Map(Object.entries(data.points || {})),
+    geometries: new Map(Object.entries(data.geometries || {})),
+    constraints: new Map(Object.entries(data.constraints || {})),
+    dimensions: new Map(Object.entries(data.dimensions || {})),
+    scaleFactor: data.scaleFactor || 1,
+    layers: data.layers ? new Map(Object.entries(data.layers)) : new Map(),
+    groups: data.groups ? new Map(Object.entries(data.groups)) : new Map(),
+    shapeFills: data.shapeFills ? new Map(Object.entries(data.shapeFills)) : new Map(),
+    activeLayerId: data.activeLayerId || "trace",
+    dof: data.dof ?? 0,
+    status: data.status || "under-constrained",
+  };
+}
+
+function exportToSVG(sketch: Sketch): string {
+  let svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-500 -500 1000 1000">
+<g stroke="black" stroke-width="1" fill="none">
+`;
+
+  sketch.geometries.forEach((geo) => {
+    if (geo.type === "line") {
+      const line = geo as Line;
+      const p1 = sketch.points.get(line.p1);
+      const p2 = sketch.points.get(line.p2);
+      if (p1 && p2) {
+        svg += `  <line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}"/>\n`;
+      }
+    } else if (geo.type === "circle") {
+      const circle = geo as CircleType;
+      const center = sketch.points.get(circle.center);
+      if (center) {
+        svg += `  <circle cx="${center.x}" cy="${center.y}" r="${circle.radius}"/>\n`;
+      }
+    }
+  });
+
+  svg += `</g>
+</svg>`;
+
+  return svg;
+}
+
+export default CADGabaritCanvas;
