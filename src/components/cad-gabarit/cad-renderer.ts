@@ -1,8 +1,12 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.72 - Cotations fines avec fond transparent
+// VERSION: 3.73 - Fix affichage cotations
 // ============================================
+//
+// CHANGELOG v3.73 (18/01/2026):
+// - Fix: taille du texte des cotations maintenant visible (12px écran)
+// - Fix: épaisseur de trait minimum pour visibilité
 //
 // CHANGELOG v3.72 (17/01/2026):
 // - Cotations: traits plus fins (0.5 au lieu de 1)
@@ -3152,13 +3156,16 @@ export class CADRenderer {
   /**
    * Dessine une cotation
    * v3.72: Traits fins + fond semi-transparent
+   * v3.73: Fix taille du texte et épaisseur des traits
    */
   private drawDimension(dimension: Dimension, sketch: Sketch): void {
     this.ctx.strokeStyle = this.styles.dimensionColor;
     this.ctx.fillStyle = this.styles.dimensionColor;
-    // v3.72: Trait plus fin pour les cotations
-    this.ctx.lineWidth = 0.5 / this.viewport.scale;
-    this.ctx.font = `${this.styles.dimensionFont.replace(/\d+/, (m) => String(parseInt(m) / this.viewport.scale))}`;
+    // v3.73: Trait fin mais visible (min 0.5px à l'écran)
+    this.ctx.lineWidth = Math.max(0.5, 1 / this.viewport.scale);
+    // v3.73: Font size fixe en pixels écran (12px), pas en coordonnées monde
+    const fontSize = 12 / this.viewport.scale;
+    this.ctx.font = `${fontSize}px Arial`;
 
     switch (dimension.type) {
       case "linear":
