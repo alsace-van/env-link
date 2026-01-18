@@ -11750,6 +11750,78 @@ export function CADGabaritCanvas({
     ],
   );
 
+  // v7.24: Fonction pour trouver une cotation (dimension text) à une position écran
+  const findDimensionAtScreenPos = useCallback(
+    (screenX: number, screenY: number): { entityId: string; type: "line" | "circle"; value: number } | null => {
+      const currentSketch = sketchRef.current;
+      const scaleFactor = currentSketch.scaleFactor || 1;
+
+      // Parcourir toutes les lignes pour vérifier si on clique sur leur cotation
+      for (const [id, geo] of currentSketch.geometries) {
+        if (geo.type === "line") {
+          const line = geo as Line;
+          const p1 = currentSketch.points.get(line.p1);
+          const p2 = currentSketch.points.get(line.p2);
+          if (p1 && p2) {
+            const lengthPx = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+            const lengthMm = lengthPx / scaleFactor;
+
+            // Position de la cotation (milieu de la ligne avec offset perpendiculaire)
+            const midX = (p1.x + p2.x) / 2;
+            const midY = (p1.y + p2.y) / 2;
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            const offsetDist = 15 / viewport.scale; // Offset en world coords
+            const offsetX = len > 0 ? (-dy / len) * offsetDist : 0;
+            const offsetY = len > 0 ? (dx / len) * offsetDist : offsetDist;
+
+            const dimWorldX = midX + offsetX;
+            const dimWorldY = midY + offsetY;
+            const dimScreenX = dimWorldX * viewport.scale + viewport.offsetX;
+            const dimScreenY = dimWorldY * viewport.scale + viewport.offsetY;
+
+            // Zone de hit pour la cotation (rectangle autour du texte)
+            const hitWidth = 60;
+            const hitHeight = 20;
+            if (
+              screenX >= dimScreenX - hitWidth / 2 &&
+              screenX <= dimScreenX + hitWidth / 2 &&
+              screenY >= dimScreenY - hitHeight / 2 &&
+              screenY <= dimScreenY + hitHeight / 2
+            ) {
+              return { entityId: id, type: "line", value: lengthMm };
+            }
+          }
+        } else if (geo.type === "circle") {
+          const circle = geo as CircleType;
+          const center = currentSketch.points.get(circle.center);
+          if (center) {
+            const radiusMm = circle.radius / scaleFactor;
+
+            // Position de la cotation (à droite du centre)
+            const dimScreenX = center.x * viewport.scale + viewport.offsetX + 20;
+            const dimScreenY = center.y * viewport.scale + viewport.offsetY;
+
+            // Zone de hit
+            const hitWidth = 60;
+            const hitHeight = 20;
+            if (
+              screenX >= dimScreenX - hitWidth / 2 &&
+              screenX <= dimScreenX + hitWidth / 2 &&
+              screenY >= dimScreenY - hitHeight / 2 &&
+              screenY <= dimScreenY + hitHeight / 2
+            ) {
+              return { entityId: id, type: "circle", value: radiusMm };
+            }
+          }
+        }
+      }
+      return null;
+    },
+    [viewport],
+  );
+
   // Double-clic pour éditer un arc OU sélectionner une figure entière
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -11759,6 +11831,22 @@ export function CADGabaritCanvas({
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
       const worldPos = screenToWorld(screenX, screenY);
+
+      // v7.24: Vérifier d'abord si on double-clic sur une cotation existante
+      if (activeTool === "select" && showDimensions) {
+        const dimHit = findDimensionAtScreenPos(screenX, screenY);
+        if (dimHit) {
+          const screenPos = { x: screenX, y: screenY };
+          setEditingDimension({
+            dimensionId: "",
+            entityId: dimHit.entityId,
+            type: dimHit.type,
+            currentValue: dimHit.value,
+            screenPos: screenPos,
+          });
+          return;
+        }
+      }
 
       // Double-clic pour terminer la spline
       if (activeTool === "spline" && tempPoints.length >= 2) {
@@ -11914,6 +12002,8 @@ export function CADGabaritCanvas({
       activeTool,
       addToHistory,
       tempPoints,
+      findDimensionAtScreenPos,
+      showDimensions,
     ],
   );
 
@@ -18290,11 +18380,90 @@ export function CADGabaritCanvas({
                               const p1 = newSketch.points.get(line.p1);
                               const p2 = newSketch.points.get(line.p2);
                               if (p1 && p2) {
-                                // Garder p1 fixe, déplacer p2 à la nouvelle longueur
+                                // Déterminer si c'est une ligne horizontale ou verticale (partie d'un rectangle)
                                 const dx = p2.x - p1.x;
                                 const dy = p2.y - p1.y;
                                 const currentLen = Math.sqrt(dx * dx + dy * dy);
-                                if (currentLen > 0) {
+                                const isHorizontal = Math.abs(dx) > Math.abs(dy);
+                                const delta = newValuePx - currentLen;
+
+                                // Trouver les lignes connectées pour détecter si c'est un rectangle
+                                const connectedToP1 = Array.from(newSketch.geometries.values()).filter(
+                                  (g) =>
+                                    g.type === "line" &&
+                                    g.id !== line.id &&
+                                    ((g as Line).p1 === line.p1 || (g as Line).p2 === line.p1),
+                                ) as Line[];
+                                const connectedToP2 = Array.from(newSketch.geometries.values()).filter(
+                                  (g) =>
+                                    g.type === "line" &&
+                                    g.id !== line.id &&
+                                    ((g as Line).p1 === line.p2 || (g as Line).p2 === line.p2),
+                                ) as Line[];
+
+                                // Vérifier si ça forme un rectangle (4 lignes connectées en boucle)
+                                const isRectangle = connectedToP1.length >= 1 && connectedToP2.length >= 1;
+
+                                if (isRectangle && currentLen > 0) {
+                                  // C'est un rectangle : déplacer les 2 points du côté opposé
+                                  // Trouver le côté parallèle (même orientation)
+                                  const allLines = Array.from(newSketch.geometries.values()).filter(
+                                    (g) => g.type === "line",
+                                  ) as Line[];
+
+                                  // Déplacer p2 et les points connectés à p2 dans la direction de la ligne
+                                  const moveDir = { x: dx / currentLen, y: dy / currentLen };
+                                  const halfDelta = delta / 2;
+
+                                  // Déplacer p1 en arrière et p2 en avant (centré)
+                                  const newP1 = {
+                                    ...p1,
+                                    x: p1.x - moveDir.x * halfDelta,
+                                    y: p1.y - moveDir.y * halfDelta,
+                                  };
+                                  const newP2Pos = {
+                                    ...p2,
+                                    x: p2.x + moveDir.x * halfDelta,
+                                    y: p2.y + moveDir.y * halfDelta,
+                                  };
+                                  newSketch.points.set(line.p1, newP1);
+                                  newSketch.points.set(line.p2, newP2Pos);
+
+                                  // Trouver et déplacer le côté parallèle opposé
+                                  for (const otherLine of allLines) {
+                                    if (otherLine.id === line.id) continue;
+                                    const op1 = newSketch.points.get(otherLine.p1);
+                                    const op2 = newSketch.points.get(otherLine.p2);
+                                    if (!op1 || !op2) continue;
+
+                                    const odx = op2.x - op1.x;
+                                    const ody = op2.y - op1.y;
+                                    const oIsHorizontal = Math.abs(odx) > Math.abs(ody);
+
+                                    // Même orientation (parallèle)
+                                    if (isHorizontal === oIsHorizontal) {
+                                      // Vérifier si c'est vraiment le côté opposé (pas le même)
+                                      const sameDirection = dx * odx + dy * ody > 0;
+                                      if (Math.abs(odx * dy - ody * dx) < 1) {
+                                        // Parallèles
+                                        // Déplacer ce côté aussi
+                                        const onewP1 = {
+                                          ...op1,
+                                          x: op1.x - moveDir.x * halfDelta * (sameDirection ? 1 : -1),
+                                          y: op1.y - moveDir.y * halfDelta * (sameDirection ? 1 : -1),
+                                        };
+                                        const onewP2 = {
+                                          ...op2,
+                                          x: op2.x + moveDir.x * halfDelta * (sameDirection ? 1 : -1),
+                                          y: op2.y + moveDir.y * halfDelta * (sameDirection ? 1 : -1),
+                                        };
+                                        newSketch.points.set(otherLine.p1, onewP1);
+                                        newSketch.points.set(otherLine.p2, onewP2);
+                                      }
+                                    }
+                                  }
+                                } else if (currentLen > 0) {
+                                  // Ligne simple : garder p1 fixe, déplacer p2
                                   const newP2 = {
                                     ...p2,
                                     x: p1.x + (dx / currentLen) * newValuePx,
