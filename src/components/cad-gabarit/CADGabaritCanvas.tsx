@@ -426,7 +426,7 @@ export function CADGabaritCanvas({
   // v7.24: Input de mesure en temps réel (remplace la modale)
   const [liveInputMeasure, setLiveInputMeasure] = useState<{
     active: boolean;
-    type: "line" | "circle" | "rectangle-width" | "rectangle-height" | "polygon" | "arc";
+    type: "line" | "circle" | "rectangle" | "polygon" | "arc";
     // Valeur en temps réel (calculée depuis la géométrie)
     liveValue: number;
     // Valeur saisie par l'utilisateur (vide = utiliser liveValue)
@@ -436,6 +436,12 @@ export function CADGabaritCanvas({
     // Données supplémentaires selon le type
     startPoint?: Point;
     centerPoint?: Point;
+    // Pour rectangle: deuxième mesure (hauteur)
+    liveValue2?: number;
+    userValue2?: string;
+    screenPos2?: { x: number; y: number };
+    // Rectangle: point de départ
+    rectP1?: Point;
   }>({
     active: false,
     type: "line",
@@ -444,6 +450,7 @@ export function CADGabaritCanvas({
     screenPos: { x: 0, y: 0 },
   });
   const liveInputRef = useRef<HTMLInputElement>(null);
+  const liveInputRef2 = useRef<HTMLInputElement>(null); // Pour hauteur rectangle
 
   // Détection de perpendicularité pendant le tracé
   const [perpendicularInfo, setPerpendicularInfo] = useState<{
@@ -8183,6 +8190,8 @@ export function CADGabaritCanvas({
         widthInputPos: { x: 0, y: 0 },
         heightInputPos: { x: 0, y: 0 },
       });
+      // v7.24: Reset liveInputMeasure
+      setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", userValue2: "" }));
 
       toast.success(`Rectangle ${wMm.toFixed(1)} × ${hMm.toFixed(1)} mm${modeLabel}`);
     },
@@ -11086,7 +11095,9 @@ export function CADGabaritCanvas({
           });
 
           // v7.24: Mettre à jour l'input de mesure en temps réel pour la ligne
-          const lineLengthPx = Math.sqrt((lineTargetPos.x - startPoint.x) ** 2 + (lineTargetPos.y - startPoint.y) ** 2);
+          const lineLengthPx = Math.sqrt(
+            (lineTargetPos.x - startPoint.x) ** 2 + (lineTargetPos.y - startPoint.y) ** 2
+          );
           const lineLengthMm = lineLengthPx / (sketchRef.current.scaleFactor || 1);
           // Position écran au milieu de la ligne avec offset perpendiculaire
           const midX = (startPoint.x + lineTargetPos.x) / 2;
@@ -11158,8 +11169,58 @@ export function CADGabaritCanvas({
             };
           });
 
-          // Activer les inputs une seule fois (callback retourne même obj si déjà actif)
-          setRectInputs((prev) => (prev.active ? prev : { ...prev, active: true }));
+          // v7.24: Mettre à jour l'input de mesure en temps réel pour le rectangle
+          if (tempGeometry.p1) {
+            const p1 = tempGeometry.p1;
+            const p2 = rectTargetPos;
+            const isCenter = tempGeometry.mode === "center";
+            const scaleFactor = sketchRef.current.scaleFactor || 1;
+
+            let widthPx: number, heightPx: number;
+            let topY: number, leftX: number, rightX: number, bottomY: number;
+
+            if (isCenter) {
+              const halfW = Math.abs(p2.x - p1.x);
+              const halfH = Math.abs(p2.y - p1.y);
+              widthPx = halfW * 2;
+              heightPx = halfH * 2;
+              topY = p1.y - halfH;
+              leftX = p1.x - halfW;
+              rightX = p1.x + halfW;
+              bottomY = p1.y + halfH;
+            } else {
+              widthPx = Math.abs(p2.x - p1.x);
+              heightPx = Math.abs(p2.y - p1.y);
+              topY = Math.min(p1.y, p2.y);
+              leftX = Math.min(p1.x, p2.x);
+              rightX = Math.max(p1.x, p2.x);
+              bottomY = Math.max(p1.y, p2.y);
+            }
+
+            const widthMm = widthPx / scaleFactor;
+            const heightMm = heightPx / scaleFactor;
+
+            // Position pour la largeur (en haut, au milieu)
+            const midX = (leftX + rightX) / 2;
+            const screenX1 = midX * viewport.scale + viewport.offsetX;
+            const screenY1 = topY * viewport.scale + viewport.offsetY - 15;
+
+            // Position pour la hauteur (à gauche, au milieu)
+            const midY = (topY + bottomY) / 2;
+            const screenX2 = leftX * viewport.scale + viewport.offsetX - 15;
+            const screenY2 = midY * viewport.scale + viewport.offsetY;
+
+            setLiveInputMeasure((prev) => ({
+              ...prev,
+              active: true,
+              type: "rectangle",
+              liveValue: widthMm,
+              liveValue2: heightMm,
+              screenPos: { x: screenX1, y: screenY1 },
+              screenPos2: { x: screenX2, y: screenY2 },
+              rectP1: p1,
+            }));
+          }
         } else if (tempGeometry.type === "bezier") {
           setPerpendicularInfo(null);
           // IMPORTANT: Pour Bézier, NE PAS utiliser le snap grille
@@ -16011,25 +16072,11 @@ export function CADGabaritCanvas({
                   className="h-8 w-8 p-0"
                 >
                   {showConstruction ? (
-                    <svg
-                      className="h-4 w-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeDasharray="4 2"
-                    >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 2">
                       <line x1="4" y1="20" x2="20" y2="4" />
                     </svg>
                   ) : (
-                    <svg
-                      className="h-4 w-4 opacity-40"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeDasharray="4 2"
-                    >
+                    <svg className="h-4 w-4 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 2">
                       <line x1="4" y1="20" x2="20" y2="4" />
                     </svg>
                   )}
@@ -16776,7 +16823,9 @@ export function CADGabaritCanvas({
                   <Image className="h-4 w-4 mr-1" />
                   <span className="text-xs">Outils</span>
                   <ChevronDown className="h-3 w-3 ml-1" />
-                  {selectedImageId && <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />}
+                  {selectedImageId && (
+                    <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />
+                  )}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56">
@@ -16947,9 +16996,7 @@ export function CADGabaritCanvas({
                 >
                   <Link2 className="h-4 w-4 mr-2" />
                   Lier deux marqueurs
-                  {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && (
-                    <Check className="h-4 w-4 ml-auto" />
-                  )}
+                  {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && <Check className="h-4 w-4 ml-auto" />}
                 </DropdownMenuItem>
 
                 <DropdownMenuSeparator />
@@ -17752,105 +17799,102 @@ export function CADGabaritCanvas({
               </div>
             )}
 
-            {/* Panneau de saisie rectangle FIXE (en bas du canvas) */}
-            {rectInputs.active && tempGeometry?.type === "rectangle" && (
-              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-3 bg-white/95 backdrop-blur-sm border border-gray-300 rounded-lg shadow-lg px-4 py-2">
-                <span className="text-xs text-gray-500 font-medium">Rectangle:</span>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-gray-500">L</span>
-                  <input
-                    ref={widthInputRef}
-                    type="text"
-                    inputMode="decimal"
-                    defaultValue=""
-                    onFocus={(e) => {
-                      setRectInputs((prev) => ({ ...prev, activeField: "width" }));
-                      e.target.select();
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Tab") {
-                        e.preventDefault();
-                        setRectInputs((prev) => ({ ...prev, activeField: "height" }));
-                        heightInputRef.current?.focus();
-                        heightInputRef.current?.select();
-                      } else if (e.key === "Enter") {
-                        e.preventDefault();
-                        const wVal = widthInputRef.current?.value || "";
-                        const hVal = heightInputRef.current?.value || "";
-                        // Passer les valeurs directement pour éviter le problème de timing
-                        createRectangleFromInputs(undefined, { width: wVal, height: hVal });
-                      } else if (e.key === "Escape") {
-                        e.preventDefault();
-                        setTempPoints([]);
-                        setTempGeometry(null);
-                        setRectInputs({
-                          active: false,
-                          widthValue: "",
-                          heightValue: "",
-                          activeField: "width",
-                          widthInputPos: { x: 0, y: 0 },
-                          heightInputPos: { x: 0, y: 0 },
-                        });
-                      }
-                    }}
-                    className={`w-20 h-7 px-2 text-center text-sm font-medium rounded border-2 outline-none ${
-                      rectInputs.activeField === "width"
-                        ? "border-blue-500 bg-blue-50 text-blue-700"
-                        : "border-gray-300 bg-white text-gray-700"
-                    }`}
-                    placeholder="largeur"
-                  />
-                  <span className="text-xs text-gray-500">mm</span>
+            {/* v7.24: Inputs de mesure rectangle positionnés sur le canvas */}
+            {/* Input largeur (en haut) */}
+            {liveInputMeasure.active && tempGeometry?.type === "rectangle" && (
+              <>
+                <div
+                  className="absolute z-50 pointer-events-auto"
+                  style={{
+                    left: `${liveInputMeasure.screenPos.x}px`,
+                    top: `${liveInputMeasure.screenPos.y}px`,
+                    transform: "translate(-50%, -50%)",
+                  }}
+                >
+                  <div className="flex items-center gap-0">
+                    <input
+                      ref={liveInputRef}
+                      type="text"
+                      inputMode="decimal"
+                      value={liveInputMeasure.userValue || liveInputMeasure.liveValue.toFixed(1)}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
+                        setLiveInputMeasure((prev) => ({ ...prev, userValue: val }));
+                      }}
+                      onFocus={(e) => {
+                        e.target.select();
+                        setLiveInputMeasure((prev) => ({ ...prev, userValue: prev.liveValue.toFixed(1) }));
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Tab") {
+                          e.preventDefault();
+                          liveInputRef2.current?.focus();
+                          liveInputRef2.current?.select();
+                        } else if (e.key === "Enter") {
+                          e.preventDefault();
+                          const wVal = liveInputMeasure.userValue || "";
+                          const hVal = liveInputMeasure.userValue2 || "";
+                          createRectangleFromInputs(undefined, { width: wVal, height: hVal });
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          setTempPoints([]);
+                          setTempGeometry(null);
+                          setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", userValue2: "" }));
+                        }
+                      }}
+                      className="w-14 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-500 outline-none"
+                      style={{ caretColor: "#3B82F6" }}
+                    />
+                    <span className="text-sm text-blue-500 font-bold">mm</span>
+                  </div>
                 </div>
-                <span className="text-gray-400">×</span>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-gray-500">H</span>
-                  <input
-                    ref={heightInputRef}
-                    type="text"
-                    inputMode="decimal"
-                    defaultValue=""
-                    onFocus={(e) => {
-                      setRectInputs((prev) => ({ ...prev, activeField: "height" }));
-                      e.target.select();
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Tab") {
-                        e.preventDefault();
-                        setRectInputs((prev) => ({ ...prev, activeField: "width" }));
-                        widthInputRef.current?.focus();
-                        widthInputRef.current?.select();
-                      } else if (e.key === "Enter") {
-                        e.preventDefault();
-                        const wVal = widthInputRef.current?.value || "";
-                        const hVal = heightInputRef.current?.value || "";
-                        // Passer les valeurs directement pour éviter le problème de timing
-                        createRectangleFromInputs(undefined, { width: wVal, height: hVal });
-                      } else if (e.key === "Escape") {
-                        e.preventDefault();
-                        setTempPoints([]);
-                        setTempGeometry(null);
-                        setRectInputs({
-                          active: false,
-                          widthValue: "",
-                          heightValue: "",
-                          activeField: "width",
-                          widthInputPos: { x: 0, y: 0 },
-                          heightInputPos: { x: 0, y: 0 },
-                        });
-                      }
-                    }}
-                    className={`w-20 h-7 px-2 text-center text-sm font-medium rounded border-2 outline-none ${
-                      rectInputs.activeField === "height"
-                        ? "border-blue-500 bg-blue-50 text-blue-700"
-                        : "border-gray-300 bg-white text-gray-700"
-                    }`}
-                    placeholder="hauteur"
-                  />
-                  <span className="text-xs text-gray-500">mm</span>
+                {/* Input hauteur (à gauche) */}
+                <div
+                  className="absolute z-50 pointer-events-auto"
+                  style={{
+                    left: `${liveInputMeasure.screenPos2?.x || 0}px`,
+                    top: `${liveInputMeasure.screenPos2?.y || 0}px`,
+                    transform: "translate(-50%, -50%)",
+                  }}
+                >
+                  <div className="flex items-center gap-0">
+                    <input
+                      ref={liveInputRef2}
+                      type="text"
+                      inputMode="decimal"
+                      value={liveInputMeasure.userValue2 || liveInputMeasure.liveValue2?.toFixed(1) || "0"}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
+                        setLiveInputMeasure((prev) => ({ ...prev, userValue2: val }));
+                      }}
+                      onFocus={(e) => {
+                        e.target.select();
+                        setLiveInputMeasure((prev) => ({ ...prev, userValue2: (prev.liveValue2 || 0).toFixed(1) }));
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Tab") {
+                          e.preventDefault();
+                          liveInputRef.current?.focus();
+                          liveInputRef.current?.select();
+                        } else if (e.key === "Enter") {
+                          e.preventDefault();
+                          const wVal = liveInputMeasure.userValue || "";
+                          const hVal = liveInputMeasure.userValue2 || "";
+                          createRectangleFromInputs(undefined, { width: wVal, height: hVal });
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          setTempPoints([]);
+                          setTempGeometry(null);
+                          setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", userValue2: "" }));
+                        }
+                      }}
+                      className="w-14 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-500 outline-none"
+                      style={{ caretColor: "#3B82F6" }}
+                    />
+                    <span className="text-sm text-blue-500 font-bold">mm</span>
+                  </div>
                 </div>
-                <span className="text-xs text-gray-400 ml-2">Tab: changer • Entrée: valider</span>
-              </div>
+              </>
             )}
 
             {/* v7.24: Input de mesure positionné directement sur le canvas */}
@@ -17863,8 +17907,8 @@ export function CADGabaritCanvas({
                   transform: "translate(-50%, -50%)",
                 }}
               >
-                <div className="flex items-center gap-1 bg-white/95 backdrop-blur-sm border border-blue-400 rounded shadow-lg px-2 py-1">
-                  {liveInputMeasure.type === "circle" && <span className="text-xs text-blue-600 font-medium">R</span>}
+                <div className="flex items-center gap-0">
+                  {liveInputMeasure.type === "circle" && <span className="text-sm text-blue-500 font-bold">R</span>}
                   <input
                     ref={liveInputRef}
                     type="text"
@@ -17894,10 +17938,10 @@ export function CADGabaritCanvas({
                         setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "" }));
                       }
                     }}
-                    className="w-16 h-6 px-1 text-center text-sm font-bold rounded border-0 bg-transparent text-blue-600 outline-none"
-                    style={{ caretColor: "#2563eb" }}
+                    className="w-14 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-500 outline-none"
+                    style={{ caretColor: "#3B82F6" }}
                   />
-                  <span className="text-xs text-blue-600 font-medium">mm</span>
+                  <span className="text-sm text-blue-500 font-bold">mm</span>
                 </div>
               </div>
             )}
@@ -22468,59 +22512,3 @@ function serializeBackgroundImages(images: BackgroundImage[]): any[] {
           points: Object.fromEntries(img.calibrationData.points || new Map()),
           pairs: Object.fromEntries(img.calibrationData.pairs || new Map()),
           scale: img.calibrationData.scale,
-          error: img.calibrationData.error,
-          applied: img.calibrationData.applied,
-          mode: img.calibrationData.mode,
-        }
-      : undefined,
-  }));
-}
-
-function deserializeSketch(data: any): Sketch {
-  return {
-    id: data.id || "sketch-1",
-    name: data.name || "Sketch",
-    points: new Map(Object.entries(data.points || {})),
-    geometries: new Map(Object.entries(data.geometries || {})),
-    constraints: new Map(Object.entries(data.constraints || {})),
-    dimensions: new Map(Object.entries(data.dimensions || {})),
-    scaleFactor: data.scaleFactor || 1,
-    layers: data.layers ? new Map(Object.entries(data.layers)) : new Map(),
-    groups: data.groups ? new Map(Object.entries(data.groups)) : new Map(),
-    shapeFills: data.shapeFills ? new Map(Object.entries(data.shapeFills)) : new Map(),
-    activeLayerId: data.activeLayerId || "trace",
-    dof: data.dof ?? 0,
-    status: data.status || "under-constrained",
-  };
-}
-
-function exportToSVG(sketch: Sketch): string {
-  let svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-500 -500 1000 1000">
-<g stroke="black" stroke-width="1" fill="none">
-`;
-
-  sketch.geometries.forEach((geo) => {
-    if (geo.type === "line") {
-      const line = geo as Line;
-      const p1 = sketch.points.get(line.p1);
-      const p2 = sketch.points.get(line.p2);
-      if (p1 && p2) {
-        svg += `  <line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}"/>\n`;
-      }
-    } else if (geo.type === "circle") {
-      const circle = geo as CircleType;
-      const center = sketch.points.get(circle.center);
-      if (center) {
-        svg += `  <circle cx="${center.x}" cy="${center.y}" r="${circle.radius}"/>\n`;
-      }
-    }
-  });
-
-  svg += `</g>
-</svg>`;
-
-  return svg;
-}
-
-export default CADGabaritCanvas;

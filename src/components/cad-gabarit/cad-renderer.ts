@@ -2586,59 +2586,62 @@ export class CADRenderer {
         }
         this.ctx.stroke();
 
-        const widthMm = widthPx / scaleFactor;
-        const heightMm = heightPx / scaleFactor;
+        // v7.24: Afficher les mesures SEULEMENT si hideTempMeasure est false
+        if (!hideTempMeasure) {
+          const widthMm = widthPx / scaleFactor;
+          const heightMm = heightPx / scaleFactor;
 
-        this.ctx.save();
-        this.ctx.setLineDash([]);
-        this.ctx.fillStyle = "#3B82F6";
-        this.ctx.font = `bold ${fontSize}px Arial`;
+          this.ctx.save();
+          this.ctx.setLineDash([]);
+          this.ctx.fillStyle = "#3B82F6";
+          this.ctx.font = `bold ${fontSize}px Arial`;
 
-        // Calculer les positions pour les labels
-        const topY = isCenter ? p1.y - Math.abs(p2.y - p1.y) : Math.min(p1.y, p2.y);
-        const leftX = isCenter ? p1.x - Math.abs(p2.x - p1.x) : Math.min(p1.x, p2.x);
-        const rightX = isCenter ? p1.x + Math.abs(p2.x - p1.x) : Math.max(p1.x, p2.x);
-        const bottomY = isCenter ? p1.y + Math.abs(p2.y - p1.y) : Math.max(p1.y, p2.y);
+          // Calculer les positions pour les labels
+          const topY = isCenter ? p1.y - Math.abs(p2.y - p1.y) : Math.min(p1.y, p2.y);
+          const leftX = isCenter ? p1.x - Math.abs(p2.x - p1.x) : Math.min(p1.x, p2.x);
+          const rightX = isCenter ? p1.x + Math.abs(p2.x - p1.x) : Math.max(p1.x, p2.x);
+          const bottomY = isCenter ? p1.y + Math.abs(p2.y - p1.y) : Math.max(p1.y, p2.y);
 
-        // Largeur (en haut)
-        const midX = (leftX + rightX) / 2;
-        const widthText = `${widthMm.toFixed(1)} mm`;
-        const widthTextWidth = this.ctx.measureText(widthText).width;
+          // Largeur (en haut)
+          const midX = (leftX + rightX) / 2;
+          const widthText = `${widthMm.toFixed(1)} mm`;
+          const widthTextWidth = this.ctx.measureText(widthText).width;
 
-        this.ctx.textAlign = "center";
-        this.ctx.textBaseline = "bottom";
+          this.ctx.textAlign = "center";
+          this.ctx.textBaseline = "bottom";
 
-        // Fond blanc pour largeur
-        this.ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-        this.ctx.fillRect(
-          midX - widthTextWidth / 2 - 3 / this.viewport.scale,
-          topY - fontSize - 8 / this.viewport.scale,
-          widthTextWidth + 6 / this.viewport.scale,
-          fontSize + 4 / this.viewport.scale,
-        );
-        this.ctx.fillStyle = "#3B82F6";
-        this.ctx.fillText(widthText, midX, topY - 5 / this.viewport.scale);
+          // Fond blanc pour largeur
+          this.ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+          this.ctx.fillRect(
+            midX - widthTextWidth / 2 - 3 / this.viewport.scale,
+            topY - fontSize - 8 / this.viewport.scale,
+            widthTextWidth + 6 / this.viewport.scale,
+            fontSize + 4 / this.viewport.scale,
+          );
+          this.ctx.fillStyle = "#3B82F6";
+          this.ctx.fillText(widthText, midX, topY - 5 / this.viewport.scale);
 
-        // Hauteur (à gauche)
-        const midY = (topY + bottomY) / 2;
-        const heightText = `${heightMm.toFixed(1)} mm`;
-        const heightTextWidth = this.ctx.measureText(heightText).width;
+          // Hauteur (à gauche)
+          const midY = (topY + bottomY) / 2;
+          const heightText = `${heightMm.toFixed(1)} mm`;
+          const heightTextWidth = this.ctx.measureText(heightText).width;
 
-        this.ctx.textAlign = "right";
-        this.ctx.textBaseline = "middle";
+          this.ctx.textAlign = "right";
+          this.ctx.textBaseline = "middle";
 
-        // Fond blanc pour hauteur
-        this.ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-        this.ctx.fillRect(
-          leftX - heightTextWidth - 8 / this.viewport.scale,
-          midY - fontSize / 2 - 2 / this.viewport.scale,
-          heightTextWidth + 6 / this.viewport.scale,
-          fontSize + 4 / this.viewport.scale,
-        );
-        this.ctx.fillStyle = "#3B82F6";
-        this.ctx.fillText(heightText, leftX - 5 / this.viewport.scale, midY);
+          // Fond blanc pour hauteur
+          this.ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+          this.ctx.fillRect(
+            leftX - heightTextWidth - 8 / this.viewport.scale,
+            midY - fontSize / 2 - 2 / this.viewport.scale,
+            heightTextWidth + 6 / this.viewport.scale,
+            fontSize + 4 / this.viewport.scale,
+          );
+          this.ctx.fillStyle = "#3B82F6";
+          this.ctx.fillText(heightText, leftX - 5 / this.viewport.scale, midY);
 
-        this.ctx.restore();
+          this.ctx.restore();
+        }
       }
     } else if (temp.type === "bezier" && temp.points?.length >= 1) {
       // Aperçu Bézier
