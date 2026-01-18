@@ -11752,68 +11752,72 @@ export function CADGabaritCanvas({
 
   // v7.24: Fonction pour trouver une cotation (dimension text) à une position écran
   const findDimensionAtScreenPos = useCallback(
-    (screenX: number, screenY: number): { entityId: string; type: "line" | "circle"; value: number } | null => {
+    (
+      screenX: number,
+      screenY: number,
+    ): { dimensionId: string; entityId: string; type: "line" | "circle"; value: number } | null => {
       const currentSketch = sketchRef.current;
-      const scaleFactor = currentSketch.scaleFactor || 1;
 
-      // Parcourir toutes les lignes pour vérifier si on clique sur leur cotation
-      for (const [id, geo] of currentSketch.geometries) {
-        if (geo.type === "line") {
-          const line = geo as Line;
-          const p1 = currentSketch.points.get(line.p1);
-          const p2 = currentSketch.points.get(line.p2);
-          if (p1 && p2) {
-            const lengthPx = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
-            const lengthMm = lengthPx / scaleFactor;
+      // v7.25: Parcourir les dimensions existantes (cotations vertes)
+      for (const [dimId, dimension] of currentSketch.dimensions) {
+        if (dimension.type === "horizontal" || dimension.type === "vertical" || dimension.type === "linear") {
+          if (dimension.entities.length < 2) continue;
 
-            // Position de la cotation (milieu de la ligne avec offset perpendiculaire)
-            const midX = (p1.x + p2.x) / 2;
-            const midY = (p1.y + p2.y) / 2;
-            const dx = p2.x - p1.x;
-            const dy = p2.y - p1.y;
-            const len = Math.sqrt(dx * dx + dy * dy);
-            const offsetDist = 15 / viewport.scale; // Offset en world coords
-            const offsetX = len > 0 ? (-dy / len) * offsetDist : 0;
-            const offsetY = len > 0 ? (dx / len) * offsetDist : offsetDist;
+          const p1 = currentSketch.points.get(dimension.entities[0]);
+          const p2 = currentSketch.points.get(dimension.entities[1]);
+          if (!p1 || !p2) continue;
 
-            const dimWorldX = midX + offsetX;
-            const dimWorldY = midY + offsetY;
-            const dimScreenX = dimWorldX * viewport.scale + viewport.offsetX;
-            const dimScreenY = dimWorldY * viewport.scale + viewport.offsetY;
+          const offset = 20 / viewport.scale;
 
-            // Zone de hit pour la cotation (rectangle autour du texte)
-            const hitWidth = 60;
-            const hitHeight = 20;
-            if (
-              screenX >= dimScreenX - hitWidth / 2 &&
-              screenX <= dimScreenX + hitWidth / 2 &&
-              screenY >= dimScreenY - hitHeight / 2 &&
-              screenY <= dimScreenY + hitHeight / 2
-            ) {
-              return { entityId: id, type: "line", value: lengthMm };
-            }
+          // Calculer la position de la ligne de cote (comme dans drawLinearDimension)
+          let dimLine1: { x: number; y: number };
+          let dimLine2: { x: number; y: number };
+
+          if (dimension.type === "horizontal") {
+            dimLine1 = { x: p1.x, y: Math.min(p1.y, p2.y) - offset };
+            dimLine2 = { x: p2.x, y: Math.min(p1.y, p2.y) - offset };
+          } else if (dimension.type === "vertical") {
+            dimLine1 = { x: Math.max(p1.x, p2.x) + offset, y: p1.y };
+            dimLine2 = { x: Math.max(p1.x, p2.x) + offset, y: p2.y };
+          } else {
+            // Linear - perpendiculaire
+            const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x) + Math.PI / 2;
+            dimLine1 = { x: p1.x + Math.cos(ang) * offset, y: p1.y + Math.sin(ang) * offset };
+            dimLine2 = { x: p2.x + Math.cos(ang) * offset, y: p2.y + Math.sin(ang) * offset };
           }
-        } else if (geo.type === "circle") {
-          const circle = geo as CircleType;
-          const center = currentSketch.points.get(circle.center);
-          if (center) {
-            const radiusMm = circle.radius / scaleFactor;
 
-            // Position de la cotation (à droite du centre)
-            const dimScreenX = center.x * viewport.scale + viewport.offsetX + 20;
-            const dimScreenY = center.y * viewport.scale + viewport.offsetY;
+          // Position du texte (milieu de la ligne de cote)
+          const textWorldX = (dimLine1.x + dimLine2.x) / 2;
+          const textWorldY = (dimLine1.y + dimLine2.y) / 2;
+          const textScreenX = textWorldX * viewport.scale + viewport.offsetX;
+          const textScreenY = textWorldY * viewport.scale + viewport.offsetY;
 
-            // Zone de hit
-            const hitWidth = 60;
-            const hitHeight = 20;
-            if (
-              screenX >= dimScreenX - hitWidth / 2 &&
-              screenX <= dimScreenX + hitWidth / 2 &&
-              screenY >= dimScreenY - hitHeight / 2 &&
-              screenY <= dimScreenY + hitHeight / 2
-            ) {
-              return { entityId: id, type: "circle", value: radiusMm };
+          // Zone de hit pour la cotation
+          const hitWidth = 70;
+          const hitHeight = 25;
+          if (
+            screenX >= textScreenX - hitWidth / 2 &&
+            screenX <= textScreenX + hitWidth / 2 &&
+            screenY >= textScreenY - hitHeight / 2 &&
+            screenY <= textScreenY + hitHeight / 2
+          ) {
+            // Trouver la ligne associée à cette dimension
+            const lineId = dimension.entities[0] + "_" + dimension.entities[1];
+            // Chercher la ligne qui utilise ces deux points
+            let foundLineId = "";
+            for (const [geoId, geo] of currentSketch.geometries) {
+              if (geo.type === "line") {
+                const line = geo as Line;
+                if (
+                  (line.p1 === dimension.entities[0] && line.p2 === dimension.entities[1]) ||
+                  (line.p1 === dimension.entities[1] && line.p2 === dimension.entities[0])
+                ) {
+                  foundLineId = geoId;
+                  break;
+                }
+              }
             }
+            return { dimensionId: dimId, entityId: foundLineId, type: "line", value: dimension.value };
           }
         }
       }
@@ -11868,13 +11872,13 @@ export function CADGabaritCanvas({
         }
       }
 
-      // v7.24: Vérifier d'abord si on double-clic sur une cotation existante
+      // v7.25: Vérifier d'abord si on double-clic sur une cotation existante (système vert)
       if (activeTool === "select" && showDimensions) {
         const dimHit = findDimensionAtScreenPos(screenX, screenY);
         if (dimHit) {
           const screenPos = { x: screenX, y: screenY };
           setEditingDimension({
-            dimensionId: "",
+            dimensionId: dimHit.dimensionId,
             entityId: dimHit.entityId,
             type: dimHit.type,
             currentValue: dimHit.value,
