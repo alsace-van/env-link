@@ -17828,14 +17828,18 @@ export function CADGabaritCanvas({
                       ref={liveInputRef}
                       type="text"
                       inputMode="decimal"
-                      value={liveInputMeasure.userValue || liveInputMeasure.liveValue.toFixed(1)}
+                      value={
+                        liveInputMeasure.userValue !== ""
+                          ? liveInputMeasure.userValue
+                          : liveInputMeasure.liveValue.toFixed(1)
+                      }
                       onChange={(e) => {
                         const val = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
                         setLiveInputMeasure((prev) => ({ ...prev, userValue: val }));
                       }}
                       onFocus={(e) => {
+                        // Sélectionner le texte mais NE PAS figer la valeur
                         e.target.select();
-                        setLiveInputMeasure((prev) => ({ ...prev, userValue: prev.liveValue.toFixed(1) }));
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "Tab") {
@@ -17874,14 +17878,18 @@ export function CADGabaritCanvas({
                       ref={liveInputRef2}
                       type="text"
                       inputMode="decimal"
-                      value={liveInputMeasure.userValue2 || liveInputMeasure.liveValue2?.toFixed(1) || "0"}
+                      value={
+                        liveInputMeasure.userValue2 !== ""
+                          ? liveInputMeasure.userValue2
+                          : liveInputMeasure.liveValue2?.toFixed(1) || "0"
+                      }
                       onChange={(e) => {
                         const val = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
                         setLiveInputMeasure((prev) => ({ ...prev, userValue2: val }));
                       }}
                       onFocus={(e) => {
+                        // Sélectionner le texte mais NE PAS figer la valeur
                         e.target.select();
-                        setLiveInputMeasure((prev) => ({ ...prev, userValue2: (prev.liveValue2 || 0).toFixed(1) }));
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "Tab") {
@@ -17925,19 +17933,26 @@ export function CADGabaritCanvas({
                     ref={liveInputRef}
                     type="text"
                     inputMode="decimal"
-                    value={liveInputMeasure.userValue || liveInputMeasure.liveValue.toFixed(1)}
+                    value={
+                      liveInputMeasure.userValue !== ""
+                        ? liveInputMeasure.userValue
+                        : liveInputMeasure.liveValue.toFixed(1)
+                    }
                     onChange={(e) => {
                       const val = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
                       setLiveInputMeasure((prev) => ({ ...prev, userValue: val }));
                     }}
                     onFocus={(e) => {
+                      // Sélectionner le texte mais NE PAS figer la valeur
                       e.target.select();
-                      setLiveInputMeasure((prev) => ({ ...prev, userValue: prev.liveValue.toFixed(1) }));
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        const inputValue = parseFloat(liveInputMeasure.userValue) || liveInputMeasure.liveValue;
+                        const inputValue =
+                          liveInputMeasure.userValue !== ""
+                            ? parseFloat(liveInputMeasure.userValue)
+                            : liveInputMeasure.liveValue;
                         if (liveInputMeasure.type === "line" && liveInputMeasure.startPoint && tempGeometry?.cursor) {
                           createLineWithLength(liveInputMeasure.startPoint, tempGeometry.cursor, inputValue);
                         } else if (liveInputMeasure.type === "circle" && liveInputMeasure.centerPoint) {
