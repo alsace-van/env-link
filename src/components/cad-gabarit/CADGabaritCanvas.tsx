@@ -1,8 +1,13 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.25 - Extraction hooks pour allègement
+// VERSION: 7.26 - Extraction hook offset
 // ============================================
+//
+// CHANGELOG v7.26 (18/01/2026):
+// - Extraction des fonctions offset dans useOffset.ts (~523 lignes)
+// - Réduction du fichier de 21652 à 21129 lignes
+// - Hook useOffset gère offsetDialog, offsetPreview et fonctions offset
 //
 // CHANGELOG v7.25 (18/01/2026):
 // - Extraction des fonctions congé/chanfrein dans useFilletChamfer.ts (~1575 lignes)
@@ -279,6 +284,8 @@ import { useAutoDimensions } from "./useAutoDimensions";
 
 // MOD v7.25: Hook pour congés et chanfreins (extrait pour alléger le fichier)
 import { useFilletChamfer } from "./hooks/useFilletChamfer";
+// MOD v7.26: Hook pour offset (extrait pour alléger le fichier)
+import { useOffset } from "./hooks/useOffset";
 
 interface CADGabaritCanvasProps {
   imageUrl?: string;
@@ -1096,27 +1103,12 @@ export function CADGabaritCanvas({
   // Note: filletRadius, chamferDistance, filletPreview, chamferPreview viennent du hook useFilletChamfer
   const [filletFirstLine, setFilletFirstLine] = useState<string | null>(null); // ID de la première ligne sélectionnée
 
-  // Offset
+  // Offset - paramètres (offsetDialog et offsetPreview viennent du hook useOffset)
   const [offsetDistance, setOffsetDistance] = useState<number>(10); // Distance en mm
   const [offsetDirection, setOffsetDirection] = useState<"outside" | "inside">("outside");
-  const [offsetDialog, setOffsetDialog] = useState<{
-    open: boolean;
-    selectedEntities: Set<string>;
-  } | null>(null);
   const [offsetPanelPos, setOffsetPanelPos] = useState({ x: 100, y: 100 });
   const [offsetPanelDragging, setOffsetPanelDragging] = useState(false);
   const [offsetPanelDragStart, setOffsetPanelDragStart] = useState({ x: 0, y: 0 });
-  const [offsetPreview, setOffsetPreview] = useState<
-    Array<{
-      type: "line" | "circle" | "arc";
-      points?: Array<{ x: number; y: number }>;
-      center?: { x: number; y: number };
-      radius?: number;
-      startAngle?: number;
-      endAngle?: number;
-      counterClockwise?: boolean;
-    }>
-  >([]);
 
   // États de position des panneaux congé/chanfrein (filletPreview, chamferPreview viennent du hook useFilletChamfer)
   const [filletPanelPos, setFilletPanelPos] = useState({ x: 100, y: 100 });
@@ -3988,6 +3980,32 @@ export function CADGabaritCanvas({
     }));
   }, []);
 
+  // === HOOK OFFSET ===
+  // MOD v7.26: Extraction des fonctions offset dans useOffset.ts
+  const {
+    offsetDialog,
+    setOffsetDialog,
+    offsetPreview,
+    setOffsetPreview,
+    findConnectedGeometries,
+    offsetLine,
+    openOffsetDialog,
+    calculateOffsetPreviewForSelection,
+    applyOffsetToSelection,
+    toggleOffsetSelection,
+    selectContourForOffset,
+  } = useOffset({
+    sketch,
+    setSketch,
+    addToHistory,
+    selectedEntities,
+    setSelectedEntities,
+    solveSketch,
+    setActiveTool,
+    offsetDistance,
+    offsetDirection,
+  });
+
   // Appliquer la symétrie avec un axe donné (2 points)
   const applyMirrorWithAxis = useCallback(
     (axis1: Point, axis2: Point) => {
@@ -5096,529 +5114,6 @@ export function CADGabaritCanvas({
     [],
   );
 
-  // ============ OFFSET FUNCTIONS ============
-
-  // Trouver toutes les géométries connectées à partir d'une géométrie (BFS)
-  const findConnectedGeometries = useCallback(
-    (startGeoId: string): Set<string> => {
-      const visited = new Set<string>();
-      const queue: string[] = [startGeoId];
-
-      // Fonction helper pour obtenir les points d'une géométrie
-      const getPointsOfGeometry = (geoId: string): string[] => {
-        const geo = sketch.geometries.get(geoId);
-        if (!geo) return [];
-
-        if (geo.type === "line") {
-          const line = geo as Line;
-          return [line.p1, line.p2];
-        } else if (geo.type === "arc") {
-          const arc = geo as Arc;
-          return [arc.startPoint, arc.endPoint]; // Ne pas inclure le centre
-        } else if (geo.type === "circle") {
-          return []; // Les cercles ne sont pas connectés
-        } else if (geo.type === "bezier") {
-          const bezier = geo as Bezier;
-          return [bezier.p1, bezier.p2]; // Points d'ancrage uniquement
-        }
-        return [];
-      };
-
-      // Fonction helper pour trouver les géométries connectées à un point
-      const getGeometriesAtPoint = (pointId: string): string[] => {
-        const result: string[] = [];
-        sketch.geometries.forEach((geo, id) => {
-          if (geo.type === "line") {
-            const line = geo as Line;
-            if (line.p1 === pointId || line.p2 === pointId) {
-              result.push(id);
-            }
-          } else if (geo.type === "arc") {
-            const arc = geo as Arc;
-            if (arc.startPoint === pointId || arc.endPoint === pointId) {
-              result.push(id);
-            }
-          } else if (geo.type === "bezier") {
-            const bezier = geo as Bezier;
-            if (bezier.p1 === pointId || bezier.p2 === pointId) {
-              result.push(id);
-            }
-          }
-        });
-        return result;
-      };
-
-      // BFS pour trouver toutes les géométries connectées
-      while (queue.length > 0) {
-        const currentGeoId = queue.shift()!;
-        if (visited.has(currentGeoId)) continue;
-        visited.add(currentGeoId);
-
-        // Obtenir les points de cette géométrie
-        const points = getPointsOfGeometry(currentGeoId);
-
-        // Pour chaque point, trouver les géométries connectées
-        for (const pointId of points) {
-          const connectedGeos = getGeometriesAtPoint(pointId);
-          for (const geoId of connectedGeos) {
-            if (!visited.has(geoId)) {
-              queue.push(geoId);
-            }
-          }
-        }
-      }
-
-      return visited;
-    },
-    [sketch.geometries],
-  );
-
-  // Calculer l'offset d'une ligne (retourne les deux points décalés)
-  const offsetLine = useCallback(
-    (
-      p1: { x: number; y: number },
-      p2: { x: number; y: number },
-      distancePx: number,
-      direction: "outside" | "inside", // outside = vers l'extérieur du contour
-    ): { p1: { x: number; y: number }; p2: { x: number; y: number } } => {
-      // Vecteur direction de la ligne
-      const dx = p2.x - p1.x;
-      const dy = p2.y - p1.y;
-      const length = Math.sqrt(dx * dx + dy * dy);
-      if (length < 0.001) return { p1, p2 };
-
-      // Vecteur normal (perpendiculaire) - outside = vers la droite en regardant de p1 vers p2
-      const sign = direction === "outside" ? 1 : -1;
-      const nx = (sign * dy) / length;
-      const ny = (sign * -dx) / length;
-
-      return {
-        p1: { x: p1.x + nx * distancePx, y: p1.y + ny * distancePx },
-        p2: { x: p2.x + nx * distancePx, y: p2.y + ny * distancePx },
-      };
-    },
-    [],
-  );
-
-  // Ouvrir la modale offset
-  const openOffsetDialog = useCallback(() => {
-    setActiveTool("offset");
-    setOffsetDialog({
-      open: true,
-      selectedEntities: new Set(selectedEntities),
-    });
-  }, [selectedEntities]);
-
-  // Calculer la preview de l'offset pour toutes les entités sélectionnées
-  const calculateOffsetPreviewForSelection = useCallback(
-    (entities: Set<string>, dist: number, dir: "outside" | "inside"): typeof offsetPreview => {
-      const previews: typeof offsetPreview = [];
-      const distancePx = dist * sketch.scaleFactor;
-
-      entities.forEach((entityId) => {
-        const geo = sketch.geometries.get(entityId);
-        if (!geo) return;
-
-        if (geo.type === "line") {
-          const line = geo as Line;
-          const p1 = sketch.points.get(line.p1);
-          const p2 = sketch.points.get(line.p2);
-          if (!p1 || !p2) return;
-
-          const offset = offsetLine(p1, p2, distancePx, dir);
-          previews.push({
-            type: "line",
-            points: [offset.p1, offset.p2],
-          });
-        } else if (geo.type === "circle") {
-          const circle = geo as CircleType;
-          const center = sketch.points.get(circle.center);
-          if (!center) return;
-
-          const newRadius = dir === "outside" ? circle.radius + distancePx : Math.max(1, circle.radius - distancePx);
-
-          previews.push({
-            type: "circle",
-            center,
-            radius: newRadius,
-          });
-        } else if (geo.type === "arc") {
-          const arc = geo as Arc;
-          const center = sketch.points.get(arc.center);
-          const startPt = sketch.points.get(arc.startPoint);
-          const endPt = sketch.points.get(arc.endPoint);
-          if (!center || !startPt || !endPt) return;
-
-          const newRadius = dir === "outside" ? arc.radius + distancePx : Math.max(1, arc.radius - distancePx);
-
-          const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
-          const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
-
-          previews.push({
-            type: "arc",
-            center,
-            radius: newRadius,
-            startAngle,
-            endAngle,
-            counterClockwise: arc.counterClockwise,
-          });
-        }
-      });
-
-      return previews;
-    },
-    [sketch, offsetLine],
-  );
-
-  // Mettre à jour la preview quand les paramètres changent
-  useEffect(() => {
-    if (offsetDialog?.open && offsetDialog.selectedEntities.size > 0) {
-      const preview = calculateOffsetPreviewForSelection(
-        offsetDialog.selectedEntities,
-        offsetDistance,
-        offsetDirection,
-      );
-      setOffsetPreview(preview);
-    } else {
-      setOffsetPreview([]);
-    }
-  }, [offsetDialog, offsetDistance, offsetDirection, calculateOffsetPreviewForSelection]);
-
-  // Appliquer l'offset à la sélection
-  const applyOffsetToSelection = useCallback(() => {
-    if (!offsetDialog || offsetDialog.selectedEntities.size === 0) {
-      toast.error("Sélectionnez au moins une entité");
-      return;
-    }
-
-    const distancePx = offsetDistance * sketch.scaleFactor;
-    const newSketch = { ...sketch };
-    newSketch.points = new Map(sketch.points);
-    newSketch.geometries = new Map(sketch.geometries);
-
-    // Séparer les lignes des autres types
-    const lineIds: string[] = [];
-    const circleIds: string[] = [];
-    const arcIds: string[] = [];
-
-    offsetDialog.selectedEntities.forEach((entityId) => {
-      const geo = sketch.geometries.get(entityId);
-      if (geo?.type === "line") lineIds.push(entityId);
-      else if (geo?.type === "circle") circleIds.push(entityId);
-      else if (geo?.type === "arc") arcIds.push(entityId);
-    });
-
-    let createdCount = 0;
-
-    // Traiter les cercles
-    circleIds.forEach((entityId) => {
-      const circle = sketch.geometries.get(entityId) as CircleType;
-      const center = sketch.points.get(circle.center);
-      if (!center) return;
-
-      const newRadius =
-        offsetDirection === "outside" ? Math.max(1, circle.radius - distancePx) : circle.radius + distancePx;
-
-      const newCircle: CircleType = {
-        id: generateId(),
-        type: "circle",
-        center: circle.center,
-        radius: newRadius,
-        layerId: circle.layerId,
-      };
-      newSketch.geometries.set(newCircle.id, newCircle);
-      createdCount++;
-    });
-
-    // Traiter les arcs
-    arcIds.forEach((entityId) => {
-      const arc = sketch.geometries.get(entityId) as Arc;
-      const center = sketch.points.get(arc.center);
-      const startPt = sketch.points.get(arc.startPoint);
-      const endPt = sketch.points.get(arc.endPoint);
-      if (!center || !startPt || !endPt) return;
-
-      const newRadius = offsetDirection === "outside" ? Math.max(1, arc.radius - distancePx) : arc.radius + distancePx;
-
-      const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
-      const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
-
-      const newStartPt: Point = {
-        id: generateId(),
-        x: center.x + Math.cos(startAngle) * newRadius,
-        y: center.y + Math.sin(startAngle) * newRadius,
-      };
-      const newEndPt: Point = {
-        id: generateId(),
-        x: center.x + Math.cos(endAngle) * newRadius,
-        y: center.y + Math.sin(endAngle) * newRadius,
-      };
-      newSketch.points.set(newStartPt.id, newStartPt);
-      newSketch.points.set(newEndPt.id, newEndPt);
-
-      const newArc: Arc = {
-        id: generateId(),
-        type: "arc",
-        center: arc.center,
-        startPoint: newStartPt.id,
-        endPoint: newEndPt.id,
-        radius: newRadius,
-        layerId: arc.layerId,
-        counterClockwise: arc.counterClockwise,
-      };
-      newSketch.geometries.set(newArc.id, newArc);
-      createdCount++;
-    });
-
-    // Traiter les lignes - avec calcul des intersections
-    if (lineIds.length > 0) {
-      // Récupérer les infos des segments
-      type SegInfo = {
-        id: string;
-        p1Id: string;
-        p2Id: string;
-        p1: { x: number; y: number };
-        p2: { x: number; y: number };
-        layerId?: string;
-      };
-
-      const segments: SegInfo[] = [];
-      lineIds.forEach((lineId) => {
-        const line = sketch.geometries.get(lineId) as Line;
-        const p1 = sketch.points.get(line.p1);
-        const p2 = sketch.points.get(line.p2);
-        if (p1 && p2) {
-          segments.push({
-            id: lineId,
-            p1Id: line.p1,
-            p2Id: line.p2,
-            p1: { x: p1.x, y: p1.y },
-            p2: { x: p2.x, y: p2.y },
-            layerId: line.layerId,
-          });
-        }
-      });
-
-      // Construire un graphe point -> segments
-      const pointToSegs = new Map<string, number[]>();
-      segments.forEach((seg, idx) => {
-        if (!pointToSegs.has(seg.p1Id)) pointToSegs.set(seg.p1Id, []);
-        if (!pointToSegs.has(seg.p2Id)) pointToSegs.set(seg.p2Id, []);
-        pointToSegs.get(seg.p1Id)!.push(idx);
-        pointToSegs.get(seg.p2Id)!.push(idx);
-      });
-
-      // Ordonner les segments en suivant le contour
-      const orderedSegs: Array<{ seg: SegInfo; reversed: boolean }> = [];
-      const used = new Set<number>();
-
-      // Trouver un point de départ (point avec un seul segment = extrémité, sinon n'importe lequel)
-      let startIdx = 0;
-      for (let i = 0; i < segments.length; i++) {
-        const seg = segments[i];
-        const count1 = pointToSegs.get(seg.p1Id)?.length || 0;
-        const count2 = pointToSegs.get(seg.p2Id)?.length || 0;
-        if (count1 === 1 || count2 === 1) {
-          startIdx = i;
-          break;
-        }
-      }
-
-      // Commencer par le premier segment
-      const firstSeg = segments[startIdx];
-      const firstP1Count = pointToSegs.get(firstSeg.p1Id)?.length || 0;
-      // Si p1 est une extrémité (1 seul segment), on commence par p1
-      const startReversed = firstP1Count !== 1;
-      orderedSegs.push({ seg: firstSeg, reversed: startReversed });
-      used.add(startIdx);
-
-      let currentEndPtId = startReversed ? firstSeg.p1Id : firstSeg.p2Id;
-
-      // Suivre la chaîne
-      while (orderedSegs.length < segments.length) {
-        const connectedIdxs = pointToSegs.get(currentEndPtId) || [];
-        let found = false;
-
-        for (const idx of connectedIdxs) {
-          if (used.has(idx)) continue;
-
-          const seg = segments[idx];
-          if (seg.p1Id === currentEndPtId) {
-            orderedSegs.push({ seg, reversed: false });
-            currentEndPtId = seg.p2Id;
-            found = true;
-          } else if (seg.p2Id === currentEndPtId) {
-            orderedSegs.push({ seg, reversed: true });
-            currentEndPtId = seg.p1Id;
-            found = true;
-          }
-
-          if (found) {
-            used.add(idx);
-            break;
-          }
-        }
-
-        if (!found) break;
-      }
-
-      // Calculer les lignes décalées
-      const offsetLines: Array<{
-        p1: { x: number; y: number };
-        p2: { x: number; y: number };
-        layerId?: string;
-      }> = [];
-
-      orderedSegs.forEach(({ seg, reversed }) => {
-        const start = reversed ? seg.p2 : seg.p1;
-        const end = reversed ? seg.p1 : seg.p2;
-        const off = offsetLine(start, end, distancePx, offsetDirection === "outside" ? "inside" : "outside");
-        offsetLines.push({ p1: off.p1, p2: off.p2, layerId: seg.layerId });
-      });
-
-      // Vérifier si fermé
-      const firstOs = orderedSegs[0];
-      const lastOs = orderedSegs[orderedSegs.length - 1];
-      const startPtId = firstOs.reversed ? firstOs.seg.p2Id : firstOs.seg.p1Id;
-      const endPtId = lastOs.reversed ? lastOs.seg.p1Id : lastOs.seg.p2Id;
-      const isClosed = startPtId === endPtId;
-
-      // Calculer les points d'intersection entre segments adjacents
-      const computeIntersection = (
-        l1: { p1: { x: number; y: number }; p2: { x: number; y: number } },
-        l2: { p1: { x: number; y: number }; p2: { x: number; y: number } },
-      ): { x: number; y: number } => {
-        const d1x = l1.p2.x - l1.p1.x;
-        const d1y = l1.p2.y - l1.p1.y;
-        const d2x = l2.p2.x - l2.p1.x;
-        const d2y = l2.p2.y - l2.p1.y;
-
-        const cross = d1x * d2y - d1y * d2x;
-        if (Math.abs(cross) < 0.0001) {
-          // Parallèles - utiliser le milieu entre les deux points adjacents
-          return {
-            x: (l1.p2.x + l2.p1.x) / 2,
-            y: (l1.p2.y + l2.p1.y) / 2,
-          };
-        }
-
-        const t = ((l2.p1.x - l1.p1.x) * d2y - (l2.p1.y - l1.p1.y) * d2x) / cross;
-        return {
-          x: l1.p1.x + t * d1x,
-          y: l1.p1.y + t * d1y,
-        };
-      };
-
-      // Créer les nouveaux points et lignes
-      const newPtIds: string[] = [];
-
-      if (isClosed) {
-        // Contour fermé - tous les sommets sont des intersections
-        for (let i = 0; i < offsetLines.length; i++) {
-          const curr = offsetLines[i];
-          const next = offsetLines[(i + 1) % offsetLines.length];
-          const inter = computeIntersection(curr, next);
-          const pt: Point = { id: generateId(), x: inter.x, y: inter.y };
-          newSketch.points.set(pt.id, pt);
-          newPtIds.push(pt.id);
-        }
-
-        // Créer les lignes
-        for (let i = 0; i < offsetLines.length; i++) {
-          const newLine: Line = {
-            id: generateId(),
-            type: "line",
-            p1: newPtIds[i],
-            p2: newPtIds[(i + 1) % newPtIds.length],
-            layerId: offsetLines[i].layerId,
-          };
-          newSketch.geometries.set(newLine.id, newLine);
-          createdCount++;
-        }
-      } else {
-        // Contour ouvert
-        // Premier point = début du premier segment décalé
-        const firstPt: Point = { id: generateId(), x: offsetLines[0].p1.x, y: offsetLines[0].p1.y };
-        newSketch.points.set(firstPt.id, firstPt);
-        newPtIds.push(firstPt.id);
-
-        // Points intermédiaires = intersections
-        for (let i = 0; i < offsetLines.length - 1; i++) {
-          const inter = computeIntersection(offsetLines[i], offsetLines[i + 1]);
-          const pt: Point = { id: generateId(), x: inter.x, y: inter.y };
-          newSketch.points.set(pt.id, pt);
-          newPtIds.push(pt.id);
-        }
-
-        // Dernier point = fin du dernier segment décalé
-        const lastLine = offsetLines[offsetLines.length - 1];
-        const lastPt: Point = { id: generateId(), x: lastLine.p2.x, y: lastLine.p2.y };
-        newSketch.points.set(lastPt.id, lastPt);
-        newPtIds.push(lastPt.id);
-
-        // Créer les lignes
-        for (let i = 0; i < offsetLines.length; i++) {
-          const newLine: Line = {
-            id: generateId(),
-            type: "line",
-            p1: newPtIds[i],
-            p2: newPtIds[i + 1],
-            layerId: offsetLines[i].layerId,
-          };
-          newSketch.geometries.set(newLine.id, newLine);
-          createdCount++;
-        }
-      }
-    }
-
-    if (createdCount > 0) {
-      setSketch(newSketch);
-      solveSketch(newSketch);
-      addToHistory(newSketch);
-      toast.success(`Offset ${offsetDistance}mm créé (${createdCount} élément${createdCount > 1 ? "s" : ""})`);
-    }
-
-    setOffsetDialog(null);
-    setOffsetPreview([]);
-    setSelectedEntities(new Set());
-  }, [offsetDialog, offsetDistance, offsetDirection, sketch, offsetLine, addToHistory, solveSketch]);
-
-  // Ajouter/retirer une entité de la sélection offset
-  const toggleOffsetSelection = useCallback(
-    (entityId: string) => {
-      if (!offsetDialog) return;
-
-      const newSelection = new Set(offsetDialog.selectedEntities);
-      if (newSelection.has(entityId)) {
-        newSelection.delete(entityId);
-      } else {
-        newSelection.add(entityId);
-      }
-
-      setOffsetDialog({
-        ...offsetDialog,
-        selectedEntities: newSelection,
-      });
-      setSelectedEntities(newSelection);
-    },
-    [offsetDialog],
-  );
-
-  // Sélectionner tout le contour connecté pour l'offset
-  const selectContourForOffset = useCallback(
-    (startEntityId: string) => {
-      const connectedGeos = findConnectedGeometries(startEntityId);
-
-      if (offsetDialog) {
-        setOffsetDialog({
-          ...offsetDialog,
-          selectedEntities: connectedGeos,
-        });
-      }
-      setSelectedEntities(connectedGeos);
-    },
-    [offsetDialog, findConnectedGeometries],
-  );
 
   // Calculer l'intersection de deux lignes (prolongées)
   const lineIntersection = useCallback(
@@ -9616,7 +9111,7 @@ export function CADGabaritCanvas({
 
           // v7.24: Mettre à jour l'input de mesure en temps réel pour la ligne
           const lineLengthPx = Math.sqrt(
-            (finalLineTarget.x - startPoint.x) ** 2 + (finalLineTarget.y - startPoint.y) ** 2,
+            (finalLineTarget.x - startPoint.x) ** 2 + (finalLineTarget.y - startPoint.y) ** 2
           );
           const lineLengthMm = lineLengthPx / (sketchRef.current.scaleFactor || 1);
           // Position écran au milieu de la ligne avec offset perpendiculaire
@@ -10233,10 +9728,7 @@ export function CADGabaritCanvas({
 
   // v7.24: Fonction pour trouver une cotation (dimension text) à une position écran
   const findDimensionAtScreenPos = useCallback(
-    (
-      screenX: number,
-      screenY: number,
-    ): { dimensionId: string; entityId: string; type: "line" | "circle"; value: number } | null => {
+    (screenX: number, screenY: number): { dimensionId: string; entityId: string; type: "line" | "circle"; value: number } | null => {
       const currentSketch = sketchRef.current;
 
       // v7.25: Parcourir les dimensions existantes (cotations vertes)
@@ -10289,10 +9781,8 @@ export function CADGabaritCanvas({
             for (const [geoId, geo] of currentSketch.geometries) {
               if (geo.type === "line") {
                 const line = geo as Line;
-                if (
-                  (line.p1 === dimension.entities[0] && line.p2 === dimension.entities[1]) ||
-                  (line.p1 === dimension.entities[1] && line.p2 === dimension.entities[0])
-                ) {
+                if ((line.p1 === dimension.entities[0] && line.p2 === dimension.entities[1]) ||
+                    (line.p1 === dimension.entities[1] && line.p2 === dimension.entities[0])) {
                   foundLineId = geoId;
                   break;
                 }
@@ -10304,7 +9794,7 @@ export function CADGabaritCanvas({
       }
       return null;
     },
-    [viewport],
+    [viewport]
   );
 
   // Double-clic pour éditer un arc OU sélectionner une figure entière
@@ -14824,25 +14314,11 @@ export function CADGabaritCanvas({
                   className="h-8 w-8 p-0"
                 >
                   {showConstruction ? (
-                    <svg
-                      className="h-4 w-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeDasharray="4 2"
-                    >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 2">
                       <line x1="4" y1="20" x2="20" y2="4" />
                     </svg>
                   ) : (
-                    <svg
-                      className="h-4 w-4 opacity-40"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeDasharray="4 2"
-                    >
+                    <svg className="h-4 w-4 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 2">
                       <line x1="4" y1="20" x2="20" y2="4" />
                     </svg>
                   )}
@@ -15589,7 +15065,9 @@ export function CADGabaritCanvas({
                   <Image className="h-4 w-4 mr-1" />
                   <span className="text-xs">Outils</span>
                   <ChevronDown className="h-3 w-3 ml-1" />
-                  {selectedImageId && <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />}
+                  {selectedImageId && (
+                    <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />
+                  )}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56">
@@ -15760,9 +15238,7 @@ export function CADGabaritCanvas({
                 >
                   <Link2 className="h-4 w-4 mr-2" />
                   Lier deux marqueurs
-                  {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && (
-                    <Check className="h-4 w-4 ml-auto" />
-                  )}
+                  {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && <Check className="h-4 w-4 ml-auto" />}
                 </DropdownMenuItem>
 
                 <DropdownMenuSeparator />
@@ -16577,13 +16053,11 @@ export function CADGabaritCanvas({
                     transform: "translate(-50%, -50%)",
                   }}
                 >
-                  <div
-                    className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
-                      liveInputMeasure.isEditing
-                        ? "bg-blue-100 border-2 border-blue-500 shadow-md"
-                        : "bg-blue-50/90 border border-blue-300"
-                    }`}
-                  >
+                  <div className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
+                    liveInputMeasure.isEditing
+                      ? "bg-blue-100 border-2 border-blue-500 shadow-md"
+                      : "bg-blue-50/90 border border-blue-300"
+                  }`}>
                     {liveInputMeasure.isEditing && liveInputMeasure.userValue !== "" && (
                       <span className="text-xs text-blue-600">🔒</span>
                     )}
@@ -16591,9 +16065,7 @@ export function CADGabaritCanvas({
                       ref={liveInputRef}
                       type="text"
                       inputMode="decimal"
-                      value={
-                        liveInputMeasure.isEditing ? liveInputMeasure.userValue : liveInputMeasure.liveValue.toFixed(1)
-                      }
+                      value={liveInputMeasure.isEditing ? liveInputMeasure.userValue : liveInputMeasure.liveValue.toFixed(1)}
                       placeholder={liveInputMeasure.liveValue.toFixed(1)}
                       onChange={(e) => {
                         let rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
@@ -16607,10 +16079,9 @@ export function CADGabaritCanvas({
                         setLiveInputMeasure((prev) => ({ ...prev, userValue: rawVal, isEditing: true }));
                         // Mise à jour en temps réel du rectangle
                         const widthMm = parseFloat(rawVal) || 0;
-                        const heightMm =
-                          liveInputMeasure.userValue2 !== ""
-                            ? parseFloat(liveInputMeasure.userValue2) || 0
-                            : liveInputMeasure.liveValue2 || 0;
+                        const heightMm = liveInputMeasure.userValue2 !== ""
+                          ? parseFloat(liveInputMeasure.userValue2) || 0
+                          : liveInputMeasure.liveValue2 || 0;
                         if (widthMm > 0 && liveInputMeasure.rectP1) {
                           const scaleFactor = sketchRef.current.scaleFactor || 1;
                           const widthPx = widthMm * scaleFactor;
@@ -16620,7 +16091,7 @@ export function CADGabaritCanvas({
                           const newCursor = isCenter
                             ? { x: p1.x + widthPx / 2, y: p1.y + heightPx / 2 }
                             : { x: p1.x + widthPx, y: p1.y + heightPx };
-                          setTempGeometry((prev: any) => (prev ? { ...prev, cursor: newCursor } : prev));
+                          setTempGeometry((prev: any) => prev ? { ...prev, cursor: newCursor } : prev);
                         }
                       }}
                       onFocus={() => {
@@ -16640,20 +16111,13 @@ export function CADGabaritCanvas({
                         } else if (e.key === "Enter") {
                           e.preventDefault();
                           const wVal = liveInputMeasure.userValue || liveInputMeasure.liveValue.toFixed(1);
-                          const hVal = liveInputMeasure.userValue2 || liveInputMeasure.liveValue2?.toFixed(1) || "0";
+                          const hVal = liveInputMeasure.userValue2 || (liveInputMeasure.liveValue2?.toFixed(1) || "0");
                           createRectangleFromInputs(undefined, { width: wVal, height: hVal });
                         } else if (e.key === "Escape") {
                           e.preventDefault();
                           setTempPoints([]);
                           setTempGeometry(null);
-                          setLiveInputMeasure((prev) => ({
-                            ...prev,
-                            active: false,
-                            userValue: "",
-                            userValue2: "",
-                            isEditing: false,
-                            isEditing2: false,
-                          }));
+                          setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", userValue2: "", isEditing: false, isEditing2: false }));
                         }
                       }}
                       className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none placeholder:text-blue-400"
@@ -16671,13 +16135,11 @@ export function CADGabaritCanvas({
                     transform: "translate(-50%, -50%)",
                   }}
                 >
-                  <div
-                    className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
-                      liveInputMeasure.isEditing2
-                        ? "bg-blue-100 border-2 border-blue-500 shadow-md"
-                        : "bg-blue-50/90 border border-blue-300"
-                    }`}
-                  >
+                  <div className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
+                    liveInputMeasure.isEditing2
+                      ? "bg-blue-100 border-2 border-blue-500 shadow-md"
+                      : "bg-blue-50/90 border border-blue-300"
+                  }`}>
                     {liveInputMeasure.isEditing2 && liveInputMeasure.userValue2 !== "" && (
                       <span className="text-xs text-blue-600">🔒</span>
                     )}
@@ -16685,11 +16147,7 @@ export function CADGabaritCanvas({
                       ref={liveInputRef2}
                       type="text"
                       inputMode="decimal"
-                      value={
-                        liveInputMeasure.isEditing2
-                          ? liveInputMeasure.userValue2
-                          : liveInputMeasure.liveValue2?.toFixed(1) || "0"
-                      }
+                      value={liveInputMeasure.isEditing2 ? liveInputMeasure.userValue2 : (liveInputMeasure.liveValue2?.toFixed(1) || "0")}
                       placeholder={liveInputMeasure.liveValue2?.toFixed(1) || "0"}
                       onChange={(e) => {
                         let rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
@@ -16703,10 +16161,9 @@ export function CADGabaritCanvas({
                         setLiveInputMeasure((prev) => ({ ...prev, userValue2: rawVal, isEditing2: true }));
                         // Mise à jour en temps réel du rectangle
                         const heightMm = parseFloat(rawVal) || 0;
-                        const widthMm =
-                          liveInputMeasure.userValue !== ""
-                            ? parseFloat(liveInputMeasure.userValue) || 0
-                            : liveInputMeasure.liveValue || 0;
+                        const widthMm = liveInputMeasure.userValue !== ""
+                          ? parseFloat(liveInputMeasure.userValue) || 0
+                          : liveInputMeasure.liveValue || 0;
                         if (heightMm > 0 && liveInputMeasure.rectP1) {
                           const scaleFactor = sketchRef.current.scaleFactor || 1;
                           const widthPx = widthMm * scaleFactor;
@@ -16716,7 +16173,7 @@ export function CADGabaritCanvas({
                           const newCursor = isCenter
                             ? { x: p1.x + widthPx / 2, y: p1.y + heightPx / 2 }
                             : { x: p1.x + widthPx, y: p1.y + heightPx };
-                          setTempGeometry((prev: any) => (prev ? { ...prev, cursor: newCursor } : prev));
+                          setTempGeometry((prev: any) => prev ? { ...prev, cursor: newCursor } : prev);
                         }
                       }}
                       onFocus={() => {
@@ -16736,20 +16193,13 @@ export function CADGabaritCanvas({
                         } else if (e.key === "Enter") {
                           e.preventDefault();
                           const wVal = liveInputMeasure.userValue || liveInputMeasure.liveValue.toFixed(1);
-                          const hVal = liveInputMeasure.userValue2 || liveInputMeasure.liveValue2?.toFixed(1) || "0";
+                          const hVal = liveInputMeasure.userValue2 || (liveInputMeasure.liveValue2?.toFixed(1) || "0");
                           createRectangleFromInputs(undefined, { width: wVal, height: hVal });
                         } else if (e.key === "Escape") {
                           e.preventDefault();
                           setTempPoints([]);
                           setTempGeometry(null);
-                          setLiveInputMeasure((prev) => ({
-                            ...prev,
-                            active: false,
-                            userValue: "",
-                            userValue2: "",
-                            isEditing: false,
-                            isEditing2: false,
-                          }));
+                          setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", userValue2: "", isEditing: false, isEditing2: false }));
                         }
                       }}
                       className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none placeholder:text-blue-400"
@@ -16771,13 +16221,11 @@ export function CADGabaritCanvas({
                   transform: "translate(-50%, -50%)",
                 }}
               >
-                <div
-                  className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
-                    liveInputMeasure.isEditing
-                      ? "bg-blue-100 border-2 border-blue-500 shadow-md"
-                      : "bg-blue-50/90 border border-blue-300"
-                  }`}
-                >
+                <div className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
+                  liveInputMeasure.isEditing
+                    ? "bg-blue-100 border-2 border-blue-500 shadow-md"
+                    : "bg-blue-50/90 border border-blue-300"
+                }`}>
                   {liveInputMeasure.isEditing && liveInputMeasure.userValue !== "" && (
                     <span className="text-xs text-blue-600">🔒</span>
                   )}
@@ -16786,9 +16234,7 @@ export function CADGabaritCanvas({
                     ref={liveInputRef}
                     type="text"
                     inputMode="decimal"
-                    value={
-                      liveInputMeasure.isEditing ? liveInputMeasure.userValue : liveInputMeasure.liveValue.toFixed(1)
-                    }
+                    value={liveInputMeasure.isEditing ? liveInputMeasure.userValue : liveInputMeasure.liveValue.toFixed(1)}
                     placeholder={liveInputMeasure.liveValue.toFixed(1)}
                     onChange={(e) => {
                       let rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
@@ -16817,11 +16263,11 @@ export function CADGabaritCanvas({
                               x: startPoint.x + (dx / currentLen) * valuePx,
                               y: startPoint.y + (dy / currentLen) * valuePx,
                             };
-                            setTempGeometry((prev: any) => (prev ? { ...prev, cursor: newCursor } : prev));
+                            setTempGeometry((prev: any) => prev ? { ...prev, cursor: newCursor } : prev);
                           }
                         } else if (liveInputMeasure.type === "circle") {
                           // Mettre à jour le rayon du cercle
-                          setTempGeometry((prev: any) => (prev ? { ...prev, radius: valuePx } : prev));
+                          setTempGeometry((prev: any) => prev ? { ...prev, radius: valuePx } : prev);
                         }
                       }
                     }}
@@ -16838,10 +16284,9 @@ export function CADGabaritCanvas({
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        const inputValue =
-                          liveInputMeasure.userValue !== ""
-                            ? parseFloat(liveInputMeasure.userValue)
-                            : liveInputMeasure.liveValue;
+                        const inputValue = liveInputMeasure.userValue !== ""
+                          ? parseFloat(liveInputMeasure.userValue)
+                          : liveInputMeasure.liveValue;
                         if (liveInputMeasure.type === "line" && liveInputMeasure.startPoint && tempGeometry?.cursor) {
                           createLineWithLength(liveInputMeasure.startPoint, tempGeometry.cursor, inputValue);
                         } else if (liveInputMeasure.type === "circle" && liveInputMeasure.centerPoint) {
@@ -16906,16 +16351,10 @@ export function CADGabaritCanvas({
 
                                 // Trouver les lignes connectées à CE segment uniquement
                                 const connectedToP1 = Array.from(newSketch.geometries.values()).filter(
-                                  (g) =>
-                                    g.type === "line" &&
-                                    g.id !== line.id &&
-                                    ((g as Line).p1 === line.p1 || (g as Line).p2 === line.p1),
+                                  (g) => g.type === "line" && g.id !== line.id && ((g as Line).p1 === line.p1 || (g as Line).p2 === line.p1)
                                 ) as Line[];
                                 const connectedToP2 = Array.from(newSketch.geometries.values()).filter(
-                                  (g) =>
-                                    g.type === "line" &&
-                                    g.id !== line.id &&
-                                    ((g as Line).p1 === line.p2 || (g as Line).p2 === line.p2),
+                                  (g) => g.type === "line" && g.id !== line.id && ((g as Line).p1 === line.p2 || (g as Line).p2 === line.p2)
                                 ) as Line[];
 
                                 // Vérifier si ça forme un rectangle (lignes perpendiculaires aux deux extrémités)
