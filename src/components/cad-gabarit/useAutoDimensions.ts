@@ -38,7 +38,7 @@ export function useAutoDimensions({ enabled, sketchRef }: UseAutoDimensionsOptio
       p1Id: string,
       p2Id: string,
       type: "linear" | "horizontal" | "vertical" = "linear",
-      sketchOverride?: Sketch
+      sketchOverride?: Sketch,
     ): DimensionWithConstraint | null => {
       const sketch = sketchOverride || sketchRef.current;
       const p1 = sketch.points.get(p1Id);
@@ -82,7 +82,7 @@ export function useAutoDimensions({ enabled, sketchRef }: UseAutoDimensionsOptio
 
       return { dimension, constraint };
     },
-    [sketchRef]
+    [sketchRef],
   );
 
   /**
@@ -97,7 +97,7 @@ export function useAutoDimensions({ enabled, sketchRef }: UseAutoDimensionsOptio
       corner2Id: string,
       corner3Id: string,
       corner4Id: string,
-      sketchOverride?: Sketch
+      sketchOverride?: Sketch,
     ): DimensionWithConstraint[] => {
       if (!enabled) {
         console.log("[AutoDimensions] Désactivé");
@@ -144,7 +144,7 @@ export function useAutoDimensions({ enabled, sketchRef }: UseAutoDimensionsOptio
       console.log("[AutoDimensions] Dimensions créées:", results.length);
       return results;
     },
-    [enabled, sketchRef, createLinearDimension]
+    [enabled, sketchRef, createLinearDimension],
   );
 
   /**
@@ -185,7 +185,7 @@ export function useAutoDimensions({ enabled, sketchRef }: UseAutoDimensionsOptio
 
       return createLinearDimension(p1Id, p2Id, dimType, sketch);
     },
-    [enabled, sketchRef, createLinearDimension]
+    [enabled, sketchRef, createLinearDimension],
   );
 
   /**
