@@ -3,9 +3,9 @@
 // Extrait de CADGabaritCanvas.tsx pour alléger le fichier principal
 // ============================================
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, Dispatch, SetStateAction } from "react";
 import { toast } from "sonner";
-import type { Sketch, Line, Arc, Point, Circle as CircleType, Bezier } from "../types";
+import type { Sketch, Line, Arc, Point, Circle as CircleType, Bezier, ToolType } from "../types";
 import { generateId } from "../types";
 
 // Types pour le dialogue offset
@@ -31,7 +31,7 @@ interface UseOffsetProps {
   selectedEntities: Set<string>;
   setSelectedEntities: (entities: Set<string>) => void;
   solveSketch: (sketch: Sketch) => void;
-  setActiveTool: (tool: string) => void;
+  setActiveTool: Dispatch<SetStateAction<ToolType>>;
   offsetDistance: number;
   offsetDirection: "outside" | "inside";
 }
@@ -125,19 +125,26 @@ export function useOffset({
   );
 
   // Calculer l'offset d'une ligne (retourne les deux points décalés)
-  const offsetLine = useCallback(
+  // Le paramètre isClockwise indique si le contour est orienté dans le sens horaire
+  const offsetLineWithOrientation = useCallback(
     (
       p1: { x: number; y: number },
       p2: { x: number; y: number },
       distancePx: number,
       direction: "outside" | "inside",
+      isClockwise: boolean = true,
     ): { p1: { x: number; y: number }; p2: { x: number; y: number } } => {
       const dx = p2.x - p1.x;
       const dy = p2.y - p1.y;
       const length = Math.sqrt(dx * dx + dy * dy);
       if (length < 0.001) return { p1, p2 };
 
-      const sign = direction === "outside" ? 1 : -1;
+      // Pour un contour horaire: normale à droite = extérieur
+      // Pour un contour anti-horaire: normale à gauche = extérieur
+      let sign = direction === "outside" ? 1 : -1;
+      if (!isClockwise) sign = -sign;
+
+      // Normale perpendiculaire (à droite du vecteur direction)
       const nx = (sign * dy) / length;
       const ny = (sign * -dx) / length;
 
@@ -149,6 +156,35 @@ export function useOffset({
     [],
   );
 
+  // Version simple sans orientation (pour compatibilité)
+  const offsetLine = useCallback(
+    (
+      p1: { x: number; y: number },
+      p2: { x: number; y: number },
+      distancePx: number,
+      direction: "outside" | "inside",
+    ): { p1: { x: number; y: number }; p2: { x: number; y: number } } => {
+      return offsetLineWithOrientation(p1, p2, distancePx, direction, true);
+    },
+    [offsetLineWithOrientation],
+  );
+
+  // Calculer l'orientation d'un contour (sens horaire ou anti-horaire)
+  // Utilise la formule de l'aire signée (Shoelace formula)
+  const isContourClockwise = useCallback((points: Array<{ x: number; y: number }>): boolean => {
+    if (points.length < 3) return true;
+
+    let signedArea = 0;
+    for (let i = 0; i < points.length; i++) {
+      const current = points[i];
+      const next = points[(i + 1) % points.length];
+      signedArea += (next.x - current.x) * (next.y + current.y);
+    }
+
+    // Aire positive = sens horaire (en coordonnées écran où Y augmente vers le bas)
+    return signedArea > 0;
+  }, []);
+
   // Ouvrir la modale offset
   const openOffsetDialog = useCallback(() => {
     setActiveTool("offset");
@@ -158,28 +194,211 @@ export function useOffset({
     });
   }, [selectedEntities, setActiveTool]);
 
+  // Helper: calculer l'intersection de deux lignes infinies
+  const lineLineIntersection = useCallback(
+    (
+      p1: { x: number; y: number },
+      p2: { x: number; y: number },
+      p3: { x: number; y: number },
+      p4: { x: number; y: number },
+    ): { x: number; y: number } | null => {
+      const d1x = p2.x - p1.x;
+      const d1y = p2.y - p1.y;
+      const d2x = p4.x - p3.x;
+      const d2y = p4.y - p3.y;
+
+      const cross = d1x * d2y - d1y * d2x;
+      if (Math.abs(cross) < 0.0001) return null; // Lignes parallèles
+
+      const dx = p3.x - p1.x;
+      const dy = p3.y - p1.y;
+      const t = (dx * d2y - dy * d2x) / cross;
+
+      return {
+        x: p1.x + t * d1x,
+        y: p1.y + t * d1y,
+      };
+    },
+    [],
+  );
+
+  // Helper: ordonner les lignes en suivant le contour
+  const orderLinesInContour = useCallback(
+    (
+      lineIds: string[],
+    ): Array<{
+      id: string;
+      p1: { x: number; y: number };
+      p2: { x: number; y: number };
+      p1Id: string;
+      p2Id: string;
+    }> => {
+      if (lineIds.length === 0) return [];
+
+      const orderedLines: Array<{
+        id: string;
+        p1: { x: number; y: number };
+        p2: { x: number; y: number };
+        p1Id: string;
+        p2Id: string;
+      }> = [];
+      const remaining = new Set(lineIds);
+
+      // Commencer par la première ligne
+      const firstId = lineIds[0];
+      const firstGeo = sketch.geometries.get(firstId) as Line;
+      if (!firstGeo) return [];
+
+      const firstP1 = sketch.points.get(firstGeo.p1);
+      const firstP2 = sketch.points.get(firstGeo.p2);
+      if (!firstP1 || !firstP2) return [];
+
+      orderedLines.push({ id: firstId, p1: firstP1, p2: firstP2, p1Id: firstGeo.p1, p2Id: firstGeo.p2 });
+      remaining.delete(firstId);
+
+      // Suivre le contour
+      let currentEndPointId = firstGeo.p2;
+      let iterations = 0;
+      const maxIterations = lineIds.length * 2;
+
+      while (remaining.size > 0 && iterations < maxIterations) {
+        iterations++;
+        let found = false;
+
+        for (const lineId of remaining) {
+          const geo = sketch.geometries.get(lineId) as Line;
+          if (!geo) continue;
+
+          const geoP1 = sketch.points.get(geo.p1);
+          const geoP2 = sketch.points.get(geo.p2);
+          if (!geoP1 || !geoP2) continue;
+
+          // Vérifier si cette ligne est connectée
+          if (geo.p1 === currentEndPointId) {
+            orderedLines.push({ id: lineId, p1: geoP1, p2: geoP2, p1Id: geo.p1, p2Id: geo.p2 });
+            currentEndPointId = geo.p2;
+            remaining.delete(lineId);
+            found = true;
+            break;
+          } else if (geo.p2 === currentEndPointId) {
+            // Inverser la direction
+            orderedLines.push({ id: lineId, p1: geoP2, p2: geoP1, p1Id: geo.p2, p2Id: geo.p1 });
+            currentEndPointId = geo.p1;
+            remaining.delete(lineId);
+            found = true;
+            break;
+          }
+        }
+
+        if (!found) break;
+      }
+
+      return orderedLines;
+    },
+    [sketch.geometries, sketch.points],
+  );
+
   // Calculer la preview de l'offset pour toutes les entités sélectionnées
+  // AMÉLIORATION: Les segments se rejoignent maintenant aux coins via intersection
   const calculateOffsetPreviewForSelection = useCallback(
     (entities: Set<string>, dist: number, dir: "outside" | "inside"): OffsetPreviewItem[] => {
       const previews: OffsetPreviewItem[] = [];
       const distancePx = dist * sketch.scaleFactor;
 
+      // Séparer les lignes des autres géométries
+      const lineIds: string[] = [];
+      const otherEntities: string[] = [];
+
       entities.forEach((entityId) => {
         const geo = sketch.geometries.get(entityId);
         if (!geo) return;
-
         if (geo.type === "line") {
-          const line = geo as Line;
-          const p1 = sketch.points.get(line.p1);
-          const p2 = sketch.points.get(line.p2);
-          if (!p1 || !p2) return;
+          lineIds.push(entityId);
+        } else {
+          otherEntities.push(entityId);
+        }
+      });
 
+      // Traiter les lignes avec intersection aux coins
+      if (lineIds.length > 1) {
+        const orderedLines = orderLinesInContour(lineIds);
+
+        if (orderedLines.length > 1) {
+          // Extraire les points du contour pour déterminer l'orientation
+          const contourPoints = orderedLines.map((line) => line.p1);
+          const clockwise = isContourClockwise(contourPoints);
+
+          // Calculer l'offset de chaque ligne avec l'orientation correcte
+          const offsetLines = orderedLines.map((line) => ({
+            ...line,
+            offset: offsetLineWithOrientation(line.p1, line.p2, distancePx, dir, clockwise),
+          }));
+
+          const n = offsetLines.length;
+
+          // Calculer TOUTES les intersections d'abord
+          const intersections: Array<{ x: number; y: number }> = [];
+          for (let i = 0; i < n; i++) {
+            const current = offsetLines[i];
+            const next = offsetLines[(i + 1) % n];
+
+            const intersection = lineLineIntersection(
+              current.offset.p1,
+              current.offset.p2,
+              next.offset.p1,
+              next.offset.p2,
+            );
+
+            // Si pas d'intersection (lignes parallèles), utiliser le point de fin
+            intersections.push(intersection || current.offset.p2);
+          }
+
+          // Construire les segments en utilisant les intersections
+          for (let i = 0; i < n; i++) {
+            const startPoint = intersections[(i - 1 + n) % n]; // Intersection avec segment précédent
+            const endPoint = intersections[i]; // Intersection avec segment suivant
+
+            previews.push({
+              type: "line",
+              points: [startPoint, endPoint],
+            });
+          }
+        } else {
+          // Une seule ligne ordonnée, traiter normalement
+          lineIds.forEach((entityId) => {
+            const geo = sketch.geometries.get(entityId) as Line;
+            const p1 = sketch.points.get(geo.p1);
+            const p2 = sketch.points.get(geo.p2);
+            if (!p1 || !p2) return;
+
+            const offset = offsetLine(p1, p2, distancePx, dir);
+            previews.push({
+              type: "line",
+              points: [offset.p1, offset.p2],
+            });
+          });
+        }
+      } else if (lineIds.length === 1) {
+        // Une seule ligne
+        const entityId = lineIds[0];
+        const geo = sketch.geometries.get(entityId) as Line;
+        const p1 = sketch.points.get(geo.p1);
+        const p2 = sketch.points.get(geo.p2);
+        if (p1 && p2) {
           const offset = offsetLine(p1, p2, distancePx, dir);
           previews.push({
             type: "line",
             points: [offset.p1, offset.p2],
           });
-        } else if (geo.type === "circle") {
+        }
+      }
+
+      // Traiter les autres géométries (cercles, arcs)
+      otherEntities.forEach((entityId) => {
+        const geo = sketch.geometries.get(entityId);
+        if (!geo) return;
+
+        if (geo.type === "circle") {
           const circle = geo as CircleType;
           const center = sketch.points.get(circle.center);
           if (!center) return;
@@ -216,7 +435,7 @@ export function useOffset({
 
       return previews;
     },
-    [sketch, offsetLine],
+    [sketch, offsetLine, offsetLineWithOrientation, orderLinesInContour, lineLineIntersection, isContourClockwise],
   );
 
   // Mettre à jour la preview quand les paramètres changent
@@ -518,7 +737,17 @@ export function useOffset({
     setOffsetDialog(null);
     setOffsetPreview([]);
     setSelectedEntities(new Set());
-  }, [offsetDialog, offsetDistance, offsetDirection, sketch, offsetLine, addToHistory, solveSketch, setSketch, setSelectedEntities]);
+  }, [
+    offsetDialog,
+    offsetDistance,
+    offsetDirection,
+    sketch,
+    offsetLine,
+    addToHistory,
+    solveSketch,
+    setSketch,
+    setSelectedEntities,
+  ]);
 
   // Ajouter/retirer une entité de la sélection offset
   const toggleOffsetSelection = useCallback(
