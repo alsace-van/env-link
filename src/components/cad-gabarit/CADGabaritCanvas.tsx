@@ -16322,222 +16322,251 @@ export function CADGabaritCanvas({
           className="hidden"
         />
 
-        {/* v7.21: Outils photos regroupés dans un menu déroulant */}
-        {toolbarConfig.line2.photoTools && backgroundImages.length > 0 && (
+        {/* v7.32: Outils photos - TOUJOURS VISIBLE avec bouton charger + menu outils si photos */}
+        {toolbarConfig.line2.photoTools && (
           <ToolbarGroupWrapper groupId="grp_photo" groupName="Photos" groupColor="#EC4899" lineIndex={1}>
-            {/* Toggle afficher/masquer - toujours visible */}
-            <Button
-              variant={showBackgroundImage ? "default" : "outline"}
-              size="sm"
-              onClick={() => setShowBackgroundImage(!showBackgroundImage)}
-              className="h-9 w-9 p-0"
-              title={showBackgroundImage ? "Masquer photos" : "Afficher photos"}
-            >
-              {showBackgroundImage ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-            </Button>
+            {/* Bouton charger photo - toujours visible */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="h-9 px-2 relative"
+                  >
+                    <Image className="h-4 w-4 mr-1" />
+                    <span className="text-xs">Photo</span>
+                    {backgroundImages.length > 0 && (
+                      <Badge variant="secondary" className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-xs">
+                        {backgroundImages.length}
+                      </Badge>
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Charger une photo de référence</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
 
-            {/* Menu déroulant avec tous les outils photos */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 px-2 relative">
-                  <Image className="h-4 w-4 mr-1" />
-                  <span className="text-xs">Outils</span>
-                  <ChevronDown className="h-3 w-3 ml-1" />
-                  {selectedImageId && <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
-                {/* Opacité */}
-                <div className="px-2 py-2">
-                  <label className="text-xs text-muted-foreground mb-1 block">
-                    Opacité: {Math.round(imageOpacity * 100)}%
-                  </label>
-                  <input
-                    type="range"
-                    min="0.1"
-                    max="1"
-                    step="0.1"
-                    value={imageOpacity}
-                    onChange={(e) => {
-                      const newOpacity = parseFloat(e.target.value);
-                      setImageOpacity(newOpacity);
-                      setBackgroundImages((prev) => prev.map((img) => ({ ...img, opacity: newOpacity })));
-                    }}
-                    className="w-full h-2"
-                  />
-                </div>
+            {/* Toggle afficher/masquer - seulement si photos chargées */}
+            {backgroundImages.length > 0 && (
+              <Button
+                variant={showBackgroundImage ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowBackgroundImage(!showBackgroundImage)}
+                className="h-9 w-9 p-0"
+                title={showBackgroundImage ? "Masquer photos" : "Afficher photos"}
+              >
+                {showBackgroundImage ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+              </Button>
+            )}
 
-                <DropdownMenuSeparator />
+            {/* Menu déroulant avec tous les outils photos - seulement si photos chargées */}
+            {backgroundImages.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 px-2 relative">
+                    <Settings className="h-4 w-4 mr-1" />
+                    <span className="text-xs">Outils</span>
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                    {selectedImageId && <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  {/* Opacité */}
+                  <div className="px-2 py-2">
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      Opacité: {Math.round(imageOpacity * 100)}%
+                    </label>
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="1"
+                      step="0.1"
+                      value={imageOpacity}
+                      onChange={(e) => {
+                        const newOpacity = parseFloat(e.target.value);
+                        setImageOpacity(newOpacity);
+                        setBackgroundImages((prev) => prev.map((img) => ({ ...img, opacity: newOpacity })));
+                      }}
+                      className="w-full h-2"
+                    />
+                  </div>
 
-                {/* Rotation (si image sélectionnée) */}
-                {(selectedImageId || selectedImageIds.size > 0) && (
-                  <>
-                    <div className="px-2 py-2">
-                      <label className="text-xs text-muted-foreground mb-1 block">
-                        Rotation {selectedImageIds.size > 0 && `(${selectedImageIds.size} photos)`}
-                      </label>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 w-7 p-0"
-                          onClick={() => updateSelectedImageRotation(getSelectedImageRotation() - 90)}
-                        >
-                          <RotateCcw className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 px-1"
-                          onClick={() => updateSelectedImageRotation(getSelectedImageRotation() - 1)}
-                        >
-                          <span className="text-xs">-1°</span>
-                        </Button>
-                        <input
-                          type="number"
-                          value={Math.round(getSelectedImageRotation() * 10) / 10}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value);
-                            if (!isNaN(val)) updateSelectedImageRotation(val);
-                          }}
-                          className="h-7 w-12 text-xs text-center border rounded"
-                          step="0.1"
-                        />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 px-1"
-                          onClick={() => updateSelectedImageRotation(getSelectedImageRotation() + 1)}
-                        >
-                          <span className="text-xs">+1°</span>
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 w-7 p-0"
-                          onClick={() => updateSelectedImageRotation(getSelectedImageRotation() + 90)}
-                        >
-                          <RotateCw className="h-3 w-3" />
-                        </Button>
-                        {getSelectedImageRotation() !== 0 && (
+                  <DropdownMenuSeparator />
+
+                  {/* Rotation (si image sélectionnée) */}
+                  {(selectedImageId || selectedImageIds.size > 0) && (
+                    <>
+                      <div className="px-2 py-2">
+                        <label className="text-xs text-muted-foreground mb-1 block">
+                          Rotation {selectedImageIds.size > 0 && `(${selectedImageIds.size} photos)`}
+                        </label>
+                        <div className="flex items-center gap-1">
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
-                            className="h-7 w-7 p-0 text-red-500"
-                            onClick={() => updateSelectedImageRotation(0)}
+                            className="h-7 w-7 p-0"
+                            onClick={() => updateSelectedImageRotation(getSelectedImageRotation() - 90)}
                           >
-                            <X className="h-3 w-3" />
+                            <RotateCcw className="h-3 w-3" />
                           </Button>
-                        )}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-1"
+                            onClick={() => updateSelectedImageRotation(getSelectedImageRotation() - 1)}
+                          >
+                            <span className="text-xs">-1°</span>
+                          </Button>
+                          <input
+                            type="number"
+                            value={Math.round(getSelectedImageRotation() * 10) / 10}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              if (!isNaN(val)) updateSelectedImageRotation(val);
+                            }}
+                            className="h-7 w-12 text-xs text-center border rounded"
+                            step="0.1"
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-1"
+                            onClick={() => updateSelectedImageRotation(getSelectedImageRotation() + 1)}
+                          >
+                            <span className="text-xs">+1°</span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            onClick={() => updateSelectedImageRotation(getSelectedImageRotation() + 90)}
+                          >
+                            <RotateCw className="h-3 w-3" />
+                          </Button>
+                          {getSelectedImageRotation() !== 0 && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-red-500"
+                              onClick={() => updateSelectedImageRotation(0)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <DropdownMenuSeparator />
-                  </>
-                )}
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
 
-                {/* Actions sur image sélectionnée */}
-                <DropdownMenuItem
-                  onClick={() => {
-                    if (!selectedImageId) {
-                      toast.error("Sélectionnez d'abord une photo");
-                      return;
-                    }
-                    setShowAdjustmentsDialog(true);
-                  }}
-                  disabled={!selectedImageId}
-                >
-                  <Contrast className="h-4 w-4 mr-2" />
-                  Ajuster les contours
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
-                  onClick={() => {
-                    if (!selectedImageId) {
-                      toast.error("Sélectionnez d'abord une photo");
-                      return;
-                    }
-                    openCropDialog();
-                  }}
-                  disabled={!selectedImageId}
-                >
-                  <Crop className="h-4 w-4 mr-2" />
-                  Recadrer
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
-                  onClick={() => {
-                    if (!showCalibrationPanel && backgroundImages.length > 0 && !selectedImageId) {
-                      toast.error("Sélectionnez d'abord une photo à calibrer");
-                      return;
-                    }
-                    setShowCalibrationPanel(!showCalibrationPanel);
-                  }}
-                >
-                  <Ruler className="h-4 w-4 mr-2" />
-                  Calibration
-                  {showCalibrationPanel && <Check className="h-4 w-4 ml-auto" />}
-                </DropdownMenuItem>
-
-                <DropdownMenuSeparator />
-
-                {/* Marqueurs */}
-                <DropdownMenuItem
-                  onClick={() => {
-                    if (markerMode === "addMarker") {
-                      setMarkerMode("idle");
-                    } else {
-                      setMarkerMode("addMarker");
-                      toast.info("Cliquez sur une photo pour ajouter un marqueur");
-                    }
-                  }}
-                >
-                  <MapPin className="h-4 w-4 mr-2" />
-                  Ajouter un marqueur
-                  {markerMode === "addMarker" && <Check className="h-4 w-4 ml-auto" />}
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
-                  onClick={() => {
-                    if (markerMode === "linkMarker1" || markerMode === "linkMarker2") {
-                      setMarkerMode("idle");
-                      setPendingLink(null);
-                    } else {
-                      const imagesWithMarkers = backgroundImages.filter((img) => img.markers.length > 0);
-                      if (imagesWithMarkers.length < 2) {
-                        toast.error("Ajoutez au moins 1 marqueur sur 2 photos différentes");
+                  {/* Actions sur image sélectionnée */}
+                  <DropdownMenuItem
+                    onClick={() => {
+                      if (!selectedImageId) {
+                        toast.error("Sélectionnez d'abord une photo");
                         return;
                       }
-                      setMarkerMode("linkMarker1");
-                      toast.info("Cliquez sur le premier marqueur");
-                    }
-                  }}
-                >
-                  <Link2 className="h-4 w-4 mr-2" />
-                  Lier deux marqueurs
-                  {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && (
-                    <Check className="h-4 w-4 ml-auto" />
-                  )}
-                </DropdownMenuItem>
+                      setShowAdjustmentsDialog(true);
+                    }}
+                    disabled={!selectedImageId}
+                  >
+                    <Contrast className="h-4 w-4 mr-2" />
+                    Ajuster les contours
+                  </DropdownMenuItem>
 
-                <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => {
+                      if (!selectedImageId) {
+                        toast.error("Sélectionnez d'abord une photo");
+                        return;
+                      }
+                      openCropDialog();
+                    }}
+                    disabled={!selectedImageId}
+                  >
+                    <Crop className="h-4 w-4 mr-2" />
+                    Recadrer
+                  </DropdownMenuItem>
 
-                {/* Supprimer */}
-                <DropdownMenuItem
-                  onClick={() => {
-                    addToImageHistory(backgroundImages, markerLinks);
-                    setBackgroundImages([]);
-                    setMarkerLinks([]);
-                    setSelectedImageId(null);
-                    setSelectedMarkerId(null);
-                    toast.success("Toutes les photos supprimées");
-                  }}
-                  className="text-red-500 focus:text-red-500"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Supprimer toutes les photos
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      if (!showCalibrationPanel && backgroundImages.length > 0 && !selectedImageId) {
+                        toast.error("Sélectionnez d'abord une photo à calibrer");
+                        return;
+                      }
+                      setShowCalibrationPanel(!showCalibrationPanel);
+                    }}
+                  >
+                    <Ruler className="h-4 w-4 mr-2" />
+                    Calibration
+                    {showCalibrationPanel && <Check className="h-4 w-4 ml-auto" />}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  {/* Marqueurs */}
+                  <DropdownMenuItem
+                    onClick={() => {
+                      if (markerMode === "addMarker") {
+                        setMarkerMode("idle");
+                      } else {
+                        setMarkerMode("addMarker");
+                        toast.info("Cliquez sur une photo pour ajouter un marqueur");
+                      }
+                    }}
+                  >
+                    <MapPin className="h-4 w-4 mr-2" />
+                    Ajouter un marqueur
+                    {markerMode === "addMarker" && <Check className="h-4 w-4 ml-auto" />}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={() => {
+                      if (markerMode === "linkMarker1" || markerMode === "linkMarker2") {
+                        setMarkerMode("idle");
+                        setPendingLink(null);
+                      } else {
+                        const imagesWithMarkers = backgroundImages.filter((img) => img.markers.length > 0);
+                        if (imagesWithMarkers.length < 2) {
+                          toast.error("Ajoutez au moins 1 marqueur sur 2 photos différentes");
+                          return;
+                        }
+                        setMarkerMode("linkMarker1");
+                        toast.info("Cliquez sur le premier marqueur");
+                      }
+                    }}
+                  >
+                    <Link2 className="h-4 w-4 mr-2" />
+                    Lier deux marqueurs
+                    {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && (
+                      <Check className="h-4 w-4 ml-auto" />
+                    )}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  {/* Supprimer */}
+                  <DropdownMenuItem
+                    onClick={() => {
+                      addToImageHistory(backgroundImages, markerLinks);
+                      setBackgroundImages([]);
+                      setMarkerLinks([]);
+                      setSelectedImageId(null);
+                      setSelectedMarkerId(null);
+                      toast.success("Toutes les photos supprimées");
+                    }}
+                    className="text-red-500 focus:text-red-500"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Supprimer toutes les photos
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </ToolbarGroupWrapper>
         )}
 
