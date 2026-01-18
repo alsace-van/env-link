@@ -1,8 +1,15 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.23 - Outils intégrés dans groupe dessin
+// VERSION: 7.24 - Input de mesure en temps réel
 // ============================================
+//
+// CHANGELOG v7.24 (18/01/2026):
+// - Input de mesure en temps réel pendant le tracé (ligne, cercle)
+// - Affiche la dimension en temps réel, devient éditable quand l'utilisateur tape
+// - Validation avec Enter ou clic pour créer la figure avec la dimension spécifiée
+// - Fonctions createLineWithLength et createCircleWithRadius pour création précise
+// - Plus besoin de modale pour saisir les dimensions
 //
 // CHANGELOG v7.23 (18/01/2026):
 // - Intégration congé/chanfrein, offset, épaisseur et couleur de trait dans le groupe outils de dessin
@@ -416,6 +423,28 @@ export function CADGabaritCanvas({
   const widthInputRef = useRef<HTMLInputElement>(null);
   const heightInputRef = useRef<HTMLInputElement>(null);
 
+  // v7.24: Input de mesure en temps réel (remplace la modale)
+  const [liveInputMeasure, setLiveInputMeasure] = useState<{
+    active: boolean;
+    type: "line" | "circle" | "rectangle-width" | "rectangle-height" | "polygon" | "arc";
+    // Valeur en temps réel (calculée depuis la géométrie)
+    liveValue: number;
+    // Valeur saisie par l'utilisateur (vide = utiliser liveValue)
+    userValue: string;
+    // Position écran de l'input
+    screenPos: { x: number; y: number };
+    // Données supplémentaires selon le type
+    startPoint?: Point;
+    centerPoint?: Point;
+  }>({
+    active: false,
+    type: "line",
+    liveValue: 0,
+    userValue: "",
+    screenPos: { x: 0, y: 0 },
+  });
+  const liveInputRef = useRef<HTMLInputElement>(null);
+
   // Détection de perpendicularité pendant le tracé
   const [perpendicularInfo, setPerpendicularInfo] = useState<{
     isActive: boolean;
@@ -476,6 +505,16 @@ export function CADGabaritCanvas({
   useEffect(() => {
     gizmoDragRef.current = gizmoDrag;
   }, [gizmoDrag]);
+
+  // v7.24: Réinitialiser l'input de mesure quand tempGeometry change ou devient null
+  useEffect(() => {
+    if (!tempGeometry) {
+      setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "" }));
+    } else if (tempGeometry.type !== liveInputMeasure.type) {
+      // Type a changé, réinitialiser userValue
+      setLiveInputMeasure((prev) => ({ ...prev, userValue: "" }));
+    }
+  }, [tempGeometry?.type]);
 
   // Ref pour throttle du gizmoDrag (fluidité)
   const gizmoDragRAFRef = useRef<number | null>(null);
@@ -7787,6 +7826,110 @@ export function CADGabaritCanvas({
     [sketch, findLinesConnectedToPoint, lineIntersection, addToHistory],
   );
 
+  // v7.24: Création d'une ligne avec une longueur spécifiée
+  const createLineWithLength = useCallback(
+    (startPoint: Point, cursorPos: { x: number; y: number }, lengthMm: number) => {
+      const currentSketch = sketchRef.current;
+      const scaleFactor = currentSketch.scaleFactor || 1;
+      const lengthPx = lengthMm * scaleFactor;
+
+      // Calculer la direction depuis startPoint vers cursorPos
+      const dx = cursorPos.x - startPoint.x;
+      const dy = cursorPos.y - startPoint.y;
+      const currentLength = Math.sqrt(dx * dx + dy * dy);
+
+      if (currentLength < 0.001) return; // Éviter la division par zéro
+
+      // Normaliser et appliquer la longueur désirée
+      const dirX = dx / currentLength;
+      const dirY = dy / currentLength;
+      const endX = startPoint.x + dirX * lengthPx;
+      const endY = startPoint.y + dirY * lengthPx;
+
+      // Créer le nouveau sketch
+      const newSketch = { ...currentSketch };
+      newSketch.points = new Map(currentSketch.points);
+      newSketch.geometries = new Map(currentSketch.geometries);
+
+      // Point de départ (peut déjà exister)
+      const p1: Point = { ...startPoint };
+      if (!newSketch.points.has(p1.id)) {
+        newSketch.points.set(p1.id, p1);
+      }
+
+      // Point d'arrivée
+      const p2: Point = { id: generateId(), x: endX, y: endY };
+      newSketch.points.set(p2.id, p2);
+
+      // Créer la ligne
+      const line: Line = {
+        id: generateId(),
+        type: "line",
+        p1: p1.id,
+        p2: p2.id,
+        layerId: currentSketch.activeLayerId,
+        strokeWidth: defaultStrokeWidthRef.current,
+        strokeColor: defaultStrokeColorRef.current,
+        isConstruction: isConstructionModeRef.current,
+      };
+      newSketch.geometries.set(line.id, line);
+
+      // Détecter les intersections
+      createIntersectionPoints(line.id, newSketch);
+
+      setSketch(newSketch);
+      addToHistory(newSketch, `Ligne ${lengthMm.toFixed(1)}mm`);
+
+      // Reset et continuer depuis p2
+      setTempPoints([p2]);
+      setTempGeometry({ type: "line", points: [p2] });
+      setLiveInputMeasure((prev) => ({ ...prev, active: true, userValue: "", startPoint: p2 }));
+
+      toast.success(`Ligne ${lengthMm.toFixed(1)} mm créée`);
+    },
+    [addToHistory, createIntersectionPoints],
+  );
+
+  // v7.24: Création d'un cercle avec un rayon spécifié
+  const createCircleWithRadius = useCallback(
+    (centerPoint: Point, radiusMm: number) => {
+      const currentSketch = sketchRef.current;
+      const scaleFactor = currentSketch.scaleFactor || 1;
+      const radiusPx = radiusMm * scaleFactor;
+
+      // Créer le nouveau sketch
+      const newSketch = { ...currentSketch };
+      newSketch.points = new Map(currentSketch.points);
+      newSketch.geometries = new Map(currentSketch.geometries);
+
+      // Point centre
+      newSketch.points.set(centerPoint.id, centerPoint);
+
+      // Créer le cercle
+      const circle: CircleType = {
+        id: generateId(),
+        type: "circle",
+        center: centerPoint.id,
+        radius: radiusPx,
+        layerId: currentSketch.activeLayerId,
+        strokeWidth: defaultStrokeWidthRef.current,
+        strokeColor: defaultStrokeColorRef.current,
+      };
+      newSketch.geometries.set(circle.id, circle);
+
+      setSketch(newSketch);
+      addToHistory(newSketch, `Cercle R${radiusMm.toFixed(1)}mm`);
+
+      // Reset
+      setTempPoints([]);
+      setTempGeometry(null);
+      setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "" }));
+
+      toast.success(`Cercle R${radiusMm.toFixed(1)} mm créé`);
+    },
+    [addToHistory],
+  );
+
   // Création du rectangle avec les dimensions saisies ou le curseur
   const createRectangleFromInputs = useCallback(
     (clickPos?: { x: number; y: number }, inputValues?: { width: string; height: string }) => {
@@ -9583,6 +9726,15 @@ export function CADGabaritCanvas({
             // Deuxième point - créer la ligne - utiliser sketchRef.current
             const p1 = tempPoints[0];
 
+            // v7.24: Si l'utilisateur a saisi une longueur, utiliser createLineWithLength
+            if (liveInputMeasure.active && liveInputMeasure.userValue && liveInputMeasure.type === "line") {
+              const inputLength = parseFloat(liveInputMeasure.userValue);
+              if (!isNaN(inputLength) && inputLength > 0) {
+                createLineWithLength(p1, targetPos, inputLength);
+                break;
+              }
+            }
+
             // Ajouter les points
             const currentSketch = sketchRef.current;
             const newSketch = { ...currentSketch };
@@ -9658,6 +9810,16 @@ export function CADGabaritCanvas({
           } else {
             // Rayon défini
             const center = tempPoints[0];
+
+            // v7.24: Si l'utilisateur a saisi un rayon, utiliser createCircleWithRadius
+            if (liveInputMeasure.active && liveInputMeasure.userValue && liveInputMeasure.type === "circle") {
+              const inputRadius = parseFloat(liveInputMeasure.userValue);
+              if (!isNaN(inputRadius) && inputRadius > 0) {
+                createCircleWithRadius(center, inputRadius);
+                break;
+              }
+            }
+
             const radius = distance(center, targetPos);
 
             // Utiliser sketchRef.current pour éviter les closures stales
@@ -10920,6 +11082,23 @@ export function CADGabaritCanvas({
             ...tempGeometry,
             cursor: lineTargetPos,
           });
+
+          // v7.24: Mettre à jour l'input de mesure en temps réel pour la ligne
+          const lineLengthPx = Math.sqrt((lineTargetPos.x - startPoint.x) ** 2 + (lineTargetPos.y - startPoint.y) ** 2);
+          const lineLengthMm = lineLengthPx / (sketchRef.current.scaleFactor || 1);
+          // Position écran au milieu de la ligne avec offset
+          const midX = (startPoint.x + lineTargetPos.x) / 2;
+          const midY = (startPoint.y + lineTargetPos.y) / 2;
+          const screenX = midX * viewport.scale + viewport.offsetX;
+          const screenY = midY * viewport.scale + viewport.offsetY - 30; // Décalé vers le haut
+          setLiveInputMeasure((prev) => ({
+            ...prev,
+            active: true,
+            type: "line",
+            liveValue: lineLengthMm,
+            screenPos: { x: screenX, y: screenY },
+            startPoint: startPoint,
+          }));
         } else if (tempGeometry.type === "circle" && tempPoints.length > 0) {
           setPerpendicularInfo(null);
           // IMPORTANT: Pour le cercle, NE PAS utiliser le snap grille (évite les sauts de 10mm)
@@ -10932,6 +11111,21 @@ export function CADGabaritCanvas({
             ...tempGeometry,
             radius,
           });
+
+          // v7.24: Mettre à jour l'input de mesure en temps réel pour le cercle
+          const center = tempPoints[0];
+          const radiusMm = radius / (sketchRef.current.scaleFactor || 1);
+          // Position écran à droite du centre
+          const screenX = center.x * viewport.scale + viewport.offsetX + 20;
+          const screenY = center.y * viewport.scale + viewport.offsetY;
+          setLiveInputMeasure((prev) => ({
+            ...prev,
+            active: true,
+            type: "circle",
+            liveValue: radiusMm,
+            screenPos: { x: screenX, y: screenY },
+            centerPoint: center,
+          }));
         } else if (tempGeometry.type === "rectangle") {
           // OPTIMISATION: Utiliser callback pour éviter re-render si déjà null
           setPerpendicularInfo((prev) => (prev === null ? prev : null));
@@ -17647,6 +17841,57 @@ export function CADGabaritCanvas({
                   <span className="text-xs text-gray-500">mm</span>
                 </div>
                 <span className="text-xs text-gray-400 ml-2">Tab: changer • Entrée: valider</span>
+              </div>
+            )}
+
+            {/* v7.24: Input de mesure en temps réel pour ligne/cercle */}
+            {liveInputMeasure.active && (tempGeometry?.type === "line" || tempGeometry?.type === "circle") && (
+              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex items-center gap-3 bg-white/95 backdrop-blur-sm border border-gray-300 rounded-lg shadow-lg px-4 py-2">
+                <span className="text-xs text-gray-500 font-medium">
+                  {liveInputMeasure.type === "line" ? "Longueur:" : "Rayon:"}
+                </span>
+                <div className="flex items-center gap-1">
+                  {liveInputMeasure.type === "circle" && <span className="text-xs text-gray-500">R</span>}
+                  <input
+                    ref={liveInputRef}
+                    type="text"
+                    inputMode="decimal"
+                    value={liveInputMeasure.userValue || liveInputMeasure.liveValue.toFixed(1)}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
+                      setLiveInputMeasure((prev) => ({ ...prev, userValue: val }));
+                    }}
+                    onFocus={(e) => {
+                      // Quand on focus, sélectionner tout pour faciliter la saisie
+                      e.target.select();
+                      // Passer en mode saisie (vider userValue pour montrer qu'on attend une saisie)
+                      setLiveInputMeasure((prev) => ({ ...prev, userValue: prev.liveValue.toFixed(1) }));
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        // Valider avec la valeur saisie
+                        const inputValue = parseFloat(liveInputMeasure.userValue) || liveInputMeasure.liveValue;
+                        if (liveInputMeasure.type === "line" && liveInputMeasure.startPoint && tempGeometry?.cursor) {
+                          // Créer la ligne avec la longueur spécifiée
+                          createLineWithLength(liveInputMeasure.startPoint, tempGeometry.cursor, inputValue);
+                        } else if (liveInputMeasure.type === "circle" && liveInputMeasure.centerPoint) {
+                          // Créer le cercle avec le rayon spécifié
+                          createCircleWithRadius(liveInputMeasure.centerPoint, inputValue);
+                        }
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setTempPoints([]);
+                        setTempGeometry(null);
+                        setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "" }));
+                      }
+                    }}
+                    className="w-24 h-7 px-2 text-center text-sm font-medium rounded border-2 border-blue-500 bg-blue-50 text-blue-700 outline-none"
+                    placeholder={liveInputMeasure.type === "line" ? "longueur" : "rayon"}
+                  />
+                  <span className="text-xs text-gray-500">mm</span>
+                </div>
+                <span className="text-xs text-gray-400 ml-2">Entrée: valider • Clic: utiliser curseur</span>
               </div>
             )}
 
