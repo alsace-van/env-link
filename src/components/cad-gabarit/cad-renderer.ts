@@ -613,6 +613,53 @@ export class CADRenderer {
       sketch.dimensions.forEach((dimension) => {
         this.drawDimension(dimension, sketch);
       });
+
+      // v7.25: Afficher automatiquement les longueurs des lignes existantes
+      const fontSize = 11 / this.viewport.scale;
+      sketch.geometries.forEach((geo) => {
+        if (geo.type === "line") {
+          const line = geo as Line;
+          const p1 = sketch.points.get(line.p1);
+          const p2 = sketch.points.get(line.p2);
+          if (p1 && p2) {
+            const lengthPx = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+            if (lengthPx < 5) return; // Ignorer les lignes très courtes
+            const lengthMm = lengthPx / scaleFactor;
+            const midX = (p1.x + p2.x) / 2;
+            const midY = (p1.y + p2.y) / 2;
+
+            // Offset perpendiculaire pour ne pas chevaucher la ligne
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            const offsetDist = 15 / this.viewport.scale;
+            const offsetX = len > 0 ? (-dy / len) * offsetDist : 0;
+            const offsetY = len > 0 ? (dx / len) * offsetDist : offsetDist;
+
+            this.ctx.save();
+            this.ctx.setLineDash([]);
+            this.ctx.font = `bold ${fontSize}px Arial`;
+            this.ctx.textAlign = "center";
+            this.ctx.textBaseline = "middle";
+
+            const text = `${lengthMm.toFixed(2)}`;
+            const textWidth = this.ctx.measureText(text).width;
+
+            // Fond semi-transparent pour lisibilité
+            this.ctx.fillStyle = "rgba(219, 234, 254, 0.9)"; // blue-100
+            this.ctx.fillRect(
+              midX + offsetX - textWidth / 2 - 4 / this.viewport.scale,
+              midY + offsetY - fontSize / 2 - 2 / this.viewport.scale,
+              textWidth + 8 / this.viewport.scale,
+              fontSize + 4 / this.viewport.scale,
+            );
+
+            this.ctx.fillStyle = "#3B82F6"; // blue-500
+            this.ctx.fillText(text, midX + offsetX, midY + offsetY);
+            this.ctx.restore();
+          }
+        }
+      });
     }
 
     // 7.5. Mode reveal (rideau avant/après)

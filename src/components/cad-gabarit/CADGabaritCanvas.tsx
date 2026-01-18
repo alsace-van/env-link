@@ -11832,6 +11832,42 @@ export function CADGabaritCanvas({
       const screenY = e.clientY - rect.top;
       const worldPos = screenToWorld(screenX, screenY);
 
+      // v7.25: Double-clic sur les cotations du rectangle temporaire
+      if (activeTool === "rectangle" && tempGeometry?.type === "rectangle" && liveInputMeasure.active) {
+        // Vérifier si on clique sur la cotation largeur (en haut)
+        const widthPos = liveInputMeasure.screenPos;
+        if (widthPos) {
+          const hitWidth = 70;
+          const hitHeight = 25;
+          if (
+            screenX >= widthPos.x - hitWidth / 2 &&
+            screenX <= widthPos.x + hitWidth / 2 &&
+            screenY >= widthPos.y - hitHeight / 2 &&
+            screenY <= widthPos.y + hitHeight / 2
+          ) {
+            // Focus l'input de largeur
+            liveInputRef.current?.focus();
+            return;
+          }
+        }
+        // Vérifier si on clique sur la cotation hauteur (à gauche)
+        const heightPos = liveInputMeasure.screenPos2;
+        if (heightPos) {
+          const hitWidth = 70;
+          const hitHeight = 25;
+          if (
+            screenX >= heightPos.x - hitWidth / 2 &&
+            screenX <= heightPos.x + hitWidth / 2 &&
+            screenY >= heightPos.y - hitHeight / 2 &&
+            screenY <= heightPos.y + hitHeight / 2
+          ) {
+            // Focus l'input de hauteur
+            liveInputRef2.current?.focus();
+            return;
+          }
+        }
+      }
+
       // v7.24: Vérifier d'abord si on double-clic sur une cotation existante
       if (activeTool === "select" && showDimensions) {
         const dimHit = findDimensionAtScreenPos(screenX, screenY);
@@ -12004,6 +12040,10 @@ export function CADGabaritCanvas({
       tempPoints,
       findDimensionAtScreenPos,
       showDimensions,
+      tempGeometry,
+      liveInputMeasure.active,
+      liveInputMeasure.screenPos,
+      liveInputMeasure.screenPos2,
     ],
   );
 
