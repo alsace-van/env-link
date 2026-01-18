@@ -15690,6 +15690,9 @@ export function CADGabaritCanvas({
         {/* Zone de drop après Import/Export */}
         <DropZoneBetweenGroups targetIndex={2} lineIndex={0} />
 
+        {/* Espace entre Import/Export et Affichage */}
+        <div className="w-4" />
+
         <Separator orientation="vertical" className="h-6" />
 
         {/* v7.22: Groupe Affichage déplacé sur la ligne 0 */}
