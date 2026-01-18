@@ -16521,9 +16521,9 @@ export function CADGabaritCanvas({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 px-2">
-                <Link className="h-4 w-4 mr-1" />
-                <span className="text-xs">Contraintes</span>
+              <Button variant="outline" size="sm" className="h-9 px-1.5">
+                <Link className="h-4 w-4" />
+                <ChevronDown className="h-3 w-3 ml-0.5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
