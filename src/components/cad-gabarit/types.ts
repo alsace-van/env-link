@@ -265,6 +265,22 @@ export interface Layer {
   locked: boolean; // Si verrouillé, pas de modification
   order: number; // Ordre d'affichage (0 = fond)
   opacity?: number; // Opacité du calque (0-1, défaut: 1)
+  solo?: boolean; // Mode solo: seul ce calque est visible (masque temporairement les autres)
+  isGuide?: boolean; // Calque guide: visible mais non exporté
+  groupId?: string; // ID du groupe parent (si dans un groupe)
+}
+
+// Groupe de calques (dossier)
+export interface LayerGroup {
+  id: string;
+  name: string;
+  color: string; // Couleur du groupe
+  visible: boolean; // Visibilité du groupe entier
+  locked: boolean; // Verrouillage du groupe entier
+  opacity: number; // Opacité appliquée à tous les calques du groupe
+  expanded: boolean; // Groupe déplié ou replié
+  order: number; // Ordre d'affichage parmi les groupes/calques racine
+  parentGroupId?: string; // Pour les sous-groupes (optionnel)
 }
 
 export const DEFAULT_LAYERS: Layer[] = [
@@ -297,6 +313,7 @@ export interface Sketch {
   constraints: Map<string, Constraint>;
   dimensions: Map<string, Dimension>;
   layers: Map<string, Layer>;
+  layerGroups: Map<string, LayerGroup>; // Groupes/dossiers de calques
   groups: Map<string, GeometryGroup>; // Groupes de géométries
   shapeFills: Map<string, ShapeFill>; // Remplissages des formes fermées
   activeLayerId: string; // Calque actif pour les nouvelles entités
