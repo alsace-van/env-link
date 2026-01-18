@@ -15666,13 +15666,12 @@ export function CADGabaritCanvas({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={() => setShowPrintDialog(true)} className="h-9 px-2">
-                  <Printer className="h-4 w-4 mr-1" />
-                  <span className="text-xs">Imprimer</span>
+                <Button variant="outline" size="sm" onClick={() => setShowPrintDialog(true)} className="h-9 w-9 p-0">
+                  <Printer className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Impression directe avec duplication de motifs</p>
+                <p>Imprimer</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
