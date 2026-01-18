@@ -264,11 +264,12 @@ export interface Layer {
   visible: boolean;
   locked: boolean; // Si verrouillé, pas de modification
   order: number; // Ordre d'affichage (0 = fond)
+  opacity?: number; // Opacité du calque (0-1, défaut: 1)
 }
 
 export const DEFAULT_LAYERS: Layer[] = [
-  { id: "modele", name: "Modèle", color: "#9CA3AF", visible: true, locked: false, order: 0 },
-  { id: "trace", name: "Tracé", color: "#EF4444", visible: true, locked: false, order: 1 },
+  { id: "modele", name: "Modèle", color: "#9CA3AF", visible: true, locked: false, order: 0, opacity: 1 },
+  { id: "trace", name: "Tracé", color: "#EF4444", visible: true, locked: false, order: 1, opacity: 1 },
 ];
 
 // === REMPLISSAGES DE FORMES FERMÉES ===
