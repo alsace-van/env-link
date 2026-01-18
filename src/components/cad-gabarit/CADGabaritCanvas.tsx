@@ -133,7 +133,6 @@ import {
   Maximize2,
   GripVertical,
   ArrowRight,
-  ChevronRight,
   Printer,
   Cloud,
   CloudOff,
@@ -230,9 +229,6 @@ import { MeasurePanel, type Measurement } from "./MeasurePanel";
 
 // MOD v7.15: Contrôles d'étirement manuel
 import { ManualStretchControls } from "./ManualStretchControls";
-
-// MOD v7.28: Menu contextuel extrait (composant de rendu seulement)
-import { ContextMenuRenderer } from "./components/ContextMenuRenderer";
 
 interface CADGabaritCanvasProps {
   imageUrl?: string;
