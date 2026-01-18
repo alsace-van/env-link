@@ -442,6 +442,9 @@ export function CADGabaritCanvas({
     screenPos2?: { x: number; y: number };
     // Rectangle: point de départ
     rectP1?: Point;
+    // Flag pour savoir si on est en mode édition (première frappe remplace tout)
+    isEditing?: boolean;
+    isEditing2?: boolean;
   }>({
     active: false,
     type: "line",
@@ -17834,18 +17837,24 @@ export function CADGabaritCanvas({
                           : liveInputMeasure.liveValue.toFixed(1)
                       }
                       onChange={(e) => {
-                        const val = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
-                        setLiveInputMeasure((prev) => ({ ...prev, userValue: val }));
+                        const rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
+                        if (!liveInputMeasure.isEditing) {
+                          const lastChar = rawVal.slice(-1);
+                          setLiveInputMeasure((prev) => ({ ...prev, userValue: lastChar, isEditing: true }));
+                        } else {
+                          setLiveInputMeasure((prev) => ({ ...prev, userValue: rawVal }));
+                        }
                       }}
-                      onFocus={(e) => {
-                        // Sélectionner le texte mais NE PAS figer la valeur
-                        e.target.select();
+                      onFocus={() => {
+                        setLiveInputMeasure((prev) => ({ ...prev, isEditing: false }));
+                      }}
+                      onBlur={() => {
+                        setLiveInputMeasure((prev) => ({ ...prev, isEditing: false }));
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "Tab") {
                           e.preventDefault();
                           liveInputRef2.current?.focus();
-                          liveInputRef2.current?.select();
                         } else if (e.key === "Enter") {
                           e.preventDefault();
                           const wVal = liveInputMeasure.userValue || "";
@@ -17855,7 +17864,14 @@ export function CADGabaritCanvas({
                           e.preventDefault();
                           setTempPoints([]);
                           setTempGeometry(null);
-                          setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", userValue2: "" }));
+                          setLiveInputMeasure((prev) => ({
+                            ...prev,
+                            active: false,
+                            userValue: "",
+                            userValue2: "",
+                            isEditing: false,
+                            isEditing2: false,
+                          }));
                         }
                       }}
                       className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none"
@@ -17884,18 +17900,24 @@ export function CADGabaritCanvas({
                           : liveInputMeasure.liveValue2?.toFixed(1) || "0"
                       }
                       onChange={(e) => {
-                        const val = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
-                        setLiveInputMeasure((prev) => ({ ...prev, userValue2: val }));
+                        const rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
+                        if (!liveInputMeasure.isEditing2) {
+                          const lastChar = rawVal.slice(-1);
+                          setLiveInputMeasure((prev) => ({ ...prev, userValue2: lastChar, isEditing2: true }));
+                        } else {
+                          setLiveInputMeasure((prev) => ({ ...prev, userValue2: rawVal }));
+                        }
                       }}
-                      onFocus={(e) => {
-                        // Sélectionner le texte mais NE PAS figer la valeur
-                        e.target.select();
+                      onFocus={() => {
+                        setLiveInputMeasure((prev) => ({ ...prev, isEditing2: false }));
+                      }}
+                      onBlur={() => {
+                        setLiveInputMeasure((prev) => ({ ...prev, isEditing2: false }));
                       }}
                       onKeyDown={(e) => {
                         if (e.key === "Tab") {
                           e.preventDefault();
                           liveInputRef.current?.focus();
-                          liveInputRef.current?.select();
                         } else if (e.key === "Enter") {
                           e.preventDefault();
                           const wVal = liveInputMeasure.userValue || "";
@@ -17905,7 +17927,14 @@ export function CADGabaritCanvas({
                           e.preventDefault();
                           setTempPoints([]);
                           setTempGeometry(null);
-                          setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", userValue2: "" }));
+                          setLiveInputMeasure((prev) => ({
+                            ...prev,
+                            active: false,
+                            userValue: "",
+                            userValue2: "",
+                            isEditing: false,
+                            isEditing2: false,
+                          }));
                         }
                       }}
                       className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none"
@@ -17939,12 +17968,24 @@ export function CADGabaritCanvas({
                         : liveInputMeasure.liveValue.toFixed(1)
                     }
                     onChange={(e) => {
-                      const val = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
-                      setLiveInputMeasure((prev) => ({ ...prev, userValue: val }));
+                      // Extraire seulement les chiffres de la nouvelle saisie
+                      const rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
+                      // Si pas encore en mode édition, la première frappe remplace tout
+                      if (!liveInputMeasure.isEditing) {
+                        // Prendre seulement le dernier caractère tapé (la nouvelle saisie)
+                        const lastChar = rawVal.slice(-1);
+                        setLiveInputMeasure((prev) => ({ ...prev, userValue: lastChar, isEditing: true }));
+                      } else {
+                        setLiveInputMeasure((prev) => ({ ...prev, userValue: rawVal }));
+                      }
                     }}
-                    onFocus={(e) => {
-                      // Sélectionner le texte mais NE PAS figer la valeur
-                      e.target.select();
+                    onFocus={() => {
+                      // Reset le mode édition pour que la prochaine frappe remplace
+                      setLiveInputMeasure((prev) => ({ ...prev, isEditing: false }));
+                    }}
+                    onBlur={() => {
+                      // Reset le mode édition quand on quitte
+                      setLiveInputMeasure((prev) => ({ ...prev, isEditing: false }));
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
@@ -17962,7 +18003,7 @@ export function CADGabaritCanvas({
                         e.preventDefault();
                         setTempPoints([]);
                         setTempGeometry(null);
-                        setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "" }));
+                        setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", isEditing: false }));
                       }
                     }}
                     className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none"
