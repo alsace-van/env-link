@@ -1,8 +1,16 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.29 - Gestion avancée des calques
+// VERSION: 7.30 - Solo, Guide, Groupes de calques
 // ============================================
+//
+// CHANGELOG v7.30 (18/01/2026):
+// - Mode Solo: icône pour isoler un calque (masque les autres temporairement)
+// - Mode Guide: calques visibles mais non exportés (pour repères)
+// - Groupes de calques (dossiers) avec pliage/dépliage
+// - Opacité et visibilité appliquées au groupe entier
+// - Drag & drop de calques vers les groupes
+// - Menu contextuel pour les groupes
 //
 // CHANGELOG v7.29 (18/01/2026):
 // - Nouveau composant LayerTabs avec gestion complète des calques
@@ -168,6 +176,7 @@ import {
   SnapType,
   ToolType,
   Layer,
+  LayerGroup,
   GeometryGroup,
   ShapeFill,
   HatchPattern,
@@ -268,6 +277,7 @@ function createEmptySketch(scaleFactor: number = 1): Sketch {
     constraints: new Map(),
     dimensions: new Map(),
     layers,
+    layerGroups: new Map(), // Groupes/dossiers de calques
     groups: new Map(), // Groupes de géométries
     shapeFills: new Map(), // Remplissages des formes fermées
     activeLayerId: "trace",
@@ -22419,13 +22429,3 @@ function exportToSVG(sketch: Sketch): string {
       if (center) {
         svg += `  <circle cx="${center.x}" cy="${center.y}" r="${circle.radius}"/>\n`;
       }
-    }
-  });
-
-  svg += `</g>
-</svg>`;
-
-  return svg;
-}
-
-export default CADGabaritCanvas;
