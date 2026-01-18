@@ -1,8 +1,13 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.20 - Bouton export unifié + toggle cotations
+// VERSION: 7.21 - Import/Export unifiés + toggle cotations
 // ============================================
+//
+// CHANGELOG v7.21 (18/01/2026):
+// - Import unifié : un seul bouton "Importer" qui ouvre l'explorateur (accepte DXF + images)
+// - Handler handleUnifiedImport qui dispatche selon le type de fichier
+// - Suppression de dxfInputRef (plus nécessaire)
 //
 // CHANGELOG v7.20 (18/01/2026):
 // - Regroupement des 4 boutons d'export (SVG, PNG, DXF, PDF) en un seul menu déroulant "Exporter"
@@ -302,8 +307,7 @@ export function CADGabaritCanvas({
     solverRef.current = new CADSolver();
   }
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const dxfInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null); // v7.21: Input unifié pour DXF + images
   const lastMiddleClickRef = useRef<number>(0); // Pour détecter le double-clic molette
   const renderRequestRef = useRef<number | null>(null); // Pour throttler le rendu avec RAF
   const renderDebugTimeRef = useRef<number>(0); // Pour limiter les logs debug
@@ -4922,8 +4926,8 @@ export function CADGabaritCanvas({
         });
 
         // Reset l'input pour permettre de réimporter le même fichier
-        if (dxfInputRef.current) {
-          dxfInputRef.current.value = "";
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
         }
       } catch (error) {
         console.error("Erreur import DXF:", error);
@@ -4931,6 +4935,48 @@ export function CADGabaritCanvas({
       }
     },
     [render],
+  );
+
+  // v7.21: Handler unifié pour import (DXF + images)
+  const handleUnifiedImport = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+
+      const dxfFiles: File[] = [];
+      const imageFiles: File[] = [];
+
+      // Trier les fichiers par type
+      Array.from(files).forEach((file) => {
+        if (file.name.toLowerCase().endsWith(".dxf")) {
+          dxfFiles.push(file);
+        } else if (file.type.startsWith("image/")) {
+          imageFiles.push(file);
+        }
+      });
+
+      // Traiter les fichiers DXF (un seul à la fois)
+      if (dxfFiles.length > 0) {
+        const fakeEvent = {
+          target: { files: [dxfFiles[0]] },
+        } as unknown as React.ChangeEvent<HTMLInputElement>;
+        await handleDXFImport(fakeEvent);
+      }
+
+      // Traiter les images
+      if (imageFiles.length > 0) {
+        const fakeEvent = {
+          target: { files: imageFiles, value: "" },
+        } as unknown as React.ChangeEvent<HTMLInputElement>;
+        handleImageUpload(fakeEvent);
+      }
+
+      // Reset l'input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    },
+    [handleDXFImport, handleImageUpload],
   );
 
   // Helper: récupère un point existant si snap endpoint, sinon crée un nouveau point
@@ -15549,48 +15595,30 @@ export function CADGabaritCanvas({
 
         {/* Import/Export fichiers */}
         <ToolbarGroupWrapper groupId="grp_import_export" groupName="Import/Export" groupColor="#10B981" lineIndex={0}>
-          {/* Import DXF */}
-          {toolbarConfig.line1.import && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="outline" size="sm" onClick={() => dxfInputRef.current?.click()} className="h-9 px-2">
-                    <FileUp className="h-4 w-4 mr-1" />
-                    <span className="text-xs">Import</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Importer un fichier DXF</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-
-          {/* Photos */}
-          {toolbarConfig.line1.photos && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="h-9 w-9 p-0 relative"
-                  >
-                    <Image className="h-4 w-4" />
-                    {backgroundImages.length > 0 && (
-                      <Badge variant="secondary" className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-xs">
-                        {backgroundImages.length}
-                      </Badge>
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Charger des photos de référence</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
+          {/* v7.21: Import unifié - un seul bouton qui ouvre l'explorateur (DXF + images) */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 px-2 relative"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <FileUp className="h-4 w-4 mr-1" />
+                  <span className="text-xs">Importer</span>
+                  {backgroundImages.length > 0 && (
+                    <Badge variant="secondary" className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-xs">
+                      {backgroundImages.length}
+                    </Badge>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Importer fichiers (DXF, images)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
           {/* v7.20: Export unifié - un seul bouton avec menu déroulant */}
           <DropdownMenu>
@@ -16152,14 +16180,13 @@ export function CADGabaritCanvas({
 
         <Separator orientation="vertical" className="h-6" />
 
-        {/* Inputs cachés pour import de fichiers */}
-        <input ref={dxfInputRef} type="file" accept=".dxf" onChange={handleDXFImport} className="hidden" />
+        {/* v7.21: Input unifié pour import de fichiers (DXF + images) */}
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept=".dxf,image/*"
           multiple
-          onChange={handleImageUpload}
+          onChange={handleUnifiedImport}
           className="hidden"
         />
 
