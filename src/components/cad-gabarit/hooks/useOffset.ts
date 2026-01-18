@@ -171,19 +171,22 @@ export function useOffset({
 
   // Calculer l'orientation d'un contour (sens horaire ou anti-horaire)
   // Utilise la formule de l'aire signée (Shoelace formula)
-  const isContourClockwise = useCallback((points: Array<{ x: number; y: number }>): boolean => {
-    if (points.length < 3) return true;
+  const isContourClockwise = useCallback(
+    (points: Array<{ x: number; y: number }>): boolean => {
+      if (points.length < 3) return true;
 
-    let signedArea = 0;
-    for (let i = 0; i < points.length; i++) {
-      const current = points[i];
-      const next = points[(i + 1) % points.length];
-      signedArea += (next.x - current.x) * (next.y + current.y);
-    }
+      let signedArea = 0;
+      for (let i = 0; i < points.length; i++) {
+        const current = points[i];
+        const next = points[(i + 1) % points.length];
+        signedArea += (next.x - current.x) * (next.y + current.y);
+      }
 
-    // Aire positive = sens horaire (en coordonnées écran où Y augmente vers le bas)
-    return signedArea > 0;
-  }, []);
+      // Aire positive = sens horaire (en coordonnées écran où Y augmente vers le bas)
+      return signedArea > 0;
+    },
+    [],
+  );
 
   // Ouvrir la modale offset
   const openOffsetDialog = useCallback(() => {
@@ -200,7 +203,7 @@ export function useOffset({
       p1: { x: number; y: number },
       p2: { x: number; y: number },
       p3: { x: number; y: number },
-      p4: { x: number; y: number },
+      p4: { x: number; y: number }
     ): { x: number; y: number } | null => {
       const d1x = p2.x - p1.x;
       const d1y = p2.y - p1.y;
@@ -219,29 +222,15 @@ export function useOffset({
         y: p1.y + t * d1y,
       };
     },
-    [],
+    []
   );
 
   // Helper: ordonner les lignes en suivant le contour
   const orderLinesInContour = useCallback(
-    (
-      lineIds: string[],
-    ): Array<{
-      id: string;
-      p1: { x: number; y: number };
-      p2: { x: number; y: number };
-      p1Id: string;
-      p2Id: string;
-    }> => {
+    (lineIds: string[]): Array<{ id: string; p1: { x: number; y: number }; p2: { x: number; y: number }; p1Id: string; p2Id: string }> => {
       if (lineIds.length === 0) return [];
 
-      const orderedLines: Array<{
-        id: string;
-        p1: { x: number; y: number };
-        p2: { x: number; y: number };
-        p1Id: string;
-        p2Id: string;
-      }> = [];
+      const orderedLines: Array<{ id: string; p1: { x: number; y: number }; p2: { x: number; y: number }; p1Id: string; p2Id: string }> = [];
       const remaining = new Set(lineIds);
 
       // Commencer par la première ligne
@@ -295,7 +284,7 @@ export function useOffset({
 
       return orderedLines;
     },
-    [sketch.geometries, sketch.points],
+    [sketch.geometries, sketch.points]
   );
 
   // Calculer la preview de l'offset pour toutes les entités sélectionnées
@@ -346,7 +335,7 @@ export function useOffset({
               current.offset.p1,
               current.offset.p2,
               next.offset.p1,
-              next.offset.p2,
+              next.offset.p2
             );
 
             // Si pas d'intersection (lignes parallèles), utiliser le point de fin
@@ -737,17 +726,7 @@ export function useOffset({
     setOffsetDialog(null);
     setOffsetPreview([]);
     setSelectedEntities(new Set());
-  }, [
-    offsetDialog,
-    offsetDistance,
-    offsetDirection,
-    sketch,
-    offsetLine,
-    addToHistory,
-    solveSketch,
-    setSketch,
-    setSelectedEntities,
-  ]);
+  }, [offsetDialog, offsetDistance, offsetDirection, sketch, offsetLine, addToHistory, solveSketch, setSketch, setSelectedEntities]);
 
   // Ajouter/retirer une entité de la sélection offset
   const toggleOffsetSelection = useCallback(
