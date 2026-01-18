@@ -945,6 +945,10 @@ export function CADGabaritCanvas({
     }));
   }, []);
 
+  // === ÉTATS OFFSET (définis tôt car utilisés par useOffset) ===
+  const [offsetDistance, setOffsetDistance] = useState<number>(10); // Distance en mm
+  const [offsetDirection, setOffsetDirection] = useState<"outside" | "inside">("outside");
+
   // === HOOK OFFSET ===
   // MOD v7.26: Extraction des fonctions offset dans useOffset.ts
   const {
@@ -1146,9 +1150,7 @@ export function CADGabaritCanvas({
   // Note: filletRadius, chamferDistance, filletPreview, chamferPreview viennent du hook useFilletChamfer
   const [filletFirstLine, setFilletFirstLine] = useState<string | null>(null); // ID de la première ligne sélectionnée
 
-  // Offset - paramètres (offsetDialog et offsetPreview viennent du hook useOffset)
-  const [offsetDistance, setOffsetDistance] = useState<number>(10); // Distance en mm
-  const [offsetDirection, setOffsetDirection] = useState<"outside" | "inside">("outside");
+  // Offset - paramètres de panneau (offsetDistance, offsetDirection, offsetDialog et offsetPreview définis plus haut)
   const [offsetPanelPos, setOffsetPanelPos] = useState({ x: 100, y: 100 });
   const [offsetPanelDragging, setOffsetPanelDragging] = useState(false);
   const [offsetPanelDragStart, setOffsetPanelDragStart] = useState({ x: 0, y: 0 });
