@@ -16653,86 +16653,66 @@ export function CADGabaritCanvas({
 
         <Separator orientation="vertical" className="h-6" />
 
-        {/* Modifications: Fillet et Chamfer */}
+        {/* v7.21: Modifications: Congé et Chanfrein regroupés */}
         <ToolbarGroupWrapper groupId="grp_modify" groupName="Modifications" groupColor="#EF4444" lineIndex={1}>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 px-2" onClick={openFilletDialog}>
-                  {/* Icône congé: angle arrondi */}
-                  <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
-                  </svg>
-                  <span className="text-xs">R{filletRadius}</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Congé - Sélectionnez 2 lignes, 1 coin, ou une figure entière</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Réglage rayon congé */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-9 w-5 p-0">
-                <Settings className="h-3 w-3" />
+              <Button variant="outline" size="sm" className="h-9 px-2">
+                {/* Icône combinée congé/chanfrein */}
+                <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
+                </svg>
+                <ChevronDown className="h-3 w-3" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <div className="p-2">
-                <Label className="text-xs">Rayon congé (mm)</Label>
-                <Input
-                  type="number"
-                  value={filletRadius}
-                  onChange={(e) => setFilletRadius(Math.max(1, parseFloat(e.target.value) || 1))}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  className="w-20 h-7 mt-1"
-                  min="1"
-                  step="1"
-                />
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            <DropdownMenuContent align="start" className="w-56">
+              {/* Congé */}
+              <DropdownMenuItem onClick={openFilletDialog}>
+                <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
+                </svg>
+                Congé (R{filletRadius}mm)
+              </DropdownMenuItem>
 
-          <Separator orientation="vertical" className="h-6 mx-1" />
+              {/* Chanfrein */}
+              <DropdownMenuItem onClick={openChamferDialog}>
+                <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M4 20 L4 10 L10 4 L20 4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Chanfrein ({chamferDistance}mm)
+              </DropdownMenuItem>
 
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 px-2" onClick={openChamferDialog}>
-                  {/* Icône chanfrein: angle coupé */}
-                  <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 20 L4 10 L10 4 L20 4" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  <span className="text-xs">{chamferDistance}</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Chanfrein - Sélectionnez 2 lignes, 1 coin, ou une figure entière</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+              <DropdownMenuSeparator />
 
-          {/* Réglage distance chanfrein */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-9 w-5 p-0">
-                <Settings className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <div className="p-2">
-                <Label className="text-xs">Distance chanfrein (mm)</Label>
-                <Input
-                  type="number"
-                  value={chamferDistance}
-                  onChange={(e) => setChamferDistance(Math.max(1, parseFloat(e.target.value) || 1))}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  className="w-20 h-7 mt-1"
-                  min="1"
-                  step="1"
-                />
+              {/* Paramètres */}
+              <div className="px-2 py-2">
+                <Label className="text-xs text-muted-foreground">Paramètres</Label>
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="flex-1">
+                    <Label className="text-xs">Congé (mm)</Label>
+                    <Input
+                      type="number"
+                      value={filletRadius}
+                      onChange={(e) => setFilletRadius(Math.max(1, parseFloat(e.target.value) || 1))}
+                      onKeyDown={(e) => e.stopPropagation()}
+                      className="w-full h-7 mt-1"
+                      min="1"
+                      step="1"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <Label className="text-xs">Chanfrein (mm)</Label>
+                    <Input
+                      type="number"
+                      value={chamferDistance}
+                      onChange={(e) => setChamferDistance(Math.max(1, parseFloat(e.target.value) || 1))}
+                      onKeyDown={(e) => e.stopPropagation()}
+                      className="w-full h-7 mt-1"
+                      min="1"
+                      step="1"
+                    />
+                  </div>
+                </div>
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
