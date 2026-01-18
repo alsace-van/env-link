@@ -17289,8 +17289,8 @@ export function CADGabaritCanvas({
             >
               <ZoomOut className="h-3.5 w-3.5" />
             </Button>
-            <span className="text-xs font-mono w-10 text-center" title={`1mm = ${viewport.scale.toFixed(1)}px`}>
-              {viewport.scale >= 10 ? `${Math.round(viewport.scale)}x` : `${viewport.scale.toFixed(1)}x`}
+            <span className="text-xs font-mono w-12 text-center" title={`1mm = ${viewport.scale.toFixed(1)}px`}>
+              {Math.round(viewport.scale * 100)}%
             </span>
             <Button
               variant="ghost"
