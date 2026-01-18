@@ -15690,6 +15690,159 @@ export function CADGabaritCanvas({
         {/* Zone de drop après Import/Export */}
         <DropZoneBetweenGroups targetIndex={2} lineIndex={0} />
 
+        <Separator orientation="vertical" className="h-6" />
+
+        {/* v7.22: Groupe Affichage déplacé sur la ligne 0 */}
+        <ToolbarGroupWrapper groupId="grp_display" groupName="Affichage" groupColor="#06B6D4" lineIndex={0}>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={showGrid ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowGrid(!showGrid)}
+                  className="h-8 w-8 p-0"
+                >
+                  <Grid3X3 className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Grille</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={showA4Grid ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowA4Grid(!showA4Grid)}
+                  className={`h-8 w-8 p-0 ${showA4Grid ? "bg-blue-500 hover:bg-blue-600" : ""}`}
+                >
+                  <FileDown className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Grille A4 (export PDF)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={snapEnabled ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSnapEnabled(!snapEnabled)}
+                  className="h-8 w-8 p-0"
+                >
+                  <Magnet className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Snap (aimantation)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={showDimensions ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowDimensions(!showDimensions)}
+                  className={`h-8 w-8 p-0 ${showDimensions ? "bg-cyan-500 hover:bg-cyan-600" : ""}`}
+                >
+                  <Sliders className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Cotations</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={snapToActiveLayerOnly ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSnapToActiveLayerOnly(!snapToActiveLayerOnly)}
+                  className={`h-8 w-8 p-0 ${snapToActiveLayerOnly ? "bg-purple-500 hover:bg-purple-600" : ""}`}
+                >
+                  <Layers className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Snap calque actif uniquement</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={showConstruction ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowConstruction(!showConstruction)}
+                  className="h-8 w-8 p-0"
+                >
+                  {showConstruction ? (
+                    <svg
+                      className="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeDasharray="4 2"
+                    >
+                      <line x1="4" y1="20" x2="20" y2="4" />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="h-4 w-4 opacity-40"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeDasharray="4 2"
+                    >
+                      <line x1="4" y1="20" x2="20" y2="4" />
+                    </svg>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{showConstruction ? "Masquer" : "Afficher"} lignes construction</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Slider opacité surbrillance */}
+          <div className="flex items-center gap-1 ml-1 px-1.5 py-1 bg-blue-50 rounded">
+            <span className="text-xs text-blue-600" title="Surbrillance formes fermées">
+              🔹
+            </span>
+            <input
+              type="range"
+              min="0"
+              max="0.3"
+              step="0.02"
+              value={highlightOpacity}
+              onChange={(e) => setHighlightOpacity(parseFloat(e.target.value))}
+              className="w-12 h-1 accent-blue-500"
+              title={`Opacité surbrillance: ${Math.round(highlightOpacity * 100)}%`}
+            />
+            <span className="text-xs text-blue-500 w-6">{Math.round(highlightOpacity * 100)}%</span>
+          </div>
+        </ToolbarGroupWrapper>
+
         {/* Bouton raccourcis clavier */}
         {toolbarConfig.line1.help && (
           <TooltipProvider>
@@ -17102,165 +17255,6 @@ export function CADGabaritCanvas({
         </ToolbarGroupWrapper>
 
         <DropZoneBetweenGroups targetIndex={8} lineIndex={1} />
-
-        <Separator orientation="vertical" className="h-6" />
-
-        {/* Toggles */}
-        <ToolbarGroupWrapper groupId="grp_display" groupName="Affichage" groupColor="#06B6D4" lineIndex={1}>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={showGrid ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setShowGrid(!showGrid)}
-                  className="h-8 px-2"
-                >
-                  <Grid3X3 className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Grille</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Grille A4 pour export panoramique */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={showA4Grid ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setShowA4Grid(!showA4Grid)}
-                  className={`h-8 px-2 ${showA4Grid ? "bg-blue-500 hover:bg-blue-600" : ""}`}
-                >
-                  <FileDown className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Grille A4 (export PDF)</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={snapEnabled ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSnapEnabled(!snapEnabled)}
-                  className="h-8 px-2"
-                >
-                  <Magnet className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Snap (aimantation)</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* v7.19: Toggle cotations */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={showDimensions ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setShowDimensions(!showDimensions)}
-                  className={`h-8 px-2 ${showDimensions ? "bg-cyan-500 hover:bg-cyan-600" : ""}`}
-                >
-                  <Sliders className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Cotations</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Toggle snap calque actif uniquement */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={snapToActiveLayerOnly ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSnapToActiveLayerOnly(!snapToActiveLayerOnly)}
-                  className={`h-8 px-2 ${snapToActiveLayerOnly ? "bg-purple-500 hover:bg-purple-600" : ""}`}
-                >
-                  <Layers className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Snap calque actif uniquement</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* v7.21: Toggle afficher/masquer construction - à côté du bouton cotations */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={showConstruction ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setShowConstruction(!showConstruction)}
-                  className="h-8 w-8 p-0"
-                >
-                  {showConstruction ? (
-                    <svg
-                      className="h-4 w-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeDasharray="4 2"
-                    >
-                      <line x1="4" y1="20" x2="20" y2="4" />
-                    </svg>
-                  ) : (
-                    <svg
-                      className="h-4 w-4 opacity-40"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeDasharray="4 2"
-                    >
-                      <line x1="4" y1="20" x2="20" y2="4" />
-                    </svg>
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{showConstruction ? "Masquer" : "Afficher"} lignes construction</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Slider opacité surbrillance */}
-          <div className="flex items-center gap-1 ml-2 px-2 py-1 bg-blue-50 rounded">
-            <span className="text-xs text-blue-600" title="Surbrillance formes fermées">
-              🔹
-            </span>
-            <input
-              type="range"
-              min="0"
-              max="0.3"
-              step="0.02"
-              value={highlightOpacity}
-              onChange={(e) => setHighlightOpacity(parseFloat(e.target.value))}
-              className="w-14 h-1 accent-blue-500"
-              title={`Opacité surbrillance: ${Math.round(highlightOpacity * 100)}%`}
-            />
-            <span className="text-xs text-blue-500 w-6">{Math.round(highlightOpacity * 100)}%</span>
-          </div>
-        </ToolbarGroupWrapper>
-
-        <DropZoneBetweenGroups targetIndex={9} lineIndex={1} />
       </div>
 
       {/* Zone principale avec Canvas + Panneau latéral */}
