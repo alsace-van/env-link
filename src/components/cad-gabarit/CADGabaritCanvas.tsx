@@ -10932,20 +10932,43 @@ export function CADGabaritCanvas({
 
           // IMPORTANT: Pour le rectangle, NE PAS utiliser le snap (évite les sauts de 10mm sur la grille)
           // On utilise worldPos directement (position brute de la souris)
-          const rectTargetPos = worldPos;
+          let rectTargetX = worldPos.x;
+          let rectTargetY = worldPos.y;
+
+          // v7.31: Verrouiller les axes si des valeurs sont saisies
+          const p1 = tempGeometry.p1;
+          if (p1) {
+            const lockedWidthVal = rectInputs.widthValue ? parseFloat(rectInputs.widthValue.replace(",", ".")) : 0;
+            const lockedHeightVal = rectInputs.heightValue ? parseFloat(rectInputs.heightValue.replace(",", ".")) : 0;
+            const isCenter = tempGeometry.mode === "center";
+
+            // Si largeur verrouillée, contraindre X
+            if (lockedWidthVal > 0) {
+              const widthPx = lockedWidthVal * sketch.scaleFactor;
+              const dirX = worldPos.x >= p1.x ? 1 : -1;
+              rectTargetX = isCenter ? p1.x + (widthPx / 2) * dirX : p1.x + widthPx * dirX;
+            }
+
+            // Si hauteur verrouillée, contraindre Y
+            if (lockedHeightVal > 0) {
+              const heightPx = lockedHeightVal * sketch.scaleFactor;
+              const dirY = worldPos.y >= p1.y ? 1 : -1;
+              rectTargetY = isCenter ? p1.y + (heightPx / 2) * dirY : p1.y + heightPx * dirY;
+            }
+          }
 
           // Utiliser callback pour éviter re-render si curseur identique
           setTempGeometry((prev: any) => {
             if (!prev) return prev;
             // Comparaison avec tolérance pour éviter les micro-mises à jour
-            const dx = Math.abs((prev.cursor?.x || 0) - rectTargetPos.x);
-            const dy = Math.abs((prev.cursor?.y || 0) - rectTargetPos.y);
+            const dx = Math.abs((prev.cursor?.x || 0) - rectTargetX);
+            const dy = Math.abs((prev.cursor?.y || 0) - rectTargetY);
             if (dx < 0.5 && dy < 0.5) {
               return prev; // Pas de changement significatif
             }
             return {
               ...prev,
-              cursor: { x: rectTargetPos.x, y: rectTargetPos.y },
+              cursor: { x: rectTargetX, y: rectTargetY },
             };
           });
 
@@ -17718,7 +17741,7 @@ export function CADGabaritCanvas({
               </div>
             )}
 
-            {/* v7.31: Inputs inline sur le rectangle temporaire (remplace le panneau fixe) */}
+            {/* v7.31: Inputs inline sur le rectangle temporaire (style épuré) */}
             {rectInputs.active &&
               tempGeometry?.type === "rectangle" &&
               tempGeometry.p1 &&
@@ -17736,8 +17759,8 @@ export function CADGabaritCanvas({
 
                 // Positions écran pour les inputs
                 const widthScreenX = ((leftX + rightX) / 2) * viewport.scale + viewport.offsetX;
-                const widthScreenY = topY * viewport.scale + viewport.offsetY - 25;
-                const heightScreenX = leftX * viewport.scale + viewport.offsetX - 35;
+                const widthScreenY = topY * viewport.scale + viewport.offsetY - 18;
+                const heightScreenX = leftX * viewport.scale + viewport.offsetX - 32;
                 const heightScreenY = ((topY + bottomY) / 2) * viewport.scale + viewport.offsetY;
 
                 // Valeurs actuelles en mm
@@ -17752,131 +17775,107 @@ export function CADGabaritCanvas({
 
                 return (
                   <>
-                    {/* Input Largeur (en haut du rectangle) */}
-                    <div
-                      className="absolute z-50 pointer-events-auto"
+                    {/* Input Largeur (en haut du rectangle) - style épuré */}
+                    <input
+                      ref={widthInputRef}
+                      type="text"
+                      inputMode="decimal"
+                      value={lockedWidth ? rectInputs.widthValue : widthMm.toFixed(1)}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
+                        setRectInputs((prev) => ({ ...prev, widthValue: val }));
+                      }}
+                      onFocus={(e) => {
+                        setRectInputs((prev) => ({ ...prev, activeField: "width" }));
+                        e.target.select();
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Tab") {
+                          e.preventDefault();
+                          setRectInputs((prev) => ({ ...prev, activeField: "height" }));
+                          heightInputRef.current?.focus();
+                        } else if (e.key === "Enter") {
+                          e.preventDefault();
+                          createRectangleFromInputs(undefined, {
+                            width: widthInputRef.current?.value || "",
+                            height: heightInputRef.current?.value || "",
+                          });
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          setTempPoints([]);
+                          setTempGeometry(null);
+                          setRectInputs({
+                            active: false,
+                            widthValue: "",
+                            heightValue: "",
+                            activeField: "width",
+                            widthInputPos: { x: 0, y: 0 },
+                            heightInputPos: { x: 0, y: 0 },
+                          });
+                        } else if (e.key === "Backspace" && (e.target as HTMLInputElement).value === "") {
+                          setRectInputs((prev) => ({ ...prev, widthValue: "" }));
+                        }
+                      }}
+                      className={`absolute z-50 pointer-events-auto w-14 h-5 px-1 text-xs font-mono text-center rounded-sm outline-none
+                      ${lockedWidth ? "bg-green-100 text-green-700 font-bold" : "bg-blue-50/95 text-blue-600"}
+                      ${rectInputs.activeField === "width" ? "ring-2 ring-blue-400" : ""}`}
                       style={{
                         left: `${widthScreenX}px`,
                         top: `${widthScreenY}px`,
                         transform: "translate(-50%, -50%)",
                       }}
-                    >
-                      <div
-                        className={`flex items-center gap-0.5 rounded px-1 py-0.5 shadow-md ${lockedWidth ? "bg-green-100 border-2 border-green-500" : "bg-blue-50 border-2 border-blue-400"}`}
-                      >
-                        <input
-                          ref={widthInputRef}
-                          type="text"
-                          inputMode="decimal"
-                          value={lockedWidth ? rectInputs.widthValue : widthMm.toFixed(1)}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
-                            setRectInputs((prev) => ({ ...prev, widthValue: val }));
-                          }}
-                          onFocus={(e) => {
-                            setRectInputs((prev) => ({ ...prev, activeField: "width" }));
-                            e.target.select();
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Tab") {
-                              e.preventDefault();
-                              setRectInputs((prev) => ({ ...prev, activeField: "height" }));
-                              heightInputRef.current?.focus();
-                            } else if (e.key === "Enter") {
-                              e.preventDefault();
-                              createRectangleFromInputs(undefined, {
-                                width: widthInputRef.current?.value || "",
-                                height: heightInputRef.current?.value || "",
-                              });
-                            } else if (e.key === "Escape") {
-                              e.preventDefault();
-                              setTempPoints([]);
-                              setTempGeometry(null);
-                              setRectInputs({
-                                active: false,
-                                widthValue: "",
-                                heightValue: "",
-                                activeField: "width",
-                                widthInputPos: { x: 0, y: 0 },
-                                heightInputPos: { x: 0, y: 0 },
-                              });
-                            } else if (e.key === "Backspace" && (e.target as HTMLInputElement).value === "") {
-                              // Déverrouiller si on efface tout
-                              setRectInputs((prev) => ({ ...prev, widthValue: "" }));
-                            }
-                          }}
-                          className={`w-14 px-1 py-0.5 text-xs font-mono text-center rounded outline-none ${
-                            lockedWidth ? "bg-green-50 text-green-700 font-bold" : "bg-white text-blue-700"
-                          } ${rectInputs.activeField === "width" ? "ring-2 ring-blue-500" : ""}`}
-                        />
-                        <span className={`text-xs ${lockedWidth ? "text-green-600" : "text-blue-500"}`}>
-                          {lockedWidth ? "🔒" : "mm"}
-                        </span>
-                      </div>
-                    </div>
+                    />
 
-                    {/* Input Hauteur (à gauche du rectangle) */}
-                    <div
-                      className="absolute z-50 pointer-events-auto"
+                    {/* Input Hauteur (à gauche du rectangle) - style épuré */}
+                    <input
+                      ref={heightInputRef}
+                      type="text"
+                      inputMode="decimal"
+                      value={lockedHeight ? rectInputs.heightValue : heightMm.toFixed(1)}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
+                        setRectInputs((prev) => ({ ...prev, heightValue: val }));
+                      }}
+                      onFocus={(e) => {
+                        setRectInputs((prev) => ({ ...prev, activeField: "height" }));
+                        e.target.select();
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Tab") {
+                          e.preventDefault();
+                          setRectInputs((prev) => ({ ...prev, activeField: "width" }));
+                          widthInputRef.current?.focus();
+                        } else if (e.key === "Enter") {
+                          e.preventDefault();
+                          createRectangleFromInputs(undefined, {
+                            width: widthInputRef.current?.value || "",
+                            height: heightInputRef.current?.value || "",
+                          });
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          setTempPoints([]);
+                          setTempGeometry(null);
+                          setRectInputs({
+                            active: false,
+                            widthValue: "",
+                            heightValue: "",
+                            activeField: "width",
+                            widthInputPos: { x: 0, y: 0 },
+                            heightInputPos: { x: 0, y: 0 },
+                          });
+                        } else if (e.key === "Backspace" && (e.target as HTMLInputElement).value === "") {
+                          setRectInputs((prev) => ({ ...prev, heightValue: "" }));
+                        }
+                      }}
+                      className={`absolute z-50 pointer-events-auto w-14 h-5 px-1 text-xs font-mono text-center rounded-sm outline-none
+                      ${lockedHeight ? "bg-green-100 text-green-700 font-bold" : "bg-blue-50/95 text-blue-600"}
+                      ${rectInputs.activeField === "height" ? "ring-2 ring-blue-400" : ""}`}
                       style={{
                         left: `${heightScreenX}px`,
                         top: `${heightScreenY}px`,
                         transform: "translate(-50%, -50%)",
                       }}
-                    >
-                      <div
-                        className={`flex items-center gap-0.5 rounded px-1 py-0.5 shadow-md ${lockedHeight ? "bg-green-100 border-2 border-green-500" : "bg-blue-50 border-2 border-blue-400"}`}
-                      >
-                        <input
-                          ref={heightInputRef}
-                          type="text"
-                          inputMode="decimal"
-                          value={lockedHeight ? rectInputs.heightValue : heightMm.toFixed(1)}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
-                            setRectInputs((prev) => ({ ...prev, heightValue: val }));
-                          }}
-                          onFocus={(e) => {
-                            setRectInputs((prev) => ({ ...prev, activeField: "height" }));
-                            e.target.select();
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Tab") {
-                              e.preventDefault();
-                              setRectInputs((prev) => ({ ...prev, activeField: "width" }));
-                              widthInputRef.current?.focus();
-                            } else if (e.key === "Enter") {
-                              e.preventDefault();
-                              createRectangleFromInputs(undefined, {
-                                width: widthInputRef.current?.value || "",
-                                height: heightInputRef.current?.value || "",
-                              });
-                            } else if (e.key === "Escape") {
-                              e.preventDefault();
-                              setTempPoints([]);
-                              setTempGeometry(null);
-                              setRectInputs({
-                                active: false,
-                                widthValue: "",
-                                heightValue: "",
-                                activeField: "width",
-                                widthInputPos: { x: 0, y: 0 },
-                                heightInputPos: { x: 0, y: 0 },
-                              });
-                            } else if (e.key === "Backspace" && (e.target as HTMLInputElement).value === "") {
-                              // Déverrouiller si on efface tout
-                              setRectInputs((prev) => ({ ...prev, heightValue: "" }));
-                            }
-                          }}
-                          className={`w-14 px-1 py-0.5 text-xs font-mono text-center rounded outline-none ${
-                            lockedHeight ? "bg-green-50 text-green-700 font-bold" : "bg-white text-blue-700"
-                          } ${rectInputs.activeField === "height" ? "ring-2 ring-blue-500" : ""}`}
-                        />
-                        <span className={`text-xs ${lockedHeight ? "text-green-600" : "text-blue-500"}`}>
-                          {lockedHeight ? "🔒" : "mm"}
-                        </span>
-                      </div>
-                    </div>
+                    />
                   </>
                 );
               })()}
