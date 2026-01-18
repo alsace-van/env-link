@@ -1,15 +1,16 @@
 // ============================================
 // HOOK: useAutoDimensions
 // Cotations automatiques lors de la création de géométries
-// VERSION: 1.1
+// VERSION: 1.2
 // ============================================
 // CHANGELOG:
+// v1.2 - Fix: création de contraintes associées pour rendre les cotations interactives
 // v1.1 - Fix: passer le sketch en paramètre pour utiliser le bon contexte
 // v1.0 - Cotations automatiques pour rectangles et lignes
 // ============================================
 
 import { useCallback, useRef } from "react";
-import type { Sketch, Dimension, Point, Line, Rectangle } from "./types";
+import type { Sketch, Dimension, Constraint, Point, Line, Rectangle } from "./types";
 import { generateId, distance } from "./types";
 
 interface UseAutoDimensionsOptions {
@@ -17,8 +18,10 @@ interface UseAutoDimensionsOptions {
   sketchRef: React.MutableRefObject<Sketch>;
 }
 
-interface AutoDimensionResult {
-  dimensions: Dimension[];
+// Retourne dimension + contrainte associée pour l'interactivité
+interface DimensionWithConstraint {
+  dimension: Dimension;
+  constraint: Constraint;
 }
 
 export function useAutoDimensions({ enabled, sketchRef }: UseAutoDimensionsOptions) {
@@ -26,7 +29,8 @@ export function useAutoDimensions({ enabled, sketchRef }: UseAutoDimensionsOptio
   const dimensionedGeometriesRef = useRef<Set<string>>(new Set());
 
   /**
-   * Créer une cotation linéaire entre deux points
+   * Créer une cotation linéaire entre deux points avec contrainte associée
+   * v1.2: Crée aussi une contrainte pour rendre la cotation interactive
    * v1.1: Le sketch peut être passé en paramètre pour utiliser un nouveau sketch
    */
   const createLinearDimension = useCallback(
@@ -34,8 +38,8 @@ export function useAutoDimensions({ enabled, sketchRef }: UseAutoDimensionsOptio
       p1Id: string,
       p2Id: string,
       type: "linear" | "horizontal" | "vertical" = "linear",
-      sketchOverride?: Sketch,
-    ): Dimension | null => {
+      sketchOverride?: Sketch
+    ): DimensionWithConstraint | null => {
       const sketch = sketchOverride || sketchRef.current;
       const p1 = sketch.points.get(p1Id);
       const p2 = sketch.points.get(p2Id);
@@ -45,7 +49,7 @@ export function useAutoDimensions({ enabled, sketchRef }: UseAutoDimensionsOptio
         return null;
       }
 
-      // Calculer la distance en mm
+      // Calculer la distance en mm et en px
       const dist = distance(p1, p2);
       const distMm = dist / sketch.scaleFactor;
 
@@ -55,22 +59,36 @@ export function useAutoDimensions({ enabled, sketchRef }: UseAutoDimensionsOptio
         y: (p1.y + p2.y) / 2 - 20 / sketch.scaleFactor,
       };
 
-      console.log("[AutoDimensions] Dimension créée:", type, distMm.toFixed(2), "mm");
+      // Créer la contrainte de distance (pour l'interactivité)
+      const constraint: Constraint = {
+        id: generateId(),
+        type: "distance",
+        entities: [p1Id, p2Id],
+        value: dist, // En px
+        driving: true,
+      };
 
-      return {
+      // Créer la dimension avec référence à la contrainte
+      const dimension: Dimension = {
         id: generateId(),
         type,
         entities: [p1Id, p2Id],
         value: distMm,
         position,
+        constraintId: constraint.id, // Lien vers la contrainte pour l'interactivité
       };
+
+      console.log("[AutoDimensions] Dimension créée:", type, distMm.toFixed(2), "mm");
+
+      return { dimension, constraint };
     },
-    [sketchRef],
+    [sketchRef]
   );
 
   /**
    * Ajouter des cotations automatiques pour un rectangle
    * Crée une cotation horizontale (largeur) et une verticale (hauteur)
+   * v1.2: Retourne aussi les contraintes pour l'interactivité
    * v1.1: Le sketch peut être passé en paramètre
    */
   const addRectangleDimensions = useCallback(
@@ -79,15 +97,15 @@ export function useAutoDimensions({ enabled, sketchRef }: UseAutoDimensionsOptio
       corner2Id: string,
       corner3Id: string,
       corner4Id: string,
-      sketchOverride?: Sketch,
-    ): Dimension[] => {
+      sketchOverride?: Sketch
+    ): DimensionWithConstraint[] => {
       if (!enabled) {
         console.log("[AutoDimensions] Désactivé");
         return [];
       }
 
       const sketch = sketchOverride || sketchRef.current;
-      const dimensions: Dimension[] = [];
+      const results: DimensionWithConstraint[] = [];
 
       // Créer un ID unique pour ce rectangle basé sur ses coins
       const rectKey = [corner1Id, corner2Id, corner3Id, corner4Id].sort().join("-");
@@ -112,29 +130,30 @@ export function useAutoDimensions({ enabled, sketchRef }: UseAutoDimensionsOptio
       console.log("[AutoDimensions] Création cotations pour rectangle");
 
       // Cotation horizontale (largeur) - entre c1 et c2
-      const widthDim = createLinearDimension(corner1Id, corner2Id, "horizontal", sketch);
-      if (widthDim) {
-        dimensions.push(widthDim);
+      const widthResult = createLinearDimension(corner1Id, corner2Id, "horizontal", sketch);
+      if (widthResult) {
+        results.push(widthResult);
       }
 
       // Cotation verticale (hauteur) - entre c2 et c3
-      const heightDim = createLinearDimension(corner2Id, corner3Id, "vertical", sketch);
-      if (heightDim) {
-        dimensions.push(heightDim);
+      const heightResult = createLinearDimension(corner2Id, corner3Id, "vertical", sketch);
+      if (heightResult) {
+        results.push(heightResult);
       }
 
-      console.log("[AutoDimensions] Dimensions créées:", dimensions.length);
-      return dimensions;
+      console.log("[AutoDimensions] Dimensions créées:", results.length);
+      return results;
     },
-    [enabled, sketchRef, createLinearDimension],
+    [enabled, sketchRef, createLinearDimension]
   );
 
   /**
    * Ajouter une cotation automatique pour une ligne
+   * v1.2: Retourne aussi la contrainte pour l'interactivité
    * v1.1: Le sketch peut être passé en paramètre
    */
   const addLineDimension = useCallback(
-    (lineId: string, p1Id: string, p2Id: string, sketchOverride?: Sketch): Dimension | null => {
+    (lineId: string, p1Id: string, p2Id: string, sketchOverride?: Sketch): DimensionWithConstraint | null => {
       if (!enabled) return null;
 
       // Éviter les doublons
@@ -166,7 +185,7 @@ export function useAutoDimensions({ enabled, sketchRef }: UseAutoDimensionsOptio
 
       return createLinearDimension(p1Id, p2Id, dimType, sketch);
     },
-    [enabled, sketchRef, createLinearDimension],
+    [enabled, sketchRef, createLinearDimension]
   );
 
   /**
