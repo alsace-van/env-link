@@ -18418,14 +18418,12 @@ export function CADGabaritCanvas({
                               const p1 = newSketch.points.get(line.p1);
                               const p2 = newSketch.points.get(line.p2);
                               if (p1 && p2) {
-                                // Déterminer si c'est une ligne horizontale ou verticale (partie d'un rectangle)
                                 const dx = p2.x - p1.x;
                                 const dy = p2.y - p1.y;
                                 const currentLen = Math.sqrt(dx * dx + dy * dy);
-                                const isHorizontal = Math.abs(dx) > Math.abs(dy);
                                 const delta = newValuePx - currentLen;
 
-                                // Trouver les lignes connectées pour détecter si c'est un rectangle
+                                // Trouver les lignes connectées à CE segment uniquement
                                 const connectedToP1 = Array.from(newSketch.geometries.values()).filter(
                                   (g) =>
                                     g.type === "line" &&
@@ -18439,65 +18437,34 @@ export function CADGabaritCanvas({
                                     ((g as Line).p1 === line.p2 || (g as Line).p2 === line.p2),
                                 ) as Line[];
 
-                                // Vérifier si ça forme un rectangle (4 lignes connectées en boucle)
+                                // Vérifier si ça forme un rectangle (lignes perpendiculaires aux deux extrémités)
                                 const isRectangle = connectedToP1.length >= 1 && connectedToP2.length >= 1;
 
                                 if (isRectangle && currentLen > 0) {
-                                  // C'est un rectangle : déplacer les 2 points du côté opposé
-                                  // Trouver le côté parallèle (même orientation)
-                                  const allLines = Array.from(newSketch.geometries.values()).filter(
-                                    (g) => g.type === "line",
-                                  ) as Line[];
-
-                                  // Déplacer p2 et les points connectés à p2 dans la direction de la ligne
+                                  // Rectangle : garder p1 fixe, déplacer p2 et les lignes connectées à p2
                                   const moveDir = { x: dx / currentLen, y: dy / currentLen };
-                                  const halfDelta = delta / 2;
 
-                                  // Déplacer p1 en arrière et p2 en avant (centré)
-                                  const newP1 = {
-                                    ...p1,
-                                    x: p1.x - moveDir.x * halfDelta,
-                                    y: p1.y - moveDir.y * halfDelta,
-                                  };
+                                  // Déplacer p2 dans la direction de la ligne (p1 reste fixe)
                                   const newP2Pos = {
                                     ...p2,
-                                    x: p2.x + moveDir.x * halfDelta,
-                                    y: p2.y + moveDir.y * halfDelta,
+                                    x: p2.x + moveDir.x * delta,
+                                    y: p2.y + moveDir.y * delta,
                                   };
-                                  newSketch.points.set(line.p1, newP1);
                                   newSketch.points.set(line.p2, newP2Pos);
 
-                                  // Trouver et déplacer le côté parallèle opposé
-                                  for (const otherLine of allLines) {
-                                    if (otherLine.id === line.id) continue;
-                                    const op1 = newSketch.points.get(otherLine.p1);
-                                    const op2 = newSketch.points.get(otherLine.p2);
-                                    if (!op1 || !op2) continue;
-
-                                    const odx = op2.x - op1.x;
-                                    const ody = op2.y - op1.y;
-                                    const oIsHorizontal = Math.abs(odx) > Math.abs(ody);
-
-                                    // Même orientation (parallèle)
-                                    if (isHorizontal === oIsHorizontal) {
-                                      // Vérifier si c'est vraiment le côté opposé (pas le même)
-                                      const sameDirection = dx * odx + dy * ody > 0;
-                                      if (Math.abs(odx * dy - ody * dx) < 1) {
-                                        // Parallèles
-                                        // Déplacer ce côté aussi
-                                        const onewP1 = {
-                                          ...op1,
-                                          x: op1.x - moveDir.x * halfDelta * (sameDirection ? 1 : -1),
-                                          y: op1.y - moveDir.y * halfDelta * (sameDirection ? 1 : -1),
-                                        };
-                                        const onewP2 = {
-                                          ...op2,
-                                          x: op2.x + moveDir.x * halfDelta * (sameDirection ? 1 : -1),
-                                          y: op2.y + moveDir.y * halfDelta * (sameDirection ? 1 : -1),
-                                        };
-                                        newSketch.points.set(otherLine.p1, onewP1);
-                                        newSketch.points.set(otherLine.p2, onewP2);
-                                      }
+                                  // Déplacer les points connectés à p2 (les coins du rectangle côté p2)
+                                  // Ce sont les lignes perpendiculaires qui partent de p2
+                                  for (const connLine of connectedToP2) {
+                                    // Trouver l'autre point de cette ligne connectée
+                                    const otherPointId = connLine.p1 === line.p2 ? connLine.p2 : connLine.p1;
+                                    const otherPoint = newSketch.points.get(otherPointId);
+                                    if (otherPoint) {
+                                      const newOtherPoint = {
+                                        ...otherPoint,
+                                        x: otherPoint.x + moveDir.x * delta,
+                                        y: otherPoint.y + moveDir.y * delta,
+                                      };
+                                      newSketch.points.set(otherPointId, newOtherPoint);
                                     }
                                   }
                                 } else if (currentLen > 0) {
@@ -18514,6 +18481,18 @@ export function CADGabaritCanvas({
                               const circle = geo as CircleType;
                               const newCircle = { ...circle, radius: newValuePx };
                               newSketch.geometries.set(circle.id, newCircle);
+                            }
+
+                            // v7.25: Mettre à jour la valeur de la dimension (cotation verte)
+                            if (editingDimension.dimensionId) {
+                              newSketch.dimensions = new Map(sketchRef.current.dimensions);
+                              const dim = newSketch.dimensions.get(editingDimension.dimensionId);
+                              if (dim) {
+                                newSketch.dimensions.set(editingDimension.dimensionId, {
+                                  ...dim,
+                                  value: newValue,
+                                });
+                              }
                             }
 
                             setSketch(newSketch);
