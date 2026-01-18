@@ -171,22 +171,19 @@ export function useOffset({
 
   // Calculer l'orientation d'un contour (sens horaire ou anti-horaire)
   // Utilise la formule de l'aire signée (Shoelace formula)
-  const isContourClockwise = useCallback(
-    (points: Array<{ x: number; y: number }>): boolean => {
-      if (points.length < 3) return true;
+  const isContourClockwise = useCallback((points: Array<{ x: number; y: number }>): boolean => {
+    if (points.length < 3) return true;
 
-      let signedArea = 0;
-      for (let i = 0; i < points.length; i++) {
-        const current = points[i];
-        const next = points[(i + 1) % points.length];
-        signedArea += (next.x - current.x) * (next.y + current.y);
-      }
+    let signedArea = 0;
+    for (let i = 0; i < points.length; i++) {
+      const current = points[i];
+      const next = points[(i + 1) % points.length];
+      signedArea += (next.x - current.x) * (next.y + current.y);
+    }
 
-      // Aire positive = sens horaire (en coordonnées écran où Y augmente vers le bas)
-      return signedArea > 0;
-    },
-    [],
-  );
+    // Aire positive = sens horaire (en coordonnées écran où Y augmente vers le bas)
+    return signedArea > 0;
+  }, []);
 
   // Ouvrir la modale offset
   const openOffsetDialog = useCallback(() => {
@@ -203,7 +200,7 @@ export function useOffset({
       p1: { x: number; y: number },
       p2: { x: number; y: number },
       p3: { x: number; y: number },
-      p4: { x: number; y: number }
+      p4: { x: number; y: number },
     ): { x: number; y: number } | null => {
       const d1x = p2.x - p1.x;
       const d1y = p2.y - p1.y;
@@ -222,15 +219,29 @@ export function useOffset({
         y: p1.y + t * d1y,
       };
     },
-    []
+    [],
   );
 
   // Helper: ordonner les lignes en suivant le contour
   const orderLinesInContour = useCallback(
-    (lineIds: string[]): Array<{ id: string; p1: { x: number; y: number }; p2: { x: number; y: number }; p1Id: string; p2Id: string }> => {
+    (
+      lineIds: string[],
+    ): Array<{
+      id: string;
+      p1: { x: number; y: number };
+      p2: { x: number; y: number };
+      p1Id: string;
+      p2Id: string;
+    }> => {
       if (lineIds.length === 0) return [];
 
-      const orderedLines: Array<{ id: string; p1: { x: number; y: number }; p2: { x: number; y: number }; p1Id: string; p2Id: string }> = [];
+      const orderedLines: Array<{
+        id: string;
+        p1: { x: number; y: number };
+        p2: { x: number; y: number };
+        p1Id: string;
+        p2Id: string;
+      }> = [];
       const remaining = new Set(lineIds);
 
       // Commencer par la première ligne
@@ -284,7 +295,7 @@ export function useOffset({
 
       return orderedLines;
     },
-    [sketch.geometries, sketch.points]
+    [sketch.geometries, sketch.points],
   );
 
   // Calculer la preview de l'offset pour toutes les entités sélectionnées
@@ -335,7 +346,7 @@ export function useOffset({
               current.offset.p1,
               current.offset.p2,
               next.offset.p1,
-              next.offset.p2
+              next.offset.p2,
             );
 
             // Si pas d'intersection (lignes parallèles), utiliser le point de fin
@@ -615,8 +626,12 @@ export function useOffset({
         if (!found) break;
       }
 
-      // Calculer les lignes décalées
-      const offsetLines: Array<{
+      // Extraire les points du contour pour déterminer l'orientation
+      const contourPoints = orderedSegs.map(({ seg, reversed }) => (reversed ? seg.p2 : seg.p1));
+      const clockwise = isContourClockwise(contourPoints);
+
+      // Calculer les lignes décalées avec la bonne orientation
+      const offsetLinesArr: Array<{
         p1: { x: number; y: number };
         p2: { x: number; y: number };
         layerId?: string;
@@ -625,8 +640,8 @@ export function useOffset({
       orderedSegs.forEach(({ seg, reversed }) => {
         const start = reversed ? seg.p2 : seg.p1;
         const end = reversed ? seg.p1 : seg.p2;
-        const off = offsetLine(start, end, distancePx, offsetDirection === "outside" ? "inside" : "outside");
-        offsetLines.push({ p1: off.p1, p2: off.p2, layerId: seg.layerId });
+        const off = offsetLineWithOrientation(start, end, distancePx, offsetDirection, clockwise);
+        offsetLinesArr.push({ p1: off.p1, p2: off.p2, layerId: seg.layerId });
       });
 
       // Vérifier si fermé
@@ -665,50 +680,50 @@ export function useOffset({
       const newPtIds: string[] = [];
 
       if (isClosed) {
-        for (let i = 0; i < offsetLines.length; i++) {
-          const curr = offsetLines[i];
-          const next = offsetLines[(i + 1) % offsetLines.length];
+        for (let i = 0; i < offsetLinesArr.length; i++) {
+          const curr = offsetLinesArr[i];
+          const next = offsetLinesArr[(i + 1) % offsetLinesArr.length];
           const inter = computeIntersection(curr, next);
           const pt: Point = { id: generateId(), x: inter.x, y: inter.y };
           newSketch.points.set(pt.id, pt);
           newPtIds.push(pt.id);
         }
 
-        for (let i = 0; i < offsetLines.length; i++) {
+        for (let i = 0; i < offsetLinesArr.length; i++) {
           const newLine: Line = {
             id: generateId(),
             type: "line",
             p1: newPtIds[i],
             p2: newPtIds[(i + 1) % newPtIds.length],
-            layerId: offsetLines[i].layerId,
+            layerId: offsetLinesArr[i].layerId,
           };
           newSketch.geometries.set(newLine.id, newLine);
           createdCount++;
         }
       } else {
-        const firstPt: Point = { id: generateId(), x: offsetLines[0].p1.x, y: offsetLines[0].p1.y };
+        const firstPt: Point = { id: generateId(), x: offsetLinesArr[0].p1.x, y: offsetLinesArr[0].p1.y };
         newSketch.points.set(firstPt.id, firstPt);
         newPtIds.push(firstPt.id);
 
-        for (let i = 0; i < offsetLines.length - 1; i++) {
-          const inter = computeIntersection(offsetLines[i], offsetLines[i + 1]);
+        for (let i = 0; i < offsetLinesArr.length - 1; i++) {
+          const inter = computeIntersection(offsetLinesArr[i], offsetLinesArr[i + 1]);
           const pt: Point = { id: generateId(), x: inter.x, y: inter.y };
           newSketch.points.set(pt.id, pt);
           newPtIds.push(pt.id);
         }
 
-        const lastLine = offsetLines[offsetLines.length - 1];
+        const lastLine = offsetLinesArr[offsetLinesArr.length - 1];
         const lastPt: Point = { id: generateId(), x: lastLine.p2.x, y: lastLine.p2.y };
         newSketch.points.set(lastPt.id, lastPt);
         newPtIds.push(lastPt.id);
 
-        for (let i = 0; i < offsetLines.length; i++) {
+        for (let i = 0; i < offsetLinesArr.length; i++) {
           const newLine: Line = {
             id: generateId(),
             type: "line",
             p1: newPtIds[i],
             p2: newPtIds[i + 1],
-            layerId: offsetLines[i].layerId,
+            layerId: offsetLinesArr[i].layerId,
           };
           newSketch.geometries.set(newLine.id, newLine);
           createdCount++;
@@ -726,7 +741,18 @@ export function useOffset({
     setOffsetDialog(null);
     setOffsetPreview([]);
     setSelectedEntities(new Set());
-  }, [offsetDialog, offsetDistance, offsetDirection, sketch, offsetLine, addToHistory, solveSketch, setSketch, setSelectedEntities]);
+  }, [
+    offsetDialog,
+    offsetDistance,
+    offsetDirection,
+    sketch,
+    offsetLineWithOrientation,
+    isContourClockwise,
+    addToHistory,
+    solveSketch,
+    setSketch,
+    setSelectedEntities,
+  ]);
 
   // Ajouter/retirer une entité de la sélection offset
   const toggleOffsetSelection = useCallback(
