@@ -17823,7 +17823,7 @@ export function CADGabaritCanvas({
                     transform: "translate(-50%, -50%)",
                   }}
                 >
-                  <div className="flex items-center gap-0">
+                  <div className="flex items-center gap-0 bg-blue-50/90 border border-blue-300 rounded px-1.5 py-0.5">
                     <input
                       ref={liveInputRef}
                       type="text"
@@ -17854,10 +17854,10 @@ export function CADGabaritCanvas({
                           setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", userValue2: "" }));
                         }
                       }}
-                      className="w-14 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-500 outline-none"
-                      style={{ caretColor: "#3B82F6" }}
+                      className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none"
+                      style={{ caretColor: "#2563eb" }}
                     />
-                    <span className="text-sm text-blue-500 font-bold">mm</span>
+                    <span className="text-sm text-blue-600 font-bold">mm</span>
                   </div>
                 </div>
                 {/* Input hauteur (à gauche) */}
@@ -17869,7 +17869,7 @@ export function CADGabaritCanvas({
                     transform: "translate(-50%, -50%)",
                   }}
                 >
-                  <div className="flex items-center gap-0">
+                  <div className="flex items-center gap-0 bg-blue-50/90 border border-blue-300 rounded px-1.5 py-0.5">
                     <input
                       ref={liveInputRef2}
                       type="text"
@@ -17900,10 +17900,10 @@ export function CADGabaritCanvas({
                           setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", userValue2: "" }));
                         }
                       }}
-                      className="w-14 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-500 outline-none"
-                      style={{ caretColor: "#3B82F6" }}
+                      className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none"
+                      style={{ caretColor: "#2563eb" }}
                     />
-                    <span className="text-sm text-blue-500 font-bold">mm</span>
+                    <span className="text-sm text-blue-600 font-bold">mm</span>
                   </div>
                 </div>
               </>
@@ -17919,8 +17919,8 @@ export function CADGabaritCanvas({
                   transform: "translate(-50%, -50%)",
                 }}
               >
-                <div className="flex items-center gap-0">
-                  {liveInputMeasure.type === "circle" && <span className="text-sm text-blue-500 font-bold">R</span>}
+                <div className="flex items-center gap-0 bg-blue-50/90 border border-blue-300 rounded px-1.5 py-0.5">
+                  {liveInputMeasure.type === "circle" && <span className="text-sm text-blue-600 font-bold">R</span>}
                   <input
                     ref={liveInputRef}
                     type="text"
@@ -17950,10 +17950,10 @@ export function CADGabaritCanvas({
                         setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "" }));
                       }
                     }}
-                    className="w-14 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-500 outline-none"
-                    style={{ caretColor: "#3B82F6" }}
+                    className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none"
+                    style={{ caretColor: "#2563eb" }}
                   />
-                  <span className="text-sm text-blue-500 font-bold">mm</span>
+                  <span className="text-sm text-blue-600 font-bold">mm</span>
                 </div>
               </div>
             )}
