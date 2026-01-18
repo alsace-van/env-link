@@ -17016,7 +17016,7 @@ export function CADGabaritCanvas({
             <ZoomIn className="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="sm" onClick={fitToContent} title="Ajuster au contenu" className="h-8 w-8 p-0">
-            <Scan className="h-4 w-4" />
+            <Target className="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="sm" onClick={resetView} title="Reset vue">
             <RotateCcw className="h-4 w-4" />
