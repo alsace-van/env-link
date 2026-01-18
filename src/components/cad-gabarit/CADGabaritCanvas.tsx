@@ -1,8 +1,19 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.28 - Menu contextuel images + optimisations backup
+// VERSION: 7.29 - Gestion avancée des calques
 // ============================================
+//
+// CHANGELOG v7.29 (18/01/2026):
+// - Nouveau composant LayerTabs avec gestion complète des calques
+// - Double-clic pour renommer un calque
+// - Menu contextuel (clic droit) sur les calques
+// - Couleur personnalisable par calque
+// - Opacité par calque (0-100%)
+// - Drag & drop pour réorganiser les calques
+// - Dupliquer un calque (avec ses géométries)
+// - Fusionner deux calques
+// - Premier plan / Arrière-plan
 //
 // CHANGELOG v7.28 (18/01/2026):
 // - Menu contextuel (clic droit) sur les images
@@ -229,6 +240,9 @@ import { MeasurePanel, type Measurement } from "./MeasurePanel";
 
 // MOD v7.15: Contrôles d'étirement manuel
 import { ManualStretchControls } from "./ManualStretchControls";
+
+// MOD v7.29: Gestion avancée des calques
+import { LayerTabs } from "./LayerTabs";
 
 interface CADGabaritCanvasProps {
   imageUrl?: string;
@@ -4839,7 +4853,9 @@ export function CADGabaritCanvas({
       });
 
       // Déplacer l'image vers ce calque
-      setBackgroundImages((prev) => prev.map((img) => (img.id === imageId ? { ...img, layerId: newLayerId } : img)));
+      setBackgroundImages((prev) =>
+        prev.map((img) => (img.id === imageId ? { ...img, layerId: newLayerId } : img))
+      );
 
       toast.success(`Image déplacée vers nouveau calque`);
     },
@@ -17322,127 +17338,8 @@ export function CADGabaritCanvas({
       <div className="flex-1 flex overflow-hidden">
         {/* Canvas + Onglets calques */}
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-          {/* Barre d'onglets des calques EN HAUT (style Excel) */}
-          <div className="h-8 border-b bg-gray-100 flex items-end px-1 gap-0.5 overflow-x-auto">
-            {Array.from(sketch.layers.values())
-              .sort((a, b) => a.order - b.order)
-              .map((layer) => (
-                <div
-                  key={layer.id}
-                  className={`
-                    flex items-center gap-1.5 px-3 h-7 rounded-t-md cursor-pointer select-none
-                    transition-all duration-150 text-xs font-medium border border-b-0
-                    ${
-                      layer.id === sketch.activeLayerId
-                        ? "bg-white border-blue-400 text-blue-700 mb-[-1px] z-10 shadow-sm"
-                        : "bg-gray-200 border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
-                    }
-                  `}
-                  onClick={() => setSketch((prev) => ({ ...prev, activeLayerId: layer.id }))}
-                >
-                  {/* Indicateur de couleur */}
-                  <div
-                    className="w-2.5 h-2.5 rounded-sm border border-gray-400/50"
-                    style={{ backgroundColor: layer.color }}
-                  />
-                  {/* Nom du calque */}
-                  <span className="max-w-[80px] truncate" title={layer.name}>
-                    {layer.name}
-                  </span>
-                  {/* Bouton visibilité */}
-                  <button
-                    className={`p-0.5 rounded hover:bg-blue-100 ${!layer.visible ? "opacity-40" : ""}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSketch((prev) => {
-                        const newLayers = new Map(prev.layers);
-                        const l = newLayers.get(layer.id);
-                        if (l) {
-                          newLayers.set(layer.id, { ...l, visible: !l.visible });
-                        }
-                        return { ...prev, layers: newLayers };
-                      });
-                    }}
-                    title={layer.visible ? "Masquer le calque" : "Afficher le calque"}
-                  >
-                    {layer.visible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-                  </button>
-                  {/* Bouton verrouillage */}
-                  <button
-                    className={`p-0.5 rounded hover:bg-yellow-100 ${layer.locked ? "text-yellow-600" : "text-gray-400"}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSketch((prev) => {
-                        const newLayers = new Map(prev.layers);
-                        const l = newLayers.get(layer.id);
-                        if (l) {
-                          newLayers.set(layer.id, { ...l, locked: !l.locked });
-                        }
-                        return { ...prev, layers: newLayers };
-                      });
-                      const l = sketch.layers.get(layer.id);
-                      toast.success(
-                        l?.locked ? `Calque "${layer.name}" déverrouillé` : `Calque "${layer.name}" verrouillé`,
-                      );
-                    }}
-                    title={layer.locked ? "Déverrouiller le calque" : "Verrouiller le calque"}
-                  >
-                    {layer.locked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
-                  </button>
-                  {/* Bouton supprimer (seulement si plus d'un calque) */}
-                  {sketch.layers.size > 1 && (
-                    <button
-                      className="p-0.5 rounded hover:bg-red-100 hover:text-red-600"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSketch((prev) => {
-                          const newLayers = new Map(prev.layers);
-                          newLayers.delete(layer.id);
-                          // Si on supprime le calque actif, sélectionner le premier restant
-                          let newActiveLayerId = prev.activeLayerId;
-                          if (prev.activeLayerId === layer.id) {
-                            newActiveLayerId = Array.from(newLayers.keys())[0];
-                          }
-                          return { ...prev, layers: newLayers, activeLayerId: newActiveLayerId };
-                        });
-                        toast.success(`Calque "${layer.name}" supprimé`);
-                      }}
-                      title="Supprimer le calque"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                </div>
-              ))}
-
-            {/* Bouton + pour ajouter un calque */}
-            <button
-              className="flex items-center justify-center w-7 h-7 rounded-t-md border border-b-0 border-dashed border-gray-300 
-                         text-gray-400 hover:text-blue-600 hover:border-blue-400 hover:bg-blue-50 transition-all"
-              onClick={() => {
-                const layerColors = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4", "#84CC16"];
-                const newLayerId = generateId();
-                const layerCount = sketch.layers.size;
-                const newLayer: Layer = {
-                  id: newLayerId,
-                  name: `Calque ${layerCount + 1}`,
-                  color: layerColors[layerCount % layerColors.length],
-                  visible: true,
-                  locked: false,
-                  order: layerCount,
-                };
-                setSketch((prev) => {
-                  const newLayers = new Map(prev.layers);
-                  newLayers.set(newLayerId, newLayer);
-                  return { ...prev, layers: newLayers, activeLayerId: newLayerId };
-                });
-                toast.success(`Calque "${newLayer.name}" créé`);
-              }}
-              title="Ajouter un calque"
-            >
-              <Plus className="h-4 w-4" />
-            </button>
-          </div>
+          {/* MOD v7.29: Composant LayerTabs avec gestion avancée */}
+          <LayerTabs sketch={sketch} setSketch={setSketch} />
 
           {/* Canvas */}
           <div className="flex-1 relative overflow-hidden">
@@ -20855,14 +20752,17 @@ export function CADGabaritCanvas({
                               onClick={() => {
                                 setBackgroundImages((prev) =>
                                   prev.map((img) =>
-                                    img.id === contextMenu.entityId ? { ...img, layerId: layer.id } : img,
-                                  ),
+                                    img.id === contextMenu.entityId ? { ...img, layerId: layer.id } : img
+                                  )
                                 );
                                 toast.success(`Image déplacée vers "${layer.name}"`);
                                 setContextMenu(null);
                               }}
                             >
-                              <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: layer.color }} />
+                              <div
+                                className="w-2.5 h-2.5 rounded-sm"
+                                style={{ backgroundColor: layer.color }}
+                              />
                               {layer.name}
                             </button>
                           ))}
@@ -20874,7 +20774,9 @@ export function CADGabaritCanvas({
                     className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
                     onClick={() => {
                       setBackgroundImages((prev) =>
-                        prev.map((img) => (img.id === contextMenu.entityId ? { ...img, locked: !img.locked } : img)),
+                        prev.map((img) =>
+                          img.id === contextMenu.entityId ? { ...img, locked: !img.locked } : img
+                        )
                       );
                       toast.success(image.locked ? "Image déverrouillée" : "Image verrouillée");
                       setContextMenu(null);
@@ -20896,7 +20798,9 @@ export function CADGabaritCanvas({
                     className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
                     onClick={() => {
                       setBackgroundImages((prev) =>
-                        prev.map((img) => (img.id === contextMenu.entityId ? { ...img, visible: !img.visible } : img)),
+                        prev.map((img) =>
+                          img.id === contextMenu.entityId ? { ...img, visible: !img.visible } : img
+                        )
                       );
                       toast.success(image.visible ? "Image masquée" : "Image affichée");
                       setContextMenu(null);
@@ -20932,7 +20836,9 @@ export function CADGabaritCanvas({
                     Supprimer
                   </button>
                   {currentLayer && (
-                    <div className="px-3 py-1 text-xs text-gray-400 border-t mt-1">Calque: {currentLayer.name}</div>
+                    <div className="px-3 py-1 text-xs text-gray-400 border-t mt-1">
+                      Calque: {currentLayer.name}
+                    </div>
                   )}
                 </>
               );
