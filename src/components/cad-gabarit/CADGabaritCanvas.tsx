@@ -16363,7 +16363,8 @@ export function CADGabaritCanvas({
 
         <DropZoneBetweenGroups targetIndex={3} lineIndex={1} />
 
-        <Separator orientation="vertical" className="h-6" />
+        {/* Séparateur visible entre Dessin et Photos */}
+        <div className="h-6 w-px bg-gray-300 mx-1" />
 
         {/* v7.21: Input unifié pour import de fichiers (DXF + images) */}
         <input
@@ -16596,7 +16597,8 @@ export function CADGabaritCanvas({
 
         <DropZoneBetweenGroups targetIndex={4} lineIndex={1} />
 
-        <Separator orientation="vertical" className="h-6" />
+        {/* Séparateur visible entre Photos et Cotations */}
+        <div className="h-6 w-px bg-gray-300 mx-1" />
 
         {/* Cotations et contraintes */}
         <ToolbarGroupWrapper groupId="grp_dimension" groupName="Cotations" groupColor="#06B6D4" lineIndex={1}>
