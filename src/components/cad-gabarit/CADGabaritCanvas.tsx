@@ -5114,7 +5114,6 @@ export function CADGabaritCanvas({
     [],
   );
 
-
   // Calculer l'intersection de deux lignes (prolongées)
   const lineIntersection = useCallback(
     (
@@ -9111,7 +9110,7 @@ export function CADGabaritCanvas({
 
           // v7.24: Mettre à jour l'input de mesure en temps réel pour la ligne
           const lineLengthPx = Math.sqrt(
-            (finalLineTarget.x - startPoint.x) ** 2 + (finalLineTarget.y - startPoint.y) ** 2
+            (finalLineTarget.x - startPoint.x) ** 2 + (finalLineTarget.y - startPoint.y) ** 2,
           );
           const lineLengthMm = lineLengthPx / (sketchRef.current.scaleFactor || 1);
           // Position écran au milieu de la ligne avec offset perpendiculaire
@@ -9728,7 +9727,10 @@ export function CADGabaritCanvas({
 
   // v7.24: Fonction pour trouver une cotation (dimension text) à une position écran
   const findDimensionAtScreenPos = useCallback(
-    (screenX: number, screenY: number): { dimensionId: string; entityId: string; type: "line" | "circle"; value: number } | null => {
+    (
+      screenX: number,
+      screenY: number,
+    ): { dimensionId: string; entityId: string; type: "line" | "circle"; value: number } | null => {
       const currentSketch = sketchRef.current;
 
       // v7.25: Parcourir les dimensions existantes (cotations vertes)
@@ -9781,8 +9783,10 @@ export function CADGabaritCanvas({
             for (const [geoId, geo] of currentSketch.geometries) {
               if (geo.type === "line") {
                 const line = geo as Line;
-                if ((line.p1 === dimension.entities[0] && line.p2 === dimension.entities[1]) ||
-                    (line.p1 === dimension.entities[1] && line.p2 === dimension.entities[0])) {
+                if (
+                  (line.p1 === dimension.entities[0] && line.p2 === dimension.entities[1]) ||
+                  (line.p1 === dimension.entities[1] && line.p2 === dimension.entities[0])
+                ) {
                   foundLineId = geoId;
                   break;
                 }
@@ -9794,7 +9798,7 @@ export function CADGabaritCanvas({
       }
       return null;
     },
-    [viewport]
+    [viewport],
   );
 
   // Double-clic pour éditer un arc OU sélectionner une figure entière
@@ -14314,11 +14318,25 @@ export function CADGabaritCanvas({
                   className="h-8 w-8 p-0"
                 >
                   {showConstruction ? (
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 2">
+                    <svg
+                      className="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeDasharray="4 2"
+                    >
                       <line x1="4" y1="20" x2="20" y2="4" />
                     </svg>
                   ) : (
-                    <svg className="h-4 w-4 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="4 2">
+                    <svg
+                      className="h-4 w-4 opacity-40"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeDasharray="4 2"
+                    >
                       <line x1="4" y1="20" x2="20" y2="4" />
                     </svg>
                   )}
@@ -15065,9 +15083,7 @@ export function CADGabaritCanvas({
                   <Image className="h-4 w-4 mr-1" />
                   <span className="text-xs">Outils</span>
                   <ChevronDown className="h-3 w-3 ml-1" />
-                  {selectedImageId && (
-                    <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />
-                  )}
+                  {selectedImageId && <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56">
@@ -15238,7 +15254,9 @@ export function CADGabaritCanvas({
                 >
                   <Link2 className="h-4 w-4 mr-2" />
                   Lier deux marqueurs
-                  {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && <Check className="h-4 w-4 ml-auto" />}
+                  {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && (
+                    <Check className="h-4 w-4 ml-auto" />
+                  )}
                 </DropdownMenuItem>
 
                 <DropdownMenuSeparator />
@@ -16053,11 +16071,13 @@ export function CADGabaritCanvas({
                     transform: "translate(-50%, -50%)",
                   }}
                 >
-                  <div className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
-                    liveInputMeasure.isEditing
-                      ? "bg-blue-100 border-2 border-blue-500 shadow-md"
-                      : "bg-blue-50/90 border border-blue-300"
-                  }`}>
+                  <div
+                    className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
+                      liveInputMeasure.isEditing
+                        ? "bg-blue-100 border-2 border-blue-500 shadow-md"
+                        : "bg-blue-50/90 border border-blue-300"
+                    }`}
+                  >
                     {liveInputMeasure.isEditing && liveInputMeasure.userValue !== "" && (
                       <span className="text-xs text-blue-600">🔒</span>
                     )}
@@ -16065,7 +16085,9 @@ export function CADGabaritCanvas({
                       ref={liveInputRef}
                       type="text"
                       inputMode="decimal"
-                      value={liveInputMeasure.isEditing ? liveInputMeasure.userValue : liveInputMeasure.liveValue.toFixed(1)}
+                      value={
+                        liveInputMeasure.isEditing ? liveInputMeasure.userValue : liveInputMeasure.liveValue.toFixed(1)
+                      }
                       placeholder={liveInputMeasure.liveValue.toFixed(1)}
                       onChange={(e) => {
                         let rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
@@ -16079,9 +16101,10 @@ export function CADGabaritCanvas({
                         setLiveInputMeasure((prev) => ({ ...prev, userValue: rawVal, isEditing: true }));
                         // Mise à jour en temps réel du rectangle
                         const widthMm = parseFloat(rawVal) || 0;
-                        const heightMm = liveInputMeasure.userValue2 !== ""
-                          ? parseFloat(liveInputMeasure.userValue2) || 0
-                          : liveInputMeasure.liveValue2 || 0;
+                        const heightMm =
+                          liveInputMeasure.userValue2 !== ""
+                            ? parseFloat(liveInputMeasure.userValue2) || 0
+                            : liveInputMeasure.liveValue2 || 0;
                         if (widthMm > 0 && liveInputMeasure.rectP1) {
                           const scaleFactor = sketchRef.current.scaleFactor || 1;
                           const widthPx = widthMm * scaleFactor;
@@ -16091,7 +16114,7 @@ export function CADGabaritCanvas({
                           const newCursor = isCenter
                             ? { x: p1.x + widthPx / 2, y: p1.y + heightPx / 2 }
                             : { x: p1.x + widthPx, y: p1.y + heightPx };
-                          setTempGeometry((prev: any) => prev ? { ...prev, cursor: newCursor } : prev);
+                          setTempGeometry((prev: any) => (prev ? { ...prev, cursor: newCursor } : prev));
                         }
                       }}
                       onFocus={() => {
@@ -16111,13 +16134,20 @@ export function CADGabaritCanvas({
                         } else if (e.key === "Enter") {
                           e.preventDefault();
                           const wVal = liveInputMeasure.userValue || liveInputMeasure.liveValue.toFixed(1);
-                          const hVal = liveInputMeasure.userValue2 || (liveInputMeasure.liveValue2?.toFixed(1) || "0");
+                          const hVal = liveInputMeasure.userValue2 || liveInputMeasure.liveValue2?.toFixed(1) || "0";
                           createRectangleFromInputs(undefined, { width: wVal, height: hVal });
                         } else if (e.key === "Escape") {
                           e.preventDefault();
                           setTempPoints([]);
                           setTempGeometry(null);
-                          setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", userValue2: "", isEditing: false, isEditing2: false }));
+                          setLiveInputMeasure((prev) => ({
+                            ...prev,
+                            active: false,
+                            userValue: "",
+                            userValue2: "",
+                            isEditing: false,
+                            isEditing2: false,
+                          }));
                         }
                       }}
                       className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none placeholder:text-blue-400"
@@ -16135,11 +16165,13 @@ export function CADGabaritCanvas({
                     transform: "translate(-50%, -50%)",
                   }}
                 >
-                  <div className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
-                    liveInputMeasure.isEditing2
-                      ? "bg-blue-100 border-2 border-blue-500 shadow-md"
-                      : "bg-blue-50/90 border border-blue-300"
-                  }`}>
+                  <div
+                    className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
+                      liveInputMeasure.isEditing2
+                        ? "bg-blue-100 border-2 border-blue-500 shadow-md"
+                        : "bg-blue-50/90 border border-blue-300"
+                    }`}
+                  >
                     {liveInputMeasure.isEditing2 && liveInputMeasure.userValue2 !== "" && (
                       <span className="text-xs text-blue-600">🔒</span>
                     )}
@@ -16147,7 +16179,11 @@ export function CADGabaritCanvas({
                       ref={liveInputRef2}
                       type="text"
                       inputMode="decimal"
-                      value={liveInputMeasure.isEditing2 ? liveInputMeasure.userValue2 : (liveInputMeasure.liveValue2?.toFixed(1) || "0")}
+                      value={
+                        liveInputMeasure.isEditing2
+                          ? liveInputMeasure.userValue2
+                          : liveInputMeasure.liveValue2?.toFixed(1) || "0"
+                      }
                       placeholder={liveInputMeasure.liveValue2?.toFixed(1) || "0"}
                       onChange={(e) => {
                         let rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
@@ -16161,9 +16197,10 @@ export function CADGabaritCanvas({
                         setLiveInputMeasure((prev) => ({ ...prev, userValue2: rawVal, isEditing2: true }));
                         // Mise à jour en temps réel du rectangle
                         const heightMm = parseFloat(rawVal) || 0;
-                        const widthMm = liveInputMeasure.userValue !== ""
-                          ? parseFloat(liveInputMeasure.userValue) || 0
-                          : liveInputMeasure.liveValue || 0;
+                        const widthMm =
+                          liveInputMeasure.userValue !== ""
+                            ? parseFloat(liveInputMeasure.userValue) || 0
+                            : liveInputMeasure.liveValue || 0;
                         if (heightMm > 0 && liveInputMeasure.rectP1) {
                           const scaleFactor = sketchRef.current.scaleFactor || 1;
                           const widthPx = widthMm * scaleFactor;
@@ -16173,7 +16210,7 @@ export function CADGabaritCanvas({
                           const newCursor = isCenter
                             ? { x: p1.x + widthPx / 2, y: p1.y + heightPx / 2 }
                             : { x: p1.x + widthPx, y: p1.y + heightPx };
-                          setTempGeometry((prev: any) => prev ? { ...prev, cursor: newCursor } : prev);
+                          setTempGeometry((prev: any) => (prev ? { ...prev, cursor: newCursor } : prev));
                         }
                       }}
                       onFocus={() => {
@@ -16193,13 +16230,20 @@ export function CADGabaritCanvas({
                         } else if (e.key === "Enter") {
                           e.preventDefault();
                           const wVal = liveInputMeasure.userValue || liveInputMeasure.liveValue.toFixed(1);
-                          const hVal = liveInputMeasure.userValue2 || (liveInputMeasure.liveValue2?.toFixed(1) || "0");
+                          const hVal = liveInputMeasure.userValue2 || liveInputMeasure.liveValue2?.toFixed(1) || "0";
                           createRectangleFromInputs(undefined, { width: wVal, height: hVal });
                         } else if (e.key === "Escape") {
                           e.preventDefault();
                           setTempPoints([]);
                           setTempGeometry(null);
-                          setLiveInputMeasure((prev) => ({ ...prev, active: false, userValue: "", userValue2: "", isEditing: false, isEditing2: false }));
+                          setLiveInputMeasure((prev) => ({
+                            ...prev,
+                            active: false,
+                            userValue: "",
+                            userValue2: "",
+                            isEditing: false,
+                            isEditing2: false,
+                          }));
                         }
                       }}
                       className="w-12 h-5 px-0 text-center text-sm font-bold border-0 bg-transparent text-blue-600 outline-none placeholder:text-blue-400"
@@ -16221,11 +16265,13 @@ export function CADGabaritCanvas({
                   transform: "translate(-50%, -50%)",
                 }}
               >
-                <div className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
-                  liveInputMeasure.isEditing
-                    ? "bg-blue-100 border-2 border-blue-500 shadow-md"
-                    : "bg-blue-50/90 border border-blue-300"
-                }`}>
+                <div
+                  className={`flex items-center gap-0.5 rounded px-1.5 py-0.5 transition-all ${
+                    liveInputMeasure.isEditing
+                      ? "bg-blue-100 border-2 border-blue-500 shadow-md"
+                      : "bg-blue-50/90 border border-blue-300"
+                  }`}
+                >
                   {liveInputMeasure.isEditing && liveInputMeasure.userValue !== "" && (
                     <span className="text-xs text-blue-600">🔒</span>
                   )}
@@ -16234,7 +16280,9 @@ export function CADGabaritCanvas({
                     ref={liveInputRef}
                     type="text"
                     inputMode="decimal"
-                    value={liveInputMeasure.isEditing ? liveInputMeasure.userValue : liveInputMeasure.liveValue.toFixed(1)}
+                    value={
+                      liveInputMeasure.isEditing ? liveInputMeasure.userValue : liveInputMeasure.liveValue.toFixed(1)
+                    }
                     placeholder={liveInputMeasure.liveValue.toFixed(1)}
                     onChange={(e) => {
                       let rawVal = e.target.value.replace(/[^0-9.,-]/g, "").replace(",", ".");
@@ -16263,11 +16311,11 @@ export function CADGabaritCanvas({
                               x: startPoint.x + (dx / currentLen) * valuePx,
                               y: startPoint.y + (dy / currentLen) * valuePx,
                             };
-                            setTempGeometry((prev: any) => prev ? { ...prev, cursor: newCursor } : prev);
+                            setTempGeometry((prev: any) => (prev ? { ...prev, cursor: newCursor } : prev));
                           }
                         } else if (liveInputMeasure.type === "circle") {
                           // Mettre à jour le rayon du cercle
-                          setTempGeometry((prev: any) => prev ? { ...prev, radius: valuePx } : prev);
+                          setTempGeometry((prev: any) => (prev ? { ...prev, radius: valuePx } : prev));
                         }
                       }
                     }}
@@ -16284,9 +16332,10 @@ export function CADGabaritCanvas({
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        const inputValue = liveInputMeasure.userValue !== ""
-                          ? parseFloat(liveInputMeasure.userValue)
-                          : liveInputMeasure.liveValue;
+                        const inputValue =
+                          liveInputMeasure.userValue !== ""
+                            ? parseFloat(liveInputMeasure.userValue)
+                            : liveInputMeasure.liveValue;
                         if (liveInputMeasure.type === "line" && liveInputMeasure.startPoint && tempGeometry?.cursor) {
                           createLineWithLength(liveInputMeasure.startPoint, tempGeometry.cursor, inputValue);
                         } else if (liveInputMeasure.type === "circle" && liveInputMeasure.centerPoint) {
@@ -16351,10 +16400,16 @@ export function CADGabaritCanvas({
 
                                 // Trouver les lignes connectées à CE segment uniquement
                                 const connectedToP1 = Array.from(newSketch.geometries.values()).filter(
-                                  (g) => g.type === "line" && g.id !== line.id && ((g as Line).p1 === line.p1 || (g as Line).p2 === line.p1)
+                                  (g) =>
+                                    g.type === "line" &&
+                                    g.id !== line.id &&
+                                    ((g as Line).p1 === line.p1 || (g as Line).p2 === line.p1),
                                 ) as Line[];
                                 const connectedToP2 = Array.from(newSketch.geometries.values()).filter(
-                                  (g) => g.type === "line" && g.id !== line.id && ((g as Line).p1 === line.p2 || (g as Line).p2 === line.p2)
+                                  (g) =>
+                                    g.type === "line" &&
+                                    g.id !== line.id &&
+                                    ((g as Line).p1 === line.p2 || (g as Line).p2 === line.p2),
                                 ) as Line[];
 
                                 // Vérifier si ça forme un rectangle (lignes perpendiculaires aux deux extrémités)
