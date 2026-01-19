@@ -13,6 +13,7 @@
 // - Slider d'opacité dans le menu contextuel des photos (supporte multi-sélection)
 // - Bouton "Réinitialiser opacité" dans le menu contextuel des photos
 // - Boutons "Premier plan" et "Arrière-plan" dans le menu contextuel (supporte multi-sélection)
+// - Fix menu contextuel: repositionnement automatique si proche des bords de l'écran
 //
 // CHANGELOG v7.34 (19/01/2026):
 // - Fix calibration: empêche l'application multiple (décalage cumulatif des points)
@@ -21094,645 +21095,680 @@ export function CADGabaritCanvas({
       )}
 
       {/* Menu contextuel */}
-      {contextMenu && (
-        <div
-          className="fixed bg-white rounded-lg shadow-xl border z-[100] py-1 min-w-[160px]"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onClick={() => setContextMenu(null)}
-        >
-          {contextMenu.entityType === "arc" &&
-            (() => {
-              const arc = sketch.geometries.get(contextMenu.entityId) as Arc | undefined;
-              const isFillet = arc?.isFillet === true;
-              return (
-                <>
-                  {isFillet ? (
-                    <button
-                      className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                      onClick={() => {
-                        removeFilletFromArc(contextMenu.entityId);
-                        setContextMenu(null);
-                      }}
-                    >
-                      <RotateCcw className="h-4 w-4 text-red-500" />
-                      Supprimer le congé
-                    </button>
-                  ) : (
-                    <button
-                      className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                      onClick={() => {
-                        // Supprimer simplement l'arc sans restaurer de coin
-                        const newSketch: Sketch = {
-                          ...sketch,
-                          points: new Map(sketch.points),
-                          geometries: new Map(sketch.geometries),
-                          layers: new Map(sketch.layers),
-                          constraints: new Map(sketch.constraints),
-                        };
-                        newSketch.geometries.delete(contextMenu.entityId);
-                        // Ne pas supprimer les points car ils peuvent être utilisés par d'autres géométries
-                        setSketch(newSketch);
-                        addToHistory(newSketch);
-                        toast.success("Arc supprimé");
-                        setContextMenu(null);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                      Supprimer
-                    </button>
-                  )}
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => {
-                      setArcEditDialog({
-                        open: true,
-                        arcId: contextMenu.entityId,
-                        currentRadius: arc?.radius || 0,
-                      });
-                      setContextMenu(null);
-                    }}
-                  >
-                    <Settings className="h-4 w-4 text-blue-500" />
-                    Modifier le rayon
-                  </button>
-                </>
-              );
-            })()}
-          {contextMenu.entityType === "line" &&
-            (() => {
-              // Utiliser sketchRef.current pour éviter les closures stales
-              const currentSketch = sketchRef.current;
-              const line = currentSketch.geometries.get(contextMenu.entityId) as Line | undefined;
-              const p1 = line ? currentSketch.points.get(line.p1) : undefined;
-              const p2 = line ? currentSketch.points.get(line.p2) : undefined;
-              const currentLength = p1 && p2 ? distance(p1, p2) / currentSketch.scaleFactor : 0;
+      {contextMenu &&
+        (() => {
+          // v7.35: Calculer la position ajustée pour éviter le débordement hors écran
+          const menuWidth = 200; // Largeur estimée du menu
+          const menuHeight = contextMenu.entityType === "image" ? 500 : 200; // Hauteur estimée selon le type
+          const padding = 10; // Marge par rapport aux bords
 
-              return (
-                <>
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => {
-                      setSelectedEntities(new Set([contextMenu.entityId]));
-                      setContextMenu(null);
-                    }}
-                  >
-                    <MousePointer className="h-4 w-4" />
-                    Sélectionner
-                  </button>
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => {
-                      // Fermer les autres panneaux d'édition
-                      closeAllEditPanels("lineLength");
-                      setLineLengthPanelPos({ x: contextMenu.x + 10, y: contextMenu.y });
-                      setLineLengthDialog({
-                        open: true,
-                        lineId: contextMenu.entityId,
-                        currentLength: currentLength,
-                        newLength: currentLength.toFixed(1),
-                        anchorMode: "center",
-                        // Utiliser sketchRef.current pour éviter les closures stales
-                        originalSketch: {
-                          ...sketchRef.current,
-                          points: new Map(sketchRef.current.points),
-                          geometries: new Map(sketchRef.current.geometries),
-                          layers: new Map(sketchRef.current.layers),
-                          constraints: new Map(sketchRef.current.constraints),
-                        },
-                      });
-                      setContextMenu(null);
-                    }}
-                  >
-                    <Ruler className="h-4 w-4 text-blue-500" />
-                    Modifier la longueur
-                  </button>
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
-                    onClick={() => {
-                      setSelectedEntities(new Set([contextMenu.entityId]));
-                      deleteSelectedEntities();
-                      setContextMenu(null);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Supprimer
-                  </button>
-                </>
-              );
-            })()}
-          {(contextMenu.entityType === "circle" || contextMenu.entityType === "bezier") && (
-            <button
-              className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
-              onClick={() => {
-                setSelectedEntities(new Set([contextMenu.entityId]));
-                deleteSelectedEntities();
-                setContextMenu(null);
-              }}
+          let adjustedX = contextMenu.x;
+          let adjustedY = contextMenu.y;
+
+          // Ajuster horizontalement si le menu dépasse à droite
+          if (contextMenu.x + menuWidth > window.innerWidth - padding) {
+            adjustedX = window.innerWidth - menuWidth - padding;
+          }
+          // Ajuster horizontalement si le menu dépasse à gauche
+          if (adjustedX < padding) {
+            adjustedX = padding;
+          }
+
+          // Ajuster verticalement si le menu dépasse en bas
+          if (contextMenu.y + menuHeight > window.innerHeight - padding) {
+            adjustedY = window.innerHeight - menuHeight - padding;
+          }
+          // Ajuster verticalement si le menu dépasse en haut
+          if (adjustedY < padding) {
+            adjustedY = padding;
+          }
+
+          return (
+            <div
+              className="fixed bg-white rounded-lg shadow-xl border z-[100] py-1 min-w-[160px] max-h-[90vh] overflow-y-auto"
+              style={{ left: adjustedX, top: adjustedY }}
+              onClick={() => setContextMenu(null)}
             >
-              <Trash2 className="h-4 w-4" />
-              Supprimer
-            </button>
-          )}
-          {/* FIX #90: Menu contextuel pour les images */}
-          {contextMenu.entityType === "image" &&
-            (() => {
-              const image = backgroundImages.find((img) => img.id === contextMenu.entityId);
-              if (!image) return null;
-              const currentLayer = sketch.layers.get(image.layerId || "");
-
-              return (
-                <>
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => {
-                      setSelectedImageId(contextMenu.entityId);
-                      setSelectedImageIds(new Set([contextMenu.entityId]));
-                      setContextMenu(null);
-                    }}
-                  >
-                    <MousePointer className="h-4 w-4" />
-                    Sélectionner
-                  </button>
-                  <div className="border-t my-1" />
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => {
-                      moveImageToNewLayer(contextMenu.entityId);
-                      setContextMenu(null);
-                    }}
-                  >
-                    <Layers className="h-4 w-4 text-blue-500" />
-                    Envoyer vers nouveau calque
-                  </button>
-                  {/* Sous-menu pour déplacer vers un calque existant */}
-                  {sketch.layers.size > 1 && (
-                    <div className="relative group">
-                      <button className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 justify-between">
-                        <span className="flex items-center gap-2">
-                          <ArrowRight className="h-4 w-4 text-gray-500" />
-                          Déplacer vers calque
-                        </span>
-                        <ChevronRight className="h-3 w-3" />
-                      </button>
-                      <div className="absolute left-full top-0 ml-1 bg-white rounded-lg shadow-xl border py-1 min-w-[140px] hidden group-hover:block">
-                        {Array.from(sketch.layers.values())
-                          .filter((layer) => layer.id !== image.layerId)
-                          .map((layer) => (
-                            <button
-                              key={layer.id}
-                              className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                              onClick={() => {
-                                setBackgroundImages((prev) =>
-                                  prev.map((img) =>
-                                    img.id === contextMenu.entityId ? { ...img, layerId: layer.id } : img,
-                                  ),
-                                );
-                                toast.success(`Image déplacée vers "${layer.name}"`);
-                                setContextMenu(null);
-                              }}
-                            >
-                              <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: layer.color }} />
-                              {layer.name}
-                            </button>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-                  <div className="border-t my-1" />
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => {
-                      setBackgroundImages((prev) =>
-                        prev.map((img) => (img.id === contextMenu.entityId ? { ...img, locked: !img.locked } : img)),
-                      );
-                      toast.success(image.locked ? "Image déverrouillée" : "Image verrouillée");
-                      setContextMenu(null);
-                    }}
-                  >
-                    {image.locked ? (
-                      <>
-                        <Unlock className="h-4 w-4 text-green-500" />
-                        Déverrouiller
-                      </>
-                    ) : (
-                      <>
-                        <Lock className="h-4 w-4 text-orange-500" />
-                        Verrouiller
-                      </>
-                    )}
-                  </button>
-                  {/* v7.34: Bouton Calibrer */}
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => {
-                      // Sélectionner l'image et ouvrir le panneau de calibration
-                      setSelectedImageId(contextMenu.entityId);
-                      setSelectedImageIds(new Set([contextMenu.entityId]));
-                      setShowCalibrationPanel(true);
-                      setContextMenu(null);
-                    }}
-                  >
-                    <Ruler className="h-4 w-4 text-cyan-500" />
-                    Calibrer
-                  </button>
-                  {/* v7.35: Bouton Isoler (Solo) */}
-                  {currentLayer && (
-                    <button
-                      className={`w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 ${
-                        currentLayer.solo ? "bg-yellow-50" : ""
-                      }`}
-                      onClick={() => {
-                        // Toggle solo mode sur le calque de la photo
-                        setSketch((prev) => {
-                          const newLayers = new Map(prev.layers);
-                          const layer = newLayers.get(currentLayer.id);
-                          if (!layer) return prev;
-
-                          const isCurrentlySolo = layer.solo;
-
-                          // Si on désactive le solo, on remet tout à false
-                          if (isCurrentlySolo) {
-                            newLayers.forEach((l, id) => {
-                              newLayers.set(id, { ...l, solo: false });
-                            });
-                            toast.info(`Mode solo désactivé`);
-                          } else {
-                            // Sinon on active le solo uniquement pour ce calque
-                            newLayers.forEach((l, id) => {
-                              newLayers.set(id, { ...l, solo: id === currentLayer.id });
-                            });
-                            toast.success(`Calque "${currentLayer.name}" isolé`);
-                          }
-
-                          return { ...prev, layers: newLayers };
-                        });
-                        setContextMenu(null);
-                      }}
-                    >
-                      <Focus className={`h-4 w-4 ${currentLayer.solo ? "text-yellow-600" : "text-yellow-500"}`} />
-                      {currentLayer.solo ? "Désactiver l'isolation" : "Isoler (Solo)"}
-                    </button>
-                  )}
-                  {/* v7.35: Réglage de l'opacité des photos */}
-                  <div className="px-3 py-1.5">
-                    <div className="flex items-center gap-2 text-sm text-gray-700 mb-1">
-                      <Contrast className="h-4 w-4 text-purple-500" />
-                      <span>Opacité {selectedImageIds.size > 1 ? `(${selectedImageIds.size} photos)` : ""}</span>
-                      <span className="ml-auto text-xs text-gray-500">{Math.round(image.opacity * 100)}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={Math.round(image.opacity * 100)}
-                      onChange={(e) => {
-                        const newOpacity = parseInt(e.target.value) / 100;
-                        // Appliquer à toutes les images sélectionnées ou juste à celle-ci
-                        const imagesToUpdate =
-                          selectedImageIds.size > 1 ? selectedImageIds : new Set([contextMenu.entityId]);
-                        setBackgroundImages((prev) =>
-                          prev.map((img) => (imagesToUpdate.has(img.id) ? { ...img, opacity: newOpacity } : img)),
-                        );
-                      }}
-                      className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-500"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </div>
-                  {/* v7.35: Bouton réinitialiser l'opacité */}
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => {
-                      // Réinitialiser l'opacité à 100% pour les images sélectionnées ou juste celle-ci
-                      const imagesToUpdate =
-                        selectedImageIds.size > 1 ? selectedImageIds : new Set([contextMenu.entityId]);
-                      setBackgroundImages((prev) =>
-                        prev.map((img) => (imagesToUpdate.has(img.id) ? { ...img, opacity: 1 } : img)),
-                      );
-                      const count = imagesToUpdate.size;
-                      toast.success(count > 1 ? `Opacité réinitialisée (${count} photos)` : "Opacité réinitialisée");
-                      setContextMenu(null);
-                    }}
-                  >
-                    <RotateCcw className="h-4 w-4 text-gray-500" />
-                    Réinitialiser opacité {selectedImageIds.size > 1 ? `(${selectedImageIds.size})` : ""}
-                  </button>
-                  <div className="border-t my-1" />
-                  {/* v7.35: Boutons Premier plan / Arrière-plan */}
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => {
-                      // Mettre au premier plan (order le plus élevé)
-                      const imagesToUpdate =
-                        selectedImageIds.size > 1 ? selectedImageIds : new Set([contextMenu.entityId]);
-                      setBackgroundImages((prev) => {
-                        const maxOrder = Math.max(...prev.map((img) => img.order), 0);
-                        let nextOrder = maxOrder + 1;
-                        return prev.map((img) => {
-                          if (imagesToUpdate.has(img.id)) {
-                            return { ...img, order: nextOrder++ };
-                          }
-                          return img;
-                        });
-                      });
-                      const count = imagesToUpdate.size;
-                      toast.success(count > 1 ? `${count} photos au premier plan` : "Photo au premier plan");
-                      setContextMenu(null);
-                    }}
-                  >
-                    <ArrowUpToLine className="h-4 w-4 text-blue-500" />
-                    Premier plan {selectedImageIds.size > 1 ? `(${selectedImageIds.size})` : ""}
-                  </button>
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => {
-                      // Mettre à l'arrière-plan (order le plus bas)
-                      const imagesToUpdate =
-                        selectedImageIds.size > 1 ? selectedImageIds : new Set([contextMenu.entityId]);
-                      setBackgroundImages((prev) => {
-                        const minOrder = Math.min(...prev.map((img) => img.order), 0);
-                        let nextOrder = minOrder - imagesToUpdate.size;
-                        return prev.map((img) => {
-                          if (imagesToUpdate.has(img.id)) {
-                            return { ...img, order: nextOrder++ };
-                          }
-                          return img;
-                        });
-                      });
-                      const count = imagesToUpdate.size;
-                      toast.success(count > 1 ? `${count} photos à l'arrière-plan` : "Photo à l'arrière-plan");
-                      setContextMenu(null);
-                    }}
-                  >
-                    <ArrowDownToLine className="h-4 w-4 text-orange-500" />
-                    Arrière-plan {selectedImageIds.size > 1 ? `(${selectedImageIds.size})` : ""}
-                  </button>
-                  <div className="border-t my-1" />
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => {
-                      setBackgroundImages((prev) =>
-                        prev.map((img) => (img.id === contextMenu.entityId ? { ...img, visible: !img.visible } : img)),
-                      );
-                      toast.success(image.visible ? "Image masquée" : "Image affichée");
-                      setContextMenu(null);
-                    }}
-                  >
-                    {image.visible ? (
-                      <>
-                        <EyeOff className="h-4 w-4 text-gray-500" />
-                        Masquer
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="h-4 w-4 text-blue-500" />
-                        Afficher
-                      </>
-                    )}
-                  </button>
-                  <div className="border-t my-1" />
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
-                    onClick={() => {
-                      // Sauvegarder l'état dans l'historique avant suppression
-                      addToImageHistory(backgroundImages, markerLinks);
-
-                      const imageIdToDelete = contextMenu.entityId;
-                      setBackgroundImages((prev) => prev.filter((img) => img.id !== imageIdToDelete));
-                      // Supprimer aussi les liens de markers associés
-                      setMarkerLinks((links) =>
-                        links.filter(
-                          (link) =>
-                            link.marker1.imageId !== imageIdToDelete && link.marker2.imageId !== imageIdToDelete,
-                        ),
-                      );
-                      if (selectedImageId === imageIdToDelete) {
-                        setSelectedImageId(null);
-                      }
-                      // Créer une nouvelle Set sans modifier l'originale
-                      const newSelectedIds = new Set(selectedImageIds);
-                      newSelectedIds.delete(imageIdToDelete);
-                      setSelectedImageIds(newSelectedIds);
-                      toast.success("Image supprimée");
-                      setContextMenu(null);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Supprimer
-                  </button>
-                  {/* v7.32: Option pour masquer/afficher le calque de la photo */}
-                  {currentLayer && (
+              {contextMenu.entityType === "arc" &&
+                (() => {
+                  const arc = sketch.geometries.get(contextMenu.entityId) as Arc | undefined;
+                  const isFillet = arc?.isFillet === true;
+                  return (
                     <>
+                      {isFillet ? (
+                        <button
+                          className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                          onClick={() => {
+                            removeFilletFromArc(contextMenu.entityId);
+                            setContextMenu(null);
+                          }}
+                        >
+                          <RotateCcw className="h-4 w-4 text-red-500" />
+                          Supprimer le congé
+                        </button>
+                      ) : (
+                        <button
+                          className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                          onClick={() => {
+                            // Supprimer simplement l'arc sans restaurer de coin
+                            const newSketch: Sketch = {
+                              ...sketch,
+                              points: new Map(sketch.points),
+                              geometries: new Map(sketch.geometries),
+                              layers: new Map(sketch.layers),
+                              constraints: new Map(sketch.constraints),
+                            };
+                            newSketch.geometries.delete(contextMenu.entityId);
+                            // Ne pas supprimer les points car ils peuvent être utilisés par d'autres géométries
+                            setSketch(newSketch);
+                            addToHistory(newSketch);
+                            toast.success("Arc supprimé");
+                            setContextMenu(null);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                          Supprimer
+                        </button>
+                      )}
+                      <button
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        onClick={() => {
+                          setArcEditDialog({
+                            open: true,
+                            arcId: contextMenu.entityId,
+                            currentRadius: arc?.radius || 0,
+                          });
+                          setContextMenu(null);
+                        }}
+                      >
+                        <Settings className="h-4 w-4 text-blue-500" />
+                        Modifier le rayon
+                      </button>
+                    </>
+                  );
+                })()}
+              {contextMenu.entityType === "line" &&
+                (() => {
+                  // Utiliser sketchRef.current pour éviter les closures stales
+                  const currentSketch = sketchRef.current;
+                  const line = currentSketch.geometries.get(contextMenu.entityId) as Line | undefined;
+                  const p1 = line ? currentSketch.points.get(line.p1) : undefined;
+                  const p2 = line ? currentSketch.points.get(line.p2) : undefined;
+                  const currentLength = p1 && p2 ? distance(p1, p2) / currentSketch.scaleFactor : 0;
+
+                  return (
+                    <>
+                      <button
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        onClick={() => {
+                          setSelectedEntities(new Set([contextMenu.entityId]));
+                          setContextMenu(null);
+                        }}
+                      >
+                        <MousePointer className="h-4 w-4" />
+                        Sélectionner
+                      </button>
+                      <button
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        onClick={() => {
+                          // Fermer les autres panneaux d'édition
+                          closeAllEditPanels("lineLength");
+                          setLineLengthPanelPos({ x: contextMenu.x + 10, y: contextMenu.y });
+                          setLineLengthDialog({
+                            open: true,
+                            lineId: contextMenu.entityId,
+                            currentLength: currentLength,
+                            newLength: currentLength.toFixed(1),
+                            anchorMode: "center",
+                            // Utiliser sketchRef.current pour éviter les closures stales
+                            originalSketch: {
+                              ...sketchRef.current,
+                              points: new Map(sketchRef.current.points),
+                              geometries: new Map(sketchRef.current.geometries),
+                              layers: new Map(sketchRef.current.layers),
+                              constraints: new Map(sketchRef.current.constraints),
+                            },
+                          });
+                          setContextMenu(null);
+                        }}
+                      >
+                        <Ruler className="h-4 w-4 text-blue-500" />
+                        Modifier la longueur
+                      </button>
+                      <button
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
+                        onClick={() => {
+                          setSelectedEntities(new Set([contextMenu.entityId]));
+                          deleteSelectedEntities();
+                          setContextMenu(null);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Supprimer
+                      </button>
+                    </>
+                  );
+                })()}
+              {(contextMenu.entityType === "circle" || contextMenu.entityType === "bezier") && (
+                <button
+                  className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
+                  onClick={() => {
+                    setSelectedEntities(new Set([contextMenu.entityId]));
+                    deleteSelectedEntities();
+                    setContextMenu(null);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Supprimer
+                </button>
+              )}
+              {/* FIX #90: Menu contextuel pour les images */}
+              {contextMenu.entityType === "image" &&
+                (() => {
+                  const image = backgroundImages.find((img) => img.id === contextMenu.entityId);
+                  if (!image) return null;
+                  const currentLayer = sketch.layers.get(image.layerId || "");
+
+                  return (
+                    <>
+                      <button
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        onClick={() => {
+                          setSelectedImageId(contextMenu.entityId);
+                          setSelectedImageIds(new Set([contextMenu.entityId]));
+                          setContextMenu(null);
+                        }}
+                      >
+                        <MousePointer className="h-4 w-4" />
+                        Sélectionner
+                      </button>
                       <div className="border-t my-1" />
                       <button
                         className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
                         onClick={() => {
-                          setSketch((prev) => {
-                            const updatedLayers = new Map(prev.layers);
-                            const layer = updatedLayers.get(currentLayer.id);
-                            if (layer) {
-                              updatedLayers.set(currentLayer.id, { ...layer, visible: !layer.visible });
-                            }
-                            return { ...prev, layers: updatedLayers };
-                          });
+                          moveImageToNewLayer(contextMenu.entityId);
+                          setContextMenu(null);
+                        }}
+                      >
+                        <Layers className="h-4 w-4 text-blue-500" />
+                        Envoyer vers nouveau calque
+                      </button>
+                      {/* Sous-menu pour déplacer vers un calque existant */}
+                      {sketch.layers.size > 1 && (
+                        <div className="relative group">
+                          <button className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 justify-between">
+                            <span className="flex items-center gap-2">
+                              <ArrowRight className="h-4 w-4 text-gray-500" />
+                              Déplacer vers calque
+                            </span>
+                            <ChevronRight className="h-3 w-3" />
+                          </button>
+                          <div className="absolute left-full top-0 ml-1 bg-white rounded-lg shadow-xl border py-1 min-w-[140px] hidden group-hover:block">
+                            {Array.from(sketch.layers.values())
+                              .filter((layer) => layer.id !== image.layerId)
+                              .map((layer) => (
+                                <button
+                                  key={layer.id}
+                                  className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                                  onClick={() => {
+                                    setBackgroundImages((prev) =>
+                                      prev.map((img) =>
+                                        img.id === contextMenu.entityId ? { ...img, layerId: layer.id } : img,
+                                      ),
+                                    );
+                                    toast.success(`Image déplacée vers "${layer.name}"`);
+                                    setContextMenu(null);
+                                  }}
+                                >
+                                  <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: layer.color }} />
+                                  {layer.name}
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                      <div className="border-t my-1" />
+                      <button
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        onClick={() => {
+                          setBackgroundImages((prev) =>
+                            prev.map((img) =>
+                              img.id === contextMenu.entityId ? { ...img, locked: !img.locked } : img,
+                            ),
+                          );
+                          toast.success(image.locked ? "Image déverrouillée" : "Image verrouillée");
+                          setContextMenu(null);
+                        }}
+                      >
+                        {image.locked ? (
+                          <>
+                            <Unlock className="h-4 w-4 text-green-500" />
+                            Déverrouiller
+                          </>
+                        ) : (
+                          <>
+                            <Lock className="h-4 w-4 text-orange-500" />
+                            Verrouiller
+                          </>
+                        )}
+                      </button>
+                      {/* v7.34: Bouton Calibrer */}
+                      <button
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        onClick={() => {
+                          // Sélectionner l'image et ouvrir le panneau de calibration
+                          setSelectedImageId(contextMenu.entityId);
+                          setSelectedImageIds(new Set([contextMenu.entityId]));
+                          setShowCalibrationPanel(true);
+                          setContextMenu(null);
+                        }}
+                      >
+                        <Ruler className="h-4 w-4 text-cyan-500" />
+                        Calibrer
+                      </button>
+                      {/* v7.35: Bouton Isoler (Solo) */}
+                      {currentLayer && (
+                        <button
+                          className={`w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 ${
+                            currentLayer.solo ? "bg-yellow-50" : ""
+                          }`}
+                          onClick={() => {
+                            // Toggle solo mode sur le calque de la photo
+                            setSketch((prev) => {
+                              const newLayers = new Map(prev.layers);
+                              const layer = newLayers.get(currentLayer.id);
+                              if (!layer) return prev;
+
+                              const isCurrentlySolo = layer.solo;
+
+                              // Si on désactive le solo, on remet tout à false
+                              if (isCurrentlySolo) {
+                                newLayers.forEach((l, id) => {
+                                  newLayers.set(id, { ...l, solo: false });
+                                });
+                                toast.info(`Mode solo désactivé`);
+                              } else {
+                                // Sinon on active le solo uniquement pour ce calque
+                                newLayers.forEach((l, id) => {
+                                  newLayers.set(id, { ...l, solo: id === currentLayer.id });
+                                });
+                                toast.success(`Calque "${currentLayer.name}" isolé`);
+                              }
+
+                              return { ...prev, layers: newLayers };
+                            });
+                            setContextMenu(null);
+                          }}
+                        >
+                          <Focus className={`h-4 w-4 ${currentLayer.solo ? "text-yellow-600" : "text-yellow-500"}`} />
+                          {currentLayer.solo ? "Désactiver l'isolation" : "Isoler (Solo)"}
+                        </button>
+                      )}
+                      {/* v7.35: Réglage de l'opacité des photos */}
+                      <div className="px-3 py-1.5">
+                        <div className="flex items-center gap-2 text-sm text-gray-700 mb-1">
+                          <Contrast className="h-4 w-4 text-purple-500" />
+                          <span>Opacité {selectedImageIds.size > 1 ? `(${selectedImageIds.size} photos)` : ""}</span>
+                          <span className="ml-auto text-xs text-gray-500">{Math.round(image.opacity * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={Math.round(image.opacity * 100)}
+                          onChange={(e) => {
+                            const newOpacity = parseInt(e.target.value) / 100;
+                            // Appliquer à toutes les images sélectionnées ou juste à celle-ci
+                            const imagesToUpdate =
+                              selectedImageIds.size > 1 ? selectedImageIds : new Set([contextMenu.entityId]);
+                            setBackgroundImages((prev) =>
+                              prev.map((img) => (imagesToUpdate.has(img.id) ? { ...img, opacity: newOpacity } : img)),
+                            );
+                          }}
+                          className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
+                      {/* v7.35: Bouton réinitialiser l'opacité */}
+                      <button
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        onClick={() => {
+                          // Réinitialiser l'opacité à 100% pour les images sélectionnées ou juste celle-ci
+                          const imagesToUpdate =
+                            selectedImageIds.size > 1 ? selectedImageIds : new Set([contextMenu.entityId]);
+                          setBackgroundImages((prev) =>
+                            prev.map((img) => (imagesToUpdate.has(img.id) ? { ...img, opacity: 1 } : img)),
+                          );
+                          const count = imagesToUpdate.size;
                           toast.success(
-                            currentLayer.visible
-                              ? `Calque "${currentLayer.name}" masqué`
-                              : `Calque "${currentLayer.name}" affiché`,
+                            count > 1 ? `Opacité réinitialisée (${count} photos)` : "Opacité réinitialisée",
                           );
                           setContextMenu(null);
                         }}
                       >
-                        {currentLayer.visible ? (
+                        <RotateCcw className="h-4 w-4 text-gray-500" />
+                        Réinitialiser opacité {selectedImageIds.size > 1 ? `(${selectedImageIds.size})` : ""}
+                      </button>
+                      <div className="border-t my-1" />
+                      {/* v7.35: Boutons Premier plan / Arrière-plan */}
+                      <button
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        onClick={() => {
+                          // Mettre au premier plan (order le plus élevé)
+                          const imagesToUpdate =
+                            selectedImageIds.size > 1 ? selectedImageIds : new Set([contextMenu.entityId]);
+                          setBackgroundImages((prev) => {
+                            const maxOrder = Math.max(...prev.map((img) => img.order), 0);
+                            let nextOrder = maxOrder + 1;
+                            return prev.map((img) => {
+                              if (imagesToUpdate.has(img.id)) {
+                                return { ...img, order: nextOrder++ };
+                              }
+                              return img;
+                            });
+                          });
+                          const count = imagesToUpdate.size;
+                          toast.success(count > 1 ? `${count} photos au premier plan` : "Photo au premier plan");
+                          setContextMenu(null);
+                        }}
+                      >
+                        <ArrowUpToLine className="h-4 w-4 text-blue-500" />
+                        Premier plan {selectedImageIds.size > 1 ? `(${selectedImageIds.size})` : ""}
+                      </button>
+                      <button
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        onClick={() => {
+                          // Mettre à l'arrière-plan (order le plus bas)
+                          const imagesToUpdate =
+                            selectedImageIds.size > 1 ? selectedImageIds : new Set([contextMenu.entityId]);
+                          setBackgroundImages((prev) => {
+                            const minOrder = Math.min(...prev.map((img) => img.order), 0);
+                            let nextOrder = minOrder - imagesToUpdate.size;
+                            return prev.map((img) => {
+                              if (imagesToUpdate.has(img.id)) {
+                                return { ...img, order: nextOrder++ };
+                              }
+                              return img;
+                            });
+                          });
+                          const count = imagesToUpdate.size;
+                          toast.success(count > 1 ? `${count} photos à l'arrière-plan` : "Photo à l'arrière-plan");
+                          setContextMenu(null);
+                        }}
+                      >
+                        <ArrowDownToLine className="h-4 w-4 text-orange-500" />
+                        Arrière-plan {selectedImageIds.size > 1 ? `(${selectedImageIds.size})` : ""}
+                      </button>
+                      <div className="border-t my-1" />
+                      <button
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        onClick={() => {
+                          setBackgroundImages((prev) =>
+                            prev.map((img) =>
+                              img.id === contextMenu.entityId ? { ...img, visible: !img.visible } : img,
+                            ),
+                          );
+                          toast.success(image.visible ? "Image masquée" : "Image affichée");
+                          setContextMenu(null);
+                        }}
+                      >
+                        {image.visible ? (
                           <>
-                            <EyeOff className="h-4 w-4 text-purple-500" />
-                            Masquer calque "{currentLayer.name}"
+                            <EyeOff className="h-4 w-4 text-gray-500" />
+                            Masquer
                           </>
                         ) : (
                           <>
-                            <Eye className="h-4 w-4 text-purple-500" />
-                            Afficher calque "{currentLayer.name}"
+                            <Eye className="h-4 w-4 text-blue-500" />
+                            Afficher
                           </>
                         )}
                       </button>
-                      <div className="px-3 py-1 text-xs text-gray-400">Calque: {currentLayer.name}</div>
+                      <div className="border-t my-1" />
+                      <button
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
+                        onClick={() => {
+                          // Sauvegarder l'état dans l'historique avant suppression
+                          addToImageHistory(backgroundImages, markerLinks);
+
+                          const imageIdToDelete = contextMenu.entityId;
+                          setBackgroundImages((prev) => prev.filter((img) => img.id !== imageIdToDelete));
+                          // Supprimer aussi les liens de markers associés
+                          setMarkerLinks((links) =>
+                            links.filter(
+                              (link) =>
+                                link.marker1.imageId !== imageIdToDelete && link.marker2.imageId !== imageIdToDelete,
+                            ),
+                          );
+                          if (selectedImageId === imageIdToDelete) {
+                            setSelectedImageId(null);
+                          }
+                          // Créer une nouvelle Set sans modifier l'originale
+                          const newSelectedIds = new Set(selectedImageIds);
+                          newSelectedIds.delete(imageIdToDelete);
+                          setSelectedImageIds(newSelectedIds);
+                          toast.success("Image supprimée");
+                          setContextMenu(null);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Supprimer
+                      </button>
+                      {/* v7.32: Option pour masquer/afficher le calque de la photo */}
+                      {currentLayer && (
+                        <>
+                          <div className="border-t my-1" />
+                          <button
+                            className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                            onClick={() => {
+                              setSketch((prev) => {
+                                const updatedLayers = new Map(prev.layers);
+                                const layer = updatedLayers.get(currentLayer.id);
+                                if (layer) {
+                                  updatedLayers.set(currentLayer.id, { ...layer, visible: !layer.visible });
+                                }
+                                return { ...prev, layers: updatedLayers };
+                              });
+                              toast.success(
+                                currentLayer.visible
+                                  ? `Calque "${currentLayer.name}" masqué`
+                                  : `Calque "${currentLayer.name}" affiché`,
+                              );
+                              setContextMenu(null);
+                            }}
+                          >
+                            {currentLayer.visible ? (
+                              <>
+                                <EyeOff className="h-4 w-4 text-purple-500" />
+                                Masquer calque "{currentLayer.name}"
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="h-4 w-4 text-purple-500" />
+                                Afficher calque "{currentLayer.name}"
+                              </>
+                            )}
+                          </button>
+                          <div className="px-3 py-1 text-xs text-gray-400">Calque: {currentLayer.name}</div>
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
+              {contextMenu.entityType === "point" && (
+                <button
+                  className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                  onClick={() => {
+                    const pointId = contextMenu.entityId;
+                    setLockedPoints((prev) => {
+                      const newSet = new Set(prev);
+                      if (newSet.has(pointId)) {
+                        newSet.delete(pointId);
+                        toast.success("Point déverrouillé");
+                      } else {
+                        newSet.add(pointId);
+                        toast.success("Point verrouillé");
+                      }
+                      return newSet;
+                    });
+                    setContextMenu(null);
+                  }}
+                >
+                  {lockedPoints.has(contextMenu.entityId) ? (
+                    <>
+                      <Unlock className="h-4 w-4 text-green-500" />
+                      Déverrouiller le point
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="h-4 w-4 text-orange-500" />
+                      Verrouiller le point
                     </>
                   )}
-                </>
-              );
-            })()}
-          {contextMenu.entityType === "point" && (
-            <button
-              className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-              onClick={() => {
-                const pointId = contextMenu.entityId;
-                setLockedPoints((prev) => {
-                  const newSet = new Set(prev);
-                  if (newSet.has(pointId)) {
-                    newSet.delete(pointId);
-                    toast.success("Point déverrouillé");
-                  } else {
-                    newSet.add(pointId);
-                    toast.success("Point verrouillé");
-                  }
-                  return newSet;
-                });
-                setContextMenu(null);
-              }}
-            >
-              {lockedPoints.has(contextMenu.entityId) ? (
+                </button>
+              )}
+              {contextMenu.entityType === "corner" &&
+                (() => {
+                  // Trouver les lignes connectées à ce point - utiliser sketchRef.current
+                  const currentSketch = sketchRef.current;
+                  const pointId = contextMenu.entityId;
+                  const point = currentSketch.points.get(pointId);
+                  const connectedLines: Line[] = [];
+                  currentSketch.geometries.forEach((geo) => {
+                    if (geo.type === "line") {
+                      const line = geo as Line;
+                      if (line.p1 === pointId || line.p2 === pointId) {
+                        connectedLines.push(line);
+                      }
+                    }
+                  });
+
+                  if (connectedLines.length < 2 || !point) return null;
+
+                  // Calculer l'angle entre les deux premières lignes
+                  const line1 = connectedLines[0];
+                  const line2 = connectedLines[1];
+                  const other1Id = line1.p1 === pointId ? line1.p2 : line1.p1;
+                  const other2Id = line2.p1 === pointId ? line2.p2 : line2.p1;
+                  const other1 = currentSketch.points.get(other1Id);
+                  const other2 = currentSketch.points.get(other2Id);
+
+                  if (!other1 || !other2) return null;
+
+                  const dir1 = { x: other1.x - point.x, y: other1.y - point.y };
+                  const dir2 = { x: other2.x - point.x, y: other2.y - point.y };
+                  const len1 = Math.sqrt(dir1.x * dir1.x + dir1.y * dir1.y);
+                  const len2 = Math.sqrt(dir2.x * dir2.x + dir2.y * dir2.y);
+                  const dot = (dir1.x * dir2.x + dir1.y * dir2.y) / (len1 * len2);
+                  const currentAngle = (Math.acos(Math.max(-1, Math.min(1, dot))) * 180) / Math.PI;
+
+                  return (
+                    <>
+                      {/* Option verrouillage du point */}
+                      <button
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        onClick={() => {
+                          setLockedPoints((prev) => {
+                            const newSet = new Set(prev);
+                            if (newSet.has(pointId)) {
+                              newSet.delete(pointId);
+                              toast.success("Point déverrouillé");
+                            } else {
+                              newSet.add(pointId);
+                              toast.success("Point verrouillé");
+                            }
+                            return newSet;
+                          });
+                          setContextMenu(null);
+                        }}
+                      >
+                        {lockedPoints.has(pointId) ? (
+                          <>
+                            <Unlock className="h-4 w-4 text-green-500" />
+                            Déverrouiller le point
+                          </>
+                        ) : (
+                          <>
+                            <Lock className="h-4 w-4 text-orange-500" />
+                            Verrouiller le point
+                          </>
+                        )}
+                      </button>
+                      {/* Option modifier l'angle */}
+                      <button
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        onClick={() => {
+                          // Fermer les autres panneaux d'édition
+                          closeAllEditPanels("angle");
+                          setAnglePanelPos({ x: contextMenu.x + 10, y: contextMenu.y });
+                          setAngleEditDialog({
+                            open: true,
+                            pointId: pointId,
+                            line1Id: line1.id,
+                            line2Id: line2.id,
+                            currentAngle: currentAngle,
+                            newAngle: currentAngle.toFixed(1),
+                            anchorMode: "symmetric",
+                            // Utiliser sketchRef.current pour éviter les closures stales
+                            originalSketch: {
+                              ...sketchRef.current,
+                              points: new Map(sketchRef.current.points),
+                              geometries: new Map(sketchRef.current.geometries),
+                              layers: new Map(sketchRef.current.layers),
+                              constraints: new Map(sketchRef.current.constraints),
+                            },
+                          });
+                          setContextMenu(null);
+                        }}
+                      >
+                        <Sliders className="h-4 w-4 text-orange-500" />
+                        Modifier l'angle ({currentAngle.toFixed(1)}°)
+                      </button>
+                    </>
+                  );
+                })()}
+              {/* Menu pour formes fermées (remplissage/hachures) */}
+              {contextMenu.entityType === "closedShape" && contextMenu.shapeGeoIds && contextMenu.shapePath && (
                 <>
-                  <Unlock className="h-4 w-4 text-green-500" />
-                  Déverrouiller le point
-                </>
-              ) : (
-                <>
-                  <Lock className="h-4 w-4 text-orange-500" />
-                  Verrouiller le point
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      if (contextMenu.shapeGeoIds && contextMenu.shapePath) {
+                        openFillDialog(contextMenu.shapeGeoIds, contextMenu.shapePath);
+                      }
+                      setContextMenu(null);
+                    }}
+                  >
+                    <PaintBucket className="h-4 w-4 text-blue-500" />
+                    Remplir / Hachurer
+                  </button>
+                  {/* Option pour supprimer le remplissage si existant */}
+                  {(() => {
+                    const key = [...contextMenu.shapeGeoIds].sort().join("-");
+                    const existingFill = sketch.shapeFills.get(key);
+                    if (existingFill) {
+                      return (
+                        <button
+                          className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                          onClick={() => {
+                            if (contextMenu.shapeGeoIds) {
+                              removeShapeFill(contextMenu.shapeGeoIds);
+                            }
+                            setContextMenu(null);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                          Supprimer le remplissage
+                        </button>
+                      );
+                    }
+                    return null;
+                  })()}
                 </>
               )}
-            </button>
-          )}
-          {contextMenu.entityType === "corner" &&
-            (() => {
-              // Trouver les lignes connectées à ce point - utiliser sketchRef.current
-              const currentSketch = sketchRef.current;
-              const pointId = contextMenu.entityId;
-              const point = currentSketch.points.get(pointId);
-              const connectedLines: Line[] = [];
-              currentSketch.geometries.forEach((geo) => {
-                if (geo.type === "line") {
-                  const line = geo as Line;
-                  if (line.p1 === pointId || line.p2 === pointId) {
-                    connectedLines.push(line);
-                  }
-                }
-              });
-
-              if (connectedLines.length < 2 || !point) return null;
-
-              // Calculer l'angle entre les deux premières lignes
-              const line1 = connectedLines[0];
-              const line2 = connectedLines[1];
-              const other1Id = line1.p1 === pointId ? line1.p2 : line1.p1;
-              const other2Id = line2.p1 === pointId ? line2.p2 : line2.p1;
-              const other1 = currentSketch.points.get(other1Id);
-              const other2 = currentSketch.points.get(other2Id);
-
-              if (!other1 || !other2) return null;
-
-              const dir1 = { x: other1.x - point.x, y: other1.y - point.y };
-              const dir2 = { x: other2.x - point.x, y: other2.y - point.y };
-              const len1 = Math.sqrt(dir1.x * dir1.x + dir1.y * dir1.y);
-              const len2 = Math.sqrt(dir2.x * dir2.x + dir2.y * dir2.y);
-              const dot = (dir1.x * dir2.x + dir1.y * dir2.y) / (len1 * len2);
-              const currentAngle = (Math.acos(Math.max(-1, Math.min(1, dot))) * 180) / Math.PI;
-
-              return (
-                <>
-                  {/* Option verrouillage du point */}
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => {
-                      setLockedPoints((prev) => {
-                        const newSet = new Set(prev);
-                        if (newSet.has(pointId)) {
-                          newSet.delete(pointId);
-                          toast.success("Point déverrouillé");
-                        } else {
-                          newSet.add(pointId);
-                          toast.success("Point verrouillé");
-                        }
-                        return newSet;
-                      });
-                      setContextMenu(null);
-                    }}
-                  >
-                    {lockedPoints.has(pointId) ? (
-                      <>
-                        <Unlock className="h-4 w-4 text-green-500" />
-                        Déverrouiller le point
-                      </>
-                    ) : (
-                      <>
-                        <Lock className="h-4 w-4 text-orange-500" />
-                        Verrouiller le point
-                      </>
-                    )}
-                  </button>
-                  {/* Option modifier l'angle */}
-                  <button
-                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    onClick={() => {
-                      // Fermer les autres panneaux d'édition
-                      closeAllEditPanels("angle");
-                      setAnglePanelPos({ x: contextMenu.x + 10, y: contextMenu.y });
-                      setAngleEditDialog({
-                        open: true,
-                        pointId: pointId,
-                        line1Id: line1.id,
-                        line2Id: line2.id,
-                        currentAngle: currentAngle,
-                        newAngle: currentAngle.toFixed(1),
-                        anchorMode: "symmetric",
-                        // Utiliser sketchRef.current pour éviter les closures stales
-                        originalSketch: {
-                          ...sketchRef.current,
-                          points: new Map(sketchRef.current.points),
-                          geometries: new Map(sketchRef.current.geometries),
-                          layers: new Map(sketchRef.current.layers),
-                          constraints: new Map(sketchRef.current.constraints),
-                        },
-                      });
-                      setContextMenu(null);
-                    }}
-                  >
-                    <Sliders className="h-4 w-4 text-orange-500" />
-                    Modifier l'angle ({currentAngle.toFixed(1)}°)
-                  </button>
-                </>
-              );
-            })()}
-          {/* Menu pour formes fermées (remplissage/hachures) */}
-          {contextMenu.entityType === "closedShape" && contextMenu.shapeGeoIds && contextMenu.shapePath && (
-            <>
-              <button
-                className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                onClick={() => {
-                  if (contextMenu.shapeGeoIds && contextMenu.shapePath) {
-                    openFillDialog(contextMenu.shapeGeoIds, contextMenu.shapePath);
-                  }
-                  setContextMenu(null);
-                }}
-              >
-                <PaintBucket className="h-4 w-4 text-blue-500" />
-                Remplir / Hachurer
-              </button>
-              {/* Option pour supprimer le remplissage si existant */}
-              {(() => {
-                const key = [...contextMenu.shapeGeoIds].sort().join("-");
-                const existingFill = sketch.shapeFills.get(key);
-                if (existingFill) {
-                  return (
-                    <button
-                      className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                      onClick={() => {
-                        if (contextMenu.shapeGeoIds) {
-                          removeShapeFill(contextMenu.shapeGeoIds);
-                        }
-                        setContextMenu(null);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                      Supprimer le remplissage
-                    </button>
-                  );
-                }
-                return null;
-              })()}
-            </>
-          )}
-        </div>
-      )}
+            </div>
+          );
+        })()}
       {/* Fermer le menu contextuel en cliquant ailleurs */}
       {contextMenu && <div className="fixed inset-0 z-[99]" onClick={() => setContextMenu(null)} />}
 
