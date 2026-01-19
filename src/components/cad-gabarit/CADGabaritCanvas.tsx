@@ -16471,6 +16471,58 @@ export function CADGabaritCanvas({
                     )}
                   </DropdownMenuItem>
 
+                  <DropdownMenuSeparator />
+
+                  {/* Import */}
+                  <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                    <FileUp className="h-4 w-4 mr-2" />
+                    Importer (DXF, images)
+                    {backgroundImages.length > 0 && (
+                      <Badge variant="secondary" className="ml-auto h-4 min-w-4 px-1 text-xs">
+                        {backgroundImages.length}
+                      </Badge>
+                    )}
+                  </DropdownMenuItem>
+
+                  {/* Sous-menu Export */}
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      <Download className="h-4 w-4 mr-2" />
+                      Exporter
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="w-48">
+                      <DropdownMenuItem onClick={handleExportDXF}>
+                        <Download className="h-4 w-4 mr-2" />
+                        DXF (CAO/CNC)
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setPdfPlanEditorOpen(true)}>
+                        <FileDown className="h-4 w-4 mr-2 text-red-500" />
+                        PDF (plans)
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={handleExportSVG}>
+                        <FileDown className="h-4 w-4 mr-2" />
+                        SVG (vectoriel)
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleExportPNG(false)}>
+                        <FileImage className="h-4 w-4 mr-2" />
+                        PNG (fond blanc)
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleExportPNG(true)}>
+                        <FileImage className="h-4 w-4 mr-2 opacity-50" />
+                        PNG (transparent)
+                      </DropdownMenuItem>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+
+                  {/* Imprimer */}
+                  <DropdownMenuItem onClick={() => setShowPrintDialog(true)}>
+                    <Printer className="h-4 w-4 mr-2" />
+                    Imprimer...
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
                   {/* Indicateur cloud */}
                   <div className="px-2 py-1.5 text-xs text-gray-500 flex items-center gap-2">
                     {autoBackupIsRestoring ? (
@@ -16499,75 +16551,9 @@ export function CADGabaritCanvas({
 
         {toolbarConfig.line1.save && !toolbarEditMode && <Separator orientation="vertical" className="h-6" />}
 
-        {/* Import/Export fichiers */}
+        {/* v7.38: Ancien groupe Import/Export supprimé - maintenant dans le menu Fichier */}
+        {/* Bouton impression rapide conservé pour accès direct */}
         <ToolbarGroupWrapper groupId="grp_import_export" groupName="Import/Export" groupColor="#10B981" lineIndex={0}>
-          {/* v7.21: Import unifié - un seul bouton qui ouvre l'explorateur (DXF + images) */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 px-2 relative"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <FileUp className="h-4 w-4 mr-1" />
-                  <span className="text-xs">Importer</span>
-                  {backgroundImages.length > 0 && (
-                    <Badge variant="secondary" className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-xs">
-                      {backgroundImages.length}
-                    </Badge>
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Importer fichiers (DXF, images)</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* v7.20: Export unifié - un seul bouton avec menu déroulant */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="default" size="sm" className="h-9 px-2">
-                <Download className="h-4 w-4 mr-1" />
-                <span className="text-xs">Exporter</span>
-                <ChevronDown className="h-3 w-3 ml-1" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-48">
-              {/* DXF - Format CAO */}
-              <DropdownMenuItem onClick={handleExportDXF}>
-                <Download className="h-4 w-4 mr-2" />
-                DXF (CAO/CNC)
-              </DropdownMenuItem>
-
-              {/* PDF Professionnel */}
-              <DropdownMenuItem onClick={() => setPdfPlanEditorOpen(true)}>
-                <FileDown className="h-4 w-4 mr-2 text-red-500" />
-                PDF (plans)
-              </DropdownMenuItem>
-
-              <DropdownMenuSeparator />
-
-              {/* SVG */}
-              <DropdownMenuItem onClick={handleExportSVG}>
-                <FileDown className="h-4 w-4 mr-2" />
-                SVG (vectoriel)
-              </DropdownMenuItem>
-
-              {/* PNG options */}
-              <DropdownMenuItem onClick={() => handleExportPNG(false)}>
-                <FileImage className="h-4 w-4 mr-2" />
-                PNG (fond blanc)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExportPNG(true)}>
-                <FileImage className="h-4 w-4 mr-2 opacity-50" />
-                PNG (transparent)
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
           {/* MOD v80.14: Bouton impression directe avec duplication */}
           <TooltipProvider>
             <Tooltip>
