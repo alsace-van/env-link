@@ -9,13 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Ruler, Download, Printer } from "lucide-react";
 import { jsPDF } from "jspdf";
@@ -94,37 +88,52 @@ export function CalibrationRulerGenerator({ open, onOpenChange }: CalibrationRul
     // === GRADUATIONS AXE X ===
     doc.setLineWidth(lineW * 0.5); // Lignes plus fines pour les graduations
 
+    // Hauteur des graduations (ne pas dépasser 40% de la largeur pour laisser place au texte)
+    const majorTickHeight = width * 0.35;
+    const minorTickHeight = width * 0.2;
+
     for (let x = 0; x <= lengthX; x += minorTick) {
       const posX = originX + x;
       const isMajor = x % majorTick === 0;
-      const tickHeight = isMajor ? width * 0.6 : width * 0.3;
+      const tickHeight = isMajor ? majorTickHeight : minorTickHeight;
 
       // Graduation du haut (vers le bas)
       doc.line(posX, originY - width, posX, originY - width + tickHeight);
       // Graduation du bas (vers le haut)
       doc.line(posX, originY, posX, originY - tickHeight);
+    }
 
-      // Numéros
-      if (showNumbers && x % numInterval === 0 && x > 0) {
-        doc.setFontSize(7);
+    // Numéros axe X - positionnés au centre, entre les graduations
+    if (showNumbers) {
+      doc.setFontSize(6);
+      for (let x = numInterval; x <= lengthX; x += numInterval) {
+        const posX = originX + x;
+        // Position Y au milieu de la règle (zone libre entre les graduations)
         doc.text(x.toString(), posX, originY - width / 2, { align: "center", baseline: "middle" });
       }
     }
 
     // === GRADUATIONS AXE Y ===
+    const majorTickWidth = width * 0.35;
+    const minorTickWidth = width * 0.2;
+
     for (let y = 0; y <= lengthY; y += minorTick) {
       const posY = originY + y;
       const isMajor = y % majorTick === 0;
-      const tickWidth = isMajor ? width * 0.6 : width * 0.3;
+      const tickW = isMajor ? majorTickWidth : minorTickWidth;
 
       // Graduation de gauche (vers la droite)
-      doc.line(originX - width, posY, originX - width + tickWidth, posY);
+      doc.line(originX - width, posY, originX - width + tickW, posY);
       // Graduation de droite (vers la gauche)
-      doc.line(originX, posY, originX - tickWidth, posY);
+      doc.line(originX, posY, originX - tickW, posY);
+    }
 
-      // Numéros
-      if (showNumbers && y % numInterval === 0 && y > 0) {
-        doc.setFontSize(7);
+    // Numéros axe Y - positionnés au centre, entre les graduations
+    if (showNumbers) {
+      doc.setFontSize(6);
+      for (let y = numInterval; y <= lengthY; y += numInterval) {
+        const posY = originY + y;
+        // Position X au milieu de la règle (zone libre entre les graduations)
         doc.text(y.toString(), originX - width / 2, posY, { align: "center", baseline: "middle" });
       }
     }
@@ -152,16 +161,16 @@ export function CalibrationRulerGenerator({ open, onOpenChange }: CalibrationRul
       drawCross(originX, originY, "0,0");
 
       // Points sur l'axe X (tous les 50mm ou à la fin)
-      const xPoints = [50, 100, 150, 200].filter(x => x <= lengthX);
+      const xPoints = [50, 100, 150, 200].filter((x) => x <= lengthX);
       if (!xPoints.includes(lengthX)) xPoints.push(lengthX);
-      xPoints.forEach(x => {
+      xPoints.forEach((x) => {
         if (x > 0) drawCross(originX + x, originY, `${x},0`);
       });
 
       // Points sur l'axe Y (tous les 50mm ou à la fin)
-      const yPoints = [50, 100, 150, 200].filter(y => y <= lengthY);
+      const yPoints = [50, 100, 150, 200].filter((y) => y <= lengthY);
       if (!yPoints.includes(lengthY)) yPoints.push(lengthY);
-      yPoints.forEach(y => {
+      yPoints.forEach((y) => {
         if (y > 0) drawCross(originX, originY + y, `0,${y}`);
       });
     }
@@ -171,7 +180,11 @@ export function CalibrationRulerGenerator({ open, onOpenChange }: CalibrationRul
     doc.setTextColor("#666666");
     doc.text("Équerre de calibration - Env-Link CAD", marginLeft, marginTop - 5);
     doc.setFontSize(7);
-    doc.text(`Dimensions: ${lengthX}mm × ${lengthY}mm | Graduations: ${minorTick}mm / ${majorTick}mm`, marginLeft, marginTop - 1);
+    doc.text(
+      `Dimensions: ${lengthX}mm × ${lengthY}mm | Graduations: ${minorTick}mm / ${majorTick}mm`,
+      marginLeft,
+      marginTop - 1,
+    );
 
     // Instructions en bas
     doc.setFontSize(6);
@@ -216,7 +229,9 @@ export function CalibrationRulerGenerator({ open, onOpenChange }: CalibrationRul
           {/* Dimensions */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="lengthX" className="text-xs">Longueur X (mm)</Label>
+              <Label htmlFor="lengthX" className="text-xs">
+                Longueur X (mm)
+              </Label>
               <Input
                 id="lengthX"
                 type="number"
@@ -228,7 +243,9 @@ export function CalibrationRulerGenerator({ open, onOpenChange }: CalibrationRul
               />
             </div>
             <div>
-              <Label htmlFor="lengthY" className="text-xs">Longueur Y (mm)</Label>
+              <Label htmlFor="lengthY" className="text-xs">
+                Longueur Y (mm)
+              </Label>
               <Input
                 id="lengthY"
                 type="number"
@@ -243,7 +260,9 @@ export function CalibrationRulerGenerator({ open, onOpenChange }: CalibrationRul
 
           {/* Largeur de la règle */}
           <div>
-            <Label htmlFor="width" className="text-xs">Largeur de la règle (mm)</Label>
+            <Label htmlFor="width" className="text-xs">
+              Largeur de la règle (mm)
+            </Label>
             <Input
               id="width"
               type="number"
@@ -258,7 +277,9 @@ export function CalibrationRulerGenerator({ open, onOpenChange }: CalibrationRul
           {/* Graduations */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="majorTick" className="text-xs">Graduation principale (mm)</Label>
+              <Label htmlFor="majorTick" className="text-xs">
+                Graduation principale (mm)
+              </Label>
               <Select value={majorTickInterval} onValueChange={setMajorTickInterval}>
                 <SelectTrigger className="h-8">
                   <SelectValue />
@@ -272,7 +293,9 @@ export function CalibrationRulerGenerator({ open, onOpenChange }: CalibrationRul
               </Select>
             </div>
             <div>
-              <Label htmlFor="minorTick" className="text-xs">Graduation secondaire (mm)</Label>
+              <Label htmlFor="minorTick" className="text-xs">
+                Graduation secondaire (mm)
+              </Label>
               <Select value={minorTickInterval} onValueChange={setMinorTickInterval}>
                 <SelectTrigger className="h-8">
                   <SelectValue />
@@ -289,20 +312,16 @@ export function CalibrationRulerGenerator({ open, onOpenChange }: CalibrationRul
           {/* Options */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label htmlFor="showNumbers" className="text-xs">Afficher les numéros</Label>
-              <Switch
-                id="showNumbers"
-                checked={showNumbers}
-                onCheckedChange={setShowNumbers}
-              />
+              <Label htmlFor="showNumbers" className="text-xs">
+                Afficher les numéros
+              </Label>
+              <Switch id="showNumbers" checked={showNumbers} onCheckedChange={setShowNumbers} />
             </div>
             <div className="flex items-center justify-between">
-              <Label htmlFor="crossMarks" className="text-xs">Points de repère (croix)</Label>
-              <Switch
-                id="crossMarks"
-                checked={includeCheckerCorners}
-                onCheckedChange={setIncludeCheckerCorners}
-              />
+              <Label htmlFor="crossMarks" className="text-xs">
+                Points de repère (croix)
+              </Label>
+              <Switch id="crossMarks" checked={includeCheckerCorners} onCheckedChange={setIncludeCheckerCorners} />
             </div>
           </div>
 
@@ -324,8 +343,12 @@ export function CalibrationRulerGenerator({ open, onOpenChange }: CalibrationRul
           {/* Prévisualisation des dimensions */}
           <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600">
             <p className="font-medium mb-1">Aperçu:</p>
-            <p>Équerre en L de {rulerLengthX}mm × {rulerLengthY}mm</p>
-            <p>Graduations: {minorTickInterval}mm (fin) / {majorTickInterval}mm (épais)</p>
+            <p>
+              Équerre en L de {rulerLengthX}mm × {rulerLengthY}mm
+            </p>
+            <p>
+              Graduations: {minorTickInterval}mm (fin) / {majorTickInterval}mm (épais)
+            </p>
             <p className="text-orange-600 mt-1">⚠️ Imprimer à 100% sans mise à l'échelle</p>
           </div>
         </div>
