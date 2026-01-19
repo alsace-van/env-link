@@ -150,6 +150,7 @@ export class CADRenderer {
       imageScale?: number;
       calibrationData?: CalibrationData | null;
       showCalibration?: boolean;
+      highlightedPairId?: string | null; // Paire de calibration en surbrillance
       measureData?: {
         start: { x: number; y: number } | null;
         end: { x: number; y: number } | null;
@@ -237,6 +238,7 @@ export class CADRenderer {
       imageScale = 1,
       calibrationData = null,
       showCalibration = true,
+      highlightedPairId = null,
       measureData = null,
       measurements = [],
       measureScale = 1,
@@ -714,7 +716,7 @@ export class CADRenderer {
         // Mode multi-photos: points stockés dans selectedImage.calibrationData
         const selectedImage = backgroundImages.find((img) => img.id === selectedImageId);
         if (selectedImage?.calibrationData && selectedImage.calibrationData.points.size > 0) {
-          this.drawImageCalibrationPoints(backgroundImages, selectedImageId);
+          this.drawImageCalibrationPoints(backgroundImages, selectedImageId, highlightedPairId);
         }
       } else if (calibrationData && calibrationData.points.size > 0) {
         // Mode legacy sans multi-photos: utiliser calibrationData globale
@@ -814,9 +816,9 @@ export class CADRenderer {
       const scaledWidth = width * bgImage.scale;
       const scaledHeight = height * bgImage.scale;
 
-      // MOD v3.76: Mode rayures pour alignement (permet de voir à travers)
+      // MOD v3.76: Mode damier fin pour alignement (permet de voir à travers)
       if (bgImage.blendMode === "stripes") {
-        // Créer un canvas temporaire pour appliquer les rayures
+        // Créer un canvas temporaire pour appliquer le damier
         const tempCanvas = document.createElement("canvas");
         tempCanvas.width = scaledWidth;
         tempCanvas.height = scaledHeight;
@@ -825,25 +827,17 @@ export class CADRenderer {
         // Dessiner l'image dans le canvas temporaire
         tempCtx.drawImage(imageToDraw, 0, 0, scaledWidth, scaledHeight);
 
-        // Créer le pattern de rayures diagonales (masque)
-        const stripeSize = 8; // Taille des rayures en pixels
+        // Créer le pattern damier très fin (2x2 pixels)
+        // Un pixel sur deux est transparent, conserve 50% des détails
         const patternCanvas = document.createElement("canvas");
-        patternCanvas.width = stripeSize * 2;
-        patternCanvas.height = stripeSize * 2;
+        patternCanvas.width = 2;
+        patternCanvas.height = 2;
         const patternCtx = patternCanvas.getContext("2d")!;
 
-        // Dessiner les rayures (alternance opaque/transparent)
+        // Damier: pixels (0,0) et (1,1) opaques, (0,1) et (1,0) transparents
         patternCtx.fillStyle = "black";
-        // Rayure diagonale 1
-        patternCtx.beginPath();
-        patternCtx.moveTo(0, 0);
-        patternCtx.lineTo(stripeSize, 0);
-        patternCtx.lineTo(stripeSize * 2, stripeSize);
-        patternCtx.lineTo(stripeSize * 2, stripeSize * 2);
-        patternCtx.lineTo(stripeSize, stripeSize * 2);
-        patternCtx.lineTo(0, stripeSize);
-        patternCtx.closePath();
-        patternCtx.fill();
+        patternCtx.fillRect(0, 0, 1, 1); // Haut-gauche
+        patternCtx.fillRect(1, 1, 1, 1); // Bas-droite
 
         // Appliquer le masque (destination-in garde uniquement où le pattern est opaque)
         tempCtx.globalCompositeOperation = "destination-in";
@@ -853,7 +847,7 @@ export class CADRenderer {
           tempCtx.fillRect(0, 0, scaledWidth, scaledHeight);
         }
 
-        // Dessiner le canvas rayé
+        // Dessiner le canvas avec damier
         this.ctx.drawImage(tempCanvas, -scaledWidth / 2, -scaledHeight / 2);
       } else {
         // Dessiner l'image normalement
@@ -1103,7 +1097,11 @@ export class CADRenderer {
    * Appelé en dernier pour être par-dessus tout
    * Style croix de visée précis pour calibration
    */
-  private drawImageCalibrationPoints(images: BackgroundImage[], selectedImageId: string): void {
+  private drawImageCalibrationPoints(
+    images: BackgroundImage[],
+    selectedImageId: string,
+    highlightedPairId: string | null = null,
+  ): void {
     const selectedImage = images.find((img) => img.id === selectedImageId);
     if (!selectedImage?.calibrationData) return;
 
@@ -1131,14 +1129,43 @@ export class CADRenderer {
       const x2 = selectedImage.x + p2.x * imgScale;
       const y2 = selectedImage.y + p2.y * imgScale;
 
+      // v7.36: Vérifier si cette paire est en surbrillance
+      const isHighlighted = highlightedPairId === pair.id;
+
       this.ctx.save();
+
+      // Si surbrillance, dessiner un halo lumineux autour de la ligne
+      if (isHighlighted) {
+        // Halo large semi-transparent
+        this.ctx.beginPath();
+        this.ctx.moveTo(x1, y1);
+        this.ctx.lineTo(x2, y2);
+        this.ctx.strokeStyle = pair.color;
+        this.ctx.lineWidth = 12 / this.viewport.scale;
+        this.ctx.globalAlpha = 0.3;
+        this.ctx.lineCap = "round";
+        this.ctx.stroke();
+        this.ctx.globalAlpha = 1;
+
+        // Cercles lumineux autour des points
+        const glowRadius = 15 / this.viewport.scale;
+        this.ctx.beginPath();
+        this.ctx.arc(x1, y1, glowRadius, 0, Math.PI * 2);
+        this.ctx.fillStyle = pair.color;
+        this.ctx.globalAlpha = 0.25;
+        this.ctx.fill();
+        this.ctx.beginPath();
+        this.ctx.arc(x2, y2, glowRadius, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.globalAlpha = 1;
+      }
 
       // Ligne de fond blanche (pour contraste)
       this.ctx.beginPath();
       this.ctx.moveTo(x1, y1);
       this.ctx.lineTo(x2, y2);
       this.ctx.strokeStyle = "#FFFFFF";
-      this.ctx.lineWidth = 3 / this.viewport.scale;
+      this.ctx.lineWidth = (isHighlighted ? 5 : 3) / this.viewport.scale;
       this.ctx.stroke();
 
       // Ligne pointillée colorée par-dessus
@@ -1146,7 +1173,7 @@ export class CADRenderer {
       this.ctx.moveTo(x1, y1);
       this.ctx.lineTo(x2, y2);
       this.ctx.strokeStyle = pair.color;
-      this.ctx.lineWidth = 1.5 / this.viewport.scale;
+      this.ctx.lineWidth = (isHighlighted ? 3 : 1.5) / this.viewport.scale;
       this.ctx.setLineDash([6 / this.viewport.scale, 3 / this.viewport.scale]);
       this.ctx.stroke();
       this.ctx.setLineDash([]);
@@ -1154,19 +1181,36 @@ export class CADRenderer {
       // Label de distance - v7.35: sans fond blanc, juste contour texte pour lisibilité
       const midX = (x1 + x2) / 2;
       const midY = (y1 + y2) / 2;
-      this.ctx.font = `bold ${fontSize}px Arial`;
+      const labelFontSize = isHighlighted ? fontSize * 1.3 : fontSize;
+      this.ctx.font = `bold ${labelFontSize}px Arial`;
       const labelText = `${pair.distanceMm} mm`;
       this.ctx.textAlign = "center";
       this.ctx.textBaseline = "middle";
 
-      // Contour blanc pour lisibilité
-      this.ctx.strokeStyle = "#FFFFFF";
-      this.ctx.lineWidth = 3 / this.viewport.scale;
-      this.ctx.strokeText(labelText, midX, midY);
-
-      // Texte coloré par-dessus
-      this.ctx.fillStyle = pair.color;
-      this.ctx.fillText(labelText, midX, midY);
+      // Si surbrillance, fond coloré pour le texte
+      if (isHighlighted) {
+        const textWidth = this.ctx.measureText(labelText).width;
+        const padding = 4 / this.viewport.scale;
+        this.ctx.fillStyle = pair.color;
+        this.ctx.globalAlpha = 0.9;
+        this.ctx.fillRect(
+          midX - textWidth / 2 - padding,
+          midY - labelFontSize / 2 - padding / 2,
+          textWidth + padding * 2,
+          labelFontSize + padding,
+        );
+        this.ctx.globalAlpha = 1;
+        this.ctx.fillStyle = "#FFFFFF";
+        this.ctx.fillText(labelText, midX, midY);
+      } else {
+        // Contour blanc pour lisibilité
+        this.ctx.strokeStyle = "#FFFFFF";
+        this.ctx.lineWidth = 3 / this.viewport.scale;
+        this.ctx.strokeText(labelText, midX, midY);
+        // Texte coloré par-dessus
+        this.ctx.fillStyle = pair.color;
+        this.ctx.fillText(labelText, midX, midY);
+      }
       this.ctx.restore();
     });
 

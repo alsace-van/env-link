@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: ImageToolsModal
 // Modale flottante détachable pour les outils photo
-// VERSION: 1.1 - Tous les outils (rotation, recadrage, ajustements, etc.)
+// VERSION: 1.2 - Ajout gestion paires de calibration avec surbrillance
 // ============================================
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
@@ -27,9 +27,10 @@ import {
   Crop,
   MapPin,
   Link2,
+  Edit3,
 } from "lucide-react";
 import { toast } from "sonner";
-import { BackgroundImage, Layer } from "./types";
+import { BackgroundImage, Layer, CalibrationPair } from "./types";
 import { Button } from "@/components/ui/button";
 
 interface ImageToolsModalProps {
@@ -55,7 +56,12 @@ interface ImageToolsModalProps {
   // Rotation
   getSelectedImageRotation: () => number;
   updateSelectedImageRotation: (rotation: number) => void;
-  // Position initiale (là où était le menu contextuel)
+  // Paire de calibration en surbrillance
+  highlightedPairId: string | null;
+  setHighlightedPairId: (id: string | null) => void;
+  // Mise à jour distance paire
+  onUpdatePairDistance: (pairId: string, distanceMm: number) => void;
+  // Position initiale
   initialPosition?: { x: number; y: number };
 }
 
@@ -78,14 +84,20 @@ export const ImageToolsModal: React.FC<ImageToolsModalProps> = ({
   onLinkMarkers,
   getSelectedImageRotation,
   updateSelectedImageRotation,
+  highlightedPairId,
+  setHighlightedPairId,
+  onUpdatePairDistance,
   initialPosition,
 }) => {
   // Position de la modale
   const [position, setPosition] = useState({ x: initialPosition?.x || 100, y: initialPosition?.y || 100 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [isPinned, setIsPinned] = useState(true); // Épinglé par défaut
+  const [isPinned, setIsPinned] = useState(true);
+  const [editingPairId, setEditingPairId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState<string>("");
   const modalRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Mettre à jour la position si initialPosition change
   useEffect(() => {
@@ -94,6 +106,14 @@ export const ImageToolsModal: React.FC<ImageToolsModalProps> = ({
     }
   }, [initialPosition]);
 
+  // Focus sur l'input quand on édite
+  useEffect(() => {
+    if (editingPairId && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editingPairId]);
+
   // Image principale sélectionnée
   const image = backgroundImages.find((img) => img.id === selectedImageId);
   const currentLayer = image ? layers.get(image.layerId || "") : undefined;
@@ -101,9 +121,12 @@ export const ImageToolsModal: React.FC<ImageToolsModalProps> = ({
   const imagesToUpdate = multiCount > 0 ? selectedImageIds : new Set(selectedImageId ? [selectedImageId] : []);
   const hasSelection = selectedImageId || selectedImageIds.size > 0;
 
+  // Paires de calibration de l'image sélectionnée
+  const calibrationPairs = image?.calibrationData?.pairs ? Array.from(image.calibrationData.pairs.values()) : [];
+
   // Drag handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('[data-no-drag]')) return;
+    if ((e.target as HTMLElement).closest("[data-no-drag]")) return;
     setIsDragging(true);
     const rect = modalRef.current?.getBoundingClientRect();
     if (rect) {
@@ -111,13 +134,16 @@ export const ImageToolsModal: React.FC<ImageToolsModalProps> = ({
     }
   }, []);
 
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging) return;
-    setPosition({
-      x: e.clientX - dragOffset.x,
-      y: e.clientY - dragOffset.y,
-    });
-  }, [isDragging, dragOffset]);
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isDragging) return;
+      setPosition({
+        x: e.clientX - dragOffset.x,
+        y: e.clientY - dragOffset.y,
+      });
+    },
+    [isDragging, dragOffset],
+  );
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false);
@@ -134,13 +160,19 @@ export const ImageToolsModal: React.FC<ImageToolsModalProps> = ({
     }
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
+  // Nettoyer la surbrillance quand on ferme
+  useEffect(() => {
+    if (!isOpen) {
+      setHighlightedPairId(null);
+      setEditingPairId(null);
+    }
+  }, [isOpen, setHighlightedPairId]);
+
   // Actions
   const toggleLock = useCallback(() => {
     if (!selectedImageId) return;
     setBackgroundImages((prev) =>
-      prev.map((img) =>
-        img.id === selectedImageId ? { ...img, locked: !img.locked } : img
-      )
+      prev.map((img) => (img.id === selectedImageId ? { ...img, locked: !img.locked } : img)),
     );
     toast.success(image?.locked ? "Déverrouillée" : "Verrouillée", { duration: 1500 });
   }, [selectedImageId, image, setBackgroundImages]);
@@ -148,9 +180,7 @@ export const ImageToolsModal: React.FC<ImageToolsModalProps> = ({
   const toggleVisible = useCallback(() => {
     if (!selectedImageId) return;
     setBackgroundImages((prev) =>
-      prev.map((img) =>
-        img.id === selectedImageId ? { ...img, visible: !img.visible } : img
-      )
+      prev.map((img) => (img.id === selectedImageId ? { ...img, visible: !img.visible } : img)),
     );
     toast.success(image?.visible ? "Masquée" : "Affichée", { duration: 1500 });
   }, [selectedImageId, image, setBackgroundImages]);
@@ -172,7 +202,7 @@ export const ImageToolsModal: React.FC<ImageToolsModalProps> = ({
     setBackgroundImages((prev) => {
       const maxOrder = Math.max(...prev.map((img) => img.order), 0);
       let nextOrder = maxOrder + 1;
-      return prev.map((img) => imagesToUpdate.has(img.id) ? { ...img, order: nextOrder++ } : img);
+      return prev.map((img) => (imagesToUpdate.has(img.id) ? { ...img, order: nextOrder++ } : img));
     });
     toast.success(multiCount > 0 ? `${multiCount} photos ↑` : "↑ Premier plan", { duration: 1500 });
   }, [imagesToUpdate, multiCount, setBackgroundImages]);
@@ -181,7 +211,7 @@ export const ImageToolsModal: React.FC<ImageToolsModalProps> = ({
     setBackgroundImages((prev) => {
       const minOrder = Math.min(...prev.map((img) => img.order), 0);
       let nextOrder = minOrder - imagesToUpdate.size;
-      return prev.map((img) => imagesToUpdate.has(img.id) ? { ...img, order: nextOrder++ } : img);
+      return prev.map((img) => (imagesToUpdate.has(img.id) ? { ...img, order: nextOrder++ } : img));
     });
     toast.success(multiCount > 0 ? `${multiCount} photos ↓` : "↓ Arrière-plan", { duration: 1500 });
   }, [imagesToUpdate, multiCount, setBackgroundImages]);
@@ -189,26 +219,49 @@ export const ImageToolsModal: React.FC<ImageToolsModalProps> = ({
   const toggleStripes = useCallback(() => {
     setBackgroundImages((prev) =>
       prev.map((img) =>
-        imagesToUpdate.has(img.id)
-          ? { ...img, blendMode: img.blendMode === "stripes" ? "normal" : "stripes" }
-          : img
-      )
+        imagesToUpdate.has(img.id) ? { ...img, blendMode: img.blendMode === "stripes" ? "normal" : "stripes" } : img,
+      ),
     );
     toast.success(image?.blendMode === "stripes" ? "Mode normal" : "Mode damier", { duration: 1500 });
   }, [imagesToUpdate, image, setBackgroundImages]);
 
-  const setOpacity = useCallback((opacity: number) => {
-    setBackgroundImages((prev) =>
-      prev.map((img) => imagesToUpdate.has(img.id) ? { ...img, opacity } : img)
-    );
-  }, [imagesToUpdate, setBackgroundImages]);
+  const setOpacity = useCallback(
+    (opacity: number) => {
+      setBackgroundImages((prev) => prev.map((img) => (imagesToUpdate.has(img.id) ? { ...img, opacity } : img)));
+    },
+    [imagesToUpdate, setBackgroundImages],
+  );
 
   const resetOpacity = useCallback(() => {
-    setBackgroundImages((prev) =>
-      prev.map((img) => imagesToUpdate.has(img.id) ? { ...img, opacity: 1 } : img)
-    );
+    setBackgroundImages((prev) => prev.map((img) => (imagesToUpdate.has(img.id) ? { ...img, opacity: 1 } : img)));
     toast.success("Opacité: 100%", { duration: 1500 });
   }, [imagesToUpdate, setBackgroundImages]);
+
+  // Gestion édition paire
+  const startEditingPair = useCallback(
+    (pair: CalibrationPair) => {
+      setEditingPairId(pair.id);
+      setEditingValue(pair.distanceMm.toString());
+      setHighlightedPairId(pair.id);
+    },
+    [setHighlightedPairId],
+  );
+
+  const saveEditingPair = useCallback(() => {
+    if (!editingPairId) return;
+    const value = parseFloat(editingValue);
+    if (!isNaN(value) && value > 0) {
+      onUpdatePairDistance(editingPairId, value);
+      toast.success(`Distance: ${value} mm`, { duration: 1500 });
+    }
+    setEditingPairId(null);
+    setEditingValue("");
+  }, [editingPairId, editingValue, onUpdatePairDistance]);
+
+  const cancelEditingPair = useCallback(() => {
+    setEditingPairId(null);
+    setEditingValue("");
+  }, []);
 
   if (!isOpen) return null;
 
@@ -219,19 +272,17 @@ export const ImageToolsModal: React.FC<ImageToolsModalProps> = ({
       style={{
         left: position.x,
         top: position.y,
-        minWidth: 260,
-        maxWidth: 300,
+        minWidth: 280,
+        maxWidth: 320,
         cursor: isDragging ? "grabbing" : "default",
       }}
       onMouseDown={handleMouseDown}
     >
-      {/* Header avec titre et boutons */}
+      {/* Header */}
       <div className="flex items-center justify-between px-2 py-1.5 bg-gray-100 rounded-t-lg border-b cursor-grab">
         <div className="flex items-center gap-1.5">
           <GripVertical className="h-3.5 w-3.5 text-gray-400" />
-          <span className="text-xs font-medium text-gray-700">
-            Outils photo {multiCount > 0 && `(${multiCount})`}
-          </span>
+          <span className="text-xs font-medium text-gray-700">Outils photo {multiCount > 0 && `(${multiCount})`}</span>
         </div>
         <div className="flex items-center gap-1" data-no-drag>
           <button
@@ -241,11 +292,7 @@ export const ImageToolsModal: React.FC<ImageToolsModalProps> = ({
           >
             {isPinned ? <Pin className="h-3 w-3 text-blue-500" /> : <PinOff className="h-3 w-3 text-gray-400" />}
           </button>
-          <button
-            className="p-1 rounded hover:bg-gray-200"
-            title="Fermer"
-            onClick={onClose}
-          >
+          <button className="p-1 rounded hover:bg-gray-200" title="Fermer" onClick={onClose}>
             <X className="h-3.5 w-3.5 text-gray-500" />
           </button>
         </div>
@@ -269,17 +316,13 @@ export const ImageToolsModal: React.FC<ImageToolsModalProps> = ({
               className="flex-1 h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-500"
             />
             <span className="text-xs text-gray-600 w-8 text-right">{Math.round((image?.opacity ?? 1) * 100)}%</span>
-            <button
-              className="p-1 rounded hover:bg-gray-200"
-              title="Réinitialiser opacité"
-              onClick={resetOpacity}
-            >
+            <button className="p-1 rounded hover:bg-gray-200" title="Réinitialiser opacité" onClick={resetOpacity}>
               <RotateCcw className="h-3 w-3 text-gray-400" />
             </button>
           </div>
         </div>
 
-        {/* Rotation (si image sélectionnée) */}
+        {/* Rotation */}
         {hasSelection && (
           <div className="mb-3">
             <label className="text-[10px] text-gray-500 mb-1 block">
@@ -350,14 +393,22 @@ export const ImageToolsModal: React.FC<ImageToolsModalProps> = ({
               title={image?.locked ? "Déverrouiller" : "Verrouiller"}
               onClick={toggleLock}
             >
-              {image?.locked ? <Unlock className="h-4 w-4 text-green-500" /> : <Lock className="h-4 w-4 text-orange-500" />}
+              {image?.locked ? (
+                <Unlock className="h-4 w-4 text-green-500" />
+              ) : (
+                <Lock className="h-4 w-4 text-orange-500" />
+              )}
             </button>
             <button
               className={`p-1.5 rounded hover:bg-gray-100 ${!image?.visible ? "bg-blue-50" : ""}`}
               title={image?.visible ? "Masquer" : "Afficher"}
               onClick={toggleVisible}
             >
-              {image?.visible ? <EyeOff className="h-4 w-4 text-gray-500" /> : <Eye className="h-4 w-4 text-blue-500" />}
+              {image?.visible ? (
+                <EyeOff className="h-4 w-4 text-gray-500" />
+              ) : (
+                <Eye className="h-4 w-4 text-blue-500" />
+              )}
             </button>
             <button
               className={`p-1.5 rounded hover:bg-gray-100 ${currentLayer?.solo ? "bg-yellow-100" : ""}`}
@@ -366,18 +417,10 @@ export const ImageToolsModal: React.FC<ImageToolsModalProps> = ({
             >
               <Focus className={`h-4 w-4 ${currentLayer?.solo ? "text-yellow-600" : "text-yellow-500"}`} />
             </button>
-            <button
-              className="p-1.5 rounded hover:bg-gray-100"
-              title="Premier plan"
-              onClick={bringToFront}
-            >
+            <button className="p-1.5 rounded hover:bg-gray-100" title="Premier plan" onClick={bringToFront}>
               <ArrowUpToLine className="h-4 w-4 text-blue-500" />
             </button>
-            <button
-              className="p-1.5 rounded hover:bg-gray-100"
-              title="Arrière-plan"
-              onClick={sendToBack}
-            >
+            <button className="p-1.5 rounded hover:bg-gray-100" title="Arrière-plan" onClick={sendToBack}>
               <ArrowDownToLine className="h-4 w-4 text-orange-500" />
             </button>
             <button
@@ -385,8 +428,70 @@ export const ImageToolsModal: React.FC<ImageToolsModalProps> = ({
               title={image?.blendMode === "stripes" ? "Mode normal" : "Mode damier (alignement)"}
               onClick={toggleStripes}
             >
-              <SlidersHorizontal className={`h-4 w-4 ${image?.blendMode === "stripes" ? "text-cyan-600" : "text-cyan-500"}`} />
+              <SlidersHorizontal
+                className={`h-4 w-4 ${image?.blendMode === "stripes" ? "text-cyan-600" : "text-cyan-500"}`}
+              />
             </button>
+          </div>
+        )}
+
+        {/* Paires de calibration */}
+        {calibrationPairs.length > 0 && (
+          <div className="mb-3">
+            <label className="text-[10px] text-gray-500 mb-1.5 block flex items-center gap-1">
+              <Ruler className="h-3 w-3" />
+              Paires de calibration ({calibrationPairs.length})
+            </label>
+            <div className="space-y-1 max-h-32 overflow-y-auto">
+              {calibrationPairs.map((pair, index) => (
+                <div
+                  key={pair.id}
+                  className={`flex items-center gap-2 px-2 py-1 rounded text-xs cursor-pointer transition-colors ${
+                    highlightedPairId === pair.id ? "bg-blue-100 ring-1 ring-blue-400" : "hover:bg-gray-50"
+                  }`}
+                  onMouseEnter={() => setHighlightedPairId(pair.id)}
+                  onMouseLeave={() => {
+                    if (editingPairId !== pair.id) setHighlightedPairId(null);
+                  }}
+                >
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: pair.color }} />
+                  <span className="text-gray-500">P{index + 1}:</span>
+                  {editingPairId === pair.id ? (
+                    <div className="flex items-center gap-1 flex-1">
+                      <input
+                        ref={inputRef}
+                        type="number"
+                        value={editingValue}
+                        onChange={(e) => setEditingValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") saveEditingPair();
+                          if (e.key === "Escape") cancelEditingPair();
+                        }}
+                        onBlur={saveEditingPair}
+                        className="w-16 h-5 text-xs text-center border rounded px-1"
+                        step="0.1"
+                        min="0.1"
+                      />
+                      <span className="text-gray-400">mm</span>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="font-medium">{pair.distanceMm} mm</span>
+                      <button
+                        className="ml-auto p-0.5 rounded hover:bg-gray-200"
+                        title="Modifier la distance"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startEditingPair(pair);
+                        }}
+                      >
+                        <Edit3 className="h-3 w-3 text-gray-400" />
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

@@ -864,6 +864,7 @@ export function CADGabaritCanvas({
   // MOD v7.36: Modale flottante pour outils photo
   const [showImageToolsModal, setShowImageToolsModal] = useState(false);
   const [imageToolsModalPos, setImageToolsModalPos] = useState({ x: 100, y: 100 });
+  const [highlightedPairId, setHighlightedPairId] = useState<string | null>(null);
 
   // ============================================
   // NOUVEAU SYSTÈME DE TOOLBAR CONFIGURABLE (v7.11)
@@ -1923,6 +1924,7 @@ export function CADGabaritCanvas({
       imageScale,
       calibrationData,
       showCalibration: showCalibrationPanel, // Afficher uniquement si panneau ouvert
+      highlightedPairId, // Paire de calibration en surbrillance
       // Mesure en cours (preview)
       measureData: measureStart
         ? {
@@ -18405,6 +18407,25 @@ export function CADGabaritCanvas({
           }}
           getSelectedImageRotation={getSelectedImageRotation}
           updateSelectedImageRotation={updateSelectedImageRotation}
+          highlightedPairId={highlightedPairId}
+          setHighlightedPairId={setHighlightedPairId}
+          onUpdatePairDistance={(pairId, distanceMm) => {
+            if (!selectedImageId) return;
+            setBackgroundImages((prev) =>
+              prev.map((img) => {
+                if (img.id !== selectedImageId || !img.calibrationData?.pairs) return img;
+                const newPairs = new Map(img.calibrationData.pairs);
+                const pair = newPairs.get(pairId);
+                if (pair) {
+                  newPairs.set(pairId, { ...pair, distanceMm });
+                }
+                return {
+                  ...img,
+                  calibrationData: { ...img.calibrationData, pairs: newPairs },
+                };
+              }),
+            );
+          }}
           initialPosition={imageToolsModalPos}
         />
       </div>
