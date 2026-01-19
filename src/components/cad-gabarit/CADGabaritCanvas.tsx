@@ -1,8 +1,13 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.31 - Restauration cotations automatiques
+// VERSION: 7.33 - Fix restauration Supabase (layers, groups, shapeFills)
 // ============================================
+//
+// CHANGELOG v7.33 (19/01/2026):
+// - Fix restauration Supabase: loadSketchData restaure maintenant layers, groups, shapeFills, activeLayerId
+// - Fix saveSketch: sauvegarde maintenant layers, groups, shapeFills, activeLayerId
+// - Fix menu contextuel Supprimer photo: sauvegarde historique + suppression liens markers
 //
 // CHANGELOG v7.31 (18/01/2026):
 // - Restauration des cotations automatiques (useAutoDimensions.ts)
@@ -3831,6 +3836,40 @@ export function CADGabaritCanvas({
         }
       }
 
+      // FIX v7.33: Restaurer les calques (layers)
+      if (data.layers) {
+        newSketch.layers = new Map();
+        for (const [id, layer] of Object.entries(data.layers)) {
+          newSketch.layers.set(id, layer as Layer);
+        }
+      }
+
+      // FIX v7.33: Restaurer les groupes de calques
+      if (data.groups) {
+        newSketch.groups = new Map();
+        for (const [id, group] of Object.entries(data.groups)) {
+          newSketch.groups.set(id, group as LayerGroup);
+        }
+      }
+
+      // FIX v7.33: Restaurer les remplissages de formes
+      if (data.shapeFills) {
+        newSketch.shapeFills = new Map();
+        for (const [id, fill] of Object.entries(data.shapeFills)) {
+          newSketch.shapeFills.set(id, fill as ShapeFill);
+        }
+      }
+
+      // FIX v7.33: Restaurer le calque actif
+      if (data.activeLayerId) {
+        newSketch.activeLayerId = data.activeLayerId;
+      }
+
+      // FIX v7.33: Restaurer le scale factor si présent
+      if (data.scaleFactor !== undefined) {
+        newSketch.scaleFactor = data.scaleFactor;
+      }
+
       setSketch(newSketch);
 
       // Charger les données de la grille A4 si présentes
@@ -3864,6 +3903,11 @@ export function CADGabaritCanvas({
       dimensions: Object.fromEntries(sketch.dimensions),
       scaleFactor: sketch.scaleFactor,
       savedAt: new Date().toISOString(),
+      // FIX v7.33: Sauvegarder les calques (layers)
+      layers: sketch.layers ? Object.fromEntries(sketch.layers) : undefined,
+      groups: sketch.groups ? Object.fromEntries(sketch.groups) : undefined,
+      shapeFills: sketch.shapeFills ? Object.fromEntries(sketch.shapeFills) : undefined,
+      activeLayerId: sketch.activeLayerId,
       // Données de la grille A4
       a4Grid: {
         origin: a4GridOrigin,
@@ -3898,7 +3942,7 @@ export function CADGabaritCanvas({
     formattedLastBackup: autoBackupFormatted,
   } = useCADAutoBackup(sketch, backgroundImages, markerLinks, loadSketchData, setBackgroundImages, setMarkerLinks, {
     enabled: true,
-    intervalMs: 30000, // Sauvegarde toutes les 30 secondes
+    intervalMs: 120000, // FIX CPU: Sauvegarde toutes les 2 minutes (était 30s - trop fréquent)
     minGeometryCount: 1, // Sauvegarder dès qu'il y a au moins 1 géométrie
     templateId,
   });
