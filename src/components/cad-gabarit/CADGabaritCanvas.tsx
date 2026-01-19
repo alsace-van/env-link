@@ -249,6 +249,8 @@ import { PrintPreviewModal } from "./PrintPreviewModal";
 // MOD v7.14: Auto-backup sur Supabase pour protection contre les pertes
 import { useCADAutoBackup } from "./useCADAutoBackup";
 import { useCalibration } from "./useCalibration";
+// MOD v7.32: Drag & drop d'images sur le canvas
+import { useImageDragDrop } from "./useImageDragDrop";
 import { CalibrationPanel } from "./CalibrationPanel";
 import { MeasurePanel, type Measurement } from "./MeasurePanel";
 
@@ -3899,6 +3901,19 @@ export function CADGabaritCanvas({
     intervalMs: 30000, // Sauvegarde toutes les 30 secondes
     minGeometryCount: 1, // Sauvegarder dès qu'il y a au moins 1 géométrie
     templateId,
+  });
+
+  // v7.32: Hook pour le drag & drop d'images sur le canvas
+  useImageDragDrop({
+    containerRef,
+    viewport,
+    imageOpacity,
+    activeLayerId: sketch.activeLayerId,
+    onImagesAdded: useCallback((newImages: BackgroundImage[]) => {
+      setBackgroundImages((prev) => [...prev, ...newImages]);
+      toast.success(`${newImages.length} photo(s) ajoutée(s)`);
+    }, []),
+    setShowBackgroundImage,
   });
 
   // Résoudre le sketch
