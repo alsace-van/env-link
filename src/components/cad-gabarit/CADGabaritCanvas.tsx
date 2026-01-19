@@ -3910,8 +3910,39 @@ export function CADGabaritCanvas({
     imageOpacity,
     activeLayerId: sketch.activeLayerId,
     onImagesAdded: useCallback((newImages: BackgroundImage[]) => {
-      setBackgroundImages((prev) => [...prev, ...newImages]);
-      toast.success(`${newImages.length} photo(s) ajoutée(s)`);
+      // v7.32: Créer un calque pour chaque photo
+      const imagesWithLayers: BackgroundImage[] = [];
+      const newLayers: Layer[] = [];
+
+      newImages.forEach((img, index) => {
+        // Créer un nouveau calque pour cette photo
+        const layerId = `photo_${img.id}`;
+        const photoName = img.name?.replace(/\.[^/.]+$/, "") || `Photo ${index + 1}`; // Enlever l'extension
+
+        const newLayer: Layer = {
+          id: layerId,
+          name: photoName,
+          color: "#EC4899", // Rose pour les calques photos
+          visible: true,
+          locked: false,
+          order: 100 + index, // Ordre élevé pour les mettre en bas de la liste
+          opacity: 1,
+        };
+
+        newLayers.push(newLayer);
+        imagesWithLayers.push({ ...img, layerId });
+      });
+
+      // Ajouter les calques au sketch
+      setSketch((prev) => {
+        const updatedLayers = new Map(prev.layers);
+        newLayers.forEach((layer) => updatedLayers.set(layer.id, layer));
+        return { ...prev, layers: updatedLayers };
+      });
+
+      // Ajouter les images
+      setBackgroundImages((prev) => [...prev, ...imagesWithLayers]);
+      toast.success(`${newImages.length} photo(s) ajoutée(s) avec calque(s)`);
     }, []),
     setShowBackgroundImage,
   });
@@ -21052,8 +21083,43 @@ export function CADGabaritCanvas({
                     <Trash2 className="h-4 w-4" />
                     Supprimer
                   </button>
+                  {/* v7.32: Option pour masquer/afficher le calque de la photo */}
                   {currentLayer && (
-                    <div className="px-3 py-1 text-xs text-gray-400 border-t mt-1">Calque: {currentLayer.name}</div>
+                    <>
+                      <div className="border-t my-1" />
+                      <button
+                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        onClick={() => {
+                          setSketch((prev) => {
+                            const updatedLayers = new Map(prev.layers);
+                            const layer = updatedLayers.get(currentLayer.id);
+                            if (layer) {
+                              updatedLayers.set(currentLayer.id, { ...layer, visible: !layer.visible });
+                            }
+                            return { ...prev, layers: updatedLayers };
+                          });
+                          toast.success(
+                            currentLayer.visible
+                              ? `Calque "${currentLayer.name}" masqué`
+                              : `Calque "${currentLayer.name}" affiché`,
+                          );
+                          setContextMenu(null);
+                        }}
+                      >
+                        {currentLayer.visible ? (
+                          <>
+                            <EyeOff className="h-4 w-4 text-purple-500" />
+                            Masquer calque "{currentLayer.name}"
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="h-4 w-4 text-purple-500" />
+                            Afficher calque "{currentLayer.name}"
+                          </>
+                        )}
+                      </button>
+                      <div className="px-3 py-1 text-xs text-gray-400">Calque: {currentLayer.name}</div>
+                    </>
                   )}
                 </>
               );
