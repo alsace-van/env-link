@@ -3844,11 +3844,19 @@ export function CADGabaritCanvas({
         }
       }
 
-      // FIX v7.33: Restaurer les groupes de calques
+      // FIX v7.33: Restaurer les groupes de géométries
       if (data.groups) {
         newSketch.groups = new Map();
         for (const [id, group] of Object.entries(data.groups)) {
-          newSketch.groups.set(id, group as LayerGroup);
+          newSketch.groups.set(id, group as GeometryGroup);
+        }
+      }
+
+      // FIX v7.33: Restaurer les groupes de calques (dossiers)
+      if (data.layerGroups) {
+        newSketch.layerGroups = new Map();
+        for (const [id, layerGroup] of Object.entries(data.layerGroups)) {
+          newSketch.layerGroups.set(id, layerGroup as LayerGroup);
         }
       }
 
@@ -3903,8 +3911,9 @@ export function CADGabaritCanvas({
       dimensions: Object.fromEntries(sketch.dimensions),
       scaleFactor: sketch.scaleFactor,
       savedAt: new Date().toISOString(),
-      // FIX v7.33: Sauvegarder les calques (layers)
+      // FIX v7.33: Sauvegarder les calques et groupes
       layers: sketch.layers ? Object.fromEntries(sketch.layers) : undefined,
+      layerGroups: sketch.layerGroups ? Object.fromEntries(sketch.layerGroups) : undefined,
       groups: sketch.groups ? Object.fromEntries(sketch.groups) : undefined,
       shapeFills: sketch.shapeFills ? Object.fromEntries(sketch.shapeFills) : undefined,
       activeLayerId: sketch.activeLayerId,
