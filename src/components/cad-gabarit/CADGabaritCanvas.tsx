@@ -10,6 +10,9 @@
 // - Fix suppression point de calibration: utilisait calibrationData au lieu de backgroundImages[].calibrationData
 // - Sélection de photo change automatiquement vers le calque correspondant
 // - Surbrillance du calque actif avec sa propre couleur (bordure + ombre)
+// - Slider d'opacité dans le menu contextuel des photos (supporte multi-sélection)
+// - Bouton "Réinitialiser opacité" dans le menu contextuel des photos
+// - Boutons "Premier plan" et "Arrière-plan" dans le menu contextuel (supporte multi-sélection)
 //
 // CHANGELOG v7.34 (19/01/2026):
 // - Fix calibration: empêche l'application multiple (décalage cumulatif des points)
@@ -182,6 +185,8 @@ import {
   CloudOff,
   RefreshCw,
   Focus,
+  ArrowUpToLine,
+  ArrowDownToLine,
 } from "lucide-react";
 
 import {
@@ -21368,6 +21373,100 @@ export function CADGabaritCanvas({
                       {currentLayer.solo ? "Désactiver l'isolation" : "Isoler (Solo)"}
                     </button>
                   )}
+                  {/* v7.35: Réglage de l'opacité des photos */}
+                  <div className="px-3 py-1.5">
+                    <div className="flex items-center gap-2 text-sm text-gray-700 mb-1">
+                      <Contrast className="h-4 w-4 text-purple-500" />
+                      <span>Opacité {selectedImageIds.size > 1 ? `(${selectedImageIds.size} photos)` : ""}</span>
+                      <span className="ml-auto text-xs text-gray-500">{Math.round(image.opacity * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={Math.round(image.opacity * 100)}
+                      onChange={(e) => {
+                        const newOpacity = parseInt(e.target.value) / 100;
+                        // Appliquer à toutes les images sélectionnées ou juste à celle-ci
+                        const imagesToUpdate =
+                          selectedImageIds.size > 1 ? selectedImageIds : new Set([contextMenu.entityId]);
+                        setBackgroundImages((prev) =>
+                          prev.map((img) => (imagesToUpdate.has(img.id) ? { ...img, opacity: newOpacity } : img)),
+                        );
+                      }}
+                      className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                  {/* v7.35: Bouton réinitialiser l'opacité */}
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      // Réinitialiser l'opacité à 100% pour les images sélectionnées ou juste celle-ci
+                      const imagesToUpdate =
+                        selectedImageIds.size > 1 ? selectedImageIds : new Set([contextMenu.entityId]);
+                      setBackgroundImages((prev) =>
+                        prev.map((img) => (imagesToUpdate.has(img.id) ? { ...img, opacity: 1 } : img)),
+                      );
+                      const count = imagesToUpdate.size;
+                      toast.success(count > 1 ? `Opacité réinitialisée (${count} photos)` : "Opacité réinitialisée");
+                      setContextMenu(null);
+                    }}
+                  >
+                    <RotateCcw className="h-4 w-4 text-gray-500" />
+                    Réinitialiser opacité {selectedImageIds.size > 1 ? `(${selectedImageIds.size})` : ""}
+                  </button>
+                  <div className="border-t my-1" />
+                  {/* v7.35: Boutons Premier plan / Arrière-plan */}
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      // Mettre au premier plan (order le plus élevé)
+                      const imagesToUpdate =
+                        selectedImageIds.size > 1 ? selectedImageIds : new Set([contextMenu.entityId]);
+                      setBackgroundImages((prev) => {
+                        const maxOrder = Math.max(...prev.map((img) => img.order), 0);
+                        let nextOrder = maxOrder + 1;
+                        return prev.map((img) => {
+                          if (imagesToUpdate.has(img.id)) {
+                            return { ...img, order: nextOrder++ };
+                          }
+                          return img;
+                        });
+                      });
+                      const count = imagesToUpdate.size;
+                      toast.success(count > 1 ? `${count} photos au premier plan` : "Photo au premier plan");
+                      setContextMenu(null);
+                    }}
+                  >
+                    <ArrowUpToLine className="h-4 w-4 text-blue-500" />
+                    Premier plan {selectedImageIds.size > 1 ? `(${selectedImageIds.size})` : ""}
+                  </button>
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      // Mettre à l'arrière-plan (order le plus bas)
+                      const imagesToUpdate =
+                        selectedImageIds.size > 1 ? selectedImageIds : new Set([contextMenu.entityId]);
+                      setBackgroundImages((prev) => {
+                        const minOrder = Math.min(...prev.map((img) => img.order), 0);
+                        let nextOrder = minOrder - imagesToUpdate.size;
+                        return prev.map((img) => {
+                          if (imagesToUpdate.has(img.id)) {
+                            return { ...img, order: nextOrder++ };
+                          }
+                          return img;
+                        });
+                      });
+                      const count = imagesToUpdate.size;
+                      toast.success(count > 1 ? `${count} photos à l'arrière-plan` : "Photo à l'arrière-plan");
+                      setContextMenu(null);
+                    }}
+                  >
+                    <ArrowDownToLine className="h-4 w-4 text-orange-500" />
+                    Arrière-plan {selectedImageIds.size > 1 ? `(${selectedImageIds.size})` : ""}
+                  </button>
+                  <div className="border-t my-1" />
                   <button
                     className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
                     onClick={() => {
