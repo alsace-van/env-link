@@ -3910,38 +3910,41 @@ export function CADGabaritCanvas({
     imageOpacity,
     activeLayerId: sketch.activeLayerId,
     onImagesAdded: useCallback((newImages: BackgroundImage[]) => {
-      // v7.32: Créer un calque pour chaque photo
-      const imagesWithLayers: BackgroundImage[] = [];
-      const newLayers: Layer[] = [];
+      // v7.32: Créer un calque pour chaque photo avec nom simple "Calque N"
+      const layerColors = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4", "#84CC16", "#EF4444"];
 
-      newImages.forEach((img, index) => {
-        // Créer un nouveau calque pour cette photo
-        const layerId = `photo_${img.id}`;
-        const photoName = img.name?.replace(/\.[^/.]+$/, "") || `Photo ${index + 1}`; // Enlever l'extension
+      setSketch((prevSketch) => {
+        const imagesWithLayers: BackgroundImage[] = [];
+        const updatedLayers = new Map(prevSketch.layers);
+        let layerCount = prevSketch.layers.size;
 
-        const newLayer: Layer = {
-          id: layerId,
-          name: photoName,
-          color: "#EC4899", // Rose pour les calques photos
-          visible: true,
-          locked: false,
-          order: 100 + index, // Ordre élevé pour les mettre en bas de la liste
-          opacity: 1,
-        };
+        newImages.forEach((img, index) => {
+          // Créer un nouveau calque pour cette photo
+          const layerId = `photo_${img.id}`;
+          layerCount++;
 
-        newLayers.push(newLayer);
-        imagesWithLayers.push({ ...img, layerId });
+          const newLayer: Layer = {
+            id: layerId,
+            name: `Calque ${layerCount}`,
+            color: layerColors[(layerCount - 1) % layerColors.length],
+            visible: true,
+            locked: false,
+            order: layerCount,
+            opacity: 1,
+          };
+
+          updatedLayers.set(layerId, newLayer);
+          imagesWithLayers.push({ ...img, layerId });
+        });
+
+        // Ajouter les images en dehors du setSketch
+        setTimeout(() => {
+          setBackgroundImages((prev) => [...prev, ...imagesWithLayers]);
+        }, 0);
+
+        return { ...prevSketch, layers: updatedLayers };
       });
 
-      // Ajouter les calques au sketch
-      setSketch((prev) => {
-        const updatedLayers = new Map(prev.layers);
-        newLayers.forEach((layer) => updatedLayers.set(layer.id, layer));
-        return { ...prev, layers: updatedLayers };
-      });
-
-      // Ajouter les images
-      setBackgroundImages((prev) => [...prev, ...imagesWithLayers]);
       toast.success(`${newImages.length} photo(s) ajoutée(s) avec calque(s)`);
     }, []),
     setShowBackgroundImage,
@@ -9294,9 +9297,9 @@ export function CADGabaritCanvas({
         } else {
           const clickedImage = findImageAtPosition(worldPos.x, worldPos.y);
           if (clickedImage) {
-            // MOD v80.2: Gestion Ctrl+clic pour multi-sélection d'images
-            if (e.ctrlKey || e.metaKey) {
-              // Ctrl+clic : ajouter/retirer de la multi-sélection
+            // MOD v80.2 + v7.32: Gestion Ctrl+clic et Shift+clic pour multi-sélection d'images
+            if (e.ctrlKey || e.metaKey || e.shiftKey) {
+              // Ctrl+clic ou Shift+clic : ajouter/retirer de la multi-sélection
               setSelectedImageIds((prev) => {
                 const newSet = new Set(prev);
                 if (newSet.has(clickedImage.id)) {
@@ -11384,10 +11387,55 @@ export function CADGabaritCanvas({
           }
         });
 
+        // v7.32: Sélection des photos par rectangle
+        const newImageSelection = e.shiftKey ? new Set(selectedImageIds) : new Set<string>();
+        backgroundImages.forEach((img) => {
+          // Vérifier la visibilité
+          if (!img.visible) return;
+          const layer = sketch.layers.get(img.layerId || "");
+          if (layer?.visible === false) return;
+
+          // Calculer la bounding box de l'image en coordonnées monde
+          const imgWidth = (img.image?.width || 100) * img.scale;
+          const imgHeight = (img.image?.height || 100) * img.scale;
+          const imgMinX = img.x - imgWidth / 2;
+          const imgMaxX = img.x + imgWidth / 2;
+          const imgMinY = img.y - imgHeight / 2;
+          const imgMaxY = img.y + imgHeight / 2;
+
+          let isSelected = false;
+          if (isWindowMode) {
+            // Mode Fenêtre : l'image entière doit être dans la zone
+            isSelected = imgMinX >= minX && imgMaxX <= maxX && imgMinY >= minY && imgMaxY <= maxY;
+          } else {
+            // Mode Capture : l'image touche la zone
+            isSelected = !(imgMaxX < minX || imgMinX > maxX || imgMaxY < minY || imgMinY > maxY);
+          }
+
+          if (isSelected) {
+            newImageSelection.add(img.id);
+          }
+        });
+
+        // Mettre à jour les sélections
         if (newSelection.size > 0) {
           setSelectedEntities(newSelection);
+        }
+        if (newImageSelection.size > 0) {
+          setSelectedImageIds(newImageSelection);
+          // Sélectionner aussi la première image pour les outils
+          if (newImageSelection.size === 1) {
+            setSelectedImageId(Array.from(newImageSelection)[0]);
+          }
+        }
+
+        const totalSelected = newSelection.size + newImageSelection.size;
+        if (totalSelected > 0) {
           const modeText = isWindowMode ? "fenêtre" : "capture";
-          toast.success(`${newSelection.size} élément(s) sélectionné(s) (mode ${modeText})`);
+          const details: string[] = [];
+          if (newSelection.size > 0) details.push(`${newSelection.size} entité(s)`);
+          if (newImageSelection.size > 0) details.push(`${newImageSelection.size} photo(s)`);
+          toast.success(`${details.join(" + ")} sélectionné(s) (mode ${modeText})`);
         }
 
         setSelectionBox(null);

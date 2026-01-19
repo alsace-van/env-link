@@ -165,7 +165,7 @@ export function LayerTabs({ sketch, setSketch }: LayerTabsProps) {
       setDraggedType(null);
       setDragOverId(null);
     },
-    [draggedId, draggedType, layerManager]
+    [draggedId, draggedType, layerManager],
   );
 
   const handleDragEnd = useCallback(() => {
@@ -199,9 +199,10 @@ export function LayerTabs({ sketch, setSketch }: LayerTabsProps) {
         className={`
           flex items-center gap-1 px-2 h-7 rounded-t-md cursor-pointer select-none
           transition-all duration-150 text-xs font-medium border border-b-0
-          ${isActive
-            ? "bg-white border-blue-400 text-blue-700 mb-[-1px] z-10 shadow-sm"
-            : "bg-gray-200 border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
+          ${
+            isActive
+              ? "bg-white border-blue-400 text-blue-700 mb-[-1px] z-10 shadow-sm"
+              : "bg-gray-200 border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
           }
           ${isDragging ? "opacity-50" : ""}
           ${isDragOver ? "border-blue-500 border-2" : ""}
@@ -336,11 +337,7 @@ export function LayerTabs({ sketch, setSketch }: LayerTabsProps) {
         >
           {/* Chevron plier/déplier */}
           <button className="p-0.5 flex-shrink-0">
-            {group.expanded ? (
-              <ChevronDown className="h-3 w-3" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
+            {group.expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           </button>
 
           {/* Icône dossier */}
@@ -377,9 +374,7 @@ export function LayerTabs({ sketch, setSketch }: LayerTabsProps) {
           <span className="text-[9px] text-gray-500">({layersInGroup.length})</span>
 
           {/* Opacité du groupe */}
-          {group.opacity < 1 && (
-            <span className="text-[9px] text-gray-400">{Math.round(group.opacity * 100)}%</span>
-          )}
+          {group.opacity < 1 && <span className="text-[9px] text-gray-400">{Math.round(group.opacity * 100)}%</span>}
 
           {/* Bouton visibilité groupe */}
           <button
@@ -525,20 +520,34 @@ export function LayerTabs({ sketch, setSketch }: LayerTabsProps) {
                   />
                 </button>
                 {contextMenu.showColorPicker && (
-                  <div className="absolute left-full top-0 ml-1 bg-white rounded-lg shadow-xl border border-gray-200 p-2 grid grid-cols-5 gap-1">
-                    {LAYER_COLORS.map((color) => (
-                      <button
-                        key={color}
-                        className={`w-6 h-6 rounded border-2 hover:scale-110 transition-transform ${
-                          contextLayer.color === color ? "border-blue-500" : "border-transparent"
-                        }`}
-                        style={{ backgroundColor: color }}
-                        onClick={() => {
-                          layerManager.setLayerColor(contextMenu.id!, color);
-                          setContextMenu((prev) => ({ ...prev, visible: false }));
+                  <div className="absolute left-full top-0 ml-1 bg-white rounded-lg shadow-xl border border-gray-200 p-2">
+                    <div className="grid grid-cols-6 gap-1 mb-2">
+                      {LAYER_COLORS.map((color) => (
+                        <button
+                          key={color}
+                          className={`w-5 h-5 rounded border-2 hover:scale-110 transition-transform ${
+                            contextLayer.color === color ? "border-blue-500 ring-1 ring-blue-300" : "border-transparent"
+                          }`}
+                          style={{ backgroundColor: color }}
+                          onClick={() => {
+                            layerManager.setLayerColor(contextMenu.id!, color);
+                            setContextMenu((prev) => ({ ...prev, visible: false }));
+                          }}
+                        />
+                      ))}
+                    </div>
+                    {/* Color picker personnalisé */}
+                    <div className="flex items-center gap-2 pt-2 border-t">
+                      <input
+                        type="color"
+                        value={contextLayer.color}
+                        onChange={(e) => {
+                          layerManager.setLayerColor(contextMenu.id!, e.target.value);
                         }}
+                        className="w-8 h-6 cursor-pointer border rounded"
                       />
-                    ))}
+                      <span className="text-xs text-gray-500">Personnalisé</span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -647,7 +656,8 @@ export function LayerTabs({ sketch, setSketch }: LayerTabsProps) {
                   </button>
                   {contextMenu.showMergeMenu && (
                     <div className="absolute left-full top-0 ml-1 bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[150px]">
-                      {layerManager.getSortedLayers()
+                      {layerManager
+                        .getSortedLayers()
                         .filter((l) => l.id !== contextMenu.id)
                         .map((layer) => (
                           <button
@@ -658,10 +668,7 @@ export function LayerTabs({ sketch, setSketch }: LayerTabsProps) {
                               setContextMenu((prev) => ({ ...prev, visible: false }));
                             }}
                           >
-                            <div
-                              className="w-3 h-3 rounded-sm border"
-                              style={{ backgroundColor: layer.color }}
-                            />
+                            <div className="w-3 h-3 rounded-sm border" style={{ backgroundColor: layer.color }} />
                             {layer.name}
                           </button>
                         ))}
@@ -762,20 +769,34 @@ export function LayerTabs({ sketch, setSketch }: LayerTabsProps) {
                   />
                 </button>
                 {contextMenu.showColorPicker && (
-                  <div className="absolute left-full top-0 ml-1 bg-white rounded-lg shadow-xl border border-gray-200 p-2 grid grid-cols-5 gap-1">
-                    {LAYER_COLORS.map((color) => (
-                      <button
-                        key={color}
-                        className={`w-6 h-6 rounded border-2 hover:scale-110 transition-transform ${
-                          contextGroup.color === color ? "border-blue-500" : "border-transparent"
-                        }`}
-                        style={{ backgroundColor: color }}
-                        onClick={() => {
-                          layerManager.setGroupColor(contextMenu.id!, color);
-                          setContextMenu((prev) => ({ ...prev, visible: false }));
+                  <div className="absolute left-full top-0 ml-1 bg-white rounded-lg shadow-xl border border-gray-200 p-2">
+                    <div className="grid grid-cols-6 gap-1 mb-2">
+                      {LAYER_COLORS.map((color) => (
+                        <button
+                          key={color}
+                          className={`w-5 h-5 rounded border-2 hover:scale-110 transition-transform ${
+                            contextGroup.color === color ? "border-blue-500 ring-1 ring-blue-300" : "border-transparent"
+                          }`}
+                          style={{ backgroundColor: color }}
+                          onClick={() => {
+                            layerManager.setGroupColor(contextMenu.id!, color);
+                            setContextMenu((prev) => ({ ...prev, visible: false }));
+                          }}
+                        />
+                      ))}
+                    </div>
+                    {/* Color picker personnalisé */}
+                    <div className="flex items-center gap-2 pt-2 border-t">
+                      <input
+                        type="color"
+                        value={contextGroup.color}
+                        onChange={(e) => {
+                          layerManager.setGroupColor(contextMenu.id!, e.target.value);
                         }}
+                        className="w-8 h-6 cursor-pointer border rounded"
                       />
-                    ))}
+                      <span className="text-xs text-gray-500">Personnalisé</span>
+                    </div>
                   </div>
                 )}
               </div>
