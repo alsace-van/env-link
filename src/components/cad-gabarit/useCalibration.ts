@@ -404,6 +404,7 @@ export function useCalibration({
     const diffPercent = (Math.abs(scaleX - scaleY) / avgScale) * 100;
     toast.success(
       `Échelle X=${scaleX.toFixed(4)} mm/px (${countX} paires), Y=${scaleY.toFixed(4)} mm/px (${countY} paires). Diff: ${diffPercent.toFixed(1)}%`,
+      { duration: 2000 }, // 2 secondes au lieu de la durée par défaut
     );
 
     console.log("[calculateCalibration] scaleX:", scaleX, "scaleY:", scaleY, "diff:", diffPercent.toFixed(2) + "%");
