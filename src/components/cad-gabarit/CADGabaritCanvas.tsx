@@ -21458,9 +21458,19 @@ export function CADGabaritCanvas({
                         <Layers className="h-3 w-3 text-blue-500" />
                         Nouveau calque
                       </button>
-                      {/* Sous-menu calques */}
+                      {/* Sous-menu calques - utilise un state pour afficher/masquer */}
                       {sketch.layers.size > 1 && (
-                        <div className="relative group">
+                        <div
+                          className="relative"
+                          onMouseEnter={(e) => {
+                            const submenu = e.currentTarget.querySelector("[data-submenu]") as HTMLElement;
+                            if (submenu) submenu.style.display = "block";
+                          }}
+                          onMouseLeave={(e) => {
+                            const submenu = e.currentTarget.querySelector("[data-submenu]") as HTMLElement;
+                            if (submenu) submenu.style.display = "none";
+                          }}
+                        >
                           <button className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5 justify-between">
                             <span className="flex items-center gap-1.5">
                               <ArrowRight className="h-3 w-3 text-gray-500" />
@@ -21468,13 +21478,21 @@ export function CADGabaritCanvas({
                             </span>
                             <ChevronRight className="h-2.5 w-2.5" />
                           </button>
-                          <div className="absolute left-full top-0 ml-1 bg-white rounded shadow-xl border py-0.5 min-w-[100px] hidden group-hover:block">
+                          <div
+                            data-submenu
+                            className="fixed bg-white rounded shadow-xl border py-0.5 min-w-[100px] z-[10001]"
+                            style={{
+                              display: "none",
+                              left: contextMenu.x + 180,
+                              top: contextMenu.y + 80,
+                            }}
+                          >
                             {Array.from(sketch.layers.values())
                               .filter((layer) => layer.id !== image.layerId)
                               .map((layer) => (
                                 <button
                                   key={layer.id}
-                                  className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5"
+                                  className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5 whitespace-nowrap"
                                   onClick={() => {
                                     setBackgroundImages((prev) =>
                                       prev.map((img) =>
@@ -21485,7 +21503,10 @@ export function CADGabaritCanvas({
                                     setContextMenu(null);
                                   }}
                                 >
-                                  <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: layer.color }} />
+                                  <div
+                                    className="w-2 h-2 rounded-sm flex-shrink-0"
+                                    style={{ backgroundColor: layer.color }}
+                                  />
                                   {layer.name}
                                 </button>
                               ))}
