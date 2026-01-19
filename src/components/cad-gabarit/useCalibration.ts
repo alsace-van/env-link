@@ -422,6 +422,13 @@ export function useCalibration({
     console.log("[applyCalibration] imgCalib:", imgCalib);
     console.log("[applyCalibration] calibrationData:", calibrationData);
 
+    // FIX v7.34: Empêcher l'application multiple de la calibration
+    if (imgCalib.applied || selectedImage?.calibrationData?.applied) {
+      toast.warning("La calibration a déjà été appliquée. Réinitialisez d'abord pour recalibrer.");
+      console.log("[applyCalibration] Calibration déjà appliquée, abandon");
+      return;
+    }
+
     // Mode simple ou anisotrope : échelle uniforme ou anisotrope
     if (calibrationData.mode === "simple" || calibrationData.mode === "anisotrope" || !calibrationData.mode) {
       const scaleX = imgCalib.scaleX || imgCalib.scale || calibrationData.scaleX || calibrationData.scale;

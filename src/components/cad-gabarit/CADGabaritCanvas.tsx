@@ -1,8 +1,16 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.33 - Fix restauration Supabase (layers, groups, shapeFills)
+// VERSION: 7.34 - Fix calibration + crop + opacité calque
 // ============================================
+//
+// CHANGELOG v7.34 (19/01/2026):
+// - Fix calibration: empêche l'application multiple (décalage cumulatif des points)
+// - Fix crop: la position de l'image reste stable après le recadrage
+// - Fix opacité calque: l'opacité du calque est maintenant appliquée aux photos
+// - Fix opacité photo: le slider modifie uniquement les photos sélectionnées
+// - Fix CPU Supabase: intervalMs passé de 30s à 2min
+// - Ajout bouton "Calibrer" dans le menu contextuel des photos
 //
 // CHANGELOG v7.33 (19/01/2026):
 // - Fix restauration Supabase: loadSketchData restaure maintenant layers, groups, shapeFills, activeLayerId
@@ -21257,6 +21265,20 @@ export function CADGabaritCanvas({
                         Verrouiller
                       </>
                     )}
+                  </button>
+                  {/* v7.34: Bouton Calibrer */}
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      // Sélectionner l'image et ouvrir le panneau de calibration
+                      setSelectedImageId(contextMenu.entityId);
+                      setSelectedImageIds(new Set([contextMenu.entityId]));
+                      setShowCalibrationPanel(true);
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Ruler className="h-4 w-4 text-cyan-500" />
+                    Calibrer
                   </button>
                   <button
                     className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
