@@ -301,14 +301,7 @@ export class CADRenderer {
     if (backgroundImages.length > 0) {
       // MOD v80.7: Passer selectedImageIds pour affichage multi-sélection
       // FIX v7.33: Passer les layers pour appliquer l'opacité du calque
-      this.drawBackgroundImages(
-        backgroundImages,
-        selectedImageId,
-        selectedImageIds,
-        markerLinks,
-        selectedMarkerId,
-        sketch.layers,
-      );
+      this.drawBackgroundImages(backgroundImages, selectedImageId, selectedImageIds, markerLinks, selectedMarkerId, sketch.layers);
     } else if (transformedImage) {
       // Legacy: image transformée unique
       this.drawTransformedImage(transformedImage, imageOpacity, imageScale);
@@ -361,10 +354,26 @@ export class CADRenderer {
     const cullTop = (rulerSize - this.viewport.offsetY) / this.viewport.scale;
     const cullBottom = (this.viewport.height - this.viewport.offsetY) / this.viewport.scale;
 
+    // DEBUG: Log une fois par seconde pour vérifier le rendu
+    const now = Date.now();
+    if (!this._lastLogTime || now - this._lastLogTime > 1000) {
+      this._lastLogTime = now;
+      console.log("[Renderer] render:", {
+        geometries: sketch.geometries.size,
+        points: sketch.points.size,
+        layers: sketch.layers.size,
+        viewport: { scale: this.viewport.scale, offsetX: this.viewport.offsetX, offsetY: this.viewport.offsetY },
+        cullBounds: { left: cullLeft, right: cullRight, top: cullTop, bottom: cullBottom },
+      });
+    }
+
     // 2.5 FANTÔME: Dessiner les positions initiales en pointillé pendant le drag du gizmo
     if (gizmoDrag && gizmoDrag.active && gizmoDrag.initialPositions && selectedEntitiesForGhost.size > 0) {
       this.drawGhostGeometries(sketch, selectedEntitiesForGhost, gizmoDrag.initialPositions);
     }
+
+    // Vérifier si un calque est en mode solo
+    const hasSoloLayer = Array.from(sketch.layers.values()).some((l) => l.solo);
 
     sketch.geometries.forEach((geo, id) => {
       // Vérifier si le calque est visible
@@ -372,6 +381,8 @@ export class CADRenderer {
       const layer = sketch.layers.get(layerId);
       // Si le calque existe et n'est pas visible, ne pas dessiner
       if (layer?.visible === false) return;
+      // Mode solo : si un calque est en solo, masquer tous les autres
+      if (hasSoloLayer && !layer?.solo) return;
 
       // Vérifier si c'est une ligne de construction et si on doit la masquer
       const isConstruction = (geo as any).isConstruction === true;
@@ -525,6 +536,8 @@ export class CADRenderer {
       const layerId = geo.layerId || "trace";
       const layer = sketch.layers.get(layerId);
       if (layer?.visible === false) return;
+      // Mode solo : si un calque est en solo, masquer tous les autres
+      if (hasSoloLayer && !layer?.solo) return;
 
       // Collecter les points de cette géométrie
       if (geo.type === "line") {
@@ -780,10 +793,15 @@ export class CADRenderer {
     // Trier par ordre d'affichage (0 = fond, plus élevé = devant)
     const sortedImages = [...images].filter((img) => img.visible).sort((a, b) => a.order - b.order);
 
+    // Vérifier si un calque est en mode solo
+    const hasSoloLayer = layers ? Array.from(layers.values()).some((l) => l.solo) : false;
+
     for (const bgImage of sortedImages) {
       // FIX v7.33: Vérifier la visibilité du calque
       const layer = layers?.get(bgImage.layerId || "");
       if (layer?.visible === false) continue;
+      // Mode solo : si un calque est en solo, masquer les images des autres calques
+      if (hasSoloLayer && !layer?.solo) continue;
 
       this.ctx.save();
 
@@ -1097,11 +1115,7 @@ export class CADRenderer {
    * Appelé en dernier pour être par-dessus tout
    * Style croix de visée précis pour calibration
    */
-  private drawImageCalibrationPoints(
-    images: BackgroundImage[],
-    selectedImageId: string,
-    highlightedPairId: string | null = null,
-  ): void {
+  private drawImageCalibrationPoints(images: BackgroundImage[], selectedImageId: string, highlightedPairId: string | null = null): void {
     const selectedImage = images.find((img) => img.id === selectedImageId);
     if (!selectedImage?.calibrationData) return;
 
@@ -1197,7 +1211,7 @@ export class CADRenderer {
           midX - textWidth / 2 - padding,
           midY - labelFontSize / 2 - padding / 2,
           textWidth + padding * 2,
-          labelFontSize + padding,
+          labelFontSize + padding
         );
         this.ctx.globalAlpha = 1;
         this.ctx.fillStyle = "#FFFFFF";
