@@ -8560,12 +8560,28 @@ export function CADGabaritCanvas({
 
         ctx.drawImage(sourceImage, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
-        console.log("[CROP] Created cropped canvas:", cropW, "x", cropH);
-        console.log("[CROP] Image scale unchanged:", img.scale);
+        // FIX v7.33: Calculer le décalage pour garder la position visuelle
+        // Le centre de l'image originale était à (0, 0) en coordonnées locales
+        // Le centre de la zone croppée est à (cropX + cropW/2, cropY + cropH/2) dans l'image originale
+        // Le décalage en coordonnées monde = (centre crop - centre original) * scale
+        const originalCenterX = srcWidth / 2;
+        const originalCenterY = srcHeight / 2;
+        const cropCenterX = cropX + cropW / 2;
+        const cropCenterY = cropY + cropH / 2;
 
-        // Retourner un nouvel objet avec le croppedCanvas
+        // Décalage en pixels de l'image source, puis converti en coordonnées monde via le scale
+        const offsetX = (cropCenterX - originalCenterX) * img.scale;
+        const offsetY = (cropCenterY - originalCenterY) * img.scale;
+
+        console.log("[CROP] Position adjustment:", { offsetX, offsetY });
+        console.log("[CROP] Old position:", { x: img.x, y: img.y });
+        console.log("[CROP] New position:", { x: img.x + offsetX, y: img.y + offsetY });
+
+        // Retourner un nouvel objet avec le croppedCanvas et la position ajustée
         const newImg = {
           ...img,
+          x: img.x + offsetX,
+          y: img.y + offsetY,
           crop: { ...cropSelection },
           croppedCanvas: croppedCanvas,
         };
@@ -8580,7 +8596,7 @@ export function CADGabaritCanvas({
     });
 
     setShowCropDialog(false);
-    toast.success("Recadrage appliqué - l'image devrait être plus petite");
+    toast.success("Recadrage appliqué");
   }, [selectedImageId, cropSelection]);
 
   // Réinitialiser le crop

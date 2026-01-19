@@ -60,6 +60,7 @@ import {
   ImageMarkerLink,
   ShapeFill,
   HatchPattern,
+  Layer, // FIX v7.33: Pour l'opacité des calques
   distance,
   midpoint,
   angle,
@@ -292,7 +293,15 @@ export class CADRenderer {
     // 1. Background images (multi-photos)
     if (backgroundImages.length > 0) {
       // MOD v80.7: Passer selectedImageIds pour affichage multi-sélection
-      this.drawBackgroundImages(backgroundImages, selectedImageId, selectedImageIds, markerLinks, selectedMarkerId);
+      // FIX v7.33: Passer les layers pour appliquer l'opacité du calque
+      this.drawBackgroundImages(
+        backgroundImages,
+        selectedImageId,
+        selectedImageIds,
+        markerLinks,
+        selectedMarkerId,
+        sketch.layers,
+      );
     } else if (transformedImage) {
       // Legacy: image transformée unique
       this.drawTransformedImage(transformedImage, imageOpacity, imageScale);
@@ -751,6 +760,7 @@ export class CADRenderer {
    * Dessine plusieurs images de fond (multi-photos)
    * Les images sont triées par ordre et dessinées à leurs positions respectives
    * MOD v80.8: Support de selectedImageIds pour affichage multi-sélection
+   * FIX v7.33: Support de l'opacité des calques
    */
   private drawBackgroundImages(
     images: BackgroundImage[],
@@ -758,11 +768,16 @@ export class CADRenderer {
     selectedImageIds: Set<string>,
     markerLinks: ImageMarkerLink[],
     selectedMarkerId: string | null,
+    layers?: Map<string, Layer>,
   ): void {
     // Trier par ordre d'affichage (0 = fond, plus élevé = devant)
     const sortedImages = [...images].filter((img) => img.visible).sort((a, b) => a.order - b.order);
 
     for (const bgImage of sortedImages) {
+      // FIX v7.33: Vérifier la visibilité du calque
+      const layer = layers?.get(bgImage.layerId || "");
+      if (layer?.visible === false) continue;
+
       this.ctx.save();
 
       // Positionner l'image à sa position (x, y)
@@ -773,8 +788,9 @@ export class CADRenderer {
         this.ctx.rotate((bgImage.rotation * Math.PI) / 180);
       }
 
-      // Appliquer l'opacité
-      this.ctx.globalAlpha = bgImage.opacity;
+      // FIX v7.33: Appliquer l'opacité (image * calque)
+      const layerOpacity = layer?.opacity ?? 1;
+      this.ctx.globalAlpha = bgImage.opacity * layerOpacity;
 
       // MOD v80.18: Ordre de priorité corrigé pour calibration anisotrope
       // transformedCanvas (calibration) > adjustedCanvas (luminosité) > croppedCanvas > image originale
