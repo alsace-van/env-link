@@ -199,6 +199,7 @@ import {
   ArrowDownToLine,
   SlidersHorizontal,
   ExternalLink,
+  Upload,
 } from "lucide-react";
 
 import {
@@ -302,6 +303,9 @@ import { LayerTabs } from "./LayerTabs";
 
 // MOD v7.36: Modale flottante pour outils photo
 import { ImageToolsModal } from "./ImageToolsModal";
+
+// MOD v7.37: Modale de calibration au drop d'image
+import { ImageCalibrationModal } from "./ImageCalibrationModal";
 
 // MOD v7.31: Cotations automatiques lors de la création de géométries
 import { useAutoDimensions } from "./useAutoDimensions";
@@ -865,6 +869,9 @@ export function CADGabaritCanvas({
   const [showImageToolsModal, setShowImageToolsModal] = useState(false);
   const [imageToolsModalPos, setImageToolsModalPos] = useState({ x: 100, y: 100 });
   const [highlightedPairId, setHighlightedPairId] = useState<string | null>(null);
+  // MOD v7.37: Modale de calibration au drop d'image
+  const [showCalibrationModal, setShowCalibrationModal] = useState(false);
+  const [pendingCalibrationImage, setPendingCalibrationImage] = useState<BackgroundImage | null>(null);
 
   // ============================================
   // NOUVEAU SYSTÈME DE TOOLBAR CONFIGURABLE (v7.11)
@@ -3983,6 +3990,192 @@ export function CADGabaritCanvas({
     return data;
   }, [sketch, onSave, a4GridOrigin, a4GridOrientation, a4GridRows, a4GridCols, a4OverlapMm, a4CutMode, measurements]);
 
+  // v7.37: Sauvegarder localement (téléchargement fichier JSON avec images)
+  const saveLocalBackup = useCallback(() => {
+    const toastId = toast.loading("Préparation de la sauvegarde locale...");
+
+    try {
+      // Sérialiser les images avec leurs data URLs
+      const serializedImages = backgroundImages.map((img) => ({
+        id: img.id,
+        name: img.name,
+        src: img.src || img.image?.src || null,
+        x: img.x,
+        y: img.y,
+        scale: img.scale,
+        rotation: img.rotation,
+        opacity: img.opacity,
+        visible: img.visible,
+        locked: img.locked,
+        markers: img.markers,
+        adjustments: img.adjustments,
+        layerId: img.layerId,
+        order: img.order,
+        crop: img.crop,
+        blendMode: img.blendMode,
+        calibrationData: img.calibrationData
+          ? {
+              mode: img.calibrationData.mode,
+              scale: img.calibrationData.scale,
+              scaleX: img.calibrationData.scaleX,
+              scaleY: img.calibrationData.scaleY,
+              error: img.calibrationData.error,
+              errorX: img.calibrationData.errorX,
+              errorY: img.calibrationData.errorY,
+              applied: img.calibrationData.applied,
+              points: img.calibrationData.points ? Array.from(img.calibrationData.points.entries()) : [],
+              pairs: img.calibrationData.pairs ? Array.from(img.calibrationData.pairs.entries()) : [],
+            }
+          : undefined,
+      }));
+
+      const localBackupData = {
+        version: "1.0",
+        exportedAt: new Date().toISOString(),
+        sketch: {
+          id: sketch.id,
+          name: sketch.name,
+          points: Object.fromEntries(sketch.points),
+          geometries: Object.fromEntries(sketch.geometries),
+          constraints: Object.fromEntries(sketch.constraints),
+          dimensions: Object.fromEntries(sketch.dimensions),
+          scaleFactor: sketch.scaleFactor,
+          layers: sketch.layers ? Object.fromEntries(sketch.layers) : undefined,
+          layerGroups: sketch.layerGroups ? Object.fromEntries(sketch.layerGroups) : undefined,
+          groups: sketch.groups ? Object.fromEntries(sketch.groups) : undefined,
+          shapeFills: sketch.shapeFills ? Object.fromEntries(sketch.shapeFills) : undefined,
+          activeLayerId: sketch.activeLayerId,
+        },
+        backgroundImages: serializedImages,
+        markerLinks: markerLinks,
+        a4Grid: {
+          origin: a4GridOrigin,
+          orientation: a4GridOrientation,
+          rows: a4GridRows,
+          cols: a4GridCols,
+          overlapMm: a4OverlapMm,
+          cutMode: a4CutMode,
+        },
+        measurements: measurements,
+      };
+
+      // Créer et télécharger le fichier
+      const jsonStr = JSON.stringify(localBackupData, null, 2);
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = url;
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      link.download = `cad-backup-${timestamp}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success(`Sauvegarde locale téléchargée ! (${backgroundImages.length} photos)`, { id: toastId });
+    } catch (error) {
+      console.error("[LocalBackup] Error:", error);
+      toast.error("Erreur lors de la sauvegarde locale", { id: toastId });
+    }
+  }, [
+    sketch,
+    backgroundImages,
+    markerLinks,
+    a4GridOrigin,
+    a4GridOrientation,
+    a4GridRows,
+    a4GridCols,
+    a4OverlapMm,
+    a4CutMode,
+    measurements,
+  ]);
+
+  // v7.37: Charger une sauvegarde locale
+  const loadLocalBackup = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const toastId = toast.loading("Chargement de la sauvegarde...");
+
+        try {
+          const jsonStr = event.target?.result as string;
+          const data = JSON.parse(jsonStr);
+
+          if (!data.version || !data.sketch) {
+            throw new Error("Format de fichier invalide");
+          }
+
+          // Charger le sketch
+          loadSketchData(data.sketch);
+
+          // Charger les images
+          if (data.backgroundImages && data.backgroundImages.length > 0) {
+            const loadedImages: BackgroundImage[] = [];
+
+            for (const imgData of data.backgroundImages) {
+              if (!imgData.src) continue;
+
+              try {
+                // Charger l'image
+                const htmlImage = await new Promise<HTMLImageElement>((resolve, reject) => {
+                  const img = new Image();
+                  img.onload = () => resolve(img);
+                  img.onerror = () => reject(new Error(`Échec du chargement: ${imgData.name}`));
+                  img.src = imgData.src;
+                });
+
+                // Reconvertir calibrationData si présent
+                const calibData = imgData.calibrationData;
+                loadedImages.push({
+                  ...imgData,
+                  image: htmlImage,
+                  calibrationData: calibData
+                    ? {
+                        ...calibData,
+                        points:
+                          calibData.points && Array.isArray(calibData.points) ? new Map(calibData.points) : new Map(),
+                        pairs: calibData.pairs && Array.isArray(calibData.pairs) ? new Map(calibData.pairs) : new Map(),
+                      }
+                    : undefined,
+                });
+              } catch (err) {
+                console.warn("[LocalBackup] Skipping image:", imgData.name, err);
+              }
+            }
+
+            if (loadedImages.length > 0) {
+              setBackgroundImages(loadedImages);
+              setShowBackgroundImage(true);
+            }
+          }
+
+          // Charger les markerLinks
+          if (data.markerLinks) {
+            setMarkerLinks(data.markerLinks);
+          }
+
+          // Charger les mesures
+          if (data.measurements) {
+            setMeasurements(data.measurements);
+          }
+
+          toast.success(`Sauvegarde chargée ! (${data.backgroundImages?.length || 0} photos)`, { id: toastId });
+        } catch (error) {
+          console.error("[LocalBackup] Error loading:", error);
+          toast.error("Erreur lors du chargement", { id: toastId });
+        }
+      };
+
+      reader.readAsText(file);
+      e.target.value = ""; // Reset pour permettre de re-sélectionner le même fichier
+    },
+    [loadSketchData, setBackgroundImages, setMarkerLinks, setMeasurements, setShowBackgroundImage],
+  );
+
   // ============================================
   // MOD v7.14: AUTO-BACKUP SUPABASE
   // Protection contre les pertes de données spontanées
@@ -3995,11 +4188,45 @@ export function CADGabaritCanvas({
     restoreFromBackup: autoBackupRestore,
     formattedLastBackup: autoBackupFormatted,
   } = useCADAutoBackup(sketch, backgroundImages, markerLinks, loadSketchData, setBackgroundImages, setMarkerLinks, {
-    enabled: true,
+    enabled: false, // TEMPORAIRE: Désactivé car Auth Supabase unhealthy
     intervalMs: 120000, // FIX CPU: Sauvegarde toutes les 2 minutes (était 30s - trop fréquent)
     minGeometryCount: 1, // Sauvegarder dès qu'il y a au moins 1 géométrie
     templateId,
   });
+
+  // v7.37: Fonction pour ajouter une image avec son calque
+  const addImageWithLayer = useCallback(
+    (img: BackgroundImage) => {
+      const layerColors = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4", "#84CC16", "#EF4444"];
+
+      setSketch((prevSketch) => {
+        const updatedLayers = new Map(prevSketch.layers);
+        const layerCount = prevSketch.layers.size + 1;
+        const layerId = `photo_${img.id}`;
+
+        const newLayer: Layer = {
+          id: layerId,
+          name: `Calque ${layerCount}`,
+          color: layerColors[(layerCount - 1) % layerColors.length],
+          visible: true,
+          locked: false,
+          order: layerCount,
+          opacity: 1,
+        };
+
+        updatedLayers.set(layerId, newLayer);
+
+        // Ajouter l'image en dehors du setSketch
+        setTimeout(() => {
+          setBackgroundImages((prev) => [...prev, { ...img, layerId }]);
+          setShowBackgroundImage(true);
+        }, 0);
+
+        return { ...prevSketch, layers: updatedLayers };
+      });
+    },
+    [setShowBackgroundImage],
+  );
 
   // v7.32: Hook pour le drag & drop d'images sur le canvas
   useImageDragDrop({
@@ -4046,6 +4273,12 @@ export function CADGabaritCanvas({
       toast.success(`${newImages.length} photo(s) ajoutée(s) avec calque(s)`);
     }, []),
     setShowBackgroundImage,
+    // v7.37: Callback pour demander si calibrer l'image au drop
+    onAskCalibration: useCallback((image: BackgroundImage) => {
+      // Stocker l'image en attente et ouvrir la modale de choix
+      setPendingCalibrationImage(image);
+      setShowCalibrationModal(true);
+    }, []),
   });
 
   // v7.32: Supprimer les photos dont le calque a été supprimé
@@ -16027,6 +16260,44 @@ export function CADGabaritCanvas({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
+
+              <Separator orientation="vertical" className="h-6 mx-1" />
+
+              {/* v7.37: Sauvegarde locale (fichier JSON) */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={saveLocalBackup}
+                      className="h-9 w-9 p-0 border-green-300 hover:bg-green-50"
+                    >
+                      <Download className="h-4 w-4 text-green-600" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Télécharger sauvegarde locale (avec photos)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              {/* v7.37: Charger sauvegarde locale */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <label className="cursor-pointer">
+                      <input type="file" accept=".json" onChange={loadLocalBackup} className="hidden" />
+                      <div className="h-9 w-9 p-0 border rounded-md flex items-center justify-center border-blue-300 hover:bg-blue-50 transition-colors">
+                        <Upload className="h-4 w-4 text-blue-600" />
+                      </div>
+                    </label>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Charger sauvegarde locale</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </ToolbarGroupWrapper>
             <DropZoneBetweenGroups targetIndex={1} lineIndex={0} />
           </>
@@ -18427,6 +18698,38 @@ export function CADGabaritCanvas({
             );
           }}
           initialPosition={imageToolsModalPos}
+        />
+
+        {/* v7.37: Modale de calibration au drop d'image */}
+        <ImageCalibrationModal
+          isOpen={showCalibrationModal}
+          onClose={() => {
+            setShowCalibrationModal(false);
+            setPendingCalibrationImage(null);
+          }}
+          image={pendingCalibrationImage}
+          onSkip={() => {
+            // Ajouter l'image sans calibration
+            if (pendingCalibrationImage) {
+              addImageWithLayer(pendingCalibrationImage);
+              toast.success("Image ajoutée sans calibration");
+            }
+            setShowCalibrationModal(false);
+            setPendingCalibrationImage(null);
+          }}
+          onCalibrate={(calibrationData) => {
+            // Ajouter l'image avec la calibration
+            if (pendingCalibrationImage) {
+              addImageWithLayer({ ...pendingCalibrationImage, calibrationData });
+              if (calibrationData?.applied) {
+                toast.success("Image ajoutée avec calibration !");
+              } else {
+                toast.success("Image ajoutée (calibration partielle)");
+              }
+            }
+            setShowCalibrationModal(false);
+            setPendingCalibrationImage(null);
+          }}
         />
       </div>
 
