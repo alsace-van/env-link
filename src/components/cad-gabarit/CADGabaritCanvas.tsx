@@ -5,8 +5,10 @@
 // ============================================
 //
 // CHANGELOG v7.36 (19/01/2026):
-// - Mode "rayures" pour les photos: permet de voir à travers pour aligner
-// - Bouton dans le menu contextuel pour activer/désactiver le mode rayures
+// - Mode "damier" pour les photos: permet de voir à travers pour aligner
+// - Modale flottante "Outils photo" détachable (bouton dans menu Outils + menu contextuel)
+// - Modale inclut: opacité, rotation, ajustements, recadrage, calibration, marqueurs, calques
+// - Modale draggable avec option épingler (reste ouverte après actions)
 // - Solution au problème de mélange d'opacité quand 2 photos se superposent
 //
 // CHANGELOG v7.35 (19/01/2026):
@@ -196,6 +198,7 @@ import {
   ArrowUpToLine,
   ArrowDownToLine,
   SlidersHorizontal,
+  ExternalLink,
 } from "lucide-react";
 
 import {
@@ -296,6 +299,9 @@ import { ManualStretchControls } from "./ManualStretchControls";
 
 // MOD v7.29: Gestion avancée des calques
 import { LayerTabs } from "./LayerTabs";
+
+// MOD v7.36: Modale flottante pour outils photo
+import { ImageToolsModal } from "./ImageToolsModal";
 
 // MOD v7.31: Cotations automatiques lors de la création de géométries
 import { useAutoDimensions } from "./useAutoDimensions";
@@ -855,6 +861,9 @@ export function CADGabaritCanvas({
   const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
   // MOD v80.13: Modale d'impression avec duplication
   const [showPrintDialog, setShowPrintDialog] = useState(false);
+  // MOD v7.36: Modale flottante pour outils photo
+  const [showImageToolsModal, setShowImageToolsModal] = useState(false);
+  const [imageToolsModalPos, setImageToolsModalPos] = useState({ x: 100, y: 100 });
 
   // ============================================
   // NOUVEAU SYSTÈME DE TOOLBAR CONFIGURABLE (v7.11)
@@ -16878,6 +16887,20 @@ export function CADGabaritCanvas({
 
                   <DropdownMenuSeparator />
 
+                  {/* Détacher le menu en modale flottante */}
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setImageToolsModalPos({ x: 100, y: 100 });
+                      setShowImageToolsModal(true);
+                    }}
+                    className="text-blue-600 focus:text-blue-600"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Détacher le menu
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
                   {/* Supprimer */}
                   <DropdownMenuItem
                     onClick={() => {
@@ -18309,6 +18332,80 @@ export function CADGabaritCanvas({
         <CalibrationRulerGenerator
           open={showCalibrationRulerGenerator}
           onOpenChange={setShowCalibrationRulerGenerator}
+        />
+
+        {/* v7.36: Modale flottante pour outils photo */}
+        <ImageToolsModal
+          isOpen={showImageToolsModal}
+          onClose={() => setShowImageToolsModal(false)}
+          selectedImageId={selectedImageId}
+          selectedImageIds={selectedImageIds}
+          backgroundImages={backgroundImages}
+          setBackgroundImages={setBackgroundImages}
+          layers={sketch.layers}
+          setSketch={setSketch}
+          onCalibrate={(imageId) => {
+            setSelectedImageId(imageId);
+            setSelectedImageIds(new Set([imageId]));
+            setShowCalibrationPanel(true);
+          }}
+          onMoveToNewLayer={moveImageToNewLayer}
+          onMoveToLayer={(imageId, layerId) => {
+            setBackgroundImages((prev) => prev.map((img) => (img.id === imageId ? { ...img, layerId } : img)));
+            const layer = sketch.layers.get(layerId);
+            toast.success(`→ "${layer?.name || layerId}"`, { duration: 1500 });
+          }}
+          onDelete={(imageId) => {
+            addToImageHistory(backgroundImages, markerLinks);
+            setBackgroundImages((prev) => prev.filter((img) => img.id !== imageId));
+            setMarkerLinks((links) =>
+              links.filter((link) => link.marker1.imageId !== imageId && link.marker2.imageId !== imageId),
+            );
+            if (selectedImageId === imageId) setSelectedImageId(null);
+            const newSelectedIds = new Set(selectedImageIds);
+            newSelectedIds.delete(imageId);
+            setSelectedImageIds(newSelectedIds);
+            toast.success("Supprimée", { duration: 1500 });
+          }}
+          onAdjustContours={() => {
+            if (!selectedImageId) {
+              toast.error("Sélectionnez d'abord une photo");
+              return;
+            }
+            setShowAdjustmentsDialog(true);
+          }}
+          onCrop={() => {
+            if (!selectedImageId) {
+              toast.error("Sélectionnez d'abord une photo");
+              return;
+            }
+            openCropDialog();
+          }}
+          onAddMarker={() => {
+            if (markerMode === "addMarker") {
+              setMarkerMode("idle");
+            } else {
+              setMarkerMode("addMarker");
+              toast.info("Cliquez sur une photo pour ajouter un marqueur");
+            }
+          }}
+          onLinkMarkers={() => {
+            if (markerMode === "linkMarker1" || markerMode === "linkMarker2") {
+              setMarkerMode("idle");
+              setPendingLink(null);
+            } else {
+              const imagesWithMarkers = backgroundImages.filter((img) => img.markers.length > 0);
+              if (imagesWithMarkers.length < 2) {
+                toast.error("Ajoutez au moins 1 marqueur sur 2 photos différentes");
+                return;
+              }
+              setMarkerMode("linkMarker1");
+              toast.info("Cliquez sur le premier marqueur");
+            }
+          }}
+          getSelectedImageRotation={getSelectedImageRotation}
+          updateSelectedImageRotation={updateSelectedImageRotation}
+          initialPosition={imageToolsModalPos}
         />
       </div>
 
@@ -21285,6 +21382,18 @@ export function CADGabaritCanvas({
 
                   return (
                     <>
+                      {/* Bouton détacher en haut */}
+                      <button
+                        className="w-full px-2 py-1 text-left text-xs hover:bg-blue-50 flex items-center gap-1.5 text-blue-600 border-b"
+                        onClick={() => {
+                          setImageToolsModalPos({ x: contextMenu.x, y: contextMenu.y });
+                          setShowImageToolsModal(true);
+                          setContextMenu(null);
+                        }}
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        Détacher le menu
+                      </button>
                       {/* Ligne d'actions rapides groupées */}
                       <div className="flex items-center justify-around px-2 py-1 border-b">
                         <button
