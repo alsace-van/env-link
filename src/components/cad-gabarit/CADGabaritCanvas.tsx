@@ -13386,7 +13386,27 @@ export function CADGabaritCanvas({
           toast.success("Marqueur supprimé");
           return;
         }
-        // PRIORITÉ 3: Photo sélectionnée
+        // v7.32: PRIORITÉ 3: Photos multi-sélectionnées
+        if (selectedImageIds.size > 0) {
+          // Sauvegarder l'état actuel dans l'historique AVANT de supprimer
+          addToImageHistoryRef.current(backgroundImagesRef.current, markerLinksRef.current);
+
+          const idsToDelete = new Set(selectedImageIds);
+          setBackgroundImages((prev) => {
+            const newImages = prev.filter((img) => !idsToDelete.has(img.id));
+            // Aussi supprimer les liens qui référencent ces images
+            setMarkerLinks((links) =>
+              links.filter((link) => !idsToDelete.has(link.marker1.imageId) && !idsToDelete.has(link.marker2.imageId)),
+            );
+            return newImages;
+          });
+          const count = selectedImageIds.size;
+          setSelectedImageIds(new Set());
+          setSelectedImageId(null);
+          toast.success(`${count} photo(s) supprimée(s)`);
+          return;
+        }
+        // PRIORITÉ 4: Photo unique sélectionnée
         if (selectedImageId) {
           // Sauvegarder l'état actuel dans l'historique AVANT de supprimer
           addToImageHistoryRef.current(backgroundImagesRef.current, markerLinksRef.current);
@@ -13510,16 +13530,39 @@ export function CADGabaritCanvas({
         saveSketch();
       }
 
-      // Ctrl+A - Sélectionner tout (figures du canvas uniquement)
+      // Ctrl+A - Sélectionner tout (figures ET photos)
       if ((e.ctrlKey || e.metaKey) && e.key === "a") {
         e.preventDefault();
         e.stopPropagation();
         const currentSketch = sketchRef.current;
-        const allIds = new Set<string>();
-        currentSketch.geometries.forEach((_, id) => allIds.add(id));
-        setSelectedEntities(allIds);
-        if (allIds.size > 0) {
-          toast.success(`${allIds.size} figure(s) sélectionnée(s)`);
+
+        // Sélectionner toutes les géométries
+        const allGeoIds = new Set<string>();
+        currentSketch.geometries.forEach((_, id) => allGeoIds.add(id));
+        setSelectedEntities(allGeoIds);
+
+        // v7.32: Sélectionner aussi toutes les photos visibles
+        const currentImages = backgroundImagesRef.current;
+        const allImageIds = new Set<string>();
+        currentImages.forEach((img) => {
+          if (img.visible) {
+            const layer = currentSketch.layers.get(img.layerId || "");
+            if (!layer || layer.visible !== false) {
+              allImageIds.add(img.id);
+            }
+          }
+        });
+        setSelectedImageIds(allImageIds);
+        if (allImageIds.size > 0 && currentImages.length > 0) {
+          setSelectedImageId(currentImages[0].id);
+        }
+
+        // Toast avec le résumé
+        const details: string[] = [];
+        if (allGeoIds.size > 0) details.push(`${allGeoIds.size} figure(s)`);
+        if (allImageIds.size > 0) details.push(`${allImageIds.size} photo(s)`);
+        if (details.length > 0) {
+          toast.success(`${details.join(" + ")} sélectionnée(s)`);
         }
       }
 
