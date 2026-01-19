@@ -1,8 +1,12 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.34 - Fix calibration + crop + opacité calque
+// VERSION: 7.35 - Isoler photo + couleur sélection par calque
 // ============================================
+//
+// CHANGELOG v7.35 (19/01/2026):
+// - Ajout bouton "Isoler (Solo)" dans le menu contextuel des photos
+// - Contour de sélection de la photo utilise la couleur du calque correspondant
 //
 // CHANGELOG v7.34 (19/01/2026):
 // - Fix calibration: empêche l'application multiple (décalage cumulatif des points)
@@ -174,6 +178,7 @@ import {
   Cloud,
   CloudOff,
   RefreshCw,
+  Focus,
 } from "lucide-react";
 
 import {
@@ -13743,30 +13748,34 @@ export function CADGabaritCanvas({
   // === FONCTIONS DE CALIBRATION ===
 
   // Supprimer un point de calibration
-  const deleteCalibrationPoint = useCallback((pointId: string) => {
-    setCalibrationData((prev) => {
-      const newPoints = new Map(prev.points);
-      const newPairs = new Map(prev.pairs);
+  // FIX v7.35: Utiliser updateSelectedImageCalibration pour modifier backgroundImages[].calibrationData
+  const deleteCalibrationPoint = useCallback(
+    (pointId: string) => {
+      updateSelectedImageCalibration((prev) => {
+        const newPoints = new Map(prev.points);
+        const newPairs = new Map(prev.pairs);
 
-      // Supprimer les paires qui utilisent ce point
-      newPairs.forEach((pair, pairId) => {
-        if (pair.point1Id === pointId || pair.point2Id === pointId) {
-          newPairs.delete(pairId);
-        }
+        // Supprimer les paires qui utilisent ce point
+        newPairs.forEach((pair, pairId) => {
+          if (pair.point1Id === pointId || pair.point2Id === pointId) {
+            newPairs.delete(pairId);
+          }
+        });
+
+        newPoints.delete(pointId);
+
+        // Réassigner les labels
+        let index = 1;
+        newPoints.forEach((point) => {
+          point.label = String(index++);
+        });
+
+        return { ...prev, points: newPoints, pairs: newPairs };
       });
-
-      newPoints.delete(pointId);
-
-      // Réassigner les labels
-      let index = 1;
-      newPoints.forEach((point) => {
-        point.label = String(index++);
-      });
-
-      return { ...prev, points: newPoints, pairs: newPairs };
-    });
-    toast.success("Point supprimé");
-  }, []);
+      toast.success("Point supprimé");
+    },
+    [updateSelectedImageCalibration],
+  );
 
   // Supprimer une paire (utilise l'image sélectionnée)
   const deleteCalibrationPair = useCallback(
@@ -21298,6 +21307,44 @@ export function CADGabaritCanvas({
                     <Ruler className="h-4 w-4 text-cyan-500" />
                     Calibrer
                   </button>
+                  {/* v7.35: Bouton Isoler (Solo) */}
+                  {currentLayer && (
+                    <button
+                      className={`w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 ${
+                        currentLayer.solo ? "bg-yellow-50" : ""
+                      }`}
+                      onClick={() => {
+                        // Toggle solo mode sur le calque de la photo
+                        setSketch((prev) => {
+                          const newLayers = new Map(prev.layers);
+                          const layer = newLayers.get(currentLayer.id);
+                          if (!layer) return prev;
+
+                          const isCurrentlySolo = layer.solo;
+
+                          // Si on désactive le solo, on remet tout à false
+                          if (isCurrentlySolo) {
+                            newLayers.forEach((l, id) => {
+                              newLayers.set(id, { ...l, solo: false });
+                            });
+                            toast.info(`Mode solo désactivé`);
+                          } else {
+                            // Sinon on active le solo uniquement pour ce calque
+                            newLayers.forEach((l, id) => {
+                              newLayers.set(id, { ...l, solo: id === currentLayer.id });
+                            });
+                            toast.success(`Calque "${currentLayer.name}" isolé`);
+                          }
+
+                          return { ...prev, layers: newLayers };
+                        });
+                        setContextMenu(null);
+                      }}
+                    >
+                      <Focus className={`h-4 w-4 ${currentLayer.solo ? "text-yellow-600" : "text-yellow-500"}`} />
+                      {currentLayer.solo ? "Désactiver l'isolation" : "Isoler (Solo)"}
+                    </button>
+                  )}
                   <button
                     className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
                     onClick={() => {

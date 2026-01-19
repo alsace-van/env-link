@@ -813,9 +813,11 @@ export class CADRenderer {
       this.ctx.drawImage(imageToDraw, -scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
 
       // Dessiner le cadre de sélection si l'image est sélectionnée
+      // v7.35: Utiliser la couleur du calque pour le contour de sélection
       if (selectedImageId === bgImage.id) {
         this.ctx.globalAlpha = 1;
-        this.ctx.strokeStyle = "#0066FF";
+        const selectionColor = layer?.color || "#0066FF";
+        this.ctx.strokeStyle = selectionColor;
         this.ctx.lineWidth = 2 / this.viewport.scale;
         this.ctx.setLineDash([5 / this.viewport.scale, 5 / this.viewport.scale]);
         this.ctx.strokeRect(-scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
@@ -823,7 +825,7 @@ export class CADRenderer {
 
         // Dessiner les poignées de coin pour indiquer qu'on peut déplacer
         const handleSize = 8 / this.viewport.scale;
-        this.ctx.fillStyle = "#0066FF";
+        this.ctx.fillStyle = selectionColor;
         // Coin supérieur gauche
         this.ctx.fillRect(
           -scaledWidth / 2 - handleSize / 2,
