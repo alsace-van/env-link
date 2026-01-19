@@ -111,8 +111,11 @@ export function parseDXF(content: string): DXFParseResult {
         currentPolyline = null;
       }
 
-      // Entités supportées (géométrie + texte)
-      const supportedTypes = ["LINE", "CIRCLE", "ARC", "LWPOLYLINE", "POLYLINE", "SPLINE", "ELLIPSE", "TEXT", "MTEXT"];
+      // Entités supportées (géométrie + texte + autres)
+      const supportedTypes = [
+        "LINE", "CIRCLE", "ARC", "LWPOLYLINE", "POLYLINE", "SPLINE", "ELLIPSE",
+        "TEXT", "MTEXT", "POINT", "SOLID", "3DFACE", "TRACE", "HATCH"
+      ];
 
       if (supportedTypes.includes(entityType)) {
         const entity: DXFEntity = {
@@ -542,6 +545,11 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
         const fitXs = getAllVals(entity, 11);
         const fitYs = getAllVals(entity, 21);
 
+        // Debug: log les données de la spline
+        if (ctrlXs.length === 0 && fitXs.length === 0) {
+          console.warn(`[DXF] SPLINE sans points - degree=${degree}, knots=${knots.length}`);
+        }
+
         // Utiliser les fit points s'ils existent (ils sont SUR la courbe)
         if (fitXs.length >= 2 && fitXs.length === fitYs.length) {
           // Les fit points sont directement sur la courbe
@@ -671,49 +679,41 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
         }
         break;
       }
-    }
-  }
 
-  // Log un résumé des entités traitées
-  console.log(`[DXF Parser] Résumé: ${geometries.size} géométries, ${points.size} points importés`);
-
-  return {
-    points,
-    geometries,
-    bounds: {
-      minX: minX === Infinity ? 0 : minX,
-      minY: minY === Infinity ? 0 : minY,
-      maxX: maxX === -Infinity ? 100 : maxX,
-      maxY: maxY === -Infinity ? 100 : maxY,
-    },
-    layers,
-    entityCount: geometries.size,
-  };
-}
-
-/**
- * Charge un fichier DXF depuis un File
- */
-export async function loadDXFFile(file: File): Promise<DXFParseResult> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = (e) => {
-      try {
-        const content = e.target?.result as string;
-        const result = parseDXF(content);
-        resolve(result);
-      } catch (error) {
-        reject(new Error(`Erreur lors du parsing DXF: ${error}`));
+      case "POINT": {
+        // DXF POINT: 10=x, 20=y - juste créer le point (visible comme cercle minuscule)
+        const x = getVal(entity, 10);
+        const y = getVal(entity, 20);
+        if (x !== undefined && y !== undefined) {
+          getOrCreatePoint(x, y);
+        }
+        break;
       }
-    };
 
-    reader.onerror = () => {
-      reject(new Error("Erreur lors de la lecture du fichier"));
-    };
+      case "SOLID":
+      case "TRACE":
+      case "3DFACE": {
+        // SOLID/TRACE/3DFACE: 4 points (10,20), (11,21), (12,22), (13,23)
+        // Dessiner comme un quadrilatère fermé
+        const x1 = getVal(entity, 10), y1 = getVal(entity, 20);
+        const x2 = getVal(entity, 11), y2 = getVal(entity, 21);
+        const x3 = getVal(entity, 12), y3 = getVal(entity, 22);
+        const x4 = getVal(entity, 13), y4 = getVal(entity, 23);
 
-    reader.readAsText(file);
-  });
-}
+        if (x1 !== undefined && y1 !== undefined && x2 !== undefined && y2 !== undefined) {
+          createLine(x1, y1, x2, y2, layerId);
+          if (x3 !== undefined && y3 !== undefined) {
+            createLine(x2, y2, x3, y3, layerId);
+            if (x4 !== undefined && y4 !== undefined) {
+              createLine(x3, y3, x4, y4, layerId);
+              createLine(x4, y4, x1, y1, layerId);
+            } else {
+              // Triangle
+              createLine(x3, y3, x1, y1, layerId);
+            }
+          }
+        }
+        break;
+      }
 
-export type { DXFParseResult };
+      case "HATCH": {
