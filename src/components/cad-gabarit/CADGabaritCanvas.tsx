@@ -1924,13 +1924,19 @@ export function CADGabaritCanvas({
       showGrid,
       showConstraints,
       showDimensions,
-      // Multi-photos (filtrer selon la visibilité du calque)
+      // Multi-photos (filtrer selon la visibilité du calque et mode solo)
       backgroundImages: showBackgroundImage
         ? backgroundImages.filter((img) => {
-            // Si l'image n'a pas de layerId, elle est toujours visible
+            // Si l'image n'a pas de layerId, elle est toujours visible (sauf en mode solo)
+            const layer = img.layerId ? sketch.layers.get(img.layerId) : null;
+            // Vérifier si un calque est en mode solo
+            const hasSoloLayer = Array.from(sketch.layers.values()).some((l) => l.solo);
+            // En mode solo, ne montrer que les images du calque en solo
+            if (hasSoloLayer) {
+              return layer?.solo === true;
+            }
+            // Sinon, vérifier la visibilité normale
             if (!img.layerId) return true;
-            // Sinon, vérifier si son calque est visible
-            const layer = sketch.layers.get(img.layerId);
             return layer ? layer.visible : true;
           })
         : [],
