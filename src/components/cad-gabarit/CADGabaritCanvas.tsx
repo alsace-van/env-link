@@ -3950,6 +3950,34 @@ export function CADGabaritCanvas({
     setShowBackgroundImage,
   });
 
+  // v7.32: Supprimer les photos dont le calque a été supprimé
+  useEffect(() => {
+    if (backgroundImages.length === 0) return;
+
+    const layerIds = new Set(sketch.layers.keys());
+    const orphanedImages = backgroundImages.filter((img) => {
+      // Si l'image a un layerId qui commence par "photo_" (calque créé pour elle)
+      // et que ce calque n'existe plus, alors l'image est orpheline
+      if (img.layerId && img.layerId.startsWith("photo_") && !layerIds.has(img.layerId)) {
+        return true;
+      }
+      return false;
+    });
+
+    if (orphanedImages.length > 0) {
+      // Supprimer les images orphelines
+      const orphanedIds = new Set(orphanedImages.map((img) => img.id));
+      setBackgroundImages((prev) => prev.filter((img) => !orphanedIds.has(img.id)));
+
+      // Supprimer aussi les liens de markers associés
+      setMarkerLinks((links) =>
+        links.filter((link) => !orphanedIds.has(link.marker1.imageId) && !orphanedIds.has(link.marker2.imageId)),
+      );
+
+      toast.success(`${orphanedImages.length} photo(s) supprimée(s) avec le(s) calque(s)`);
+    }
+  }, [sketch.layers, backgroundImages.length]);
+
   // Résoudre le sketch
   const solveSketch = useCallback(async (sketchToSolve: Sketch) => {
     const result = await solverRef.current.solve(sketchToSolve);
@@ -13612,6 +13640,9 @@ export function CADGabaritCanvas({
   }, [
     isFullscreen,
     selectedEntities,
+    selectedImageId, // v7.32: Pour la suppression des photos
+    selectedImageIds, // v7.32: Pour la suppression multi-photos
+    selectedMarkerId, // v7.32: Pour la suppression des markers
     saveSketch,
     copySelectedEntities,
     pasteEntities,
@@ -21161,12 +21192,25 @@ export function CADGabaritCanvas({
                   <button
                     className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
                     onClick={() => {
-                      setBackgroundImages((prev) => prev.filter((img) => img.id !== contextMenu.entityId));
-                      if (selectedImageId === contextMenu.entityId) {
+                      // Sauvegarder l'état dans l'historique avant suppression
+                      addToImageHistory(backgroundImages, markerLinks);
+
+                      const imageIdToDelete = contextMenu.entityId;
+                      setBackgroundImages((prev) => prev.filter((img) => img.id !== imageIdToDelete));
+                      // Supprimer aussi les liens de markers associés
+                      setMarkerLinks((links) =>
+                        links.filter(
+                          (link) =>
+                            link.marker1.imageId !== imageIdToDelete && link.marker2.imageId !== imageIdToDelete,
+                        ),
+                      );
+                      if (selectedImageId === imageIdToDelete) {
                         setSelectedImageId(null);
                       }
-                      selectedImageIds.delete(contextMenu.entityId);
-                      setSelectedImageIds(new Set(selectedImageIds));
+                      // Créer une nouvelle Set sans modifier l'originale
+                      const newSelectedIds = new Set(selectedImageIds);
+                      newSelectedIds.delete(imageIdToDelete);
+                      setSelectedImageIds(newSelectedIds);
                       toast.success("Image supprimée");
                       setContextMenu(null);
                     }}
