@@ -16596,21 +16596,44 @@ export function CADGabaritCanvas({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-56">
-                  {/* Opacité */}
+                  {/* Opacité - photo(s) sélectionnée(s) ou globale */}
                   <div className="px-2 py-2">
                     <label className="text-xs text-muted-foreground mb-1 block">
-                      Opacité: {Math.round(imageOpacity * 100)}%
+                      {selectedImageId || selectedImageIds.size > 0
+                        ? `Opacité ${selectedImageIds.size > 1 ? `(${selectedImageIds.size} photos)` : "photo"}: ${Math.round(
+                            (selectedImageId
+                              ? (backgroundImages.find((img) => img.id === selectedImageId)?.opacity ?? imageOpacity)
+                              : (backgroundImages.find((img) => selectedImageIds.has(img.id))?.opacity ??
+                                imageOpacity)) * 100,
+                          )}%`
+                        : `Opacité (par défaut): ${Math.round(imageOpacity * 100)}%`}
                     </label>
                     <input
                       type="range"
                       min="0.1"
                       max="1"
                       step="0.1"
-                      value={imageOpacity}
+                      value={
+                        selectedImageId
+                          ? (backgroundImages.find((img) => img.id === selectedImageId)?.opacity ?? imageOpacity)
+                          : selectedImageIds.size > 0
+                            ? (backgroundImages.find((img) => selectedImageIds.has(img.id))?.opacity ?? imageOpacity)
+                            : imageOpacity
+                      }
                       onChange={(e) => {
                         const newOpacity = parseFloat(e.target.value);
-                        setImageOpacity(newOpacity);
-                        setBackgroundImages((prev) => prev.map((img) => ({ ...img, opacity: newOpacity })));
+                        if (selectedImageId || selectedImageIds.size > 0) {
+                          // FIX: Appliquer uniquement aux photos sélectionnées
+                          const idsToUpdate = selectedImageId
+                            ? new Set([selectedImageId, ...selectedImageIds])
+                            : selectedImageIds;
+                          setBackgroundImages((prev) =>
+                            prev.map((img) => (idsToUpdate.has(img.id) ? { ...img, opacity: newOpacity } : img)),
+                          );
+                        } else {
+                          // Aucune sélection: changer l'opacité par défaut pour les nouvelles images
+                          setImageOpacity(newOpacity);
+                        }
                       }}
                       className="w-full h-2"
                     />
