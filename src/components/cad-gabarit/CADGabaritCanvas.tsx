@@ -16991,13 +16991,67 @@ export function CADGabaritCanvas({
         <Separator orientation="vertical" className="h-6" />
 
         {/* Inputs cachés pour import de fichiers */}
+        {/* FIX: Input DXF séparé pour import spécifique */}
         <input ref={dxfInputRef} type="file" accept=".dxf" onChange={handleDXFImport} className="hidden" />
+        {/* FIX: Input unifié qui accepte DXF + images */}
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,.dxf"
           multiple
-          onChange={handleImageUpload}
+          onChange={(e) => {
+            console.log("[Import] onChange triggered");
+            const files = e.target.files;
+            if (!files || files.length === 0) {
+              console.log("[Import] No files");
+              return;
+            }
+            console.log(
+              "[Import] Files:",
+              Array.from(files).map((f) => ({ name: f.name, size: f.size })),
+            );
+
+            // Séparer les DXF des images
+            const dxfFiles: File[] = [];
+            const imageFiles: File[] = [];
+
+            for (let i = 0; i < files.length; i++) {
+              const file = files[i];
+              if (file.name.toLowerCase().endsWith(".dxf")) {
+                dxfFiles.push(file);
+              } else {
+                imageFiles.push(file);
+              }
+            }
+
+            console.log("[Import] DXF files:", dxfFiles.length, "Image files:", imageFiles.length);
+
+            // Traiter les DXF (un seul à la fois)
+            if (dxfFiles.length > 0) {
+              console.log("[Import] Processing DXF:", dxfFiles[0].name);
+              // Créer un FileList-like object pour handleDXFImport
+              const dt = new DataTransfer();
+              dt.items.add(dxfFiles[0]);
+              const fakeEvent = {
+                target: { files: dt.files },
+              } as React.ChangeEvent<HTMLInputElement>;
+              handleDXFImport(fakeEvent);
+            }
+
+            // Traiter les images
+            if (imageFiles.length > 0) {
+              console.log("[Import] Processing images:", imageFiles.length);
+              const dt = new DataTransfer();
+              imageFiles.forEach((f) => dt.items.add(f));
+              const fakeEvent = {
+                target: { files: dt.files },
+              } as React.ChangeEvent<HTMLInputElement>;
+              handleImageUpload(fakeEvent);
+            }
+
+            // Reset l'input
+            e.target.value = "";
+          }}
           className="hidden"
         />
 
