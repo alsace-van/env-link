@@ -8,6 +8,8 @@
 // - Ajout bouton "Isoler (Solo)" dans le menu contextuel des photos
 // - Contour de sélection de la photo utilise la couleur du calque correspondant
 // - Fix suppression point de calibration: utilisait calibrationData au lieu de backgroundImages[].calibrationData
+// - Sélection de photo change automatiquement vers le calque correspondant
+// - Surbrillance du calque actif avec sa propre couleur (bordure + ombre)
 //
 // CHANGELOG v7.34 (19/01/2026):
 // - Fix calibration: empêche l'application multiple (décalage cumulatif des points)
@@ -8237,6 +8239,22 @@ export function CADGabaritCanvas({
     [backgroundImages, sketch.layers],
   );
 
+  // v7.35: Sélectionner une image ET changer automatiquement vers son calque
+  const selectImageAndSwitchLayer = useCallback(
+    (imageId: string | null) => {
+      setSelectedImageId(imageId);
+
+      // Si on sélectionne une image, changer vers son calque
+      if (imageId) {
+        const image = backgroundImages.find((img) => img.id === imageId);
+        if (image?.layerId && sketch.layers.has(image.layerId)) {
+          setSketch((prev) => ({ ...prev, activeLayerId: image.layerId! }));
+        }
+      }
+    },
+    [backgroundImages, sketch.layers, setSketch],
+  );
+
   // Mémoriser l'image sélectionnée et ses ajustements pour le panneau
   const selectedImageData = useMemo(() => {
     if (!selectedImageId) return null;
@@ -9314,7 +9332,8 @@ export function CADGabaritCanvas({
           // Sélectionner le marker
           const markerFullId = `${foundMarker.imageId}:${foundMarker.markerId}`;
           setSelectedMarkerId(markerFullId);
-          setSelectedImageId(foundMarker.imageId);
+          // v7.35: Changer automatiquement vers le calque de l'image
+          selectImageAndSwitchLayer(foundMarker.imageId);
 
           // Désélectionner les entités géométriques
           setSelectedEntities(new Set());
@@ -9425,7 +9444,8 @@ export function CADGabaritCanvas({
                 return newSet;
               });
               // Garder aussi selectedImageId sur la dernière image cliquée
-              setSelectedImageId(clickedImage.id);
+              // v7.35: Changer automatiquement vers le calque de l'image
+              selectImageAndSwitchLayer(clickedImage.id);
               setSelectedMarkerId(null);
               // Pas de drag en mode multi-sélection
               setSelectedEntities(new Set());
@@ -9433,7 +9453,8 @@ export function CADGabaritCanvas({
             }
 
             // Clic simple : sélection unique (efface la multi-sélection)
-            setSelectedImageId(clickedImage.id);
+            // v7.35: Changer automatiquement vers le calque de l'image
+            selectImageAndSwitchLayer(clickedImage.id);
             setSelectedImageIds(new Set()); // Effacer la multi-sélection
             setSelectedMarkerId(null); // Désélectionner le marker
 
@@ -10602,6 +10623,7 @@ export function CADGabaritCanvas({
       backgroundImages,
       selectedImageId,
       findImageAtPosition,
+      selectImageAndSwitchLayer,
       // Nouveaux outils
       arc3Points,
       mirrorState,
