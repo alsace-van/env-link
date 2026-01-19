@@ -5369,6 +5369,18 @@ export function CADGabaritCanvas({
           const newPoints = new Map(prev.points);
           const newGeometries = new Map(prev.geometries);
 
+          // DEBUG: Log l'état avant import
+          console.log("[DXF Import] État avant:", {
+            activeLayerId: prev.activeLayerId,
+            layersCount: prev.layers.size,
+            existingPoints: prev.points.size,
+            existingGeometries: prev.geometries.size,
+          });
+
+          // Vérifier que le calque actif existe et est visible
+          const activeLayer = prev.layers.get(prev.activeLayerId);
+          console.log("[DXF Import] Calque actif:", prev.activeLayerId, activeLayer);
+
           // Ajouter les points
           result.points.forEach((point, id) => {
             newPoints.set(id, point);
@@ -5379,6 +5391,11 @@ export function CADGabaritCanvas({
             // Assigner au calque actif si le calque DXF n'existe pas
             const geoWithLayer = { ...geo, layerId: prev.activeLayerId };
             newGeometries.set(id, geoWithLayer);
+          });
+
+          console.log("[DXF Import] État après:", {
+            newPointsCount: newPoints.size,
+            newGeometriesCount: newGeometries.size,
           });
 
           return {

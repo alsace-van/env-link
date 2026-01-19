@@ -4,7 +4,7 @@
 // VERSION: 3.4 - Résolution dynamique améliorée (4-16 segments selon taille)
 // ============================================
 
-import { Point, Line, Circle, Geometry, generateId } from "./types";
+import { Point, Line, Circle, Geometry, TextAnnotation, generateId } from "./types";
 
 // Types DXF internes
 interface DXFEntity {
@@ -44,6 +44,7 @@ export function parseDXF(content: string): DXFParseResult {
 
   let i = 0;
   let inEntitiesSection = false;
+  let currentPolyline: DXFEntity | null = null; // Pour collecter les VERTEX des anciennes POLYLINE
 
   // Parcourir le fichier DXF
   while (i < lines.length) {
@@ -60,6 +61,11 @@ export function parseDXF(content: string): DXFParseResult {
     // Fin de section
     if (code === 0 && value === "ENDSEC") {
       inEntitiesSection = false;
+      // Finaliser la polyline en cours si existante
+      if (currentPolyline) {
+        entities.push(currentPolyline);
+        currentPolyline = null;
+      }
       i += 2;
       continue;
     }
@@ -68,7 +74,47 @@ export function parseDXF(content: string): DXFParseResult {
     if (inEntitiesSection && code === 0) {
       const entityType = value;
 
-      if (["LINE", "CIRCLE", "ARC", "LWPOLYLINE", "POLYLINE", "SPLINE", "ELLIPSE"].includes(entityType)) {
+      // Gérer SEQEND (fin de POLYLINE avec VERTEX)
+      if (entityType === "SEQEND") {
+        if (currentPolyline) {
+          entities.push(currentPolyline);
+          currentPolyline = null;
+        }
+        i += 2;
+        continue;
+      }
+
+      // Gérer VERTEX (points d'une POLYLINE classique)
+      if (entityType === "VERTEX" && currentPolyline) {
+        i += 2;
+        // Lire les attributs du VERTEX
+        while (i < lines.length) {
+          const attrCode = parseInt(lines[i]?.trim() || "0", 10);
+          const attrValue = lines[i + 1]?.trim() || "";
+          if (attrCode === 0) break;
+
+          const numValue = parseFloat(attrValue);
+          if (!isNaN(numValue)) {
+            // Code 10 = X, 20 = Y, 42 = bulge
+            const existing = currentPolyline.values.get(attrCode) || [];
+            existing.push(numValue);
+            currentPolyline.values.set(attrCode, existing);
+          }
+          i += 2;
+        }
+        continue;
+      }
+
+      // Si on rencontre une autre entité alors qu'on collectait une POLYLINE, la finaliser
+      if (currentPolyline && entityType !== "VERTEX") {
+        entities.push(currentPolyline);
+        currentPolyline = null;
+      }
+
+      // Entités supportées (géométrie + texte)
+      const supportedTypes = ["LINE", "CIRCLE", "ARC", "LWPOLYLINE", "POLYLINE", "SPLINE", "ELLIPSE", "TEXT", "MTEXT"];
+
+      if (supportedTypes.includes(entityType)) {
         const entity: DXFEntity = {
           type: entityType,
           values: new Map(),
@@ -108,8 +154,17 @@ export function parseDXF(content: string): DXFParseResult {
           i += 2;
         }
 
-        entities.push(entity);
+        // Pour les anciennes POLYLINE (pas LWPOLYLINE), les coordonnées sont dans les VERTEX qui suivent
+        if (entityType === "POLYLINE") {
+          currentPolyline = entity;
+          // Ne pas ajouter tout de suite, on attend les VERTEX
+        } else {
+          entities.push(entity);
+        }
         continue;
+      } else if (entityType !== "ENDSEC" && entityType !== "SEQEND" && entityType !== "VERTEX") {
+        // Log les entités non supportées (ignorer les types de contrôle)
+        console.warn(`[DXF Parser] Entité non supportée ignorée: ${entityType}`);
       }
     }
 
@@ -574,8 +629,53 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
         }
         break;
       }
+
+      case "TEXT":
+      case "MTEXT": {
+        // DXF TEXT: 10=x, 20=y, 40=height, 1=content, 50=rotation
+        // DXF MTEXT: 10=x, 20=y, 40=height, 1=content (peut contenir formatage)
+        const x = getVal(entity, 10);
+        const y = getVal(entity, 20);
+        const height = getVal(entity, 40) || 3; // Hauteur par défaut 3mm
+        const rotation = getVal(entity, 50) || 0;
+
+        // Le texte est stocké en code 1 (peut y avoir plusieurs lignes pour MTEXT)
+        const textParts = entity.strings.get(1) || [];
+        let content = textParts.join("");
+
+        // Nettoyer le formatage MTEXT (\\P = saut de ligne, {\\f...} = police, etc.)
+        content = content
+          .replace(/\\P/g, "\n")
+          .replace(/\{\\[^}]+\}/g, "")
+          .replace(/\\[A-Za-z][^;]*;/g, "")
+          .trim();
+
+        if (x !== undefined && y !== undefined && content) {
+          // Créer un point d'ancrage pour le texte
+          const positionId = getOrCreatePoint(x, y);
+
+          const textId = generateId();
+          const textAnnotation: TextAnnotation = {
+            id: textId,
+            type: "text",
+            position: positionId,
+            content,
+            fontSize: height,
+            rotation: -rotation, // Inverser car Y est inversé
+            layerId: layerId,
+            alignment: "left",
+          };
+          geometries.set(textId, textAnnotation);
+
+          console.log(`[DXF] Texte importé: "${content}" à (${x}, ${y}), hauteur=${height}mm`);
+        }
+        break;
+      }
     }
   }
+
+  // Log un résumé des entités traitées
+  console.log(`[DXF Parser] Résumé: ${geometries.size} géométries, ${points.size} points importés`);
 
   return {
     points,
