@@ -198,10 +198,10 @@ export function LayerTabs({ sketch, setSketch }: LayerTabsProps) {
         onDragEnd={handleDragEnd}
         className={`
           flex items-center gap-1 px-2 h-7 rounded-t-md cursor-pointer select-none
-          transition-all duration-150 text-xs font-medium border border-b-0
+          transition-all duration-150 text-xs font-medium border-2 border-b-0
           ${
             isActive
-              ? "bg-white border-blue-400 text-blue-700 mb-[-1px] z-10 shadow-sm"
+              ? "bg-white mb-[-1px] z-10 shadow-md"
               : "bg-gray-200 border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700"
           }
           ${isDragging ? "opacity-50" : ""}
@@ -209,7 +209,16 @@ export function LayerTabs({ sketch, setSketch }: LayerTabsProps) {
           ${!effectivelyVisible && !layer.solo ? "opacity-50" : ""}
           ${depth > 0 ? "ml-4" : ""}
         `}
-        style={{ marginLeft: depth > 0 ? `${depth * 16}px` : undefined }}
+        style={{
+          marginLeft: depth > 0 ? `${depth * 16}px` : undefined,
+          // v7.35: Surbrillance avec la couleur du calque actif
+          ...(isActive
+            ? {
+                borderColor: layer.color,
+                boxShadow: `0 -2px 8px ${layer.color}40`,
+              }
+            : {}),
+        }}
         onClick={() => layerManager.selectLayer(layer.id)}
         onDoubleClick={() => startEditing(layer.id, "layer", layer.name)}
         onContextMenu={(e) => handleContextMenu(e, "layer", layer.id)}
