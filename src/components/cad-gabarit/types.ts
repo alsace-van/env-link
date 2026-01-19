@@ -609,6 +609,8 @@ export interface BackgroundImage {
   crop?: ImageCrop;
   // Canvas avec le crop appliqué (cache)
   croppedCanvas?: HTMLCanvasElement;
+  // Mode de visualisation pour l'alignement (rayures pour voir à travers)
+  blendMode?: "normal" | "stripes";
 }
 
 // Données de recadrage d'image

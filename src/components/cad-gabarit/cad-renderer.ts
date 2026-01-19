@@ -1,8 +1,13 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.75 - Option hideTempMeasure pour input HTML
+// VERSION: 3.76 - Mode rayures pour alignement de photos
 // ============================================
+//
+// CHANGELOG v3.76 (19/01/2026):
+// - Mode "rayures" (blendMode: stripes) pour les images
+// - Permet de voir à travers une image pour l'aligner sur une autre
+// - Utilise un masque de rayures diagonales
 //
 // CHANGELOG v3.75 (18/01/2026):
 // - Ajout option hideTempMeasure pour masquer le texte de mesure temporaire
@@ -809,8 +814,51 @@ export class CADRenderer {
       const scaledWidth = width * bgImage.scale;
       const scaledHeight = height * bgImage.scale;
 
-      // Dessiner l'image centrée sur sa position
-      this.ctx.drawImage(imageToDraw, -scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
+      // MOD v3.76: Mode rayures pour alignement (permet de voir à travers)
+      if (bgImage.blendMode === "stripes") {
+        // Créer un canvas temporaire pour appliquer les rayures
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = scaledWidth;
+        tempCanvas.height = scaledHeight;
+        const tempCtx = tempCanvas.getContext("2d")!;
+
+        // Dessiner l'image dans le canvas temporaire
+        tempCtx.drawImage(imageToDraw, 0, 0, scaledWidth, scaledHeight);
+
+        // Créer le pattern de rayures diagonales (masque)
+        const stripeSize = 8; // Taille des rayures en pixels
+        const patternCanvas = document.createElement("canvas");
+        patternCanvas.width = stripeSize * 2;
+        patternCanvas.height = stripeSize * 2;
+        const patternCtx = patternCanvas.getContext("2d")!;
+
+        // Dessiner les rayures (alternance opaque/transparent)
+        patternCtx.fillStyle = "black";
+        // Rayure diagonale 1
+        patternCtx.beginPath();
+        patternCtx.moveTo(0, 0);
+        patternCtx.lineTo(stripeSize, 0);
+        patternCtx.lineTo(stripeSize * 2, stripeSize);
+        patternCtx.lineTo(stripeSize * 2, stripeSize * 2);
+        patternCtx.lineTo(stripeSize, stripeSize * 2);
+        patternCtx.lineTo(0, stripeSize);
+        patternCtx.closePath();
+        patternCtx.fill();
+
+        // Appliquer le masque (destination-in garde uniquement où le pattern est opaque)
+        tempCtx.globalCompositeOperation = "destination-in";
+        const pattern = tempCtx.createPattern(patternCanvas, "repeat");
+        if (pattern) {
+          tempCtx.fillStyle = pattern;
+          tempCtx.fillRect(0, 0, scaledWidth, scaledHeight);
+        }
+
+        // Dessiner le canvas rayé
+        this.ctx.drawImage(tempCanvas, -scaledWidth / 2, -scaledHeight / 2);
+      } else {
+        // Dessiner l'image normalement
+        this.ctx.drawImage(imageToDraw, -scaledWidth / 2, -scaledHeight / 2, scaledWidth, scaledHeight);
+      }
 
       // Dessiner le cadre de sélection si l'image est sélectionnée
       // v7.35: Utiliser la couleur du calque pour le contour de sélection
@@ -1103,32 +1151,21 @@ export class CADRenderer {
       this.ctx.stroke();
       this.ctx.setLineDash([]);
 
-      // Label de distance
+      // Label de distance - v7.35: sans fond blanc, juste contour texte pour lisibilité
       const midX = (x1 + x2) / 2;
       const midY = (y1 + y2) / 2;
       this.ctx.font = `bold ${fontSize}px Arial`;
       const labelText = `${pair.distanceMm} mm`;
-      const textWidth = this.ctx.measureText(labelText).width;
-      const padding = 3 / this.viewport.scale;
-
-      this.ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-      this.ctx.fillRect(
-        midX - textWidth / 2 - padding,
-        midY - fontSize / 2 - padding,
-        textWidth + padding * 2,
-        fontSize + padding * 2,
-      );
-      this.ctx.strokeStyle = pair.color;
-      this.ctx.lineWidth = 1 / this.viewport.scale;
-      this.ctx.strokeRect(
-        midX - textWidth / 2 - padding,
-        midY - fontSize / 2 - padding,
-        textWidth + padding * 2,
-        fontSize + padding * 2,
-      );
-      this.ctx.fillStyle = pair.color;
       this.ctx.textAlign = "center";
       this.ctx.textBaseline = "middle";
+
+      // Contour blanc pour lisibilité
+      this.ctx.strokeStyle = "#FFFFFF";
+      this.ctx.lineWidth = 3 / this.viewport.scale;
+      this.ctx.strokeText(labelText, midX, midY);
+
+      // Texte coloré par-dessus
+      this.ctx.fillStyle = pair.color;
       this.ctx.fillText(labelText, midX, midY);
       this.ctx.restore();
     });
@@ -2225,37 +2262,21 @@ export class CADRenderer {
 
         this.ctx.setLineDash([]);
 
-        // Afficher la distance au milieu
+        // Afficher la distance au milieu - v7.35: sans fond blanc
         const mid = midpoint(p1, p2);
         const text = `${pair.distanceMm} mm`;
 
-        // Fond pour le texte
         this.ctx.font = `bold ${fontSize}px Arial`;
-        const textWidth = this.ctx.measureText(text).width;
-        const padding = 3 / this.viewport.scale;
-
-        this.ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-        this.ctx.fillRect(
-          mid.x - textWidth / 2 - padding,
-          mid.y - fontSize / 2 - padding,
-          textWidth + padding * 2,
-          fontSize + padding * 2,
-        );
-
-        // Bordure
-        this.ctx.strokeStyle = pair.color;
-        this.ctx.lineWidth = 1 / this.viewport.scale;
-        this.ctx.strokeRect(
-          mid.x - textWidth / 2 - padding,
-          mid.y - fontSize / 2 - padding,
-          textWidth + padding * 2,
-          fontSize + padding * 2,
-        );
-
-        // Texte
-        this.ctx.fillStyle = pair.color;
         this.ctx.textAlign = "center";
         this.ctx.textBaseline = "middle";
+
+        // Contour blanc pour lisibilité
+        this.ctx.strokeStyle = "#FFFFFF";
+        this.ctx.lineWidth = 3 / this.viewport.scale;
+        this.ctx.strokeText(text, mid.x, mid.y);
+
+        // Texte coloré par-dessus
+        this.ctx.fillStyle = pair.color;
         this.ctx.fillText(text, mid.x, mid.y);
       }
     });

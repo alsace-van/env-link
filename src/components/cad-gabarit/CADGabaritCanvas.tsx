@@ -1,8 +1,13 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.35 - Isoler photo + couleur sélection par calque
+// VERSION: 7.36 - Mode rayures pour alignement de photos
 // ============================================
+//
+// CHANGELOG v7.36 (19/01/2026):
+// - Mode "rayures" pour les photos: permet de voir à travers pour aligner
+// - Bouton dans le menu contextuel pour activer/désactiver le mode rayures
+// - Solution au problème de mélange d'opacité quand 2 photos se superposent
 //
 // CHANGELOG v7.35 (19/01/2026):
 // - Ajout bouton "Isoler (Solo)" dans le menu contextuel des photos
@@ -190,6 +195,7 @@ import {
   Focus,
   ArrowUpToLine,
   ArrowDownToLine,
+  SlidersHorizontal,
 } from "lucide-react";
 
 import {
@@ -21373,6 +21379,25 @@ export function CADGabaritCanvas({
                           }}
                         >
                           <ArrowDownToLine className="h-3.5 w-3.5 text-orange-500" />
+                        </button>
+                        <button
+                          className={`p-1.5 rounded hover:bg-gray-100 ${image.blendMode === "stripes" ? "bg-cyan-100" : ""}`}
+                          title={image.blendMode === "stripes" ? "Mode normal" : "Mode rayures (alignement)"}
+                          onClick={() => {
+                            setBackgroundImages((prev) =>
+                              prev.map((img) =>
+                                imagesToUpdate.has(img.id)
+                                  ? { ...img, blendMode: img.blendMode === "stripes" ? "normal" : "stripes" }
+                                  : img,
+                              ),
+                            );
+                            toast.success(image.blendMode === "stripes" ? "Mode normal" : "Mode rayures");
+                            setContextMenu(null);
+                          }}
+                        >
+                          <SlidersHorizontal
+                            className={`h-3.5 w-3.5 ${image.blendMode === "stripes" ? "text-cyan-600" : "text-cyan-500"}`}
+                          />
                         </button>
                       </div>
                       {/* Opacité compacte */}
