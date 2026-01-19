@@ -886,9 +886,7 @@ export function CADGabaritCanvas({
   // MOD v7.37: Modale de calibration au drop d'image
   const [showCalibrationModal, setShowCalibrationModal] = useState(false);
   const [pendingCalibrationImage, setPendingCalibrationImage] = useState<BackgroundImage | null>(null);
-  const [pendingCalibrationDecision, setPendingCalibrationDecision] = useState<((calibrate: boolean) => void) | null>(
-    null,
-  );
+  const [pendingCalibrationDecision, setPendingCalibrationDecision] = useState<((calibrate: boolean) => void) | null>(null);
 
   // ============================================
   // NOUVEAU SYSTÈME DE TOOLBAR CONFIGURABLE (v7.11)
@@ -4103,108 +4101,92 @@ export function CADGabaritCanvas({
       console.error("[LocalBackup] Error:", error);
       toast.error("Erreur lors de la sauvegarde locale", { id: toastId });
     }
-  }, [
-    sketch,
-    backgroundImages,
-    markerLinks,
-    a4GridOrigin,
-    a4GridOrientation,
-    a4GridRows,
-    a4GridCols,
-    a4OverlapMm,
-    a4CutMode,
-    measurements,
-  ]);
+  }, [sketch, backgroundImages, markerLinks, a4GridOrigin, a4GridOrientation, a4GridRows, a4GridCols, a4OverlapMm, a4CutMode, measurements]);
 
   // v7.37: Charger une sauvegarde locale
-  const loadLocalBackup = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+  const loadLocalBackup = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const toastId = toast.loading("Chargement de la sauvegarde...");
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const toastId = toast.loading("Chargement de la sauvegarde...");
 
-        try {
-          const jsonStr = event.target?.result as string;
-          const data = JSON.parse(jsonStr);
+      try {
+        const jsonStr = event.target?.result as string;
+        const data = JSON.parse(jsonStr);
 
-          if (!data.version || !data.sketch) {
-            throw new Error("Format de fichier invalide");
-          }
-
-          // Charger le sketch
-          loadSketchData(data.sketch);
-
-          // Charger les images
-          if (data.backgroundImages && data.backgroundImages.length > 0) {
-            const loadedImages: BackgroundImage[] = [];
-
-            for (const imgData of data.backgroundImages) {
-              if (!imgData.src) continue;
-
-              try {
-                // Charger l'image
-                const htmlImage = await new Promise<HTMLImageElement>((resolve, reject) => {
-                  const img = new Image();
-                  img.onload = () => resolve(img);
-                  img.onerror = () => reject(new Error(`Échec du chargement: ${imgData.name}`));
-                  img.src = imgData.src;
-                });
-
-                // Reconvertir calibrationData si présent
-                const calibData = imgData.calibrationData;
-                loadedImages.push({
-                  ...imgData,
-                  image: htmlImage,
-                  calibrationData: calibData
-                    ? {
-                        ...calibData,
-                        points:
-                          calibData.points && Array.isArray(calibData.points)
-                            ? new Map<string, CalibrationPoint>(calibData.points)
-                            : new Map<string, CalibrationPoint>(),
-                        pairs:
-                          calibData.pairs && Array.isArray(calibData.pairs)
-                            ? new Map<string, CalibrationPair>(calibData.pairs)
-                            : new Map<string, CalibrationPair>(),
-                      }
-                    : undefined,
-                });
-              } catch (err) {
-                console.warn("[LocalBackup] Skipping image:", imgData.name, err);
-              }
-            }
-
-            if (loadedImages.length > 0) {
-              setBackgroundImages(loadedImages);
-              setShowBackgroundImage(true);
-            }
-          }
-
-          // Charger les markerLinks
-          if (data.markerLinks) {
-            setMarkerLinks(data.markerLinks);
-          }
-
-          // Charger les mesures
-          if (data.measurements) {
-            setMeasurements(data.measurements);
-          }
-
-          toast.success(`Sauvegarde chargée ! (${data.backgroundImages?.length || 0} photos)`, { id: toastId });
-        } catch (error) {
-          console.error("[LocalBackup] Error loading:", error);
-          toast.error("Erreur lors du chargement", { id: toastId });
+        if (!data.version || !data.sketch) {
+          throw new Error("Format de fichier invalide");
         }
-      };
 
-      reader.readAsText(file);
-      e.target.value = ""; // Reset pour permettre de re-sélectionner le même fichier
-    },
-    [loadSketchData, setBackgroundImages, setMarkerLinks, setMeasurements, setShowBackgroundImage],
-  );
+        // Charger le sketch
+        loadSketchData(data.sketch);
+
+        // Charger les images
+        if (data.backgroundImages && data.backgroundImages.length > 0) {
+          const loadedImages: BackgroundImage[] = [];
+
+          for (const imgData of data.backgroundImages) {
+            if (!imgData.src) continue;
+
+            try {
+              // Charger l'image
+              const htmlImage = await new Promise<HTMLImageElement>((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = () => reject(new Error(`Échec du chargement: ${imgData.name}`));
+                img.src = imgData.src;
+              });
+
+              // Reconvertir calibrationData si présent
+              const calibData = imgData.calibrationData;
+              loadedImages.push({
+                ...imgData,
+                image: htmlImage,
+                calibrationData: calibData
+                  ? {
+                      ...calibData,
+                      points: calibData.points && Array.isArray(calibData.points)
+                        ? new Map<string, CalibrationPoint>(calibData.points)
+                        : new Map<string, CalibrationPoint>(),
+                      pairs: calibData.pairs && Array.isArray(calibData.pairs)
+                        ? new Map<string, CalibrationPair>(calibData.pairs)
+                        : new Map<string, CalibrationPair>(),
+                    }
+                  : undefined,
+              });
+            } catch (err) {
+              console.warn("[LocalBackup] Skipping image:", imgData.name, err);
+            }
+          }
+
+          if (loadedImages.length > 0) {
+            setBackgroundImages(loadedImages);
+            setShowBackgroundImage(true);
+          }
+        }
+
+        // Charger les markerLinks
+        if (data.markerLinks) {
+          setMarkerLinks(data.markerLinks);
+        }
+
+        // Charger les mesures
+        if (data.measurements) {
+          setMeasurements(data.measurements);
+        }
+
+        toast.success(`Sauvegarde chargée ! (${data.backgroundImages?.length || 0} photos)`, { id: toastId });
+      } catch (error) {
+        console.error("[LocalBackup] Error loading:", error);
+        toast.error("Erreur lors du chargement", { id: toastId });
+      }
+    };
+
+    reader.readAsText(file);
+    e.target.value = ""; // Reset pour permettre de re-sélectionner le même fichier
+  }, [loadSketchData, setBackgroundImages, setMarkerLinks, setMeasurements, setShowBackgroundImage]);
 
   // ============================================
   // MOD v7.14: AUTO-BACKUP SUPABASE
@@ -4225,38 +4207,35 @@ export function CADGabaritCanvas({
   });
 
   // v7.37: Fonction pour ajouter une image avec son calque
-  const addImageWithLayer = useCallback(
-    (img: BackgroundImage) => {
-      const layerColors = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4", "#84CC16", "#EF4444"];
+  const addImageWithLayer = useCallback((img: BackgroundImage) => {
+    const layerColors = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4", "#84CC16", "#EF4444"];
 
-      setSketch((prevSketch) => {
-        const updatedLayers = new Map(prevSketch.layers);
-        const layerCount = prevSketch.layers.size + 1;
-        const layerId = `photo_${img.id}`;
+    setSketch((prevSketch) => {
+      const updatedLayers = new Map(prevSketch.layers);
+      const layerCount = prevSketch.layers.size + 1;
+      const layerId = `photo_${img.id}`;
 
-        const newLayer: Layer = {
-          id: layerId,
-          name: `Calque ${layerCount}`,
-          color: layerColors[(layerCount - 1) % layerColors.length],
-          visible: true,
-          locked: false,
-          order: layerCount,
-          opacity: 1,
-        };
+      const newLayer: Layer = {
+        id: layerId,
+        name: `Calque ${layerCount}`,
+        color: layerColors[(layerCount - 1) % layerColors.length],
+        visible: true,
+        locked: false,
+        order: layerCount,
+        opacity: 1,
+      };
 
-        updatedLayers.set(layerId, newLayer);
+      updatedLayers.set(layerId, newLayer);
 
-        // Ajouter l'image en dehors du setSketch
-        setTimeout(() => {
-          setBackgroundImages((prev) => [...prev, { ...img, layerId }]);
-          setShowBackgroundImage(true);
-        }, 0);
+      // Ajouter l'image en dehors du setSketch
+      setTimeout(() => {
+        setBackgroundImages((prev) => [...prev, { ...img, layerId }]);
+        setShowBackgroundImage(true);
+      }, 0);
 
-        return { ...prevSketch, layers: updatedLayers };
-      });
-    },
-    [setShowBackgroundImage],
-  );
+      return { ...prevSketch, layers: updatedLayers };
+    });
+  }, [setShowBackgroundImage]);
 
   // v7.32: Hook pour le drag & drop d'images sur le canvas
   useImageDragDrop({
@@ -4346,7 +4325,7 @@ export function CADGabaritCanvas({
 
       // Supprimer aussi les liens de markers associés
       setMarkerLinks((links) =>
-        links.filter((link) => !orphanedIds.has(link.marker1.imageId) && !orphanedIds.has(link.marker2.imageId)),
+        links.filter((link) => !orphanedIds.has(link.marker1.imageId) && !orphanedIds.has(link.marker2.imageId))
       );
 
       toast.success(`${orphanedImages.length} photo(s) supprimée(s) avec le(s) calque(s)`);
@@ -5350,7 +5329,9 @@ export function CADGabaritCanvas({
       });
 
       // Déplacer l'image vers ce calque
-      setBackgroundImages((prev) => prev.map((img) => (img.id === imageId ? { ...img, layerId: newLayerId } : img)));
+      setBackgroundImages((prev) =>
+        prev.map((img) => (img.id === imageId ? { ...img, layerId: newLayerId } : img))
+      );
 
       toast.success(`Image déplacée vers nouveau calque`);
     },
@@ -5373,44 +5354,55 @@ export function CADGabaritCanvas({
           return;
         }
 
+        // Créer un nouveau calque pour l'import DXF avec le nom du fichier
+        const fileName = file.name.replace(/\.dxf$/i, "");
+        const newLayerId = `dxf_${Date.now()}_${generateId().slice(0, 8)}`;
+
         // Fusionner les entités importées avec le sketch actuel
         setSketch((prev) => {
           const newPoints = new Map(prev.points);
           const newGeometries = new Map(prev.geometries);
+          const newLayers = new Map(prev.layers);
 
-          // DEBUG: Log l'état avant import
-          console.log("[DXF Import] État avant:", {
-            activeLayerId: prev.activeLayerId,
-            layersCount: prev.layers.size,
-            existingPoints: prev.points.size,
-            existingGeometries: prev.geometries.size,
-          });
+          // Créer le nouveau calque pour ce fichier DXF
+          const layerOrder = newLayers.size;
+          const layerColors = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899"];
+          const newLayer: Layer = {
+            id: newLayerId,
+            name: fileName,
+            color: layerColors[layerOrder % layerColors.length],
+            visible: true,
+            locked: false,
+            order: layerOrder,
+            opacity: 1,
+          };
+          newLayers.set(newLayerId, newLayer);
 
-          // Vérifier que le calque actif existe et est visible
-          const activeLayer = prev.layers.get(prev.activeLayerId);
-          console.log("[DXF Import] Calque actif:", prev.activeLayerId, activeLayer);
+          console.log("[DXF Import] Nouveau calque créé:", newLayer);
 
           // Ajouter les points
           result.points.forEach((point, id) => {
             newPoints.set(id, point);
           });
 
-          // Ajouter les géométries (avec le calque actif)
+          // Ajouter les géométries sur le nouveau calque
           result.geometries.forEach((geo, id) => {
-            // Assigner au calque actif si le calque DXF n'existe pas
-            const geoWithLayer = { ...geo, layerId: prev.activeLayerId };
+            const geoWithLayer = { ...geo, layerId: newLayerId };
             newGeometries.set(id, geoWithLayer);
           });
 
           console.log("[DXF Import] État après:", {
             newPointsCount: newPoints.size,
             newGeometriesCount: newGeometries.size,
+            newLayerId,
           });
 
           return {
             ...prev,
             points: newPoints,
             geometries: newGeometries,
+            layers: newLayers,
+            activeLayerId: newLayerId, // Activer le nouveau calque
           };
         });
 
@@ -5430,12 +5422,13 @@ export function CADGabaritCanvas({
           const scaleY = (prev.height * margin) / contentHeight;
           const optimalScale = Math.min(scaleX, scaleY);
 
-          // Scale minimum de 3 pour que les petits dessins soient visibles
-          // (approxime 1mm = 3 pixels, proche de la taille réelle sur écran)
-          const minScale = 3;
+          // Pour les petits dessins (< 100mm), utiliser un scale minimum
+          // Pour les grands dessins (planchers, etc.), utiliser le scale optimal
+          const isLargeDrawing = contentWidth > 500 || contentHeight > 500;
+          const minScale = isLargeDrawing ? 0.01 : 3;
           const newScale = Math.max(minScale, Math.min(5000, optimalScale));
 
-          console.log("DXF Import scale:", { scaleX, scaleY, optimalScale, newScale });
+          console.log("DXF Import scale:", { scaleX, scaleY, optimalScale, newScale, isLargeDrawing });
 
           return {
             ...prev,
@@ -11976,10 +11969,7 @@ export function CADGabaritCanvas({
 
   // v7.31: Fonction pour trouver une cotation (dimension text) à une position écran
   const findDimensionAtScreenPos = useCallback(
-    (
-      screenX: number,
-      screenY: number,
-    ): { dimensionId: string; entityId: string; type: "line" | "circle"; value: number } | null => {
+    (screenX: number, screenY: number): { dimensionId: string; entityId: string; type: "line" | "circle"; value: number } | null => {
       const currentSketch = sketchRef.current;
 
       // Parcourir les dimensions existantes
@@ -12030,10 +12020,8 @@ export function CADGabaritCanvas({
             for (const [geoId, geo] of currentSketch.geometries) {
               if (geo.type === "line") {
                 const line = geo as Line;
-                if (
-                  (line.p1 === dimension.entities[0] && line.p2 === dimension.entities[1]) ||
-                  (line.p1 === dimension.entities[1] && line.p2 === dimension.entities[0])
-                ) {
+                if ((line.p1 === dimension.entities[0] && line.p2 === dimension.entities[1]) ||
+                    (line.p1 === dimension.entities[1] && line.p2 === dimension.entities[0])) {
                   foundLineId = geoId;
                   break;
                 }
@@ -12045,7 +12033,7 @@ export function CADGabaritCanvas({
       }
       return null;
     },
-    [viewport],
+    [viewport]
   );
 
   // Double-clic pour éditer un arc OU sélectionner une figure entière
@@ -13855,7 +13843,9 @@ export function CADGabaritCanvas({
             const newImages = prev.filter((img) => !idsToDelete.has(img.id));
             // Aussi supprimer les liens qui référencent ces images
             setMarkerLinks((links) =>
-              links.filter((link) => !idsToDelete.has(link.marker1.imageId) && !idsToDelete.has(link.marker2.imageId)),
+              links.filter(
+                (link) => !idsToDelete.has(link.marker1.imageId) && !idsToDelete.has(link.marker2.imageId),
+              ),
             );
             return newImages;
           });
@@ -16250,7 +16240,7 @@ export function CADGabaritCanvas({
       if (sketch.geometries.size > 0 || backgroundImages.length > 0) {
         window.__CAD_HMR_STATE__ = {
           sketch: serializeSketch(sketch),
-          backgroundImages: backgroundImages.map((img) => ({
+          backgroundImages: backgroundImages.map(img => ({
             ...img,
             image: undefined, // On ne peut pas sérialiser HTMLImageElement
             src: img.src || img.image?.src,
@@ -16263,8 +16253,7 @@ export function CADGabaritCanvas({
 
     // Au montage, vérifier si on a un état HMR à restaurer
     const hmrState = window.__CAD_HMR_STATE__;
-    if (hmrState && Date.now() - hmrState.timestamp < 60000) {
-      // Max 1 minute
+    if (hmrState && Date.now() - hmrState.timestamp < 60000) { // Max 1 minute
       console.log("[FIX #92] Restauration état HMR détectée");
       // Ne restaurer que si le sketch actuel est vide
       if (sketch.geometries.size === 0 && backgroundImages.length === 0) {
@@ -16288,7 +16277,7 @@ export function CADGabaritCanvas({
               } catch {
                 return null;
               }
-            }),
+            })
           ).then((loadedImages) => {
             const validImages = loadedImages.filter(Boolean);
             if (validImages.length > 0) {
@@ -16412,7 +16401,12 @@ export function CADGabaritCanvas({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <label className="cursor-pointer">
-                      <input type="file" accept=".json" onChange={loadLocalBackup} className="hidden" />
+                      <input
+                        type="file"
+                        accept=".json"
+                        onChange={loadLocalBackup}
+                        className="hidden"
+                      />
                       <div className="h-9 w-9 p-0 border rounded-md flex items-center justify-center border-blue-300 hover:bg-blue-50 transition-colors">
                         <Upload className="h-4 w-4 text-blue-600" />
                       </div>
@@ -17032,10 +17026,7 @@ export function CADGabaritCanvas({
               console.log("[Import] No files");
               return;
             }
-            console.log(
-              "[Import] Files:",
-              Array.from(files).map((f) => ({ name: f.name, size: f.size })),
-            );
+            console.log("[Import] Files:", Array.from(files).map(f => ({ name: f.name, size: f.size })));
 
             // Séparer les DXF des images
             const dxfFiles: File[] = [];
@@ -17043,7 +17034,7 @@ export function CADGabaritCanvas({
 
             for (let i = 0; i < files.length; i++) {
               const file = files[i];
-              if (file.name.toLowerCase().endsWith(".dxf")) {
+              if (file.name.toLowerCase().endsWith('.dxf')) {
                 dxfFiles.push(file);
               } else {
                 imageFiles.push(file);
@@ -17059,7 +17050,7 @@ export function CADGabaritCanvas({
               const dt = new DataTransfer();
               dt.items.add(dxfFiles[0]);
               const fakeEvent = {
-                target: { files: dt.files },
+                target: { files: dt.files }
               } as React.ChangeEvent<HTMLInputElement>;
               handleDXFImport(fakeEvent);
             }
@@ -17068,15 +17059,15 @@ export function CADGabaritCanvas({
             if (imageFiles.length > 0) {
               console.log("[Import] Processing images:", imageFiles.length);
               const dt = new DataTransfer();
-              imageFiles.forEach((f) => dt.items.add(f));
+              imageFiles.forEach(f => dt.items.add(f));
               const fakeEvent = {
-                target: { files: dt.files },
+                target: { files: dt.files }
               } as React.ChangeEvent<HTMLInputElement>;
               handleImageUpload(fakeEvent);
             }
 
             // Reset l'input
-            e.target.value = "";
+            e.target.value = '';
           }}
           className="hidden"
         />
@@ -17130,7 +17121,9 @@ export function CADGabaritCanvas({
                     <Settings className="h-4 w-4 mr-1" />
                     <span className="text-xs">Outils</span>
                     <ChevronDown className="h-3 w-3 ml-1" />
-                    {selectedImageId && <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />}
+                    {selectedImageId && (
+                      <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />
+                    )}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-56">
@@ -17140,9 +17133,8 @@ export function CADGabaritCanvas({
                       {selectedImageId || selectedImageIds.size > 0
                         ? `Opacité ${selectedImageIds.size > 1 ? `(${selectedImageIds.size} photos)` : "photo"}: ${Math.round(
                             (selectedImageId
-                              ? (backgroundImages.find((img) => img.id === selectedImageId)?.opacity ?? imageOpacity)
-                              : (backgroundImages.find((img) => selectedImageIds.has(img.id))?.opacity ??
-                                imageOpacity)) * 100,
+                              ? backgroundImages.find((img) => img.id === selectedImageId)?.opacity ?? imageOpacity
+                              : backgroundImages.find((img) => selectedImageIds.has(img.id))?.opacity ?? imageOpacity) * 100
                           )}%`
                         : `Opacité (par défaut): ${Math.round(imageOpacity * 100)}%`}
                     </label>
@@ -17153,9 +17145,9 @@ export function CADGabaritCanvas({
                       step="0.1"
                       value={
                         selectedImageId
-                          ? (backgroundImages.find((img) => img.id === selectedImageId)?.opacity ?? imageOpacity)
+                          ? backgroundImages.find((img) => img.id === selectedImageId)?.opacity ?? imageOpacity
                           : selectedImageIds.size > 0
-                            ? (backgroundImages.find((img) => selectedImageIds.has(img.id))?.opacity ?? imageOpacity)
+                            ? backgroundImages.find((img) => selectedImageIds.has(img.id))?.opacity ?? imageOpacity
                             : imageOpacity
                       }
                       onChange={(e) => {
@@ -17166,7 +17158,9 @@ export function CADGabaritCanvas({
                             ? new Set([selectedImageId, ...selectedImageIds])
                             : selectedImageIds;
                           setBackgroundImages((prev) =>
-                            prev.map((img) => (idsToUpdate.has(img.id) ? { ...img, opacity: newOpacity } : img)),
+                            prev.map((img) =>
+                              idsToUpdate.has(img.id) ? { ...img, opacity: newOpacity } : img
+                            )
                           );
                         } else {
                           // Aucune sélection: changer l'opacité par défaut pour les nouvelles images
@@ -17324,9 +17318,7 @@ export function CADGabaritCanvas({
                   >
                     <Link2 className="h-4 w-4 mr-2" />
                     Lier deux marqueurs
-                    {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && (
-                      <Check className="h-4 w-4 ml-auto" />
-                    )}
+                    {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && <Check className="h-4 w-4 ml-auto" />}
                   </DropdownMenuItem>
 
                   <DropdownMenuSeparator />
@@ -17627,9 +17619,7 @@ export function CADGabaritCanvas({
                 <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
                 </svg>
-                <span className="text-xs">
-                  R{filletRadius}/{chamferDistance}
-                </span>
+                <span className="text-xs">R{filletRadius}/{chamferDistance}</span>
                 <ChevronDown className="h-3 w-3 ml-1" />
               </Button>
             </DropdownMenuTrigger>
@@ -18445,155 +18435,133 @@ export function CADGabaritCanvas({
             )}
 
             {/* v7.31: Inputs inline sur le rectangle temporaire (style épuré) */}
-            {rectInputs.active &&
-              tempGeometry?.type === "rectangle" &&
-              tempGeometry.p1 &&
-              tempGeometry.cursor &&
-              (() => {
-                const p1 = tempGeometry.p1;
-                const p2 = tempGeometry.cursor;
-                const isCenter = tempGeometry.mode === "center";
+            {rectInputs.active && tempGeometry?.type === "rectangle" && tempGeometry.p1 && tempGeometry.cursor && (() => {
+              const p1 = tempGeometry.p1;
+              const p2 = tempGeometry.cursor;
+              const isCenter = tempGeometry.mode === "center";
 
-                // Calculer les coordonnées du rectangle
-                const topY = isCenter ? p1.y - Math.abs(p2.y - p1.y) : Math.min(p1.y, p2.y);
-                const leftX = isCenter ? p1.x - Math.abs(p2.x - p1.x) : Math.min(p1.x, p2.x);
-                const rightX = isCenter ? p1.x + Math.abs(p2.x - p1.x) : Math.max(p1.x, p2.x);
-                const bottomY = isCenter ? p1.y + Math.abs(p2.y - p1.y) : Math.max(p1.y, p2.y);
+              // Calculer les coordonnées du rectangle
+              const topY = isCenter ? p1.y - Math.abs(p2.y - p1.y) : Math.min(p1.y, p2.y);
+              const leftX = isCenter ? p1.x - Math.abs(p2.x - p1.x) : Math.min(p1.x, p2.x);
+              const rightX = isCenter ? p1.x + Math.abs(p2.x - p1.x) : Math.max(p1.x, p2.x);
+              const bottomY = isCenter ? p1.y + Math.abs(p2.y - p1.y) : Math.max(p1.y, p2.y);
 
-                // Positions écran pour les inputs
-                const widthScreenX = ((leftX + rightX) / 2) * viewport.scale + viewport.offsetX;
-                const widthScreenY = topY * viewport.scale + viewport.offsetY - 18;
-                const heightScreenX = leftX * viewport.scale + viewport.offsetX - 32;
-                const heightScreenY = ((topY + bottomY) / 2) * viewport.scale + viewport.offsetY;
+              // Positions écran pour les inputs
+              const widthScreenX = ((leftX + rightX) / 2) * viewport.scale + viewport.offsetX;
+              const widthScreenY = topY * viewport.scale + viewport.offsetY - 18;
+              const heightScreenX = leftX * viewport.scale + viewport.offsetX - 32;
+              const heightScreenY = ((topY + bottomY) / 2) * viewport.scale + viewport.offsetY;
 
-                // Valeurs actuelles en mm
-                const widthPx = isCenter ? Math.abs(p2.x - p1.x) * 2 : Math.abs(p2.x - p1.x);
-                const heightPx = isCenter ? Math.abs(p2.y - p1.y) * 2 : Math.abs(p2.y - p1.y);
-                const widthMm = widthPx / sketch.scaleFactor;
-                const heightMm = heightPx / sketch.scaleFactor;
+              // Valeurs actuelles en mm
+              const widthPx = isCenter ? Math.abs(p2.x - p1.x) * 2 : Math.abs(p2.x - p1.x);
+              const heightPx = isCenter ? Math.abs(p2.y - p1.y) * 2 : Math.abs(p2.y - p1.y);
+              const widthMm = widthPx / sketch.scaleFactor;
+              const heightMm = heightPx / sketch.scaleFactor;
 
-                // Valeurs verrouillées (saisies par l'utilisateur)
-                const lockedWidth = rectInputs.widthValue && parseFloat(rectInputs.widthValue.replace(",", ".")) > 0;
-                const lockedHeight = rectInputs.heightValue && parseFloat(rectInputs.heightValue.replace(",", ".")) > 0;
+              // Valeurs verrouillées (saisies par l'utilisateur)
+              const lockedWidth = rectInputs.widthValue && parseFloat(rectInputs.widthValue.replace(",", ".")) > 0;
+              const lockedHeight = rectInputs.heightValue && parseFloat(rectInputs.heightValue.replace(",", ".")) > 0;
 
-                return (
-                  <>
-                    {/* Input Largeur (en haut du rectangle) - style épuré */}
-                    <input
-                      ref={widthInputRef}
-                      type="text"
-                      inputMode="decimal"
-                      value={rectInputs.editingWidth || lockedWidth ? rectInputs.widthValue : widthMm.toFixed(1)}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
-                        setRectInputs((prev) => ({ ...prev, widthValue: val, editingWidth: true }));
-                      }}
-                      onFocus={(e) => {
-                        setRectInputs((prev) => ({ ...prev, activeField: "width", editingWidth: true }));
-                        e.target.select();
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Tab") {
-                          e.preventDefault();
-                          setRectInputs((prev) => ({ ...prev, activeField: "height" }));
-                          heightInputRef.current?.focus();
-                        } else if (e.key === "Enter") {
-                          e.preventDefault();
-                          createRectangleFromInputs(undefined, {
-                            width: widthInputRef.current?.value || "",
-                            height: heightInputRef.current?.value || "",
-                          });
-                        } else if (e.key === "Escape") {
-                          e.preventDefault();
-                          setTempPoints([]);
-                          setTempGeometry(null);
-                          setRectInputs({
-                            active: false,
-                            widthValue: "",
-                            heightValue: "",
-                            activeField: "width",
-                            editingWidth: false,
-                            editingHeight: false,
-                            widthInputPos: { x: 0, y: 0 },
-                            heightInputPos: { x: 0, y: 0 },
-                          });
-                        }
-                      }}
-                      onBlur={() => {
-                        // v7.32: Quand on quitte le champ, si vide, désactiver le mode édition
-                        if (!rectInputs.widthValue) {
-                          setRectInputs((prev) => ({ ...prev, editingWidth: false }));
-                        }
-                      }}
-                      className={`absolute z-50 pointer-events-auto w-14 h-5 px-1 text-xs font-mono text-center rounded-sm outline-none
+              return (
+                <>
+                  {/* Input Largeur (en haut du rectangle) - style épuré */}
+                  <input
+                    ref={widthInputRef}
+                    type="text"
+                    inputMode="decimal"
+                    value={rectInputs.editingWidth || lockedWidth ? rectInputs.widthValue : widthMm.toFixed(1)}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
+                      setRectInputs((prev) => ({ ...prev, widthValue: val, editingWidth: true }));
+                    }}
+                    onFocus={(e) => {
+                      setRectInputs((prev) => ({ ...prev, activeField: "width", editingWidth: true }));
+                      e.target.select();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Tab") {
+                        e.preventDefault();
+                        setRectInputs((prev) => ({ ...prev, activeField: "height" }));
+                        heightInputRef.current?.focus();
+                      } else if (e.key === "Enter") {
+                        e.preventDefault();
+                        createRectangleFromInputs(undefined, {
+                          width: widthInputRef.current?.value || "",
+                          height: heightInputRef.current?.value || "",
+                        });
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setTempPoints([]);
+                        setTempGeometry(null);
+                        setRectInputs({ active: false, widthValue: "", heightValue: "", activeField: "width", editingWidth: false, editingHeight: false, widthInputPos: { x: 0, y: 0 }, heightInputPos: { x: 0, y: 0 } });
+                      }
+                    }}
+                    onBlur={() => {
+                      // v7.32: Quand on quitte le champ, si vide, désactiver le mode édition
+                      if (!rectInputs.widthValue) {
+                        setRectInputs((prev) => ({ ...prev, editingWidth: false }));
+                      }
+                    }}
+                    className={`absolute z-50 pointer-events-auto w-14 h-5 px-1 text-xs font-mono text-center rounded-sm outline-none
                       ${lockedWidth ? "bg-green-100 text-green-700 font-bold" : "bg-blue-50/95 text-blue-600"}
                       ${rectInputs.activeField === "width" ? "ring-2 ring-blue-400" : ""}`}
-                      style={{
-                        left: `${widthScreenX}px`,
-                        top: `${widthScreenY}px`,
-                        transform: "translate(-50%, -50%)",
-                      }}
-                    />
+                    style={{
+                      left: `${widthScreenX}px`,
+                      top: `${widthScreenY}px`,
+                      transform: "translate(-50%, -50%)",
+                    }}
+                  />
 
-                    {/* Input Hauteur (à gauche du rectangle) - style épuré */}
-                    <input
-                      ref={heightInputRef}
-                      type="text"
-                      inputMode="decimal"
-                      value={rectInputs.editingHeight || lockedHeight ? rectInputs.heightValue : heightMm.toFixed(1)}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
-                        setRectInputs((prev) => ({ ...prev, heightValue: val, editingHeight: true }));
-                      }}
-                      onFocus={(e) => {
-                        setRectInputs((prev) => ({ ...prev, activeField: "height", editingHeight: true }));
-                        e.target.select();
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Tab") {
-                          e.preventDefault();
-                          setRectInputs((prev) => ({ ...prev, activeField: "width" }));
-                          widthInputRef.current?.focus();
-                        } else if (e.key === "Enter") {
-                          e.preventDefault();
-                          createRectangleFromInputs(undefined, {
-                            width: widthInputRef.current?.value || "",
-                            height: heightInputRef.current?.value || "",
-                          });
-                        } else if (e.key === "Escape") {
-                          e.preventDefault();
-                          setTempPoints([]);
-                          setTempGeometry(null);
-                          setRectInputs({
-                            active: false,
-                            widthValue: "",
-                            heightValue: "",
-                            activeField: "width",
-                            editingWidth: false,
-                            editingHeight: false,
-                            widthInputPos: { x: 0, y: 0 },
-                            heightInputPos: { x: 0, y: 0 },
-                          });
-                        }
-                      }}
-                      onBlur={() => {
-                        // v7.32: Quand on quitte le champ, si vide, désactiver le mode édition
-                        if (!rectInputs.heightValue) {
-                          setRectInputs((prev) => ({ ...prev, editingHeight: false }));
-                        }
-                      }}
-                      className={`absolute z-50 pointer-events-auto w-14 h-5 px-1 text-xs font-mono text-center rounded-sm outline-none
+                  {/* Input Hauteur (à gauche du rectangle) - style épuré */}
+                  <input
+                    ref={heightInputRef}
+                    type="text"
+                    inputMode="decimal"
+                    value={rectInputs.editingHeight || lockedHeight ? rectInputs.heightValue : heightMm.toFixed(1)}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
+                      setRectInputs((prev) => ({ ...prev, heightValue: val, editingHeight: true }));
+                    }}
+                    onFocus={(e) => {
+                      setRectInputs((prev) => ({ ...prev, activeField: "height", editingHeight: true }));
+                      e.target.select();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Tab") {
+                        e.preventDefault();
+                        setRectInputs((prev) => ({ ...prev, activeField: "width" }));
+                        widthInputRef.current?.focus();
+                      } else if (e.key === "Enter") {
+                        e.preventDefault();
+                        createRectangleFromInputs(undefined, {
+                          width: widthInputRef.current?.value || "",
+                          height: heightInputRef.current?.value || "",
+                        });
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setTempPoints([]);
+                        setTempGeometry(null);
+                        setRectInputs({ active: false, widthValue: "", heightValue: "", activeField: "width", editingWidth: false, editingHeight: false, widthInputPos: { x: 0, y: 0 }, heightInputPos: { x: 0, y: 0 } });
+                      }
+                    }}
+                    onBlur={() => {
+                      // v7.32: Quand on quitte le champ, si vide, désactiver le mode édition
+                      if (!rectInputs.heightValue) {
+                        setRectInputs((prev) => ({ ...prev, editingHeight: false }));
+                      }
+                    }}
+                    className={`absolute z-50 pointer-events-auto w-14 h-5 px-1 text-xs font-mono text-center rounded-sm outline-none
                       ${lockedHeight ? "bg-green-100 text-green-700 font-bold" : "bg-blue-50/95 text-blue-600"}
                       ${rectInputs.activeField === "height" ? "ring-2 ring-blue-400" : ""}`}
-                      style={{
-                        left: `${heightScreenX}px`,
-                        top: `${heightScreenY}px`,
-                        transform: "translate(-50%, -50%)",
-                      }}
-                    />
-                  </>
-                );
-              })()}
+                    style={{
+                      left: `${heightScreenX}px`,
+                      top: `${heightScreenY}px`,
+                      transform: "translate(-50%, -50%)",
+                    }}
+                  />
+                </>
+              );
+            })()}
 
             {/* Input inline pour le gizmo de transformation */}
             {transformGizmo.active && selectionGizmoData && (
@@ -18803,7 +18771,9 @@ export function CADGabaritCanvas({
           }}
           onMoveToNewLayer={moveImageToNewLayer}
           onMoveToLayer={(imageId, layerId) => {
-            setBackgroundImages((prev) => prev.map((img) => (img.id === imageId ? { ...img, layerId } : img)));
+            setBackgroundImages((prev) =>
+              prev.map((img) => img.id === imageId ? { ...img, layerId } : img)
+            );
             const layer = sketch.layers.get(layerId);
             toast.success(`→ "${layer?.name || layerId}"`, { duration: 1500 });
           }}
@@ -18811,7 +18781,7 @@ export function CADGabaritCanvas({
             addToImageHistory(backgroundImages, markerLinks);
             setBackgroundImages((prev) => prev.filter((img) => img.id !== imageId));
             setMarkerLinks((links) =>
-              links.filter((link) => link.marker1.imageId !== imageId && link.marker2.imageId !== imageId),
+              links.filter((link) => link.marker1.imageId !== imageId && link.marker2.imageId !== imageId)
             );
             if (selectedImageId === imageId) setSelectedImageId(null);
             const newSelectedIds = new Set(selectedImageIds);
@@ -18873,7 +18843,7 @@ export function CADGabaritCanvas({
                   ...img,
                   calibrationData: { ...img.calibrationData, pairs: newPairs },
                 };
-              }),
+              })
             );
           }}
           initialPosition={imageToolsModalPos}
@@ -21722,632 +21692,607 @@ export function CADGabaritCanvas({
       )}
 
       {/* Menu contextuel */}
-      {contextMenu &&
-        (() => {
-          // v7.35: Calculer la position ajustée pour éviter le débordement hors écran
-          const menuWidth = 180; // Largeur estimée du menu (réduit)
-          const menuHeight = contextMenu.entityType === "image" ? 280 : 150; // Hauteur estimée (menu compact)
-          const padding = 10; // Marge par rapport aux bords
+      {contextMenu && (() => {
+        // v7.35: Calculer la position ajustée pour éviter le débordement hors écran
+        const menuWidth = 180; // Largeur estimée du menu (réduit)
+        const menuHeight = contextMenu.entityType === "image" ? 280 : 150; // Hauteur estimée (menu compact)
+        const padding = 10; // Marge par rapport aux bords
 
-          let adjustedX = contextMenu.x;
-          let adjustedY = contextMenu.y;
+        let adjustedX = contextMenu.x;
+        let adjustedY = contextMenu.y;
 
-          // Ajuster horizontalement si le menu dépasse à droite
-          if (contextMenu.x + menuWidth > window.innerWidth - padding) {
-            adjustedX = window.innerWidth - menuWidth - padding;
-          }
-          // Ajuster horizontalement si le menu dépasse à gauche
-          if (adjustedX < padding) {
-            adjustedX = padding;
-          }
+        // Ajuster horizontalement si le menu dépasse à droite
+        if (contextMenu.x + menuWidth > window.innerWidth - padding) {
+          adjustedX = window.innerWidth - menuWidth - padding;
+        }
+        // Ajuster horizontalement si le menu dépasse à gauche
+        if (adjustedX < padding) {
+          adjustedX = padding;
+        }
 
-          // Ajuster verticalement si le menu dépasse en bas
-          if (contextMenu.y + menuHeight > window.innerHeight - padding) {
-            adjustedY = window.innerHeight - menuHeight - padding;
-          }
-          // Ajuster verticalement si le menu dépasse en haut
-          if (adjustedY < padding) {
-            adjustedY = padding;
-          }
+        // Ajuster verticalement si le menu dépasse en bas
+        if (contextMenu.y + menuHeight > window.innerHeight - padding) {
+          adjustedY = window.innerHeight - menuHeight - padding;
+        }
+        // Ajuster verticalement si le menu dépasse en haut
+        if (adjustedY < padding) {
+          adjustedY = padding;
+        }
 
-          return (
-            <div
-              className="fixed bg-white rounded-lg shadow-xl border z-[100] py-1 min-w-[160px] max-h-[90vh] overflow-y-auto"
-              style={{ left: adjustedX, top: adjustedY }}
-              onClick={() => setContextMenu(null)}
-            >
-              {contextMenu.entityType === "arc" &&
-                (() => {
-                  const arc = sketch.geometries.get(contextMenu.entityId) as Arc | undefined;
-                  const isFillet = arc?.isFillet === true;
-                  return (
-                    <>
-                      {isFillet ? (
-                        <button
-                          className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                          onClick={() => {
-                            removeFilletFromArc(contextMenu.entityId);
-                            setContextMenu(null);
-                          }}
-                        >
-                          <RotateCcw className="h-4 w-4 text-red-500" />
-                          Supprimer le congé
-                        </button>
-                      ) : (
-                        <button
-                          className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                          onClick={() => {
-                            // Supprimer simplement l'arc sans restaurer de coin
-                            const newSketch: Sketch = {
-                              ...sketch,
-                              points: new Map(sketch.points),
-                              geometries: new Map(sketch.geometries),
-                              layers: new Map(sketch.layers),
-                              constraints: new Map(sketch.constraints),
-                            };
-                            newSketch.geometries.delete(contextMenu.entityId);
-                            // Ne pas supprimer les points car ils peuvent être utilisés par d'autres géométries
-                            setSketch(newSketch);
-                            addToHistory(newSketch);
-                            toast.success("Arc supprimé");
-                            setContextMenu(null);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                          Supprimer
-                        </button>
-                      )}
-                      <button
-                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                        onClick={() => {
-                          setArcEditDialog({
-                            open: true,
-                            arcId: contextMenu.entityId,
-                            currentRadius: arc?.radius || 0,
-                          });
-                          setContextMenu(null);
-                        }}
-                      >
-                        <Settings className="h-4 w-4 text-blue-500" />
-                        Modifier le rayon
-                      </button>
-                    </>
-                  );
-                })()}
-              {contextMenu.entityType === "line" &&
-                (() => {
-                  // Utiliser sketchRef.current pour éviter les closures stales
-                  const currentSketch = sketchRef.current;
-                  const line = currentSketch.geometries.get(contextMenu.entityId) as Line | undefined;
-                  const p1 = line ? currentSketch.points.get(line.p1) : undefined;
-                  const p2 = line ? currentSketch.points.get(line.p2) : undefined;
-                  const currentLength = p1 && p2 ? distance(p1, p2) / currentSketch.scaleFactor : 0;
-
-                  return (
-                    <>
-                      <button
-                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                        onClick={() => {
-                          setSelectedEntities(new Set([contextMenu.entityId]));
-                          setContextMenu(null);
-                        }}
-                      >
-                        <MousePointer className="h-4 w-4" />
-                        Sélectionner
-                      </button>
-                      <button
-                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                        onClick={() => {
-                          // Fermer les autres panneaux d'édition
-                          closeAllEditPanels("lineLength");
-                          setLineLengthPanelPos({ x: contextMenu.x + 10, y: contextMenu.y });
-                          setLineLengthDialog({
-                            open: true,
-                            lineId: contextMenu.entityId,
-                            currentLength: currentLength,
-                            newLength: currentLength.toFixed(1),
-                            anchorMode: "center",
-                            // Utiliser sketchRef.current pour éviter les closures stales
-                            originalSketch: {
-                              ...sketchRef.current,
-                              points: new Map(sketchRef.current.points),
-                              geometries: new Map(sketchRef.current.geometries),
-                              layers: new Map(sketchRef.current.layers),
-                              constraints: new Map(sketchRef.current.constraints),
-                            },
-                          });
-                          setContextMenu(null);
-                        }}
-                      >
-                        <Ruler className="h-4 w-4 text-blue-500" />
-                        Modifier la longueur
-                      </button>
-                      <button
-                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
-                        onClick={() => {
-                          setSelectedEntities(new Set([contextMenu.entityId]));
-                          deleteSelectedEntities();
-                          setContextMenu(null);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Supprimer
-                      </button>
-                    </>
-                  );
-                })()}
-              {(contextMenu.entityType === "circle" || contextMenu.entityType === "bezier") && (
-                <button
-                  className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
-                  onClick={() => {
-                    setSelectedEntities(new Set([contextMenu.entityId]));
-                    deleteSelectedEntities();
-                    setContextMenu(null);
-                  }}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Supprimer
-                </button>
-              )}
-              {/* FIX #90: Menu contextuel pour les images - v7.35: version compacte */}
-              {contextMenu.entityType === "image" &&
-                (() => {
-                  const image = backgroundImages.find((img) => img.id === contextMenu.entityId);
-                  if (!image) return null;
-                  const currentLayer = sketch.layers.get(image.layerId || "");
-                  const multiCount = selectedImageIds.size > 1 ? selectedImageIds.size : 0;
-                  const imagesToUpdate = multiCount > 0 ? selectedImageIds : new Set([contextMenu.entityId]);
-
-                  return (
-                    <>
-                      {/* Bouton détacher en haut */}
-                      <button
-                        className="w-full px-2 py-1 text-left text-xs hover:bg-blue-50 flex items-center gap-1.5 text-blue-600 border-b"
-                        onClick={() => {
-                          setImageToolsModalPos({ x: contextMenu.x, y: contextMenu.y });
-                          setShowImageToolsModal(true);
-                          setContextMenu(null);
-                        }}
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                        Détacher le menu
-                      </button>
-                      {/* Ligne d'actions rapides groupées */}
-                      <div className="flex items-center justify-around px-2 py-1 border-b">
-                        <button
-                          className="p-1.5 rounded hover:bg-gray-100"
-                          title={image.locked ? "Déverrouiller" : "Verrouiller"}
-                          onClick={() => {
-                            setBackgroundImages((prev) =>
-                              prev.map((img) =>
-                                img.id === contextMenu.entityId ? { ...img, locked: !img.locked } : img,
-                              ),
-                            );
-                            toast.success(image.locked ? "Déverrouillée" : "Verrouillée");
-                            setContextMenu(null);
-                          }}
-                        >
-                          {image.locked ? (
-                            <Unlock className="h-3.5 w-3.5 text-green-500" />
-                          ) : (
-                            <Lock className="h-3.5 w-3.5 text-orange-500" />
-                          )}
-                        </button>
-                        <button
-                          className="p-1.5 rounded hover:bg-gray-100"
-                          title={image.visible ? "Masquer" : "Afficher"}
-                          onClick={() => {
-                            setBackgroundImages((prev) =>
-                              prev.map((img) =>
-                                img.id === contextMenu.entityId ? { ...img, visible: !img.visible } : img,
-                              ),
-                            );
-                            toast.success(image.visible ? "Masquée" : "Affichée");
-                            setContextMenu(null);
-                          }}
-                        >
-                          {image.visible ? (
-                            <EyeOff className="h-3.5 w-3.5 text-gray-500" />
-                          ) : (
-                            <Eye className="h-3.5 w-3.5 text-blue-500" />
-                          )}
-                        </button>
-                        <button
-                          className={`p-1.5 rounded hover:bg-gray-100 ${currentLayer?.solo ? "bg-yellow-100" : ""}`}
-                          title={currentLayer?.solo ? "Désactiver solo" : "Isoler (Solo)"}
-                          onClick={() => {
-                            if (!currentLayer) return;
-                            setSketch((prev) => {
-                              const newLayers = new Map(prev.layers);
-                              const isCurrentlySolo = currentLayer.solo;
-                              newLayers.forEach((l, id) => {
-                                newLayers.set(id, { ...l, solo: isCurrentlySolo ? false : id === currentLayer.id });
-                              });
-                              return { ...prev, layers: newLayers };
-                            });
-                            toast.success(currentLayer.solo ? "Solo désactivé" : `"${currentLayer.name}" isolé`);
-                            setContextMenu(null);
-                          }}
-                        >
-                          <Focus
-                            className={`h-3.5 w-3.5 ${currentLayer?.solo ? "text-yellow-600" : "text-yellow-500"}`}
-                          />
-                        </button>
-                        <button
-                          className="p-1.5 rounded hover:bg-gray-100"
-                          title="Premier plan"
-                          onClick={() => {
-                            setBackgroundImages((prev) => {
-                              const maxOrder = Math.max(...prev.map((img) => img.order), 0);
-                              let nextOrder = maxOrder + 1;
-                              return prev.map((img) =>
-                                imagesToUpdate.has(img.id) ? { ...img, order: nextOrder++ } : img,
-                              );
-                            });
-                            toast.success(multiCount > 0 ? `${multiCount} photos ↑` : "↑ Premier plan");
-                            setContextMenu(null);
-                          }}
-                        >
-                          <ArrowUpToLine className="h-3.5 w-3.5 text-blue-500" />
-                        </button>
-                        <button
-                          className="p-1.5 rounded hover:bg-gray-100"
-                          title="Arrière-plan"
-                          onClick={() => {
-                            setBackgroundImages((prev) => {
-                              const minOrder = Math.min(...prev.map((img) => img.order), 0);
-                              let nextOrder = minOrder - imagesToUpdate.size;
-                              return prev.map((img) =>
-                                imagesToUpdate.has(img.id) ? { ...img, order: nextOrder++ } : img,
-                              );
-                            });
-                            toast.success(multiCount > 0 ? `${multiCount} photos ↓` : "↓ Arrière-plan");
-                            setContextMenu(null);
-                          }}
-                        >
-                          <ArrowDownToLine className="h-3.5 w-3.5 text-orange-500" />
-                        </button>
-                        <button
-                          className={`p-1.5 rounded hover:bg-gray-100 ${image.blendMode === "stripes" ? "bg-cyan-100" : ""}`}
-                          title={image.blendMode === "stripes" ? "Mode normal" : "Mode rayures (alignement)"}
-                          onClick={() => {
-                            setBackgroundImages((prev) =>
-                              prev.map((img) =>
-                                imagesToUpdate.has(img.id)
-                                  ? { ...img, blendMode: img.blendMode === "stripes" ? "normal" : "stripes" }
-                                  : img,
-                              ),
-                            );
-                            toast.success(image.blendMode === "stripes" ? "Mode normal" : "Mode rayures");
-                            setContextMenu(null);
-                          }}
-                        >
-                          <SlidersHorizontal
-                            className={`h-3.5 w-3.5 ${image.blendMode === "stripes" ? "text-cyan-600" : "text-cyan-500"}`}
-                          />
-                        </button>
-                      </div>
-                      {/* Opacité compacte */}
-                      <div className="px-2 py-1 flex items-center gap-2">
-                        <Contrast className="h-3 w-3 text-purple-500 flex-shrink-0" />
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={Math.round(image.opacity * 100)}
-                          onChange={(e) => {
-                            const newOpacity = parseInt(e.target.value) / 100;
-                            setBackgroundImages((prev) =>
-                              prev.map((img) => (imagesToUpdate.has(img.id) ? { ...img, opacity: newOpacity } : img)),
-                            );
-                          }}
-                          className="flex-1 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-500"
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                        <span className="text-[10px] text-gray-500 w-7 text-right">
-                          {Math.round(image.opacity * 100)}%
-                        </span>
-                        <button
-                          className="p-0.5 rounded hover:bg-gray-200"
-                          title="Réinitialiser opacité"
-                          onClick={() => {
-                            setBackgroundImages((prev) =>
-                              prev.map((img) => (imagesToUpdate.has(img.id) ? { ...img, opacity: 1 } : img)),
-                            );
-                            toast.success("Opacité: 100%");
-                            setContextMenu(null);
-                          }}
-                        >
-                          <RotateCcw className="h-3 w-3 text-gray-400" />
-                        </button>
-                      </div>
-                      <div className="border-t my-0.5" />
-                      {/* Actions principales */}
-                      <button
-                        className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5"
-                        onClick={() => {
-                          setSelectedImageId(contextMenu.entityId);
-                          setSelectedImageIds(new Set([contextMenu.entityId]));
-                          setShowCalibrationPanel(true);
-                          setContextMenu(null);
-                        }}
-                      >
-                        <Ruler className="h-3 w-3 text-cyan-500" />
-                        Calibrer
-                      </button>
-                      <button
-                        className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5"
-                        onClick={() => {
-                          moveImageToNewLayer(contextMenu.entityId);
-                          setContextMenu(null);
-                        }}
-                      >
-                        <Layers className="h-3 w-3 text-blue-500" />
-                        Nouveau calque
-                      </button>
-                      {/* Sous-menu calques - utilise un state pour afficher/masquer */}
-                      {sketch.layers.size > 1 && (
-                        <div
-                          className="relative"
-                          onMouseEnter={(e) => {
-                            const submenu = e.currentTarget.querySelector("[data-submenu]") as HTMLElement;
-                            if (submenu) submenu.style.display = "block";
-                          }}
-                          onMouseLeave={(e) => {
-                            const submenu = e.currentTarget.querySelector("[data-submenu]") as HTMLElement;
-                            if (submenu) submenu.style.display = "none";
-                          }}
-                        >
-                          <button className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5 justify-between">
-                            <span className="flex items-center gap-1.5">
-                              <ArrowRight className="h-3 w-3 text-gray-500" />
-                              Vers calque
-                            </span>
-                            <ChevronRight className="h-2.5 w-2.5" />
-                          </button>
-                          <div
-                            data-submenu
-                            className="fixed bg-white rounded shadow-xl border py-0.5 min-w-[100px] z-[10001]"
-                            style={{
-                              display: "none",
-                              left: contextMenu.x + 180,
-                              top: contextMenu.y + 80,
-                            }}
-                          >
-                            {Array.from(sketch.layers.values())
-                              .filter((layer) => layer.id !== image.layerId)
-                              .map((layer) => (
-                                <button
-                                  key={layer.id}
-                                  className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5 whitespace-nowrap"
-                                  onClick={() => {
-                                    setBackgroundImages((prev) =>
-                                      prev.map((img) =>
-                                        img.id === contextMenu.entityId ? { ...img, layerId: layer.id } : img,
-                                      ),
-                                    );
-                                    toast.success(`→ "${layer.name}"`);
-                                    setContextMenu(null);
-                                  }}
-                                >
-                                  <div
-                                    className="w-2 h-2 rounded-sm flex-shrink-0"
-                                    style={{ backgroundColor: layer.color }}
-                                  />
-                                  {layer.name}
-                                </button>
-                              ))}
-                          </div>
-                        </div>
-                      )}
-                      <div className="border-t my-0.5" />
-                      <button
-                        className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5 text-red-600"
-                        onClick={() => {
-                          addToImageHistory(backgroundImages, markerLinks);
-                          const imageIdToDelete = contextMenu.entityId;
-                          setBackgroundImages((prev) => prev.filter((img) => img.id !== imageIdToDelete));
-                          setMarkerLinks((links) =>
-                            links.filter(
-                              (link) =>
-                                link.marker1.imageId !== imageIdToDelete && link.marker2.imageId !== imageIdToDelete,
-                            ),
-                          );
-                          if (selectedImageId === imageIdToDelete) setSelectedImageId(null);
-                          const newSelectedIds = new Set(selectedImageIds);
-                          newSelectedIds.delete(imageIdToDelete);
-                          setSelectedImageIds(newSelectedIds);
-                          toast.success("Supprimée");
-                          setContextMenu(null);
-                        }}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                        Supprimer
-                      </button>
-                      {/* Info calque compact */}
-                      {currentLayer && (
-                        <div className="px-2 py-0.5 text-[10px] text-gray-400 border-t flex items-center gap-1">
-                          <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: currentLayer.color }} />
-                          {currentLayer.name}
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-              {contextMenu.entityType === "point" && (
-                <button
-                  className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                  onClick={() => {
-                    const pointId = contextMenu.entityId;
-                    setLockedPoints((prev) => {
-                      const newSet = new Set(prev);
-                      if (newSet.has(pointId)) {
-                        newSet.delete(pointId);
-                        toast.success("Point déverrouillé");
-                      } else {
-                        newSet.add(pointId);
-                        toast.success("Point verrouillé");
-                      }
-                      return newSet;
-                    });
-                    setContextMenu(null);
-                  }}
-                >
-                  {lockedPoints.has(contextMenu.entityId) ? (
-                    <>
-                      <Unlock className="h-4 w-4 text-green-500" />
-                      Déverrouiller le point
-                    </>
+        return (
+        <div
+          className="fixed bg-white rounded-lg shadow-xl border z-[100] py-1 min-w-[160px] max-h-[90vh] overflow-y-auto"
+          style={{ left: adjustedX, top: adjustedY }}
+          onClick={() => setContextMenu(null)}
+        >
+          {contextMenu.entityType === "arc" &&
+            (() => {
+              const arc = sketch.geometries.get(contextMenu.entityId) as Arc | undefined;
+              const isFillet = arc?.isFillet === true;
+              return (
+                <>
+                  {isFillet ? (
+                    <button
+                      className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                      onClick={() => {
+                        removeFilletFromArc(contextMenu.entityId);
+                        setContextMenu(null);
+                      }}
+                    >
+                      <RotateCcw className="h-4 w-4 text-red-500" />
+                      Supprimer le congé
+                    </button>
                   ) : (
-                    <>
-                      <Lock className="h-4 w-4 text-orange-500" />
-                      Verrouiller le point
-                    </>
+                    <button
+                      className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                      onClick={() => {
+                        // Supprimer simplement l'arc sans restaurer de coin
+                        const newSketch: Sketch = {
+                          ...sketch,
+                          points: new Map(sketch.points),
+                          geometries: new Map(sketch.geometries),
+                          layers: new Map(sketch.layers),
+                          constraints: new Map(sketch.constraints),
+                        };
+                        newSketch.geometries.delete(contextMenu.entityId);
+                        // Ne pas supprimer les points car ils peuvent être utilisés par d'autres géométries
+                        setSketch(newSketch);
+                        addToHistory(newSketch);
+                        toast.success("Arc supprimé");
+                        setContextMenu(null);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                      Supprimer
+                    </button>
                   )}
-                </button>
-              )}
-              {contextMenu.entityType === "corner" &&
-                (() => {
-                  // Trouver les lignes connectées à ce point - utiliser sketchRef.current
-                  const currentSketch = sketchRef.current;
-                  const pointId = contextMenu.entityId;
-                  const point = currentSketch.points.get(pointId);
-                  const connectedLines: Line[] = [];
-                  currentSketch.geometries.forEach((geo) => {
-                    if (geo.type === "line") {
-                      const line = geo as Line;
-                      if (line.p1 === pointId || line.p2 === pointId) {
-                        connectedLines.push(line);
-                      }
-                    }
-                  });
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      setArcEditDialog({
+                        open: true,
+                        arcId: contextMenu.entityId,
+                        currentRadius: arc?.radius || 0,
+                      });
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Settings className="h-4 w-4 text-blue-500" />
+                    Modifier le rayon
+                  </button>
+                </>
+              );
+            })()}
+          {contextMenu.entityType === "line" &&
+            (() => {
+              // Utiliser sketchRef.current pour éviter les closures stales
+              const currentSketch = sketchRef.current;
+              const line = currentSketch.geometries.get(contextMenu.entityId) as Line | undefined;
+              const p1 = line ? currentSketch.points.get(line.p1) : undefined;
+              const p2 = line ? currentSketch.points.get(line.p2) : undefined;
+              const currentLength = p1 && p2 ? distance(p1, p2) / currentSketch.scaleFactor : 0;
 
-                  if (connectedLines.length < 2 || !point) return null;
-
-                  // Calculer l'angle entre les deux premières lignes
-                  const line1 = connectedLines[0];
-                  const line2 = connectedLines[1];
-                  const other1Id = line1.p1 === pointId ? line1.p2 : line1.p1;
-                  const other2Id = line2.p1 === pointId ? line2.p2 : line2.p1;
-                  const other1 = currentSketch.points.get(other1Id);
-                  const other2 = currentSketch.points.get(other2Id);
-
-                  if (!other1 || !other2) return null;
-
-                  const dir1 = { x: other1.x - point.x, y: other1.y - point.y };
-                  const dir2 = { x: other2.x - point.x, y: other2.y - point.y };
-                  const len1 = Math.sqrt(dir1.x * dir1.x + dir1.y * dir1.y);
-                  const len2 = Math.sqrt(dir2.x * dir2.x + dir2.y * dir2.y);
-                  const dot = (dir1.x * dir2.x + dir1.y * dir2.y) / (len1 * len2);
-                  const currentAngle = (Math.acos(Math.max(-1, Math.min(1, dot))) * 180) / Math.PI;
-
-                  return (
-                    <>
-                      {/* Option verrouillage du point */}
-                      <button
-                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                        onClick={() => {
-                          setLockedPoints((prev) => {
-                            const newSet = new Set(prev);
-                            if (newSet.has(pointId)) {
-                              newSet.delete(pointId);
-                              toast.success("Point déverrouillé");
-                            } else {
-                              newSet.add(pointId);
-                              toast.success("Point verrouillé");
-                            }
-                            return newSet;
-                          });
-                          setContextMenu(null);
-                        }}
-                      >
-                        {lockedPoints.has(pointId) ? (
-                          <>
-                            <Unlock className="h-4 w-4 text-green-500" />
-                            Déverrouiller le point
-                          </>
-                        ) : (
-                          <>
-                            <Lock className="h-4 w-4 text-orange-500" />
-                            Verrouiller le point
-                          </>
-                        )}
-                      </button>
-                      {/* Option modifier l'angle */}
-                      <button
-                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                        onClick={() => {
-                          // Fermer les autres panneaux d'édition
-                          closeAllEditPanels("angle");
-                          setAnglePanelPos({ x: contextMenu.x + 10, y: contextMenu.y });
-                          setAngleEditDialog({
-                            open: true,
-                            pointId: pointId,
-                            line1Id: line1.id,
-                            line2Id: line2.id,
-                            currentAngle: currentAngle,
-                            newAngle: currentAngle.toFixed(1),
-                            anchorMode: "symmetric",
-                            // Utiliser sketchRef.current pour éviter les closures stales
-                            originalSketch: {
-                              ...sketchRef.current,
-                              points: new Map(sketchRef.current.points),
-                              geometries: new Map(sketchRef.current.geometries),
-                              layers: new Map(sketchRef.current.layers),
-                              constraints: new Map(sketchRef.current.constraints),
-                            },
-                          });
-                          setContextMenu(null);
-                        }}
-                      >
-                        <Sliders className="h-4 w-4 text-orange-500" />
-                        Modifier l'angle ({currentAngle.toFixed(1)}°)
-                      </button>
-                    </>
-                  );
-                })()}
-              {/* Menu pour formes fermées (remplissage/hachures) */}
-              {contextMenu.entityType === "closedShape" && contextMenu.shapeGeoIds && contextMenu.shapePath && (
+              return (
                 <>
                   <button
                     className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
                     onClick={() => {
-                      if (contextMenu.shapeGeoIds && contextMenu.shapePath) {
-                        openFillDialog(contextMenu.shapeGeoIds, contextMenu.shapePath);
-                      }
+                      setSelectedEntities(new Set([contextMenu.entityId]));
                       setContextMenu(null);
                     }}
                   >
-                    <PaintBucket className="h-4 w-4 text-blue-500" />
-                    Remplir / Hachurer
+                    <MousePointer className="h-4 w-4" />
+                    Sélectionner
                   </button>
-                  {/* Option pour supprimer le remplissage si existant */}
-                  {(() => {
-                    const key = [...contextMenu.shapeGeoIds].sort().join("-");
-                    const existingFill = sketch.shapeFills.get(key);
-                    if (existingFill) {
-                      return (
-                        <button
-                          className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                          onClick={() => {
-                            if (contextMenu.shapeGeoIds) {
-                              removeShapeFill(contextMenu.shapeGeoIds);
-                            }
-                            setContextMenu(null);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                          Supprimer le remplissage
-                        </button>
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      // Fermer les autres panneaux d'édition
+                      closeAllEditPanels("lineLength");
+                      setLineLengthPanelPos({ x: contextMenu.x + 10, y: contextMenu.y });
+                      setLineLengthDialog({
+                        open: true,
+                        lineId: contextMenu.entityId,
+                        currentLength: currentLength,
+                        newLength: currentLength.toFixed(1),
+                        anchorMode: "center",
+                        // Utiliser sketchRef.current pour éviter les closures stales
+                        originalSketch: {
+                          ...sketchRef.current,
+                          points: new Map(sketchRef.current.points),
+                          geometries: new Map(sketchRef.current.geometries),
+                          layers: new Map(sketchRef.current.layers),
+                          constraints: new Map(sketchRef.current.constraints),
+                        },
+                      });
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Ruler className="h-4 w-4 text-blue-500" />
+                    Modifier la longueur
+                  </button>
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
+                    onClick={() => {
+                      setSelectedEntities(new Set([contextMenu.entityId]));
+                      deleteSelectedEntities();
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Supprimer
+                  </button>
+                </>
+              );
+            })()}
+          {(contextMenu.entityType === "circle" || contextMenu.entityType === "bezier") && (
+            <button
+              className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
+              onClick={() => {
+                setSelectedEntities(new Set([contextMenu.entityId]));
+                deleteSelectedEntities();
+                setContextMenu(null);
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+              Supprimer
+            </button>
+          )}
+          {/* FIX #90: Menu contextuel pour les images - v7.35: version compacte */}
+          {contextMenu.entityType === "image" &&
+            (() => {
+              const image = backgroundImages.find((img) => img.id === contextMenu.entityId);
+              if (!image) return null;
+              const currentLayer = sketch.layers.get(image.layerId || "");
+              const multiCount = selectedImageIds.size > 1 ? selectedImageIds.size : 0;
+              const imagesToUpdate = multiCount > 0 ? selectedImageIds : new Set([contextMenu.entityId]);
+
+              return (
+                <>
+                  {/* Bouton détacher en haut */}
+                  <button
+                    className="w-full px-2 py-1 text-left text-xs hover:bg-blue-50 flex items-center gap-1.5 text-blue-600 border-b"
+                    onClick={() => {
+                      setImageToolsModalPos({ x: contextMenu.x, y: contextMenu.y });
+                      setShowImageToolsModal(true);
+                      setContextMenu(null);
+                    }}
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Détacher le menu
+                  </button>
+                  {/* Ligne d'actions rapides groupées */}
+                  <div className="flex items-center justify-around px-2 py-1 border-b">
+                    <button
+                      className="p-1.5 rounded hover:bg-gray-100"
+                      title={image.locked ? "Déverrouiller" : "Verrouiller"}
+                      onClick={() => {
+                        setBackgroundImages((prev) =>
+                          prev.map((img) =>
+                            img.id === contextMenu.entityId ? { ...img, locked: !img.locked } : img
+                          )
+                        );
+                        toast.success(image.locked ? "Déverrouillée" : "Verrouillée");
+                        setContextMenu(null);
+                      }}
+                    >
+                      {image.locked ? <Unlock className="h-3.5 w-3.5 text-green-500" /> : <Lock className="h-3.5 w-3.5 text-orange-500" />}
+                    </button>
+                    <button
+                      className="p-1.5 rounded hover:bg-gray-100"
+                      title={image.visible ? "Masquer" : "Afficher"}
+                      onClick={() => {
+                        setBackgroundImages((prev) =>
+                          prev.map((img) =>
+                            img.id === contextMenu.entityId ? { ...img, visible: !img.visible } : img
+                          )
+                        );
+                        toast.success(image.visible ? "Masquée" : "Affichée");
+                        setContextMenu(null);
+                      }}
+                    >
+                      {image.visible ? <EyeOff className="h-3.5 w-3.5 text-gray-500" /> : <Eye className="h-3.5 w-3.5 text-blue-500" />}
+                    </button>
+                    <button
+                      className={`p-1.5 rounded hover:bg-gray-100 ${currentLayer?.solo ? "bg-yellow-100" : ""}`}
+                      title={currentLayer?.solo ? "Désactiver solo" : "Isoler (Solo)"}
+                      onClick={() => {
+                        if (!currentLayer) return;
+                        setSketch((prev) => {
+                          const newLayers = new Map(prev.layers);
+                          const isCurrentlySolo = currentLayer.solo;
+                          newLayers.forEach((l, id) => {
+                            newLayers.set(id, { ...l, solo: isCurrentlySolo ? false : id === currentLayer.id });
+                          });
+                          return { ...prev, layers: newLayers };
+                        });
+                        toast.success(currentLayer.solo ? "Solo désactivé" : `"${currentLayer.name}" isolé`);
+                        setContextMenu(null);
+                      }}
+                    >
+                      <Focus className={`h-3.5 w-3.5 ${currentLayer?.solo ? "text-yellow-600" : "text-yellow-500"}`} />
+                    </button>
+                    <button
+                      className="p-1.5 rounded hover:bg-gray-100"
+                      title="Premier plan"
+                      onClick={() => {
+                        setBackgroundImages((prev) => {
+                          const maxOrder = Math.max(...prev.map((img) => img.order), 0);
+                          let nextOrder = maxOrder + 1;
+                          return prev.map((img) => imagesToUpdate.has(img.id) ? { ...img, order: nextOrder++ } : img);
+                        });
+                        toast.success(multiCount > 0 ? `${multiCount} photos ↑` : "↑ Premier plan");
+                        setContextMenu(null);
+                      }}
+                    >
+                      <ArrowUpToLine className="h-3.5 w-3.5 text-blue-500" />
+                    </button>
+                    <button
+                      className="p-1.5 rounded hover:bg-gray-100"
+                      title="Arrière-plan"
+                      onClick={() => {
+                        setBackgroundImages((prev) => {
+                          const minOrder = Math.min(...prev.map((img) => img.order), 0);
+                          let nextOrder = minOrder - imagesToUpdate.size;
+                          return prev.map((img) => imagesToUpdate.has(img.id) ? { ...img, order: nextOrder++ } : img);
+                        });
+                        toast.success(multiCount > 0 ? `${multiCount} photos ↓` : "↓ Arrière-plan");
+                        setContextMenu(null);
+                      }}
+                    >
+                      <ArrowDownToLine className="h-3.5 w-3.5 text-orange-500" />
+                    </button>
+                    <button
+                      className={`p-1.5 rounded hover:bg-gray-100 ${image.blendMode === "stripes" ? "bg-cyan-100" : ""}`}
+                      title={image.blendMode === "stripes" ? "Mode normal" : "Mode rayures (alignement)"}
+                      onClick={() => {
+                        setBackgroundImages((prev) =>
+                          prev.map((img) =>
+                            imagesToUpdate.has(img.id)
+                              ? { ...img, blendMode: img.blendMode === "stripes" ? "normal" : "stripes" }
+                              : img
+                          )
+                        );
+                        toast.success(image.blendMode === "stripes" ? "Mode normal" : "Mode rayures");
+                        setContextMenu(null);
+                      }}
+                    >
+                      <SlidersHorizontal className={`h-3.5 w-3.5 ${image.blendMode === "stripes" ? "text-cyan-600" : "text-cyan-500"}`} />
+                    </button>
+                  </div>
+                  {/* Opacité compacte */}
+                  <div className="px-2 py-1 flex items-center gap-2">
+                    <Contrast className="h-3 w-3 text-purple-500 flex-shrink-0" />
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={Math.round(image.opacity * 100)}
+                      onChange={(e) => {
+                        const newOpacity = parseInt(e.target.value) / 100;
+                        setBackgroundImages((prev) =>
+                          prev.map((img) => imagesToUpdate.has(img.id) ? { ...img, opacity: newOpacity } : img)
+                        );
+                      }}
+                      className="flex-1 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <span className="text-[10px] text-gray-500 w-7 text-right">{Math.round(image.opacity * 100)}%</span>
+                    <button
+                      className="p-0.5 rounded hover:bg-gray-200"
+                      title="Réinitialiser opacité"
+                      onClick={() => {
+                        setBackgroundImages((prev) =>
+                          prev.map((img) => imagesToUpdate.has(img.id) ? { ...img, opacity: 1 } : img)
+                        );
+                        toast.success("Opacité: 100%");
+                        setContextMenu(null);
+                      }}
+                    >
+                      <RotateCcw className="h-3 w-3 text-gray-400" />
+                    </button>
+                  </div>
+                  <div className="border-t my-0.5" />
+                  {/* Actions principales */}
+                  <button
+                    className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5"
+                    onClick={() => {
+                      setSelectedImageId(contextMenu.entityId);
+                      setSelectedImageIds(new Set([contextMenu.entityId]));
+                      setShowCalibrationPanel(true);
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Ruler className="h-3 w-3 text-cyan-500" />
+                    Calibrer
+                  </button>
+                  <button
+                    className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5"
+                    onClick={() => {
+                      moveImageToNewLayer(contextMenu.entityId);
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Layers className="h-3 w-3 text-blue-500" />
+                    Nouveau calque
+                  </button>
+                  {/* Sous-menu calques - utilise un state pour afficher/masquer */}
+                  {sketch.layers.size > 1 && (
+                    <div
+                      className="relative"
+                      onMouseEnter={(e) => {
+                        const submenu = e.currentTarget.querySelector('[data-submenu]') as HTMLElement;
+                        if (submenu) submenu.style.display = 'block';
+                      }}
+                      onMouseLeave={(e) => {
+                        const submenu = e.currentTarget.querySelector('[data-submenu]') as HTMLElement;
+                        if (submenu) submenu.style.display = 'none';
+                      }}
+                    >
+                      <button className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5 justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <ArrowRight className="h-3 w-3 text-gray-500" />
+                          Vers calque
+                        </span>
+                        <ChevronRight className="h-2.5 w-2.5" />
+                      </button>
+                      <div
+                        data-submenu
+                        className="fixed bg-white rounded shadow-xl border py-0.5 min-w-[100px] z-[10001]"
+                        style={{
+                          display: 'none',
+                          left: contextMenu.x + 180,
+                          top: contextMenu.y + 80,
+                        }}
+                      >
+                        {Array.from(sketch.layers.values())
+                          .filter((layer) => layer.id !== image.layerId)
+                          .map((layer) => (
+                            <button
+                              key={layer.id}
+                              className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5 whitespace-nowrap"
+                              onClick={() => {
+                                setBackgroundImages((prev) =>
+                                  prev.map((img) =>
+                                    img.id === contextMenu.entityId ? { ...img, layerId: layer.id } : img
+                                  )
+                                );
+                                toast.success(`→ "${layer.name}"`);
+                                setContextMenu(null);
+                              }}
+                            >
+                              <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: layer.color }} />
+                              {layer.name}
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="border-t my-0.5" />
+                  <button
+                    className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5 text-red-600"
+                    onClick={() => {
+                      addToImageHistory(backgroundImages, markerLinks);
+                      const imageIdToDelete = contextMenu.entityId;
+                      setBackgroundImages((prev) => prev.filter((img) => img.id !== imageIdToDelete));
+                      setMarkerLinks((links) =>
+                        links.filter((link) => link.marker1.imageId !== imageIdToDelete && link.marker2.imageId !== imageIdToDelete)
                       );
-                    }
-                    return null;
-                  })()}
+                      if (selectedImageId === imageIdToDelete) setSelectedImageId(null);
+                      const newSelectedIds = new Set(selectedImageIds);
+                      newSelectedIds.delete(imageIdToDelete);
+                      setSelectedImageIds(newSelectedIds);
+                      toast.success("Supprimée");
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Supprimer
+                  </button>
+                  {/* Info calque compact */}
+                  {currentLayer && (
+                    <div className="px-2 py-0.5 text-[10px] text-gray-400 border-t flex items-center gap-1">
+                      <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: currentLayer.color }} />
+                      {currentLayer.name}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          {contextMenu.entityType === "point" && (
+            <button
+              className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+              onClick={() => {
+                const pointId = contextMenu.entityId;
+                setLockedPoints((prev) => {
+                  const newSet = new Set(prev);
+                  if (newSet.has(pointId)) {
+                    newSet.delete(pointId);
+                    toast.success("Point déverrouillé");
+                  } else {
+                    newSet.add(pointId);
+                    toast.success("Point verrouillé");
+                  }
+                  return newSet;
+                });
+                setContextMenu(null);
+              }}
+            >
+              {lockedPoints.has(contextMenu.entityId) ? (
+                <>
+                  <Unlock className="h-4 w-4 text-green-500" />
+                  Déverrouiller le point
+                </>
+              ) : (
+                <>
+                  <Lock className="h-4 w-4 text-orange-500" />
+                  Verrouiller le point
                 </>
               )}
-            </div>
-          );
-        })()}
+            </button>
+          )}
+          {contextMenu.entityType === "corner" &&
+            (() => {
+              // Trouver les lignes connectées à ce point - utiliser sketchRef.current
+              const currentSketch = sketchRef.current;
+              const pointId = contextMenu.entityId;
+              const point = currentSketch.points.get(pointId);
+              const connectedLines: Line[] = [];
+              currentSketch.geometries.forEach((geo) => {
+                if (geo.type === "line") {
+                  const line = geo as Line;
+                  if (line.p1 === pointId || line.p2 === pointId) {
+                    connectedLines.push(line);
+                  }
+                }
+              });
+
+              if (connectedLines.length < 2 || !point) return null;
+
+              // Calculer l'angle entre les deux premières lignes
+              const line1 = connectedLines[0];
+              const line2 = connectedLines[1];
+              const other1Id = line1.p1 === pointId ? line1.p2 : line1.p1;
+              const other2Id = line2.p1 === pointId ? line2.p2 : line2.p1;
+              const other1 = currentSketch.points.get(other1Id);
+              const other2 = currentSketch.points.get(other2Id);
+
+              if (!other1 || !other2) return null;
+
+              const dir1 = { x: other1.x - point.x, y: other1.y - point.y };
+              const dir2 = { x: other2.x - point.x, y: other2.y - point.y };
+              const len1 = Math.sqrt(dir1.x * dir1.x + dir1.y * dir1.y);
+              const len2 = Math.sqrt(dir2.x * dir2.x + dir2.y * dir2.y);
+              const dot = (dir1.x * dir2.x + dir1.y * dir2.y) / (len1 * len2);
+              const currentAngle = (Math.acos(Math.max(-1, Math.min(1, dot))) * 180) / Math.PI;
+
+              return (
+                <>
+                  {/* Option verrouillage du point */}
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      setLockedPoints((prev) => {
+                        const newSet = new Set(prev);
+                        if (newSet.has(pointId)) {
+                          newSet.delete(pointId);
+                          toast.success("Point déverrouillé");
+                        } else {
+                          newSet.add(pointId);
+                          toast.success("Point verrouillé");
+                        }
+                        return newSet;
+                      });
+                      setContextMenu(null);
+                    }}
+                  >
+                    {lockedPoints.has(pointId) ? (
+                      <>
+                        <Unlock className="h-4 w-4 text-green-500" />
+                        Déverrouiller le point
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="h-4 w-4 text-orange-500" />
+                        Verrouiller le point
+                      </>
+                    )}
+                  </button>
+                  {/* Option modifier l'angle */}
+                  <button
+                    className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                    onClick={() => {
+                      // Fermer les autres panneaux d'édition
+                      closeAllEditPanels("angle");
+                      setAnglePanelPos({ x: contextMenu.x + 10, y: contextMenu.y });
+                      setAngleEditDialog({
+                        open: true,
+                        pointId: pointId,
+                        line1Id: line1.id,
+                        line2Id: line2.id,
+                        currentAngle: currentAngle,
+                        newAngle: currentAngle.toFixed(1),
+                        anchorMode: "symmetric",
+                        // Utiliser sketchRef.current pour éviter les closures stales
+                        originalSketch: {
+                          ...sketchRef.current,
+                          points: new Map(sketchRef.current.points),
+                          geometries: new Map(sketchRef.current.geometries),
+                          layers: new Map(sketchRef.current.layers),
+                          constraints: new Map(sketchRef.current.constraints),
+                        },
+                      });
+                      setContextMenu(null);
+                    }}
+                  >
+                    <Sliders className="h-4 w-4 text-orange-500" />
+                    Modifier l'angle ({currentAngle.toFixed(1)}°)
+                  </button>
+                </>
+              );
+            })()}
+          {/* Menu pour formes fermées (remplissage/hachures) */}
+          {contextMenu.entityType === "closedShape" && contextMenu.shapeGeoIds && contextMenu.shapePath && (
+            <>
+              <button
+                className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                onClick={() => {
+                  if (contextMenu.shapeGeoIds && contextMenu.shapePath) {
+                    openFillDialog(contextMenu.shapeGeoIds, contextMenu.shapePath);
+                  }
+                  setContextMenu(null);
+                }}
+              >
+                <PaintBucket className="h-4 w-4 text-blue-500" />
+                Remplir / Hachurer
+              </button>
+              {/* Option pour supprimer le remplissage si existant */}
+              {(() => {
+                const key = [...contextMenu.shapeGeoIds].sort().join("-");
+                const existingFill = sketch.shapeFills.get(key);
+                if (existingFill) {
+                  return (
+                    <button
+                      className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                      onClick={() => {
+                        if (contextMenu.shapeGeoIds) {
+                          removeShapeFill(contextMenu.shapeGeoIds);
+                        }
+                        setContextMenu(null);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                      Supprimer le remplissage
+                    </button>
+                  );
+                }
+                return null;
+              })()}
+            </>
+          )}
+        </div>
+        );
+      })()}
       {/* Fermer le menu contextuel en cliquant ailleurs */}
       {contextMenu && <div className="fixed inset-0 z-[99]" onClick={() => setContextMenu(null)} />}
 
