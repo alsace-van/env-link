@@ -266,6 +266,8 @@ import { useCalibration } from "./useCalibration";
 import { useImageDragDrop } from "./useImageDragDrop";
 import { CalibrationPanel } from "./CalibrationPanel";
 import { MeasurePanel, type Measurement } from "./MeasurePanel";
+// v7.34: Générateur d'équerre de calibration
+import { CalibrationRulerGenerator } from "./CalibrationRulerGenerator";
 
 // MOD v7.15: Contrôles d'étirement manuel
 import { ManualStretchControls } from "./ManualStretchControls";
@@ -569,6 +571,8 @@ export function CADGabaritCanvas({
   // === Crop d'images ===
   const [cropMode, setCropMode] = useState(false);
   const [showCropDialog, setShowCropDialog] = useState(false);
+  // v7.34: Générateur d'équerre de calibration
+  const [showCalibrationRulerGenerator, setShowCalibrationRulerGenerator] = useState(false);
   const [cropSelection, setCropSelection] = useState<{ x: number; y: number; width: number; height: number }>({
     x: 0,
     y: 0,
@@ -4032,7 +4036,7 @@ export function CADGabaritCanvas({
 
       // Supprimer aussi les liens de markers associés
       setMarkerLinks((links) =>
-        links.filter((link) => !orphanedIds.has(link.marker1.imageId) && !orphanedIds.has(link.marker2.imageId)),
+        links.filter((link) => !orphanedIds.has(link.marker1.imageId) && !orphanedIds.has(link.marker2.imageId))
       );
 
       toast.success(`${orphanedImages.length} photo(s) supprimée(s) avec le(s) calque(s)`);
@@ -5036,7 +5040,9 @@ export function CADGabaritCanvas({
       });
 
       // Déplacer l'image vers ce calque
-      setBackgroundImages((prev) => prev.map((img) => (img.id === imageId ? { ...img, layerId: newLayerId } : img)));
+      setBackgroundImages((prev) =>
+        prev.map((img) => (img.id === imageId ? { ...img, layerId: newLayerId } : img))
+      );
 
       toast.success(`Image déplacée vers nouveau calque`);
     },
@@ -11622,10 +11628,7 @@ export function CADGabaritCanvas({
 
   // v7.31: Fonction pour trouver une cotation (dimension text) à une position écran
   const findDimensionAtScreenPos = useCallback(
-    (
-      screenX: number,
-      screenY: number,
-    ): { dimensionId: string; entityId: string; type: "line" | "circle"; value: number } | null => {
+    (screenX: number, screenY: number): { dimensionId: string; entityId: string; type: "line" | "circle"; value: number } | null => {
       const currentSketch = sketchRef.current;
 
       // Parcourir les dimensions existantes
@@ -11676,10 +11679,8 @@ export function CADGabaritCanvas({
             for (const [geoId, geo] of currentSketch.geometries) {
               if (geo.type === "line") {
                 const line = geo as Line;
-                if (
-                  (line.p1 === dimension.entities[0] && line.p2 === dimension.entities[1]) ||
-                  (line.p1 === dimension.entities[1] && line.p2 === dimension.entities[0])
-                ) {
+                if ((line.p1 === dimension.entities[0] && line.p2 === dimension.entities[1]) ||
+                    (line.p1 === dimension.entities[1] && line.p2 === dimension.entities[0])) {
                   foundLineId = geoId;
                   break;
                 }
@@ -11691,7 +11692,7 @@ export function CADGabaritCanvas({
       }
       return null;
     },
-    [viewport],
+    [viewport]
   );
 
   // Double-clic pour éditer un arc OU sélectionner une figure entière
@@ -13501,7 +13502,9 @@ export function CADGabaritCanvas({
             const newImages = prev.filter((img) => !idsToDelete.has(img.id));
             // Aussi supprimer les liens qui référencent ces images
             setMarkerLinks((links) =>
-              links.filter((link) => !idsToDelete.has(link.marker1.imageId) && !idsToDelete.has(link.marker2.imageId)),
+              links.filter(
+                (link) => !idsToDelete.has(link.marker1.imageId) && !idsToDelete.has(link.marker2.imageId),
+              ),
             );
             return newImages;
           });
@@ -16616,7 +16619,9 @@ export function CADGabaritCanvas({
                     <Settings className="h-4 w-4 mr-1" />
                     <span className="text-xs">Outils</span>
                     <ChevronDown className="h-3 w-3 ml-1" />
-                    {selectedImageId && <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />}
+                    {selectedImageId && (
+                      <span className="absolute -top-1 -right-1 h-2 w-2 bg-green-500 rounded-full" />
+                    )}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-56">
@@ -16626,9 +16631,8 @@ export function CADGabaritCanvas({
                       {selectedImageId || selectedImageIds.size > 0
                         ? `Opacité ${selectedImageIds.size > 1 ? `(${selectedImageIds.size} photos)` : "photo"}: ${Math.round(
                             (selectedImageId
-                              ? (backgroundImages.find((img) => img.id === selectedImageId)?.opacity ?? imageOpacity)
-                              : (backgroundImages.find((img) => selectedImageIds.has(img.id))?.opacity ??
-                                imageOpacity)) * 100,
+                              ? backgroundImages.find((img) => img.id === selectedImageId)?.opacity ?? imageOpacity
+                              : backgroundImages.find((img) => selectedImageIds.has(img.id))?.opacity ?? imageOpacity) * 100
                           )}%`
                         : `Opacité (par défaut): ${Math.round(imageOpacity * 100)}%`}
                     </label>
@@ -16639,9 +16643,9 @@ export function CADGabaritCanvas({
                       step="0.1"
                       value={
                         selectedImageId
-                          ? (backgroundImages.find((img) => img.id === selectedImageId)?.opacity ?? imageOpacity)
+                          ? backgroundImages.find((img) => img.id === selectedImageId)?.opacity ?? imageOpacity
                           : selectedImageIds.size > 0
-                            ? (backgroundImages.find((img) => selectedImageIds.has(img.id))?.opacity ?? imageOpacity)
+                            ? backgroundImages.find((img) => selectedImageIds.has(img.id))?.opacity ?? imageOpacity
                             : imageOpacity
                       }
                       onChange={(e) => {
@@ -16652,7 +16656,9 @@ export function CADGabaritCanvas({
                             ? new Set([selectedImageId, ...selectedImageIds])
                             : selectedImageIds;
                           setBackgroundImages((prev) =>
-                            prev.map((img) => (idsToUpdate.has(img.id) ? { ...img, opacity: newOpacity } : img)),
+                            prev.map((img) =>
+                              idsToUpdate.has(img.id) ? { ...img, opacity: newOpacity } : img
+                            )
                           );
                         } else {
                           // Aucune sélection: changer l'opacité par défaut pour les nouvelles images
@@ -16810,9 +16816,15 @@ export function CADGabaritCanvas({
                   >
                     <Link2 className="h-4 w-4 mr-2" />
                     Lier deux marqueurs
-                    {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && (
-                      <Check className="h-4 w-4 ml-auto" />
-                    )}
+                    {(markerMode === "linkMarker1" || markerMode === "linkMarker2") && <Check className="h-4 w-4 ml-auto" />}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  {/* v7.34: Générer équerre de calibration */}
+                  <DropdownMenuItem onClick={() => setShowCalibrationRulerGenerator(true)}>
+                    <Ruler className="h-4 w-4 mr-2" />
+                    Générer équerre de calibration
                   </DropdownMenuItem>
 
                   <DropdownMenuSeparator />
@@ -17091,9 +17103,7 @@ export function CADGabaritCanvas({
                 <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
                 </svg>
-                <span className="text-xs">
-                  R{filletRadius}/{chamferDistance}
-                </span>
+                <span className="text-xs">R{filletRadius}/{chamferDistance}</span>
                 <ChevronDown className="h-3 w-3 ml-1" />
               </Button>
             </DropdownMenuTrigger>
@@ -17908,155 +17918,133 @@ export function CADGabaritCanvas({
             )}
 
             {/* v7.31: Inputs inline sur le rectangle temporaire (style épuré) */}
-            {rectInputs.active &&
-              tempGeometry?.type === "rectangle" &&
-              tempGeometry.p1 &&
-              tempGeometry.cursor &&
-              (() => {
-                const p1 = tempGeometry.p1;
-                const p2 = tempGeometry.cursor;
-                const isCenter = tempGeometry.mode === "center";
+            {rectInputs.active && tempGeometry?.type === "rectangle" && tempGeometry.p1 && tempGeometry.cursor && (() => {
+              const p1 = tempGeometry.p1;
+              const p2 = tempGeometry.cursor;
+              const isCenter = tempGeometry.mode === "center";
 
-                // Calculer les coordonnées du rectangle
-                const topY = isCenter ? p1.y - Math.abs(p2.y - p1.y) : Math.min(p1.y, p2.y);
-                const leftX = isCenter ? p1.x - Math.abs(p2.x - p1.x) : Math.min(p1.x, p2.x);
-                const rightX = isCenter ? p1.x + Math.abs(p2.x - p1.x) : Math.max(p1.x, p2.x);
-                const bottomY = isCenter ? p1.y + Math.abs(p2.y - p1.y) : Math.max(p1.y, p2.y);
+              // Calculer les coordonnées du rectangle
+              const topY = isCenter ? p1.y - Math.abs(p2.y - p1.y) : Math.min(p1.y, p2.y);
+              const leftX = isCenter ? p1.x - Math.abs(p2.x - p1.x) : Math.min(p1.x, p2.x);
+              const rightX = isCenter ? p1.x + Math.abs(p2.x - p1.x) : Math.max(p1.x, p2.x);
+              const bottomY = isCenter ? p1.y + Math.abs(p2.y - p1.y) : Math.max(p1.y, p2.y);
 
-                // Positions écran pour les inputs
-                const widthScreenX = ((leftX + rightX) / 2) * viewport.scale + viewport.offsetX;
-                const widthScreenY = topY * viewport.scale + viewport.offsetY - 18;
-                const heightScreenX = leftX * viewport.scale + viewport.offsetX - 32;
-                const heightScreenY = ((topY + bottomY) / 2) * viewport.scale + viewport.offsetY;
+              // Positions écran pour les inputs
+              const widthScreenX = ((leftX + rightX) / 2) * viewport.scale + viewport.offsetX;
+              const widthScreenY = topY * viewport.scale + viewport.offsetY - 18;
+              const heightScreenX = leftX * viewport.scale + viewport.offsetX - 32;
+              const heightScreenY = ((topY + bottomY) / 2) * viewport.scale + viewport.offsetY;
 
-                // Valeurs actuelles en mm
-                const widthPx = isCenter ? Math.abs(p2.x - p1.x) * 2 : Math.abs(p2.x - p1.x);
-                const heightPx = isCenter ? Math.abs(p2.y - p1.y) * 2 : Math.abs(p2.y - p1.y);
-                const widthMm = widthPx / sketch.scaleFactor;
-                const heightMm = heightPx / sketch.scaleFactor;
+              // Valeurs actuelles en mm
+              const widthPx = isCenter ? Math.abs(p2.x - p1.x) * 2 : Math.abs(p2.x - p1.x);
+              const heightPx = isCenter ? Math.abs(p2.y - p1.y) * 2 : Math.abs(p2.y - p1.y);
+              const widthMm = widthPx / sketch.scaleFactor;
+              const heightMm = heightPx / sketch.scaleFactor;
 
-                // Valeurs verrouillées (saisies par l'utilisateur)
-                const lockedWidth = rectInputs.widthValue && parseFloat(rectInputs.widthValue.replace(",", ".")) > 0;
-                const lockedHeight = rectInputs.heightValue && parseFloat(rectInputs.heightValue.replace(",", ".")) > 0;
+              // Valeurs verrouillées (saisies par l'utilisateur)
+              const lockedWidth = rectInputs.widthValue && parseFloat(rectInputs.widthValue.replace(",", ".")) > 0;
+              const lockedHeight = rectInputs.heightValue && parseFloat(rectInputs.heightValue.replace(",", ".")) > 0;
 
-                return (
-                  <>
-                    {/* Input Largeur (en haut du rectangle) - style épuré */}
-                    <input
-                      ref={widthInputRef}
-                      type="text"
-                      inputMode="decimal"
-                      value={rectInputs.editingWidth || lockedWidth ? rectInputs.widthValue : widthMm.toFixed(1)}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
-                        setRectInputs((prev) => ({ ...prev, widthValue: val, editingWidth: true }));
-                      }}
-                      onFocus={(e) => {
-                        setRectInputs((prev) => ({ ...prev, activeField: "width", editingWidth: true }));
-                        e.target.select();
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Tab") {
-                          e.preventDefault();
-                          setRectInputs((prev) => ({ ...prev, activeField: "height" }));
-                          heightInputRef.current?.focus();
-                        } else if (e.key === "Enter") {
-                          e.preventDefault();
-                          createRectangleFromInputs(undefined, {
-                            width: widthInputRef.current?.value || "",
-                            height: heightInputRef.current?.value || "",
-                          });
-                        } else if (e.key === "Escape") {
-                          e.preventDefault();
-                          setTempPoints([]);
-                          setTempGeometry(null);
-                          setRectInputs({
-                            active: false,
-                            widthValue: "",
-                            heightValue: "",
-                            activeField: "width",
-                            editingWidth: false,
-                            editingHeight: false,
-                            widthInputPos: { x: 0, y: 0 },
-                            heightInputPos: { x: 0, y: 0 },
-                          });
-                        }
-                      }}
-                      onBlur={() => {
-                        // v7.32: Quand on quitte le champ, si vide, désactiver le mode édition
-                        if (!rectInputs.widthValue) {
-                          setRectInputs((prev) => ({ ...prev, editingWidth: false }));
-                        }
-                      }}
-                      className={`absolute z-50 pointer-events-auto w-14 h-5 px-1 text-xs font-mono text-center rounded-sm outline-none
+              return (
+                <>
+                  {/* Input Largeur (en haut du rectangle) - style épuré */}
+                  <input
+                    ref={widthInputRef}
+                    type="text"
+                    inputMode="decimal"
+                    value={rectInputs.editingWidth || lockedWidth ? rectInputs.widthValue : widthMm.toFixed(1)}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
+                      setRectInputs((prev) => ({ ...prev, widthValue: val, editingWidth: true }));
+                    }}
+                    onFocus={(e) => {
+                      setRectInputs((prev) => ({ ...prev, activeField: "width", editingWidth: true }));
+                      e.target.select();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Tab") {
+                        e.preventDefault();
+                        setRectInputs((prev) => ({ ...prev, activeField: "height" }));
+                        heightInputRef.current?.focus();
+                      } else if (e.key === "Enter") {
+                        e.preventDefault();
+                        createRectangleFromInputs(undefined, {
+                          width: widthInputRef.current?.value || "",
+                          height: heightInputRef.current?.value || "",
+                        });
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setTempPoints([]);
+                        setTempGeometry(null);
+                        setRectInputs({ active: false, widthValue: "", heightValue: "", activeField: "width", editingWidth: false, editingHeight: false, widthInputPos: { x: 0, y: 0 }, heightInputPos: { x: 0, y: 0 } });
+                      }
+                    }}
+                    onBlur={() => {
+                      // v7.32: Quand on quitte le champ, si vide, désactiver le mode édition
+                      if (!rectInputs.widthValue) {
+                        setRectInputs((prev) => ({ ...prev, editingWidth: false }));
+                      }
+                    }}
+                    className={`absolute z-50 pointer-events-auto w-14 h-5 px-1 text-xs font-mono text-center rounded-sm outline-none
                       ${lockedWidth ? "bg-green-100 text-green-700 font-bold" : "bg-blue-50/95 text-blue-600"}
                       ${rectInputs.activeField === "width" ? "ring-2 ring-blue-400" : ""}`}
-                      style={{
-                        left: `${widthScreenX}px`,
-                        top: `${widthScreenY}px`,
-                        transform: "translate(-50%, -50%)",
-                      }}
-                    />
+                    style={{
+                      left: `${widthScreenX}px`,
+                      top: `${widthScreenY}px`,
+                      transform: "translate(-50%, -50%)",
+                    }}
+                  />
 
-                    {/* Input Hauteur (à gauche du rectangle) - style épuré */}
-                    <input
-                      ref={heightInputRef}
-                      type="text"
-                      inputMode="decimal"
-                      value={rectInputs.editingHeight || lockedHeight ? rectInputs.heightValue : heightMm.toFixed(1)}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
-                        setRectInputs((prev) => ({ ...prev, heightValue: val, editingHeight: true }));
-                      }}
-                      onFocus={(e) => {
-                        setRectInputs((prev) => ({ ...prev, activeField: "height", editingHeight: true }));
-                        e.target.select();
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Tab") {
-                          e.preventDefault();
-                          setRectInputs((prev) => ({ ...prev, activeField: "width" }));
-                          widthInputRef.current?.focus();
-                        } else if (e.key === "Enter") {
-                          e.preventDefault();
-                          createRectangleFromInputs(undefined, {
-                            width: widthInputRef.current?.value || "",
-                            height: heightInputRef.current?.value || "",
-                          });
-                        } else if (e.key === "Escape") {
-                          e.preventDefault();
-                          setTempPoints([]);
-                          setTempGeometry(null);
-                          setRectInputs({
-                            active: false,
-                            widthValue: "",
-                            heightValue: "",
-                            activeField: "width",
-                            editingWidth: false,
-                            editingHeight: false,
-                            widthInputPos: { x: 0, y: 0 },
-                            heightInputPos: { x: 0, y: 0 },
-                          });
-                        }
-                      }}
-                      onBlur={() => {
-                        // v7.32: Quand on quitte le champ, si vide, désactiver le mode édition
-                        if (!rectInputs.heightValue) {
-                          setRectInputs((prev) => ({ ...prev, editingHeight: false }));
-                        }
-                      }}
-                      className={`absolute z-50 pointer-events-auto w-14 h-5 px-1 text-xs font-mono text-center rounded-sm outline-none
+                  {/* Input Hauteur (à gauche du rectangle) - style épuré */}
+                  <input
+                    ref={heightInputRef}
+                    type="text"
+                    inputMode="decimal"
+                    value={rectInputs.editingHeight || lockedHeight ? rectInputs.heightValue : heightMm.toFixed(1)}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
+                      setRectInputs((prev) => ({ ...prev, heightValue: val, editingHeight: true }));
+                    }}
+                    onFocus={(e) => {
+                      setRectInputs((prev) => ({ ...prev, activeField: "height", editingHeight: true }));
+                      e.target.select();
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Tab") {
+                        e.preventDefault();
+                        setRectInputs((prev) => ({ ...prev, activeField: "width" }));
+                        widthInputRef.current?.focus();
+                      } else if (e.key === "Enter") {
+                        e.preventDefault();
+                        createRectangleFromInputs(undefined, {
+                          width: widthInputRef.current?.value || "",
+                          height: heightInputRef.current?.value || "",
+                        });
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setTempPoints([]);
+                        setTempGeometry(null);
+                        setRectInputs({ active: false, widthValue: "", heightValue: "", activeField: "width", editingWidth: false, editingHeight: false, widthInputPos: { x: 0, y: 0 }, heightInputPos: { x: 0, y: 0 } });
+                      }
+                    }}
+                    onBlur={() => {
+                      // v7.32: Quand on quitte le champ, si vide, désactiver le mode édition
+                      if (!rectInputs.heightValue) {
+                        setRectInputs((prev) => ({ ...prev, editingHeight: false }));
+                      }
+                    }}
+                    className={`absolute z-50 pointer-events-auto w-14 h-5 px-1 text-xs font-mono text-center rounded-sm outline-none
                       ${lockedHeight ? "bg-green-100 text-green-700 font-bold" : "bg-blue-50/95 text-blue-600"}
                       ${rectInputs.activeField === "height" ? "ring-2 ring-blue-400" : ""}`}
-                      style={{
-                        left: `${heightScreenX}px`,
-                        top: `${heightScreenY}px`,
-                        transform: "translate(-50%, -50%)",
-                      }}
-                    />
-                  </>
-                );
-              })()}
+                    style={{
+                      left: `${heightScreenX}px`,
+                      top: `${heightScreenY}px`,
+                      transform: "translate(-50%, -50%)",
+                    }}
+                  />
+                </>
+              );
+            })()}
 
             {/* Input inline pour le gizmo de transformation */}
             {transformGizmo.active && selectionGizmoData && (
@@ -18242,6 +18230,12 @@ export function CADGabaritCanvas({
             hasCalibration={!!calibrationData.scale || !!getSelectedImageCalibration().scale}
           />
         )}
+
+        {/* v7.34: Générateur d'équerre de calibration */}
+        <CalibrationRulerGenerator
+          open={showCalibrationRulerGenerator}
+          onOpenChange={setShowCalibrationRulerGenerator}
+        />
       </div>
 
       {/* Dialog cotation */}
@@ -21229,14 +21223,17 @@ export function CADGabaritCanvas({
                               onClick={() => {
                                 setBackgroundImages((prev) =>
                                   prev.map((img) =>
-                                    img.id === contextMenu.entityId ? { ...img, layerId: layer.id } : img,
-                                  ),
+                                    img.id === contextMenu.entityId ? { ...img, layerId: layer.id } : img
+                                  )
                                 );
                                 toast.success(`Image déplacée vers "${layer.name}"`);
                                 setContextMenu(null);
                               }}
                             >
-                              <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: layer.color }} />
+                              <div
+                                className="w-2.5 h-2.5 rounded-sm"
+                                style={{ backgroundColor: layer.color }}
+                              />
                               {layer.name}
                             </button>
                           ))}
@@ -21248,7 +21245,9 @@ export function CADGabaritCanvas({
                     className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
                     onClick={() => {
                       setBackgroundImages((prev) =>
-                        prev.map((img) => (img.id === contextMenu.entityId ? { ...img, locked: !img.locked } : img)),
+                        prev.map((img) =>
+                          img.id === contextMenu.entityId ? { ...img, locked: !img.locked } : img
+                        )
                       );
                       toast.success(image.locked ? "Image déverrouillée" : "Image verrouillée");
                       setContextMenu(null);
@@ -21284,7 +21283,9 @@ export function CADGabaritCanvas({
                     className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
                     onClick={() => {
                       setBackgroundImages((prev) =>
-                        prev.map((img) => (img.id === contextMenu.entityId ? { ...img, visible: !img.visible } : img)),
+                        prev.map((img) =>
+                          img.id === contextMenu.entityId ? { ...img, visible: !img.visible } : img
+                        )
                       );
                       toast.success(image.visible ? "Image masquée" : "Image affichée");
                       setContextMenu(null);
@@ -21314,9 +21315,8 @@ export function CADGabaritCanvas({
                       // Supprimer aussi les liens de markers associés
                       setMarkerLinks((links) =>
                         links.filter(
-                          (link) =>
-                            link.marker1.imageId !== imageIdToDelete && link.marker2.imageId !== imageIdToDelete,
-                        ),
+                          (link) => link.marker1.imageId !== imageIdToDelete && link.marker2.imageId !== imageIdToDelete
+                        )
                       );
                       if (selectedImageId === imageIdToDelete) {
                         setSelectedImageId(null);
@@ -21347,11 +21347,7 @@ export function CADGabaritCanvas({
                             }
                             return { ...prev, layers: updatedLayers };
                           });
-                          toast.success(
-                            currentLayer.visible
-                              ? `Calque "${currentLayer.name}" masqué`
-                              : `Calque "${currentLayer.name}" affiché`,
-                          );
+                          toast.success(currentLayer.visible ? `Calque "${currentLayer.name}" masqué` : `Calque "${currentLayer.name}" affiché`);
                           setContextMenu(null);
                         }}
                       >
@@ -21367,7 +21363,9 @@ export function CADGabaritCanvas({
                           </>
                         )}
                       </button>
-                      <div className="px-3 py-1 text-xs text-gray-400">Calque: {currentLayer.name}</div>
+                      <div className="px-3 py-1 text-xs text-gray-400">
+                        Calque: {currentLayer.name}
+                      </div>
                     </>
                   )}
                 </>
@@ -22955,9 +22953,3 @@ function exportToSVG(sketch: Sketch): string {
   });
 
   svg += `</g>
-</svg>`;
-
-  return svg;
-}
-
-export default CADGabaritCanvas;
