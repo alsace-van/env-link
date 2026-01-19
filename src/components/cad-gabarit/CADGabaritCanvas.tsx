@@ -14,6 +14,8 @@
 // - Bouton "Réinitialiser opacité" dans le menu contextuel des photos
 // - Boutons "Premier plan" et "Arrière-plan" dans le menu contextuel (supporte multi-sélection)
 // - Fix menu contextuel: repositionnement automatique si proche des bords de l'écran
+// - Menu contextuel compact pour les photos (icônes groupées, texte réduit)
+// - Fix: menu contextuel accessible sur photos verrouillées (pour déverrouiller)
 //
 // CHANGELOG v7.34 (19/01/2026):
 // - Fix calibration: empêche l'application multiple (décalage cumulatif des points)
@@ -8204,13 +8206,16 @@ export function CADGabaritCanvas({
   );
 
   // === Multi-photos: détection de clic sur une image ===
+  // v7.35: Ajout paramètre includeLocked pour permettre le menu contextuel sur images verrouillées
   const findImageAtPosition = useCallback(
-    (worldX: number, worldY: number): BackgroundImage | null => {
+    (worldX: number, worldY: number, includeLocked: boolean = false): BackgroundImage | null => {
       // Chercher dans l'ordre inverse (les images du dessus d'abord)
       const sortedImages = [...backgroundImages]
         .filter((img) => {
-          // Vérifier que l'image elle-même est visible et non verrouillée
-          if (!img.visible || img.locked) return false;
+          // Vérifier que l'image est visible
+          if (!img.visible) return false;
+          // Vérifier le verrouillage (sauf si includeLocked est true)
+          if (!includeLocked && img.locked) return false;
           // Vérifier que le calque de l'image est visible
           if (img.layerId) {
             const layer = sketch.layers.get(img.layerId);
@@ -17834,7 +17839,8 @@ export function CADGabaritCanvas({
                 }
 
                 // FIX #90: D'abord chercher si on clique sur une image
-                const clickedImage = findImageAtPosition(worldPos.x, worldPos.y);
+                // v7.35: includeLocked=true pour permettre déverrouillage via menu contextuel
+                const clickedImage = findImageAtPosition(worldPos.x, worldPos.y, true);
                 if (clickedImage) {
                   setContextMenu({
                     x: e.clientX,
