@@ -7,6 +7,7 @@
 // CHANGELOG v7.35 (19/01/2026):
 // - Ajout bouton "Isoler (Solo)" dans le menu contextuel des photos
 // - Contour de sélection de la photo utilise la couleur du calque correspondant
+// - Fix suppression point de calibration: utilisait calibrationData au lieu de backgroundImages[].calibrationData
 //
 // CHANGELOG v7.34 (19/01/2026):
 // - Fix calibration: empêche l'application multiple (décalage cumulatif des points)
