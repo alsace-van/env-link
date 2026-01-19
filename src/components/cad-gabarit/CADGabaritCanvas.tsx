@@ -200,6 +200,8 @@ import {
   SlidersHorizontal,
   ExternalLink,
   Upload,
+  FilePlus,
+  FolderOpen,
 } from "lucide-react";
 
 import {
@@ -394,6 +396,16 @@ export function CADGabaritCanvas({
   useEffect(() => {
     sketchRef.current = sketch;
   }, [sketch]);
+
+  // v7.38: Détecter les modifications non sauvegardées
+  useEffect(() => {
+    // Ne pas marquer comme modifié si le sketch est vide (nouvel état initial)
+    if (sketch.geometries.size === 0 && sketch.points.size === 0) {
+      return;
+    }
+    // Marquer comme modifié si différent de la dernière sauvegarde
+    setHasUnsavedChanges(true);
+  }, [sketch.geometries.size, sketch.points.size, sketch.constraints.size, sketch.dimensions.size]);
 
   const [viewport, setViewport] = useState<Viewport>({
     offsetX: 32, // rulerSize
@@ -889,6 +901,11 @@ export function CADGabaritCanvas({
   const [pendingCalibrationDecision, setPendingCalibrationDecision] = useState<((calibrate: boolean) => void) | null>(
     null,
   );
+
+  // v7.38: État pour détecter les modifications non sauvegardées et modale de confirmation
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
+  const lastSavedSketchRef = useRef<string>(""); // Hash ou JSON du dernier sketch sauvegardé
 
   // ============================================
   // NOUVEAU SYSTÈME DE TOOLBAR CONFIGURABLE (v7.11)
@@ -4035,10 +4052,50 @@ export function CADGabaritCanvas({
     if (onSave) {
       onSave(data);
       toast.success("Gabarit sauvegardé !");
+      // v7.38: Marquer comme sauvegardé
+      setHasUnsavedChanges(false);
+      lastSavedSketchRef.current = JSON.stringify(data);
     }
 
     return data;
   }, [sketch, onSave, a4GridOrigin, a4GridOrientation, a4GridRows, a4GridCols, a4OverlapMm, a4CutMode, measurements]);
+
+  // v7.38: Réinitialiser le sketch (Nouveau projet)
+  const handleNewSketch = useCallback(() => {
+    // Si des modifications non sauvegardées, demander confirmation
+    if (hasUnsavedChanges) {
+      setShowCloseConfirmModal(true);
+      return;
+    }
+    // Réinitialiser directement
+    performNewSketch();
+  }, [hasUnsavedChanges]);
+
+  // v7.38: Effectuer la réinitialisation du sketch
+  const performNewSketch = useCallback(() => {
+    // Réinitialiser le sketch
+    setSketch(createEmptySketch(scaleFactor));
+    // Réinitialiser les images de fond
+    setBackgroundImages([]);
+    // Réinitialiser l'historique
+    setHistory([]);
+    setHistoryIndex(-1);
+    // Réinitialiser les mesures
+    setMeasurements([]);
+    // Fermer la modale si ouverte
+    setShowCloseConfirmModal(false);
+    // Réinitialiser l'état de sauvegarde
+    setHasUnsavedChanges(false);
+    lastSavedSketchRef.current = "";
+    // Notification
+    toast.success("Nouveau projet créé");
+  }, [scaleFactor]);
+
+  // v7.38: Sauvegarder puis nouveau projet
+  const handleSaveAndNew = useCallback(() => {
+    saveSketch();
+    performNewSketch();
+  }, [saveSketch, performNewSketch]);
 
   // v7.37: Sauvegarder localement (téléchargement fichier JSON avec images)
   const saveLocalBackup = useCallback(() => {
@@ -16353,113 +16410,88 @@ export function CADGabaritCanvas({
         {/* Zone de drop au début */}
         <DropZoneBetweenGroups targetIndex={0} lineIndex={0} />
 
-        {/* Sauvegarder */}
+        {/* v7.38: Menu Fichier (remplace l'ancien groupe Sauvegarde) */}
         {toolbarConfig.line1.save && (
           <>
-            <ToolbarGroupWrapper groupId="grp_save" groupName="Sauvegarde" groupColor="#3B82F6" lineIndex={0}>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button variant="outline" size="sm" onClick={saveSketch} className="h-9 w-9 p-0">
-                      <Save className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Sauvegarder (Ctrl+S)</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+            <ToolbarGroupWrapper groupId="grp_file" groupName="Fichier" groupColor="#3B82F6" lineIndex={0}>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 px-3 gap-1">
+                    <Save className="h-4 w-4" />
+                    <span className="text-xs">Fichier</span>
+                    <ChevronDown className="h-3 w-3" />
+                    {hasUnsavedChanges && (
+                      <span className="absolute -top-1 -right-1 h-2 w-2 bg-orange-500 rounded-full" />
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  {/* Nouveau projet */}
+                  <DropdownMenuItem onClick={handleNewSketch}>
+                    <FilePlus className="h-4 w-4 mr-2" />
+                    Nouveau projet
+                    {hasUnsavedChanges && <span className="ml-auto text-orange-500 text-xs">●</span>}
+                  </DropdownMenuItem>
 
-              {/* MOD v7.14: Indicateur Auto-backup Supabase */}
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center gap-1">
-                      {autoBackupIsRestoring ? (
-                        <RefreshCw className="h-3.5 w-3.5 text-amber-500 animate-spin" />
-                      ) : autoBackupLastTime ? (
-                        <Cloud className="h-3.5 w-3.5 text-green-500" />
-                      ) : (
-                        <CloudOff className="h-3.5 w-3.5 text-gray-400" />
-                      )}
-                      {autoBackupFormatted && <span className="text-[10px] text-gray-500">{autoBackupFormatted}</span>}
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <div className="text-xs">
-                      <p className="font-medium">Auto-backup Supabase</p>
-                      {autoBackupIsRestoring ? (
-                        <p className="text-amber-500">Restauration en cours...</p>
-                      ) : autoBackupLastTime ? (
-                        <>
-                          <p className="text-green-500">Dernière sauvegarde: {autoBackupFormatted}</p>
-                          <p className="text-gray-400">{autoBackupCount} backups cette session</p>
-                        </>
-                      ) : (
-                        <p className="text-gray-400">En attente de contenu...</p>
-                      )}
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+                  <DropdownMenuSeparator />
 
-              {/* Bouton restauration manuelle */}
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => autoBackupRestore(true)}
-                      disabled={autoBackupIsRestoring || !autoBackupLastTime}
-                      className="h-7 w-7 p-0"
-                    >
-                      <RefreshCw className={`h-3.5 w-3.5 ${autoBackupIsRestoring ? "animate-spin" : ""}`} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Restaurer dernière sauvegarde</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+                  {/* Sauvegarder */}
+                  <DropdownMenuItem onClick={saveSketch}>
+                    <Save className="h-4 w-4 mr-2" />
+                    Sauvegarder
+                    <span className="ml-auto text-xs text-gray-400">Ctrl+S</span>
+                  </DropdownMenuItem>
 
-              <Separator orientation="vertical" className="h-6 mx-1" />
+                  {/* Télécharger backup local */}
+                  <DropdownMenuItem onClick={saveLocalBackup}>
+                    <Download className="h-4 w-4 mr-2 text-green-600" />
+                    Télécharger (avec photos)
+                  </DropdownMenuItem>
 
-              {/* v7.37: Sauvegarde locale (fichier JSON) */}
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={saveLocalBackup}
-                      className="h-9 w-9 p-0 border-green-300 hover:bg-green-50"
-                    >
-                      <Download className="h-4 w-4 text-green-600" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Télécharger sauvegarde locale (avec photos)</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-
-              {/* v7.37: Charger sauvegarde locale */}
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <label className="cursor-pointer">
+                  {/* Charger backup local */}
+                  <DropdownMenuItem asChild>
+                    <label className="cursor-pointer flex items-center">
+                      <FolderOpen className="h-4 w-4 mr-2 text-blue-600" />
+                      Ouvrir fichier local...
                       <input type="file" accept=".json" onChange={loadLocalBackup} className="hidden" />
-                      <div className="h-9 w-9 p-0 border rounded-md flex items-center justify-center border-blue-300 hover:bg-blue-50 transition-colors">
-                        <Upload className="h-4 w-4 text-blue-600" />
-                      </div>
                     </label>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Charger sauvegarde locale</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  {/* Restaurer depuis cloud */}
+                  <DropdownMenuItem
+                    onClick={() => autoBackupRestore(true)}
+                    disabled={autoBackupIsRestoring || !autoBackupLastTime}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${autoBackupIsRestoring ? "animate-spin" : ""}`} />
+                    Restaurer backup cloud
+                    {autoBackupLastTime && (
+                      <span className="ml-auto text-xs text-gray-400">{autoBackupFormatted}</span>
+                    )}
+                  </DropdownMenuItem>
+
+                  {/* Indicateur cloud */}
+                  <div className="px-2 py-1.5 text-xs text-gray-500 flex items-center gap-2">
+                    {autoBackupIsRestoring ? (
+                      <>
+                        <RefreshCw className="h-3 w-3 text-amber-500 animate-spin" />
+                        Restauration...
+                      </>
+                    ) : autoBackupLastTime ? (
+                      <>
+                        <Cloud className="h-3 w-3 text-green-500" />
+                        Auto-backup: {autoBackupFormatted}
+                      </>
+                    ) : (
+                      <>
+                        <CloudOff className="h-3 w-3 text-gray-400" />
+                        En attente de contenu
+                      </>
+                    )}
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </ToolbarGroupWrapper>
             <DropZoneBetweenGroups targetIndex={1} lineIndex={0} />
           </>
@@ -18962,6 +18994,41 @@ export function CADGabaritCanvas({
             }
           }}
         />
+
+        {/* v7.38: Modale de confirmation avant nouveau projet */}
+        <Dialog open={showCloseConfirmModal} onOpenChange={setShowCloseConfirmModal}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Modifications non sauvegardées</DialogTitle>
+              <DialogDescription>
+                Vous avez des modifications non sauvegardées. Que souhaitez-vous faire ?
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex gap-2 sm:justify-between">
+              <Button
+                variant="outline"
+                onClick={() => setShowCloseConfirmModal(false)}
+              >
+                Annuler
+              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="destructive"
+                  onClick={performNewSketch}
+                >
+                  Ne pas sauvegarder
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={handleSaveAndNew}
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  Sauvegarder et nouveau
+                </Button>
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Dialog cotation */}
