@@ -21098,8 +21098,8 @@ export function CADGabaritCanvas({
       {contextMenu &&
         (() => {
           // v7.35: Calculer la position ajustée pour éviter le débordement hors écran
-          const menuWidth = 200; // Largeur estimée du menu
-          const menuHeight = contextMenu.entityType === "image" ? 500 : 200; // Hauteur estimée selon le type
+          const menuWidth = 180; // Largeur estimée du menu (réduit)
+          const menuHeight = contextMenu.entityType === "image" ? 280 : 150; // Hauteur estimée (menu compact)
           const padding = 10; // Marge par rapport aux bords
 
           let adjustedX = contextMenu.x;
@@ -21262,155 +21262,116 @@ export function CADGabaritCanvas({
                   Supprimer
                 </button>
               )}
-              {/* FIX #90: Menu contextuel pour les images */}
+              {/* FIX #90: Menu contextuel pour les images - v7.35: version compacte */}
               {contextMenu.entityType === "image" &&
                 (() => {
                   const image = backgroundImages.find((img) => img.id === contextMenu.entityId);
                   if (!image) return null;
                   const currentLayer = sketch.layers.get(image.layerId || "");
+                  const multiCount = selectedImageIds.size > 1 ? selectedImageIds.size : 0;
+                  const imagesToUpdate = multiCount > 0 ? selectedImageIds : new Set([contextMenu.entityId]);
 
                   return (
                     <>
-                      <button
-                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                        onClick={() => {
-                          setSelectedImageId(contextMenu.entityId);
-                          setSelectedImageIds(new Set([contextMenu.entityId]));
-                          setContextMenu(null);
-                        }}
-                      >
-                        <MousePointer className="h-4 w-4" />
-                        Sélectionner
-                      </button>
-                      <div className="border-t my-1" />
-                      <button
-                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                        onClick={() => {
-                          moveImageToNewLayer(contextMenu.entityId);
-                          setContextMenu(null);
-                        }}
-                      >
-                        <Layers className="h-4 w-4 text-blue-500" />
-                        Envoyer vers nouveau calque
-                      </button>
-                      {/* Sous-menu pour déplacer vers un calque existant */}
-                      {sketch.layers.size > 1 && (
-                        <div className="relative group">
-                          <button className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 justify-between">
-                            <span className="flex items-center gap-2">
-                              <ArrowRight className="h-4 w-4 text-gray-500" />
-                              Déplacer vers calque
-                            </span>
-                            <ChevronRight className="h-3 w-3" />
-                          </button>
-                          <div className="absolute left-full top-0 ml-1 bg-white rounded-lg shadow-xl border py-1 min-w-[140px] hidden group-hover:block">
-                            {Array.from(sketch.layers.values())
-                              .filter((layer) => layer.id !== image.layerId)
-                              .map((layer) => (
-                                <button
-                                  key={layer.id}
-                                  className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                                  onClick={() => {
-                                    setBackgroundImages((prev) =>
-                                      prev.map((img) =>
-                                        img.id === contextMenu.entityId ? { ...img, layerId: layer.id } : img,
-                                      ),
-                                    );
-                                    toast.success(`Image déplacée vers "${layer.name}"`);
-                                    setContextMenu(null);
-                                  }}
-                                >
-                                  <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: layer.color }} />
-                                  {layer.name}
-                                </button>
-                              ))}
-                          </div>
-                        </div>
-                      )}
-                      <div className="border-t my-1" />
-                      <button
-                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                        onClick={() => {
-                          setBackgroundImages((prev) =>
-                            prev.map((img) =>
-                              img.id === contextMenu.entityId ? { ...img, locked: !img.locked } : img,
-                            ),
-                          );
-                          toast.success(image.locked ? "Image déverrouillée" : "Image verrouillée");
-                          setContextMenu(null);
-                        }}
-                      >
-                        {image.locked ? (
-                          <>
-                            <Unlock className="h-4 w-4 text-green-500" />
-                            Déverrouiller
-                          </>
-                        ) : (
-                          <>
-                            <Lock className="h-4 w-4 text-orange-500" />
-                            Verrouiller
-                          </>
-                        )}
-                      </button>
-                      {/* v7.34: Bouton Calibrer */}
-                      <button
-                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                        onClick={() => {
-                          // Sélectionner l'image et ouvrir le panneau de calibration
-                          setSelectedImageId(contextMenu.entityId);
-                          setSelectedImageIds(new Set([contextMenu.entityId]));
-                          setShowCalibrationPanel(true);
-                          setContextMenu(null);
-                        }}
-                      >
-                        <Ruler className="h-4 w-4 text-cyan-500" />
-                        Calibrer
-                      </button>
-                      {/* v7.35: Bouton Isoler (Solo) */}
-                      {currentLayer && (
+                      {/* Ligne d'actions rapides groupées */}
+                      <div className="flex items-center justify-around px-2 py-1 border-b">
                         <button
-                          className={`w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 ${
-                            currentLayer.solo ? "bg-yellow-50" : ""
-                          }`}
+                          className="p-1.5 rounded hover:bg-gray-100"
+                          title={image.locked ? "Déverrouiller" : "Verrouiller"}
                           onClick={() => {
-                            // Toggle solo mode sur le calque de la photo
-                            setSketch((prev) => {
-                              const newLayers = new Map(prev.layers);
-                              const layer = newLayers.get(currentLayer.id);
-                              if (!layer) return prev;
-
-                              const isCurrentlySolo = layer.solo;
-
-                              // Si on désactive le solo, on remet tout à false
-                              if (isCurrentlySolo) {
-                                newLayers.forEach((l, id) => {
-                                  newLayers.set(id, { ...l, solo: false });
-                                });
-                                toast.info(`Mode solo désactivé`);
-                              } else {
-                                // Sinon on active le solo uniquement pour ce calque
-                                newLayers.forEach((l, id) => {
-                                  newLayers.set(id, { ...l, solo: id === currentLayer.id });
-                                });
-                                toast.success(`Calque "${currentLayer.name}" isolé`);
-                              }
-
-                              return { ...prev, layers: newLayers };
-                            });
+                            setBackgroundImages((prev) =>
+                              prev.map((img) =>
+                                img.id === contextMenu.entityId ? { ...img, locked: !img.locked } : img,
+                              ),
+                            );
+                            toast.success(image.locked ? "Déverrouillée" : "Verrouillée");
                             setContextMenu(null);
                           }}
                         >
-                          <Focus className={`h-4 w-4 ${currentLayer.solo ? "text-yellow-600" : "text-yellow-500"}`} />
-                          {currentLayer.solo ? "Désactiver l'isolation" : "Isoler (Solo)"}
+                          {image.locked ? (
+                            <Unlock className="h-3.5 w-3.5 text-green-500" />
+                          ) : (
+                            <Lock className="h-3.5 w-3.5 text-orange-500" />
+                          )}
                         </button>
-                      )}
-                      {/* v7.35: Réglage de l'opacité des photos */}
-                      <div className="px-3 py-1.5">
-                        <div className="flex items-center gap-2 text-sm text-gray-700 mb-1">
-                          <Contrast className="h-4 w-4 text-purple-500" />
-                          <span>Opacité {selectedImageIds.size > 1 ? `(${selectedImageIds.size} photos)` : ""}</span>
-                          <span className="ml-auto text-xs text-gray-500">{Math.round(image.opacity * 100)}%</span>
-                        </div>
+                        <button
+                          className="p-1.5 rounded hover:bg-gray-100"
+                          title={image.visible ? "Masquer" : "Afficher"}
+                          onClick={() => {
+                            setBackgroundImages((prev) =>
+                              prev.map((img) =>
+                                img.id === contextMenu.entityId ? { ...img, visible: !img.visible } : img,
+                              ),
+                            );
+                            toast.success(image.visible ? "Masquée" : "Affichée");
+                            setContextMenu(null);
+                          }}
+                        >
+                          {image.visible ? (
+                            <EyeOff className="h-3.5 w-3.5 text-gray-500" />
+                          ) : (
+                            <Eye className="h-3.5 w-3.5 text-blue-500" />
+                          )}
+                        </button>
+                        <button
+                          className={`p-1.5 rounded hover:bg-gray-100 ${currentLayer?.solo ? "bg-yellow-100" : ""}`}
+                          title={currentLayer?.solo ? "Désactiver solo" : "Isoler (Solo)"}
+                          onClick={() => {
+                            if (!currentLayer) return;
+                            setSketch((prev) => {
+                              const newLayers = new Map(prev.layers);
+                              const isCurrentlySolo = currentLayer.solo;
+                              newLayers.forEach((l, id) => {
+                                newLayers.set(id, { ...l, solo: isCurrentlySolo ? false : id === currentLayer.id });
+                              });
+                              return { ...prev, layers: newLayers };
+                            });
+                            toast.success(currentLayer.solo ? "Solo désactivé" : `"${currentLayer.name}" isolé`);
+                            setContextMenu(null);
+                          }}
+                        >
+                          <Focus
+                            className={`h-3.5 w-3.5 ${currentLayer?.solo ? "text-yellow-600" : "text-yellow-500"}`}
+                          />
+                        </button>
+                        <button
+                          className="p-1.5 rounded hover:bg-gray-100"
+                          title="Premier plan"
+                          onClick={() => {
+                            setBackgroundImages((prev) => {
+                              const maxOrder = Math.max(...prev.map((img) => img.order), 0);
+                              let nextOrder = maxOrder + 1;
+                              return prev.map((img) =>
+                                imagesToUpdate.has(img.id) ? { ...img, order: nextOrder++ } : img,
+                              );
+                            });
+                            toast.success(multiCount > 0 ? `${multiCount} photos ↑` : "↑ Premier plan");
+                            setContextMenu(null);
+                          }}
+                        >
+                          <ArrowUpToLine className="h-3.5 w-3.5 text-blue-500" />
+                        </button>
+                        <button
+                          className="p-1.5 rounded hover:bg-gray-100"
+                          title="Arrière-plan"
+                          onClick={() => {
+                            setBackgroundImages((prev) => {
+                              const minOrder = Math.min(...prev.map((img) => img.order), 0);
+                              let nextOrder = minOrder - imagesToUpdate.size;
+                              return prev.map((img) =>
+                                imagesToUpdate.has(img.id) ? { ...img, order: nextOrder++ } : img,
+                              );
+                            });
+                            toast.success(multiCount > 0 ? `${multiCount} photos ↓` : "↓ Arrière-plan");
+                            setContextMenu(null);
+                          }}
+                        >
+                          <ArrowDownToLine className="h-3.5 w-3.5 text-orange-500" />
+                        </button>
+                      </div>
+                      {/* Opacité compacte */}
+                      <div className="px-2 py-1 flex items-center gap-2">
+                        <Contrast className="h-3 w-3 text-purple-500 flex-shrink-0" />
                         <input
                           type="range"
                           min="0"
@@ -21418,179 +21379,118 @@ export function CADGabaritCanvas({
                           value={Math.round(image.opacity * 100)}
                           onChange={(e) => {
                             const newOpacity = parseInt(e.target.value) / 100;
-                            // Appliquer à toutes les images sélectionnées ou juste à celle-ci
-                            const imagesToUpdate =
-                              selectedImageIds.size > 1 ? selectedImageIds : new Set([contextMenu.entityId]);
                             setBackgroundImages((prev) =>
                               prev.map((img) => (imagesToUpdate.has(img.id) ? { ...img, opacity: newOpacity } : img)),
                             );
                           }}
-                          className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                          className="flex-1 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-500"
                           onClick={(e) => e.stopPropagation()}
                         />
+                        <span className="text-[10px] text-gray-500 w-7 text-right">
+                          {Math.round(image.opacity * 100)}%
+                        </span>
+                        <button
+                          className="p-0.5 rounded hover:bg-gray-200"
+                          title="Réinitialiser opacité"
+                          onClick={() => {
+                            setBackgroundImages((prev) =>
+                              prev.map((img) => (imagesToUpdate.has(img.id) ? { ...img, opacity: 1 } : img)),
+                            );
+                            toast.success("Opacité: 100%");
+                            setContextMenu(null);
+                          }}
+                        >
+                          <RotateCcw className="h-3 w-3 text-gray-400" />
+                        </button>
                       </div>
-                      {/* v7.35: Bouton réinitialiser l'opacité */}
+                      <div className="border-t my-0.5" />
+                      {/* Actions principales */}
                       <button
-                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5"
                         onClick={() => {
-                          // Réinitialiser l'opacité à 100% pour les images sélectionnées ou juste celle-ci
-                          const imagesToUpdate =
-                            selectedImageIds.size > 1 ? selectedImageIds : new Set([contextMenu.entityId]);
-                          setBackgroundImages((prev) =>
-                            prev.map((img) => (imagesToUpdate.has(img.id) ? { ...img, opacity: 1 } : img)),
-                          );
-                          const count = imagesToUpdate.size;
-                          toast.success(
-                            count > 1 ? `Opacité réinitialisée (${count} photos)` : "Opacité réinitialisée",
-                          );
+                          setSelectedImageId(contextMenu.entityId);
+                          setSelectedImageIds(new Set([contextMenu.entityId]));
+                          setShowCalibrationPanel(true);
                           setContextMenu(null);
                         }}
                       >
-                        <RotateCcw className="h-4 w-4 text-gray-500" />
-                        Réinitialiser opacité {selectedImageIds.size > 1 ? `(${selectedImageIds.size})` : ""}
+                        <Ruler className="h-3 w-3 text-cyan-500" />
+                        Calibrer
                       </button>
-                      <div className="border-t my-1" />
-                      {/* v7.35: Boutons Premier plan / Arrière-plan */}
                       <button
-                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5"
                         onClick={() => {
-                          // Mettre au premier plan (order le plus élevé)
-                          const imagesToUpdate =
-                            selectedImageIds.size > 1 ? selectedImageIds : new Set([contextMenu.entityId]);
-                          setBackgroundImages((prev) => {
-                            const maxOrder = Math.max(...prev.map((img) => img.order), 0);
-                            let nextOrder = maxOrder + 1;
-                            return prev.map((img) => {
-                              if (imagesToUpdate.has(img.id)) {
-                                return { ...img, order: nextOrder++ };
-                              }
-                              return img;
-                            });
-                          });
-                          const count = imagesToUpdate.size;
-                          toast.success(count > 1 ? `${count} photos au premier plan` : "Photo au premier plan");
+                          moveImageToNewLayer(contextMenu.entityId);
                           setContextMenu(null);
                         }}
                       >
-                        <ArrowUpToLine className="h-4 w-4 text-blue-500" />
-                        Premier plan {selectedImageIds.size > 1 ? `(${selectedImageIds.size})` : ""}
+                        <Layers className="h-3 w-3 text-blue-500" />
+                        Nouveau calque
                       </button>
+                      {/* Sous-menu calques */}
+                      {sketch.layers.size > 1 && (
+                        <div className="relative group">
+                          <button className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5 justify-between">
+                            <span className="flex items-center gap-1.5">
+                              <ArrowRight className="h-3 w-3 text-gray-500" />
+                              Vers calque
+                            </span>
+                            <ChevronRight className="h-2.5 w-2.5" />
+                          </button>
+                          <div className="absolute left-full top-0 ml-1 bg-white rounded shadow-xl border py-0.5 min-w-[100px] hidden group-hover:block">
+                            {Array.from(sketch.layers.values())
+                              .filter((layer) => layer.id !== image.layerId)
+                              .map((layer) => (
+                                <button
+                                  key={layer.id}
+                                  className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5"
+                                  onClick={() => {
+                                    setBackgroundImages((prev) =>
+                                      prev.map((img) =>
+                                        img.id === contextMenu.entityId ? { ...img, layerId: layer.id } : img,
+                                      ),
+                                    );
+                                    toast.success(`→ "${layer.name}"`);
+                                    setContextMenu(null);
+                                  }}
+                                >
+                                  <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: layer.color }} />
+                                  {layer.name}
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                      <div className="border-t my-0.5" />
                       <button
-                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                        className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5 text-red-600"
                         onClick={() => {
-                          // Mettre à l'arrière-plan (order le plus bas)
-                          const imagesToUpdate =
-                            selectedImageIds.size > 1 ? selectedImageIds : new Set([contextMenu.entityId]);
-                          setBackgroundImages((prev) => {
-                            const minOrder = Math.min(...prev.map((img) => img.order), 0);
-                            let nextOrder = minOrder - imagesToUpdate.size;
-                            return prev.map((img) => {
-                              if (imagesToUpdate.has(img.id)) {
-                                return { ...img, order: nextOrder++ };
-                              }
-                              return img;
-                            });
-                          });
-                          const count = imagesToUpdate.size;
-                          toast.success(count > 1 ? `${count} photos à l'arrière-plan` : "Photo à l'arrière-plan");
-                          setContextMenu(null);
-                        }}
-                      >
-                        <ArrowDownToLine className="h-4 w-4 text-orange-500" />
-                        Arrière-plan {selectedImageIds.size > 1 ? `(${selectedImageIds.size})` : ""}
-                      </button>
-                      <div className="border-t my-1" />
-                      <button
-                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                        onClick={() => {
-                          setBackgroundImages((prev) =>
-                            prev.map((img) =>
-                              img.id === contextMenu.entityId ? { ...img, visible: !img.visible } : img,
-                            ),
-                          );
-                          toast.success(image.visible ? "Image masquée" : "Image affichée");
-                          setContextMenu(null);
-                        }}
-                      >
-                        {image.visible ? (
-                          <>
-                            <EyeOff className="h-4 w-4 text-gray-500" />
-                            Masquer
-                          </>
-                        ) : (
-                          <>
-                            <Eye className="h-4 w-4 text-blue-500" />
-                            Afficher
-                          </>
-                        )}
-                      </button>
-                      <div className="border-t my-1" />
-                      <button
-                        className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
-                        onClick={() => {
-                          // Sauvegarder l'état dans l'historique avant suppression
                           addToImageHistory(backgroundImages, markerLinks);
-
                           const imageIdToDelete = contextMenu.entityId;
                           setBackgroundImages((prev) => prev.filter((img) => img.id !== imageIdToDelete));
-                          // Supprimer aussi les liens de markers associés
                           setMarkerLinks((links) =>
                             links.filter(
                               (link) =>
                                 link.marker1.imageId !== imageIdToDelete && link.marker2.imageId !== imageIdToDelete,
                             ),
                           );
-                          if (selectedImageId === imageIdToDelete) {
-                            setSelectedImageId(null);
-                          }
-                          // Créer une nouvelle Set sans modifier l'originale
+                          if (selectedImageId === imageIdToDelete) setSelectedImageId(null);
                           const newSelectedIds = new Set(selectedImageIds);
                           newSelectedIds.delete(imageIdToDelete);
                           setSelectedImageIds(newSelectedIds);
-                          toast.success("Image supprimée");
+                          toast.success("Supprimée");
                           setContextMenu(null);
                         }}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-3 w-3" />
                         Supprimer
                       </button>
-                      {/* v7.32: Option pour masquer/afficher le calque de la photo */}
+                      {/* Info calque compact */}
                       {currentLayer && (
-                        <>
-                          <div className="border-t my-1" />
-                          <button
-                            className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                            onClick={() => {
-                              setSketch((prev) => {
-                                const updatedLayers = new Map(prev.layers);
-                                const layer = updatedLayers.get(currentLayer.id);
-                                if (layer) {
-                                  updatedLayers.set(currentLayer.id, { ...layer, visible: !layer.visible });
-                                }
-                                return { ...prev, layers: updatedLayers };
-                              });
-                              toast.success(
-                                currentLayer.visible
-                                  ? `Calque "${currentLayer.name}" masqué`
-                                  : `Calque "${currentLayer.name}" affiché`,
-                              );
-                              setContextMenu(null);
-                            }}
-                          >
-                            {currentLayer.visible ? (
-                              <>
-                                <EyeOff className="h-4 w-4 text-purple-500" />
-                                Masquer calque "{currentLayer.name}"
-                              </>
-                            ) : (
-                              <>
-                                <Eye className="h-4 w-4 text-purple-500" />
-                                Afficher calque "{currentLayer.name}"
-                              </>
-                            )}
-                          </button>
-                          <div className="px-3 py-1 text-xs text-gray-400">Calque: {currentLayer.name}</div>
-                        </>
+                        <div className="px-2 py-0.5 text-[10px] text-gray-400 border-t flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: currentLayer.color }} />
+                          {currentLayer.name}
+                        </div>
                       )}
                     </>
                   );
