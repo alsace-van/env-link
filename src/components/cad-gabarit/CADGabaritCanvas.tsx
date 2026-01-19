@@ -146,7 +146,7 @@ import {
   Trash2,
   Eye,
   EyeOff,
-  Image,
+  Image as ImageIcon,
   Spline,
   Move,
   Sliders,
@@ -17131,7 +17131,7 @@ export function CADGabaritCanvas({
                     onClick={() => fileInputRef.current?.click()}
                     className="h-9 px-2 relative"
                   >
-                    <Image className="h-4 w-4 mr-1" />
+                    <ImageIcon className="h-4 w-4 mr-1" />
                     <span className="text-xs">Photo</span>
                     {backgroundImages.length > 0 && (
                       <Badge variant="secondary" className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-xs">

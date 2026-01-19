@@ -20,6 +20,8 @@ interface UseImageDragDropOptions {
   activeLayerId: string;
   onImagesAdded: (images: BackgroundImage[]) => void;
   setShowBackgroundImage: (show: boolean) => void;
+  // v7.37: Callback optionnel pour demander si calibrer l'image au drop
+  onAskCalibration?: (image: BackgroundImage, onDecision: (calibrate: boolean) => void) => void;
 }
 
 export function useImageDragDrop({
@@ -29,6 +31,7 @@ export function useImageDragDrop({
   activeLayerId,
   onImagesAdded,
   setShowBackgroundImage,
+  onAskCalibration,
 }: UseImageDragDropOptions) {
   // Utiliser des refs pour avoir toujours les valeurs à jour dans les handlers
   const viewportRef = useRef(viewport);
