@@ -717,3 +717,55 @@ function convertDXFEntities(entities: DXFEntity[], layers: string[]): DXFParseRe
       }
 
       case "HATCH": {
+        // HATCH: contient des boundary paths (codes 91, 92, 93...)
+        // Pour simplifier, on extrait les polylignes de boundary
+        // Le HATCH est complexe - on log un warning
+        console.log(`[DXF] HATCH ignoré (entité complexe) - layer: ${layerId}`);
+        break;
+      }
+    }
+  }
+
+  // Log un résumé des entités traitées
+  console.log(`[DXF Parser] Résumé: ${geometries.size} géométries, ${points.size} points importés`);
+
+  return {
+    points,
+    geometries,
+    bounds: {
+      minX: minX === Infinity ? 0 : minX,
+      minY: minY === Infinity ? 0 : minY,
+      maxX: maxX === -Infinity ? 100 : maxX,
+      maxY: maxY === -Infinity ? 100 : maxY,
+    },
+    layers,
+    entityCount: geometries.size,
+  };
+}
+
+/**
+ * Charge un fichier DXF depuis un File
+ */
+export async function loadDXFFile(file: File): Promise<DXFParseResult> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const result = parseDXF(content);
+        resolve(result);
+      } catch (error) {
+        reject(new Error(`Erreur lors du parsing DXF: ${error}`));
+      }
+    };
+
+    reader.onerror = () => {
+      reject(new Error("Erreur lors de la lecture du fichier"));
+    };
+
+    reader.readAsText(file);
+  });
+}
+
+export type { DXFParseResult };
