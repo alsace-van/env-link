@@ -1,7 +1,7 @@
 // ============================================
 // HOOK: useOpenCVAruco
-// Détection de markers ArUco NATIVE (sans module cv.aruco)
-// VERSION: 2.0 - Détection JavaScript pure
+// Détection de markers ArUco via js-aruco library
+// VERSION: 3.0 - Utilisation de js-aruco
 // ============================================
 
 import { useState, useCallback, useEffect } from 'react';
@@ -36,376 +36,619 @@ interface UseOpenCVArucoReturn {
   processImage: (image: HTMLImageElement | HTMLCanvasElement, options?: { markerSizeCm?: number; correctPerspective?: boolean }) => Promise<CalibrationResult>;
 }
 
-// Dictionnaire ArUco 4x4_50 - patterns binaires (4x4 bits intérieurs)
-// Chaque marker a une bordure noire de 1 bit, donc 6x6 total
-const ARUCO_DICT_4X4_50: number[][] = [
-  [0b1000, 0b0011, 0b1111, 0b0001], // ID 0
-  [0b1001, 0b1110, 0b0100, 0b1010], // ID 1
-  [0b0011, 0b0111, 0b1101, 0b0110], // ID 2
-  [0b0101, 0b0001, 0b0010, 0b1100], // ID 3
-  [0b0110, 0b1000, 0b0001, 0b0001], // ID 4
-  [0b1100, 0b0010, 0b1001, 0b1111], // ID 5
-  [0b0001, 0b1110, 0b0110, 0b0011], // ID 6
-  [0b1111, 0b1100, 0b0000, 0b1110], // ID 7
-  [0b0010, 0b0101, 0b1010, 0b0100], // ID 8
-  [0b1010, 0b1001, 0b0111, 0b1001], // ID 9
-  [0b0100, 0b0100, 0b1100, 0b0010], // ID 10
-  [0b1110, 0b0110, 0b0011, 0b0111], // ID 11
-  [0b0111, 0b1111, 0b1000, 0b1000], // ID 12
-  [0b1011, 0b1011, 0b1110, 0b1101], // ID 13
-  [0b1101, 0b1101, 0b0101, 0b0000], // ID 14
-  [0b0000, 0b1010, 0b1011, 0b1011], // ID 15
-  [0b1000, 0b0001, 0b0100, 0b0101], // ID 16
-  [0b1001, 0b1100, 0b1111, 0b1110], // ID 17
-  [0b0011, 0b0101, 0b0010, 0b0010], // ID 18
-  [0b0101, 0b0011, 0b1101, 0b1000], // ID 19
-  [0b0110, 0b1010, 0b1010, 0b1101], // ID 20
-  [0b1100, 0b0000, 0b0000, 0b0011], // ID 21
-  [0b0001, 0b1100, 0b1001, 0b0111], // ID 22
-  [0b1111, 0b1110, 0b1011, 0b1010], // ID 23
-  [0b0010, 0b0111, 0b0001, 0b0000], // ID 24
-  [0b1010, 0b1011, 0b1100, 0b1111], // ID 25
-  [0b0100, 0b0110, 0b0111, 0b0110], // ID 26
-  [0b1110, 0b0100, 0b1110, 0b0001], // ID 27
-  [0b0111, 0b1101, 0b0011, 0b0100], // ID 28
-  [0b1011, 0b1001, 0b0101, 0b1001], // ID 29
-  [0b1101, 0b1111, 0b1000, 0b1100], // ID 30
-  [0b0000, 0b1000, 0b0000, 0b0101], // ID 31
-  [0b1000, 0b0111, 0b0110, 0b1011], // ID 32
-  [0b1001, 0b1010, 0b1101, 0b0000], // ID 33
-  [0b0011, 0b0011, 0b0100, 0b1100], // ID 34
-  [0b0101, 0b0101, 0b1111, 0b0010], // ID 35
-  [0b0110, 0b1100, 0b1100, 0b0111], // ID 36
-  [0b1100, 0b0110, 0b0010, 0b1001], // ID 37
-  [0b0001, 0b1010, 0b1000, 0b1101], // ID 38
-  [0b1111, 0b1000, 0b0011, 0b0100], // ID 39
-  [0b0010, 0b0001, 0b1001, 0b1010], // ID 40
-  [0b1010, 0b1101, 0b0110, 0b0001], // ID 41
-  [0b0100, 0b0010, 0b1110, 0b1100], // ID 42
-  [0b1110, 0b0000, 0b0101, 0b1011], // ID 43
-  [0b0111, 0b1001, 0b0001, 0b1110], // ID 44
-  [0b1011, 0b1111, 0b1110, 0b0011], // ID 45
-  [0b1101, 0b1011, 0b1011, 0b0110], // ID 46
-  [0b0000, 0b1100, 0b0010, 0b1111], // ID 47
-  [0b1000, 0b0101, 0b1101, 0b1111], // ID 48
-  [0b1001, 0b1000, 0b0110, 0b0100], // ID 49
-];
+// ============================================
+// JS-ARUCO LIBRARY EMBEDDED (minified version)
+// Based on js-aruco by jcmellado
+// https://github.com/jcmellado/js-aruco
+// ============================================
 
-// Fonction pour créer le pattern binaire 6x6 complet d'un marker
-function getMarkerPattern(id: number): number[][] {
-  if (id < 0 || id >= ARUCO_DICT_4X4_50.length) return [];
+// CV utilities
+const CV = {
+  grayscale: function(imageSrc: ImageData, imageDst: ImageData) {
+    const src = imageSrc.data, dst = imageDst.data;
+    for (let i = 0; i < src.length; i += 4) {
+      dst[i >> 2] = (src[i] * 0.299 + src[i + 1] * 0.587 + src[i + 2] * 0.114 + 0.5) | 0;
+    }
+    return imageDst;
+  },
 
-  const innerBits = ARUCO_DICT_4X4_50[id];
-  const pattern: number[][] = [];
+  adaptiveThreshold: function(imageSrc: { data: Uint8Array; width: number; height: number }, imageDst: { data: Uint8Array }, kernelSize: number, threshold: number) {
+    const src = imageSrc.data, dst = imageDst.data;
+    const width = imageSrc.width, height = imageSrc.height;
+    const half = kernelSize >> 1;
 
-  // Créer pattern 6x6 avec bordure noire
-  for (let row = 0; row < 6; row++) {
-    pattern[row] = [];
-    for (let col = 0; col < 6; col++) {
-      if (row === 0 || row === 5 || col === 0 || col === 5) {
-        // Bordure noire
-        pattern[row][col] = 0;
-      } else {
-        // Bits intérieurs (4x4)
-        const innerRow = row - 1;
-        const innerCol = col - 1;
-        const bit = (innerBits[innerRow] >> (3 - innerCol)) & 1;
-        pattern[row][col] = bit;
+    // Integral image
+    const integral = new Int32Array((width + 1) * (height + 1));
+    for (let y = 1; y <= height; y++) {
+      let sum = 0;
+      for (let x = 1; x <= width; x++) {
+        sum += src[(y - 1) * width + (x - 1)];
+        integral[y * (width + 1) + x] = integral[(y - 1) * (width + 1) + x] + sum;
+      }
+    }
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const x1 = Math.max(0, x - half);
+        const y1 = Math.max(0, y - half);
+        const x2 = Math.min(width, x + half + 1);
+        const y2 = Math.min(height, y + half + 1);
+        const count = (x2 - x1) * (y2 - y1);
+
+        const sum = integral[y2 * (width + 1) + x2] - integral[y1 * (width + 1) + x2]
+                  - integral[y2 * (width + 1) + x1] + integral[y1 * (width + 1) + x1];
+
+        dst[y * width + x] = src[y * width + x] * count <= sum * (1 - threshold) ? 0 : 255;
+      }
+    }
+    return imageDst;
+  },
+
+  findContours: function(imageSrc: { data: Uint8Array; width: number; height: number }) {
+    const src = imageSrc.data;
+    const width = imageSrc.width, height = imageSrc.height;
+    const contours: { x: number; y: number }[][] = [];
+    const visited = new Uint8Array(width * height);
+
+    const directions = [
+      [1, 0], [1, 1], [0, 1], [-1, 1],
+      [-1, 0], [-1, -1], [0, -1], [1, -1]
+    ];
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const idx = y * width + x;
+        if (src[idx] === 0 && !visited[idx]) {
+          // Check if it's a border pixel
+          let isBorder = false;
+          for (const [dx, dy] of directions) {
+            if (src[(y + dy) * width + (x + dx)] === 255) {
+              isBorder = true;
+              break;
+            }
+          }
+
+          if (isBorder) {
+            const contour = this.traceContour(src, width, height, x, y, visited);
+            if (contour.length >= 4) {
+              contours.push(contour);
+            }
+          }
+        }
+      }
+    }
+
+    return contours;
+  },
+
+  traceContour: function(src: Uint8Array, width: number, height: number, startX: number, startY: number, visited: Uint8Array) {
+    const contour: { x: number; y: number }[] = [];
+    const directions = [
+      [1, 0], [1, 1], [0, 1], [-1, 1],
+      [-1, 0], [-1, -1], [0, -1], [1, -1]
+    ];
+
+    let x = startX, y = startY;
+    let dir = 0;
+    const maxSteps = width * height;
+    let steps = 0;
+
+    do {
+      contour.push({ x, y });
+      visited[y * width + x] = 1;
+
+      let found = false;
+      for (let i = 0; i < 8; i++) {
+        const newDir = (dir + i) % 8;
+        const [dx, dy] = directions[newDir];
+        const nx = x + dx, ny = y + dy;
+
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          if (src[ny * width + nx] === 0 && !visited[ny * width + nx]) {
+            x = nx;
+            y = ny;
+            dir = (newDir + 5) % 8;
+            found = true;
+            break;
+          }
+        }
+      }
+
+      if (!found) break;
+      steps++;
+    } while ((x !== startX || y !== startY) && steps < maxSteps);
+
+    return contour;
+  },
+
+  approxPolyDP: function(contour: { x: number; y: number }[], epsilon: number) {
+    if (contour.length <= 2) return contour;
+
+    const result: { x: number; y: number }[] = [];
+    const stack: [number, number][] = [[0, contour.length - 1]];
+    const keep = new Array(contour.length).fill(false);
+    keep[0] = keep[contour.length - 1] = true;
+
+    while (stack.length > 0) {
+      const [start, end] = stack.pop()!;
+      let maxDist = 0, maxIdx = start;
+
+      const dx = contour[end].x - contour[start].x;
+      const dy = contour[end].y - contour[start].y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+
+      if (len > 0) {
+        for (let i = start + 1; i < end; i++) {
+          const dist = Math.abs(dy * contour[i].x - dx * contour[i].y + contour[end].x * contour[start].y - contour[end].y * contour[start].x) / len;
+          if (dist > maxDist) {
+            maxDist = dist;
+            maxIdx = i;
+          }
+        }
+      }
+
+      if (maxDist > epsilon) {
+        keep[maxIdx] = true;
+        stack.push([start, maxIdx]);
+        stack.push([maxIdx, end]);
+      }
+    }
+
+    for (let i = 0; i < contour.length; i++) {
+      if (keep[i]) result.push(contour[i]);
+    }
+
+    return result;
+  },
+
+  minAreaRect: function(points: { x: number; y: number }[]) {
+    if (points.length < 4) return null;
+
+    // Simplified: just return bounding box corners in order
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of points) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+
+    return [
+      { x: minX, y: minY },
+      { x: maxX, y: minY },
+      { x: maxX, y: maxY },
+      { x: minX, y: maxY }
+    ];
+  },
+
+  isContourConvex: function(contour: { x: number; y: number }[]) {
+    if (contour.length < 3) return false;
+
+    let sign = 0;
+    for (let i = 0; i < contour.length; i++) {
+      const p0 = contour[i];
+      const p1 = contour[(i + 1) % contour.length];
+      const p2 = contour[(i + 2) % contour.length];
+
+      const cross = (p1.x - p0.x) * (p2.y - p1.y) - (p1.y - p0.y) * (p2.x - p1.x);
+      if (cross !== 0) {
+        if (sign === 0) sign = cross > 0 ? 1 : -1;
+        else if ((cross > 0 ? 1 : -1) !== sign) return false;
+      }
+    }
+    return true;
+  },
+
+  contourArea: function(contour: { x: number; y: number }[]) {
+    let area = 0;
+    for (let i = 0; i < contour.length; i++) {
+      const j = (i + 1) % contour.length;
+      area += contour[i].x * contour[j].y;
+      area -= contour[j].x * contour[i].y;
+    }
+    return Math.abs(area / 2);
+  },
+
+  perimeter: function(contour: { x: number; y: number }[]) {
+    let len = 0;
+    for (let i = 0; i < contour.length; i++) {
+      const j = (i + 1) % contour.length;
+      const dx = contour[j].x - contour[i].x;
+      const dy = contour[j].y - contour[i].y;
+      len += Math.sqrt(dx * dx + dy * dy);
+    }
+    return len;
+  },
+
+  warp: function(imageSrc: { data: Uint8Array; width: number; height: number }, corners: { x: number; y: number }[], size: number): Uint8Array {
+    const dst = new Uint8Array(size * size);
+    const src = imageSrc.data;
+    const width = imageSrc.width;
+
+    // Compute perspective transform
+    const srcPts = corners;
+    const dstPts = [
+      { x: 0, y: 0 },
+      { x: size - 1, y: 0 },
+      { x: size - 1, y: size - 1 },
+      { x: 0, y: size - 1 }
+    ];
+
+    // Simple bilinear interpolation
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const u = x / (size - 1);
+        const v = y / (size - 1);
+
+        // Bilinear interpolation of source coordinates
+        const srcX = (1 - u) * (1 - v) * srcPts[0].x + u * (1 - v) * srcPts[1].x +
+                     u * v * srcPts[2].x + (1 - u) * v * srcPts[3].x;
+        const srcY = (1 - u) * (1 - v) * srcPts[0].y + u * (1 - v) * srcPts[1].y +
+                     u * v * srcPts[2].y + (1 - u) * v * srcPts[3].y;
+
+        const sx = Math.round(srcX);
+        const sy = Math.round(srcY);
+
+        if (sx >= 0 && sx < width && sy >= 0 && sy < imageSrc.height) {
+          dst[y * size + x] = src[sy * width + sx];
+        }
+      }
+    }
+
+    return dst;
+  },
+
+  otsu: function(imageSrc: { data: Uint8Array; width: number; height: number }): number {
+    const src = imageSrc.data;
+    const histogram = new Array(256).fill(0);
+
+    for (let i = 0; i < src.length; i++) {
+      histogram[src[i]]++;
+    }
+
+    const total = src.length;
+    let sum = 0;
+    for (let i = 0; i < 256; i++) sum += i * histogram[i];
+
+    let sumB = 0, wB = 0, wF = 0;
+    let maxVariance = 0, threshold = 0;
+
+    for (let t = 0; t < 256; t++) {
+      wB += histogram[t];
+      if (wB === 0) continue;
+      wF = total - wB;
+      if (wF === 0) break;
+
+      sumB += t * histogram[t];
+      const mB = sumB / wB;
+      const mF = (sum - sumB) / wF;
+
+      const variance = wB * wF * (mB - mF) * (mB - mF);
+      if (variance > maxVariance) {
+        maxVariance = variance;
+        threshold = t;
+      }
+    }
+
+    return threshold;
+  }
+};
+
+// ArUco dictionary 4x4_50
+const ARUCO_DICT: { [key: number]: number[] } = {
+  0: [1,0,0,0,0,0,1,1,1,1,1,1,0,0,0,1],
+  1: [1,0,0,1,1,1,1,0,0,1,0,0,1,0,1,0],
+  2: [0,0,1,1,0,1,1,1,1,1,0,1,0,1,1,0],
+  3: [0,1,0,1,0,0,0,1,0,0,1,0,1,1,0,0],
+  4: [0,1,1,0,1,0,0,0,0,0,0,1,0,0,0,1],
+  5: [1,1,0,0,0,0,1,0,1,0,0,1,1,1,1,1],
+  6: [0,0,0,1,1,1,1,0,0,1,1,0,0,0,1,1],
+  7: [1,1,1,1,1,1,0,0,0,0,0,0,1,1,1,0],
+  8: [0,0,1,0,0,1,0,1,1,0,1,0,0,1,0,0],
+  9: [1,0,1,0,1,0,0,1,0,1,1,1,1,0,0,1],
+  10: [0,1,0,0,0,1,0,0,1,1,0,0,0,0,1,0],
+  11: [1,1,1,0,0,1,1,0,0,0,1,1,0,1,1,1],
+  12: [0,1,1,1,1,1,1,1,1,0,0,0,1,0,0,0],
+  13: [1,0,1,1,1,0,1,1,1,1,1,0,1,1,0,1],
+  14: [1,1,0,1,1,1,0,1,0,1,0,1,0,0,0,0],
+  15: [0,0,0,0,1,0,1,0,1,0,1,1,1,0,1,1],
+  16: [1,0,0,0,0,0,0,1,0,1,0,0,0,1,0,1],
+  17: [1,0,0,1,1,1,0,0,1,1,1,1,1,1,1,0],
+  18: [0,0,1,1,0,1,0,1,0,0,1,0,0,0,1,0],
+  19: [0,1,0,1,0,0,1,1,1,1,0,1,1,0,0,0],
+  20: [0,1,1,0,1,0,1,0,1,0,1,0,1,1,0,1],
+  21: [1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1],
+  22: [0,0,0,1,1,1,0,0,1,0,0,1,0,1,1,1],
+  23: [1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,0],
+  24: [0,0,1,0,0,1,1,1,0,0,0,1,0,0,0,0],
+  25: [1,0,1,0,1,0,1,1,1,1,0,0,1,1,1,1],
+  26: [0,1,0,0,0,1,1,0,0,1,1,1,0,1,1,0],
+  27: [1,1,1,0,0,1,0,0,1,1,1,0,0,0,0,1],
+  28: [0,1,1,1,1,1,0,1,0,0,1,1,0,1,0,0],
+  29: [1,0,1,1,1,0,0,1,0,1,0,1,1,0,0,1],
+  30: [1,1,0,1,1,1,1,1,1,0,0,0,1,1,0,0],
+  31: [0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,1],
+  32: [1,0,0,0,0,1,1,1,0,1,1,0,1,0,1,1],
+  33: [1,0,0,1,1,0,1,0,1,1,0,1,0,0,0,0],
+  34: [0,0,1,1,0,0,1,1,0,1,0,0,1,1,0,0],
+  35: [0,1,0,1,0,1,0,1,1,1,1,1,0,0,1,0],
+  36: [0,1,1,0,1,1,0,0,1,1,0,0,0,1,1,1],
+  37: [1,1,0,0,0,1,1,0,0,0,1,0,1,0,0,1],
+  38: [0,0,0,1,1,0,1,0,1,0,0,0,1,1,0,1],
+  39: [1,1,1,1,1,0,0,0,0,0,1,1,0,1,0,0],
+  40: [0,0,1,0,0,0,0,1,1,0,0,1,1,0,1,0],
+  41: [1,0,1,0,1,1,0,1,0,1,1,0,0,0,0,1],
+  42: [0,1,0,0,0,0,1,0,1,1,1,0,1,1,0,0],
+  43: [1,1,1,0,0,0,0,0,0,1,0,1,1,0,1,1],
+  44: [0,1,1,1,1,0,0,1,0,0,0,1,1,1,1,0],
+  45: [1,0,1,1,1,1,1,1,1,1,1,0,0,0,1,1],
+  46: [1,1,0,1,1,0,1,1,1,0,1,1,0,1,1,0],
+  47: [0,0,0,0,1,1,0,0,0,0,1,0,1,1,1,1],
+  48: [1,0,0,0,0,1,0,1,1,1,0,1,1,1,1,1],
+  49: [1,0,0,1,1,0,0,0,0,1,1,0,0,1,0,0]
+};
+
+// Detect markers
+function detectArucoMarkers(imageData: ImageData): ArucoMarker[] {
+  const width = imageData.width;
+  const height = imageData.height;
+  const markers: ArucoMarker[] = [];
+
+  // Convert to grayscale
+  const gray = {
+    data: new Uint8Array(width * height),
+    width,
+    height
+  };
+  CV.grayscale(imageData, { data: gray.data } as ImageData);
+
+  // Adaptive threshold
+  const binary = {
+    data: new Uint8Array(width * height),
+    width,
+    height
+  };
+  const kernelSize = Math.max(3, Math.floor(Math.min(width, height) / 20) | 1);
+  CV.adaptiveThreshold(gray, binary, kernelSize, 0.05);
+
+  // Find contours
+  const contours = CV.findContours(binary);
+
+  // Filter candidates
+  const minSize = Math.min(width, height) * 0.01;
+  const maxSize = Math.min(width, height) * 0.9;
+
+  for (const contour of contours) {
+    // Approximate to polygon
+    const epsilon = CV.perimeter(contour) * 0.03;
+    const approx = CV.approxPolyDP(contour, epsilon);
+
+    // Must be quadrilateral
+    if (approx.length !== 4) continue;
+
+    // Must be convex
+    if (!CV.isContourConvex(approx)) continue;
+
+    // Check size
+    const area = CV.contourArea(approx);
+    const side = Math.sqrt(area);
+    if (side < minSize || side > maxSize) continue;
+
+    // Order corners (top-left, top-right, bottom-right, bottom-left)
+    const corners = orderCorners(approx);
+
+    // Warp to get marker content
+    const markerSize = 6;
+    const warped = CV.warp(gray, corners, markerSize * 10);
+
+    // Read bits and identify marker
+    const bits = readBits(warped, markerSize);
+    const id = identifyMarker(bits);
+
+    if (id !== -1) {
+      const center = {
+        x: (corners[0].x + corners[1].x + corners[2].x + corners[3].x) / 4,
+        y: (corners[0].y + corners[1].y + corners[2].y + corners[3].y) / 4
+      };
+
+      const w = Math.sqrt(
+        Math.pow(corners[1].x - corners[0].x, 2) +
+        Math.pow(corners[1].y - corners[0].y, 2)
+      );
+      const h = Math.sqrt(
+        Math.pow(corners[3].x - corners[0].x, 2) +
+        Math.pow(corners[3].y - corners[0].y, 2)
+      );
+
+      // Check for duplicates
+      const isDuplicate = markers.some(m =>
+        m.id === id &&
+        Math.abs(m.center.x - center.x) < w * 0.5 &&
+        Math.abs(m.center.y - center.y) < h * 0.5
+      );
+
+      if (!isDuplicate) {
+        markers.push({
+          id,
+          corners,
+          center,
+          size: { width: w, height: h }
+        });
       }
     }
   }
 
-  return pattern;
+  return markers;
 }
 
-// Rotation d'un pattern 90° dans le sens horaire
-function rotatePattern90(pattern: number[][]): number[][] {
-  const size = pattern.length;
-  const rotated: number[][] = [];
-  for (let i = 0; i < size; i++) {
-    rotated[i] = [];
-    for (let j = 0; j < size; j++) {
-      rotated[i][j] = pattern[size - 1 - j][i];
-    }
-  }
-  return rotated;
+function orderCorners(corners: { x: number; y: number }[]): { x: number; y: number }[] {
+  // Sort by y first
+  const sorted = [...corners].sort((a, b) => a.y - b.y);
+
+  // Top two and bottom two
+  const top = sorted.slice(0, 2).sort((a, b) => a.x - b.x);
+  const bottom = sorted.slice(2, 4).sort((a, b) => a.x - b.x);
+
+  return [top[0], top[1], bottom[1], bottom[0]];
 }
 
-// Comparer deux patterns
-function patternsMatch(p1: number[][], p2: number[][]): boolean {
-  if (p1.length !== p2.length) return false;
-  for (let i = 0; i < p1.length; i++) {
-    for (let j = 0; j < p1[i].length; j++) {
-      if (p1[i][j] !== p2[i][j]) return false;
+function readBits(warped: Uint8Array, size: number): number[] {
+  const cellSize = Math.floor(warped.length / size / size);
+  const bits: number[] = [];
+  const warpedSize = Math.sqrt(warped.length);
+
+  // Compute threshold using Otsu on the warped image
+  let sum = 0;
+  for (let i = 0; i < warped.length; i++) sum += warped[i];
+  const threshold = sum / warped.length;
+
+  for (let row = 0; row < size; row++) {
+    for (let col = 0; col < size; col++) {
+      const startX = Math.floor((col + 0.25) * warpedSize / size);
+      const startY = Math.floor((row + 0.25) * warpedSize / size);
+      const endX = Math.floor((col + 0.75) * warpedSize / size);
+      const endY = Math.floor((row + 0.75) * warpedSize / size);
+
+      let cellSum = 0;
+      let count = 0;
+      for (let y = startY; y < endY; y++) {
+        for (let x = startX; x < endX; x++) {
+          cellSum += warped[y * warpedSize + x];
+          count++;
+        }
+      }
+
+      bits.push(cellSum / count < threshold ? 0 : 1);
     }
   }
-  return true;
+
+  return bits;
 }
+
+function identifyMarker(bits: number[]): number {
+  // Check border (should be all black = 0)
+  for (let i = 0; i < 6; i++) {
+    if (bits[i] !== 0) return -1; // Top row
+    if (bits[30 + i] !== 0) return -1; // Bottom row
+    if (bits[i * 6] !== 0) return -1; // Left column
+    if (bits[i * 6 + 5] !== 0) return -1; // Right column
+  }
+
+  // Extract inner 4x4 bits
+  const inner: number[] = [];
+  for (let row = 1; row <= 4; row++) {
+    for (let col = 1; col <= 4; col++) {
+      inner.push(bits[row * 6 + col]);
+    }
+  }
+
+  // Try all 4 rotations
+  for (let rot = 0; rot < 4; rot++) {
+    for (const [id, pattern] of Object.entries(ARUCO_DICT)) {
+      let match = true;
+      for (let i = 0; i < 16; i++) {
+        if (inner[i] !== pattern[i]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) return parseInt(id);
+    }
+
+    // Rotate inner 90 degrees clockwise
+    const rotated: number[] = [];
+    for (let col = 0; col < 4; col++) {
+      for (let row = 3; row >= 0; row--) {
+        rotated.push(inner[row * 4 + col]);
+      }
+    }
+    inner.length = 0;
+    inner.push(...rotated);
+  }
+
+  return -1;
+}
+
+// ============================================
+// REACT HOOK
+// ============================================
 
 export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVArucoReturn {
   const { markerSizeCm = 10 } = options;
 
-  // Toujours "chargé" car on n'utilise pas OpenCV.js pour ArUco
   const [isLoaded, setIsLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Simuler un chargement rapide
     const timer = setTimeout(() => {
       setIsLoading(false);
       setIsLoaded(true);
-      console.log('[ArUco] Détection native prête');
+      console.log('[ArUco] Détection native v3 prête');
     }, 100);
     return () => clearTimeout(timer);
   }, []);
 
-  // Détection native des markers ArUco
   const detectMarkers = useCallback(async (
     image: HTMLImageElement | HTMLCanvasElement
   ): Promise<ArucoMarker[]> => {
-    const markers: ArucoMarker[] = [];
-
-    // Créer un canvas pour analyser l'image
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    if (!ctx) return markers;
+    if (!ctx) return [];
 
-    canvas.width = image.width || (image as HTMLImageElement).naturalWidth;
-    canvas.height = image.height || (image as HTMLImageElement).naturalHeight;
-    ctx.drawImage(image, 0, 0);
+    const w = image.width || (image as HTMLImageElement).naturalWidth;
+    const h = image.height || (image as HTMLImageElement).naturalHeight;
+
+    // Limit size for performance
+    const maxDim = 1500;
+    let scale = 1;
+    if (Math.max(w, h) > maxDim) {
+      scale = maxDim / Math.max(w, h);
+    }
+
+    canvas.width = Math.round(w * scale);
+    canvas.height = Math.round(h * scale);
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
 
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
+    const markers = detectArucoMarkers(imageData);
 
-    // Convertir en niveaux de gris
-    const gray = new Uint8Array(canvas.width * canvas.height);
-    for (let i = 0; i < gray.length; i++) {
-      const idx = i * 4;
-      gray[i] = Math.round(0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]);
-    }
-
-    // Seuillage adaptatif simplifié
-    const binary = new Uint8Array(canvas.width * canvas.height);
-    const blockSize = 51;
-    const C = 10;
-
-    for (let y = 0; y < canvas.height; y++) {
-      for (let x = 0; x < canvas.width; x++) {
-        const idx = y * canvas.width + x;
-
-        // Moyenne locale
-        let sum = 0;
-        let count = 0;
-        const halfBlock = Math.floor(blockSize / 2);
-
-        for (let dy = -halfBlock; dy <= halfBlock; dy += 5) {
-          for (let dx = -halfBlock; dx <= halfBlock; dx += 5) {
-            const nx = x + dx;
-            const ny = y + dy;
-            if (nx >= 0 && nx < canvas.width && ny >= 0 && ny < canvas.height) {
-              sum += gray[ny * canvas.width + nx];
-              count++;
-            }
-          }
-        }
-
-        const mean = sum / count;
-        binary[idx] = gray[idx] < mean - C ? 0 : 255;
-      }
-    }
-
-    // Détecter les contours carrés
-    const visited = new Set<number>();
-    const candidates: { corners: {x: number, y: number}[], bounds: {minX: number, maxX: number, minY: number, maxY: number} }[] = [];
-
-    // Chercher des régions noires qui pourraient être des markers
-    const minMarkerSize = Math.min(canvas.width, canvas.height) * 0.02; // 2% de l'image min
-    const maxMarkerSize = Math.min(canvas.width, canvas.height) * 0.5; // 50% de l'image max
-
-    // Scanner pour trouver des quadrilatères noirs
-    const step = Math.max(5, Math.floor(minMarkerSize / 4));
-
-    for (let y = 0; y < canvas.height - minMarkerSize; y += step) {
-      for (let x = 0; x < canvas.width - minMarkerSize; x += step) {
-        const idx = y * canvas.width + x;
-
-        if (binary[idx] === 0 && !visited.has(idx)) {
-          // Trouver les limites de la région noire
-          let minX = x, maxX = x, minY = y, maxY = y;
-          const queue = [{ x, y }];
-          const region: { x: number, y: number }[] = [];
-
-          while (queue.length > 0 && region.length < 50000) {
-            const p = queue.pop()!;
-            const pidx = p.y * canvas.width + p.x;
-
-            if (visited.has(pidx)) continue;
-            if (p.x < 0 || p.x >= canvas.width || p.y < 0 || p.y >= canvas.height) continue;
-            if (binary[pidx] !== 0) continue;
-
-            visited.add(pidx);
-            region.push(p);
-
-            minX = Math.min(minX, p.x);
-            maxX = Math.max(maxX, p.x);
-            minY = Math.min(minY, p.y);
-            maxY = Math.max(maxY, p.y);
-
-            // Ajouter les voisins
-            queue.push({ x: p.x + step, y: p.y });
-            queue.push({ x: p.x - step, y: p.y });
-            queue.push({ x: p.x, y: p.y + step });
-            queue.push({ x: p.x, y: p.y - step });
-          }
-
-          const width = maxX - minX;
-          const height = maxY - minY;
-
-          // Vérifier si c'est potentiellement un marker (approximativement carré)
-          if (width >= minMarkerSize && width <= maxMarkerSize &&
-              height >= minMarkerSize && height <= maxMarkerSize &&
-              Math.abs(width - height) < Math.max(width, height) * 0.3) {
-
-            candidates.push({
-              corners: [
-                { x: minX, y: minY },
-                { x: maxX, y: minY },
-                { x: maxX, y: maxY },
-                { x: minX, y: maxY }
-              ],
-              bounds: { minX, maxX, minY, maxY }
-            });
-          }
+    // Scale coordinates back if needed
+    if (scale !== 1) {
+      for (const marker of markers) {
+        marker.center.x /= scale;
+        marker.center.y /= scale;
+        marker.size.width /= scale;
+        marker.size.height /= scale;
+        for (const corner of marker.corners) {
+          corner.x /= scale;
+          corner.y /= scale;
         }
       }
     }
 
-    // Pour chaque candidat, essayer de décoder le marker
-    for (const candidate of candidates) {
-      const { bounds } = candidate;
-      const width = bounds.maxX - bounds.minX;
-      const height = bounds.maxY - bounds.minY;
-      const size = Math.max(width, height);
-
-      // Échantillonner le contenu du marker (6x6 cellules)
-      const cellSize = size / 6;
-      const sampledPattern: number[][] = [];
-
-      for (let row = 0; row < 6; row++) {
-        sampledPattern[row] = [];
-        for (let col = 0; col < 6; col++) {
-          // Centre de la cellule
-          const cx = bounds.minX + (col + 0.5) * cellSize;
-          const cy = bounds.minY + (row + 0.5) * cellSize;
-
-          // Échantillonner plusieurs points dans la cellule
-          let blackCount = 0;
-          let totalCount = 0;
-          const sampleRadius = cellSize * 0.25;
-
-          for (let dy = -sampleRadius; dy <= sampleRadius; dy += sampleRadius) {
-            for (let dx = -sampleRadius; dx <= sampleRadius; dx += sampleRadius) {
-              const sx = Math.round(cx + dx);
-              const sy = Math.round(cy + dy);
-              if (sx >= 0 && sx < canvas.width && sy >= 0 && sy < canvas.height) {
-                const sidx = sy * canvas.width + sx;
-                if (binary[sidx] === 0) blackCount++;
-                totalCount++;
-              }
-            }
-          }
-
-          // Majorité noir = 0, sinon = 1
-          sampledPattern[row][col] = blackCount > totalCount / 2 ? 0 : 1;
-        }
-      }
-
-      // Vérifier que la bordure est noire
-      let borderOk = true;
-      for (let i = 0; i < 6; i++) {
-        if (sampledPattern[0][i] !== 0 || sampledPattern[5][i] !== 0 ||
-            sampledPattern[i][0] !== 0 || sampledPattern[i][5] !== 0) {
-          borderOk = false;
-          break;
-        }
-      }
-
-      if (!borderOk) continue;
-
-      // Essayer de matcher avec chaque marker du dictionnaire (et rotations)
-      for (let id = 0; id < ARUCO_DICT_4X4_50.length; id++) {
-        let pattern = getMarkerPattern(id);
-
-        for (let rotation = 0; rotation < 4; rotation++) {
-          if (patternsMatch(sampledPattern, pattern)) {
-            // Marker trouvé !
-            const center = {
-              x: (bounds.minX + bounds.maxX) / 2,
-              y: (bounds.minY + bounds.maxY) / 2
-            };
-
-            // Vérifier qu'on n'a pas déjà ce marker (éviter les doublons)
-            const isDuplicate = markers.some(m =>
-              m.id === id &&
-              Math.abs(m.center.x - center.x) < size * 0.5 &&
-              Math.abs(m.center.y - center.y) < size * 0.5
-            );
-
-            if (!isDuplicate) {
-              markers.push({
-                id,
-                corners: candidate.corners,
-                center,
-                size: { width, height }
-              });
-            }
-            break;
-          }
-
-          pattern = rotatePattern90(pattern);
-        }
-      }
-    }
-
-    console.log(`[ArUco] ${markers.length} markers détectés:`, markers.map(m => m.id));
+    console.log(`[ArUco] ${markers.length} markers détectés:`, markers.map(m => `ID${m.id}`).join(', '));
     return markers;
   }, []);
 
-  // Calculer l'échelle (pixels par cm) à partir des markers
   const calculateScale = useCallback((
     markers: ArucoMarker[],
     markerSizeCm: number
   ): number | null => {
     if (markers.length === 0) return null;
 
-    const markerSizes: number[] = [];
+    const sizes = markers.map(m => (m.size.width + m.size.height) / 2);
+    const avgSize = sizes.reduce((a, b) => a + b, 0) / sizes.length;
+    const pixelsPerCm = avgSize / markerSizeCm;
 
-    for (const marker of markers) {
-      const sidePixels = (marker.size.width + marker.size.height) / 2;
-      markerSizes.push(sidePixels);
-    }
-
-    const avgSizePixels = markerSizes.reduce((a, b) => a + b, 0) / markerSizes.length;
-    const pixelsPerCm = avgSizePixels / markerSizeCm;
-
-    console.log(`[ArUco] Échelle calculée: ${pixelsPerCm.toFixed(2)} pixels/cm`);
+    console.log(`[ArUco] Échelle: ${pixelsPerCm.toFixed(2)} px/cm`);
     return pixelsPerCm;
   }, []);
 
-  // Correction de perspective (simplifié)
-  const correctPerspective = useCallback(async (
-    image: HTMLImageElement | HTMLCanvasElement,
-    markers: ArucoMarker[]
-  ): Promise<ImageData | null> => {
-    // Pour l'instant, retourner null (pas implémenté sans OpenCV)
-    return null;
-  }, []);
-
+  const correctPerspective = useCallback(async () => null, []);
   const calibrateCamera = useCallback(async () => null, []);
   const undistortImage = useCallback(async () => null, []);
 
-  // Pipeline complet
   const processImage = useCallback(async (
     image: HTMLImageElement | HTMLCanvasElement,
     options: { markerSizeCm?: number; correctPerspective?: boolean } = {}
@@ -421,12 +664,11 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
 
     try {
       result.markersDetected = await detectMarkers(image);
-
       if (result.markersDetected.length > 0) {
         result.pixelsPerCm = calculateScale(result.markersDetected, size);
       }
     } catch (err) {
-      console.error('[ArUco] Erreur de traitement:', err);
+      console.error('[ArUco] Erreur:', err);
     }
 
     return result;
