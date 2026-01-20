@@ -5492,6 +5492,8 @@ export function CADGabaritCanvas({
 
         // Mettre à jour l'image dans backgroundImages
         // Ajuster la position pour compenser le changement de taille
+        // sketch.scaleFactor est en px/mm, donc * 10 pour px/cm
+        const pxPerCmLocal = sketch.scaleFactor * 10;
         const deltaWidth = (newWidth - tempCanvas.width) / 2;
         const deltaHeight = (newHeight - tempCanvas.height) / 2;
 
@@ -5502,8 +5504,8 @@ export function CADGabaritCanvas({
                   ...img,
                   element: newImg,
                   url: newImageUrl,
-                  x: img.x - deltaWidth / (pxPerCm * img.scale),
-                  y: img.y - deltaHeight / (pxPerCm * img.scale),
+                  x: img.x - deltaWidth / (pxPerCmLocal * img.scale),
+                  y: img.y - deltaHeight / (pxPerCmLocal * img.scale),
                   rotation: 0, // Reset la rotation manuelle
                 }
               : img,
@@ -5516,7 +5518,7 @@ export function CADGabaritCanvas({
         toast.error("Erreur lors du redressement", { id: "straighten" });
       }
     },
-    [backgroundImages, isOpenCVLoaded, detectMarkers, pxPerCm],
+    [backgroundImages, isOpenCVLoaded, detectMarkers, sketch.scaleFactor],
   );
 
   // v7.45: Assembler toutes les images visibles en une seule
@@ -5531,15 +5533,18 @@ export function CADGabaritCanvas({
     toast.loading("Assemblage en cours...", { id: "stitch" });
 
     try {
-      // Calculer le bounding box de toutes les images (en pixels canvas)
+      // sketch.scaleFactor est en px/mm, donc * 10 pour px/cm
+      const pxPerCmLocal = sketch.scaleFactor * 10;
+      
+      // Calculer le bounding box de toutes les images (en unités du canvas = mm)
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
       for (const img of visibleImages) {
         const imgWidth = img.element.naturalWidth;
         const imgHeight = img.element.naturalHeight;
-        const scale = img.scale * pxPerCm;
-        const scaledWidth = imgWidth * scale / pxPerCm;
-        const scaledHeight = imgHeight * scale / pxPerCm;
+        // img.scale convertit pixels image -> unités canvas
+        const scaledWidth = imgWidth * img.scale;
+        const scaledHeight = imgHeight * img.scale;
 
         // Prendre en compte la rotation pour le bounding box
         const rotation = (img.rotation || 0) * Math.PI / 180;
@@ -5557,10 +5562,13 @@ export function CADGabaritCanvas({
         maxY = Math.max(maxY, centerY + rotatedHeight / 2);
       }
 
-      // Créer le canvas de sortie (en pixels, pas en mm)
-      const outputScale = pxPerCm; // pixels par cm
-      const outputWidth = Math.ceil((maxX - minX) * outputScale);
-      const outputHeight = Math.ceil((maxY - minY) * outputScale);
+      // Créer le canvas de sortie
+      // Utiliser une résolution fixe de 10 pixels par mm
+      const outputPixelsPerMm = 10;
+      const totalWidthMm = maxX - minX;
+      const totalHeightMm = maxY - minY;
+      const outputWidth = Math.ceil(totalWidthMm * outputPixelsPerMm);
+      const outputHeight = Math.ceil(totalHeightMm * outputPixelsPerMm);
 
       if (outputWidth > 10000 || outputHeight > 10000) {
         toast.error("Image résultante trop grande (max 10000px)", { id: "stitch" });
@@ -5574,6 +5582,10 @@ export function CADGabaritCanvas({
       outputCanvas.width = outputWidth;
       outputCanvas.height = outputHeight;
 
+      // Fond blanc
+      outputCtx.fillStyle = "white";
+      outputCtx.fillRect(0, 0, outputWidth, outputHeight);
+
       // Trier par ordre (z-index)
       const sortedImages = [...visibleImages].sort((a, b) => (a.order || 0) - (b.order || 0));
 
@@ -5581,21 +5593,26 @@ export function CADGabaritCanvas({
       for (const img of sortedImages) {
         const imgWidth = img.element.naturalWidth;
         const imgHeight = img.element.naturalHeight;
-        const scale = img.scale;
-        const scaledWidth = imgWidth * scale;
-        const scaledHeight = imgHeight * scale;
+        
+        // Taille dans l'espace canvas (mm)
+        const scaledWidthMm = imgWidth * img.scale;
+        const scaledHeightMm = imgHeight * img.scale;
+        
+        // Taille en pixels de sortie
+        const drawWidth = scaledWidthMm * outputPixelsPerMm;
+        const drawHeight = scaledHeightMm * outputPixelsPerMm;
 
-        // Position relative au bounding box
-        const relX = (img.x - minX) * outputScale;
-        const relY = (img.y - minY) * outputScale;
+        // Position relative au bounding box (en pixels de sortie)
+        const relX = (img.x - minX) * outputPixelsPerMm;
+        const relY = (img.y - minY) * outputPixelsPerMm;
 
         outputCtx.save();
         outputCtx.globalAlpha = img.opacity ?? 1;
 
         // Appliquer rotation autour du centre de l'image
         if (img.rotation) {
-          const centerX = relX + scaledWidth * outputScale / pxPerCm / 2;
-          const centerY = relY + scaledHeight * outputScale / pxPerCm / 2;
+          const centerX = relX + drawWidth / 2;
+          const centerY = relY + drawHeight / 2;
           outputCtx.translate(centerX, centerY);
           outputCtx.rotate((img.rotation * Math.PI) / 180);
           outputCtx.translate(-centerX, -centerY);
@@ -5606,8 +5623,8 @@ export function CADGabaritCanvas({
           img.element,
           relX,
           relY,
-          scaledWidth * outputScale / pxPerCm,
-          scaledHeight * outputScale / pxPerCm,
+          drawWidth,
+          drawHeight,
         );
 
         outputCtx.restore();
@@ -5619,13 +5636,15 @@ export function CADGabaritCanvas({
 
       newImg.onload = () => {
         const newImageId = generateId();
+        // Scale pour que l'image ait la bonne taille sur le canvas
+        // outputPixelsPerMm pixels = 1mm, donc scale = 1 / outputPixelsPerMm
         const newBackgroundImage: BackgroundImage = {
           id: newImageId,
           url: newImageUrl,
           element: newImg,
           x: minX,
           y: minY,
-          scale: 1 / outputScale * pxPerCm, // Compenser pour que 1px = 1px sur le canvas
+          scale: 1 / outputPixelsPerMm,
           rotation: 0,
           opacity: 1,
           visible: true,
@@ -5657,7 +5676,7 @@ export function CADGabaritCanvas({
       console.error("Erreur assemblage:", error);
       toast.error("Erreur lors de l'assemblage", { id: "stitch" });
     }
-  }, [backgroundImages, pxPerCm]);
+  }, [backgroundImages, sketch.scaleFactor]);
 
   // Import DXF
   const handleDXFImport = useCallback(
