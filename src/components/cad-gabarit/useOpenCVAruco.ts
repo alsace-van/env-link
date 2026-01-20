@@ -4,7 +4,7 @@
 // VERSION: 2.0 - Détection JavaScript pure
 // ============================================
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
 export interface ArucoMarker {
   id: number;
@@ -31,8 +31,8 @@ interface UseOpenCVArucoReturn {
   detectMarkers: (image: HTMLImageElement | HTMLCanvasElement) => Promise<ArucoMarker[]>;
   calculateScale: (markers: ArucoMarker[], markerSizeCm: number) => number | null;
   correctPerspective: (image: HTMLImageElement | HTMLCanvasElement, markers: ArucoMarker[]) => Promise<ImageData | null>;
-  calibrateCamera: (images: (HTMLImageElement | HTMLCanvasElement)[], patternSize: { width: number; height: number }) => Promise<any>;
-  undistortImage: (image: HTMLImageElement | HTMLCanvasElement, calibration: any) => Promise<ImageData | null>;
+  calibrateCamera: (images: (HTMLImageElement | HTMLCanvasElement)[], patternSize: { width: number; height: number }) => Promise<null>;
+  undistortImage: (image: HTMLImageElement | HTMLCanvasElement, calibration: unknown) => Promise<ImageData | null>;
   processImage: (image: HTMLImageElement | HTMLCanvasElement, options?: { markerSizeCm?: number; correctPerspective?: boolean }) => Promise<CalibrationResult>;
 }
 
