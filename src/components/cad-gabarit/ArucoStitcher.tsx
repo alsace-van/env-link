@@ -1,20 +1,20 @@
 // ============================================
 // COMPONENT: ArucoStitcher
 // Assemblage de photos via markers ArUco partagés
-// VERSION: 3.1
+// VERSION: 3.2
 // ============================================
+//
+// CHANGELOG v3.2 (20/01/2026):
+// - Toggle "Rotation auto" (désactivé par défaut)
+// - Choix de la photo de référence (⭐)
+// - Toggle "Correction perspective" (préparé)
 //
 // CHANGELOG v3.1 (20/01/2026):
 // - scaleX et scaleY séparés pour corriger distorsions
-// - Rotation intelligente: seuil min 2°, max 15°, cohérence vérifiée
-// - Tolérance par défaut à 0 (strict)
+// - Rotation intelligente: seuil min 2°, max 15°
 //
 // CHANGELOG v3.0 (20/01/2026):
-// - Rotation limitée à ±15°
 // - Slider tolérance + bouton "Relancer"
-//
-// CHANGELOG v2.2 (20/01/2026):
-// - Détection de doublons avec cadre orange
 // ============================================
 
 import { useState, useCallback, useRef, useEffect } from "react";
@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +43,8 @@ import {
   Bug,
   RotateCw,
   RefreshCw,
+  Star,
+  Move,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useOpenCVAruco, ArucoMarker } from "./useOpenCVAruco";
@@ -106,6 +109,11 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
   const [tolerance, setTolerance] = useState<number>(0); // v3.0: défaut 0 (strict)
   const [isRedetecting, setIsRedetecting] = useState(false);
   const [duplicatePhotoIds, setDuplicatePhotoIds] = useState<Set<string>>(new Set());
+  
+  // v3.2: Nouvelles options
+  const [autoRotation, setAutoRotation] = useState<boolean>(false); // Rotation auto désactivée par défaut
+  const [referencePhotoId, setReferencePhotoId] = useState<string | null>(null); // Photo de référence (null = première)
+  const [perspectiveCorrection, setPerspectiveCorrection] = useState<boolean>(true); // Correction perspective activée
 
   const { isLoaded, isLoading, error: opencvError, detectMarkers } = useOpenCVAruco();
 
@@ -603,9 +611,19 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
         scaleY: scaleFactorsXY[i].scaleY
       }));
 
-      // BFS pour positionner toutes les photos
-      const processed = new Set<number>([0]);
-      const queue = [0];
+      // v3.2: Déterminer l'index de la photo de référence
+      let refIndex = 0;
+      if (referencePhotoId) {
+        const foundIdx = photos.findIndex(p => p.id === referencePhotoId);
+        if (foundIdx !== -1) {
+          refIndex = foundIdx;
+          addDebugLog(`Photo de référence: #${refIndex + 1} (${photos[refIndex].file.name})`);
+        }
+      }
+
+      // BFS pour positionner toutes les photos (démarrer de la référence)
+      const processed = new Set<number>([refIndex]);
+      const queue = [refIndex];
 
       while (queue.length > 0) {
         const currentIdx = queue.shift()!;
@@ -625,15 +643,17 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
 
           if (commonMatches.length === 0) continue;
 
-          // v2.1: Calculer la rotation
-          const rotation = calculateRotation(
-            currentPhoto.markers,
-            otherPhoto.markers,
-            currentPhoto.pixelsPerMm,
-            otherPhoto.pixelsPerMm
-          );
-
-          addDebugLog(`Rotation photo ${otherIdx + 1} vs photo ${currentIdx + 1}: ${rotation.toFixed(1)}°`);
+          // v3.2: Calculer la rotation seulement si autoRotation est activé
+          let rotation = 0;
+          if (autoRotation) {
+            rotation = calculateRotation(
+              currentPhoto.markers,
+              otherPhoto.markers,
+              currentPhoto.pixelsPerMm,
+              otherPhoto.pixelsPerMm
+            );
+            addDebugLog(`Rotation photo ${otherIdx + 1} vs photo ${currentIdx + 1}: ${rotation.toFixed(1)}°`);
+          }
 
           // Calculer le décalage moyen en mm (en tenant compte de la rotation)
           let totalDxMm = 0;
@@ -798,7 +818,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
     } finally {
       setIsStitching(false);
     }
-  }, [photos, findMarkerMatches, markerSize, addDebugLog]);
+  }, [photos, findMarkerMatches, markerSize, addDebugLog, referencePhotoId, autoRotation]);
 
   const handleConfirm = useCallback(() => {
     if (!positionResult) return;
@@ -945,6 +965,32 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
             </Button>
           </div>
 
+          {/* v3.2: Options rotation et perspective */}
+          <div className="flex items-center gap-4 p-2 bg-muted/50 rounded text-xs">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="autoRotation"
+                checked={autoRotation}
+                onCheckedChange={setAutoRotation}
+              />
+              <Label htmlFor="autoRotation" className="cursor-pointer">
+                <RotateCw className="h-3 w-3 inline mr-1" />
+                Rotation auto
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="perspectiveCorrection"
+                checked={perspectiveCorrection}
+                onCheckedChange={setPerspectiveCorrection}
+              />
+              <Label htmlFor="perspectiveCorrection" className="cursor-pointer">
+                <Move className="h-3 w-3 inline mr-1" />
+                Corr. perspective
+              </Label>
+            </div>
+          </div>
+
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -1012,13 +1058,16 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
               <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto">
                 {photos.map((photo, idx) => {
                   const isDuplicate = duplicatePhotoIds.has(photo.id);
+                  const isReference = referencePhotoId === photo.id || (!referencePhotoId && idx === 0);
                   return (
                     <div 
                       key={photo.id} 
                       className={`relative rounded p-2 bg-muted/50 ${
-                        isDuplicate 
-                          ? "border-2 border-orange-500 ring-2 ring-orange-300" 
-                          : "border"
+                        isReference
+                          ? "border-2 border-blue-500 ring-2 ring-blue-300"
+                          : isDuplicate 
+                            ? "border-2 border-orange-500 ring-2 ring-orange-300" 
+                            : "border"
                       }`}
                     >
                       <img
@@ -1026,11 +1075,12 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
                         alt={`Photo ${idx + 1}`}
                         className="w-full h-24 object-contain rounded bg-gray-200"
                       />
-                      <div className="absolute top-1 left-1 bg-black/70 text-white text-xs px-1 rounded">
+                      <div className="absolute top-1 left-1 bg-black/70 text-white text-xs px-1 rounded flex items-center gap-1">
                         #{idx + 1}
+                        {isReference && <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />}
                       </div>
-                      {isDuplicate && (
-                        <div className="absolute top-1 left-8 bg-orange-500 text-white text-xs px-1 rounded">
+                      {isDuplicate && !isReference && (
+                        <div className="absolute top-1 left-10 bg-orange-500 text-white text-xs px-1 rounded">
                           Doublon?
                         </div>
                       )}
@@ -1046,6 +1096,16 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
                           </span>
                         )}
                       </div>
+                      {/* v3.2: Bouton définir comme référence */}
+                      <Button
+                        variant={isReference ? "default" : "outline"}
+                        size="icon"
+                        className="absolute bottom-1 left-1 h-6 w-6"
+                        onClick={() => setReferencePhotoId(isReference ? null : photo.id)}
+                        title={isReference ? "Photo de référence" : "Définir comme référence"}
+                      >
+                        <Star className={`h-3 w-3 ${isReference ? "fill-yellow-400" : ""}`} />
+                      </Button>
                       <Button
                         variant="destructive"
                         size="icon"
