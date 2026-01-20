@@ -1,15 +1,19 @@
 // ============================================
 // COMPONENT: useOpenCVAruco
 // Détection ArUco 100% JavaScript (sans OpenCV)
-// VERSION: 17.0 - Paramètres équilibrés
+// VERSION: 18
 // ============================================
-// MODIFICATIONS v17.0:
-// - Tolérance 2 bits (équilibre entre v14=3 et v16=1)
-// - Contraste minimum 0.20 (entre 0.15 et 0.30)
-// - Confiance minimum 0.35 (entre 0 et 0.40)
-// - Bordure minimum 55% (entre 50% et 60%)
-// - Squareness 13-22 (entre 12-25 et 14-20)
-// - Side ratio 0.5 (entre 0.4 et 0.6)
+//
+// CHANGELOG v18 (20/01/2026):
+// - FIX CRITIQUE: Inversion des bits dans matchPattern4x4
+// - Convention: pattern 1=noir, détecteur 0=noir → actualBit = 1 - bits[...]
+// - Corrige les IDs erronés (17,22,29... au lieu de 0-9)
+//
+// CHANGELOG v17 (20/01/2026):
+// - Paramètres équilibrés: tolérance 2 bits, contraste 0.20, confiance 0.35
+//
+// CHANGELOG v16 (20/01/2026):
+// - Paramètres stricts pour réduire les faux positifs
 // ============================================
 
 import { useState, useCallback, useEffect } from "react";
@@ -135,7 +139,7 @@ export function useOpenCVAruco(
     const timer = setTimeout(() => {
       setIsLoaded(true);
       setIsLoading(false);
-      console.log("[ArUco v17] Pure JS detector ready - BALANCED MODE");
+      console.log("[ArUco v18] Pure JS detector ready - BALANCED MODE");
     }, 100);
     return () => clearTimeout(timer);
   }, []);
@@ -149,7 +153,7 @@ export function useOpenCVAruco(
       const w = image.width || (image as HTMLImageElement).naturalWidth;
       const h = image.height || (image as HTMLImageElement).naturalHeight;
 
-      console.log(`[ArUco v17] Detecting in ${w}x${h} image`);
+      console.log(`[ArUco v18] Detecting in ${w}x${h} image`);
 
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -170,7 +174,7 @@ export function useOpenCVAruco(
 
       const markers = findMarkersInImage(gray, canvas.width, canvas.height, scale);
 
-      console.log(`[ArUco v17] Found ${markers.length} markers`);
+      console.log(`[ArUco v18] Found ${markers.length} markers`);
       return markers;
     },
     [isLoaded]
@@ -523,7 +527,7 @@ function findMarkersInImage(
   const minArea = Math.pow(minDim * 0.018, 2);
   const maxArea = Math.pow(minDim * 0.38, 2);
 
-  console.log(`[ArUco v17] Area: ${minArea.toFixed(0)}-${maxArea.toFixed(0)}, conf>=${MIN_CONFIDENCE}, contrast>=${MIN_CONTRAST}`);
+  console.log(`[ArUco v18] Area: ${minArea.toFixed(0)}-${maxArea.toFixed(0)}, conf>=${MIN_CONFIDENCE}, contrast>=${MIN_CONTRAST}`);
 
   let rawDetections = 0;
   let rejectedLowConfidence = 0;
@@ -607,13 +611,13 @@ function findMarkersInImage(
           
           if (newConfidence > existingConfidence) {
             markersByID.set(result.id, newMarker);
-            console.log(`[ArUco v17] ↻ ID=${result.id} (${existingConfidence.toFixed(2)}→${newConfidence.toFixed(2)})`);
+            console.log(`[ArUco v18] ↻ ID=${result.id} (${existingConfidence.toFixed(2)}→${newConfidence.toFixed(2)})`);
           } else {
             duplicatesSkipped++;
           }
         } else {
           markersByID.set(result.id, newMarker);
-          console.log(`[ArUco v17] ✓ ID=${result.id} (conf=${result.confidence.toFixed(2)})`);
+          console.log(`[ArUco v18] ✓ ID=${result.id} (conf=${result.confidence.toFixed(2)})`);
         }
       }
     }
@@ -622,9 +626,9 @@ function findMarkersInImage(
   const markers = Array.from(markersByID.values());
   markers.sort((a, b) => a.id - b.id);
 
-  console.log(`[ArUco v17] === RÉSUMÉ ===`);
-  console.log(`[ArUco v17] Brut: ${rawDetections}, Rejetés: ${rejectedLowConfidence}, Doublons: ${duplicatesSkipped}`);
-  console.log(`[ArUco v17] Valides: ${markers.length} → IDs: [${markers.map(m => m.id).join(', ')}]`);
+  console.log(`[ArUco v18] === RÉSUMÉ ===`);
+  console.log(`[ArUco v18] Brut: ${rawDetections}, Rejetés: ${rejectedLowConfidence}, Doublons: ${duplicatesSkipped}`);
+  console.log(`[ArUco v18] Valides: ${markers.length} → IDs: [${markers.map(m => m.id).join(', ')}]`);
   
   return markers;
 }
@@ -811,7 +815,9 @@ function matchPattern4x4(bits: number[]): number {
     for (let row = 0; row < 4 && matches; row++) {
       for (let col = 0; col < 4 && matches; col++) {
         const expectedBit = (pattern[row] >> (3 - col)) & 1;
-        const actualBit = bits[row * 4 + col];
+        // v18: INVERSER actualBit car convention différente
+        // pattern: 1=noir, 0=blanc | détecteur: 0=noir, 1=blanc
+        const actualBit = 1 - bits[row * 4 + col];
         if (expectedBit !== actualBit) {
           matches = false;
         }
@@ -837,7 +843,8 @@ function matchPattern4x4WithTolerance(bits: number[], maxErrors: number): number
     for (let row = 0; row < 4 && errors <= maxErrors; row++) {
       for (let col = 0; col < 4 && errors <= maxErrors; col++) {
         const expectedBit = (pattern[row] >> (3 - col)) & 1;
-        const actualBit = bits[row * 4 + col];
+        // v18: INVERSER actualBit car convention différente
+        const actualBit = 1 - bits[row * 4 + col];
         if (expectedBit !== actualBit) {
           errors++;
         }
