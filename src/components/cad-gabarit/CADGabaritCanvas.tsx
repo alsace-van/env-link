@@ -19110,28 +19110,40 @@ export function CADGabaritCanvas({
         <ArucoMarkerGenerator isOpen={showArucoGenerator} onClose={() => setShowArucoGenerator(false)} />
 
         {/* v7.40: Assemblage de photos par markers ArUco */}
+        {/* v7.41: FIX - onStitched reçoit un tableau StitchedImage[], pas une seule image */}
         <ArucoStitcher
           isOpen={showArucoStitcher}
           onClose={() => setShowArucoStitcher(false)}
           markerSizeMm={100}
-          onStitched={(resultImage, pxPerCm) => {
-            const bgImage: BackgroundImage = {
-              id: `stitched-${Date.now()}`,
-              name: `stitched-${Date.now()}`,
-              image: resultImage,
-              x: 0,
-              y: 0,
-              scale: scaleFactor / pxPerCm, // Appliquer l'échelle
-              opacity: imageOpacity,
-              visible: true,
-              locked: false,
-              order: backgroundImages.length,
-              rotation: 0,
-              layerId: sketch.activeLayerId,
-              markers: [],
-            };
-            addImageWithLayer(bgImage);
-            toast.success("Image assemblée ajoutée au canvas !");
+          onStitched={(stitchedImages, pxPerCm) => {
+            // v7.41: Boucler sur chaque image du tableau
+            let addedCount = 0;
+            for (let i = 0; i < stitchedImages.length; i++) {
+              const stitchedImg = stitchedImages[i];
+              
+              // Convertir position mm → pixels canvas
+              const posXpx = (stitchedImg.position.x / 10) * pxPerCm; // mm → cm → px
+              const posYpx = (stitchedImg.position.y / 10) * pxPerCm;
+              
+              const bgImage: BackgroundImage = {
+                id: `stitched-${Date.now()}-${i}`,
+                name: stitchedImg.originalFile?.name || `photo-${i + 1}`,
+                image: stitchedImg.image, // HTMLImageElement
+                x: posXpx,
+                y: posYpx,
+                scale: stitchedImg.scale * (scaleFactor / pxPerCm),
+                opacity: imageOpacity,
+                visible: true,
+                locked: false,
+                order: backgroundImages.length + i,
+                rotation: stitchedImg.rotation || 0, // v2.1: rotation calculée
+                layerId: sketch.activeLayerId,
+                markers: stitchedImg.markers || [],
+              };
+              addImageWithLayer(bgImage);
+              addedCount++;
+            }
+            toast.success(`${addedCount} image(s) assemblée(s) ajoutée(s) au canvas !`);
             setShowArucoStitcher(false);
           }}
         />
