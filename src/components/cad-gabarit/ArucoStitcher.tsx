@@ -1,19 +1,21 @@
 // ============================================
 // COMPONENT: ArucoStitcher
 // Assemblage de photos via markers ArUco partagés
-// VERSION: 2.2
+// VERSION: 3.0
 // ============================================
 //
+// CHANGELOG v3.0 (20/01/2026):
+// - Rotation limitée à ±15° pour éviter les aberrations
+// - Tolérance par défaut à 0 (strict)
+// - Slider tolérance + bouton "Relancer"
+// - Détection doublons avec cadre orange
+//
 // CHANGELOG v2.2 (20/01/2026):
-// - Slider tolérance (0, 1, 2 bits) + bouton "Relancer détection"
-// - Détection de doublons (100% markers identiques + positions similaires)
-// - Cadre orange autour des photos suspectées doublons
+// - Slider tolérance (0, 1, 2 bits) + bouton relancer
+// - Détection de doublons
 //
 // CHANGELOG v2.1 (20/01/2026):
 // - Calcul de la rotation entre photos via markers communs
-//
-// CHANGELOG v2.0 (20/01/2026):
-// - Images séparées avec position et scale
 // ============================================
 
 import { useState, useCallback, useRef, useEffect } from "react";
@@ -99,8 +101,8 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
   const [showDebug, setShowDebug] = useState(false);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
   
-  // v2.2: Tolérance paramétrable et détection doublons
-  const [tolerance, setTolerance] = useState<number>(1);
+  // v3.0: Tolérance paramétrable et détection doublons
+  const [tolerance, setTolerance] = useState<number>(0); // v3.0: défaut 0 (strict)
   const [isRedetecting, setIsRedetecting] = useState(false);
   const [duplicatePhotoIds, setDuplicatePhotoIds] = useState<Set<string>>(new Set());
 
@@ -252,13 +254,15 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
     toast.success(`Détection relancée (tolérance=${tolerance})`);
   }, [isLoaded, photos, tolerance, markerSize, detectMarkers, addDebugLog, calculatePhotoScale, detectDuplicates]);
 
-  // v2.1: Calculer l'angle de rotation entre deux photos
+  // v3.0: Calculer l'angle de rotation entre deux photos (limité à ±15°)
   const calculateRotation = (
     photo1Markers: ArucoMarker[],
     photo2Markers: ArucoMarker[],
     photo1PixelsPerMm: number,
     photo2PixelsPerMm: number
   ): number => {
+    const MAX_ROTATION = 15; // v3.0: limiter à ±15° pour éviter les aberrations
+
     // Trouver les markers communs
     const commonMarkers: { id: number; p1: { x: number; y: number }; p2: { x: number; y: number } }[] = [];
     
@@ -324,7 +328,16 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
       sumSin += Math.sin(rad);
       sumCos += Math.cos(rad);
     }
-    const avgAngle = Math.atan2(sumSin, sumCos) * 180 / Math.PI;
+    let avgAngle = Math.atan2(sumSin, sumCos) * 180 / Math.PI;
+
+    // v3.0: Limiter à ±MAX_ROTATION
+    if (avgAngle > MAX_ROTATION) {
+      addDebugLog(`⚠️ Rotation ${avgAngle.toFixed(1)}° limitée à ${MAX_ROTATION}°`);
+      avgAngle = MAX_ROTATION;
+    } else if (avgAngle < -MAX_ROTATION) {
+      addDebugLog(`⚠️ Rotation ${avgAngle.toFixed(1)}° limitée à -${MAX_ROTATION}°`);
+      avgAngle = -MAX_ROTATION;
+    }
 
     return avgAngle;
   };
