@@ -1,7 +1,7 @@
 // ============================================
 // COMPONENT: ArucoCalibrationModal
 // Modale de calibration automatique via ArUco markers
-// VERSION: 1.0
+// VERSION: 2.0 - Debug visuel amélioré
 // ============================================
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
@@ -24,7 +24,9 @@ import {
   Download,
   Camera,
   Ruler,
-  Info
+  Info,
+  Bug,
+  Eye
 } from "lucide-react";
 import { useOpenCVAruco, ArucoMarker } from "./useOpenCVAruco";
 import type { BackgroundImage } from "./types";
@@ -46,6 +48,7 @@ export function ArucoCalibrationModal({
   onSkip,
 }: ArucoCalibrationModalProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const debugCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [markerSizeCm, setMarkerSizeCm] = useState<string>("10");
@@ -53,6 +56,8 @@ export function ArucoCalibrationModal({
   const [calculatedScale, setCalculatedScale] = useState<number | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<string[]>([]);
 
   const {
     isLoaded,
@@ -74,6 +79,7 @@ export function ArucoCalibrationModal({
     if (image && isOpen) {
       setDetectedMarkers([]);
       setCalculatedScale(null);
+      setDebugInfo([]);
 
       // Calculer le scale pour que l'image rentre
       if (image.image && containerRef.current) {
@@ -98,7 +104,11 @@ export function ArucoCalibrationModal({
   // Détecter automatiquement quand OpenCV est chargé
   useEffect(() => {
     if (isLoaded && image?.image && isOpen && detectedMarkers.length === 0) {
-      handleDetect();
+      // Petit délai pour laisser le render se faire
+      const timer = setTimeout(() => {
+        handleDetect();
+      }, 100);
+      return () => clearTimeout(timer);
     }
   }, [isLoaded, image, isOpen]);
 
@@ -127,11 +137,11 @@ export function ArucoCalibrationModal({
     ctx.restore();
 
     // Draw detected markers
-    detectedMarkers.forEach((marker) => {
+    detectedMarkers.forEach((marker, idx) => {
       // Dessiner le contour du marker
       ctx.beginPath();
-      ctx.strokeStyle = "#00ff00";
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = marker.confidence && marker.confidence < 1 ? "#ffff00" : "#00ff00";
+      ctx.lineWidth = 3;
 
       const corners = marker.corners.map((c) => ({
         x: c.x * scale + offsetX,
@@ -146,39 +156,57 @@ export function ArucoCalibrationModal({
       ctx.stroke();
 
       // Remplissage semi-transparent
-      ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
+      ctx.fillStyle = marker.confidence && marker.confidence < 1
+        ? "rgba(255, 255, 0, 0.2)"
+        : "rgba(0, 255, 0, 0.2)";
       ctx.fill();
+
+      // Numéroter les coins
+      corners.forEach((c, cornerIdx) => {
+        ctx.fillStyle = ["#ff0000", "#00ff00", "#0000ff", "#ff00ff"][cornerIdx];
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+      });
 
       // Afficher l'ID au centre
       const centerX = marker.center.x * scale + offsetX;
       const centerY = marker.center.y * scale + offsetY;
 
       ctx.fillStyle = "#00ff00";
-      ctx.font = "bold 14px monospace";
+      ctx.font = "bold 16px monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
       // Fond pour le texte
       const text = `#${marker.id}`;
-      const textWidth = ctx.measureText(text).width;
-      ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-      ctx.fillRect(centerX - textWidth / 2 - 4, centerY - 10, textWidth + 8, 20);
+      const confText = marker.confidence ? ` (${(marker.confidence * 100).toFixed(0)}%)` : "";
+      const fullText = text + confText;
+      const textWidth = ctx.measureText(fullText).width;
+      ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+      ctx.fillRect(centerX - textWidth / 2 - 6, centerY - 12, textWidth + 12, 24);
 
-      ctx.fillStyle = "#00ff00";
-      ctx.fillText(text, centerX, centerY);
+      ctx.fillStyle = marker.confidence && marker.confidence < 1 ? "#ffff00" : "#00ff00";
+      ctx.fillText(fullText, centerX, centerY);
     });
 
     // Afficher le statut
-    ctx.font = "12px sans-serif";
+    ctx.font = "bold 14px sans-serif";
     ctx.textAlign = "left";
     ctx.fillStyle = detectedMarkers.length > 0 ? "#00ff00" : "#ff6b6b";
-    ctx.fillText(
-      detectedMarkers.length > 0
-        ? `${detectedMarkers.length} marker(s) détecté(s)`
-        : "Aucun marker détecté",
-      10,
-      canvas.height - 10
-    );
+
+    const statusBg = "rgba(0, 0, 0, 0.7)";
+    const statusText = detectedMarkers.length > 0
+      ? `✓ ${detectedMarkers.length} marker(s) détecté(s)`
+      : "✗ Aucun marker détecté";
+
+    const statusWidth = ctx.measureText(statusText).width;
+    ctx.fillStyle = statusBg;
+    ctx.fillRect(5, canvas.height - 30, statusWidth + 20, 25);
+
+    ctx.fillStyle = detectedMarkers.length > 0 ? "#00ff00" : "#ff6b6b";
+    ctx.fillText(statusText, 15, canvas.height - 13);
+
   }, [image, previewViewport, detectedMarkers]);
 
   // Lancer la détection
@@ -186,9 +214,30 @@ export function ArucoCalibrationModal({
     if (!image?.image || !isLoaded) return;
 
     setIsProcessing(true);
+    setDebugInfo(["Démarrage de la détection..."]);
+
     try {
+      const startTime = performance.now();
       const markers = await detectMarkers(image.image);
+      const elapsed = performance.now() - startTime;
+
       setDetectedMarkers(markers);
+
+      const newDebugInfo = [
+        `Temps de détection: ${elapsed.toFixed(0)}ms`,
+        `Image: ${image.image.width}x${image.image.height}px`,
+        `Markers trouvés: ${markers.length}`,
+      ];
+
+      markers.forEach(m => {
+        newDebugInfo.push(
+          `  → ID ${m.id}: pos(${m.center.x.toFixed(0)}, ${m.center.y.toFixed(0)}) ` +
+          `taille(${m.size.width.toFixed(0)}x${m.size.height.toFixed(0)}) ` +
+          `conf:${((m.confidence || 1) * 100).toFixed(0)}%`
+        );
+      });
+
+      setDebugInfo(newDebugInfo);
 
       if (markers.length > 0) {
         const size = parseFloat(markerSizeCm) || 10;
@@ -199,11 +248,12 @@ export function ArucoCalibrationModal({
           toast.success(`${markers.length} marker(s) détecté(s) - Échelle: ${scale.toFixed(2)} px/cm`);
         }
       } else {
-        toast.warning("Aucun marker ArUco détecté dans l'image");
+        toast.warning("Aucun marker ArUco détecté. Vérifiez que les markers sont visibles et bien éclairés.");
         setCalculatedScale(null);
       }
     } catch (err) {
       console.error("Erreur détection:", err);
+      setDebugInfo(prev => [...prev, `ERREUR: ${err}`]);
       toast.error("Erreur lors de la détection des markers");
     } finally {
       setIsProcessing(false);
@@ -220,92 +270,93 @@ export function ArucoCalibrationModal({
   }, [markerSizeCm, detectedMarkers, calculateScale]);
 
   // Appliquer la calibration
-  const handleApply = () => {
+  const handleApply = useCallback(() => {
     if (calculatedScale && detectedMarkers.length > 0) {
       onCalibrated(calculatedScale, detectedMarkers);
       toast.success("Calibration ArUco appliquée");
     }
-  };
+  }, [calculatedScale, detectedMarkers, onCalibrated]);
 
   // Télécharger la planche de markers
-  const handleDownloadMarkers = () => {
-    // Générer une planche de markers ArUco
+  const handleDownloadMarkers = useCallback(() => {
+    // Ouvrir le générateur de markers ArUco
+    window.open("https://chev.me/arucogen/", "_blank");
+    toast.info("Sélectionnez: Dictionary=4x4 (50 markers), Marker ID=0-11, puis téléchargez");
+  }, []);
+
+  // Générer une image de test avec des markers
+  const handleGenerateTestImage = useCallback(() => {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const markerSize = 150;
-    const margin = 30;
-    const cols = 4;
-    const rows = 3;
+    canvas.width = 800;
+    canvas.height = 600;
 
-    canvas.width = cols * (markerSize + margin) + margin;
-    canvas.height = rows * (markerSize + margin) + margin + 60;
-
-    // Fond blanc
-    ctx.fillStyle = "white";
+    // Fond
+    ctx.fillStyle = "#f0f0f0";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Titre
-    ctx.fillStyle = "black";
-    ctx.font = "bold 16px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("Markers ArUco - Imprimez et découpez", canvas.width / 2, 25);
-    ctx.font = "12px sans-serif";
-    ctx.fillText(`Taille réelle recommandée: ${markerSizeCm} cm × ${markerSizeCm} cm`, canvas.width / 2, 45);
+    // Dessiner quelques markers 4x4 simplifiés
+    const drawMarker = (x: number, y: number, size: number, id: number) => {
+      const cellSize = size / 6;
 
-    // Dessiner des placeholders (les vrais markers nécessitent OpenCV)
-    ctx.font = "bold 24px monospace";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
+      // Bordure noire
+      ctx.fillStyle = "#000";
+      ctx.fillRect(x, y, size, size);
 
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const x = margin + col * (markerSize + margin);
-        const y = 60 + margin + row * (markerSize + margin);
-        const id = row * cols + col;
+      // Pattern intérieur (simplifié)
+      ctx.fillStyle = "#fff";
+      const patterns: number[][] = [
+        [1,0,1,0, 1,1,1,0, 1,1,1,1, 0,1,1,0], // ID 0 approx
+        [1,1,0,1, 0,1,1,0, 1,0,1,1, 0,1,1,0], // ID 1 approx
+        [0,1,1,0, 1,1,0,1, 1,0,1,0, 0,1,1,1], // ID 2 approx
+        [0,0,0,1, 1,0,0,1, 1,1,0,1, 0,1,0,1], // ID 3 approx
+      ];
 
-        // Cadre
-        ctx.strokeStyle = "black";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x, y, markerSize, markerSize);
-
-        // ID
-        ctx.fillStyle = "#666";
-        ctx.fillText(`ID: ${id}`, x + markerSize / 2, y + markerSize / 2);
-
-        // Note
-        ctx.font = "10px sans-serif";
-        ctx.fillText("(ArUco 4x4)", x + markerSize / 2, y + markerSize / 2 + 20);
-        ctx.font = "bold 24px monospace";
+      const pattern = patterns[id % patterns.length];
+      for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 4; col++) {
+          if (pattern[row * 4 + col] === 1) {
+            ctx.fillRect(
+              x + (col + 1) * cellSize,
+              y + (row + 1) * cellSize,
+              cellSize,
+              cellSize
+            );
+          }
+        }
       }
-    }
+    };
 
-    // Note en bas
-    ctx.font = "10px sans-serif";
-    ctx.fillStyle = "#666";
-    ctx.fillText(
-      "Téléchargez les vrais markers sur: https://chev.me/arucogen/",
-      canvas.width / 2,
-      canvas.height - 10
-    );
+    // Placer 4 markers
+    drawMarker(50, 50, 100, 0);
+    drawMarker(650, 50, 100, 1);
+    drawMarker(50, 450, 100, 2);
+    drawMarker(650, 450, 100, 3);
+
+    // Texte
+    ctx.fillStyle = "#333";
+    ctx.font = "20px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("Image de test ArUco - 4 markers", canvas.width / 2, canvas.height / 2);
 
     // Télécharger
     const link = document.createElement("a");
-    link.download = "aruco_markers_template.png";
+    link.download = "aruco_test_image.png";
     link.href = canvas.toDataURL("image/png");
     link.click();
 
-    toast.info("Pour de vrais markers, visitez chev.me/arucogen (Dictionary: 4x4_50)");
-  };
+    toast.success("Image de test téléchargée - utilisez-la pour tester la détection");
+  }, []);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <QrCode className="h-5 w-5" />
-            Calibration automatique ArUco
+            Calibration automatique ArUco v6.0
           </DialogTitle>
           <DialogDescription>
             Détection automatique des markers ArUco pour calibrer l'échelle de l'image
@@ -343,9 +394,9 @@ export function ArucoCalibrationModal({
 
             {isProcessing && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                <div className="flex items-center gap-2 text-white">
+                <div className="flex items-center gap-2 text-white bg-black/70 px-4 py-2 rounded-lg">
                   <Loader2 className="h-5 w-5 animate-spin" />
-                  Détection en cours...
+                  Analyse multi-pass en cours...
                 </div>
               </div>
             )}
@@ -381,7 +432,25 @@ export function ArucoCalibrationModal({
               )}
               Détecter
             </Button>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowDebug(!showDebug)}
+              title="Debug"
+            >
+              <Bug className={`h-4 w-4 ${showDebug ? "text-yellow-500" : ""}`} />
+            </Button>
           </div>
+
+          {/* Debug info */}
+          {showDebug && debugInfo.length > 0 && (
+            <div className="p-3 bg-gray-900 text-green-400 font-mono text-xs rounded-lg max-h-32 overflow-y-auto">
+              {debugInfo.map((line, i) => (
+                <div key={i}>{line}</div>
+              ))}
+            </div>
+          )}
 
           {/* Résultat */}
           {calculatedScale !== null && (
@@ -413,36 +482,38 @@ export function ArucoCalibrationModal({
             {showHelp && (
               <div className="p-3 bg-muted rounded-lg space-y-2">
                 <p>
-                  <strong>1.</strong> Imprimez des markers ArUco (dictionnaire 4x4_50) à une taille connue
+                  <strong>1.</strong> Imprimez des markers ArUco (dictionnaire 4x4_50) à une taille connue (ex: 10cm)
                 </p>
                 <p>
-                  <strong>2.</strong> Placez-les sur la surface à photographier
+                  <strong>2.</strong> Placez-les sur la surface à photographier (au moins 2 visibles)
                 </p>
                 <p>
-                  <strong>3.</strong> Prenez votre photo avec les markers visibles
+                  <strong>3.</strong> Prenez votre photo avec les markers visibles et bien éclairés
                 </p>
                 <p>
                   <strong>4.</strong> L'échelle est calculée automatiquement
                 </p>
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="p-0 h-auto"
-                  onClick={handleDownloadMarkers}
-                >
-                  <Download className="h-3 w-3 mr-1" />
-                  Télécharger un template de markers
-                </Button>
-                {" ou visitez "}
-                <a
-                  href="https://chev.me/arucogen/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  chev.me/arucogen
-                </a>
-                {" (4x4_50)"}
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDownloadMarkers}
+                  >
+                    <Download className="h-3 w-3 mr-1" />
+                    Obtenir des markers
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGenerateTestImage}
+                  >
+                    <Eye className="h-3 w-3 mr-1" />
+                    Image de test
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Sur chev.me/arucogen: Dictionary = "4x4 (50 markers)", taille = votre taille souhaitée
+                </p>
               </div>
             )}
           </div>

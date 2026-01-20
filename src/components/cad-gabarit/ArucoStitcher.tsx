@@ -24,7 +24,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Download,
-  Eye
+  Eye,
+  Bug,
+  RefreshCw
 } from "lucide-react";
 import { toast } from "sonner";
 import { useOpenCVAruco, ArucoMarker } from "./useOpenCVAruco";
@@ -64,8 +66,16 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
   const [stitchResult, setStitchResult] = useState<HTMLCanvasElement | null>(null);
   const [finalPixelsPerCm, setFinalPixelsPerCm] = useState<number>(0);
   const [markerSize, setMarkerSize] = useState<string>(markerSizeMm.toString());
+  const [showDebug, setShowDebug] = useState(false);
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
 
-  const { isLoaded, isLoading, detectMarkers } = useOpenCVAruco();
+  const { isLoaded, isLoading, error: opencvError, detectMarkers } = useOpenCVAruco();
+
+  // Log debug messages
+  const addDebugLog = useCallback((msg: string) => {
+    console.log(`[ArucoStitcher] ${msg}`);
+    setDebugLogs(prev => [...prev.slice(-20), `${new Date().toLocaleTimeString()}: ${msg}`]);
+  }, []);
 
   // Nettoyer les URLs au démontage
   useEffect(() => {
@@ -95,14 +105,21 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
 
   // Ajouter des photos
   const handleAddPhotos = useCallback(async (files: FileList | null) => {
-    if (!files || !isLoaded) return;
+    if (!files || !isLoaded) {
+      addDebugLog(`Ajout impossible: files=${!!files}, isLoaded=${isLoaded}`);
+      return;
+    }
 
+    addDebugLog(`Ajout de ${files.length} fichier(s)...`);
     const markerSizeNum = parseFloat(markerSize) || 100;
     const newPhotos: PhotoWithMarkers[] = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      if (!file.type.startsWith("image/")) continue;
+      if (!file.type.startsWith("image/")) {
+        addDebugLog(`Fichier ignoré (pas une image): ${file.name}`);
+        continue;
+      }
 
       const imageUrl = URL.createObjectURL(file);
       const image = new Image();
@@ -113,7 +130,12 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
         image.src = imageUrl;
       });
 
-      if (image.width === 0) continue;
+      if (image.width === 0) {
+        addDebugLog(`Image non chargée: ${file.name}`);
+        continue;
+      }
+
+      addDebugLog(`Image chargée: ${file.name} (${image.width}x${image.height})`);
 
       newPhotos.push({
         id: `photo-${Date.now()}-${i}`,
@@ -131,8 +153,16 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
     // Détecter les markers sur chaque nouvelle photo
     for (const photo of newPhotos) {
       try {
+        addDebugLog(`Détection sur ${photo.file.name}...`);
+        const startTime = performance.now();
         const markers = await detectMarkers(photo.image);
+        const elapsed = performance.now() - startTime;
         const pixelsPerMm = calculatePhotoScale(markers, markerSizeNum);
+
+        addDebugLog(`${photo.file.name}: ${markers.length} markers en ${elapsed.toFixed(0)}ms`);
+        if (markers.length > 0) {
+          addDebugLog(`  IDs: ${markers.map(m => `#${m.id}(${((m.confidence || 1) * 100).toFixed(0)}%)`).join(', ')}`);
+        }
 
         setPhotos(prev => prev.map(p =>
           p.id === photo.id
@@ -140,6 +170,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
             : p
         ));
       } catch (err) {
+        addDebugLog(`ERREUR sur ${photo.file.name}: ${err}`);
         setPhotos(prev => prev.map(p =>
           p.id === photo.id
             ? { ...p, isProcessing: false, error: "Erreur détection" }
@@ -147,7 +178,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
         ));
       }
     }
-  }, [isLoaded, detectMarkers, markerSize]);
+  }, [isLoaded, detectMarkers, markerSize, addDebugLog]);
 
   // Supprimer une photo
   const handleRemovePhoto = useCallback((id: string) => {
@@ -473,6 +504,20 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
             </div>
           )}
 
+          {opencvError && (
+            <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-2 rounded">
+              <AlertCircle className="h-4 w-4" />
+              Erreur OpenCV: {opencvError}
+            </div>
+          )}
+
+          {isLoaded && (
+            <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded">
+              <CheckCircle2 className="h-4 w-4" />
+              OpenCV.js v6.0 chargé - Prêt pour la détection
+            </div>
+          )}
+
           {/* Taille des markers */}
           <div className="flex items-center gap-4">
             <Label htmlFor="markerSizeInput" className="text-sm whitespace-nowrap">
@@ -490,7 +535,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
             <span className="text-sm text-muted-foreground">mm ({(parseFloat(markerSize) || 100) / 10}cm)</span>
           </div>
 
-          {/* Bouton ajouter */}
+          {/* Bouton ajouter et debug */}
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -501,6 +546,14 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
               <Plus className="h-4 w-4 mr-2" />
               Ajouter des photos
             </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowDebug(!showDebug)}
+              title="Afficher les logs de debug"
+            >
+              <Bug className={`h-4 w-4 ${showDebug ? "text-yellow-500" : ""}`} />
+            </Button>
             <input
               ref={fileInputRef}
               type="file"
@@ -510,6 +563,30 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
               onChange={(e) => handleAddPhotos(e.target.files)}
             />
           </div>
+
+          {/* Debug Panel */}
+          {showDebug && (
+            <div className="p-3 bg-gray-900 text-green-400 font-mono text-xs rounded-lg max-h-40 overflow-y-auto">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-yellow-400">🐛 Debug Logs</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 text-xs text-gray-400 hover:text-white"
+                  onClick={() => setDebugLogs([])}
+                >
+                  Clear
+                </Button>
+              </div>
+              {debugLogs.length === 0 ? (
+                <div className="text-gray-500">Aucun log. Ajoutez des photos pour voir les logs.</div>
+              ) : (
+                debugLogs.map((log, i) => (
+                  <div key={i} className="border-b border-gray-700 py-1">{log}</div>
+                ))
+              )}
+            </div>
+          )}
 
           {/* Liste des photos */}
           {photos.length > 0 && (

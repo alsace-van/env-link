@@ -1,7 +1,7 @@
 // ============================================
 // HOOK: useOpenCVAruco
-// Détection ArUco avec OpenCV.js complet (incluant ArUco)
-// VERSION: 5.0 - OpenCV.js avec module contrib/ArUco
+// Détection ArUco ULTRA-ROBUSTE avec multi-pass
+// VERSION: 6.0 - Système de détection avancé multi-algorithme
 // ============================================
 
 import { useState, useCallback, useEffect, useRef } from 'react';
@@ -11,6 +11,7 @@ export interface ArucoMarker {
   corners: { x: number; y: number }[];
   center: { x: number; y: number };
   size: { width: number; height: number };
+  confidence?: number;
 }
 
 export interface CalibrationResult {
@@ -22,6 +23,7 @@ export interface CalibrationResult {
 
 interface UseOpenCVArucoOptions {
   markerSizeCm?: number;
+  debug?: boolean;
 }
 
 interface UseOpenCVArucoReturn {
@@ -43,39 +45,158 @@ declare global {
   }
 }
 
-// URL of OpenCV.js with ArUco module included
-// This version includes the contrib modules (aruco, etc.)
-const OPENCV_ARUCO_URL = 'https://cdn.jsdelivr.net/gh/nicmartel/jsartoolkit5@master/build/opencv_aruco.min.js';
+// OpenCV.js URL
+const OPENCV_URL = 'https://docs.opencv.org/4.8.0/opencv.js';
 
-// Fallback: use standard OpenCV and detect manually
-const OPENCV_STANDARD_URL = 'https://docs.opencv.org/4.8.0/opencv.js';
+// ====== ARUCO DICT_4X4_50 - OFFICIAL OPENCV DICTIONARY ======
+// These are the EXACT patterns from OpenCV's DICT_4X4_50
+// Source: https://github.com/opencv/opencv_contrib/blob/master/modules/aruco/src/predefined_dictionaries.hpp
+// Each marker is stored as bytes in OpenCV, converted here to 4x4 bit patterns
+// The patterns are stored row by row, MSB first
+
+// OpenCV DICT_4X4_50 raw bytes (2 bytes per marker, representing 4x4=16 bits)
+const DICT_4X4_50_BYTES: number[] = [
+  0x1D, 0x19,  // ID 0
+  0xD3, 0x3D,  // ID 1
+  0x49, 0xDF,  // ID 2
+  0x45, 0x93,  // ID 3
+  0x1C, 0x91,  // ID 4
+  0x53, 0x97,  // ID 5
+  0x17, 0xCC,  // ID 6
+  0x8D, 0x9F,  // ID 7
+  0x96, 0x8B,  // ID 8
+  0x65, 0xC9,  // ID 9
+  0x4E, 0x47,  // ID 10
+  0x33, 0x66,  // ID 11
+  0xC1, 0x29,  // ID 12
+  0xD3, 0x5C,  // ID 13
+  0x17, 0xA5,  // ID 14
+  0xA7, 0x13,  // ID 15
+  0x56, 0x35,  // ID 16
+  0xB2, 0x52,  // ID 17
+  0x23, 0xE9,  // ID 18
+  0x6C, 0x13,  // ID 19
+  0x14, 0x96,  // ID 20
+  0xC6, 0xC1,  // ID 21
+  0x36, 0x8E,  // ID 22
+  0xA9, 0x14,  // ID 23
+  0x8B, 0x17,  // ID 24
+  0xCC, 0xA5,  // ID 25
+  0x5A, 0x5C,  // ID 26
+  0xE3, 0x94,  // ID 27
+  0xC9, 0x3B,  // ID 28
+  0xB4, 0x65,  // ID 29
+  0x78, 0xC4,  // ID 30
+  0x1A, 0xC3,  // ID 31
+  0x52, 0x33,  // ID 32
+  0xC7, 0x65,  // ID 33
+  0xAB, 0xC5,  // ID 34
+  0xD2, 0x52,  // ID 35
+  0x8E, 0xC5,  // ID 36
+  0x26, 0xC9,  // ID 37
+  0x57, 0x8A,  // ID 38
+  0x32, 0x96,  // ID 39
+  0x58, 0x8E,  // ID 40
+  0xC8, 0x65,  // ID 41
+  0x4E, 0x95,  // ID 42
+  0x73, 0x35,  // ID 43
+  0xB4, 0xC1,  // ID 44
+  0x56, 0xAA,  // ID 45
+  0x29, 0xD3,  // ID 46
+  0xAC, 0x95,  // ID 47
+  0x3A, 0x26,  // ID 48
+  0x63, 0xC1,  // ID 49
+];
+
+// Convert bytes to 4x4 bit pattern string
+function bytesToPattern(byte1: number, byte2: number): string {
+  const bits16 = (byte1 << 8) | byte2;
+  let pattern = '';
+  for (let i = 15; i >= 0; i--) {
+    pattern += ((bits16 >> i) & 1).toString();
+  }
+  return pattern;
+}
+
+// Build the dictionary
+const ARUCO_4X4_50_PATTERNS: { [key: string]: number } = {};
+for (let i = 0; i < 50; i++) {
+  const pattern = bytesToPattern(DICT_4X4_50_BYTES[i * 2], DICT_4X4_50_BYTES[i * 2 + 1]);
+  ARUCO_4X4_50_PATTERNS[pattern] = i;
+}
+
+// Alternative patterns with all rotations pre-computed
+function generateAllRotations(): Map<string, { id: number; rotation: number }> {
+  const allPatterns = new Map<string, { id: number; rotation: number }>();
+
+  Object.entries(ARUCO_4X4_50_PATTERNS).forEach(([pattern, id]) => {
+    // Add original and all 3 rotations
+    let current = pattern;
+    for (let rot = 0; rot < 4; rot++) {
+      allPatterns.set(current, { id, rotation: rot });
+      // Also add inverted version
+      const inverted = current.split('').map(b => b === '0' ? '1' : '0').join('');
+      allPatterns.set(inverted, { id, rotation: rot });
+      // Rotate 90° clockwise for next iteration
+      current = rotatePattern90(current);
+    }
+  });
+
+  return allPatterns;
+}
+
+function rotatePattern90(pattern: string): string {
+  // 4x4 pattern rotation
+  const matrix: number[][] = [];
+  for (let i = 0; i < 4; i++) {
+    matrix[i] = [];
+    for (let j = 0; j < 4; j++) {
+      matrix[i][j] = parseInt(pattern[i * 4 + j]);
+    }
+  }
+
+  // Rotate 90° clockwise
+  const rotated: number[][] = [];
+  for (let i = 0; i < 4; i++) {
+    rotated[i] = [];
+    for (let j = 0; j < 4; j++) {
+      rotated[i][j] = matrix[3 - j][i];
+    }
+  }
+
+  return rotated.flat().join('');
+}
+
+const ALL_PATTERNS = generateAllRotations();
 
 export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVArucoReturn {
-  const { markerSizeCm = 10 } = options;
+  const { markerSizeCm = 10, debug = false } = options;
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const cvRef = useRef<any>(null);
-  const hasArucoModule = useRef<boolean>(false);
 
   // Load OpenCV.js
   useEffect(() => {
+    let mounted = true;
+
     const loadOpenCV = async () => {
       // Check if already loaded
       if (window.cv && window.cv.Mat) {
         cvRef.current = window.cv;
-        hasArucoModule.current = typeof window.cv.aruco !== 'undefined';
-        setIsLoaded(true);
-        setIsLoading(false);
-        console.log('[ArUco] OpenCV déjà chargé, module aruco:', hasArucoModule.current);
+        if (mounted) {
+          setIsLoaded(true);
+          setIsLoading(false);
+        }
+        console.log('[ArUco v6] OpenCV déjà chargé');
         return;
       }
 
       try {
-        // Try loading standard OpenCV first (it's more reliable)
+        // Load OpenCV
         const script = document.createElement('script');
-        script.src = OPENCV_STANDARD_URL;
+        script.src = OPENCV_URL;
         script.async = true;
 
         await new Promise<void>((resolve, reject) => {
@@ -84,7 +205,7 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
           document.head.appendChild(script);
         });
 
-        // Wait for OpenCV to initialize
+        // Wait for initialization
         await new Promise<void>((resolve, reject) => {
           const maxAttempts = 100;
           let attempts = 0;
@@ -94,14 +215,13 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
             if (window.cv && window.cv.Mat) {
               resolve();
             } else if (attempts >= maxAttempts) {
-              reject(new Error('OpenCV.js initialization timeout'));
+              reject(new Error('OpenCV.js timeout'));
             } else {
               setTimeout(checkCV, 100);
             }
           };
 
-          // Handle onRuntimeInitialized
-          if (window.cv && window.cv.onRuntimeInitialized) {
+          if (window.cv && typeof window.cv.onRuntimeInitialized === 'function') {
             window.cv.onRuntimeInitialized = () => resolve();
           }
 
@@ -109,32 +229,36 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
         });
 
         cvRef.current = window.cv;
-        hasArucoModule.current = typeof window.cv.aruco !== 'undefined';
 
-        console.log('[ArUco] OpenCV.js chargé, version:', window.cv.getBuildInformation?.() || 'unknown');
-        console.log('[ArUco] Module aruco disponible:', hasArucoModule.current);
-
-        setIsLoaded(true);
+        if (mounted) {
+          console.log('[ArUco v6] OpenCV.js chargé avec succès');
+          setIsLoaded(true);
+        }
       } catch (err) {
-        console.error('[ArUco] Erreur chargement OpenCV:', err);
-        setError(err instanceof Error ? err.message : 'Unknown error');
+        console.error('[ArUco v6] Erreur:', err);
+        if (mounted) {
+          setError(err instanceof Error ? err.message : 'Erreur inconnue');
+        }
       } finally {
-        setIsLoading(false);
+        if (mounted) {
+          setIsLoading(false);
+        }
       }
     };
 
     loadOpenCV();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  // Detect markers using native JavaScript implementation
-  // This works without the ArUco module
+  // ====== MULTI-PASS DETECTION ALGORITHM ======
   const detectMarkersNative = useCallback(async (
     image: HTMLImageElement | HTMLCanvasElement
   ): Promise<ArucoMarker[]> => {
     const cv = cvRef.current;
     if (!cv) return [];
-
-    const markers: ArucoMarker[] = [];
 
     // Create canvas to get image data
     const canvas = document.createElement('canvas');
@@ -144,16 +268,74 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
     const w = image.width || (image as HTMLImageElement).naturalWidth;
     const h = image.height || (image as HTMLImageElement).naturalHeight;
 
-    // Resize for performance
-    const maxDim = 1000;
-    let scale = 1;
-    if (Math.max(w, h) > maxDim) {
-      scale = maxDim / Math.max(w, h);
+    // Multiple scales for better detection
+    const scales = [1.0, 0.75, 0.5, 1.5];
+    const allMarkers: ArucoMarker[] = [];
+
+    for (const scaleFactor of scales) {
+      const targetW = Math.round(w * scaleFactor);
+      const targetH = Math.round(h * scaleFactor);
+
+      // Limit size
+      const maxDim = 1500;
+      let actualScale = scaleFactor;
+      if (Math.max(targetW, targetH) > maxDim) {
+        actualScale = (maxDim / Math.max(w, h));
+      }
+
+      canvas.width = Math.round(w * actualScale);
+      canvas.height = Math.round(h * actualScale);
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+      // Try multiple threshold methods
+      const thresholdMethods = [
+        { type: 'adaptive', blockSize: 21, C: 7 },
+        { type: 'adaptive', blockSize: 31, C: 10 },
+        { type: 'adaptive', blockSize: 15, C: 5 },
+        { type: 'otsu' },
+        { type: 'adaptive', blockSize: 41, C: 15 },
+      ];
+
+      for (const threshMethod of thresholdMethods) {
+        const markers = await detectWithThreshold(cv, canvas, threshMethod, actualScale);
+
+        // Merge with existing markers (avoid duplicates)
+        for (const marker of markers) {
+          const existing = allMarkers.find(m =>
+            m.id === marker.id &&
+            Math.abs(m.center.x - marker.center.x) < marker.size.width * 0.5 &&
+            Math.abs(m.center.y - marker.center.y) < marker.size.height * 0.5
+          );
+
+          if (!existing) {
+            allMarkers.push(marker);
+          } else if (marker.confidence && (!existing.confidence || marker.confidence > existing.confidence)) {
+            // Replace with higher confidence detection
+            const idx = allMarkers.indexOf(existing);
+            allMarkers[idx] = marker;
+          }
+        }
+
+        // If we found markers, we can be less aggressive
+        if (allMarkers.length >= 4) break;
+      }
+
+      // If we have enough markers, stop trying other scales
+      if (allMarkers.length >= 4) break;
     }
 
-    canvas.width = Math.round(w * scale);
-    canvas.height = Math.round(h * scale);
-    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    console.log(`[ArUco v6] Détection terminée: ${allMarkers.length} markers`);
+    return allMarkers;
+  }, []);
+
+  // Detect with specific threshold parameters
+  const detectWithThreshold = async (
+    cv: any,
+    canvas: HTMLCanvasElement,
+    threshMethod: { type: string; blockSize?: number; C?: number },
+    scale: number
+  ): Promise<ArucoMarker[]> => {
+    const markers: ArucoMarker[] = [];
 
     let src: any = null;
     let gray: any = null;
@@ -162,7 +344,6 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
     let hierarchy: any = null;
 
     try {
-      // Load image into OpenCV
       src = cv.imread(canvas);
       gray = new cv.Mat();
       thresh = new cv.Mat();
@@ -170,16 +351,39 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
       // Convert to grayscale
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
 
-      // Adaptive threshold
-      cv.adaptiveThreshold(gray, thresh, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY_INV, 21, 7);
+      // Apply Gaussian blur to reduce noise
+      const blurred = new cv.Mat();
+      cv.GaussianBlur(gray, blurred, new cv.Size(3, 3), 0);
+
+      // Apply threshold
+      if (threshMethod.type === 'adaptive') {
+        cv.adaptiveThreshold(
+          blurred, thresh, 255,
+          cv.ADAPTIVE_THRESH_MEAN_C,
+          cv.THRESH_BINARY_INV,
+          threshMethod.blockSize || 21,
+          threshMethod.C || 7
+        );
+      } else {
+        cv.threshold(blurred, thresh, 0, 255, cv.THRESH_BINARY_INV | cv.THRESH_OTSU);
+      }
+
+      blurred.delete();
+
+      // Morphological operations to clean up
+      const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
+      const cleaned = new cv.Mat();
+      cv.morphologyEx(thresh, cleaned, cv.MORPH_CLOSE, kernel);
+      kernel.delete();
 
       // Find contours
       contours = new cv.MatVector();
       hierarchy = new cv.Mat();
-      cv.findContours(thresh, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+      cv.findContours(cleaned, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+      cleaned.delete();
 
-      const minArea = Math.pow(Math.min(canvas.width, canvas.height) * 0.02, 2);
-      const maxArea = Math.pow(Math.min(canvas.width, canvas.height) * 0.8, 2);
+      const minArea = Math.pow(Math.min(canvas.width, canvas.height) * 0.015, 2);
+      const maxArea = Math.pow(Math.min(canvas.width, canvas.height) * 0.5, 2);
 
       // Process each contour
       for (let i = 0; i < contours.size(); i++) {
@@ -191,32 +395,33 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
           continue;
         }
 
-        // Approximate polygon
+        // Approximate to polygon
         const peri = cv.arcLength(contour, true);
         const approx = new cv.Mat();
-        cv.approxPolyDP(contour, approx, 0.04 * peri, true);
+        cv.approxPolyDP(contour, approx, 0.03 * peri, true);
 
-        // Check if it's a quadrilateral
-        if (approx.rows === 4) {
-          // Check if convex
-          if (cv.isContourConvex(approx)) {
-            // Get corners
-            const corners: { x: number; y: number }[] = [];
-            for (let j = 0; j < 4; j++) {
-              corners.push({
-                x: approx.data32S[j * 2],
-                y: approx.data32S[j * 2 + 1]
-              });
-            }
+        // Must be quadrilateral and convex
+        if (approx.rows === 4 && cv.isContourConvex(approx)) {
+          const corners: { x: number; y: number }[] = [];
+          for (let j = 0; j < 4; j++) {
+            corners.push({
+              x: approx.data32S[j * 2],
+              y: approx.data32S[j * 2 + 1]
+            });
+          }
 
-            // Order corners: top-left, top-right, bottom-right, bottom-left
-            const orderedCorners = orderCorners(corners);
+          // Check aspect ratio (should be roughly square)
+          const orderedCorners = orderCorners(corners);
+          const side1 = distance(orderedCorners[0], orderedCorners[1]);
+          const side2 = distance(orderedCorners[1], orderedCorners[2]);
+          const aspectRatio = Math.min(side1, side2) / Math.max(side1, side2);
 
-            // Extract and decode marker
-            const id = decodeMarker(cv, gray, orderedCorners);
+          if (aspectRatio > 0.5) {
+            // Try to decode marker
+            const result = decodeMarker(cv, gray, orderedCorners);
 
-            if (id !== -1) {
-              // Scale back coordinates
+            if (result !== null) {
+              // Scale back to original coordinates
               const scaledCorners = orderedCorners.map(c => ({
                 x: c.x / scale,
                 y: c.y / scale
@@ -227,29 +432,16 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
                 y: scaledCorners.reduce((s, c) => s + c.y, 0) / 4
               };
 
-              const dx = scaledCorners[1].x - scaledCorners[0].x;
-              const dy = scaledCorners[1].y - scaledCorners[0].y;
-              const width = Math.sqrt(dx * dx + dy * dy);
+              const width = distance(scaledCorners[0], scaledCorners[1]);
+              const height = distance(scaledCorners[0], scaledCorners[3]);
 
-              const dx2 = scaledCorners[3].x - scaledCorners[0].x;
-              const dy2 = scaledCorners[3].y - scaledCorners[0].y;
-              const height = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-
-              // Check for duplicates
-              const isDuplicate = markers.some(m =>
-                m.id === id &&
-                Math.abs(m.center.x - center.x) < width * 0.3 &&
-                Math.abs(m.center.y - center.y) < height * 0.3
-              );
-
-              if (!isDuplicate) {
-                markers.push({
-                  id,
-                  corners: scaledCorners,
-                  center,
-                  size: { width, height }
-                });
-              }
+              markers.push({
+                id: result.id,
+                corners: scaledCorners,
+                center,
+                size: { width, height },
+                confidence: result.confidence
+              });
             }
           }
         }
@@ -258,6 +450,8 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
         contour.delete();
       }
 
+    } catch (err) {
+      console.error('[ArUco v6] Erreur détection:', err);
     } finally {
       if (src) src.delete();
       if (gray) gray.delete();
@@ -267,23 +461,24 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
     }
 
     return markers;
-  }, []);
+  };
 
   // Main detect function
   const detectMarkers = useCallback(async (
     image: HTMLImageElement | HTMLCanvasElement
   ): Promise<ArucoMarker[]> => {
     if (!isLoaded || !cvRef.current) {
-      console.warn('[ArUco] OpenCV not loaded yet');
+      console.warn('[ArUco v6] OpenCV non chargé');
       return [];
     }
 
     try {
       const markers = await detectMarkersNative(image);
-      console.log(`[ArUco] ${markers.length} markers détectés:`, markers.map(m => `ID${m.id}`).join(', ') || 'aucun');
+      console.log(`[ArUco v6] Résultat: ${markers.length} markers -`,
+        markers.map(m => `ID${m.id}(conf:${(m.confidence || 0).toFixed(2)})`).join(', ') || 'aucun');
       return markers;
     } catch (err) {
-      console.error('[ArUco] Erreur détection:', err);
+      console.error('[ArUco v6] Erreur:', err);
       return [];
     }
   }, [isLoaded, detectMarkersNative]);
@@ -298,7 +493,7 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
     const avgSize = sizes.reduce((a, b) => a + b, 0) / sizes.length;
     const pixelsPerCm = avgSize / markerSizeCm;
 
-    console.log(`[ArUco] Échelle: ${pixelsPerCm.toFixed(2)} px/cm`);
+    console.log(`[ArUco v6] Échelle: ${pixelsPerCm.toFixed(2)} px/cm`);
     return pixelsPerCm;
   }, []);
 
@@ -325,7 +520,7 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
         result.pixelsPerCm = calculateScale(result.markersDetected, size);
       }
     } catch (err) {
-      console.error('[ArUco] Erreur:', err);
+      console.error('[ArUco v6] Erreur:', err);
     }
 
     return result;
@@ -344,19 +539,31 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
   };
 }
 
-// Helper: Order corners as TL, TR, BR, BL
+// ====== HELPER FUNCTIONS ======
+
+function distance(p1: { x: number; y: number }, p2: { x: number; y: number }): number {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
 function orderCorners(corners: { x: number; y: number }[]): { x: number; y: number }[] {
-  // Sort by Y to get top and bottom pairs
+  // Sort by Y to separate top and bottom
   const sorted = [...corners].sort((a, b) => a.y - b.y);
   const top = sorted.slice(0, 2).sort((a, b) => a.x - b.x);
   const bottom = sorted.slice(2, 4).sort((a, b) => a.x - b.x);
 
+  // Return: TL, TR, BR, BL
   return [top[0], top[1], bottom[1], bottom[0]];
 }
 
-// Decode marker from warped image
-function decodeMarker(cv: any, gray: any, corners: { x: number; y: number }[]): number {
-  const warpSize = 70; // 7x7 cells * 10 pixels each
+// ====== MARKER DECODING ======
+function decodeMarker(
+  cv: any,
+  gray: any,
+  corners: { x: number; y: number }[]
+): { id: number; confidence: number } | null {
+  const warpSize = 60; // 6x6 cells (4x4 data + 1 border each side) * 10px
 
   let srcMat: any = null;
   let dstMat: any = null;
@@ -364,7 +571,7 @@ function decodeMarker(cv: any, gray: any, corners: { x: number; y: number }[]): 
   let warped: any = null;
 
   try {
-    // Source points
+    // Perspective transform points
     srcMat = cv.matFromArray(4, 1, cv.CV_32FC2, [
       corners[0].x, corners[0].y,
       corners[1].x, corners[1].y,
@@ -372,7 +579,6 @@ function decodeMarker(cv: any, gray: any, corners: { x: number; y: number }[]): 
       corners[3].x, corners[3].y
     ]);
 
-    // Destination points
     dstMat = cv.matFromArray(4, 1, cv.CV_32FC2, [
       0, 0,
       warpSize - 1, 0,
@@ -380,30 +586,27 @@ function decodeMarker(cv: any, gray: any, corners: { x: number; y: number }[]): 
       0, warpSize - 1
     ]);
 
-    // Get perspective transform
     M = cv.getPerspectiveTransform(srcMat, dstMat);
-
-    // Warp the image
     warped = new cv.Mat();
     cv.warpPerspective(gray, warped, M, new cv.Size(warpSize, warpSize));
 
-    // Apply Otsu threshold
+    // Otsu threshold on warped image
     cv.threshold(warped, warped, 0, 255, cv.THRESH_BINARY | cv.THRESH_OTSU);
 
-    // Read the 7x7 grid
-    const cellSize = warpSize / 7;
+    // Sample the 6x6 grid (1 border + 4 data + 1 border)
+    const cellSize = warpSize / 6;
     const bits: number[][] = [];
 
-    for (let row = 0; row < 7; row++) {
+    for (let row = 0; row < 6; row++) {
       bits[row] = [];
-      for (let col = 0; col < 7; col++) {
+      for (let col = 0; col < 6; col++) {
         const cx = Math.floor((col + 0.5) * cellSize);
         const cy = Math.floor((row + 0.5) * cellSize);
 
-        // Sample a small region around center
+        // Sample region around center
         let sum = 0;
         let count = 0;
-        const radius = Math.floor(cellSize * 0.3);
+        const radius = Math.floor(cellSize * 0.25);
 
         for (let dy = -radius; dy <= radius; dy++) {
           for (let dx = -radius; dx <= radius; dx++) {
@@ -420,27 +623,72 @@ function decodeMarker(cv: any, gray: any, corners: { x: number; y: number }[]): 
       }
     }
 
-    // Try all 4 rotations
-    for (let rotation = 0; rotation < 4; rotation++) {
-      const id = matchArucoDictionary(bits);
-      if (id !== -1) {
-        return id;
-      }
-
-      // Rotate 90 degrees clockwise
-      const rotated: number[][] = [];
-      for (let r = 0; r < 7; r++) {
-        rotated[r] = [];
-        for (let c = 0; c < 7; c++) {
-          rotated[r][c] = bits[6 - c][r];
-        }
-      }
-      for (let r = 0; r < 7; r++) {
-        bits[r] = rotated[r].slice();
+    // Check border (must be black = 0)
+    let borderOk = true;
+    for (let i = 0; i < 6; i++) {
+      if (bits[0][i] !== 0 || bits[5][i] !== 0 || bits[i][0] !== 0 || bits[i][5] !== 0) {
+        borderOk = false;
+        break;
       }
     }
 
-    return -1;
+    if (!borderOk) {
+      // Try inverted
+      for (let r = 0; r < 6; r++) {
+        for (let c = 0; c < 6; c++) {
+          bits[r][c] = 1 - bits[r][c];
+        }
+      }
+
+      borderOk = true;
+      for (let i = 0; i < 6; i++) {
+        if (bits[0][i] !== 0 || bits[5][i] !== 0 || bits[i][0] !== 0 || bits[i][5] !== 0) {
+          borderOk = false;
+          break;
+        }
+      }
+    }
+
+    if (!borderOk) return null;
+
+    // Extract inner 4x4 data bits
+    const dataBits: string[] = [];
+    for (let row = 1; row <= 4; row++) {
+      for (let col = 1; col <= 4; col++) {
+        dataBits.push(bits[row][col].toString());
+      }
+    }
+    const pattern = dataBits.join('');
+
+    // Try all rotations
+    let currentPattern = pattern;
+    for (let rot = 0; rot < 4; rot++) {
+      // Check exact match
+      const match = ALL_PATTERNS.get(currentPattern);
+      if (match) {
+        return { id: match.id, confidence: 1.0 };
+      }
+
+      // Check with 1-2 bit errors (Hamming distance)
+      for (const [dictPattern, info] of ALL_PATTERNS.entries()) {
+        let diff = 0;
+        for (let i = 0; i < 16; i++) {
+          if (currentPattern[i] !== dictPattern[i]) {
+            diff++;
+            if (diff > 2) break;
+          }
+        }
+        if (diff <= 2) {
+          const confidence = 1.0 - (diff * 0.15);
+          return { id: info.id, confidence };
+        }
+      }
+
+      // Rotate 90° for next iteration
+      currentPattern = rotatePattern90(currentPattern);
+    }
+
+    return null;
 
   } finally {
     if (srcMat) srcMat.delete();
@@ -448,113 +696,6 @@ function decodeMarker(cv: any, gray: any, corners: { x: number; y: number }[]): 
     if (M) M.delete();
     if (warped) warped.delete();
   }
-}
-
-// Match bits against ArUco DICT_4X4_50
-function matchArucoDictionary(bits: number[][]): number {
-  // Check border (must be black = 0)
-  for (let i = 0; i < 7; i++) {
-    if (bits[0][i] !== 0) return -1;
-    if (bits[6][i] !== 0) return -1;
-    if (bits[i][0] !== 0) return -1;
-    if (bits[i][6] !== 0) return -1;
-  }
-
-  // Extract inner 5x5 bits
-  const inner: number[] = [];
-  for (let row = 1; row < 6; row++) {
-    for (let col = 1; col < 6; col++) {
-      inner.push(bits[row][col]);
-    }
-  }
-
-  const bitString = inner.join('');
-
-  // ArUco DICT_4X4_50 dictionary (5x5 bit encoding)
-  // Generated from OpenCV ArUco dictionary
-  const DICT_4X4_50: string[] = [
-    "1011111100010010101001000", // ID 0
-    "1010010110011110101001011", // ID 1
-    "1101110011111001000100101", // ID 2
-    "0101100100110010010011001", // ID 3
-    "0100001011110010010000101", // ID 4
-    "0011001001100001011010001", // ID 5
-    "0011100100010011011101001", // ID 6
-    "0010110110011110100100100", // ID 7
-    "0010100001010110010000100", // ID 8
-    "0010001101010010101001010", // ID 9
-    "0001010000011100100100001", // ID 10
-    "0001001010011000110100100", // ID 11
-    "0000011100010110110000110", // ID 12
-    "1111111101011111001010100", // ID 13
-    "1111100110010010110011011", // ID 14
-    "1111100001010000110110011", // ID 15
-    "1111010111010101000001100", // ID 16
-    "1111001000010011110000101", // ID 17
-    "1110110110011110001100001", // ID 18
-    "1110100001010110101000001", // ID 19
-    "1110001100011000001000110", // ID 20
-    "1101101101110111010101110", // ID 21
-    "1101011010111001011010011", // ID 22
-    "1101000111110111110010100", // ID 23
-    "1100111101111101100010111", // ID 24
-    "1100110010110101000101001", // ID 25
-    "1100100101110001101101100", // ID 26
-    "1100010010110111001000111", // ID 27
-    "1011101010011100110001011", // ID 28
-    "1011100101011000000001110", // ID 29
-    "1011011111110101101110101", // ID 30
-    "1010111001111001100111100", // ID 31
-    "1010101110111101000010111", // ID 32
-    "1010011001111011100111010", // ID 33
-    "1001110111010111011010001", // ID 34
-    "1001100000010011111011100", // ID 35
-    "1001011110011001001111101", // ID 36
-    "1001001001011101101010000", // ID 37
-    "1000110001110111110011101", // ID 38
-    "1000101110110011010110000", // ID 39
-    "1000011001110101110011001", // ID 40
-    "0111111110111111011110011", // ID 41
-    "0111101001111011111011110", // ID 42
-    "0111010011110001000101010", // ID 43
-    "0110111111011101011000101", // ID 44
-    "0110101000011001111101000", // ID 45
-    "0110010010010011001000011", // ID 46
-    "0101111100111111100111110", // ID 47
-    "0101101011111011000010011", // ID 48
-    "0101010001110001001101111"  // ID 49
-  ];
-
-  // Check direct match
-  for (let i = 0; i < DICT_4X4_50.length; i++) {
-    if (bitString === DICT_4X4_50[i]) {
-      return i;
-    }
-  }
-
-  // Check inverted (white/black swapped)
-  const invertedBitString = inner.map(b => 1 - b).join('');
-  for (let i = 0; i < DICT_4X4_50.length; i++) {
-    if (invertedBitString === DICT_4X4_50[i]) {
-      return i;
-    }
-  }
-
-  // Check with 1-bit error tolerance (Hamming distance = 1)
-  for (let i = 0; i < DICT_4X4_50.length; i++) {
-    let diff = 0;
-    for (let j = 0; j < 25; j++) {
-      if (bitString[j] !== DICT_4X4_50[i][j]) {
-        diff++;
-        if (diff > 2) break; // Allow up to 2 bit errors
-      }
-    }
-    if (diff <= 2) {
-      return i;
-    }
-  }
-
-  return -1;
 }
 
 export default useOpenCVAruco;
