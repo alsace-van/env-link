@@ -202,6 +202,7 @@ import {
   Upload,
   FilePlus,
   FolderOpen,
+  QrCode,
 } from "lucide-react";
 
 import {
@@ -308,6 +309,10 @@ import { ImageToolsModal } from "./ImageToolsModal";
 
 // MOD v7.37: Modale de calibration au drop d'image
 import { ImageCalibrationModal } from "./ImageCalibrationModal";
+
+// MOD v7.39: Modale de calibration ArUco (OpenCV)
+import { ArucoCalibrationModal } from "./ArucoCalibrationModal";
+import type { ArucoMarker } from "./useOpenCVAruco";
 
 // MOD v7.31: Cotations automatiques lors de la création de géométries
 import { useAutoDimensions } from "./useAutoDimensions";
@@ -906,6 +911,10 @@ export function CADGabaritCanvas({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const lastSavedSketchRef = useRef<string>(""); // Hash ou JSON du dernier sketch sauvegardé
+
+  // v7.39: Modale de calibration ArUco
+  const [showArucoModal, setShowArucoModal] = useState(false);
+  const [pendingArucoImage, setPendingArucoImage] = useState<BackgroundImage | null>(null);
 
   // ============================================
   // NOUVEAU SYSTÈME DE TOOLBAR CONFIGURABLE (v7.11)
@@ -16473,16 +16482,62 @@ export function CADGabaritCanvas({
 
                   <DropdownMenuSeparator />
 
-                  {/* Import */}
-                  <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
-                    <FileUp className="h-4 w-4 mr-2" />
-                    Importer (DXF, images)
-                    {backgroundImages.length > 0 && (
-                      <Badge variant="secondary" className="ml-auto h-4 min-w-4 px-1 text-xs">
-                        {backgroundImages.length}
-                      </Badge>
-                    )}
-                  </DropdownMenuItem>
+                  {/* Sous-menu Import */}
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      <FileUp className="h-4 w-4 mr-2" />
+                      Importer
+                      {backgroundImages.length > 0 && (
+                        <Badge variant="secondary" className="ml-auto h-4 min-w-4 px-1 text-xs">
+                          {backgroundImages.length}
+                        </Badge>
+                      )}
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="w-56">
+                      <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                        <FileUp className="h-4 w-4 mr-2" />
+                        DXF, images...
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => {
+                          // Créer un input file temporaire pour ArUco
+                          const input = document.createElement('input');
+                          input.type = 'file';
+                          input.accept = 'image/*';
+                          input.onchange = async (e) => {
+                            const file = (e.target as HTMLInputElement).files?.[0];
+                            if (!file) return;
+
+                            const img = new window.Image();
+                            img.onload = () => {
+                              const bgImage: BackgroundImage = {
+                                id: `aruco-${Date.now()}`,
+                                image: img,
+                                x: 0,
+                                y: 0,
+                                width: img.width,
+                                height: img.height,
+                                opacity: imageOpacity,
+                                visible: true,
+                                scaleFactor: 1,
+                                rotation: 0,
+                                layerId: activeLayerId,
+                              };
+                              setPendingArucoImage(bgImage);
+                              setShowArucoModal(true);
+                            };
+                            img.src = URL.createObjectURL(file);
+                          };
+                          input.click();
+                        }}
+                      >
+                        <QrCode className="h-4 w-4 mr-2" />
+                        Image avec markers ArUco
+                        <span className="ml-auto text-xs text-muted-foreground">Auto</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
 
                   {/* Sous-menu Export */}
                   <DropdownMenuSub>
@@ -18978,6 +19033,45 @@ export function CADGabaritCanvas({
               pendingCalibrationDecision(true);
               setPendingCalibrationDecision(null);
             }
+          }}
+        />
+
+        {/* v7.39: Modale de calibration ArUco */}
+        <ArucoCalibrationModal
+          isOpen={showArucoModal}
+          onClose={() => {
+            setShowArucoModal(false);
+            setPendingArucoImage(null);
+          }}
+          image={pendingArucoImage}
+          onSkip={() => {
+            // Ajouter l'image sans calibration ArUco
+            if (pendingArucoImage) {
+              addImageWithLayer(pendingArucoImage);
+              toast.success("Image ajoutée sans calibration ArUco");
+            }
+            setShowArucoModal(false);
+            setPendingArucoImage(null);
+          }}
+          onCalibrated={(pixelsPerCm, markers) => {
+            // Ajouter l'image avec l'échelle calculée
+            if (pendingArucoImage) {
+              const calibratedImage: BackgroundImage = {
+                ...pendingArucoImage,
+                calibrationData: {
+                  pairs: new Map(),
+                  applied: true,
+                  // Stocker l'échelle ArUco dans les metadata
+                },
+                // Appliquer l'échelle: 1cm = pixelsPerCm pixels dans l'image
+                // Donc le scaleFactor de l'image doit être ajusté
+                scaleFactor: scaleFactor / pixelsPerCm, // Convertir en unités du canvas
+              };
+              addImageWithLayer(calibratedImage);
+              toast.success(`Calibration ArUco appliquée (${markers.length} markers, ${pixelsPerCm.toFixed(1)} px/cm)`);
+            }
+            setShowArucoModal(false);
+            setPendingArucoImage(null);
           }}
         />
 
