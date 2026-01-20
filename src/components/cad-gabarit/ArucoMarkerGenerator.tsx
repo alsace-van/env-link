@@ -1,10 +1,10 @@
 // ============================================
 // COMPONENT: ArucoMarkerGenerator
 // Génère et télécharge des markers ArUco (PNG)
-// VERSION: 1.1 - Génération native sans OpenCV
+// VERSION: 1.2 - Calcul automatique du nombre de markers sur A4
 // ============================================
 
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,14 +16,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { QrCode, Download, Loader2, Grid3X3 } from "lucide-react";
+import { QrCode, Download, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 interface ArucoMarkerGeneratorProps {
@@ -31,7 +24,11 @@ interface ArucoMarkerGeneratorProps {
   onClose: () => void;
 }
 
-type MarkerLayout = "single" | "grid-2x2" | "grid-3x3" | "grid-4x4" | "a4-sheet";
+// Dimensions A4 en cm
+const A4_WIDTH_CM = 21;
+const A4_HEIGHT_CM = 29.7;
+const MARGIN_CM = 1; // Marge autour de la page
+const GAP_CM = 0.5; // Espace entre markers
 
 // ============================================
 // Dictionnaire ArUco DICT_4X4_50
@@ -94,10 +91,25 @@ const ARUCO_DICT_4X4_50: number[][] = [
 export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const [markerSizeCm, setMarkerSizeCm] = useState<string>("10");
-  const [startId, setStartId] = useState<string>("1");
-  const [layout, setLayout] = useState<MarkerLayout>("grid-3x3");
+  const [markerSizeCm, setMarkerSizeCm] = useState<string>("5");
+  const [startId, setStartId] = useState<string>("0");
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // Calculer combien de markers tiennent sur une feuille A4
+  const gridInfo = useMemo(() => {
+    const size = parseFloat(markerSizeCm) || 5;
+    const usableWidth = A4_WIDTH_CM - 2 * MARGIN_CM;
+    const usableHeight = A4_HEIGHT_CM - 2 * MARGIN_CM - 1.5; // -1.5cm pour titre et footer
+
+    // Combien de markers par ligne/colonne (avec espacement)
+    const cols = Math.max(1, Math.floor((usableWidth + GAP_CM) / (size + GAP_CM)));
+    const rows = Math.max(1, Math.floor((usableHeight + GAP_CM) / (size + GAP_CM + 0.8))); // +0.8cm pour le label
+
+    const total = cols * rows;
+    const tooLarge = size > Math.min(usableWidth, usableHeight - 1);
+
+    return { cols, rows, total, tooLarge, size };
+  }, [markerSizeCm]);
 
   // Générer un marker ArUco (natif)
   const drawMarker = useCallback((
@@ -125,7 +137,6 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
     for (let row = 0; row < 4; row++) {
       const rowData = pattern[row];
       for (let col = 0; col < 4; col++) {
-        // Bit de droite à gauche (MSB à gauche)
         const bit = (rowData >> (3 - col)) & 1;
         if (bit === 1) {
           ctx.fillRect(
@@ -139,7 +150,7 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
     }
   }, []);
 
-  // Générer la prévisualisation
+  // Générer la prévisualisation (proportionnelle à A4)
   const generatePreview = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -147,21 +158,10 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const markerSizePx = 80; // Taille preview
-    const margin = 30;
-    const labelHeight = 25;
-
-    let cols = 1, rows = 1;
-    switch (layout) {
-      case "single": cols = 1; rows = 1; break;
-      case "grid-2x2": cols = 2; rows = 2; break;
-      case "grid-3x3": cols = 3; rows = 3; break;
-      case "grid-4x4": cols = 4; rows = 4; break;
-      case "a4-sheet": cols = 3; rows = 4; break;
-    }
-
-    const canvasWidth = cols * (markerSizePx + margin) + margin;
-    const canvasHeight = rows * (markerSizePx + margin + labelHeight) + margin + 50;
+    // Preview proportionnelle à A4 (échelle ~10px/cm)
+    const scale = 12;
+    const canvasWidth = Math.round(A4_WIDTH_CM * scale);
+    const canvasHeight = Math.round(A4_HEIGHT_CM * scale);
 
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
@@ -170,78 +170,93 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
     ctx.fillStyle = "white";
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
+    // Bordure de page
+    ctx.strokeStyle = "#ccc";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, canvasWidth - 1, canvasHeight - 1);
+
+    const { cols, rows, size, tooLarge } = gridInfo;
+
+    if (tooLarge) {
+      ctx.fillStyle = "#999";
+      ctx.font = "12px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Marker trop grand pour A4", canvasWidth / 2, canvasHeight / 2);
+      return;
+    }
+
+    const markerSizePx = size * scale;
+    const marginPx = MARGIN_CM * scale;
+    const gapPx = GAP_CM * scale;
+    const labelHeightPx = 0.6 * scale;
+
     // Titre
     ctx.fillStyle = "#333";
-    ctx.font = "bold 14px sans-serif";
+    ctx.font = "bold 10px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(`Markers ArUco 4x4_50 - ${markerSizeCm}cm × ${markerSizeCm}cm`, canvasWidth / 2, 22);
+    ctx.fillText(`ArUco 4x4_50 - ${size}cm × ${size}cm`, canvasWidth / 2, marginPx * 0.6);
 
-    const start = parseInt(startId) || 0;
+    const start = Math.min(49, Math.max(0, parseInt(startId) || 0));
     let markerId = start;
+
+    // Calculer l'offset pour centrer la grille
+    const totalGridWidth = cols * markerSizePx + (cols - 1) * gapPx;
+    const totalGridHeight = rows * (markerSizePx + labelHeightPx) + (rows - 1) * gapPx;
+    const offsetX = (canvasWidth - totalGridWidth) / 2;
+    const offsetY = marginPx + (canvasHeight - marginPx * 2 - totalGridHeight) / 2;
 
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
         if (markerId >= 50) break;
 
-        const mx = margin + col * (markerSizePx + margin);
-        const my = 40 + row * (markerSizePx + margin + labelHeight);
-
-        // Zone blanche autour du marker (quiet zone)
-        const quietZone = 8;
-        ctx.fillStyle = "white";
-        ctx.fillRect(mx - quietZone, my - quietZone, markerSizePx + quietZone * 2, markerSizePx + quietZone * 2);
+        const mx = offsetX + col * (markerSizePx + gapPx);
+        const my = offsetY + row * (markerSizePx + gapPx + labelHeightPx);
 
         // Dessiner le marker
         drawMarker(ctx, markerId, mx, my, markerSizePx);
 
         // Label
         ctx.fillStyle = "#666";
-        ctx.font = "12px monospace";
+        ctx.font = `${Math.max(8, markerSizePx * 0.12)}px monospace`;
         ctx.textAlign = "center";
-        ctx.fillText(`ID: ${markerId}`, mx + markerSizePx / 2, my + markerSizePx + 18);
+        ctx.fillText(`ID: ${markerId}`, mx + markerSizePx / 2, my + markerSizePx + labelHeightPx * 0.8);
 
         markerId++;
       }
     }
 
-    // Note en bas
+    // Footer
     ctx.fillStyle = "#999";
-    ctx.font = "11px sans-serif";
+    ctx.font = "8px sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(
-      `Imprimer à 100% sans mise à l'échelle | 300 DPI`,
+      `${gridInfo.total} markers | Imprimer à 100%`,
       canvasWidth / 2,
-      canvasHeight - 10
+      canvasHeight - marginPx * 0.4
     );
-  }, [layout, startId, markerSizeCm, drawMarker]);
+  }, [gridInfo, startId, drawMarker]);
 
-  // Générer la préview quand les paramètres changent
+  // Générer la preview quand les paramètres changent
   useEffect(() => {
     if (isOpen) {
-      // Petit délai pour s'assurer que le canvas est monté
       const timer = setTimeout(() => generatePreview(), 50);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, layout, startId, markerSizeCm, generatePreview]);
+  }, [isOpen, generatePreview]);
 
-  // Télécharger en PNG haute résolution
+  // Télécharger en PNG haute résolution (300 DPI)
   const handleDownloadPNG = useCallback(() => {
     setIsGenerating(true);
 
     try {
-      const sizeCm = parseFloat(markerSizeCm) || 10;
       const dpi = 300;
-      const markerSizePx = Math.round(sizeCm * dpi / 2.54);
-      const margin = Math.round(1.5 * dpi / 2.54); // 1.5cm margin
-      const labelHeight = Math.round(1 * dpi / 2.54);
+      const cmToPx = dpi / 2.54;
 
-      let cols = 1, rows = 1;
-      switch (layout) {
-        case "single": cols = 1; rows = 1; break;
-        case "grid-2x2": cols = 2; rows = 2; break;
-        case "grid-3x3": cols = 3; rows = 3; break;
-        case "grid-4x4": cols = 4; rows = 4; break;
-        case "a4-sheet": cols = 3; rows = 4; break;
+      const { cols, rows, size, tooLarge } = gridInfo;
+
+      if (tooLarge) {
+        toast.error("La taille du marker est trop grande pour une feuille A4");
+        return;
       }
 
       const canvas = document.createElement("canvas");
@@ -251,8 +266,9 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
         return;
       }
 
-      const canvasWidth = cols * (markerSizePx + margin) + margin;
-      const canvasHeight = rows * (markerSizePx + margin + labelHeight) + margin + Math.round(2 * dpi / 2.54);
+      // Dimensions A4 en pixels à 300 DPI
+      const canvasWidth = Math.round(A4_WIDTH_CM * cmToPx);
+      const canvasHeight = Math.round(A4_HEIGHT_CM * cmToPx);
 
       canvas.width = canvasWidth;
       canvas.height = canvasHeight;
@@ -261,24 +277,35 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
       ctx.fillStyle = "white";
       ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
+      const markerSizePx = Math.round(size * cmToPx);
+      const marginPx = Math.round(MARGIN_CM * cmToPx);
+      const gapPx = Math.round(GAP_CM * cmToPx);
+      const labelHeightPx = Math.round(0.8 * cmToPx);
+
       // Titre
       ctx.fillStyle = "#333";
-      ctx.font = `bold ${Math.round(0.5 * dpi / 2.54)}px sans-serif`;
+      ctx.font = `bold ${Math.round(0.4 * cmToPx)}px sans-serif`;
       ctx.textAlign = "center";
-      ctx.fillText(`Markers ArUco 4x4_50 - ${markerSizeCm}cm × ${markerSizeCm}cm`, canvasWidth / 2, margin);
+      ctx.fillText(`Markers ArUco 4x4_50 - ${size}cm × ${size}cm`, canvasWidth / 2, marginPx * 0.7);
 
-      const start = parseInt(startId) || 0;
+      const start = Math.min(49, Math.max(0, parseInt(startId) || 0));
       let markerId = start;
+
+      // Centrer la grille
+      const totalGridWidth = cols * markerSizePx + (cols - 1) * gapPx;
+      const totalGridHeight = rows * (markerSizePx + labelHeightPx) + (rows - 1) * gapPx;
+      const offsetX = (canvasWidth - totalGridWidth) / 2;
+      const offsetY = marginPx + (canvasHeight - marginPx * 2 - totalGridHeight) / 2;
 
       for (let row = 0; row < rows; row++) {
         for (let col = 0; col < cols; col++) {
           if (markerId >= 50) break;
 
-          const mx = margin + col * (markerSizePx + margin);
-          const my = margin + Math.round(0.8 * dpi / 2.54) + row * (markerSizePx + margin + labelHeight);
+          const mx = offsetX + col * (markerSizePx + gapPx);
+          const my = offsetY + row * (markerSizePx + gapPx + labelHeightPx);
 
-          // Quiet zone blanche (10% de la taille)
-          const quietZone = Math.round(markerSizePx * 0.12);
+          // Zone blanche (quiet zone) autour du marker
+          const quietZone = Math.round(markerSizePx * 0.08);
           ctx.fillStyle = "white";
           ctx.fillRect(mx - quietZone, my - quietZone, markerSizePx + quietZone * 2, markerSizePx + quietZone * 2);
 
@@ -286,71 +313,59 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
           drawMarker(ctx, markerId, mx, my, markerSizePx);
 
           // Label
-          ctx.fillStyle = "#666";
-          ctx.font = `${Math.round(0.4 * dpi / 2.54)}px monospace`;
+          ctx.fillStyle = "#555";
+          ctx.font = `${Math.round(0.35 * cmToPx)}px monospace`;
           ctx.textAlign = "center";
-          ctx.fillText(`ID: ${markerId}`, mx + markerSizePx / 2, my + markerSizePx + Math.round(0.6 * dpi / 2.54));
+          ctx.fillText(`ID: ${markerId}`, mx + markerSizePx / 2, my + markerSizePx + labelHeightPx * 0.7);
 
           markerId++;
         }
       }
 
-      // Note en bas
+      // Footer
       ctx.fillStyle = "#888";
-      ctx.font = `${Math.round(0.35 * dpi / 2.54)}px sans-serif`;
+      ctx.font = `${Math.round(0.3 * cmToPx)}px sans-serif`;
       ctx.textAlign = "center";
       ctx.fillText(
-        `Imprimer à 100% sans mise à l'échelle | ${dpi} DPI`,
+        `Imprimer à 100% sans mise à l'échelle | ${dpi} DPI | Taille réelle: ${size}cm`,
         canvasWidth / 2,
-        canvasHeight - Math.round(0.5 * dpi / 2.54)
+        canvasHeight - marginPx * 0.4
       );
 
       // Télécharger
       const link = document.createElement("a");
-      link.download = `aruco_markers_${layout}_${sizeCm}cm.png`;
+      link.download = `aruco_markers_${size}cm_x${gridInfo.total}.png`;
       link.href = canvas.toDataURL("image/png");
       link.click();
 
-      toast.success("Markers téléchargés ! Imprimez à 100% sans mise à l'échelle.");
+      toast.success(`${gridInfo.total} markers téléchargés ! Imprimez à 100%.`);
     } catch (err) {
       console.error("Erreur download:", err);
       toast.error("Erreur lors de la génération");
     } finally {
       setIsGenerating(false);
     }
-  }, [layout, startId, markerSizeCm, drawMarker]);
-
-  // Calculer le nombre de markers
-  const getMarkerCount = () => {
-    switch (layout) {
-      case "single": return 1;
-      case "grid-2x2": return 4;
-      case "grid-3x3": return 9;
-      case "grid-4x4": return 16;
-      case "a4-sheet": return 12;
-      default: return 1;
-    }
-  };
+  }, [gridInfo, startId, drawMarker]);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <QrCode className="h-5 w-5" />
             Générateur de markers ArUco
           </DialogTitle>
           <DialogDescription>
-            Créez des markers à imprimer pour calibrer automatiquement vos photos
+            Génère une feuille A4 de markers à imprimer pour calibrer vos photos
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           {/* Paramètres */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="markerSize" className="text-sm">
-                Taille (cm)
+                Taille du marker (cm)
               </Label>
               <Input
                 id="markerSize"
@@ -358,15 +373,25 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
                 value={markerSizeCm}
                 onChange={(e) => setMarkerSizeCm(e.target.value)}
                 min="1"
-                max="50"
+                max="18"
                 step="0.5"
                 className="mt-1"
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                {gridInfo.tooLarge ? (
+                  <span className="text-destructive flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />
+                    Trop grand pour A4
+                  </span>
+                ) : (
+                  <>→ {gridInfo.cols}×{gridInfo.rows} = <strong>{gridInfo.total} markers</strong> sur A4</>
+                )}
+              </p>
             </div>
 
             <div>
               <Label htmlFor="startId" className="text-sm">
-                Premier ID
+                Premier ID (0-49)
               </Label>
               <Input
                 id="startId"
@@ -377,48 +402,29 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
                 max="49"
                 className="mt-1"
               />
-            </div>
-
-            <div>
-              <Label className="text-sm">Disposition</Label>
-              <Select value={layout} onValueChange={(v) => setLayout(v as MarkerLayout)}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="single">1 marker</SelectItem>
-                  <SelectItem value="grid-2x2">Grille 2×2 (4)</SelectItem>
-                  <SelectItem value="grid-3x3">Grille 3×3 (9)</SelectItem>
-                  <SelectItem value="grid-4x4">Grille 4×4 (16)</SelectItem>
-                  <SelectItem value="a4-sheet">Feuille A4 (12)</SelectItem>
-                </SelectContent>
-              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                IDs: {parseInt(startId) || 0} → {Math.min(49, (parseInt(startId) || 0) + gridInfo.total - 1)}
+              </p>
             </div>
           </div>
 
-          {/* Preview */}
-          <div className="border rounded-lg p-4 bg-gray-50 flex justify-center items-center min-h-[300px]">
-            {isGenerating ? (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                Génération...
-              </div>
-            ) : (
-              <canvas
-                ref={canvasRef}
-                className="max-w-full max-h-[350px] object-contain bg-white shadow-sm rounded"
-              />
-            )}
+          {/* Preview A4 */}
+          <div className="border rounded-lg p-3 bg-gray-100 flex justify-center">
+            <canvas
+              ref={canvasRef}
+              className="shadow-md bg-white"
+              style={{ maxHeight: "320px", width: "auto" }}
+            />
           </div>
 
-          {/* Info */}
+          {/* Instructions */}
           <div className="text-sm text-muted-foreground bg-muted p-3 rounded-lg">
             <p className="font-medium mb-1">Instructions :</p>
-            <ol className="list-decimal list-inside space-y-1">
-              <li>Téléchargez les markers (PNG haute résolution 300 DPI)</li>
-              <li>Imprimez à <strong>100%</strong> sans mise à l'échelle</li>
-              <li>Découpez et placez sur la surface à photographier</li>
-              <li>La taille réelle ({markerSizeCm}cm) sera utilisée pour calculer l'échelle</li>
+            <ol className="list-decimal list-inside space-y-0.5 text-xs">
+              <li>Téléchargez le PNG (300 DPI, format A4)</li>
+              <li>Imprimez à <strong>100%</strong> (taille réelle, sans mise à l'échelle)</li>
+              <li>Découpez et placez les markers sur la surface à photographier</li>
+              <li>Importez la photo avec "Image avec markers ArUco"</li>
             </ol>
           </div>
         </div>
@@ -427,13 +433,16 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
           <Button variant="outline" onClick={onClose}>
             Fermer
           </Button>
-          <Button onClick={handleDownloadPNG} disabled={isGenerating}>
+          <Button
+            onClick={handleDownloadPNG}
+            disabled={isGenerating || gridInfo.tooLarge}
+          >
             {isGenerating ? (
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
             ) : (
               <Download className="h-4 w-4 mr-2" />
             )}
-            Télécharger PNG ({getMarkerCount()} markers)
+            Télécharger A4 ({gridInfo.total} markers)
           </Button>
         </DialogFooter>
       </DialogContent>
