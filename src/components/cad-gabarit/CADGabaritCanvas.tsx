@@ -4088,12 +4088,29 @@ export function CADGabaritCanvas({
   // v7.38: Effectuer la réinitialisation du sketch
   const performNewSketch = useCallback(() => {
     // Réinitialiser le sketch
-    setSketch(createEmptySketch(scaleFactor));
+    const newSketch = createEmptySketch(scaleFactor);
+    setSketch(newSketch);
     // Réinitialiser les images de fond
     setBackgroundImages([]);
-    // Réinitialiser l'historique
-    setHistory([]);
-    setHistoryIndex(-1);
+    // Réinitialiser l'historique - créer une nouvelle branche
+    const newBranchId = generateId();
+    const initialEntry: HistoryEntry = {
+      sketch: serializeSketch(newSketch),
+      description: "Nouveau projet",
+      timestamp: Date.now(),
+    };
+    const newBranch = {
+      id: newBranchId,
+      name: "Principal",
+      color: BRANCH_COLORS[0],
+      history: [initialEntry],
+      historyIndex: 0,
+      createdAt: Date.now(),
+    };
+    setBranches([newBranch]);
+    setActiveBranchId(newBranchId);
+    branchesRef.current = { branches: [newBranch], activeBranchId: newBranchId };
+    historyRef.current = { history: [initialEntry], index: 0 };
     // Réinitialiser les mesures
     setMeasurements([]);
     // Fermer la modale si ouverte
@@ -16515,16 +16532,18 @@ export function CADGabaritCanvas({
                             img.onload = () => {
                               const bgImage: BackgroundImage = {
                                 id: `aruco-${Date.now()}`,
+                                name: `aruco-${Date.now()}`,
                                 image: img,
                                 x: 0,
                                 y: 0,
-                                width: img.width,
-                                height: img.height,
+                                scale: 1,
                                 opacity: imageOpacity,
                                 visible: true,
-                                scaleFactor: 1,
+                                locked: false,
+                                order: backgroundImages.length,
                                 rotation: 0,
-                                layerId: activeLayerId,
+                                layerId: sketch.activeLayerId,
+                                markers: [],
                               };
                               setPendingArucoImage(bgImage);
                               setShowArucoModal(true);
@@ -19070,13 +19089,14 @@ export function CADGabaritCanvas({
               const calibratedImage: BackgroundImage = {
                 ...pendingArucoImage,
                 calibrationData: {
+                  points: new Map(),
                   pairs: new Map(),
                   applied: true,
-                  // Stocker l'échelle ArUco dans les metadata
+                  mode: "simple",
                 },
                 // Appliquer l'échelle: 1cm = pixelsPerCm pixels dans l'image
-                // Donc le scaleFactor de l'image doit être ajusté
-                scaleFactor: scaleFactor / pixelsPerCm, // Convertir en unités du canvas
+                // Donc le scale de l'image doit être ajusté
+                scale: scaleFactor / pixelsPerCm, // Convertir en unités du canvas
               };
               addImageWithLayer(calibratedImage);
               toast.success(`Calibration ArUco appliquée (${markers.length} markers, ${pixelsPerCm.toFixed(1)} px/cm)`);
@@ -19097,16 +19117,18 @@ export function CADGabaritCanvas({
           onStitched={(resultImage, pxPerCm) => {
             const bgImage: BackgroundImage = {
               id: `stitched-${Date.now()}`,
+              name: `stitched-${Date.now()}`,
               image: resultImage,
               x: 0,
               y: 0,
-              width: resultImage.width,
-              height: resultImage.height,
+              scale: scaleFactor / pxPerCm, // Appliquer l'échelle
               opacity: imageOpacity,
               visible: true,
-              scaleFactor: scaleFactor / pxPerCm, // Appliquer l'échelle
+              locked: false,
+              order: backgroundImages.length,
               rotation: 0,
-              layerId: activeLayerId,
+              layerId: sketch.activeLayerId,
+              markers: [],
             };
             addImageWithLayer(bgImage);
             toast.success("Image assemblée ajoutée au canvas !");

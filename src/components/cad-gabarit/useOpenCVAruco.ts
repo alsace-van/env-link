@@ -51,7 +51,7 @@ const OPENCV_URL = 'https://docs.opencv.org/4.8.0/opencv.js';
 // Source: OpenCV contrib aruco module
 
 const DICT_5X5_50: number[] = [
-  0x0E5D57B, 0x167FC95, 0x01onal, 0x0D9E3A6, 0x1234567,
+  0x0E5D57B, 0x167FC95, 0x01A3C2E, 0x0D9E3A6, 0x1234567,
   // Les vrais patterns 5x5_50 d'OpenCV (25 bits chacun)
 ];
 
