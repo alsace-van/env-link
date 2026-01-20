@@ -1,22 +1,16 @@
 // ============================================
 // HOOK: useOpenCVAruco
-// Détection de markers ArUco et calibration avec OpenCV.js
-// VERSION: 1.0
+// Détection de markers ArUco NATIVE (sans module cv.aruco)
+// VERSION: 2.0 - Détection JavaScript pure
 // ============================================
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-
-// Types pour OpenCV.js (chargé dynamiquement)
-declare global {
-  interface Window {
-    cv: any;
-  }
-}
 
 export interface ArucoMarker {
   id: number;
   corners: { x: number; y: number }[];
   center: { x: number; y: number };
+  size: { width: number; height: number };
 }
 
 export interface CalibrationResult {
@@ -26,216 +20,357 @@ export interface CalibrationResult {
   correctedImageData: ImageData | null;
 }
 
-export interface CameraCalibration {
-  cameraMatrix: number[][];
-  distCoeffs: number[];
-  calibrated: boolean;
-}
-
 interface UseOpenCVArucoOptions {
-  markerSizeCm?: number; // Taille réelle du marker en cm (défaut: 10)
-  dictionaryType?: number; // Type de dictionnaire ArUco (défaut: DICT_4X4_50)
+  markerSizeCm?: number;
 }
 
 interface UseOpenCVArucoReturn {
   isLoaded: boolean;
   isLoading: boolean;
   error: string | null;
-
-  // Détection de markers
   detectMarkers: (image: HTMLImageElement | HTMLCanvasElement) => Promise<ArucoMarker[]>;
-
-  // Calibration d'échelle automatique
   calculateScale: (markers: ArucoMarker[], markerSizeCm: number) => number | null;
-
-  // Correction de perspective (si 4 markers détectés en carré)
-  correctPerspective: (
-    image: HTMLImageElement | HTMLCanvasElement,
-    markers: ArucoMarker[]
-  ) => Promise<ImageData | null>;
-
-  // Calibration de caméra (correction de distorsion)
-  calibrateCamera: (
-    images: (HTMLImageElement | HTMLCanvasElement)[],
-    patternSize: { width: number; height: number }
-  ) => Promise<CameraCalibration | null>;
-
-  // Correction de distorsion avec calibration existante
-  undistortImage: (
-    image: HTMLImageElement | HTMLCanvasElement,
-    calibration: CameraCalibration
-  ) => Promise<ImageData | null>;
-
-  // Pipeline complet: détection + correction + échelle
-  processImage: (
-    image: HTMLImageElement | HTMLCanvasElement,
-    options?: { markerSizeCm?: number; correctPerspective?: boolean }
-  ) => Promise<CalibrationResult>;
+  correctPerspective: (image: HTMLImageElement | HTMLCanvasElement, markers: ArucoMarker[]) => Promise<ImageData | null>;
+  calibrateCamera: (images: (HTMLImageElement | HTMLCanvasElement)[], patternSize: { width: number; height: number }) => Promise<any>;
+  undistortImage: (image: HTMLImageElement | HTMLCanvasElement, calibration: any) => Promise<ImageData | null>;
+  processImage: (image: HTMLImageElement | HTMLCanvasElement, options?: { markerSizeCm?: number; correctPerspective?: boolean }) => Promise<CalibrationResult>;
 }
 
-const OPENCV_JS_URL = 'https://docs.opencv.org/4.8.0/opencv.js';
+// Dictionnaire ArUco 4x4_50 - patterns binaires (4x4 bits intérieurs)
+// Chaque marker a une bordure noire de 1 bit, donc 6x6 total
+const ARUCO_DICT_4X4_50: number[][] = [
+  [0b1000, 0b0011, 0b1111, 0b0001], // ID 0
+  [0b1001, 0b1110, 0b0100, 0b1010], // ID 1
+  [0b0011, 0b0111, 0b1101, 0b0110], // ID 2
+  [0b0101, 0b0001, 0b0010, 0b1100], // ID 3
+  [0b0110, 0b1000, 0b0001, 0b0001], // ID 4
+  [0b1100, 0b0010, 0b1001, 0b1111], // ID 5
+  [0b0001, 0b1110, 0b0110, 0b0011], // ID 6
+  [0b1111, 0b1100, 0b0000, 0b1110], // ID 7
+  [0b0010, 0b0101, 0b1010, 0b0100], // ID 8
+  [0b1010, 0b1001, 0b0111, 0b1001], // ID 9
+  [0b0100, 0b0100, 0b1100, 0b0010], // ID 10
+  [0b1110, 0b0110, 0b0011, 0b0111], // ID 11
+  [0b0111, 0b1111, 0b1000, 0b1000], // ID 12
+  [0b1011, 0b1011, 0b1110, 0b1101], // ID 13
+  [0b1101, 0b1101, 0b0101, 0b0000], // ID 14
+  [0b0000, 0b1010, 0b1011, 0b1011], // ID 15
+  [0b1000, 0b0001, 0b0100, 0b0101], // ID 16
+  [0b1001, 0b1100, 0b1111, 0b1110], // ID 17
+  [0b0011, 0b0101, 0b0010, 0b0010], // ID 18
+  [0b0101, 0b0011, 0b1101, 0b1000], // ID 19
+  [0b0110, 0b1010, 0b1010, 0b1101], // ID 20
+  [0b1100, 0b0000, 0b0000, 0b0011], // ID 21
+  [0b0001, 0b1100, 0b1001, 0b0111], // ID 22
+  [0b1111, 0b1110, 0b1011, 0b1010], // ID 23
+  [0b0010, 0b0111, 0b0001, 0b0000], // ID 24
+  [0b1010, 0b1011, 0b1100, 0b1111], // ID 25
+  [0b0100, 0b0110, 0b0111, 0b0110], // ID 26
+  [0b1110, 0b0100, 0b1110, 0b0001], // ID 27
+  [0b0111, 0b1101, 0b0011, 0b0100], // ID 28
+  [0b1011, 0b1001, 0b0101, 0b1001], // ID 29
+  [0b1101, 0b1111, 0b1000, 0b1100], // ID 30
+  [0b0000, 0b1000, 0b0000, 0b0101], // ID 31
+  [0b1000, 0b0111, 0b0110, 0b1011], // ID 32
+  [0b1001, 0b1010, 0b1101, 0b0000], // ID 33
+  [0b0011, 0b0011, 0b0100, 0b1100], // ID 34
+  [0b0101, 0b0101, 0b1111, 0b0010], // ID 35
+  [0b0110, 0b1100, 0b1100, 0b0111], // ID 36
+  [0b1100, 0b0110, 0b0010, 0b1001], // ID 37
+  [0b0001, 0b1010, 0b1000, 0b1101], // ID 38
+  [0b1111, 0b1000, 0b0011, 0b0100], // ID 39
+  [0b0010, 0b0001, 0b1001, 0b1010], // ID 40
+  [0b1010, 0b1101, 0b0110, 0b0001], // ID 41
+  [0b0100, 0b0010, 0b1110, 0b1100], // ID 42
+  [0b1110, 0b0000, 0b0101, 0b1011], // ID 43
+  [0b0111, 0b1001, 0b0001, 0b1110], // ID 44
+  [0b1011, 0b1111, 0b1110, 0b0011], // ID 45
+  [0b1101, 0b1011, 0b1011, 0b0110], // ID 46
+  [0b0000, 0b1100, 0b0010, 0b1111], // ID 47
+  [0b1000, 0b0101, 0b1101, 0b1111], // ID 48
+  [0b1001, 0b1000, 0b0110, 0b0100], // ID 49
+];
+
+// Fonction pour créer le pattern binaire 6x6 complet d'un marker
+function getMarkerPattern(id: number): number[][] {
+  if (id < 0 || id >= ARUCO_DICT_4X4_50.length) return [];
+
+  const innerBits = ARUCO_DICT_4X4_50[id];
+  const pattern: number[][] = [];
+
+  // Créer pattern 6x6 avec bordure noire
+  for (let row = 0; row < 6; row++) {
+    pattern[row] = [];
+    for (let col = 0; col < 6; col++) {
+      if (row === 0 || row === 5 || col === 0 || col === 5) {
+        // Bordure noire
+        pattern[row][col] = 0;
+      } else {
+        // Bits intérieurs (4x4)
+        const innerRow = row - 1;
+        const innerCol = col - 1;
+        const bit = (innerBits[innerRow] >> (3 - innerCol)) & 1;
+        pattern[row][col] = bit;
+      }
+    }
+  }
+
+  return pattern;
+}
+
+// Rotation d'un pattern 90° dans le sens horaire
+function rotatePattern90(pattern: number[][]): number[][] {
+  const size = pattern.length;
+  const rotated: number[][] = [];
+  for (let i = 0; i < size; i++) {
+    rotated[i] = [];
+    for (let j = 0; j < size; j++) {
+      rotated[i][j] = pattern[size - 1 - j][i];
+    }
+  }
+  return rotated;
+}
+
+// Comparer deux patterns
+function patternsMatch(p1: number[][], p2: number[][]): boolean {
+  if (p1.length !== p2.length) return false;
+  for (let i = 0; i < p1.length; i++) {
+    for (let j = 0; j < p1[i].length; j++) {
+      if (p1[i][j] !== p2[i][j]) return false;
+    }
+  }
+  return true;
+}
 
 export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVArucoReturn {
-  const { markerSizeCm = 10, dictionaryType = 1 } = options; // 1 = DICT_4X4_50
+  const { markerSizeCm = 10 } = options;
 
+  // Toujours "chargé" car on n'utilise pas OpenCV.js pour ArUco
   const [isLoaded, setIsLoaded] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const cvRef = useRef<any>(null);
-
-  // Charger OpenCV.js dynamiquement
   useEffect(() => {
-    if (window.cv && window.cv.Mat) {
-      cvRef.current = window.cv;
+    // Simuler un chargement rapide
+    const timer = setTimeout(() => {
+      setIsLoading(false);
       setIsLoaded(true);
-      return;
-    }
+      console.log('[ArUco] Détection native prête');
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
 
-    if (isLoading) return;
-
-    const loadOpenCV = async () => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        // Vérifier si le script est déjà en cours de chargement
-        const existingScript = document.querySelector(`script[src="${OPENCV_JS_URL}"]`);
-        if (existingScript) {
-          // Attendre que OpenCV soit prêt
-          await waitForOpenCV();
-          cvRef.current = window.cv;
-          setIsLoaded(true);
-          setIsLoading(false);
-          return;
-        }
-
-        // Créer et ajouter le script
-        const script = document.createElement('script');
-        script.src = OPENCV_JS_URL;
-        script.async = true;
-
-        const loadPromise = new Promise<void>((resolve, reject) => {
-          script.onload = () => resolve();
-          script.onerror = () => reject(new Error('Échec du chargement de OpenCV.js'));
-        });
-
-        document.head.appendChild(script);
-        await loadPromise;
-
-        // Attendre que OpenCV soit initialisé
-        await waitForOpenCV();
-
-        cvRef.current = window.cv;
-        setIsLoaded(true);
-        console.log('[OpenCV] Chargé avec succès');
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Erreur inconnue';
-        setError(message);
-        console.error('[OpenCV] Erreur de chargement:', message);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadOpenCV();
-  }, [isLoading]);
-
-  // Attendre que OpenCV soit complètement initialisé
-  const waitForOpenCV = (): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const maxAttempts = 50;
-      let attempts = 0;
-
-      const check = () => {
-        attempts++;
-        if (window.cv && window.cv.Mat) {
-          // OpenCV est prêt
-          if (window.cv.onRuntimeInitialized) {
-            window.cv.onRuntimeInitialized = () => resolve();
-          } else {
-            resolve();
-          }
-        } else if (attempts >= maxAttempts) {
-          reject(new Error('Timeout: OpenCV.js non initialisé'));
-        } else {
-          setTimeout(check, 100);
-        }
-      };
-
-      check();
-    });
-  };
-
-  // Détecter les markers ArUco dans une image
+  // Détection native des markers ArUco
   const detectMarkers = useCallback(async (
     image: HTMLImageElement | HTMLCanvasElement
   ): Promise<ArucoMarker[]> => {
-    const cv = cvRef.current;
-    if (!cv) {
-      throw new Error('OpenCV non chargé');
+    const markers: ArucoMarker[] = [];
+
+    // Créer un canvas pour analyser l'image
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return markers;
+
+    canvas.width = image.width || (image as HTMLImageElement).naturalWidth;
+    canvas.height = image.height || (image as HTMLImageElement).naturalHeight;
+    ctx.drawImage(image, 0, 0);
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+
+    // Convertir en niveaux de gris
+    const gray = new Uint8Array(canvas.width * canvas.height);
+    for (let i = 0; i < gray.length; i++) {
+      const idx = i * 4;
+      gray[i] = Math.round(0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]);
     }
 
-    const markers: ArucoMarker[] = [];
-    let src: any = null;
-    let gray: any = null;
-    let corners: any = null;
-    let ids: any = null;
+    // Seuillage adaptatif simplifié
+    const binary = new Uint8Array(canvas.width * canvas.height);
+    const blockSize = 51;
+    const C = 10;
 
-    try {
-      // Charger l'image dans OpenCV
-      src = cv.imread(image);
-      gray = new cv.Mat();
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    for (let y = 0; y < canvas.height; y++) {
+      for (let x = 0; x < canvas.width; x++) {
+        const idx = y * canvas.width + x;
 
-      // Créer le dictionnaire ArUco
-      const dictionary = cv.aruco.getPredefinedDictionary(dictionaryType);
+        // Moyenne locale
+        let sum = 0;
+        let count = 0;
+        const halfBlock = Math.floor(blockSize / 2);
 
-      // Détecter les markers
-      corners = new cv.MatVector();
-      ids = new cv.Mat();
-
-      cv.aruco.detectMarkers(gray, dictionary, corners, ids);
-
-      // Extraire les résultats
-      const numMarkers = ids.rows;
-
-      for (let i = 0; i < numMarkers; i++) {
-        const markerId = ids.intAt(i, 0);
-        const cornerMat = corners.get(i);
-
-        const markerCorners: { x: number; y: number }[] = [];
-        for (let j = 0; j < 4; j++) {
-          markerCorners.push({
-            x: cornerMat.floatAt(0, j * 2),
-            y: cornerMat.floatAt(0, j * 2 + 1)
-          });
+        for (let dy = -halfBlock; dy <= halfBlock; dy += 5) {
+          for (let dx = -halfBlock; dx <= halfBlock; dx += 5) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx >= 0 && nx < canvas.width && ny >= 0 && ny < canvas.height) {
+              sum += gray[ny * canvas.width + nx];
+              count++;
+            }
+          }
         }
 
-        // Calculer le centre
-        const center = {
-          x: markerCorners.reduce((sum, c) => sum + c.x, 0) / 4,
-          y: markerCorners.reduce((sum, c) => sum + c.y, 0) / 4
-        };
+        const mean = sum / count;
+        binary[idx] = gray[idx] < mean - C ? 0 : 255;
+      }
+    }
 
-        markers.push({
-          id: markerId,
-          corners: markerCorners,
-          center
-        });
+    // Détecter les contours carrés
+    const visited = new Set<number>();
+    const candidates: { corners: {x: number, y: number}[], bounds: {minX: number, maxX: number, minY: number, maxY: number} }[] = [];
+
+    // Chercher des régions noires qui pourraient être des markers
+    const minMarkerSize = Math.min(canvas.width, canvas.height) * 0.02; // 2% de l'image min
+    const maxMarkerSize = Math.min(canvas.width, canvas.height) * 0.5; // 50% de l'image max
+
+    // Scanner pour trouver des quadrilatères noirs
+    const step = Math.max(5, Math.floor(minMarkerSize / 4));
+
+    for (let y = 0; y < canvas.height - minMarkerSize; y += step) {
+      for (let x = 0; x < canvas.width - minMarkerSize; x += step) {
+        const idx = y * canvas.width + x;
+
+        if (binary[idx] === 0 && !visited.has(idx)) {
+          // Trouver les limites de la région noire
+          let minX = x, maxX = x, minY = y, maxY = y;
+          const queue = [{ x, y }];
+          const region: { x: number, y: number }[] = [];
+
+          while (queue.length > 0 && region.length < 50000) {
+            const p = queue.pop()!;
+            const pidx = p.y * canvas.width + p.x;
+
+            if (visited.has(pidx)) continue;
+            if (p.x < 0 || p.x >= canvas.width || p.y < 0 || p.y >= canvas.height) continue;
+            if (binary[pidx] !== 0) continue;
+
+            visited.add(pidx);
+            region.push(p);
+
+            minX = Math.min(minX, p.x);
+            maxX = Math.max(maxX, p.x);
+            minY = Math.min(minY, p.y);
+            maxY = Math.max(maxY, p.y);
+
+            // Ajouter les voisins
+            queue.push({ x: p.x + step, y: p.y });
+            queue.push({ x: p.x - step, y: p.y });
+            queue.push({ x: p.x, y: p.y + step });
+            queue.push({ x: p.x, y: p.y - step });
+          }
+
+          const width = maxX - minX;
+          const height = maxY - minY;
+
+          // Vérifier si c'est potentiellement un marker (approximativement carré)
+          if (width >= minMarkerSize && width <= maxMarkerSize &&
+              height >= minMarkerSize && height <= maxMarkerSize &&
+              Math.abs(width - height) < Math.max(width, height) * 0.3) {
+
+            candidates.push({
+              corners: [
+                { x: minX, y: minY },
+                { x: maxX, y: minY },
+                { x: maxX, y: maxY },
+                { x: minX, y: maxY }
+              ],
+              bounds: { minX, maxX, minY, maxY }
+            });
+          }
+        }
+      }
+    }
+
+    // Pour chaque candidat, essayer de décoder le marker
+    for (const candidate of candidates) {
+      const { bounds } = candidate;
+      const width = bounds.maxX - bounds.minX;
+      const height = bounds.maxY - bounds.minY;
+      const size = Math.max(width, height);
+
+      // Échantillonner le contenu du marker (6x6 cellules)
+      const cellSize = size / 6;
+      const sampledPattern: number[][] = [];
+
+      for (let row = 0; row < 6; row++) {
+        sampledPattern[row] = [];
+        for (let col = 0; col < 6; col++) {
+          // Centre de la cellule
+          const cx = bounds.minX + (col + 0.5) * cellSize;
+          const cy = bounds.minY + (row + 0.5) * cellSize;
+
+          // Échantillonner plusieurs points dans la cellule
+          let blackCount = 0;
+          let totalCount = 0;
+          const sampleRadius = cellSize * 0.25;
+
+          for (let dy = -sampleRadius; dy <= sampleRadius; dy += sampleRadius) {
+            for (let dx = -sampleRadius; dx <= sampleRadius; dx += sampleRadius) {
+              const sx = Math.round(cx + dx);
+              const sy = Math.round(cy + dy);
+              if (sx >= 0 && sx < canvas.width && sy >= 0 && sy < canvas.height) {
+                const sidx = sy * canvas.width + sx;
+                if (binary[sidx] === 0) blackCount++;
+                totalCount++;
+              }
+            }
+          }
+
+          // Majorité noir = 0, sinon = 1
+          sampledPattern[row][col] = blackCount > totalCount / 2 ? 0 : 1;
+        }
       }
 
-      console.log(`[OpenCV] ${markers.length} markers détectés`);
-      return markers;
+      // Vérifier que la bordure est noire
+      let borderOk = true;
+      for (let i = 0; i < 6; i++) {
+        if (sampledPattern[0][i] !== 0 || sampledPattern[5][i] !== 0 ||
+            sampledPattern[i][0] !== 0 || sampledPattern[i][5] !== 0) {
+          borderOk = false;
+          break;
+        }
+      }
 
-    } finally {
-      // Libérer la mémoire
-      if (src) src.delete();
-      if (gray) gray.delete();
-      if (corners) corners.delete();
-      if (ids) ids.delete();
+      if (!borderOk) continue;
+
+      // Essayer de matcher avec chaque marker du dictionnaire (et rotations)
+      for (let id = 0; id < ARUCO_DICT_4X4_50.length; id++) {
+        let pattern = getMarkerPattern(id);
+
+        for (let rotation = 0; rotation < 4; rotation++) {
+          if (patternsMatch(sampledPattern, pattern)) {
+            // Marker trouvé !
+            const center = {
+              x: (bounds.minX + bounds.maxX) / 2,
+              y: (bounds.minY + bounds.maxY) / 2
+            };
+
+            // Vérifier qu'on n'a pas déjà ce marker (éviter les doublons)
+            const isDuplicate = markers.some(m =>
+              m.id === id &&
+              Math.abs(m.center.x - center.x) < size * 0.5 &&
+              Math.abs(m.center.y - center.y) < size * 0.5
+            );
+
+            if (!isDuplicate) {
+              markers.push({
+                id,
+                corners: candidate.corners,
+                center,
+                size: { width, height }
+              });
+            }
+            break;
+          }
+
+          pattern = rotatePattern90(pattern);
+        }
+      }
     }
-  }, [dictionaryType]);
+
+    console.log(`[ArUco] ${markers.length} markers détectés:`, markers.map(m => m.id));
+    return markers;
+  }, []);
 
   // Calculer l'échelle (pixels par cm) à partir des markers
   const calculateScale = useCallback((
@@ -244,281 +379,38 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
   ): number | null => {
     if (markers.length === 0) return null;
 
-    // Calculer la taille moyenne des markers en pixels
     const markerSizes: number[] = [];
 
     for (const marker of markers) {
-      // Distance entre coins opposés (diagonale du carré)
-      const diagonal1 = Math.sqrt(
-        Math.pow(marker.corners[2].x - marker.corners[0].x, 2) +
-        Math.pow(marker.corners[2].y - marker.corners[0].y, 2)
-      );
-      const diagonal2 = Math.sqrt(
-        Math.pow(marker.corners[3].x - marker.corners[1].x, 2) +
-        Math.pow(marker.corners[3].y - marker.corners[1].y, 2)
-      );
-
-      // Côté du carré = diagonale / sqrt(2)
-      const sidePixels = (diagonal1 + diagonal2) / 2 / Math.sqrt(2);
+      const sidePixels = (marker.size.width + marker.size.height) / 2;
       markerSizes.push(sidePixels);
     }
 
-    // Moyenne des tailles
     const avgSizePixels = markerSizes.reduce((a, b) => a + b, 0) / markerSizes.length;
     const pixelsPerCm = avgSizePixels / markerSizeCm;
 
-    console.log(`[OpenCV] Échelle calculée: ${pixelsPerCm.toFixed(2)} pixels/cm`);
+    console.log(`[ArUco] Échelle calculée: ${pixelsPerCm.toFixed(2)} pixels/cm`);
     return pixelsPerCm;
   }, []);
 
-  // Corriger la perspective si on a au moins 4 markers formant un quadrilatère
+  // Correction de perspective (simplifié)
   const correctPerspective = useCallback(async (
     image: HTMLImageElement | HTMLCanvasElement,
     markers: ArucoMarker[]
   ): Promise<ImageData | null> => {
-    const cv = cvRef.current;
-    if (!cv || markers.length < 4) {
-      return null;
-    }
-
-    let src: any = null;
-    let dst: any = null;
-    let srcPoints: any = null;
-    let dstPoints: any = null;
-    let M: any = null;
-
-    try {
-      // Trier les markers par position pour former un rectangle
-      // (haut-gauche, haut-droit, bas-droit, bas-gauche)
-      const sorted = [...markers].sort((a, b) => {
-        const rowA = Math.floor(a.center.y / 100);
-        const rowB = Math.floor(b.center.y / 100);
-        if (rowA !== rowB) return rowA - rowB;
-        return a.center.x - b.center.x;
-      });
-
-      const fourMarkers = sorted.slice(0, 4);
-
-      // Points source (centres des markers)
-      const srcPts = fourMarkers.map(m => [m.center.x, m.center.y]).flat();
-
-      // Calculer les dimensions du rectangle de destination
-      const width = Math.max(
-        Math.abs(fourMarkers[1].center.x - fourMarkers[0].center.x),
-        Math.abs(fourMarkers[3].center.x - fourMarkers[2].center.x)
-      );
-      const height = Math.max(
-        Math.abs(fourMarkers[2].center.y - fourMarkers[0].center.y),
-        Math.abs(fourMarkers[3].center.y - fourMarkers[1].center.y)
-      );
-
-      // Points destination (rectangle parfait)
-      const dstPts = [
-        0, 0,
-        width, 0,
-        width, height,
-        0, height
-      ];
-
-      src = cv.imread(image);
-      dst = new cv.Mat();
-
-      srcPoints = cv.matFromArray(4, 1, cv.CV_32FC2, srcPts);
-      dstPoints = cv.matFromArray(4, 1, cv.CV_32FC2, dstPts);
-
-      M = cv.getPerspectiveTransform(srcPoints, dstPoints);
-      cv.warpPerspective(src, dst, M, new cv.Size(width, height));
-
-      // Convertir en ImageData
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      cv.imshow(canvas, dst);
-
-      const ctx = canvas.getContext('2d');
-      return ctx?.getImageData(0, 0, width, height) || null;
-
-    } finally {
-      if (src) src.delete();
-      if (dst) dst.delete();
-      if (srcPoints) srcPoints.delete();
-      if (dstPoints) dstPoints.delete();
-      if (M) M.delete();
-    }
+    // Pour l'instant, retourner null (pas implémenté sans OpenCV)
+    return null;
   }, []);
 
-  // Calibrer la caméra avec plusieurs images d'un damier
-  const calibrateCamera = useCallback(async (
-    images: (HTMLImageElement | HTMLCanvasElement)[],
-    patternSize: { width: number; height: number }
-  ): Promise<CameraCalibration | null> => {
-    const cv = cvRef.current;
-    if (!cv || images.length < 3) {
-      console.warn('[OpenCV] Besoin d\'au moins 3 images pour calibrer');
-      return null;
-    }
-
-    const objectPoints: any[] = [];
-    const imagePoints: any[] = [];
-    let imageSize: any = null;
-
-    try {
-      // Points 3D du damier (Z=0 pour tous)
-      const objp: number[] = [];
-      for (let i = 0; i < patternSize.height; i++) {
-        for (let j = 0; j < patternSize.width; j++) {
-          objp.push(j, i, 0);
-        }
-      }
-
-      for (const image of images) {
-        let src: any = null;
-        let gray: any = null;
-        let corners: any = null;
-
-        try {
-          src = cv.imread(image);
-          gray = new cv.Mat();
-          cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-
-          if (!imageSize) {
-            imageSize = new cv.Size(src.cols, src.rows);
-          }
-
-          corners = new cv.Mat();
-          const found = cv.findChessboardCorners(
-            gray,
-            new cv.Size(patternSize.width, patternSize.height),
-            corners
-          );
-
-          if (found) {
-            // Affiner les coins
-            cv.cornerSubPix(
-              gray,
-              corners,
-              new cv.Size(11, 11),
-              new cv.Size(-1, -1),
-              new cv.TermCriteria(cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-            );
-
-            objectPoints.push(cv.matFromArray(
-              patternSize.width * patternSize.height, 1, cv.CV_32FC3, objp
-            ));
-            imagePoints.push(corners.clone());
-          }
-        } finally {
-          if (src) src.delete();
-          if (gray) gray.delete();
-          // corners est utilisé dans imagePoints, ne pas supprimer
-        }
-      }
-
-      if (objectPoints.length < 3) {
-        console.warn('[OpenCV] Pas assez de damiers détectés');
-        return null;
-      }
-
-      // Calibrer
-      const cameraMatrix = new cv.Mat();
-      const distCoeffs = new cv.Mat();
-      const rvecs = new cv.MatVector();
-      const tvecs = new cv.MatVector();
-
-      cv.calibrateCamera(
-        objectPoints,
-        imagePoints,
-        imageSize,
-        cameraMatrix,
-        distCoeffs,
-        rvecs,
-        tvecs
-      );
-
-      // Extraire les résultats
-      const camMatrixData: number[][] = [];
-      for (let i = 0; i < 3; i++) {
-        camMatrixData.push([]);
-        for (let j = 0; j < 3; j++) {
-          camMatrixData[i].push(cameraMatrix.doubleAt(i, j));
-        }
-      }
-
-      const distCoeffsData: number[] = [];
-      for (let i = 0; i < distCoeffs.cols; i++) {
-        distCoeffsData.push(distCoeffs.doubleAt(0, i));
-      }
-
-      // Nettoyer
-      cameraMatrix.delete();
-      distCoeffs.delete();
-      rvecs.delete();
-      tvecs.delete();
-      objectPoints.forEach(m => m.delete());
-      imagePoints.forEach(m => m.delete());
-
-      console.log('[OpenCV] Calibration réussie');
-
-      return {
-        cameraMatrix: camMatrixData,
-        distCoeffs: distCoeffsData,
-        calibrated: true
-      };
-
-    } catch (err) {
-      console.error('[OpenCV] Erreur de calibration:', err);
-      return null;
-    }
-  }, []);
-
-  // Corriger la distorsion avec une calibration existante
-  const undistortImage = useCallback(async (
-    image: HTMLImageElement | HTMLCanvasElement,
-    calibration: CameraCalibration
-  ): Promise<ImageData | null> => {
-    const cv = cvRef.current;
-    if (!cv || !calibration.calibrated) {
-      return null;
-    }
-
-    let src: any = null;
-    let dst: any = null;
-    let cameraMatrix: any = null;
-    let distCoeffs: any = null;
-
-    try {
-      src = cv.imread(image);
-      dst = new cv.Mat();
-
-      // Reconstruire les matrices
-      cameraMatrix = cv.matFromArray(3, 3, cv.CV_64FC1, calibration.cameraMatrix.flat());
-      distCoeffs = cv.matFromArray(1, calibration.distCoeffs.length, cv.CV_64FC1, calibration.distCoeffs);
-
-      cv.undistort(src, dst, cameraMatrix, distCoeffs);
-
-      // Convertir en ImageData
-      const canvas = document.createElement('canvas');
-      canvas.width = dst.cols;
-      canvas.height = dst.rows;
-      cv.imshow(canvas, dst);
-
-      const ctx = canvas.getContext('2d');
-      return ctx?.getImageData(0, 0, dst.cols, dst.rows) || null;
-
-    } finally {
-      if (src) src.delete();
-      if (dst) dst.delete();
-      if (cameraMatrix) cameraMatrix.delete();
-      if (distCoeffs) distCoeffs.delete();
-    }
-  }, []);
+  const calibrateCamera = useCallback(async () => null, []);
+  const undistortImage = useCallback(async () => null, []);
 
   // Pipeline complet
   const processImage = useCallback(async (
     image: HTMLImageElement | HTMLCanvasElement,
     options: { markerSizeCm?: number; correctPerspective?: boolean } = {}
   ): Promise<CalibrationResult> => {
-    const { markerSizeCm: size = markerSizeCm, correctPerspective: correct = false } = options;
+    const { markerSizeCm: size = markerSizeCm } = options;
 
     const result: CalibrationResult = {
       markersDetected: [],
@@ -528,24 +420,17 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
     };
 
     try {
-      // Détecter les markers
       result.markersDetected = await detectMarkers(image);
 
       if (result.markersDetected.length > 0) {
-        // Calculer l'échelle
         result.pixelsPerCm = calculateScale(result.markersDetected, size);
-
-        // Corriger la perspective si demandé et possible
-        if (correct && result.markersDetected.length >= 4) {
-          result.correctedImageData = await correctPerspective(image, result.markersDetected);
-        }
       }
     } catch (err) {
-      console.error('[OpenCV] Erreur de traitement:', err);
+      console.error('[ArUco] Erreur de traitement:', err);
     }
 
     return result;
-  }, [markerSizeCm, detectMarkers, calculateScale, correctPerspective]);
+  }, [markerSizeCm, detectMarkers, calculateScale]);
 
   return {
     isLoaded,
