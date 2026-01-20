@@ -22345,6 +22345,30 @@ export function CADGabaritCanvas({
                         </div>
                       )}
                       <div className="border-t my-0.5" />
+                      {/* v7.45: Options ArUco - Redresser et Assembler */}
+                      <button
+                        className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5 text-purple-600"
+                        onClick={() => {
+                          // TODO: Implémenter redressement perspective via homographie ArUco
+                          toast.info("Redressement perspective - À implémenter");
+                          setContextMenu(null);
+                        }}
+                      >
+                        <Maximize2 className="h-3 w-3" />
+                        Redresser (perspective)
+                      </button>
+                      <button
+                        className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5 text-green-600"
+                        onClick={() => {
+                          // TODO: Implémenter assemblage des photos
+                          toast.info("Assemblage photos - À implémenter");
+                          setContextMenu(null);
+                        }}
+                      >
+                        <GitMerge className="h-3 w-3" />
+                        Assembler les photos
+                      </button>
+                      <div className="border-t my-0.5" />
                       <button
                         className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5 text-red-600"
                         onClick={() => {
