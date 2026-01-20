@@ -4088,9 +4088,19 @@ export function CADGabaritCanvas({
     setSketch(createEmptySketch(scaleFactor));
     // Réinitialiser les images de fond
     setBackgroundImages([]);
-    // Réinitialiser l'historique
-    setHistory([]);
-    setHistoryIndex(-1);
+    // Réinitialiser l'historique (via les branches)
+    const newBranchId = `branch-${Date.now()}`;
+    setBranches([{
+      id: newBranchId,
+      name: "Principal",
+      history: [],
+      historyIndex: -1,
+      createdAt: Date.now(),
+      parentBranchId: null,
+      parentHistoryIndex: null,
+      color: "#3B82F6",
+    }]);
+    setActiveBranchId(newBranchId);
     // Réinitialiser les mesures
     setMeasurements([]);
     // Fermer la modale si ouverte
@@ -16515,16 +16525,18 @@ export function CADGabaritCanvas({
                             img.onload = () => {
                               const bgImage: BackgroundImage = {
                                 id: `aruco-${Date.now()}`,
+                                name: file.name || "Image ArUco",
                                 image: img,
                                 x: 0,
                                 y: 0,
-                                width: img.width,
-                                height: img.height,
+                                scale: 1,
+                                rotation: 0,
                                 opacity: imageOpacity,
                                 visible: true,
-                                scaleFactor: 1,
-                                rotation: 0,
-                                layerId: activeLayerId,
+                                locked: false,
+                                order: backgroundImages.length,
+                                layerId: sketch.activeLayerId,
+                                markers: [],
                               };
                               setPendingArucoImage(bgImage);
                               setShowArucoModal(true);
@@ -19066,13 +19078,15 @@ export function CADGabaritCanvas({
               const calibratedImage: BackgroundImage = {
                 ...pendingArucoImage,
                 calibrationData: {
+                  points: new Map(),
                   pairs: new Map(),
                   applied: true,
-                  // Stocker l'échelle ArUco dans les metadata
+                  mode: "simple" as const,
+                  scale: 10 / pixelsPerCm, // mm par pixel
                 },
                 // Appliquer l'échelle: 1cm = pixelsPerCm pixels dans l'image
-                // Donc le scaleFactor de l'image doit être ajusté
-                scaleFactor: scaleFactor / pixelsPerCm, // Convertir en unités du canvas
+                // Donc le scale de l'image doit être ajusté
+                scale: scaleFactor / pixelsPerCm, // Convertir en unités du canvas
               };
               addImageWithLayer(calibratedImage);
               toast.success(`Calibration ArUco appliquée (${markers.length} markers, ${pixelsPerCm.toFixed(1)} px/cm)`);
