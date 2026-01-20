@@ -101,8 +101,8 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
     const usableWidth = A4_WIDTH_MM - 2 * MARGIN_MM;
     const usableHeight = A4_HEIGHT_MM - 2 * MARGIN_MM - 20; // Espace titre + footer
 
-    const labelHeight = 10; // mm - Augmenté pour éviter le chevauchement
-    const cellHeight = size + labelHeight + GAP_MM;
+    const labelHeight = 15; // mm - Espace sous le marker pour le texte
+    const cellHeight = size + labelHeight;
     const cellWidth = size + GAP_MM;
 
     const cols = Math.max(1, Math.floor((usableWidth + GAP_MM) / cellWidth));
@@ -218,7 +218,7 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
     let markerId = start;
 
     const cellWidth = markerSizePx + gapPx;
-    const cellHeight = markerSizePx + labelHeightPx + gapPx;
+    const cellHeight = markerSizePx + labelHeightPx;
     const totalGridWidth = cols * cellWidth - gapPx;
     const totalGridHeight = rows * cellHeight - gapPx;
     const offsetX = (canvasWidth - totalGridWidth) / 2;
@@ -235,9 +235,9 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
 
         // Label SOUS le marker avec assez d'espace
         ctx.fillStyle = "#333";
-        ctx.font = `bold ${Math.max(8, markerSizePx * 0.12)}px monospace`;
+        ctx.font = `bold ${Math.max(8, markerSizePx * 0.15)}px monospace`;
         ctx.textAlign = "center";
-        ctx.fillText(`ID: ${markerId}`, mx + markerSizePx / 2, my + markerSizePx + labelHeightPx * 0.7);
+        ctx.fillText(`ID: ${markerId}`, mx + markerSizePx / 2, my + markerSizePx + labelHeightPx * 0.6);
 
         markerId++;
       }
@@ -314,7 +314,7 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
 
         // Calculer la grille centrée
         const cellWidth = size + GAP_MM;
-        const cellHeight = size + labelHeight + GAP_MM;
+        const cellHeight = size + labelHeight;
         const totalGridWidth = cols * cellWidth - GAP_MM;
         const totalGridHeight = rows * cellHeight - GAP_MM;
         const offsetX = (A4_WIDTH_MM - totalGridWidth) / 2;
@@ -329,10 +329,10 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
 
             drawMarkerPDF(pdf, markerId, mx, my, size);
 
-            // Label sous le marker
-            pdf.setFontSize(Math.max(8, size * 0.15));
+            // Label sous le marker (bien espacé)
+            pdf.setFontSize(Math.max(10, size * 0.18));
             pdf.setTextColor(51, 51, 51);
-            pdf.text(`ID: ${markerId}`, mx + size / 2, my + size + labelHeight * 0.6, { align: "center" });
+            pdf.text(`ID: ${markerId}`, mx + size / 2, my + size + labelHeight * 0.55, { align: "center" });
 
             markerId++;
           }
