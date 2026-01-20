@@ -589,7 +589,9 @@ export interface BackgroundImage {
   image: HTMLImageElement;
   x: number; // Position X en coordonnées monde (centre de l'image)
   y: number; // Position Y en coordonnées monde (centre de l'image)
-  scale: number; // Échelle individuelle (1 = taille originale)
+  scale: number; // Échelle uniforme (rétrocompatibilité) - utilisé si scaleX/Y absents
+  scaleX?: number; // Échelle horizontale (prioritaire sur scale)
+  scaleY?: number; // Échelle verticale (prioritaire sur scale)
   rotation?: number; // Rotation de l'image en degrés (défaut: 0)
   opacity: number; // Opacité (0-1)
   visible: boolean;
