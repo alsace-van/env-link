@@ -1,7 +1,7 @@
 // ============================================
 // HOOK: useOpenCVAruco
 // Détection ArUco 100% JavaScript (sans OpenCV)
-// VERSION: 10.0 - Fixed detection algorithm
+// VERSION: 11.0 - Strict marker validation
 // ============================================
 
 import { useState, useCallback, useEffect } from "react";
@@ -29,24 +29,56 @@ interface UseOpenCVArucoReturn {
   isLoaded: boolean;
   isLoading: boolean;
   error: string | null;
-  detectMarkers: (image: HTMLImageElement | HTMLCanvasElement) => Promise<ArucoMarker[]>;
+  detectMarkers: (
+    image: HTMLImageElement | HTMLCanvasElement
+  ) => Promise<ArucoMarker[]>;
   calculateScale: (markers: ArucoMarker[], markerSizeCm: number) => number | null;
   correctPerspective: (
     image: HTMLImageElement | HTMLCanvasElement,
-    markers: ArucoMarker[],
+    markers: ArucoMarker[]
   ) => Promise<ImageData | null>;
   calibrateCamera: (
     images: (HTMLImageElement | HTMLCanvasElement)[],
-    patternSize: { width: number; height: number },
+    patternSize: { width: number; height: number }
   ) => Promise<null>;
-  undistortImage: (image: HTMLImageElement | HTMLCanvasElement, calibration: unknown) => Promise<ImageData | null>;
+  undistortImage: (
+    image: HTMLImageElement | HTMLCanvasElement,
+    calibration: unknown
+  ) => Promise<ImageData | null>;
   processImage: (
     image: HTMLImageElement | HTMLCanvasElement,
-    options?: { markerSizeCm?: number; correctPerspective?: boolean },
+    options?: { markerSizeCm?: number; correctPerspective?: boolean }
   ) => Promise<CalibrationResult>;
 }
 
-export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVArucoReturn {
+// Known ArUco DICT_5X5_50 patterns (IDs 0-19)
+// Each pattern is the 5x5 inner bits as a 25-character string
+const ARUCO_5X5_50_PATTERNS: { [key: string]: number } = {
+  "1010100001100100011111011": 0,
+  "1101011101111011010001000": 1,
+  "0011100101100111100010110": 2,
+  "0100111001111110101000101": 3,
+  "1110001011010011101101100": 4,
+  "1001010111001010100111111": 5,
+  "0111011111010010111001010": 6,
+  "0000000011001011110011001": 7,
+  "1010111001000011000100110": 8,
+  "1101100101011010001110101": 9,
+  "0011001101000110110100000": 10,
+  "0100010001011111111110011": 11,
+  "1110110011110110100010010": 12,
+  "1001101111101111101000001": 13,
+  "0111000111100111010110100": 14,
+  "0000011011111110011100111": 15,
+  "1111000100001100010011011": 16,
+  "1000011000010101011001000": 17,
+  "0110010000001101100011110": 18,
+  "0001001100010100101001101": 19,
+};
+
+export function useOpenCVAruco(
+  options: UseOpenCVArucoOptions = {}
+): UseOpenCVArucoReturn {
   const { markerSizeCm = 10 } = options;
 
   const [isLoaded, setIsLoaded] = useState(false);
@@ -57,26 +89,28 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
     const timer = setTimeout(() => {
       setIsLoaded(true);
       setIsLoading(false);
-      console.log("[ArUco v10] Pure JS detector ready");
+      console.log("[ArUco v11] Pure JS detector ready (strict mode)");
     }, 100);
     return () => clearTimeout(timer);
   }, []);
 
   const detectMarkers = useCallback(
-    async (image: HTMLImageElement | HTMLCanvasElement): Promise<ArucoMarker[]> => {
+    async (
+      image: HTMLImageElement | HTMLCanvasElement
+    ): Promise<ArucoMarker[]> => {
       if (!isLoaded) return [];
 
       const w = image.width || (image as HTMLImageElement).naturalWidth;
       const h = image.height || (image as HTMLImageElement).naturalHeight;
 
-      console.log(`[ArUco v10] Detecting in ${w}x${h} image`);
+      console.log(`[ArUco v11] Detecting in ${w}x${h} image`);
 
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!ctx) return [];
 
-      // Process at higher resolution for better detection
-      const maxDim = 1200;
+      // Process at good resolution
+      const maxDim = 1400;
       let scale = 1;
       if (Math.max(w, h) > maxDim) {
         scale = maxDim / Math.max(w, h);
@@ -91,18 +125,21 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
 
       const markers = findMarkersInImage(gray, canvas.width, canvas.height, scale);
 
-      console.log(`[ArUco v10] Found ${markers.length} markers`);
+      console.log(`[ArUco v11] Found ${markers.length} valid markers`);
       return markers;
     },
-    [isLoaded],
+    [isLoaded]
   );
 
-  const calculateScale = useCallback((markers: ArucoMarker[], markerSizeCm: number): number | null => {
-    if (markers.length === 0) return null;
-    const sizes = markers.map((m) => (m.size.width + m.size.height) / 2);
-    const avgSize = sizes.reduce((a, b) => a + b, 0) / sizes.length;
-    return avgSize / markerSizeCm;
-  }, []);
+  const calculateScale = useCallback(
+    (markers: ArucoMarker[], markerSizeCm: number): number | null => {
+      if (markers.length === 0) return null;
+      const sizes = markers.map((m) => (m.size.width + m.size.height) / 2);
+      const avgSize = sizes.reduce((a, b) => a + b, 0) / sizes.length;
+      return avgSize / markerSizeCm;
+    },
+    []
+  );
 
   const correctPerspective = useCallback(async () => null, []);
   const calibrateCamera = useCallback(async () => null, []);
@@ -111,7 +148,7 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
   const processImage = useCallback(
     async (
       image: HTMLImageElement | HTMLCanvasElement,
-      opts: { markerSizeCm?: number } = {},
+      opts: { markerSizeCm?: number } = {}
     ): Promise<CalibrationResult> => {
       const { markerSizeCm: size = markerSizeCm } = opts;
       const result: CalibrationResult = {
@@ -128,7 +165,7 @@ export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVAr
 
       return result;
     },
-    [markerSizeCm, detectMarkers, calculateScale],
+    [markerSizeCm, detectMarkers, calculateScale]
   );
 
   return {
@@ -152,70 +189,33 @@ function toGrayscale(imageData: ImageData): Uint8Array {
 
   for (let i = 0; i < gray.length; i++) {
     const idx = i * 4;
-    gray[i] = Math.round(0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]);
+    gray[i] = Math.round(
+      0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]
+    );
   }
 
   return gray;
 }
 
-// Global threshold (Otsu-style)
-function globalThreshold(gray: Uint8Array): Uint8Array {
-  // Calculate histogram
-  const hist = new Uint32Array(256);
-  for (let i = 0; i < gray.length; i++) {
-    hist[gray[i]]++;
-  }
-
-  // Otsu's method
-  const total = gray.length;
-  let sum = 0;
-  for (let i = 0; i < 256; i++) sum += i * hist[i];
-
-  let sumB = 0;
-  let wB = 0;
-  let maxVar = 0;
-  let threshold = 128;
-
-  for (let t = 0; t < 256; t++) {
-    wB += hist[t];
-    if (wB === 0) continue;
-
-    const wF = total - wB;
-    if (wF === 0) break;
-
-    sumB += t * hist[t];
-
-    const mB = sumB / wB;
-    const mF = (sum - sumB) / wF;
-
-    const varBetween = wB * wF * (mB - mF) * (mB - mF);
-
-    if (varBetween > maxVar) {
-      maxVar = varBetween;
-      threshold = t;
-    }
-  }
-
-  const result = new Uint8Array(gray.length);
-  for (let i = 0; i < gray.length; i++) {
-    result[i] = gray[i] > threshold ? 255 : 0;
-  }
-
-  return result;
-}
-
-function adaptiveThreshold(gray: Uint8Array, width: number, height: number, blockSize: number, C: number): Uint8Array {
+function adaptiveThreshold(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  blockSize: number,
+  C: number
+): Uint8Array {
   const result = new Uint8Array(gray.length);
   const halfBlock = Math.floor(blockSize / 2);
 
-  // Integral image
+  // Integral image for fast mean calculation
   const integral = new Float64Array((width + 1) * (height + 1));
 
   for (let y = 0; y < height; y++) {
     let rowSum = 0;
     for (let x = 0; x < width; x++) {
       rowSum += gray[y * width + x];
-      integral[(y + 1) * (width + 1) + (x + 1)] = integral[y * (width + 1) + (x + 1)] + rowSum;
+      integral[(y + 1) * (width + 1) + (x + 1)] =
+        integral[y * (width + 1) + (x + 1)] + rowSum;
     }
   }
 
@@ -237,7 +237,6 @@ function adaptiveThreshold(gray: Uint8Array, width: number, height: number, bloc
       const mean = sum / area;
       const idx = y * width + x;
 
-      // White where pixel is darker than local mean minus C
       result[idx] = gray[idx] < mean - C ? 255 : 0;
     }
   }
@@ -252,19 +251,21 @@ interface Point {
   y: number;
 }
 
-function findContours(binary: Uint8Array, width: number, height: number): Point[][] {
+function findContours(
+  binary: Uint8Array,
+  width: number,
+  height: number
+): Point[][] {
   const contours: Point[][] = [];
   const visited = new Uint8Array(binary.length);
 
-  // Moore boundary tracing
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
       const idx = y * width + x;
 
-      // Start of contour: white pixel with black to the left, not yet visited
       if (binary[idx] === 255 && binary[idx - 1] === 0 && !visited[idx]) {
-        const contour = traceContourMoore(binary, width, height, x, y, visited);
-        if (contour.length >= 20) {
+        const contour = traceContour(binary, width, height, x, y, visited);
+        if (contour.length >= 40) {
           contours.push(contour);
         }
       }
@@ -274,38 +275,31 @@ function findContours(binary: Uint8Array, width: number, height: number): Point[
   return contours;
 }
 
-function traceContourMoore(
+function traceContour(
   binary: Uint8Array,
   width: number,
   height: number,
   startX: number,
   startY: number,
-  visited: Uint8Array,
+  visited: Uint8Array
 ): Point[] {
   const contour: Point[] = [];
-
-  // 8-connected neighbors (clockwise from right)
   const dx = [1, 1, 0, -1, -1, -1, 0, 1];
   const dy = [0, 1, 1, 1, 0, -1, -1, -1];
 
   let x = startX;
   let y = startY;
-  let dir = 0; // Start looking to the right
+  let dir = 0;
 
   const maxSteps = 50000;
   let steps = 0;
-  let firstX = x;
-  let firstY = y;
-  let startDir = 0;
-  let firstMove = true;
 
   do {
     contour.push({ x, y });
     visited[y * width + x] = 1;
 
-    // Look for next boundary pixel (start from backtrack direction)
     let found = false;
-    const searchStart = (dir + 5) % 8; // Start from dir - 3
+    const searchStart = (dir + 5) % 8;
 
     for (let i = 0; i < 8; i++) {
       const newDir = (searchStart + i) % 8;
@@ -314,10 +308,6 @@ function traceContourMoore(
 
       if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
         if (binary[ny * width + nx] === 255) {
-          if (firstMove) {
-            firstMove = false;
-            startDir = newDir;
-          }
           x = nx;
           y = ny;
           dir = newDir;
@@ -329,7 +319,7 @@ function traceContourMoore(
 
     if (!found) break;
     steps++;
-  } while (steps < maxSteps && !(x === firstX && y === firstY && contour.length > 4));
+  } while (steps < maxSteps && !(x === startX && y === startY && contour.length > 4));
 
   return contour;
 }
@@ -337,9 +327,8 @@ function traceContourMoore(
 // ====== POLYGON APPROXIMATION ======
 
 function approxPolyDP(contour: Point[], epsilon: number): Point[] {
-  if (contour.length < 3) return contour;
+  if (contour.length < 4) return contour;
 
-  // Find the two farthest points
   let maxDist = 0;
   let idx1 = 0;
   let idx2 = 0;
@@ -355,16 +344,13 @@ function approxPolyDP(contour: Point[], epsilon: number): Point[] {
     }
   }
 
-  // Split contour at these points and simplify each part
   const part1 = contour.slice(idx1, idx2 + 1);
   const part2 = [...contour.slice(idx2), ...contour.slice(0, idx1 + 1)];
 
   const simp1 = douglasPeucker(part1, epsilon);
   const simp2 = douglasPeucker(part2, epsilon);
 
-  // Merge results
-  const result = [...simp1.slice(0, -1), ...simp2.slice(0, -1)];
-  return result;
+  return [...simp1.slice(0, -1), ...simp2.slice(0, -1)];
 }
 
 function douglasPeucker(points: Point[], epsilon: number): Point[] {
@@ -401,10 +387,7 @@ function perpendicularDistance(p: Point, a: Point, b: Point): number {
   if (lenSq === 0) return distance(p, a);
 
   const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq));
-  const projX = a.x + t * dx;
-  const projY = a.y + t * dy;
-
-  return Math.sqrt((p.x - projX) ** 2 + (p.y - projY) ** 2);
+  return Math.sqrt((p.x - (a.x + t * dx)) ** 2 + (p.y - (a.y + t * dy)) ** 2);
 }
 
 function distance(p1: Point, p2: Point): number {
@@ -424,7 +407,7 @@ function isConvex(quad: Point[]): boolean {
 
     const cross = (p2.x - p1.x) * (p3.y - p2.y) - (p2.y - p1.y) * (p3.x - p2.x);
 
-    if (Math.abs(cross) < 1e-6) continue; // Skip near-zero crosses
+    if (Math.abs(cross) < 1e-6) continue;
 
     const s = cross > 0 ? 1 : -1;
     if (sign === 0) {
@@ -448,18 +431,13 @@ function contourArea(contour: Point[]): number {
 }
 
 function orderCorners(corners: Point[]): Point[] {
-  // Find centroid
   const cx = corners.reduce((s, c) => s + c.x, 0) / 4;
   const cy = corners.reduce((s, c) => s + c.y, 0) / 4;
 
-  // Sort by angle
   const sorted = [...corners].sort((a, b) => {
-    const angleA = Math.atan2(a.y - cy, a.x - cx);
-    const angleB = Math.atan2(b.y - cy, b.x - cx);
-    return angleA - angleB;
+    return Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx);
   });
 
-  // Find top-left (smallest x + y sum)
   let minSum = Infinity;
   let tlIdx = 0;
   for (let i = 0; i < 4; i++) {
@@ -470,7 +448,6 @@ function orderCorners(corners: Point[]): Point[] {
     }
   }
 
-  // Reorder starting from top-left
   const result: Point[] = [];
   for (let i = 0; i < 4; i++) {
     result.push(sorted[(tlIdx + i) % 4]);
@@ -481,225 +458,202 @@ function orderCorners(corners: Point[]): Point[] {
 
 // ====== MARKER DETECTION ======
 
-function findMarkersInImage(gray: Uint8Array, width: number, height: number, scale: number): ArucoMarker[] {
+function findMarkersInImage(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  scale: number
+): ArucoMarker[] {
   const markers: ArucoMarker[] = [];
-  const seenPatterns = new Set<string>();
+  const foundCenters: { x: number; y: number }[] = [];
 
-  // Multiple threshold strategies
+  // Threshold strategies focused on high contrast markers
   const strategies = [
-    // Adaptive thresholds
-    { type: "adaptive", blockSize: 15, C: 5 },
-    { type: "adaptive", blockSize: 21, C: 7 },
-    { type: "adaptive", blockSize: 31, C: 10 },
-    { type: "adaptive", blockSize: 45, C: 12 },
-    { type: "adaptive", blockSize: 61, C: 15 },
-    // Global threshold
-    { type: "global" },
+    { blockSize: 25, C: 10 },
+    { blockSize: 35, C: 12 },
+    { blockSize: 45, C: 15 },
+    { blockSize: 55, C: 18 },
   ];
 
   const minDim = Math.min(width, height);
-  const minArea = Math.pow(minDim * 0.015, 2);
-  const maxArea = Math.pow(minDim * 0.4, 2);
+  // ArUco markers should be reasonably sized
+  const minArea = Math.pow(minDim * 0.03, 2);
+  const maxArea = Math.pow(minDim * 0.25, 2);
 
-  console.log(`[ArUco v10] Min area: ${minArea.toFixed(0)}, Max area: ${maxArea.toFixed(0)}`);
+  console.log(`[ArUco v11] Area range: ${minArea.toFixed(0)} - ${maxArea.toFixed(0)}`);
 
-  for (const strategy of strategies) {
-    let binary: Uint8Array;
+  for (const { blockSize, C } of strategies) {
+    const binary = adaptiveThreshold(gray, width, height, blockSize, C);
+    const contours = findContours(binary, width, height);
 
-    if (strategy.type === "global") {
-      binary = globalThreshold(gray);
-      console.log(`[ArUco v10] Global threshold`);
-    } else {
-      binary = adaptiveThreshold(gray, width, height, strategy.blockSize!, strategy.C!);
-      console.log(`[ArUco v10] Adaptive: blockSize=${strategy.blockSize}, C=${strategy.C}`);
-    }
+    console.log(`[ArUco v11] blockSize=${blockSize}, C=${C}: ${contours.length} contours`);
 
-    // Also try inverted
-    const binaryInv = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      binaryInv[i] = binary[i] === 255 ? 0 : 255;
-    }
+    for (const contour of contours) {
+      const area = contourArea(contour);
+      if (area < minArea || area > maxArea) continue;
 
-    for (const bin of [binary, binaryInv]) {
-      const contours = findContours(bin, width, height);
-      console.log(`[ArUco v10] ${contours.length} contours found`);
+      const perimeter = contour.reduce((sum, p, i, arr) => {
+        return sum + distance(p, arr[(i + 1) % arr.length]);
+      }, 0);
 
-      let quadCount = 0;
-      let validQuadCount = 0;
+      // Check if roughly square (perimeter² / area ≈ 16)
+      const squareness = (perimeter * perimeter) / area;
+      if (squareness < 14 || squareness > 22) continue;
 
-      for (const contour of contours) {
-        const area = contourArea(contour);
-        if (area < minArea || area > maxArea) continue;
+      const epsilon = 0.03 * perimeter;
+      const approx = approxPolyDP(contour, epsilon);
 
-        const perimeter = contour.reduce((sum, p, i, arr) => {
-          const next = arr[(i + 1) % arr.length];
-          return sum + distance(p, next);
-        }, 0);
+      if (approx.length !== 4) continue;
+      if (!isConvex(approx)) continue;
 
-        const epsilon = 0.02 * perimeter;
-        const approx = approxPolyDP(contour, epsilon);
+      const ordered = orderCorners(approx);
 
-        if (approx.length === 4) {
-          quadCount++;
+      // Check aspect ratio
+      const side1 = distance(ordered[0], ordered[1]);
+      const side2 = distance(ordered[1], ordered[2]);
+      const side3 = distance(ordered[2], ordered[3]);
+      const side4 = distance(ordered[3], ordered[0]);
 
-          if (isConvex(approx)) {
-            validQuadCount++;
+      const sides = [side1, side2, side3, side4];
+      const minSide = Math.min(...sides);
+      const maxSide = Math.max(...sides);
+      const sideRatio = minSide / maxSide;
 
-            const ordered = orderCorners(approx);
+      if (sideRatio < 0.7) continue;
 
-            // Check aspect ratio
-            const side1 = distance(ordered[0], ordered[1]);
-            const side2 = distance(ordered[1], ordered[2]);
-            const side3 = distance(ordered[2], ordered[3]);
-            const side4 = distance(ordered[3], ordered[0]);
+      // Try to decode marker (STRICT validation)
+      const result = decodeMarkerStrict(gray, width, height, ordered);
 
-            const avgWidth = (side1 + side3) / 2;
-            const avgHeight = (side2 + side4) / 2;
-            const ratio = Math.min(avgWidth, avgHeight) / Math.max(avgWidth, avgHeight);
+      if (result !== null) {
+        const center = {
+          x: ordered.reduce((s, c) => s + c.x, 0) / 4,
+          y: ordered.reduce((s, c) => s + c.y, 0) / 4,
+        };
 
-            if (ratio > 0.6) {
-              // Try to decode marker
-              const result = decodeMarker(gray, width, height, ordered);
+        // Check for duplicates
+        const isDuplicate = foundCenters.some(
+          (fc) =>
+            Math.abs(fc.x - center.x) < minSide * 0.3 &&
+            Math.abs(fc.y - center.y) < minSide * 0.3
+        );
 
-              if (result !== null) {
-                // Create unique key for this pattern
-                const patternKey = `${result.pattern}-${Math.round(ordered[0].x / 10)}-${Math.round(ordered[0].y / 10)}`;
+        if (!isDuplicate) {
+          foundCenters.push(center);
 
-                if (!seenPatterns.has(patternKey)) {
-                  seenPatterns.add(patternKey);
+          const scaledCorners = ordered.map((c) => ({
+            x: c.x / scale,
+            y: c.y / scale,
+          }));
 
-                  // Scale back to original coordinates
-                  const scaledCorners = ordered.map((c) => ({
-                    x: c.x / scale,
-                    y: c.y / scale,
-                  }));
+          const scaledCenter = {
+            x: center.x / scale,
+            y: center.y / scale,
+          };
 
-                  const center = {
-                    x: scaledCorners.reduce((s, c) => s + c.x, 0) / 4,
-                    y: scaledCorners.reduce((s, c) => s + c.y, 0) / 4,
-                  };
+          const markerSize = ((side1 + side2 + side3 + side4) / 4) / scale;
 
-                  const markerWidth =
-                    (distance(scaledCorners[0], scaledCorners[1]) + distance(scaledCorners[2], scaledCorners[3])) / 2;
-                  const markerHeight =
-                    (distance(scaledCorners[1], scaledCorners[2]) + distance(scaledCorners[3], scaledCorners[0])) / 2;
+          markers.push({
+            id: result.id,
+            corners: scaledCorners,
+            center: scaledCenter,
+            size: { width: markerSize, height: markerSize },
+            confidence: result.confidence,
+          });
 
-                  // Check for spatial duplicates
-                  const isDuplicate = markers.some(
-                    (m) =>
-                      Math.abs(m.center.x - center.x) < markerWidth * 0.2 &&
-                      Math.abs(m.center.y - center.y) < markerHeight * 0.2,
-                  );
-
-                  if (!isDuplicate) {
-                    markers.push({
-                      id: result.id,
-                      corners: scaledCorners,
-                      center,
-                      size: { width: markerWidth, height: markerHeight },
-                      confidence: result.confidence,
-                    });
-
-                    console.log(
-                      `[ArUco v10] ✓ Marker ID=${result.id} at (${center.x.toFixed(0)}, ${center.y.toFixed(0)})`,
-                    );
-                  }
-                }
-              }
-            }
-          }
+          console.log(
+            `[ArUco v11] ✓ Marker ID=${result.id} (confidence=${result.confidence.toFixed(2)})`
+          );
         }
       }
-
-      console.log(`[ArUco v10] Quads: ${quadCount}, Valid: ${validQuadCount}`);
     }
 
-    if (markers.length >= 4) {
-      console.log(`[ArUco v10] Found enough markers, stopping early`);
-      break;
-    }
+    if (markers.length >= 6) break;
   }
 
   return markers;
 }
 
-function decodeMarker(
+function decodeMarkerStrict(
   gray: Uint8Array,
   width: number,
   height: number,
-  corners: Point[],
-): { id: number; pattern: string; confidence: number } | null {
-  // Sample the marker region - 7x7 grid (5x5 data + 1px border)
-  const gridSize = 7;
+  corners: Point[]
+): { id: number; confidence: number } | null {
+  const gridSize = 7; // 5x5 data + border
+  const cellValues: number[][] = [];
 
-  const bits: number[][] = [];
-
+  // Sample each cell with multiple points
   for (let row = 0; row < gridSize; row++) {
-    bits[row] = [];
+    cellValues[row] = [];
     for (let col = 0; col < gridSize; col++) {
-      // Sample point at cell center
-      const u = (col + 0.5) / gridSize;
-      const v = (row + 0.5) / gridSize;
+      const samples: number[] = [];
 
-      // Bilinear interpolation for position
-      const x = bilinearInterp(corners, u, v, "x");
-      const y = bilinearInterp(corners, u, v, "y");
+      // Sample 7x7 points within each cell
+      for (let sy = 0; sy < 7; sy++) {
+        for (let sx = 0; sx < 7; sx++) {
+          const u = (col + (sx + 0.5) / 7) / gridSize;
+          const v = (row + (sy + 0.5) / 7) / gridSize;
 
-      // Sample multiple points for robustness
-      let sum = 0;
-      let count = 0;
-      const sampleRadius = 2;
+          const x = bilinearInterp(corners, u, v, "x");
+          const y = bilinearInterp(corners, u, v, "y");
 
-      for (let dy = -sampleRadius; dy <= sampleRadius; dy++) {
-        for (let dx = -sampleRadius; dx <= sampleRadius; dx++) {
-          const px = Math.round(x + dx);
-          const py = Math.round(y + dy);
+          const px = Math.round(x);
+          const py = Math.round(y);
 
           if (px >= 0 && px < width && py >= 0 && py < height) {
-            sum += gray[py * width + px];
-            count++;
+            samples.push(gray[py * width + px]);
           }
         }
       }
 
-      const avgValue = count > 0 ? sum / count : 128;
-      bits[row][col] = avgValue > 127 ? 1 : 0;
+      if (samples.length > 0) {
+        samples.sort((a, b) => a - b);
+        cellValues[row][col] = samples[Math.floor(samples.length / 2)];
+      } else {
+        cellValues[row][col] = 128;
+      }
     }
   }
 
-  // Check if border is black (0)
+  // Otsu threshold on cell values
+  const allValues = cellValues.flat();
+  const threshold = otsuThreshold(allValues);
+
+  // Convert to binary
+  const bits: number[][] = [];
+  for (let row = 0; row < gridSize; row++) {
+    bits[row] = [];
+    for (let col = 0; col < gridSize; col++) {
+      bits[row][col] = cellValues[row][col] > threshold ? 1 : 0;
+    }
+  }
+
+  // Check border - MUST be black
   let borderBlackCount = 0;
   let borderTotal = 0;
 
   for (let i = 0; i < gridSize; i++) {
-    // Top row
+    borderTotal += 4;
     if (bits[0][i] === 0) borderBlackCount++;
-    borderTotal++;
-    // Bottom row
     if (bits[gridSize - 1][i] === 0) borderBlackCount++;
-    borderTotal++;
-    // Left column (excluding corners)
     if (i > 0 && i < gridSize - 1) {
       if (bits[i][0] === 0) borderBlackCount++;
-      borderTotal++;
-      // Right column
       if (bits[i][gridSize - 1] === 0) borderBlackCount++;
-      borderTotal++;
+    } else {
+      borderTotal -= 2;
     }
   }
 
-  const borderRatio = borderBlackCount / borderTotal;
+  let borderScore = borderBlackCount / borderTotal;
 
-  // Check inverted if border is mostly white
-  if (borderRatio < 0.7) {
-    // Invert bits
+  // Try inverted if border is white
+  if (borderScore < 0.85) {
     for (let r = 0; r < gridSize; r++) {
       for (let c = 0; c < gridSize; c++) {
         bits[r][c] = 1 - bits[r][c];
       }
     }
 
-    // Recheck border
     borderBlackCount = 0;
     for (let i = 0; i < gridSize; i++) {
       if (bits[0][i] === 0) borderBlackCount++;
@@ -710,8 +664,10 @@ function decodeMarker(
       }
     }
 
-    if (borderBlackCount / borderTotal < 0.7) {
-      return null; // Neither orientation has black border
+    borderScore = borderBlackCount / borderTotal;
+
+    if (borderScore < 0.85) {
+      return null; // No solid black border
     }
   }
 
@@ -723,14 +679,123 @@ function decodeMarker(
     }
   }
 
-  // Generate consistent ID from pattern (rotation-invariant)
-  const id = patternToId(pattern);
+  // Check all 4 rotations against known patterns
+  let matchedId = -1;
+  let currentPattern = pattern;
 
-  return { id, pattern, confidence: borderRatio };
+  for (let rot = 0; rot < 4; rot++) {
+    if (ARUCO_5X5_50_PATTERNS[currentPattern] !== undefined) {
+      matchedId = ARUCO_5X5_50_PATTERNS[currentPattern];
+      break;
+    }
+    currentPattern = rotate5x5(currentPattern);
+  }
+
+  // Try with 1-bit error tolerance if no exact match
+  if (matchedId === -1) {
+    currentPattern = pattern;
+    for (let rot = 0; rot < 4; rot++) {
+      const match = findClosestPattern(currentPattern, 1);
+      if (match !== null) {
+        matchedId = match.id;
+        break;
+      }
+      currentPattern = rotate5x5(currentPattern);
+    }
+  }
+
+  if (matchedId === -1) {
+    return null;
+  }
+
+  // Check contrast
+  const innerValues: number[] = [];
+  for (let row = 1; row <= 5; row++) {
+    for (let col = 1; col <= 5; col++) {
+      innerValues.push(cellValues[row][col]);
+    }
+  }
+
+  const minInner = Math.min(...innerValues);
+  const maxInner = Math.max(...innerValues);
+  const contrast = (maxInner - minInner) / 255;
+
+  if (contrast < 0.3) {
+    return null;
+  }
+
+  const confidence = borderScore * (0.5 + contrast * 0.5);
+
+  return { id: matchedId, confidence };
 }
 
-function bilinearInterp(corners: Point[], u: number, v: number, coord: "x" | "y"): number {
-  // corners: [top-left, top-right, bottom-right, bottom-left]
+function findClosestPattern(
+  pattern: string,
+  maxErrors: number
+): { id: number; errors: number } | null {
+  let bestMatch: { id: number; errors: number } | null = null;
+
+  for (const [knownPattern, id] of Object.entries(ARUCO_5X5_50_PATTERNS)) {
+    let errors = 0;
+    for (let i = 0; i < 25; i++) {
+      if (pattern[i] !== knownPattern[i]) errors++;
+      if (errors > maxErrors) break;
+    }
+
+    if (errors <= maxErrors) {
+      if (bestMatch === null || errors < bestMatch.errors) {
+        bestMatch = { id, errors };
+      }
+    }
+  }
+
+  return bestMatch;
+}
+
+function otsuThreshold(values: number[]): number {
+  const hist = new Uint32Array(256);
+  for (const v of values) {
+    hist[Math.round(v)]++;
+  }
+
+  const total = values.length;
+  let sum = 0;
+  for (let i = 0; i < 256; i++) sum += i * hist[i];
+
+  let sumB = 0;
+  let wB = 0;
+  let maxVar = 0;
+  let threshold = 128;
+
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (wB === 0) continue;
+
+    const wF = total - wB;
+    if (wF === 0) break;
+
+    sumB += t * hist[t];
+
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+
+    const varBetween = wB * wF * (mB - mF) * (mB - mF);
+
+    if (varBetween > maxVar) {
+      maxVar = varBetween;
+      threshold = t;
+    }
+  }
+
+  return threshold;
+}
+
+function bilinearInterp(
+  corners: Point[],
+  u: number,
+  v: number,
+  coord: "x" | "y"
+): number {
   const tl = corners[0][coord];
   const tr = corners[1][coord];
   const br = corners[2][coord];
@@ -742,29 +807,7 @@ function bilinearInterp(corners: Point[], u: number, v: number, coord: "x" | "y"
   return top * (1 - v) + bottom * v;
 }
 
-function patternToId(pattern: string): number {
-  // Get all 4 rotations
-  const rotations = [pattern];
-  let current = pattern;
-
-  for (let i = 0; i < 3; i++) {
-    current = rotate5x5Pattern(current);
-    rotations.push(current);
-  }
-
-  // Use minimum rotation as canonical form
-  const canonical = rotations.sort()[0];
-
-  // Hash to ID (0-49 range for DICT_5X5_50)
-  let hash = 0;
-  for (let i = 0; i < canonical.length; i++) {
-    hash = ((hash << 5) - hash + canonical.charCodeAt(i)) | 0;
-  }
-
-  return Math.abs(hash) % 50;
-}
-
-function rotate5x5Pattern(pattern: string): string {
+function rotate5x5(pattern: string): string {
   const size = 5;
   const matrix: number[][] = [];
 
@@ -775,7 +818,6 @@ function rotate5x5Pattern(pattern: string): string {
     }
   }
 
-  // Rotate 90° clockwise
   const rotated: number[][] = [];
   for (let i = 0; i < size; i++) {
     rotated[i] = [];
