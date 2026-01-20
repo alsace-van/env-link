@@ -101,8 +101,9 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
     const usableWidth = A4_WIDTH_MM - 2 * MARGIN_MM;
     const usableHeight = A4_HEIGHT_MM - 2 * MARGIN_MM - 20; // Espace titre + footer
 
-    const labelHeight = 15; // mm - Espace sous le marker pour le texte
-    const cellHeight = size + labelHeight;
+    // Espace fixe pour le label (ne dépend pas de la taille du marker)
+    const labelHeight = 12; // mm fixe
+    const cellHeight = size + labelHeight + 3; // +3mm de marge supplémentaire
     const cellWidth = size + GAP_MM;
 
     const cols = Math.max(1, Math.floor((usableWidth + GAP_MM) / cellWidth));
@@ -233,11 +234,11 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
 
         drawMarkerCanvas(ctx, markerId, mx, my, markerSizePx);
 
-        // Label SOUS le marker avec assez d'espace
+        // Label SOUS le marker - taille FIXE (ne grandit pas avec le marker)
         ctx.fillStyle = "#333";
-        ctx.font = `bold ${Math.max(8, markerSizePx * 0.15)}px monospace`;
+        ctx.font = "bold 10px monospace";
         ctx.textAlign = "center";
-        ctx.fillText(`ID: ${markerId}`, mx + markerSizePx / 2, my + markerSizePx + labelHeightPx * 0.6);
+        ctx.fillText(`ID: ${markerId}`, mx + markerSizePx / 2, my + markerSizePx + 12);
 
         markerId++;
       }
@@ -329,10 +330,10 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
 
             drawMarkerPDF(pdf, markerId, mx, my, size);
 
-            // Label sous le marker (bien espacé)
-            pdf.setFontSize(Math.max(10, size * 0.18));
+            // Label sous le marker - taille FIXE 10pt (ne grandit pas avec le marker)
+            pdf.setFontSize(10);
             pdf.setTextColor(51, 51, 51);
-            pdf.text(`ID: ${markerId}`, mx + size / 2, my + size + labelHeight * 0.55, { align: "center" });
+            pdf.text(`ID: ${markerId}`, mx + size / 2, my + size + 8, { align: "center" });
 
             markerId++;
           }
