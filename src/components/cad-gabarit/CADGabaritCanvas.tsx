@@ -312,6 +312,7 @@ import { ImageCalibrationModal } from "./ImageCalibrationModal";
 
 // MOD v7.39: Modale de calibration ArUco (OpenCV)
 import { ArucoCalibrationModal } from "./ArucoCalibrationModal";
+import { ArucoMarkerGenerator } from "./ArucoMarkerGenerator";
 import type { ArucoMarker } from "./useOpenCVAruco";
 
 // MOD v7.31: Cotations automatiques lors de la création de géométries
@@ -915,6 +916,7 @@ export function CADGabaritCanvas({
   // v7.39: Modale de calibration ArUco
   const [showArucoModal, setShowArucoModal] = useState(false);
   const [pendingArucoImage, setPendingArucoImage] = useState<BackgroundImage | null>(null);
+  const [showArucoGenerator, setShowArucoGenerator] = useState(false);
 
   // ============================================
   // NOUVEAU SYSTÈME DE TOOLBAR CONFIGURABLE (v7.11)
@@ -16536,6 +16538,11 @@ export function CADGabaritCanvas({
                         Image avec markers ArUco
                         <span className="ml-auto text-xs text-muted-foreground">Auto</span>
                       </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setShowArucoGenerator(true)}>
+                        <Printer className="h-4 w-4 mr-2" />
+                        Générer markers ArUco...
+                      </DropdownMenuItem>
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
 
@@ -19073,6 +19080,12 @@ export function CADGabaritCanvas({
             setShowArucoModal(false);
             setPendingArucoImage(null);
           }}
+        />
+
+        {/* v7.39: Générateur de markers ArUco */}
+        <ArucoMarkerGenerator
+          isOpen={showArucoGenerator}
+          onClose={() => setShowArucoGenerator(false)}
         />
 
         {/* v7.38: Modale de confirmation avant nouveau projet */}
