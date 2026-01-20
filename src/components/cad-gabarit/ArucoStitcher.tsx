@@ -1,21 +1,20 @@
 // ============================================
 // COMPONENT: ArucoStitcher
 // Assemblage de photos via markers ArUco partagés
-// VERSION: 3.0
+// VERSION: 3.1
 // ============================================
 //
-// CHANGELOG v3.0 (20/01/2026):
-// - Rotation limitée à ±15° pour éviter les aberrations
+// CHANGELOG v3.1 (20/01/2026):
+// - scaleX et scaleY séparés pour corriger distorsions
+// - Rotation intelligente: seuil min 2°, max 15°, cohérence vérifiée
 // - Tolérance par défaut à 0 (strict)
+//
+// CHANGELOG v3.0 (20/01/2026):
+// - Rotation limitée à ±15°
 // - Slider tolérance + bouton "Relancer"
-// - Détection doublons avec cadre orange
 //
 // CHANGELOG v2.2 (20/01/2026):
-// - Slider tolérance (0, 1, 2 bits) + bouton relancer
-// - Détection de doublons
-//
-// CHANGELOG v2.1 (20/01/2026):
-// - Calcul de la rotation entre photos via markers communs
+// - Détection de doublons avec cadre orange
 // ============================================
 
 import { useState, useCallback, useRef, useEffect } from "react";
@@ -52,7 +51,9 @@ export interface StitchedImage {
   image: HTMLImageElement;
   imageUrl: string;
   position: { x: number; y: number }; // Position en mm (coin supérieur gauche après rotation)
-  scale: number; // Facteur d'échelle à appliquer
+  scale: number; // Facteur d'échelle uniforme (rétrocompatibilité)
+  scaleX?: number; // v3.1: Facteur d'échelle horizontal
+  scaleY?: number; // v3.1: Facteur d'échelle vertical
   rotation: number; // v2.1: Rotation en degrés (sens horaire)
   originalFile: File;
   markers: ArucoMarker[];
@@ -254,14 +255,19 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
     toast.success(`Détection relancée (tolérance=${tolerance})`);
   }, [isLoaded, photos, tolerance, markerSize, detectMarkers, addDebugLog, calculatePhotoScale, detectDuplicates]);
 
-  // v3.0: Calculer l'angle de rotation entre deux photos (limité à ±15°)
+  // v3.1: Calculer l'angle de rotation entre deux photos
+  // - Seuil minimum: si < 2°, considéré comme 0 (pas de rotation)
+  // - Cohérence: si écart-type > 5°, rotation ignorée (données incohérentes)
+  // - Limite max: ±15°
   const calculateRotation = (
     photo1Markers: ArucoMarker[],
     photo2Markers: ArucoMarker[],
     photo1PixelsPerMm: number,
     photo2PixelsPerMm: number
   ): number => {
-    const MAX_ROTATION = 15; // v3.0: limiter à ±15° pour éviter les aberrations
+    const MAX_ROTATION = 15; // Limite max
+    const MIN_ROTATION = 2; // Seuil minimum (en dessous = 0)
+    const MAX_STD_DEV = 5; // Écart-type max autorisé
 
     // Trouver les markers communs
     const commonMarkers: { id: number; p1: { x: number; y: number }; p2: { x: number; y: number } }[] = [];
@@ -278,11 +284,11 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
     }
 
     if (commonMarkers.length < 2) {
-      // Pas assez de markers pour calculer une rotation
+      // Pas assez de markers pour calculer une rotation fiable
       return 0;
     }
 
-    // Calculer l'angle moyen entre les paires de markers
+    // Calculer l'angle entre chaque paire de markers
     const angles: number[] = [];
 
     for (let i = 0; i < commonMarkers.length; i++) {
@@ -319,8 +325,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
 
     if (angles.length === 0) return 0;
 
-    // Moyenne des angles (attention aux wrapping)
-    // Utiliser la moyenne circulaire
+    // Moyenne circulaire
     let sumSin = 0;
     let sumCos = 0;
     for (const angle of angles) {
@@ -329,6 +334,27 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
       sumCos += Math.cos(rad);
     }
     let avgAngle = Math.atan2(sumSin, sumCos) * 180 / Math.PI;
+
+    // v3.1: Calculer l'écart-type pour vérifier la cohérence
+    if (angles.length > 1) {
+      const variance = angles.reduce((sum, a) => {
+        let diff = a - avgAngle;
+        while (diff > 180) diff -= 360;
+        while (diff < -180) diff += 360;
+        return sum + diff * diff;
+      }, 0) / angles.length;
+      const stdDev = Math.sqrt(variance);
+      
+      if (stdDev > MAX_STD_DEV) {
+        addDebugLog(`⚠️ Rotation ignorée: écart-type ${stdDev.toFixed(1)}° > ${MAX_STD_DEV}° (données incohérentes)`);
+        return 0;
+      }
+    }
+
+    // v3.1: Seuil minimum - si très petit, considérer comme 0
+    if (Math.abs(avgAngle) < MIN_ROTATION) {
+      return 0;
+    }
 
     // v3.0: Limiter à ±MAX_ROTATION
     if (avgAngle > MAX_ROTATION) {
@@ -513,31 +539,68 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
     try {
       const markerSizeNum = parseFloat(markerSize) || 100;
 
-      // Échelle cible
-      const targetPixelsPerMm = Math.max(...photosWithMarkers.map(p => p.pixelsPerMm));
+      // v3.1: Calculer les échelles X et Y séparément basé sur la taille des markers
+      const photoScales = photos.map(p => {
+        if (p.markers.length === 0) return { scaleX: 1, scaleY: 1, avgPixelsPerMm: 0 };
+        
+        let totalPxPerMmX = 0;
+        let totalPxPerMmY = 0;
+        for (const marker of p.markers) {
+          // Taille du marker en pixels
+          totalPxPerMmX += marker.size.width / markerSizeNum;
+          totalPxPerMmY += marker.size.height / markerSizeNum;
+        }
+        const avgPxPerMmX = totalPxPerMmX / p.markers.length;
+        const avgPxPerMmY = totalPxPerMmY / p.markers.length;
+        const avgPixelsPerMm = (avgPxPerMmX + avgPxPerMmY) / 2;
+        
+        return { 
+          pxPerMmX: avgPxPerMmX, 
+          pxPerMmY: avgPxPerMmY, 
+          avgPixelsPerMm,
+          // Ratio d'aspect du marker (1 = carré parfait)
+          aspectRatio: avgPxPerMmX / avgPxPerMmY
+        };
+      });
+
+      // Échelle cible (basée sur la meilleure résolution)
+      const targetPixelsPerMm = Math.max(...photoScales.filter(s => s.avgPixelsPerMm > 0).map(s => s.avgPixelsPerMm));
       const targetPixelsPerCm = targetPixelsPerMm * 10;
 
       addDebugLog(`Échelle cible: ${targetPixelsPerMm.toFixed(2)} px/mm`);
 
-      // Facteurs d'échelle
-      const scaleFactors = photos.map(p => {
-        if (p.pixelsPerMm === 0) return 1;
-        return targetPixelsPerMm / p.pixelsPerMm;
+      // v3.1: Facteurs d'échelle X et Y séparés
+      const scaleFactorsXY = photos.map((p, i) => {
+        const scales = photoScales[i];
+        if (scales.avgPixelsPerMm === 0) return { scaleX: 1, scaleY: 1 };
+        
+        // Calculer le scale pour que les markers aient la même taille
+        const scaleX = targetPixelsPerMm / (scales.pxPerMmX || scales.avgPixelsPerMm);
+        const scaleY = targetPixelsPerMm / (scales.pxPerMmY || scales.avgPixelsPerMm);
+        
+        // Log si différence significative entre X et Y
+        if (Math.abs(scaleX - scaleY) > 0.02) {
+          addDebugLog(`Photo ${i + 1}: scaleX=${scaleX.toFixed(3)}, scaleY=${scaleY.toFixed(3)} (distorsion détectée)`);
+        }
+        
+        return { scaleX, scaleY };
       });
 
-      // v2.1: Structure avec position ET rotation
+      // v3.1: Structure avec position, rotation, ET scales séparés
       interface PhotoTransform {
         x: number; // mm
         y: number; // mm
         rotation: number; // degrés
-        scale: number;
+        scaleX: number;
+        scaleY: number;
       }
 
       const photoTransforms: PhotoTransform[] = photos.map((_, i) => ({
         x: 0,
         y: 0,
         rotation: 0,
-        scale: scaleFactors[i]
+        scaleX: scaleFactorsXY[i].scaleX,
+        scaleY: scaleFactorsXY[i].scaleY
       }));
 
       // BFS pour positionner toutes les photos
@@ -627,12 +690,13 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
           const avgDxMm = totalDxMm / commonMatches.length;
           const avgDyMm = totalDyMm / commonMatches.length;
 
-          // v2.1: Stocker position ET rotation (cumulée)
+          // v3.1: Stocker position, rotation ET scales séparés
           photoTransforms[otherIdx] = {
             x: avgDxMm,
             y: avgDyMm,
             rotation: currentTransform.rotation + rotation,
-            scale: scaleFactors[otherIdx]
+            scaleX: scaleFactorsXY[otherIdx].scaleX,
+            scaleY: scaleFactorsXY[otherIdx].scaleY
           };
 
           addDebugLog(`Photo ${otherIdx + 1}: pos=(${avgDxMm.toFixed(0)}, ${avgDyMm.toFixed(0)})mm, rot=${(currentTransform.rotation + rotation).toFixed(1)}°`);
@@ -695,6 +759,9 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
         // Le coin (0,0) rotated
         const rotatedOrigin = rotatePoint(0, 0, centerX, centerY, transform.rotation);
         
+        // v3.1: Scale uniforme moyen pour rétrocompatibilité
+        const avgScale = (transform.scaleX + transform.scaleY) / 2;
+        
         return {
           image: photo.image,
           imageUrl: photo.imageUrl,
@@ -702,7 +769,9 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
             x: transform.x + rotatedOrigin.x - minXmm,
             y: transform.y + rotatedOrigin.y - minYmm
           },
-          scale: transform.scale,
+          scale: avgScale, // Rétrocompatibilité
+          scaleX: transform.scaleX,
+          scaleY: transform.scaleY,
           rotation: transform.rotation,
           originalFile: photo.file,
           markers: photo.markers,
