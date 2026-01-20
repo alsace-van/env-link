@@ -1,7 +1,7 @@
 // ============================================
 // HOOK: useOpenCVAruco
 // Détection ArUco 100% JavaScript (sans OpenCV)
-// VERSION: 12.0 - Fixed for DICT_4X4_50 (6x6 grid)
+// VERSION: 14.0 - More aggressive detection, don't stop early
 // ============================================
 
 import { useState, useCallback, useEffect } from "react";
@@ -119,7 +119,7 @@ export function useOpenCVAruco(
     const timer = setTimeout(() => {
       setIsLoaded(true);
       setIsLoading(false);
-      console.log("[ArUco v12] Pure JS detector ready (DICT_4X4_50)");
+      console.log("[ArUco v14] Pure JS detector ready (DICT_4X4_50)");
     }, 100);
     return () => clearTimeout(timer);
   }, []);
@@ -133,7 +133,7 @@ export function useOpenCVAruco(
       const w = image.width || (image as HTMLImageElement).naturalWidth;
       const h = image.height || (image as HTMLImageElement).naturalHeight;
 
-      console.log(`[ArUco v12] Detecting in ${w}x${h} image`);
+      console.log(`[ArUco v14] Detecting in ${w}x${h} image`);
 
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -154,7 +154,7 @@ export function useOpenCVAruco(
 
       const markers = findMarkersInImage(gray, canvas.width, canvas.height, scale);
 
-      console.log(`[ArUco v12] Found ${markers.length} valid markers`);
+      console.log(`[ArUco v14] Found ${markers.length} valid markers`);
       return markers;
     },
     [isLoaded]
@@ -495,24 +495,31 @@ function findMarkersInImage(
   const markers: ArucoMarker[] = [];
   const foundCenters: { x: number; y: number }[] = [];
 
+  // Reset debug counter
+  debugCounter = 0;
+
+  // More threshold strategies for different lighting conditions
   const strategies = [
+    { blockSize: 15, C: 5 },
     { blockSize: 21, C: 7 },
     { blockSize: 31, C: 10 },
     { blockSize: 41, C: 12 },
     { blockSize: 51, C: 15 },
+    { blockSize: 61, C: 18 },
   ];
 
   const minDim = Math.min(width, height);
-  const minArea = Math.pow(minDim * 0.025, 2);
-  const maxArea = Math.pow(minDim * 0.3, 2);
+  // More permissive area range
+  const minArea = Math.pow(minDim * 0.015, 2);  // Smaller minimum
+  const maxArea = Math.pow(minDim * 0.4, 2);    // Larger maximum
 
-  console.log(`[ArUco v12] Area range: ${minArea.toFixed(0)} - ${maxArea.toFixed(0)}`);
+  console.log(`[ArUco v14] Area range: ${minArea.toFixed(0)} - ${maxArea.toFixed(0)}`);
 
   for (const { blockSize, C } of strategies) {
     const binary = adaptiveThreshold(gray, width, height, blockSize, C);
     const contours = findContours(binary, width, height);
 
-    console.log(`[ArUco v12] blockSize=${blockSize}, C=${C}: ${contours.length} contours`);
+    console.log(`[ArUco v14] blockSize=${blockSize}, C=${C}: ${contours.length} contours`);
 
     for (const contour of contours) {
       const area = contourArea(contour);
@@ -523,7 +530,8 @@ function findMarkersInImage(
       }, 0);
 
       const squareness = (perimeter * perimeter) / area;
-      if (squareness < 14 || squareness > 22) continue;
+      // More permissive squareness (perfect square = 16)
+      if (squareness < 12 || squareness > 25) continue;
 
       const epsilon = 0.03 * perimeter;
       const approx = approxPolyDP(contour, epsilon);
@@ -543,7 +551,14 @@ function findMarkersInImage(
       const maxSide = Math.max(...sides);
       const sideRatio = minSide / maxSide;
 
-      if (sideRatio < 0.6) continue;
+      // More permissive side ratio
+      if (sideRatio < 0.4) continue;
+
+      // Debug: log quad candidates
+      if (debugCounter < MAX_DEBUG) {
+        const avgSide = (side1 + side2 + side3 + side4) / 4;
+        console.log(`[ArUco v14] Quad candidate: area=${area.toFixed(0)}, avgSide=${avgSide.toFixed(1)}, ratio=${sideRatio.toFixed(2)}`);
+      }
 
       // Decode as 4x4 marker (6x6 grid with border)
       const result = decodeMarker4x4(gray, width, height, ordered);
@@ -584,17 +599,23 @@ function findMarkersInImage(
           });
 
           console.log(
-            `[ArUco v12] ✓ Marker ID=${result.id} (confidence=${result.confidence.toFixed(2)})`
+            `[ArUco v14] ✓ Marker ID=${result.id} (confidence=${result.confidence.toFixed(2)})`
           );
         }
       }
     }
 
-    if (markers.length >= 8) break;
+    // Don't stop early - continue searching through all strategies
+    // if (markers.length >= 8) break;
   }
 
+  console.log(`[ArUco v14] Total markers found: ${markers.length}`);
   return markers;
 }
+
+// Counter for debug logging (limit output)
+let debugCounter = 0;
+const MAX_DEBUG = 5;
 
 function decodeMarker4x4(
   gray: Uint8Array,
@@ -606,17 +627,17 @@ function decodeMarker4x4(
   const gridSize = 6;
   const cellValues: number[][] = [];
 
-  // Sample each cell
+  // Sample each cell using perspective transform
   for (let row = 0; row < gridSize; row++) {
     cellValues[row] = [];
     for (let col = 0; col < gridSize; col++) {
       const samples: number[] = [];
 
-      // Sample 5x5 points within each cell
-      for (let sy = 0; sy < 5; sy++) {
-        for (let sx = 0; sx < 5; sx++) {
-          const u = (col + (sx + 0.5) / 5) / gridSize;
-          const v = (row + (sy + 0.5) / 5) / gridSize;
+      // Sample 7x7 points within each cell for better accuracy
+      for (let sy = 0; sy < 7; sy++) {
+        for (let sx = 0; sx < 7; sx++) {
+          const u = (col + (sx + 0.5) / 7) / gridSize;
+          const v = (row + (sy + 0.5) / 7) / gridSize;
 
           const x = bilinearInterp(corners, u, v, "x");
           const y = bilinearInterp(corners, u, v, "y");
@@ -643,7 +664,7 @@ function decodeMarker4x4(
   const allValues = cellValues.flat();
   const threshold = otsuThreshold(allValues);
 
-  // Convert to binary
+  // Convert to binary (white = 1, black = 0)
   const bits: number[][] = [];
   for (let row = 0; row < gridSize; row++) {
     bits[row] = [];
@@ -657,31 +678,29 @@ function decodeMarker4x4(
   let borderTotal = 0;
 
   for (let i = 0; i < gridSize; i++) {
-    // Top row
     if (bits[0][i] === 0) borderBlackCount++;
     borderTotal++;
-    // Bottom row
     if (bits[gridSize - 1][i] === 0) borderBlackCount++;
     borderTotal++;
   }
   for (let i = 1; i < gridSize - 1; i++) {
-    // Left column
     if (bits[i][0] === 0) borderBlackCount++;
     borderTotal++;
-    // Right column
     if (bits[i][gridSize - 1] === 0) borderBlackCount++;
     borderTotal++;
   }
 
   let borderScore = borderBlackCount / borderTotal;
+  let inverted = false;
 
-  // Try inverted if border is white
-  if (borderScore < 0.75) {
+  // Try inverted if border is mostly white (relaxed to 50%)
+  if (borderScore < 0.5) {
     for (let r = 0; r < gridSize; r++) {
       for (let c = 0; c < gridSize; c++) {
         bits[r][c] = 1 - bits[r][c];
       }
     }
+    inverted = true;
 
     borderBlackCount = 0;
     for (let i = 0; i < gridSize; i++) {
@@ -695,7 +714,8 @@ function decodeMarker4x4(
 
     borderScore = borderBlackCount / borderTotal;
 
-    if (borderScore < 0.75) {
+    // Relaxed threshold (50%)
+    if (borderScore < 0.5) {
       return null;
     }
   }
@@ -708,13 +728,19 @@ function decodeMarker4x4(
     }
   }
 
-  // Try all 4 rotations
+  // Debug: log first few candidates
+  if (debugCounter < MAX_DEBUG) {
+    console.log(`[ArUco v14 DEBUG] Candidate quad - borderScore=${borderScore.toFixed(2)}, inverted=${inverted}`);
+    console.log(`[ArUco v14 DEBUG] Inner bits: ${innerBits.join('')}`);
+    debugCounter++;
+  }
+
+  // Try all 4 rotations with exact match
   for (let rotation = 0; rotation < 4; rotation++) {
     const rotatedBits = rotatePattern4x4(innerBits, rotation);
     const matchedId = matchPattern4x4(rotatedBits);
 
     if (matchedId !== -1) {
-      // Check contrast
       const innerValues: number[] = [];
       for (let row = 1; row <= 4; row++) {
         for (let col = 1; col <= 4; col++) {
@@ -725,11 +751,13 @@ function decodeMarker4x4(
       const maxInner = Math.max(...innerValues);
       const contrast = (maxInner - minInner) / 255;
 
-      if (contrast < 0.25) {
+      // Relaxed contrast threshold
+      if (contrast < 0.15) {
         return null;
       }
 
       const confidence = borderScore * (0.5 + contrast * 0.5);
+      console.log(`[ArUco v14] EXACT MATCH: ID=${matchedId}, rotation=${rotation}, contrast=${contrast.toFixed(2)}`);
       return { id: matchedId, confidence };
     }
   }
@@ -750,11 +778,65 @@ function decodeMarker4x4(
       const maxInner = Math.max(...innerValues);
       const contrast = (maxInner - minInner) / 255;
 
-      if (contrast < 0.25) {
+      if (contrast < 0.15) {
         return null;
       }
 
       const confidence = borderScore * (0.4 + contrast * 0.4);
+      console.log(`[ArUco v14] 1-BIT MATCH: ID=${matchedId}, rotation=${rotation}, contrast=${contrast.toFixed(2)}`);
+      return { id: matchedId, confidence };
+    }
+  }
+
+  // Try with 2-bit error tolerance (more permissive)
+  for (let rotation = 0; rotation < 4; rotation++) {
+    const rotatedBits = rotatePattern4x4(innerBits, rotation);
+    const matchedId = matchPattern4x4WithTolerance(rotatedBits, 2);
+
+    if (matchedId !== -1) {
+      const innerValues: number[] = [];
+      for (let row = 1; row <= 4; row++) {
+        for (let col = 1; col <= 4; col++) {
+          innerValues.push(cellValues[row][col]);
+        }
+      }
+      const minInner = Math.min(...innerValues);
+      const maxInner = Math.max(...innerValues);
+      const contrast = (maxInner - minInner) / 255;
+
+      if (contrast < 0.15) {
+        return null;
+      }
+
+      const confidence = borderScore * (0.3 + contrast * 0.3);
+      console.log(`[ArUco v14] 2-BIT MATCH: ID=${matchedId}, rotation=${rotation}, contrast=${contrast.toFixed(2)}`);
+      return { id: matchedId, confidence };
+    }
+  }
+
+  // Try with 3-bit error tolerance (very permissive - use with caution)
+  for (let rotation = 0; rotation < 4; rotation++) {
+    const rotatedBits = rotatePattern4x4(innerBits, rotation);
+    const matchedId = matchPattern4x4WithTolerance(rotatedBits, 3);
+
+    if (matchedId !== -1) {
+      const innerValues: number[] = [];
+      for (let row = 1; row <= 4; row++) {
+        for (let col = 1; col <= 4; col++) {
+          innerValues.push(cellValues[row][col]);
+        }
+      }
+      const minInner = Math.min(...innerValues);
+      const maxInner = Math.max(...innerValues);
+      const contrast = (maxInner - minInner) / 255;
+
+      // Require higher contrast for 3-bit tolerance
+      if (contrast < 0.25) {
+        return null;
+      }
+
+      const confidence = borderScore * (0.2 + contrast * 0.2);
+      console.log(`[ArUco v14] 3-BIT MATCH: ID=${matchedId}, rotation=${rotation}, contrast=${contrast.toFixed(2)}`);
       return { id: matchedId, confidence };
     }
   }
