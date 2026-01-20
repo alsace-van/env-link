@@ -103,13 +103,16 @@ export function ArucoCalibrationModal({
 
   // Détecter automatiquement quand OpenCV est chargé
   useEffect(() => {
-    if (isLoaded && image?.image && isOpen && detectedMarkers.length === 0) {
-      // Petit délai pour laisser le render se faire
-      const timer = setTimeout(() => {
-        handleDetect();
-      }, 100);
-      return () => clearTimeout(timer);
-    }
+    if (!isOpen) return;
+    if (!isLoaded || !image?.image) return;
+    if (detectedMarkers.length > 0) return;
+    
+    // Petit délai pour laisser le render se faire
+    const timer = setTimeout(() => {
+      handleDetect();
+    }, 100);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, image, isOpen]);
 
   // Dessiner le canvas avec les markers détectés
