@@ -527,7 +527,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
                     <img
                       src={photo.imageUrl}
                       alt={`Photo ${idx + 1}`}
-                      className="w-full h-20 object-cover rounded"
+                      className="w-full h-24 object-contain rounded bg-gray-200"
                     />
                     <div className="absolute top-1 left-1 bg-black/70 text-white text-xs px-1 rounded">
                       #{idx + 1}
