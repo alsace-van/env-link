@@ -112,13 +112,7 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
   }, [markerSizeCm]);
 
   // Générer un marker ArUco (natif)
-  const drawMarker = useCallback((
-    ctx: CanvasRenderingContext2D,
-    id: number,
-    x: number,
-    y: number,
-    size: number
-  ) => {
+  const drawMarker = useCallback((ctx: CanvasRenderingContext2D, id: number, x: number, y: number, size: number) => {
     if (id < 0 || id >= 50) return;
 
     const pattern = ARUCO_DICT_4X4_50[id];
@@ -139,12 +133,7 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
       for (let col = 0; col < 4; col++) {
         const bit = (rowData >> (3 - col)) & 1;
         if (bit === 1) {
-          ctx.fillRect(
-            x + cellSize * (col + 1),
-            y + cellSize * (row + 1),
-            cellSize,
-            cellSize
-          );
+          ctx.fillRect(x + cellSize * (col + 1), y + cellSize * (row + 1), cellSize, cellSize);
         }
       }
     }
@@ -229,11 +218,7 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
     ctx.fillStyle = "#999";
     ctx.font = "8px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(
-      `${gridInfo.total} markers | Imprimer à 100%`,
-      canvasWidth / 2,
-      canvasHeight - marginPx * 0.4
-    );
+    ctx.fillText(`${gridInfo.total} markers | Imprimer à 100%`, canvasWidth / 2, canvasHeight - marginPx * 0.4);
   }, [gridInfo, startId, drawMarker]);
 
   // Générer la preview quand les paramètres changent
@@ -329,7 +314,7 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
       ctx.fillText(
         `Imprimer à 100% sans mise à l'échelle | ${dpi} DPI | Taille réelle: ${size}cm`,
         canvasWidth / 2,
-        canvasHeight - marginPx * 0.4
+        canvasHeight - marginPx * 0.4,
       );
 
       // Télécharger
@@ -355,9 +340,7 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
             <QrCode className="h-5 w-5" />
             Générateur de markers ArUco
           </DialogTitle>
-          <DialogDescription>
-            Génère une feuille A4 de markers à imprimer pour calibrer vos photos
-          </DialogDescription>
+          <DialogDescription>Génère une feuille A4 de markers à imprimer pour calibrer vos photos</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -384,7 +367,9 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
                     Trop grand pour A4
                   </span>
                 ) : (
-                  <>→ {gridInfo.cols}×{gridInfo.rows} = <strong>{gridInfo.total} markers</strong> sur A4</>
+                  <>
+                    → {gridInfo.cols}×{gridInfo.rows} = <strong>{gridInfo.total} markers</strong> sur A4
+                  </>
                 )}
               </p>
             </div>
@@ -410,11 +395,7 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
 
           {/* Preview A4 */}
           <div className="border rounded-lg p-3 bg-gray-100 flex justify-center">
-            <canvas
-              ref={canvasRef}
-              className="shadow-md bg-white"
-              style={{ maxHeight: "320px", width: "auto" }}
-            />
+            <canvas ref={canvasRef} className="shadow-md bg-white" style={{ maxHeight: "320px", width: "auto" }} />
           </div>
 
           {/* Instructions */}
@@ -422,7 +403,9 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
             <p className="font-medium mb-1">Instructions :</p>
             <ol className="list-decimal list-inside space-y-0.5 text-xs">
               <li>Téléchargez le PNG (300 DPI, format A4)</li>
-              <li>Imprimez à <strong>100%</strong> (taille réelle, sans mise à l'échelle)</li>
+              <li>
+                Imprimez à <strong>100%</strong> (taille réelle, sans mise à l'échelle)
+              </li>
               <li>Découpez et placez les markers sur la surface à photographier</li>
               <li>Importez la photo avec "Image avec markers ArUco"</li>
             </ol>
@@ -433,15 +416,8 @@ export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorPr
           <Button variant="outline" onClick={onClose}>
             Fermer
           </Button>
-          <Button
-            onClick={handleDownloadPNG}
-            disabled={isGenerating || gridInfo.tooLarge}
-          >
-            {isGenerating ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <Download className="h-4 w-4 mr-2" />
-            )}
+          <Button onClick={handleDownloadPNG} disabled={isGenerating || gridInfo.tooLarge}>
+            {isGenerating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
             Télécharger A4 ({gridInfo.total} markers)
           </Button>
         </DialogFooter>
