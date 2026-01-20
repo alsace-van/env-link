@@ -1,83 +1,20 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.36 - Mode rayures pour alignement de photos
+// VERSION: 7.43
 // ============================================
 //
-// CHANGELOG v7.36 (19/01/2026):
-// - Mode "damier" pour les photos: permet de voir à travers pour aligner
-// - Modale flottante "Outils photo" détachable (bouton dans menu Outils + menu contextuel)
-// - Modale inclut: opacité, rotation, ajustements, recadrage, calibration, marqueurs, calques
-// - Modale draggable avec option épingler (reste ouverte après actions)
-// - Solution au problème de mélange d'opacité quand 2 photos se superposent
+// CHANGELOG v7.43 (20/01/2026):
+// - FIX SCALE CRITIQUE: pxPerCm en px/cm mais scaleFactor en px/mm
+// - Position: mm × scaleFactor (px/mm) = pixels
+// - Scale: scaleFactor / (pxPerCm/10) = canvas_px_per_mm / photo_px_per_mm
 //
-// CHANGELOG v7.35 (19/01/2026):
-// - Ajout bouton "Isoler (Solo)" dans le menu contextuel des photos
-// - Contour de sélection de la photo utilise la couleur du calque correspondant
-// - Fix suppression point de calibration: utilisait calibrationData au lieu de backgroundImages[].calibrationData
-// - Sélection de photo change automatiquement vers le calque correspondant
-// - Surbrillance du calque actif avec sa propre couleur (bordure + ombre)
-// - Slider d'opacité dans le menu contextuel des photos (supporte multi-sélection)
-// - Bouton "Réinitialiser opacité" dans le menu contextuel des photos
-// - Boutons "Premier plan" et "Arrière-plan" dans le menu contextuel (supporte multi-sélection)
-// - Fix menu contextuel: repositionnement automatique si proche des bords de l'écran
-// - Menu contextuel compact pour les photos (icônes groupées, texte réduit)
-// - Fix: menu contextuel accessible sur photos verrouillées (pour déverrouiller)
+// CHANGELOG v7.42 (20/01/2026):
+// - Fix positions: utiliser scaleFactor au lieu de pxPerCm
 //
-// CHANGELOG v7.34 (19/01/2026):
-// - Fix calibration: empêche l'application multiple (décalage cumulatif des points)
-// - Fix crop: la position de l'image reste stable après le recadrage
-// - Fix opacité calque: l'opacité du calque est maintenant appliquée aux photos
-// - Fix opacité photo: le slider modifie uniquement les photos sélectionnées
-// - Fix CPU Supabase: intervalMs passé de 30s à 2min
-// - Ajout bouton "Calibrer" dans le menu contextuel des photos
+// CHANGELOG v7.41 (20/01/2026):
+// - Fix canvas freeze: onStitched reçoit un tableau StitchedImage[]
 //
-// CHANGELOG v7.33 (19/01/2026):
-// - Fix restauration Supabase: loadSketchData restaure maintenant layers, groups, shapeFills, activeLayerId
-// - Fix saveSketch: sauvegarde maintenant layers, groups, shapeFills, activeLayerId
-// - Fix menu contextuel Supprimer photo: sauvegarde historique + suppression liens markers
-//
-// CHANGELOG v7.31 (18/01/2026):
-// - Restauration des cotations automatiques (useAutoDimensions.ts)
-// - Affiche automatiquement largeur et hauteur en mm lors de la création de rectangles
-// - État autoDimensionsEnabled pour activer/désactiver (actif par défaut)
-//
-// CHANGELOG v7.30 (18/01/2026):
-// - Mode Solo: icône pour isoler un calque (masque les autres temporairement)
-// - Mode Guide: calques visibles mais non exportés (pour repères)
-// - Groupes de calques (dossiers) avec pliage/dépliage
-// - Opacité et visibilité appliquées au groupe entier
-// - Drag & drop de calques vers les groupes
-// - Menu contextuel pour les groupes
-//
-// CHANGELOG v7.29 (18/01/2026):
-// - Nouveau composant LayerTabs avec gestion complète des calques
-// - Double-clic pour renommer un calque
-// - Menu contextuel (clic droit) sur les calques
-// - Couleur personnalisable par calque
-// - Opacité par calque (0-100%)
-// - Drag & drop pour réorganiser les calques
-// - Dupliquer un calque (avec ses géométries)
-// - Fusionner deux calques
-// - Premier plan / Arrière-plan
-//
-// CHANGELOG v7.28 (18/01/2026):
-// - Menu contextuel (clic droit) sur les images
-// - Option "Envoyer vers nouveau calque" pour les images
-// - Option "Déplacer vers calque existant" pour les images
-// - Optimisations autobackup (fréquence réduite, nettoyage auto)
-// - Fix sauvegarde des images en base64 dans les backups
-//
-// CHANGELOG v7.16 (17/01/2026):
-// - Ajout du panneau d'historique des mesures (MeasurePanel.tsx)
-// - Ouverture automatique du panneau quand outil mesure activé
-// - Bouton compteur à côté de l'outil mesure
-// - Import type Measurement depuis MeasurePanel.tsx
-// - Sauvegarde des mesures avec le template (saveSketch)
-// - Chargement des mesures (loadSketchData)
-// - Affichage conditionnel: mesures visibles si panneau ouvert OU outil actif
-// - Filtrage des mesures masquées (visible !== false)
-// - Noms auto-générés (M1, M2, M3...)
 //
 // CHANGELOG v7.15 (17/01/2026):
 // - Extraction du panneau de calibration dans CalibrationPanel.tsx (~1000 lignes)
@@ -19110,29 +19047,34 @@ export function CADGabaritCanvas({
         <ArucoMarkerGenerator isOpen={showArucoGenerator} onClose={() => setShowArucoGenerator(false)} />
 
         {/* v7.40: Assemblage de photos par markers ArUco */}
-        {/* v7.42: FIX positions et scale - utiliser scaleFactor du canvas */}
+        {/* v7.43: FIX SCALE - pxPerCm est en px/cm, scaleFactor en px/mm */}
         <ArucoStitcher
           isOpen={showArucoStitcher}
           onClose={() => setShowArucoStitcher(false)}
           markerSizeMm={100}
           onStitched={(stitchedImages, pxPerCm) => {
-            // v7.42: Boucler sur chaque image du tableau
-            // pxPerCm = échelle des images sources (pixels/cm)
-            // scaleFactor = échelle du canvas (pixels/cm)
+            // v7.43: Calcul corrigé
+            // pxPerCm = pixels/cm des images sources
+            // scaleFactor = pixels/mm du canvas (ex: 2.5)
+            // Pour que 1mm photo = 1mm canvas:
+            //   scale = canvas_px_per_mm / photo_px_per_mm
+            //         = scaleFactor / (pxPerCm / 10)
+            //         = scaleFactor * 10 / pxPerCm
+            
+            const photoPixelsPerMm = pxPerCm / 10;
             
             let addedCount = 0;
             for (let i = 0; i < stitchedImages.length; i++) {
               const stitchedImg = stitchedImages[i];
               
-              // v7.42: Position mm → pixels CANVAS (pas pixels image!)
-              // scaleFactor est en pixels/cm, position en mm
-              const posXpx = (stitchedImg.position.x / 10) * scaleFactor;
-              const posYpx = (stitchedImg.position.y / 10) * scaleFactor;
+              // Position mm → pixels canvas
+              const posXpx = stitchedImg.position.x * scaleFactor;
+              const posYpx = stitchedImg.position.y * scaleFactor;
               
-              // v7.42: Scale pour adapter l'image au canvas
-              // stitchedImg.scale normalise les images entre elles (même taille de markers)
-              // scaleFactor/pxPerCm adapte à l'échelle du canvas
-              const finalScale = stitchedImg.scale * (scaleFactor / pxPerCm);
+              // v7.43: Scale corrigé
+              // stitchedImg.scale normalise les photos entre elles
+              // scaleFactor/photoPixelsPerMm adapte photo→canvas
+              const finalScale = stitchedImg.scale * (scaleFactor / photoPixelsPerMm);
               
               const bgImage: BackgroundImage = {
                 id: `stitched-${Date.now()}-${i}`,
@@ -19153,7 +19095,7 @@ export function CADGabaritCanvas({
               addedCount++;
             }
             
-            console.log(`[ArucoStitcher] Import: ${addedCount} images, scaleFactor=${scaleFactor}, pxPerCm=${pxPerCm}`);
+            console.log(`[ArucoStitcher] Import: ${addedCount} images, scaleFactor=${scaleFactor}px/mm, pxPerCm=${pxPerCm}px/cm, finalScale≈${(scaleFactor / photoPixelsPerMm).toFixed(3)}`);
             toast.success(`${addedCount} image(s) assemblée(s) ajoutée(s) au canvas !`);
             setShowArucoStitcher(false);
           }}
