@@ -1,19 +1,17 @@
 // ============================================
 // COMPONENT: useOpenCVAruco
 // Détection ArUco 100% JavaScript (sans OpenCV)
-// VERSION: 18
+// VERSION: 18.1
 // ============================================
+//
+// CHANGELOG v18.1 (20/01/2026):
+// - Tolérance réduite de 2 à 1 bit pour éviter faux positifs (ID 29)
 //
 // CHANGELOG v18 (20/01/2026):
 // - FIX CRITIQUE: Inversion des bits dans matchPattern4x4
-// - Convention: pattern 1=noir, détecteur 0=noir → actualBit = 1 - bits[...]
-// - Corrige les IDs erronés (17,22,29... au lieu de 0-9)
 //
 // CHANGELOG v17 (20/01/2026):
 // - Paramètres équilibrés: tolérance 2 bits, contraste 0.20, confiance 0.35
-//
-// CHANGELOG v16 (20/01/2026):
-// - Paramètres stricts pour réduire les faux positifs
 // ============================================
 
 import { useState, useCallback, useEffect } from "react";
@@ -120,7 +118,7 @@ const ARUCO_DICT_4X4_50: number[][] = [
 // v17: Paramètres équilibrés
 const MIN_CONFIDENCE = 0.35;
 const MIN_CONTRAST = 0.20;
-const MAX_BIT_TOLERANCE = 2;
+const MAX_BIT_TOLERANCE = 1; // v18.1: réduit de 2 à 1 pour éviter faux positifs (ID 29)
 const MIN_BORDER_SCORE = 0.55;
 const MIN_SQUARENESS = 13;
 const MAX_SQUARENESS = 22;
