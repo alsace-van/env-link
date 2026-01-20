@@ -1,7 +1,13 @@
 // ============================================
-// HOOK: useOpenCVAruco
+// COMPONENT: useOpenCVAruco
 // Détection ArUco 100% JavaScript (sans OpenCV)
-// VERSION: 14.0 - More aggressive detection, don't stop early
+// VERSION: 15.0 - Déduplication par ID de marker
+// ============================================
+// MODIFICATIONS v15.0:
+// - Ajout déduplication par ID de marker (un seul marker par ID)
+// - Garde le marker avec la meilleure confiance si doublon
+// - Amélioration des logs pour debug
+// - Correction du comptage des markers
 // ============================================
 
 import { useState, useCallback, useEffect } from "react";
@@ -119,7 +125,7 @@ export function useOpenCVAruco(
     const timer = setTimeout(() => {
       setIsLoaded(true);
       setIsLoading(false);
-      console.log("[ArUco v14] Pure JS detector ready (DICT_4X4_50)");
+      console.log("[ArUco v15] Pure JS detector ready (DICT_4X4_50) - With ID deduplication");
     }, 100);
     return () => clearTimeout(timer);
   }, []);
@@ -133,7 +139,7 @@ export function useOpenCVAruco(
       const w = image.width || (image as HTMLImageElement).naturalWidth;
       const h = image.height || (image as HTMLImageElement).naturalHeight;
 
-      console.log(`[ArUco v14] Detecting in ${w}x${h} image`);
+      console.log(`[ArUco v15] Detecting in ${w}x${h} image`);
 
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -154,7 +160,7 @@ export function useOpenCVAruco(
 
       const markers = findMarkersInImage(gray, canvas.width, canvas.height, scale);
 
-      console.log(`[ArUco v14] Found ${markers.length} valid markers`);
+      console.log(`[ArUco v15] Found ${markers.length} unique markers`);
       return markers;
     },
     [isLoaded]
@@ -485,6 +491,7 @@ function orderCorners(corners: Point[]): Point[] {
 }
 
 // ====== MARKER DETECTION ======
+// v15.0: Déduplication par ID - un seul marker par ID, garde le meilleur
 
 function findMarkersInImage(
   gray: Uint8Array,
@@ -492,9 +499,9 @@ function findMarkersInImage(
   height: number,
   scale: number
 ): ArucoMarker[] {
-  const markers: ArucoMarker[] = [];
-  const foundCenters: { x: number; y: number }[] = [];
-
+  // v15.0: Map pour stocker le meilleur marker par ID
+  const markersByID = new Map<number, ArucoMarker>();
+  
   // Reset debug counter
   debugCounter = 0;
 
@@ -513,13 +520,18 @@ function findMarkersInImage(
   const minArea = Math.pow(minDim * 0.015, 2);  // Smaller minimum
   const maxArea = Math.pow(minDim * 0.4, 2);    // Larger maximum
 
-  console.log(`[ArUco v14] Area range: ${minArea.toFixed(0)} - ${maxArea.toFixed(0)}`);
+  console.log(`[ArUco v15] Area range: ${minArea.toFixed(0)} - ${maxArea.toFixed(0)}`);
+
+  // v15.0: Compteur de détections brutes vs uniques
+  let rawDetections = 0;
+  let duplicatesSkipped = 0;
+  let duplicatesReplaced = 0;
 
   for (const { blockSize, C } of strategies) {
     const binary = adaptiveThreshold(gray, width, height, blockSize, C);
     const contours = findContours(binary, width, height);
 
-    console.log(`[ArUco v14] blockSize=${blockSize}, C=${C}: ${contours.length} contours`);
+    console.log(`[ArUco v15] blockSize=${blockSize}, C=${C}: ${contours.length} contours`);
 
     for (const contour of contours) {
       const area = contourArea(contour);
@@ -554,62 +566,83 @@ function findMarkersInImage(
       // More permissive side ratio
       if (sideRatio < 0.4) continue;
 
-      // Debug: log quad candidates
-      if (debugCounter < MAX_DEBUG) {
-        const avgSide = (side1 + side2 + side3 + side4) / 4;
-        console.log(`[ArUco v14] Quad candidate: area=${area.toFixed(0)}, avgSide=${avgSide.toFixed(1)}, ratio=${sideRatio.toFixed(2)}`);
-      }
-
       // Decode as 4x4 marker (6x6 grid with border)
       const result = decodeMarker4x4(gray, width, height, ordered);
 
       if (result !== null) {
+        rawDetections++;
+        
         const center = {
           x: ordered.reduce((s, c) => s + c.x, 0) / 4,
           y: ordered.reduce((s, c) => s + c.y, 0) / 4,
         };
 
-        const isDuplicate = foundCenters.some(
-          (fc) =>
-            Math.abs(fc.x - center.x) < minSide * 0.3 &&
-            Math.abs(fc.y - center.y) < minSide * 0.3
-        );
+        const scaledCorners = ordered.map((c) => ({
+          x: c.x / scale,
+          y: c.y / scale,
+        }));
 
-        if (!isDuplicate) {
-          foundCenters.push(center);
+        const scaledCenter = {
+          x: center.x / scale,
+          y: center.y / scale,
+        };
 
-          const scaledCorners = ordered.map((c) => ({
-            x: c.x / scale,
-            y: c.y / scale,
-          }));
+        const markerSize = ((side1 + side2 + side3 + side4) / 4) / scale;
 
-          const scaledCenter = {
-            x: center.x / scale,
-            y: center.y / scale,
-          };
+        const newMarker: ArucoMarker = {
+          id: result.id,
+          corners: scaledCorners,
+          center: scaledCenter,
+          size: { width: markerSize, height: markerSize },
+          confidence: result.confidence,
+        };
 
-          const markerSize = ((side1 + side2 + side3 + side4) / 4) / scale;
-
-          markers.push({
-            id: result.id,
-            corners: scaledCorners,
-            center: scaledCenter,
-            size: { width: markerSize, height: markerSize },
-            confidence: result.confidence,
-          });
-
+        // v15.0: Déduplication par ID de marker
+        const existingMarker = markersByID.get(result.id);
+        
+        if (existingMarker) {
+          // Un marker avec cet ID existe déjà
+          const existingConfidence = existingMarker.confidence || 0;
+          const newConfidence = result.confidence || 0;
+          
+          if (newConfidence > existingConfidence) {
+            // Le nouveau a une meilleure confiance, on le remplace
+            markersByID.set(result.id, newMarker);
+            duplicatesReplaced++;
+            console.log(
+              `[ArUco v15] ↻ Marker ID=${result.id} remplacé (conf: ${existingConfidence.toFixed(2)} → ${newConfidence.toFixed(2)})`
+            );
+          } else {
+            // L'ancien est meilleur, on ignore le nouveau
+            duplicatesSkipped++;
+            console.log(
+              `[ArUco v15] ⊘ Marker ID=${result.id} ignoré (doublon, conf=${newConfidence.toFixed(2)} < ${existingConfidence.toFixed(2)})`
+            );
+          }
+        } else {
+          // Nouveau marker, on l'ajoute
+          markersByID.set(result.id, newMarker);
           console.log(
-            `[ArUco v14] ✓ Marker ID=${result.id} (confidence=${result.confidence.toFixed(2)})`
+            `[ArUco v15] ✓ Marker ID=${result.id} ajouté (conf=${result.confidence.toFixed(2)})`
           );
         }
       }
     }
-
-    // Don't stop early - continue searching through all strategies
-    // if (markers.length >= 8) break;
   }
 
-  console.log(`[ArUco v14] Total markers found: ${markers.length}`);
+  // Convertir la Map en tableau
+  const markers = Array.from(markersByID.values());
+  
+  // Trier par ID pour la lisibilité
+  markers.sort((a, b) => a.id - b.id);
+
+  console.log(`[ArUco v15] === RÉSUMÉ ===`);
+  console.log(`[ArUco v15] Détections brutes: ${rawDetections}`);
+  console.log(`[ArUco v15] Doublons ignorés: ${duplicatesSkipped}`);
+  console.log(`[ArUco v15] Doublons remplacés: ${duplicatesReplaced}`);
+  console.log(`[ArUco v15] Markers uniques: ${markers.length}`);
+  console.log(`[ArUco v15] IDs trouvés: [${markers.map(m => m.id).join(', ')}]`);
+  
   return markers;
 }
 
@@ -730,8 +763,8 @@ function decodeMarker4x4(
 
   // Debug: log first few candidates
   if (debugCounter < MAX_DEBUG) {
-    console.log(`[ArUco v14 DEBUG] Candidate quad - borderScore=${borderScore.toFixed(2)}, inverted=${inverted}`);
-    console.log(`[ArUco v14 DEBUG] Inner bits: ${innerBits.join('')}`);
+    console.log(`[ArUco v15 DEBUG] Candidate quad - borderScore=${borderScore.toFixed(2)}, inverted=${inverted}`);
+    console.log(`[ArUco v15 DEBUG] Inner bits: ${innerBits.join('')}`);
     debugCounter++;
   }
 
@@ -757,7 +790,6 @@ function decodeMarker4x4(
       }
 
       const confidence = borderScore * (0.5 + contrast * 0.5);
-      console.log(`[ArUco v14] EXACT MATCH: ID=${matchedId}, rotation=${rotation}, contrast=${contrast.toFixed(2)}`);
       return { id: matchedId, confidence };
     }
   }
@@ -783,7 +815,6 @@ function decodeMarker4x4(
       }
 
       const confidence = borderScore * (0.4 + contrast * 0.4);
-      console.log(`[ArUco v14] 1-BIT MATCH: ID=${matchedId}, rotation=${rotation}, contrast=${contrast.toFixed(2)}`);
       return { id: matchedId, confidence };
     }
   }
@@ -809,7 +840,6 @@ function decodeMarker4x4(
       }
 
       const confidence = borderScore * (0.3 + contrast * 0.3);
-      console.log(`[ArUco v14] 2-BIT MATCH: ID=${matchedId}, rotation=${rotation}, contrast=${contrast.toFixed(2)}`);
       return { id: matchedId, confidence };
     }
   }
@@ -836,7 +866,6 @@ function decodeMarker4x4(
       }
 
       const confidence = borderScore * (0.2 + contrast * 0.2);
-      console.log(`[ArUco v14] 3-BIT MATCH: ID=${matchedId}, rotation=${rotation}, contrast=${contrast.toFixed(2)}`);
       return { id: matchedId, confidence };
     }
   }
