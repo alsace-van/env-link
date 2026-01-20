@@ -1,10 +1,10 @@
 // ============================================
-// COMPONENT: ArucoStitcher
-// Assemblage de photos via markers ArUco partagés
-// VERSION: 1.1 - Avec normalisation d'échelle
+// COMPONENT: ArucoMarkerGenerator
+// Génère et télécharge des markers ArUco (PDF multi-pages)
+// VERSION: 1.4 - Multi-pages avec ID début/fin
 // ============================================
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,603 +16,476 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Images, Loader2, Plus, Trash2, CheckCircle2, AlertCircle, Download, Eye } from "lucide-react";
+import { QrCode, Loader2, AlertTriangle, FileDown } from "lucide-react";
 import { toast } from "sonner";
-import { useOpenCVAruco, ArucoMarker } from "./useOpenCVAruco";
+import { jsPDF } from "jspdf";
 
-interface ArucoStitcherProps {
+interface ArucoMarkerGeneratorProps {
   isOpen: boolean;
   onClose: () => void;
-  onStitched: (resultImage: HTMLImageElement, pixelsPerCm: number) => void;
-  markerSizeMm: number;
 }
 
-interface PhotoWithMarkers {
-  id: string;
-  file: File;
-  image: HTMLImageElement;
-  imageUrl: string;
-  markers: ArucoMarker[];
-  isProcessing: boolean;
-  error?: string;
-  // Échelle calculée à partir des markers
-  pixelsPerMm: number;
-}
+// Dimensions A4 en mm
+const A4_WIDTH_MM = 210;
+const A4_HEIGHT_MM = 297;
+const MARGIN_MM = 10;
+const GAP_MM = 8; // Augmenté pour plus d'espace
 
-interface MarkerMatch {
-  markerId: number;
-  photo1Index: number;
-  photo2Index: number;
-  pos1: { x: number; y: number };
-  pos2: { x: number; y: number };
-}
+// ============================================
+// Dictionnaire ArUco DICT_4X4_50
+// ============================================
+const ARUCO_DICT_4X4_50: number[][] = [
+  [0b0111, 0b1001, 0b0010, 0b1111], // ID 0
+  [0b1010, 0b0011, 0b0111, 0b0100], // ID 1
+  [0b1000, 0b1100, 0b0011, 0b1111], // ID 2
+  [0b0010, 0b1101, 0b1000, 0b0110], // ID 3
+  [0b0010, 0b0110, 0b1110, 0b0001], // ID 4
+  [0b0010, 0b1111, 0b1100, 0b1100], // ID 5
+  [0b1100, 0b1100, 0b1011, 0b0001], // ID 6
+  [0b1101, 0b0010, 0b1100, 0b0111], // ID 7
+  [0b0111, 0b0001, 0b1110, 0b0011], // ID 8
+  [0b1011, 0b1011, 0b0100, 0b0110], // ID 9
+  [0b0001, 0b0100, 0b0101, 0b1110], // ID 10
+  [0b1010, 0b0100, 0b1100, 0b1001], // ID 11
+  [0b0111, 0b1111, 0b0100, 0b0001], // ID 12
+  [0b1100, 0b0101, 0b0001, 0b1110], // ID 13
+  [0b0101, 0b0110, 0b0001, 0b0111], // ID 14
+  [0b0110, 0b1010, 0b0011, 0b0010], // ID 15
+  [0b1110, 0b0101, 0b1100, 0b0101], // ID 16
+  [0b0100, 0b0100, 0b1111, 0b1011], // ID 17
+  [0b1001, 0b0010, 0b0001, 0b0101], // ID 18
+  [0b0001, 0b1011, 0b0010, 0b0011], // ID 19
+  [0b1111, 0b1100, 0b1111, 0b0100], // ID 20
+  [0b1010, 0b1111, 0b1001, 0b0010], // ID 21
+  [0b0011, 0b0111, 0b1010, 0b1001], // ID 22
+  [0b1000, 0b1101, 0b1111, 0b0011], // ID 23
+  [0b1011, 0b0111, 0b1011, 0b0011], // ID 24
+  [0b0000, 0b0100, 0b0010, 0b1000], // ID 25
+  [0b1100, 0b0011, 0b1101, 0b1101], // ID 26
+  [0b1110, 0b1001, 0b1010, 0b0001], // ID 27
+  [0b1111, 0b0110, 0b1101, 0b1010], // ID 28
+  [0b1101, 0b1001, 0b1001, 0b1111], // ID 29
+  [0b0101, 0b1000, 0b0110, 0b1001], // ID 30
+  [0b0011, 0b1110, 0b1110, 0b0110], // ID 31
+  [0b0110, 0b0000, 0b1011, 0b1110], // ID 32
+  [0b0101, 0b0001, 0b0100, 0b0000], // ID 33
+  [0b1001, 0b1111, 0b0110, 0b0000], // ID 34
+  [0b1001, 0b0110, 0b0000, 0b0111], // ID 35
+  [0b0100, 0b1110, 0b1000, 0b0100], // ID 36
+  [0b0000, 0b1001, 0b1100, 0b1110], // ID 37
+  [0b1110, 0b0000, 0b0110, 0b1100], // ID 38
+  [0b1100, 0b1000, 0b0101, 0b0110], // ID 39
+  [0b1010, 0b1000, 0b1110, 0b1111], // ID 40
+  [0b0100, 0b0010, 0b1010, 0b0110], // ID 41
+  [0b1001, 0b1000, 0b1000, 0b1000], // ID 42
+  [0b0110, 0b0101, 0b1111, 0b0000], // ID 43
+  [0b0100, 0b1011, 0b0110, 0b1101], // ID 44
+  [0b0000, 0b0000, 0b0100, 0b0101], // ID 45
+  [0b1000, 0b0111, 0b0111, 0b1001], // ID 46
+  [0b0011, 0b0010, 0b1000, 0b1100], // ID 47
+  [0b1011, 0b0000, 0b0001, 0b1010], // ID 48
+  [0b0001, 0b0111, 0b1101, 0b1000], // ID 49
+];
 
-export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 }: ArucoStitcherProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+export function ArucoMarkerGenerator({ isOpen, onClose }: ArucoMarkerGeneratorProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const [photos, setPhotos] = useState<PhotoWithMarkers[]>([]);
-  const [isStitching, setIsStitching] = useState(false);
-  const [stitchResult, setStitchResult] = useState<HTMLCanvasElement | null>(null);
-  const [finalPixelsPerCm, setFinalPixelsPerCm] = useState<number>(0);
-  const [markerSize, setMarkerSize] = useState<string>(markerSizeMm.toString());
+  const [markerSizeMm, setMarkerSizeMm] = useState<string>("50");
+  const [startId, setStartId] = useState<string>("0");
+  const [endId, setEndId] = useState<string>("49");
+  const [isGenerating, setIsGenerating] = useState(false);
 
-  const { isLoaded, isLoading, detectMarkers } = useOpenCVAruco();
+  // Calculer la grille et le nombre de pages
+  const gridInfo = useMemo(() => {
+    const size = parseFloat(markerSizeMm) || 50;
+    const usableWidth = A4_WIDTH_MM - 2 * MARGIN_MM;
+    const usableHeight = A4_HEIGHT_MM - 2 * MARGIN_MM - 20; // Espace titre + footer
 
-  // Nettoyer les URLs au démontage
-  useEffect(() => {
-    return () => {
-      photos.forEach((p) => URL.revokeObjectURL(p.imageUrl));
-    };
-  }, []);
+    // Espace fixe pour le label (ne dépend pas de la taille du marker)
+    const labelHeight = 12; // mm fixe
+    const cellHeight = size + labelHeight + 3; // +3mm de marge supplémentaire
+    const cellWidth = size + GAP_MM;
 
-  // Réinitialiser quand on ferme
-  useEffect(() => {
-    if (!isOpen) {
-      setStitchResult(null);
-    }
-  }, [isOpen]);
+    const cols = Math.max(1, Math.floor((usableWidth + GAP_MM) / cellWidth));
+    const rows = Math.max(1, Math.floor((usableHeight + GAP_MM) / cellHeight));
 
-  // Calculer l'échelle d'une photo à partir de ses markers
-  const calculatePhotoScale = (markers: ArucoMarker[], markerSizeMm: number): number => {
-    if (markers.length === 0) return 0;
+    const markersPerPage = cols * rows;
+    const tooLarge = size > Math.min(usableWidth, usableHeight - 20);
 
-    let totalPixelsPerMm = 0;
-    for (const marker of markers) {
-      const sizePixels = (marker.size.width + marker.size.height) / 2;
-      totalPixelsPerMm += sizePixels / markerSizeMm;
-    }
-    return totalPixelsPerMm / markers.length;
-  };
+    const start = Math.max(0, Math.min(49, parseInt(startId) || 0));
+    const end = Math.max(start, Math.min(49, parseInt(endId) || 49));
+    const totalMarkers = end - start + 1;
+    const totalPages = Math.ceil(totalMarkers / markersPerPage);
 
-  // Ajouter des photos
-  const handleAddPhotos = useCallback(
-    async (files: FileList | null) => {
-      if (!files || !isLoaded) return;
+    return { cols, rows, markersPerPage, tooLarge, size, start, end, totalMarkers, totalPages, labelHeight };
+  }, [markerSizeMm, startId, endId]);
 
-      const markerSizeNum = parseFloat(markerSize) || 100;
-      const newPhotos: PhotoWithMarkers[] = [];
+  // Dessiner un marker sur canvas (preview)
+  const drawMarkerCanvas = useCallback(
+    (ctx: CanvasRenderingContext2D, id: number, x: number, y: number, size: number) => {
+      if (id < 0 || id >= 50) return;
 
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (!file.type.startsWith("image/")) continue;
+      const pattern = ARUCO_DICT_4X4_50[id];
+      const cellSize = size / 6;
 
-        const imageUrl = URL.createObjectURL(file);
-        const image = new Image();
+      ctx.fillStyle = "black";
+      ctx.fillRect(x, y, size, size);
 
-        await new Promise<void>((resolve) => {
-          image.onload = () => resolve();
-          image.onerror = () => resolve();
-          image.src = imageUrl;
-        });
+      ctx.fillStyle = "white";
+      ctx.fillRect(x + cellSize, y + cellSize, cellSize * 4, cellSize * 4);
 
-        if (image.width === 0) continue;
-
-        newPhotos.push({
-          id: `photo-${Date.now()}-${i}`,
-          file,
-          image,
-          imageUrl,
-          markers: [],
-          isProcessing: true,
-          pixelsPerMm: 0,
-        });
-      }
-
-      setPhotos((prev) => [...prev, ...newPhotos]);
-
-      // Détecter les markers sur chaque nouvelle photo
-      for (const photo of newPhotos) {
-        try {
-          const markers = await detectMarkers(photo.image);
-          const pixelsPerMm = calculatePhotoScale(markers, markerSizeNum);
-
-          setPhotos((prev) =>
-            prev.map((p) => (p.id === photo.id ? { ...p, markers, isProcessing: false, pixelsPerMm } : p)),
-          );
-        } catch (err) {
-          setPhotos((prev) =>
-            prev.map((p) => (p.id === photo.id ? { ...p, isProcessing: false, error: "Erreur détection" } : p)),
-          );
+      ctx.fillStyle = "black";
+      for (let row = 0; row < 4; row++) {
+        const rowData = pattern[row];
+        for (let col = 0; col < 4; col++) {
+          const bit = (rowData >> (3 - col)) & 1;
+          if (bit === 1) {
+            ctx.fillRect(x + cellSize * (col + 1), y + cellSize * (row + 1), cellSize, cellSize);
+          }
         }
       }
     },
-    [isLoaded, detectMarkers, markerSize],
+    [],
   );
 
-  // Supprimer une photo
-  const handleRemovePhoto = useCallback((id: string) => {
-    setPhotos((prev) => {
-      const photo = prev.find((p) => p.id === id);
-      if (photo) URL.revokeObjectURL(photo.imageUrl);
-      return prev.filter((p) => p.id !== id);
-    });
-    setStitchResult(null);
+  // Dessiner un marker dans le PDF
+  const drawMarkerPDF = useCallback((pdf: jsPDF, id: number, x: number, y: number, size: number) => {
+    if (id < 0 || id >= 50) return;
+
+    const pattern = ARUCO_DICT_4X4_50[id];
+    const cellSize = size / 6;
+
+    pdf.setFillColor(0, 0, 0);
+    pdf.rect(x, y, size, size, "F");
+
+    pdf.setFillColor(255, 255, 255);
+    pdf.rect(x + cellSize, y + cellSize, cellSize * 4, cellSize * 4, "F");
+
+    pdf.setFillColor(0, 0, 0);
+    for (let row = 0; row < 4; row++) {
+      const rowData = pattern[row];
+      for (let col = 0; col < 4; col++) {
+        const bit = (rowData >> (3 - col)) & 1;
+        if (bit === 1) {
+          pdf.rect(x + cellSize * (col + 1), y + cellSize * (row + 1), cellSize, cellSize, "F");
+        }
+      }
+    }
   }, []);
 
-  // Trouver les markers communs entre photos
-  const findMarkerMatches = useCallback((): MarkerMatch[] => {
-    const matches: MarkerMatch[] = [];
+  // Générer la preview
+  const generatePreview = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-    for (let i = 0; i < photos.length; i++) {
-      for (let j = i + 1; j < photos.length; j++) {
-        const photo1 = photos[i];
-        const photo2 = photos[j];
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-        for (const m1 of photo1.markers) {
-          const m2 = photo2.markers.find((m) => m.id === m1.id);
-          if (m2) {
-            matches.push({
-              markerId: m1.id,
-              photo1Index: i,
-              photo2Index: j,
-              pos1: m1.center,
-              pos2: m2.center,
-            });
-          }
-        }
+    const scale = 1.2;
+    const canvasWidth = Math.round(A4_WIDTH_MM * scale);
+    const canvasHeight = Math.round(A4_HEIGHT_MM * scale);
+
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    ctx.strokeStyle = "#ccc";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, canvasWidth - 1, canvasHeight - 1);
+
+    const { cols, rows, size, tooLarge, start, totalPages, labelHeight } = gridInfo;
+
+    if (tooLarge) {
+      ctx.fillStyle = "#999";
+      ctx.font = "12px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Marker trop grand pour A4", canvasWidth / 2, canvasHeight / 2);
+      return;
+    }
+
+    const markerSizePx = size * scale;
+    const marginPx = MARGIN_MM * scale;
+    const gapPx = GAP_MM * scale;
+    const labelHeightPx = labelHeight * scale;
+
+    // Titre
+    ctx.fillStyle = "#333";
+    ctx.font = "bold 9px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`ArUco 4x4_50 - ${size}mm - Page 1/${totalPages}`, canvasWidth / 2, marginPx * 0.8);
+
+    let markerId = start;
+
+    const cellWidth = markerSizePx + gapPx;
+    const cellHeight = markerSizePx + labelHeightPx;
+    const totalGridWidth = cols * cellWidth - gapPx;
+    const totalGridHeight = rows * cellHeight - gapPx;
+    const offsetX = (canvasWidth - totalGridWidth) / 2;
+    const offsetY = marginPx + 5 + (canvasHeight - marginPx * 2 - 15 - totalGridHeight) / 2;
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        if (markerId > gridInfo.end) break;
+
+        const mx = offsetX + col * cellWidth;
+        const my = offsetY + row * cellHeight;
+
+        drawMarkerCanvas(ctx, markerId, mx, my, markerSizePx);
+
+        // Label SOUS le marker - taille FIXE (ne grandit pas avec le marker)
+        ctx.fillStyle = "#333";
+        ctx.font = "bold 10px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(`ID: ${markerId}`, mx + markerSizePx / 2, my + markerSizePx + 12);
+
+        markerId++;
       }
     }
 
-    return matches;
-  }, [photos]);
+    // Règle de 5cm en bas
+    const rulerY = canvasHeight - marginPx * 0.5;
+    const rulerWidth = 50 * scale;
+    const rulerX = (canvasWidth - rulerWidth) / 2;
 
-  // Assembler les photos avec normalisation d'échelle
-  const handleStitch = useCallback(async () => {
-    if (photos.length < 2) {
-      toast.error("Il faut au moins 2 photos");
-      return;
+    ctx.strokeStyle = "#333";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(rulerX, rulerY - 2);
+    ctx.lineTo(rulerX, rulerY + 2);
+    ctx.moveTo(rulerX, rulerY);
+    ctx.lineTo(rulerX + rulerWidth, rulerY);
+    ctx.moveTo(rulerX + rulerWidth, rulerY - 2);
+    ctx.lineTo(rulerX + rulerWidth, rulerY + 2);
+    ctx.stroke();
+
+    ctx.fillStyle = "#666";
+    ctx.font = "7px sans-serif";
+    ctx.fillText("← 5cm →", canvasWidth / 2, rulerY - 4);
+  }, [gridInfo, drawMarkerCanvas]);
+
+  useEffect(() => {
+    if (isOpen) {
+      const timer = setTimeout(() => generatePreview(), 50);
+      return () => clearTimeout(timer);
     }
+  }, [isOpen, generatePreview]);
 
-    const matches = findMarkerMatches();
-    if (matches.length === 0) {
-      toast.error("Aucun marker commun trouvé entre les photos");
-      return;
-    }
-
-    // Vérifier que toutes les photos ont des markers
-    const photosWithMarkers = photos.filter((p) => p.markers.length > 0 && p.pixelsPerMm > 0);
-    if (photosWithMarkers.length < 2) {
-      toast.error("Au moins 2 photos doivent avoir des markers détectés");
-      return;
-    }
-
-    setIsStitching(true);
+  // Générer le PDF multi-pages
+  const handleDownloadPDF = useCallback(() => {
+    setIsGenerating(true);
 
     try {
-      const markerSizeNum = parseFloat(markerSize) || 100;
+      const { cols, rows, size, tooLarge, start, end, markersPerPage, totalPages, labelHeight } = gridInfo;
 
-      // Trouver l'échelle cible (utiliser la plus haute résolution)
-      const targetPixelsPerMm = Math.max(...photosWithMarkers.map((p) => p.pixelsPerMm));
-      const targetPixelsPerCm = targetPixelsPerMm * 10;
-      setFinalPixelsPerCm(targetPixelsPerCm);
-
-      console.log("Échelle cible:", targetPixelsPerMm, "px/mm =", targetPixelsPerCm, "px/cm");
-
-      // Calculer les facteurs d'échelle pour chaque photo
-      const scaleFactors = photos.map((p) => {
-        if (p.pixelsPerMm === 0) return 1;
-        return targetPixelsPerMm / p.pixelsPerMm;
-      });
-
-      console.log("Facteurs d'échelle:", scaleFactors);
-
-      // Calculer les positions relatives (en coordonnées normalisées)
-      // Position = position du marker en mm réels
-      interface PhotoPosition {
-        x: number; // en mm
-        y: number; // en mm
-        scale: number;
-      }
-
-      const photoPositions: PhotoPosition[] = photos.map((_, i) => ({
-        x: 0,
-        y: 0,
-        scale: scaleFactors[i],
-      }));
-
-      // Commencer par la première photo à (0, 0)
-      const processed = new Set<number>([0]);
-      const queue = [0];
-
-      while (queue.length > 0) {
-        const currentIdx = queue.shift()!;
-        const currentPhoto = photos[currentIdx];
-        const currentScale = scaleFactors[currentIdx];
-
-        for (let otherIdx = 0; otherIdx < photos.length; otherIdx++) {
-          if (processed.has(otherIdx)) continue;
-
-          const otherPhoto = photos[otherIdx];
-          const otherScale = scaleFactors[otherIdx];
-
-          // Trouver les markers communs entre ces deux photos
-          const commonMatches = matches.filter(
-            (m) =>
-              (m.photo1Index === currentIdx && m.photo2Index === otherIdx) ||
-              (m.photo1Index === otherIdx && m.photo2Index === currentIdx),
-          );
-
-          if (commonMatches.length === 0) continue;
-
-          // Calculer le décalage moyen en mm
-          let totalDxMm = 0;
-          let totalDyMm = 0;
-
-          for (const match of commonMatches) {
-            let pos1InCurrent: { x: number; y: number };
-            let pos2InOther: { x: number; y: number };
-
-            if (match.photo1Index === currentIdx) {
-              pos1InCurrent = match.pos1;
-              pos2InOther = match.pos2;
-            } else {
-              pos1InCurrent = match.pos2;
-              pos2InOther = match.pos1;
-            }
-
-            // Convertir les positions en mm
-            const pos1Mm = {
-              x: pos1InCurrent.x / currentPhoto.pixelsPerMm,
-              y: pos1InCurrent.y / currentPhoto.pixelsPerMm,
-            };
-            const pos2Mm = {
-              x: pos2InOther.x / otherPhoto.pixelsPerMm,
-              y: pos2InOther.y / otherPhoto.pixelsPerMm,
-            };
-
-            // Le marker est au même endroit physique, donc :
-            // positionPhoto1 + pos1Mm = positionPhoto2 + pos2Mm
-            // positionPhoto2 = positionPhoto1 + pos1Mm - pos2Mm
-            totalDxMm += pos1Mm.x - pos2Mm.x;
-            totalDyMm += pos1Mm.y - pos2Mm.y;
-          }
-
-          const avgDxMm = totalDxMm / commonMatches.length;
-          const avgDyMm = totalDyMm / commonMatches.length;
-
-          photoPositions[otherIdx] = {
-            x: photoPositions[currentIdx].x + avgDxMm,
-            y: photoPositions[currentIdx].y + avgDyMm,
-            scale: otherScale,
-          };
-
-          processed.add(otherIdx);
-          queue.push(otherIdx);
-        }
-      }
-
-      // Vérifier que toutes les photos sont connectées
-      if (processed.size < photos.length) {
-        const unconnected = photos.length - processed.size;
-        toast.error(`${unconnected} photo(s) non connectée(s) par des markers`);
-        setIsStitching(false);
+      if (tooLarge) {
+        toast.error("La taille du marker est trop grande pour A4");
+        setIsGenerating(false);
         return;
       }
 
-      // Calculer les bounds en pixels (à l'échelle cible)
-      let minXmm = Infinity,
-        minYmm = Infinity,
-        maxXmm = -Infinity,
-        maxYmm = -Infinity;
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
 
-      for (let i = 0; i < photos.length; i++) {
-        const pos = photoPositions[i];
-        const photo = photos[i];
-        const widthMm = photo.image.width / photo.pixelsPerMm;
-        const heightMm = photo.image.height / photo.pixelsPerMm;
+      let markerId = start;
+      let currentPage = 1;
 
-        minXmm = Math.min(minXmm, pos.x);
-        minYmm = Math.min(minYmm, pos.y);
-        maxXmm = Math.max(maxXmm, pos.x + widthMm);
-        maxYmm = Math.max(maxYmm, pos.y + heightMm);
-      }
-
-      // Dimensions finales en pixels
-      const finalWidthPx = Math.ceil((maxXmm - minXmm) * targetPixelsPerMm);
-      const finalHeightPx = Math.ceil((maxYmm - minYmm) * targetPixelsPerMm);
-
-      console.log("Dimensions finales:", finalWidthPx, "x", finalHeightPx, "px");
-      console.log("Dimensions réelles:", (maxXmm - minXmm).toFixed(0), "x", (maxYmm - minYmm).toFixed(0), "mm");
-
-      // Limiter la taille pour éviter les problèmes de mémoire
-      const maxDimension = 8000;
-      let outputScale = 1;
-      if (finalWidthPx > maxDimension || finalHeightPx > maxDimension) {
-        outputScale = maxDimension / Math.max(finalWidthPx, finalHeightPx);
-        toast.info(`Image redimensionnée à ${Math.round(outputScale * 100)}% pour éviter les problèmes de mémoire`);
-      }
-
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.ceil(finalWidthPx * outputScale);
-      canvas.height = Math.ceil(finalHeightPx * outputScale);
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Impossible de créer le contexte canvas");
-
-      // Fond blanc
-      ctx.fillStyle = "white";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Dessiner chaque photo à sa position, redimensionnée
-      for (let i = 0; i < photos.length; i++) {
-        const pos = photoPositions[i];
-        const photo = photos[i];
-
-        // Position en pixels sur le canvas final
-        const drawX = (pos.x - minXmm) * targetPixelsPerMm * outputScale;
-        const drawY = (pos.y - minYmm) * targetPixelsPerMm * outputScale;
-
-        // Taille redimensionnée
-        const drawWidth = photo.image.width * scaleFactors[i] * outputScale;
-        const drawHeight = photo.image.height * scaleFactors[i] * outputScale;
-
-        ctx.drawImage(photo.image, drawX, drawY, drawWidth, drawHeight);
-      }
-
-      // Dessiner les markers détectés (debug)
-      ctx.strokeStyle = "lime";
-      ctx.lineWidth = 3;
-      ctx.font = "bold 14px monospace";
-
-      for (let i = 0; i < photos.length; i++) {
-        const pos = photoPositions[i];
-        const photo = photos[i];
-        const scale = scaleFactors[i] * outputScale;
-
-        for (const marker of photo.markers) {
-          const markerXpx = (pos.x - minXmm) * targetPixelsPerMm * outputScale + marker.center.x * scale;
-          const markerYpx = (pos.y - minYmm) * targetPixelsPerMm * outputScale + marker.center.y * scale;
-          const markerSizePx = marker.size.width * scale;
-
-          ctx.strokeRect(markerXpx - markerSizePx / 2, markerYpx - markerSizePx / 2, markerSizePx, markerSizePx);
-
-          ctx.fillStyle = "lime";
-          ctx.fillText(`${marker.id}`, markerXpx - 10, markerYpx - markerSizePx / 2 - 5);
+      while (markerId <= end) {
+        if (currentPage > 1) {
+          pdf.addPage();
         }
+
+        // Calculer les IDs de cette page
+        const pageStartId = markerId;
+        const pageEndId = Math.min(end, markerId + markersPerPage - 1);
+
+        // Titre avec numéros de page et IDs
+        pdf.setFontSize(12);
+        pdf.setTextColor(51, 51, 51);
+        pdf.text(
+          `Markers ArUco 4x4_50 - ${size}mm × ${size}mm - IDs ${pageStartId}-${pageEndId} (Page ${currentPage}/${totalPages})`,
+          A4_WIDTH_MM / 2,
+          MARGIN_MM,
+          { align: "center" },
+        );
+
+        // Calculer la grille centrée
+        const cellWidth = size + GAP_MM;
+        const cellHeight = size + labelHeight;
+        const totalGridWidth = cols * cellWidth - GAP_MM;
+        const totalGridHeight = rows * cellHeight - GAP_MM;
+        const offsetX = (A4_WIDTH_MM - totalGridWidth) / 2;
+        const offsetY = MARGIN_MM + 8 + (A4_HEIGHT_MM - MARGIN_MM * 2 - 25 - totalGridHeight) / 2;
+
+        for (let row = 0; row < rows; row++) {
+          for (let col = 0; col < cols; col++) {
+            if (markerId > end) break;
+
+            const mx = offsetX + col * cellWidth;
+            const my = offsetY + row * cellHeight;
+
+            drawMarkerPDF(pdf, markerId, mx, my, size);
+
+            // Label sous le marker - taille FIXE 10pt (ne grandit pas avec le marker)
+            pdf.setFontSize(10);
+            pdf.setTextColor(51, 51, 51);
+            pdf.text(`ID: ${markerId}`, mx + size / 2, my + size + 8, { align: "center" });
+
+            markerId++;
+          }
+        }
+
+        // Règle de 5cm en bas
+        const rulerY = A4_HEIGHT_MM - MARGIN_MM;
+        const rulerWidth = 50;
+        const rulerX = (A4_WIDTH_MM - rulerWidth) / 2;
+
+        pdf.setDrawColor(0, 0, 0);
+        pdf.setLineWidth(0.3);
+        pdf.line(rulerX, rulerY, rulerX + rulerWidth, rulerY);
+        pdf.line(rulerX, rulerY - 2, rulerX, rulerY + 2);
+        pdf.line(rulerX + rulerWidth, rulerY - 2, rulerX + rulerWidth, rulerY + 2);
+        for (let i = 10; i < rulerWidth; i += 10) {
+          pdf.line(rulerX + i, rulerY - 1, rulerX + i, rulerY + 1);
+        }
+
+        pdf.setFontSize(7);
+        pdf.setTextColor(100, 100, 100);
+        pdf.text("← 5cm (vérifiez l'échelle) →", A4_WIDTH_MM / 2, rulerY - 3, { align: "center" });
+
+        currentPage++;
       }
 
-      // Ajuster l'échelle finale si on a redimensionné
-      const actualPixelsPerCm = targetPixelsPerCm * outputScale;
-      setFinalPixelsPerCm(actualPixelsPerCm);
+      // Nom du fichier avec la plage d'IDs
+      pdf.save(`aruco_${size}mm_ID${start}-${end}_${totalPages}pages.pdf`);
 
-      setStitchResult(canvas);
-      toast.success(
-        `Assemblage réussi ! ${matches.length} markers communs, ${(maxXmm - minXmm).toFixed(0)}×${(maxYmm - minYmm).toFixed(0)}mm`,
-      );
+      toast.success(`${gridInfo.totalMarkers} markers sur ${totalPages} page(s) !`);
     } catch (err) {
-      console.error("Erreur stitching:", err);
-      toast.error("Erreur lors de l'assemblage: " + (err as Error).message);
+      console.error("Erreur PDF:", err);
+      toast.error("Erreur lors de la génération du PDF");
     } finally {
-      setIsStitching(false);
+      setIsGenerating(false);
     }
-  }, [photos, findMarkerMatches, markerSize]);
+  }, [gridInfo, drawMarkerPDF]);
 
-  // Valider et envoyer le résultat
-  const handleConfirm = useCallback(() => {
-    if (!stitchResult) return;
-
-    const img = new Image();
-    img.onload = () => {
-      onStitched(img, finalPixelsPerCm);
-      onClose();
-    };
-    img.src = stitchResult.toDataURL("image/png");
-  }, [stitchResult, finalPixelsPerCm, onStitched, onClose]);
-
-  // Télécharger le résultat
-  const handleDownload = useCallback(() => {
-    if (!stitchResult) return;
-
-    const link = document.createElement("a");
-    link.download = `plancher_assemble_${Date.now()}.png`;
-    link.href = stitchResult.toDataURL("image/png");
-    link.click();
-  }, [stitchResult]);
-
-  // Stats
-  const totalMarkers = photos.reduce((sum, p) => sum + p.markers.length, 0);
-  const matches = findMarkerMatches();
-  const uniqueMatchedIds = new Set(matches.map((m) => m.markerId)).size;
-  const avgScale =
-    photos.length > 0
-      ? photos.filter((p) => p.pixelsPerMm > 0).reduce((sum, p) => sum + p.pixelsPerMm, 0) /
-        photos.filter((p) => p.pixelsPerMm > 0).length
-      : 0;
+  const sizeCm = (parseFloat(markerSizeMm) || 50) / 10;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Images className="h-5 w-5" />
-            Assemblage par markers ArUco
+            <QrCode className="h-5 w-5" />
+            Générateur de markers ArUco
           </DialogTitle>
-          <DialogDescription>Les photos seront redimensionnées à la même échelle et assemblées</DialogDescription>
+          <DialogDescription>Génère un PDF A4 multi-pages avec les markers sélectionnés</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Status OpenCV */}
-          {isLoading && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted p-2 rounded">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Chargement d'OpenCV.js...
+          {/* Paramètres */}
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <Label htmlFor="markerSize" className="text-sm">
+                Taille (mm)
+              </Label>
+              <Input
+                id="markerSize"
+                type="number"
+                value={markerSizeMm}
+                onChange={(e) => setMarkerSizeMm(e.target.value)}
+                min="10"
+                max="180"
+                step="5"
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">= {sizeCm}cm</p>
             </div>
-          )}
 
-          {/* Taille des markers */}
-          <div className="flex items-center gap-4">
-            <Label htmlFor="markerSizeInput" className="text-sm whitespace-nowrap">
-              Taille réelle des markers:
-            </Label>
-            <Input
-              id="markerSizeInput"
-              type="number"
-              value={markerSize}
-              onChange={(e) => setMarkerSize(e.target.value)}
-              className="w-24"
-              min="10"
-              max="500"
-            />
-            <span className="text-sm text-muted-foreground">mm ({(parseFloat(markerSize) || 100) / 10}cm)</span>
-          </div>
-
-          {/* Bouton ajouter */}
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={!isLoaded}
-              className="flex-1"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Ajouter des photos
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(e) => handleAddPhotos(e.target.files)}
-            />
-          </div>
-
-          {/* Liste des photos */}
-          {photos.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-sm font-medium flex justify-between">
-                <span>
-                  Photos ({photos.length}) - {totalMarkers} markers
-                </span>
-                <span className="text-muted-foreground">{uniqueMatchedIds} markers communs</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto">
-                {photos.map((photo, idx) => (
-                  <div key={photo.id} className="relative border rounded p-2 bg-muted/50">
-                    <img src={photo.imageUrl} alt={`Photo ${idx + 1}`} className="w-full h-20 object-cover rounded" />
-                    <div className="absolute top-1 left-1 bg-black/70 text-white text-xs px-1 rounded">#{idx + 1}</div>
-                    <div className="absolute top-1 right-1 flex gap-1">
-                      {photo.isProcessing ? (
-                        <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
-                      ) : photo.error ? (
-                        <AlertCircle className="h-4 w-4 text-red-500" />
-                      ) : (
-                        <span className="bg-green-500 text-white text-xs px-1 rounded flex items-center gap-1">
-                          <CheckCircle2 className="h-3 w-3" />
-                          {photo.markers.length}
-                        </span>
-                      )}
-                    </div>
-                    <Button
-                      variant="destructive"
-                      size="icon"
-                      className="absolute bottom-1 right-1 h-6 w-6"
-                      onClick={() => handleRemovePhoto(photo.id)}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                    {/* Infos */}
-                    <div className="text-xs mt-1 text-muted-foreground">
-                      <div className="truncate">IDs: {photo.markers.map((m) => m.id).join(", ") || "aucun"}</div>
-                      {photo.pixelsPerMm > 0 && <div>Échelle: {photo.pixelsPerMm.toFixed(2)} px/mm</div>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Aperçu du résultat */}
-          {stitchResult && (
-            <div className="border rounded-lg p-2 bg-gray-100">
-              <div className="text-sm font-medium mb-2 flex justify-between items-center">
-                <span>
-                  Résultat ({stitchResult.width}×{stitchResult.height}px)
-                </span>
-                <span className="text-muted-foreground">{finalPixelsPerCm.toFixed(1)} px/cm</span>
-              </div>
-              <img
-                src={stitchResult.toDataURL()}
-                alt="Résultat"
-                className="max-w-full max-h-[200px] object-contain mx-auto rounded shadow"
+            <div>
+              <Label htmlFor="startId" className="text-sm">
+                ID début
+              </Label>
+              <Input
+                id="startId"
+                type="number"
+                value={startId}
+                onChange={(e) => setStartId(e.target.value)}
+                min="0"
+                max="49"
+                className="mt-1"
               />
             </div>
-          )}
+
+            <div>
+              <Label htmlFor="endId" className="text-sm">
+                ID fin
+              </Label>
+              <Input
+                id="endId"
+                type="number"
+                value={endId}
+                onChange={(e) => setEndId(e.target.value)}
+                min="0"
+                max="49"
+                className="mt-1"
+              />
+            </div>
+          </div>
+
+          {/* Résumé */}
+          <div className="text-sm bg-muted p-2 rounded flex justify-between items-center">
+            {gridInfo.tooLarge ? (
+              <span className="text-destructive flex items-center gap-1">
+                <AlertTriangle className="h-4 w-4" />
+                Marker trop grand pour A4
+              </span>
+            ) : (
+              <>
+                <span>
+                  <strong>{gridInfo.totalMarkers}</strong> markers (ID {gridInfo.start} → {gridInfo.end})
+                </span>
+                <span className="text-muted-foreground">
+                  {gridInfo.markersPerPage}/page × <strong>{gridInfo.totalPages} page(s)</strong>
+                </span>
+              </>
+            )}
+          </div>
+
+          {/* Preview */}
+          <div className="border rounded-lg p-2 bg-gray-100 flex justify-center">
+            <canvas ref={canvasRef} className="shadow-md bg-white" style={{ maxHeight: "280px", width: "auto" }} />
+          </div>
 
           {/* Instructions */}
-          {photos.length === 0 && (
-            <div className="text-sm text-muted-foreground bg-muted p-3 rounded-lg">
-              <p className="font-medium mb-2">Comment ça marche :</p>
-              <ol className="list-decimal list-inside space-y-1 text-xs">
-                <li>Place des markers ArUco sur la surface (même taille pour tous !)</li>
-                <li>
-                  Prends plusieurs photos avec des markers <strong>en commun</strong> sur les chevauchements
-                </li>
-                <li>
-                  Les photos seront <strong>redimensionnées automatiquement</strong> à la même échelle
-                </li>
-                <li>L'image finale sera calibrée pour le tracé à taille réelle</li>
-              </ol>
-            </div>
-          )}
-
-          {/* Avertissement si pas assez de markers communs */}
-          {photos.length >= 2 && uniqueMatchedIds === 0 && (
-            <div className="text-sm text-amber-600 bg-amber-50 p-2 rounded flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              <span>Aucun marker commun. Assurez-vous que les photos se chevauchent avec le même marker visible.</span>
-            </div>
-          )}
+          <div className="text-xs text-muted-foreground bg-muted p-2 rounded-lg">
+            <ol className="list-decimal list-inside space-y-0.5">
+              <li>
+                Téléchargez le PDF ({gridInfo.totalPages} page{gridInfo.totalPages > 1 ? "s" : ""})
+              </li>
+              <li>
+                Imprimez à <strong>100%</strong> - vérifiez la règle de 5cm
+              </li>
+              <li>Découpez et placez les markers sur la surface</li>
+            </ol>
+          </div>
         </div>
 
-        <DialogFooter className="gap-2 flex-wrap">
+        <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose}>
-            Annuler
+            Fermer
           </Button>
-
-          {stitchResult && (
-            <>
-              <Button variant="outline" onClick={handleDownload}>
-                <Download className="h-4 w-4 mr-2" />
-                Télécharger
-              </Button>
-              <Button onClick={handleConfirm}>
-                <Eye className="h-4 w-4 mr-2" />
-                Utiliser dans le canvas
-              </Button>
-            </>
-          )}
-
-          {!stitchResult && (
-            <Button onClick={handleStitch} disabled={photos.length < 2 || isStitching || uniqueMatchedIds === 0}>
-              {isStitching ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Images className="h-4 w-4 mr-2" />}
-              Assembler ({photos.length} photos)
-            </Button>
-          )}
+          <Button onClick={handleDownloadPDF} disabled={isGenerating || gridInfo.tooLarge}>
+            {isGenerating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileDown className="h-4 w-4 mr-2" />}
+            PDF ({gridInfo.totalMarkers} markers, {gridInfo.totalPages} page{gridInfo.totalPages > 1 ? "s" : ""})
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-export default ArucoStitcher;
+export default ArucoMarkerGenerator;
