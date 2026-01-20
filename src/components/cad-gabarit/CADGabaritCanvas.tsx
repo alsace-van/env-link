@@ -251,6 +251,7 @@ import { ImageCalibrationModal } from "./ImageCalibrationModal";
 import { ArucoCalibrationModal } from "./ArucoCalibrationModal";
 import { ArucoMarkerGenerator } from "./ArucoMarkerGenerator";
 import { ArucoStitcher } from "./ArucoStitcher";
+import { useOpenCVAruco } from "./useOpenCVAruco";
 import type { ArucoMarker } from "./useOpenCVAruco";
 
 // MOD v7.31: Cotations automatiques lors de la création de géométries
@@ -733,6 +734,9 @@ export function CADGabaritCanvas({
   const getActiveBranch = useCallback((): Branch | null => {
     return branches.find((b) => b.id === activeBranchId) || null;
   }, [branches, activeBranchId]);
+
+  // v7.45: Hook OpenCV ArUco pour redressement et assemblage
+  const { isLoaded: isOpenCVLoaded, detectMarkers } = useOpenCVAruco();
 
   // Helper pour obtenir l'historique et l'index actuels (pour compatibilité)
   const history = useMemo(() => {
@@ -5405,6 +5409,255 @@ export function CADGabaritCanvas({
     },
     [backgroundImages],
   );
+
+  // v7.45: Redresser une image (correction de perspective via ArUco)
+  const handleStraightenImage = useCallback(
+    async (imageId: string) => {
+      const image = backgroundImages.find((img) => img.id === imageId);
+      if (!image) {
+        toast.error("Image non trouvée");
+        return;
+      }
+
+      if (!isOpenCVLoaded) {
+        toast.error("OpenCV n'est pas encore chargé");
+        return;
+      }
+
+      toast.loading("Détection des markers...", { id: "straighten" });
+
+      try {
+        // Créer un canvas temporaire avec l'image
+        const tempCanvas = document.createElement("canvas");
+        const tempCtx = tempCanvas.getContext("2d");
+        if (!tempCtx) throw new Error("Impossible de créer le contexte canvas");
+
+        tempCanvas.width = image.element.naturalWidth;
+        tempCanvas.height = image.element.naturalHeight;
+        tempCtx.drawImage(image.element, 0, 0);
+
+        // Détecter les markers ArUco
+        const markers = await detectMarkers(tempCanvas, 0); // Tolérance 0 = strict
+
+        if (markers.length === 0) {
+          toast.error("Aucun marker ArUco détecté", { id: "straighten" });
+          return;
+        }
+
+        // Calculer l'angle moyen des markers (bord supérieur corner[0] → corner[1])
+        let totalAngle = 0;
+        for (const marker of markers) {
+          const dx = marker.corners[1].x - marker.corners[0].x;
+          const dy = marker.corners[1].y - marker.corners[0].y;
+          const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+          totalAngle += angle;
+        }
+        const avgAngle = totalAngle / markers.length;
+
+        // Si l'angle est très petit, pas besoin de corriger
+        if (Math.abs(avgAngle) < 0.5) {
+          toast.success("Image déjà droite", { id: "straighten" });
+          return;
+        }
+
+        // Créer un nouveau canvas pour l'image redressée
+        // Calculer la taille du canvas après rotation
+        const radians = (-avgAngle * Math.PI) / 180;
+        const cos = Math.abs(Math.cos(radians));
+        const sin = Math.abs(Math.sin(radians));
+        const newWidth = Math.ceil(tempCanvas.width * cos + tempCanvas.height * sin);
+        const newHeight = Math.ceil(tempCanvas.width * sin + tempCanvas.height * cos);
+
+        const outputCanvas = document.createElement("canvas");
+        const outputCtx = outputCanvas.getContext("2d");
+        if (!outputCtx) throw new Error("Impossible de créer le contexte canvas de sortie");
+
+        outputCanvas.width = newWidth;
+        outputCanvas.height = newHeight;
+
+        // Appliquer la rotation
+        outputCtx.translate(newWidth / 2, newHeight / 2);
+        outputCtx.rotate(radians);
+        outputCtx.drawImage(tempCanvas, -tempCanvas.width / 2, -tempCanvas.height / 2);
+
+        // Créer une nouvelle image
+        const newImageUrl = outputCanvas.toDataURL("image/png");
+        const newImg = new Image();
+        
+        await new Promise<void>((resolve, reject) => {
+          newImg.onload = () => resolve();
+          newImg.onerror = reject;
+          newImg.src = newImageUrl;
+        });
+
+        // Mettre à jour l'image dans backgroundImages
+        // Ajuster la position pour compenser le changement de taille
+        const deltaWidth = (newWidth - tempCanvas.width) / 2;
+        const deltaHeight = (newHeight - tempCanvas.height) / 2;
+
+        setBackgroundImages((prev) =>
+          prev.map((img) =>
+            img.id === imageId
+              ? {
+                  ...img,
+                  element: newImg,
+                  url: newImageUrl,
+                  x: img.x - deltaWidth / (pxPerCm * img.scale),
+                  y: img.y - deltaHeight / (pxPerCm * img.scale),
+                  rotation: 0, // Reset la rotation manuelle
+                }
+              : img,
+          ),
+        );
+
+        toast.success(`Redressé de ${avgAngle.toFixed(1)}°`, { id: "straighten" });
+      } catch (error) {
+        console.error("Erreur redressement:", error);
+        toast.error("Erreur lors du redressement", { id: "straighten" });
+      }
+    },
+    [backgroundImages, isOpenCVLoaded, detectMarkers, pxPerCm],
+  );
+
+  // v7.45: Assembler toutes les images visibles en une seule
+  const handleStitchImages = useCallback(() => {
+    const visibleImages = backgroundImages.filter((img) => img.visible !== false);
+
+    if (visibleImages.length < 2) {
+      toast.error("Il faut au moins 2 images visibles");
+      return;
+    }
+
+    toast.loading("Assemblage en cours...", { id: "stitch" });
+
+    try {
+      // Calculer le bounding box de toutes les images (en pixels canvas)
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+      for (const img of visibleImages) {
+        const imgWidth = img.element.naturalWidth;
+        const imgHeight = img.element.naturalHeight;
+        const scale = img.scale * pxPerCm;
+        const scaledWidth = imgWidth * scale / pxPerCm;
+        const scaledHeight = imgHeight * scale / pxPerCm;
+
+        // Prendre en compte la rotation pour le bounding box
+        const rotation = (img.rotation || 0) * Math.PI / 180;
+        const cos = Math.abs(Math.cos(rotation));
+        const sin = Math.abs(Math.sin(rotation));
+        const rotatedWidth = scaledWidth * cos + scaledHeight * sin;
+        const rotatedHeight = scaledWidth * sin + scaledHeight * cos;
+
+        const centerX = img.x + scaledWidth / 2;
+        const centerY = img.y + scaledHeight / 2;
+
+        minX = Math.min(minX, centerX - rotatedWidth / 2);
+        minY = Math.min(minY, centerY - rotatedHeight / 2);
+        maxX = Math.max(maxX, centerX + rotatedWidth / 2);
+        maxY = Math.max(maxY, centerY + rotatedHeight / 2);
+      }
+
+      // Créer le canvas de sortie (en pixels, pas en mm)
+      const outputScale = pxPerCm; // pixels par cm
+      const outputWidth = Math.ceil((maxX - minX) * outputScale);
+      const outputHeight = Math.ceil((maxY - minY) * outputScale);
+
+      if (outputWidth > 10000 || outputHeight > 10000) {
+        toast.error("Image résultante trop grande (max 10000px)", { id: "stitch" });
+        return;
+      }
+
+      const outputCanvas = document.createElement("canvas");
+      const outputCtx = outputCanvas.getContext("2d");
+      if (!outputCtx) throw new Error("Impossible de créer le contexte canvas");
+
+      outputCanvas.width = outputWidth;
+      outputCanvas.height = outputHeight;
+
+      // Trier par ordre (z-index)
+      const sortedImages = [...visibleImages].sort((a, b) => (a.order || 0) - (b.order || 0));
+
+      // Dessiner chaque image
+      for (const img of sortedImages) {
+        const imgWidth = img.element.naturalWidth;
+        const imgHeight = img.element.naturalHeight;
+        const scale = img.scale;
+        const scaledWidth = imgWidth * scale;
+        const scaledHeight = imgHeight * scale;
+
+        // Position relative au bounding box
+        const relX = (img.x - minX) * outputScale;
+        const relY = (img.y - minY) * outputScale;
+
+        outputCtx.save();
+        outputCtx.globalAlpha = img.opacity ?? 1;
+
+        // Appliquer rotation autour du centre de l'image
+        if (img.rotation) {
+          const centerX = relX + scaledWidth * outputScale / pxPerCm / 2;
+          const centerY = relY + scaledHeight * outputScale / pxPerCm / 2;
+          outputCtx.translate(centerX, centerY);
+          outputCtx.rotate((img.rotation * Math.PI) / 180);
+          outputCtx.translate(-centerX, -centerY);
+        }
+
+        // Dessiner l'image
+        outputCtx.drawImage(
+          img.element,
+          relX,
+          relY,
+          scaledWidth * outputScale / pxPerCm,
+          scaledHeight * outputScale / pxPerCm,
+        );
+
+        outputCtx.restore();
+      }
+
+      // Créer la nouvelle image
+      const newImageUrl = outputCanvas.toDataURL("image/png");
+      const newImg = new Image();
+
+      newImg.onload = () => {
+        const newImageId = generateId();
+        const newBackgroundImage: BackgroundImage = {
+          id: newImageId,
+          url: newImageUrl,
+          element: newImg,
+          x: minX,
+          y: minY,
+          scale: 1 / outputScale * pxPerCm, // Compenser pour que 1px = 1px sur le canvas
+          rotation: 0,
+          opacity: 1,
+          visible: true,
+          locked: false,
+          order: Math.max(...backgroundImages.map((img) => img.order || 0), 0) + 1,
+          layerId: backgroundImages[0]?.layerId,
+          markers: [],
+        };
+
+        // Ajouter la nouvelle image
+        setBackgroundImages((prev) => [...prev, newBackgroundImage]);
+
+        // Masquer les images sources
+        setBackgroundImages((prev) =>
+          prev.map((img) =>
+            visibleImages.some((vi) => vi.id === img.id) ? { ...img, visible: false } : img,
+          ),
+        );
+
+        toast.success(`${visibleImages.length} images assemblées`, { id: "stitch" });
+      };
+
+      newImg.onerror = () => {
+        toast.error("Erreur lors de la création de l'image", { id: "stitch" });
+      };
+
+      newImg.src = newImageUrl;
+    } catch (error) {
+      console.error("Erreur assemblage:", error);
+      toast.error("Erreur lors de l'assemblage", { id: "stitch" });
+    }
+  }, [backgroundImages, pxPerCm]);
 
   // Import DXF
   const handleDXFImport = useCallback(
@@ -22349,19 +22602,17 @@ export function CADGabaritCanvas({
                       <button
                         className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5 text-purple-600"
                         onClick={() => {
-                          // TODO: Implémenter redressement perspective via homographie ArUco
-                          toast.info("Redressement perspective - À implémenter");
+                          handleStraightenImage(contextMenu.entityId);
                           setContextMenu(null);
                         }}
                       >
                         <Maximize2 className="h-3 w-3" />
-                        Redresser (perspective)
+                        Redresser (ArUco)
                       </button>
                       <button
                         className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5 text-green-600"
                         onClick={() => {
-                          // TODO: Implémenter assemblage des photos
-                          toast.info("Assemblage photos - À implémenter");
+                          handleStitchImages();
                           setContextMenu(null);
                         }}
                       >
