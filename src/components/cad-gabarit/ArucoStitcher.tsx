@@ -1,19 +1,26 @@
 // ============================================
 // COMPONENT: ArucoStitcher
 // Assemblage de photos via markers ArUco partagés
-// VERSION: 2.1 - Images séparées avec ROTATION
+// VERSION: 2.2
 // ============================================
-// MODIFICATIONS v2.1:
+//
+// CHANGELOG v2.2 (20/01/2026):
+// - Slider tolérance (0, 1, 2 bits) + bouton "Relancer détection"
+// - Détection de doublons (100% markers identiques + positions similaires)
+// - Cadre orange autour des photos suspectées doublons
+//
+// CHANGELOG v2.1 (20/01/2026):
 // - Calcul de la rotation entre photos via markers communs
-// - Nouveau champ `rotation` (degrés) dans StitchedImage
-// - Affichage de la rotation dans le preview
-// - Support de 2+ markers pour un calcul précis
+//
+// CHANGELOG v2.0 (20/01/2026):
+// - Images séparées avec position et scale
 // ============================================
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +40,7 @@ import {
   Eye,
   Bug,
   RotateCw,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useOpenCVAruco, ArucoMarker } from "./useOpenCVAruco";
@@ -90,6 +98,11 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
   const [markerSize, setMarkerSize] = useState<string>(markerSizeMm.toString());
   const [showDebug, setShowDebug] = useState(false);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  
+  // v2.2: Tolérance paramétrable et détection doublons
+  const [tolerance, setTolerance] = useState<number>(1);
+  const [isRedetecting, setIsRedetecting] = useState(false);
+  const [duplicatePhotoIds, setDuplicatePhotoIds] = useState<Set<string>>(new Set());
 
   const { isLoaded, isLoading, error: opencvError, detectMarkers } = useOpenCVAruco();
 
@@ -120,6 +133,124 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
     }
     return totalPixelsPerMm / markers.length;
   };
+
+  // v2.2: Détecter les doublons (100% markers identiques + positions similaires)
+  const detectDuplicates = useCallback((photosList: PhotoWithMarkers[]) => {
+    const duplicates = new Set<string>();
+    const POSITION_TOLERANCE = 15; // pixels d'écart max pour considérer comme doublon
+
+    for (let i = 0; i < photosList.length; i++) {
+      for (let j = i + 1; j < photosList.length; j++) {
+        const photo1 = photosList[i];
+        const photo2 = photosList[j];
+
+        // Ignorer si pas de markers
+        if (photo1.markers.length === 0 || photo2.markers.length === 0) continue;
+
+        // Vérifier si tous les markers de photo1 sont dans photo2
+        const ids1 = new Set(photo1.markers.map(m => m.id));
+        const ids2 = new Set(photo2.markers.map(m => m.id));
+
+        // Doivent avoir exactement les mêmes IDs
+        if (ids1.size !== ids2.size) continue;
+        
+        let allMatch = true;
+        for (const id of ids1) {
+          if (!ids2.has(id)) {
+            allMatch = false;
+            break;
+          }
+        }
+        if (!allMatch) continue;
+
+        // Vérifier les positions relatives
+        let positionsMatch = true;
+        for (const m1 of photo1.markers) {
+          const m2 = photo2.markers.find(m => m.id === m1.id);
+          if (!m2) {
+            positionsMatch = false;
+            break;
+          }
+          
+          // Comparer les positions relatives (normalisées par le premier marker)
+          const ref1 = photo1.markers[0];
+          const ref2 = photo2.markers[0];
+          
+          const relX1 = m1.center.x - ref1.center.x;
+          const relY1 = m1.center.y - ref1.center.y;
+          const relX2 = m2.center.x - ref2.center.x;
+          const relY2 = m2.center.y - ref2.center.y;
+          
+          const dx = Math.abs(relX1 - relX2);
+          const dy = Math.abs(relY1 - relY2);
+          
+          if (dx > POSITION_TOLERANCE || dy > POSITION_TOLERANCE) {
+            positionsMatch = false;
+            break;
+          }
+        }
+
+        if (positionsMatch) {
+          // Marquer la seconde photo comme doublon
+          duplicates.add(photo2.id);
+          addDebugLog(`⚠️ Doublon détecté: Photo ${j + 1} ≈ Photo ${i + 1}`);
+        }
+      }
+    }
+
+    setDuplicatePhotoIds(duplicates);
+    return duplicates;
+  }, [addDebugLog]);
+
+  // v2.2: Relancer la détection sur toutes les photos
+  const redetectAllPhotos = useCallback(async () => {
+    if (!isLoaded || photos.length === 0) return;
+
+    setIsRedetecting(true);
+    setPositionResult(null);
+    addDebugLog(`🔄 Relancer détection (tolérance=${tolerance})...`);
+
+    const markerSizeNum = parseFloat(markerSize) || 100;
+
+    for (const photo of photos) {
+      try {
+        addDebugLog(`Détection sur ${photo.file.name}...`);
+        const startTime = performance.now();
+        const markers = await detectMarkers(photo.image, { tolerance });
+        const elapsed = performance.now() - startTime;
+        const pixelsPerMm = calculatePhotoScale(markers, markerSizeNum);
+
+        addDebugLog(`${photo.file.name}: ${markers.length} markers en ${elapsed.toFixed(0)}ms`);
+        if (markers.length > 0) {
+          addDebugLog(`  IDs: ${markers.map(m => `#${m.id}`).join(', ')}`);
+        }
+
+        setPhotos(prev => prev.map(p =>
+          p.id === photo.id
+            ? { ...p, markers, isProcessing: false, pixelsPerMm, error: undefined }
+            : p
+        ));
+      } catch (err) {
+        addDebugLog(`ERREUR sur ${photo.file.name}: ${err}`);
+        setPhotos(prev => prev.map(p =>
+          p.id === photo.id
+            ? { ...p, isProcessing: false, error: "Erreur détection" }
+            : p
+        ));
+      }
+    }
+
+    // Détecter les doublons après re-détection
+    setTimeout(() => {
+      setPhotos(current => {
+        detectDuplicates(current);
+        return current;
+      });
+    }, 100);
+
+    setIsRedetecting(false);
+    toast.success(`Détection relancée (tolérance=${tolerance})`);
+  }, [isLoaded, photos, tolerance, markerSize, detectMarkers, addDebugLog, calculatePhotoScale, detectDuplicates]);
 
   // v2.1: Calculer l'angle de rotation entre deux photos
   const calculateRotation = (
@@ -269,7 +400,8 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
       try {
         addDebugLog(`Détection sur ${photo.file.name}...`);
         const startTime = performance.now();
-        const markers = await detectMarkers(photo.image);
+        // v2.2: Utiliser la tolérance configurée
+        const markers = await detectMarkers(photo.image, { tolerance });
         const elapsed = performance.now() - startTime;
         const pixelsPerMm = calculatePhotoScale(markers, markerSizeNum);
 
@@ -292,7 +424,15 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
         ));
       }
     }
-  }, [isLoaded, detectMarkers, markerSize, addDebugLog]);
+
+    // v2.2: Détecter les doublons après ajout
+    setTimeout(() => {
+      setPhotos(current => {
+        detectDuplicates(current);
+        return current;
+      });
+    }, 100);
+  }, [isLoaded, detectMarkers, markerSize, tolerance, addDebugLog, detectDuplicates]);
 
   const handleRemovePhoto = useCallback((id: string) => {
     setPhotos(prev => {
@@ -301,7 +441,14 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
       return prev.filter(p => p.id !== id);
     });
     setPositionResult(null);
-  }, []);
+    // v2.2: Recalculer les doublons après suppression
+    setTimeout(() => {
+      setPhotos(current => {
+        detectDuplicates(current);
+        return current;
+      });
+    }, 50);
+  }, [detectDuplicates]);
 
   const findMarkerMatches = useCallback((): MarkerMatch[] => {
     const matches: MarkerMatch[] = [];
@@ -683,6 +830,39 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
             <span className="text-sm text-muted-foreground">mm ({(parseFloat(markerSize) || 100) / 10}cm)</span>
           </div>
 
+          {/* v2.2: Slider tolérance + bouton relancer */}
+          <div className="flex items-center gap-4 p-2 bg-muted/50 rounded">
+            <div className="flex items-center gap-2 flex-1">
+              <Label htmlFor="toleranceSlider" className="text-xs whitespace-nowrap">
+                Tolérance:
+              </Label>
+              <Slider
+                id="toleranceSlider"
+                value={[tolerance]}
+                onValueChange={(v) => setTolerance(v[0])}
+                min={0}
+                max={2}
+                step={1}
+                className="w-20"
+              />
+              <span className="text-xs font-mono w-12">{tolerance} bit{tolerance > 1 ? "s" : ""}</span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={redetectAllPhotos}
+              disabled={!isLoaded || photos.length === 0 || isRedetecting}
+              className="h-7 text-xs"
+            >
+              {isRedetecting ? (
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3 mr-1" />
+              )}
+              Relancer
+            </Button>
+          </div>
+
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -740,42 +920,64 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
                 <span>Photos ({photos.length}) - {totalMarkers} markers</span>
                 <span className="text-muted-foreground">{uniqueMatchedIds} communs</span>
               </div>
+              {/* v2.2: Alerte doublons */}
+              {duplicatePhotoIds.size > 0 && (
+                <div className="text-xs text-orange-600 bg-orange-100 p-2 rounded flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  {duplicatePhotoIds.size} doublon(s) détecté(s) (cadre orange)
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto">
-                {photos.map((photo, idx) => (
-                  <div key={photo.id} className="relative border rounded p-2 bg-muted/50">
-                    <img
-                      src={photo.imageUrl}
-                      alt={`Photo ${idx + 1}`}
-                      className="w-full h-24 object-contain rounded bg-gray-200"
-                    />
-                    <div className="absolute top-1 left-1 bg-black/70 text-white text-xs px-1 rounded">
-                      #{idx + 1}
-                    </div>
-                    <div className="absolute top-1 right-1 flex gap-1">
-                      {photo.isProcessing ? (
-                        <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
-                      ) : photo.error ? (
-                        <AlertCircle className="h-4 w-4 text-red-500" />
-                      ) : (
-                        <span className="bg-green-500 text-white text-xs px-1 rounded flex items-center gap-1">
-                          <CheckCircle2 className="h-3 w-3" />
-                          {photo.markers.length}
-                        </span>
-                      )}
-                    </div>
-                    <Button
-                      variant="destructive"
-                      size="icon"
-                      className="absolute bottom-1 right-1 h-6 w-6"
-                      onClick={() => handleRemovePhoto(photo.id)}
+                {photos.map((photo, idx) => {
+                  const isDuplicate = duplicatePhotoIds.has(photo.id);
+                  return (
+                    <div 
+                      key={photo.id} 
+                      className={`relative rounded p-2 bg-muted/50 ${
+                        isDuplicate 
+                          ? "border-2 border-orange-500 ring-2 ring-orange-300" 
+                          : "border"
+                      }`}
                     >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                    <div className="text-xs mt-1 text-muted-foreground truncate">
-                      IDs: {photo.markers.map(m => m.id).join(", ") || "aucun"}
+                      <img
+                        src={photo.imageUrl}
+                        alt={`Photo ${idx + 1}`}
+                        className="w-full h-24 object-contain rounded bg-gray-200"
+                      />
+                      <div className="absolute top-1 left-1 bg-black/70 text-white text-xs px-1 rounded">
+                        #{idx + 1}
+                      </div>
+                      {isDuplicate && (
+                        <div className="absolute top-1 left-8 bg-orange-500 text-white text-xs px-1 rounded">
+                          Doublon?
+                        </div>
+                      )}
+                      <div className="absolute top-1 right-1 flex gap-1">
+                        {photo.isProcessing ? (
+                          <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />
+                        ) : photo.error ? (
+                          <AlertCircle className="h-4 w-4 text-red-500" />
+                        ) : (
+                          <span className="bg-green-500 text-white text-xs px-1 rounded flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3" />
+                            {photo.markers.length}
+                          </span>
+                        )}
+                      </div>
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="absolute bottom-1 right-1 h-6 w-6"
+                        onClick={() => handleRemovePhoto(photo.id)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                      <div className="text-xs mt-1 text-muted-foreground truncate">
+                        IDs: {photo.markers.map(m => m.id).join(", ") || "aucun"}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
