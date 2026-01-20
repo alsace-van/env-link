@@ -1,7 +1,13 @@
 // ============================================
 // COMPONENT: ArucoStitcher
 // Assemblage de photos via markers ArUco partagés
-// VERSION: 1.1 - Avec normalisation d'échelle
+// VERSION: 2.0 - Images séparées positionnées (non fusionnées)
+// ============================================
+// MODIFICATIONS v2.0:
+// - Retourne des images SÉPARÉES avec leurs positions calculées
+// - Chaque image peut être ajustée individuellement après import
+// - Nouveau callback: onStitched(images: StitchedImage[], pixelsPerCm)
+// - Preview affiche les images positionnées mais non fusionnées
 // ============================================
 
 import { useState, useCallback, useRef, useEffect } from "react";
@@ -26,15 +32,25 @@ import {
   Download,
   Eye,
   Bug,
-  RefreshCw
 } from "lucide-react";
 import { toast } from "sonner";
 import { useOpenCVAruco, ArucoMarker } from "./useOpenCVAruco";
 
+// v2.0: Nouvelle interface pour les images positionnées
+export interface StitchedImage {
+  image: HTMLImageElement;
+  imageUrl: string;
+  position: { x: number; y: number }; // Position en mm
+  scale: number; // Facteur d'échelle à appliquer
+  originalFile: File;
+  markers: ArucoMarker[];
+}
+
 interface ArucoStitcherProps {
   isOpen: boolean;
   onClose: () => void;
-  onStitched: (resultImage: HTMLImageElement, pixelsPerCm: number) => void;
+  // v2.0: Nouveau callback avec images séparées
+  onStitched: (images: StitchedImage[], pixelsPerCm: number) => void;
   markerSizeMm: number;
 }
 
@@ -46,7 +62,6 @@ interface PhotoWithMarkers {
   markers: ArucoMarker[];
   isProcessing: boolean;
   error?: string;
-  // Échelle calculée à partir des markers
   pixelsPerMm: number;
 }
 
@@ -58,40 +73,43 @@ interface MarkerMatch {
   pos2: { x: number; y: number };
 }
 
+// v2.0: Résultat du calcul de positions
+interface PositionResult {
+  images: StitchedImage[];
+  pixelsPerCm: number;
+  totalWidthMm: number;
+  totalHeightMm: number;
+}
+
 export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 }: ArucoStitcherProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [photos, setPhotos] = useState<PhotoWithMarkers[]>([]);
   const [isStitching, setIsStitching] = useState(false);
-  const [stitchResult, setStitchResult] = useState<HTMLCanvasElement | null>(null);
-  const [finalPixelsPerCm, setFinalPixelsPerCm] = useState<number>(0);
+  const [positionResult, setPositionResult] = useState<PositionResult | null>(null);
   const [markerSize, setMarkerSize] = useState<string>(markerSizeMm.toString());
   const [showDebug, setShowDebug] = useState(false);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
 
   const { isLoaded, isLoading, error: opencvError, detectMarkers } = useOpenCVAruco();
 
-  // Log debug messages
   const addDebugLog = useCallback((msg: string) => {
-    console.log(`[ArucoStitcher] ${msg}`);
+    console.log(`[ArucoStitcher v2] ${msg}`);
     setDebugLogs(prev => [...prev.slice(-20), `${new Date().toLocaleTimeString()}: ${msg}`]);
   }, []);
 
-  // Nettoyer les URLs au démontage
   useEffect(() => {
     return () => {
       photos.forEach(p => URL.revokeObjectURL(p.imageUrl));
     };
   }, []);
 
-  // Réinitialiser quand on ferme
   useEffect(() => {
     if (!isOpen) {
-      setStitchResult(null);
+      setPositionResult(null);
     }
   }, [isOpen]);
 
-  // Calculer l'échelle d'une photo à partir de ses markers
   const calculatePhotoScale = (markers: ArucoMarker[], markerSizeMm: number): number => {
     if (markers.length === 0) return 0;
 
@@ -103,7 +121,6 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
     return totalPixelsPerMm / markers.length;
   };
 
-  // Ajouter des photos
   const handleAddPhotos = useCallback(async (files: FileList | null) => {
     if (!files || !isLoaded) {
       addDebugLog(`Ajout impossible: files=${!!files}, isLoaded=${isLoaded}`);
@@ -150,7 +167,6 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
 
     setPhotos(prev => [...prev, ...newPhotos]);
 
-    // Détecter les markers sur chaque nouvelle photo
     for (const photo of newPhotos) {
       try {
         addDebugLog(`Détection sur ${photo.file.name}...`);
@@ -161,7 +177,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
 
         addDebugLog(`${photo.file.name}: ${markers.length} markers en ${elapsed.toFixed(0)}ms`);
         if (markers.length > 0) {
-          addDebugLog(`  IDs: ${markers.map(m => `#${m.id}(${((m.confidence || 1) * 100).toFixed(0)}%)`).join(', ')}`);
+          addDebugLog(`  IDs: ${markers.map(m => `#${m.id}`).join(', ')}`);
         }
 
         setPhotos(prev => prev.map(p =>
@@ -180,17 +196,15 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
     }
   }, [isLoaded, detectMarkers, markerSize, addDebugLog]);
 
-  // Supprimer une photo
   const handleRemovePhoto = useCallback((id: string) => {
     setPhotos(prev => {
       const photo = prev.find(p => p.id === id);
       if (photo) URL.revokeObjectURL(photo.imageUrl);
       return prev.filter(p => p.id !== id);
     });
-    setStitchResult(null);
+    setPositionResult(null);
   }, []);
 
-  // Trouver les markers communs entre photos
   const findMarkerMatches = useCallback((): MarkerMatch[] => {
     const matches: MarkerMatch[] = [];
 
@@ -217,8 +231,8 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
     return matches;
   }, [photos]);
 
-  // Assembler les photos avec normalisation d'échelle
-  const handleStitch = useCallback(async () => {
+  // v2.0: Calculer les positions sans fusionner les images
+  const handleCalculatePositions = useCallback(async () => {
     if (photos.length < 2) {
       toast.error("Il faut au moins 2 photos");
       return;
@@ -230,7 +244,6 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
       return;
     }
 
-    // Vérifier que toutes les photos ont des markers
     const photosWithMarkers = photos.filter(p => p.markers.length > 0 && p.pixelsPerMm > 0);
     if (photosWithMarkers.length < 2) {
       toast.error("Au moins 2 photos doivent avoir des markers détectés");
@@ -245,9 +258,8 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
       // Trouver l'échelle cible (utiliser la plus haute résolution)
       const targetPixelsPerMm = Math.max(...photosWithMarkers.map(p => p.pixelsPerMm));
       const targetPixelsPerCm = targetPixelsPerMm * 10;
-      setFinalPixelsPerCm(targetPixelsPerCm);
 
-      console.log("Échelle cible:", targetPixelsPerMm, "px/mm =", targetPixelsPerCm, "px/cm");
+      addDebugLog(`Échelle cible: ${targetPixelsPerMm.toFixed(2)} px/mm = ${targetPixelsPerCm.toFixed(1)} px/cm`);
 
       // Calculer les facteurs d'échelle pour chaque photo
       const scaleFactors = photos.map(p => {
@@ -255,13 +267,10 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
         return targetPixelsPerMm / p.pixelsPerMm;
       });
 
-      console.log("Facteurs d'échelle:", scaleFactors);
-
-      // Calculer les positions relatives (en coordonnées normalisées)
-      // Position = position du marker en mm réels
+      // Calculer les positions relatives en mm
       interface PhotoPosition {
-        x: number; // en mm
-        y: number; // en mm
+        x: number;
+        y: number;
         scale: number;
       }
 
@@ -271,22 +280,19 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
         scale: scaleFactors[i]
       }));
 
-      // Commencer par la première photo à (0, 0)
+      // BFS pour positionner toutes les photos
       const processed = new Set<number>([0]);
       const queue = [0];
 
       while (queue.length > 0) {
         const currentIdx = queue.shift()!;
         const currentPhoto = photos[currentIdx];
-        const currentScale = scaleFactors[currentIdx];
 
         for (let otherIdx = 0; otherIdx < photos.length; otherIdx++) {
           if (processed.has(otherIdx)) continue;
 
           const otherPhoto = photos[otherIdx];
-          const otherScale = scaleFactors[otherIdx];
 
-          // Trouver les markers communs entre ces deux photos
           const commonMatches = matches.filter(
             m => (m.photo1Index === currentIdx && m.photo2Index === otherIdx) ||
                  (m.photo1Index === otherIdx && m.photo2Index === currentIdx)
@@ -294,7 +300,6 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
 
           if (commonMatches.length === 0) continue;
 
-          // Calculer le décalage moyen en mm
           let totalDxMm = 0;
           let totalDyMm = 0;
 
@@ -310,7 +315,6 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
               pos2InOther = match.pos1;
             }
 
-            // Convertir les positions en mm
             const pos1Mm = {
               x: pos1InCurrent.x / currentPhoto.pixelsPerMm,
               y: pos1InCurrent.y / currentPhoto.pixelsPerMm
@@ -320,9 +324,6 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
               y: pos2InOther.y / otherPhoto.pixelsPerMm
             };
 
-            // Le marker est au même endroit physique, donc :
-            // positionPhoto1 + pos1Mm = positionPhoto2 + pos2Mm
-            // positionPhoto2 = positionPhoto1 + pos1Mm - pos2Mm
             totalDxMm += pos1Mm.x - pos2Mm.x;
             totalDyMm += pos1Mm.y - pos2Mm.y;
           }
@@ -333,15 +334,16 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
           photoPositions[otherIdx] = {
             x: photoPositions[currentIdx].x + avgDxMm,
             y: photoPositions[currentIdx].y + avgDyMm,
-            scale: otherScale
+            scale: scaleFactors[otherIdx]
           };
 
           processed.add(otherIdx);
           queue.push(otherIdx);
+
+          addDebugLog(`Photo ${otherIdx + 1} positionnée: (${avgDxMm.toFixed(0)}, ${avgDyMm.toFixed(0)}) mm`);
         }
       }
 
-      // Vérifier que toutes les photos sont connectées
       if (processed.size < photos.length) {
         const unconnected = photos.length - processed.size;
         toast.error(`${unconnected} photo(s) non connectée(s) par des markers`);
@@ -349,7 +351,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
         return;
       }
 
-      // Calculer les bounds en pixels (à l'échelle cible)
+      // Calculer les bounds
       let minXmm = Infinity, minYmm = Infinity, maxXmm = -Infinity, maxYmm = -Infinity;
 
       for (let i = 0; i < photos.length; i++) {
@@ -364,123 +366,96 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
         maxYmm = Math.max(maxYmm, pos.y + heightMm);
       }
 
-      // Dimensions finales en pixels
-      const finalWidthPx = Math.ceil((maxXmm - minXmm) * targetPixelsPerMm);
-      const finalHeightPx = Math.ceil((maxYmm - minYmm) * targetPixelsPerMm);
+      // Normaliser les positions (décaler pour que le min soit à 0)
+      const stitchedImages: StitchedImage[] = photos.map((photo, i) => ({
+        image: photo.image,
+        imageUrl: photo.imageUrl,
+        position: {
+          x: photoPositions[i].x - minXmm,
+          y: photoPositions[i].y - minYmm
+        },
+        scale: photoPositions[i].scale,
+        originalFile: photo.file,
+        markers: photo.markers,
+      }));
 
-      console.log("Dimensions finales:", finalWidthPx, "x", finalHeightPx, "px");
-      console.log("Dimensions réelles:", (maxXmm - minXmm).toFixed(0), "x", (maxYmm - minYmm).toFixed(0), "mm");
+      const totalWidthMm = maxXmm - minXmm;
+      const totalHeightMm = maxYmm - minYmm;
 
-      // Limiter la taille pour éviter les problèmes de mémoire
-      const maxDimension = 8000;
-      let outputScale = 1;
-      if (finalWidthPx > maxDimension || finalHeightPx > maxDimension) {
-        outputScale = maxDimension / Math.max(finalWidthPx, finalHeightPx);
-        toast.info(`Image redimensionnée à ${Math.round(outputScale * 100)}% pour éviter les problèmes de mémoire`);
-      }
+      addDebugLog(`Dimensions totales: ${totalWidthMm.toFixed(0)} x ${totalHeightMm.toFixed(0)} mm`);
 
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.ceil(finalWidthPx * outputScale);
-      canvas.height = Math.ceil(finalHeightPx * outputScale);
+      setPositionResult({
+        images: stitchedImages,
+        pixelsPerCm: targetPixelsPerCm,
+        totalWidthMm,
+        totalHeightMm,
+      });
 
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Impossible de créer le contexte canvas");
-
-      // Fond blanc
-      ctx.fillStyle = "white";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Dessiner chaque photo à sa position, redimensionnée
-      for (let i = 0; i < photos.length; i++) {
-        const pos = photoPositions[i];
-        const photo = photos[i];
-
-        // Position en pixels sur le canvas final
-        const drawX = (pos.x - minXmm) * targetPixelsPerMm * outputScale;
-        const drawY = (pos.y - minYmm) * targetPixelsPerMm * outputScale;
-
-        // Taille redimensionnée
-        const drawWidth = photo.image.width * scaleFactors[i] * outputScale;
-        const drawHeight = photo.image.height * scaleFactors[i] * outputScale;
-
-        ctx.drawImage(photo.image, drawX, drawY, drawWidth, drawHeight);
-      }
-
-      // Dessiner les markers détectés (debug)
-      ctx.strokeStyle = "lime";
-      ctx.lineWidth = 3;
-      ctx.font = "bold 14px monospace";
-
-      for (let i = 0; i < photos.length; i++) {
-        const pos = photoPositions[i];
-        const photo = photos[i];
-        const scale = scaleFactors[i] * outputScale;
-
-        for (const marker of photo.markers) {
-          const markerXpx = (pos.x - minXmm) * targetPixelsPerMm * outputScale + marker.center.x * scale;
-          const markerYpx = (pos.y - minYmm) * targetPixelsPerMm * outputScale + marker.center.y * scale;
-          const markerSizePx = marker.size.width * scale;
-
-          ctx.strokeRect(
-            markerXpx - markerSizePx / 2,
-            markerYpx - markerSizePx / 2,
-            markerSizePx,
-            markerSizePx
-          );
-
-          ctx.fillStyle = "lime";
-          ctx.fillText(
-            `${marker.id}`,
-            markerXpx - 10,
-            markerYpx - markerSizePx / 2 - 5
-          );
-        }
-      }
-
-      // Ajuster l'échelle finale si on a redimensionné
-      const actualPixelsPerCm = targetPixelsPerCm * outputScale;
-      setFinalPixelsPerCm(actualPixelsPerCm);
-
-      setStitchResult(canvas);
-      toast.success(`Assemblage réussi ! ${matches.length} markers communs, ${(maxXmm - minXmm).toFixed(0)}×${(maxYmm - minYmm).toFixed(0)}mm`);
+      toast.success(`Positions calculées ! ${matches.length} markers communs, ${totalWidthMm.toFixed(0)}×${totalHeightMm.toFixed(0)}mm`);
 
     } catch (err) {
-      console.error("Erreur stitching:", err);
-      toast.error("Erreur lors de l'assemblage: " + (err as Error).message);
+      console.error("Erreur calcul positions:", err);
+      toast.error("Erreur lors du calcul: " + (err as Error).message);
     } finally {
       setIsStitching(false);
     }
-  }, [photos, findMarkerMatches, markerSize]);
+  }, [photos, findMarkerMatches, markerSize, addDebugLog]);
 
-  // Valider et envoyer le résultat
+  // v2.0: Envoyer les images séparées au canvas
   const handleConfirm = useCallback(() => {
-    if (!stitchResult) return;
+    if (!positionResult) return;
 
-    const img = new Image();
-    img.onload = () => {
-      onStitched(img, finalPixelsPerCm);
-      onClose();
-    };
-    img.src = stitchResult.toDataURL("image/png");
-  }, [stitchResult, finalPixelsPerCm, onStitched, onClose]);
+    onStitched(positionResult.images, positionResult.pixelsPerCm);
+    onClose();
+  }, [positionResult, onStitched, onClose]);
 
-  // Télécharger le résultat
-  const handleDownload = useCallback(() => {
-    if (!stitchResult) return;
+  // Télécharger un aperçu fusionné (pour debug)
+  const handleDownloadPreview = useCallback(() => {
+    if (!positionResult) return;
+
+    const { images, pixelsPerCm, totalWidthMm, totalHeightMm } = positionResult;
+    const targetPixelsPerMm = pixelsPerCm / 10;
+
+    // Limiter la taille
+    const maxDimension = 4000;
+    let outputScale = 1;
+    const finalWidthPx = totalWidthMm * targetPixelsPerMm;
+    const finalHeightPx = totalHeightMm * targetPixelsPerMm;
+    
+    if (finalWidthPx > maxDimension || finalHeightPx > maxDimension) {
+      outputScale = maxDimension / Math.max(finalWidthPx, finalHeightPx);
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(finalWidthPx * outputScale);
+    canvas.height = Math.ceil(finalHeightPx * outputScale);
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Dessiner chaque image
+    for (const img of images) {
+      const drawX = img.position.x * targetPixelsPerMm * outputScale;
+      const drawY = img.position.y * targetPixelsPerMm * outputScale;
+      const drawWidth = img.image.width * img.scale * outputScale;
+      const drawHeight = img.image.height * img.scale * outputScale;
+
+      ctx.drawImage(img.image, drawX, drawY, drawWidth, drawHeight);
+    }
 
     const link = document.createElement("a");
-    link.download = `plancher_assemble_${Date.now()}.png`;
-    link.href = stitchResult.toDataURL("image/png");
+    link.download = `preview_${Date.now()}.png`;
+    link.href = canvas.toDataURL("image/png");
     link.click();
-  }, [stitchResult]);
+  }, [positionResult]);
 
   // Stats
   const totalMarkers = photos.reduce((sum, p) => sum + p.markers.length, 0);
   const matches = findMarkerMatches();
   const uniqueMatchedIds = new Set(matches.map(m => m.markerId)).size;
-  const avgScale = photos.length > 0
-    ? photos.filter(p => p.pixelsPerMm > 0).reduce((sum, p) => sum + p.pixelsPerMm, 0) / photos.filter(p => p.pixelsPerMm > 0).length
-    : 0;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -491,7 +466,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
             Assemblage par markers ArUco
           </DialogTitle>
           <DialogDescription>
-            Les photos seront redimensionnées à la même échelle et assemblées
+            Les photos seront positionnées séparément (ajustables après import)
           </DialogDescription>
         </DialogHeader>
 
@@ -514,7 +489,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
           {isLoaded && (
             <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded">
               <CheckCircle2 className="h-4 w-4" />
-              OpenCV.js v6.0 chargé - Prêt pour la détection
+              Détecteur ArUco v16 chargé (mode strict)
             </div>
           )}
 
@@ -629,7 +604,6 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
                     >
                       <Trash2 className="h-3 w-3" />
                     </Button>
-                    {/* Infos */}
                     <div className="text-xs mt-1 text-muted-foreground">
                       <div className="truncate">IDs: {photo.markers.map(m => m.id).join(", ") || "aucun"}</div>
                       {photo.pixelsPerMm > 0 && (
@@ -642,18 +616,31 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
             </div>
           )}
 
-          {/* Aperçu du résultat */}
-          {stitchResult && (
-            <div className="border rounded-lg p-2 bg-gray-100">
+          {/* v2.0: Aperçu des positions calculées */}
+          {positionResult && (
+            <div className="border rounded-lg p-3 bg-blue-50">
               <div className="text-sm font-medium mb-2 flex justify-between items-center">
-                <span>Résultat ({stitchResult.width}×{stitchResult.height}px)</span>
-                <span className="text-muted-foreground">{finalPixelsPerCm.toFixed(1)} px/cm</span>
+                <span className="text-blue-700">
+                  ✓ Positions calculées ({positionResult.images.length} images)
+                </span>
+                <span className="text-muted-foreground">
+                  {positionResult.totalWidthMm.toFixed(0)}×{positionResult.totalHeightMm.toFixed(0)}mm
+                </span>
               </div>
-              <img
-                src={stitchResult.toDataURL()}
-                alt="Résultat"
-                className="max-w-full max-h-[200px] object-contain mx-auto rounded shadow"
-              />
+              <div className="text-xs text-blue-600 space-y-1">
+                {positionResult.images.map((img, i) => (
+                  <div key={i} className="flex justify-between">
+                    <span>Photo {i + 1}:</span>
+                    <span>
+                      ({img.position.x.toFixed(0)}, {img.position.y.toFixed(0)}) mm, 
+                      scale ×{img.scale.toFixed(2)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 text-xs text-blue-500">
+                Échelle: {positionResult.pixelsPerCm.toFixed(1)} px/cm
+              </div>
             </div>
           )}
 
@@ -664,8 +651,8 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
               <ol className="list-decimal list-inside space-y-1 text-xs">
                 <li>Place des markers ArUco sur la surface (même taille pour tous !)</li>
                 <li>Prends plusieurs photos avec des markers <strong>en commun</strong> sur les chevauchements</li>
-                <li>Les photos seront <strong>redimensionnées automatiquement</strong> à la même échelle</li>
-                <li>L'image finale sera calibrée pour le tracé à taille réelle</li>
+                <li>Les photos seront <strong>positionnées automatiquement</strong> mais restent séparées</li>
+                <li>Tu pourras <strong>ajuster manuellement</strong> chaque image après import</li>
               </ol>
             </div>
           )}
@@ -684,22 +671,22 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
             Annuler
           </Button>
 
-          {stitchResult && (
+          {positionResult && (
             <>
-              <Button variant="outline" onClick={handleDownload}>
+              <Button variant="outline" onClick={handleDownloadPreview}>
                 <Download className="h-4 w-4 mr-2" />
-                Télécharger
+                Aperçu fusionné
               </Button>
               <Button onClick={handleConfirm}>
                 <Eye className="h-4 w-4 mr-2" />
-                Utiliser dans le canvas
+                Importer ({positionResult.images.length} images)
               </Button>
             </>
           )}
 
-          {!stitchResult && (
+          {!positionResult && (
             <Button
-              onClick={handleStitch}
+              onClick={handleCalculatePositions}
               disabled={photos.length < 2 || isStitching || uniqueMatchedIds === 0}
             >
               {isStitching ? (
@@ -707,7 +694,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
               ) : (
                 <Images className="h-4 w-4 mr-2" />
               )}
-              Assembler ({photos.length} photos)
+              Calculer les positions ({photos.length} photos)
             </Button>
           )}
         </DialogFooter>
