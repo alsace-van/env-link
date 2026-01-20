@@ -147,6 +147,7 @@ import {
   Eye,
   EyeOff,
   Image as ImageIcon,
+  Images,
   Spline,
   Move,
   Sliders,
@@ -313,6 +314,7 @@ import { ImageCalibrationModal } from "./ImageCalibrationModal";
 // MOD v7.39: Modale de calibration ArUco (OpenCV)
 import { ArucoCalibrationModal } from "./ArucoCalibrationModal";
 import { ArucoMarkerGenerator } from "./ArucoMarkerGenerator";
+import { ArucoStitcher } from "./ArucoStitcher";
 import type { ArucoMarker } from "./useOpenCVAruco";
 
 // MOD v7.31: Cotations automatiques lors de la création de géométries
@@ -917,6 +919,7 @@ export function CADGabaritCanvas({
   const [showArucoModal, setShowArucoModal] = useState(false);
   const [pendingArucoImage, setPendingArucoImage] = useState<BackgroundImage | null>(null);
   const [showArucoGenerator, setShowArucoGenerator] = useState(false);
+  const [showArucoStitcher, setShowArucoStitcher] = useState(false);
 
   // ============================================
   // NOUVEAU SYSTÈME DE TOOLBAR CONFIGURABLE (v7.11)
@@ -4088,19 +4091,9 @@ export function CADGabaritCanvas({
     setSketch(createEmptySketch(scaleFactor));
     // Réinitialiser les images de fond
     setBackgroundImages([]);
-    // Réinitialiser l'historique (via les branches)
-    const newBranchId = `branch-${Date.now()}`;
-    setBranches([{
-      id: newBranchId,
-      name: "Principal",
-      history: [],
-      historyIndex: -1,
-      createdAt: Date.now(),
-      parentBranchId: null,
-      parentHistoryIndex: null,
-      color: "#3B82F6",
-    }]);
-    setActiveBranchId(newBranchId);
+    // Réinitialiser l'historique
+    setHistory([]);
+    setHistoryIndex(-1);
     // Réinitialiser les mesures
     setMeasurements([]);
     // Fermer la modale si ouverte
@@ -16487,9 +16480,7 @@ export function CADGabaritCanvas({
                   >
                     <RefreshCw className={`h-4 w-4 mr-2 ${autoBackupIsRestoring ? "animate-spin" : ""}`} />
                     Restaurer backup cloud
-                    {autoBackupLastTime && (
-                      <span className="ml-auto text-xs text-gray-400">{autoBackupFormatted}</span>
-                    )}
+                    {autoBackupLastTime && <span className="ml-auto text-xs text-gray-400">{autoBackupFormatted}</span>}
                   </DropdownMenuItem>
 
                   <DropdownMenuSeparator />
@@ -16510,13 +16501,12 @@ export function CADGabaritCanvas({
                         <FileUp className="h-4 w-4 mr-2" />
                         DXF, images...
                       </DropdownMenuItem>
-                      <DropdownMenuSeparator />
                       <DropdownMenuItem
                         onClick={() => {
                           // Créer un input file temporaire pour ArUco
-                          const input = document.createElement('input');
-                          input.type = 'file';
-                          input.accept = 'image/*';
+                          const input = document.createElement("input");
+                          input.type = "file";
+                          input.accept = "image/*";
                           input.onchange = async (e) => {
                             const file = (e.target as HTMLInputElement).files?.[0];
                             if (!file) return;
@@ -16525,18 +16515,16 @@ export function CADGabaritCanvas({
                             img.onload = () => {
                               const bgImage: BackgroundImage = {
                                 id: `aruco-${Date.now()}`,
-                                name: file.name || "Image ArUco",
                                 image: img,
                                 x: 0,
                                 y: 0,
-                                scale: 1,
-                                rotation: 0,
+                                width: img.width,
+                                height: img.height,
                                 opacity: imageOpacity,
                                 visible: true,
-                                locked: false,
-                                order: backgroundImages.length,
-                                layerId: sketch.activeLayerId,
-                                markers: [],
+                                scaleFactor: 1,
+                                rotation: 0,
+                                layerId: activeLayerId,
                               };
                               setPendingArucoImage(bgImage);
                               setShowArucoModal(true);
@@ -16551,6 +16539,10 @@ export function CADGabaritCanvas({
                         <span className="ml-auto text-xs text-muted-foreground">Auto</span>
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setShowArucoStitcher(true)}>
+                        <Images className="h-4 w-4 mr-2" />
+                        Assembler photos (ArUco)...
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => setShowArucoGenerator(true)}>
                         <Printer className="h-4 w-4 mr-2" />
                         Générer markers ArUco...
@@ -19078,15 +19070,13 @@ export function CADGabaritCanvas({
               const calibratedImage: BackgroundImage = {
                 ...pendingArucoImage,
                 calibrationData: {
-                  points: new Map(),
                   pairs: new Map(),
                   applied: true,
-                  mode: "simple" as const,
-                  scale: 10 / pixelsPerCm, // mm par pixel
+                  // Stocker l'échelle ArUco dans les metadata
                 },
                 // Appliquer l'échelle: 1cm = pixelsPerCm pixels dans l'image
-                // Donc le scale de l'image doit être ajusté
-                scale: scaleFactor / pixelsPerCm, // Convertir en unités du canvas
+                // Donc le scaleFactor de l'image doit être ajusté
+                scaleFactor: scaleFactor / pixelsPerCm, // Convertir en unités du canvas
               };
               addImageWithLayer(calibratedImage);
               toast.success(`Calibration ArUco appliquée (${markers.length} markers, ${pixelsPerCm.toFixed(1)} px/cm)`);
@@ -19097,9 +19087,31 @@ export function CADGabaritCanvas({
         />
 
         {/* v7.39: Générateur de markers ArUco */}
-        <ArucoMarkerGenerator
-          isOpen={showArucoGenerator}
-          onClose={() => setShowArucoGenerator(false)}
+        <ArucoMarkerGenerator isOpen={showArucoGenerator} onClose={() => setShowArucoGenerator(false)} />
+
+        {/* v7.40: Assemblage de photos par markers ArUco */}
+        <ArucoStitcher
+          isOpen={showArucoStitcher}
+          onClose={() => setShowArucoStitcher(false)}
+          markerSizeMm={100}
+          onStitched={(resultImage, pxPerCm) => {
+            const bgImage: BackgroundImage = {
+              id: `stitched-${Date.now()}`,
+              image: resultImage,
+              x: 0,
+              y: 0,
+              width: resultImage.width,
+              height: resultImage.height,
+              opacity: imageOpacity,
+              visible: true,
+              scaleFactor: scaleFactor / pxPerCm, // Appliquer l'échelle
+              rotation: 0,
+              layerId: activeLayerId,
+            };
+            addImageWithLayer(bgImage);
+            toast.success("Image assemblée ajoutée au canvas !");
+            setShowArucoStitcher(false);
+          }}
         />
 
         {/* v7.38: Modale de confirmation avant nouveau projet */}
@@ -19112,23 +19124,14 @@ export function CADGabaritCanvas({
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="flex gap-2 sm:justify-between">
-              <Button
-                variant="outline"
-                onClick={() => setShowCloseConfirmModal(false)}
-              >
+              <Button variant="outline" onClick={() => setShowCloseConfirmModal(false)}>
                 Annuler
               </Button>
               <div className="flex gap-2">
-                <Button
-                  variant="destructive"
-                  onClick={performNewSketch}
-                >
+                <Button variant="destructive" onClick={performNewSketch}>
                   Ne pas sauvegarder
                 </Button>
-                <Button
-                  variant="default"
-                  onClick={handleSaveAndNew}
-                >
+                <Button variant="default" onClick={handleSaveAndNew}>
                   <Save className="h-4 w-4 mr-2" />
                   Sauvegarder et nouveau
                 </Button>
