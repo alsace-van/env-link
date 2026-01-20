@@ -19110,39 +19110,50 @@ export function CADGabaritCanvas({
         <ArucoMarkerGenerator isOpen={showArucoGenerator} onClose={() => setShowArucoGenerator(false)} />
 
         {/* v7.40: Assemblage de photos par markers ArUco */}
-        {/* v7.41: FIX - onStitched reçoit un tableau StitchedImage[], pas une seule image */}
+        {/* v7.42: FIX positions et scale - utiliser scaleFactor du canvas */}
         <ArucoStitcher
           isOpen={showArucoStitcher}
           onClose={() => setShowArucoStitcher(false)}
           markerSizeMm={100}
           onStitched={(stitchedImages, pxPerCm) => {
-            // v7.41: Boucler sur chaque image du tableau
+            // v7.42: Boucler sur chaque image du tableau
+            // pxPerCm = échelle des images sources (pixels/cm)
+            // scaleFactor = échelle du canvas (pixels/cm)
+            
             let addedCount = 0;
             for (let i = 0; i < stitchedImages.length; i++) {
               const stitchedImg = stitchedImages[i];
               
-              // Convertir position mm → pixels canvas
-              const posXpx = (stitchedImg.position.x / 10) * pxPerCm; // mm → cm → px
-              const posYpx = (stitchedImg.position.y / 10) * pxPerCm;
+              // v7.42: Position mm → pixels CANVAS (pas pixels image!)
+              // scaleFactor est en pixels/cm, position en mm
+              const posXpx = (stitchedImg.position.x / 10) * scaleFactor;
+              const posYpx = (stitchedImg.position.y / 10) * scaleFactor;
+              
+              // v7.42: Scale pour adapter l'image au canvas
+              // stitchedImg.scale normalise les images entre elles (même taille de markers)
+              // scaleFactor/pxPerCm adapte à l'échelle du canvas
+              const finalScale = stitchedImg.scale * (scaleFactor / pxPerCm);
               
               const bgImage: BackgroundImage = {
                 id: `stitched-${Date.now()}-${i}`,
                 name: stitchedImg.originalFile?.name || `photo-${i + 1}`,
-                image: stitchedImg.image, // HTMLImageElement
+                image: stitchedImg.image,
                 x: posXpx,
                 y: posYpx,
-                scale: stitchedImg.scale * (scaleFactor / pxPerCm),
+                scale: finalScale,
                 opacity: imageOpacity,
                 visible: true,
                 locked: false,
                 order: backgroundImages.length + i,
-                rotation: stitchedImg.rotation || 0, // v2.1: rotation calculée
+                rotation: stitchedImg.rotation || 0,
                 layerId: sketch.activeLayerId,
                 markers: stitchedImg.markers || [],
               };
               addImageWithLayer(bgImage);
               addedCount++;
             }
+            
+            console.log(`[ArucoStitcher] Import: ${addedCount} images, scaleFactor=${scaleFactor}, pxPerCm=${pxPerCm}`);
             toast.success(`${addedCount} image(s) assemblée(s) ajoutée(s) au canvas !`);
             setShowArucoStitcher(false);
           }}
