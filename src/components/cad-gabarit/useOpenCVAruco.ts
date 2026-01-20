@@ -29,25 +29,20 @@ interface UseOpenCVArucoReturn {
   isLoaded: boolean;
   isLoading: boolean;
   error: string | null;
-  detectMarkers: (
-    image: HTMLImageElement | HTMLCanvasElement
-  ) => Promise<ArucoMarker[]>;
+  detectMarkers: (image: HTMLImageElement | HTMLCanvasElement) => Promise<ArucoMarker[]>;
   calculateScale: (markers: ArucoMarker[], markerSizeCm: number) => number | null;
   correctPerspective: (
     image: HTMLImageElement | HTMLCanvasElement,
-    markers: ArucoMarker[]
+    markers: ArucoMarker[],
   ) => Promise<ImageData | null>;
   calibrateCamera: (
     images: (HTMLImageElement | HTMLCanvasElement)[],
-    patternSize: { width: number; height: number }
+    patternSize: { width: number; height: number },
   ) => Promise<null>;
-  undistortImage: (
-    image: HTMLImageElement | HTMLCanvasElement,
-    calibration: unknown
-  ) => Promise<ImageData | null>;
+  undistortImage: (image: HTMLImageElement | HTMLCanvasElement, calibration: unknown) => Promise<ImageData | null>;
   processImage: (
     image: HTMLImageElement | HTMLCanvasElement,
-    options?: { markerSizeCm?: number; correctPerspective?: boolean }
+    options?: { markerSizeCm?: number; correctPerspective?: boolean },
   ) => Promise<CalibrationResult>;
 }
 
@@ -76,9 +71,7 @@ const ARUCO_5X5_50_PATTERNS: { [key: string]: number } = {
   "0001001100010100101001101": 19,
 };
 
-export function useOpenCVAruco(
-  options: UseOpenCVArucoOptions = {}
-): UseOpenCVArucoReturn {
+export function useOpenCVAruco(options: UseOpenCVArucoOptions = {}): UseOpenCVArucoReturn {
   const { markerSizeCm = 10 } = options;
 
   const [isLoaded, setIsLoaded] = useState(false);
@@ -95,9 +88,7 @@ export function useOpenCVAruco(
   }, []);
 
   const detectMarkers = useCallback(
-    async (
-      image: HTMLImageElement | HTMLCanvasElement
-    ): Promise<ArucoMarker[]> => {
+    async (image: HTMLImageElement | HTMLCanvasElement): Promise<ArucoMarker[]> => {
       if (!isLoaded) return [];
 
       const w = image.width || (image as HTMLImageElement).naturalWidth;
@@ -128,18 +119,15 @@ export function useOpenCVAruco(
       console.log(`[ArUco v11] Found ${markers.length} valid markers`);
       return markers;
     },
-    [isLoaded]
+    [isLoaded],
   );
 
-  const calculateScale = useCallback(
-    (markers: ArucoMarker[], markerSizeCm: number): number | null => {
-      if (markers.length === 0) return null;
-      const sizes = markers.map((m) => (m.size.width + m.size.height) / 2);
-      const avgSize = sizes.reduce((a, b) => a + b, 0) / sizes.length;
-      return avgSize / markerSizeCm;
-    },
-    []
-  );
+  const calculateScale = useCallback((markers: ArucoMarker[], markerSizeCm: number): number | null => {
+    if (markers.length === 0) return null;
+    const sizes = markers.map((m) => (m.size.width + m.size.height) / 2);
+    const avgSize = sizes.reduce((a, b) => a + b, 0) / sizes.length;
+    return avgSize / markerSizeCm;
+  }, []);
 
   const correctPerspective = useCallback(async () => null, []);
   const calibrateCamera = useCallback(async () => null, []);
@@ -148,7 +136,7 @@ export function useOpenCVAruco(
   const processImage = useCallback(
     async (
       image: HTMLImageElement | HTMLCanvasElement,
-      opts: { markerSizeCm?: number } = {}
+      opts: { markerSizeCm?: number } = {},
     ): Promise<CalibrationResult> => {
       const { markerSizeCm: size = markerSizeCm } = opts;
       const result: CalibrationResult = {
@@ -165,7 +153,7 @@ export function useOpenCVAruco(
 
       return result;
     },
-    [markerSizeCm, detectMarkers, calculateScale]
+    [markerSizeCm, detectMarkers, calculateScale],
   );
 
   return {
@@ -189,21 +177,13 @@ function toGrayscale(imageData: ImageData): Uint8Array {
 
   for (let i = 0; i < gray.length; i++) {
     const idx = i * 4;
-    gray[i] = Math.round(
-      0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]
-    );
+    gray[i] = Math.round(0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]);
   }
 
   return gray;
 }
 
-function adaptiveThreshold(
-  gray: Uint8Array,
-  width: number,
-  height: number,
-  blockSize: number,
-  C: number
-): Uint8Array {
+function adaptiveThreshold(gray: Uint8Array, width: number, height: number, blockSize: number, C: number): Uint8Array {
   const result = new Uint8Array(gray.length);
   const halfBlock = Math.floor(blockSize / 2);
 
@@ -214,8 +194,7 @@ function adaptiveThreshold(
     let rowSum = 0;
     for (let x = 0; x < width; x++) {
       rowSum += gray[y * width + x];
-      integral[(y + 1) * (width + 1) + (x + 1)] =
-        integral[y * (width + 1) + (x + 1)] + rowSum;
+      integral[(y + 1) * (width + 1) + (x + 1)] = integral[y * (width + 1) + (x + 1)] + rowSum;
     }
   }
 
@@ -251,11 +230,7 @@ interface Point {
   y: number;
 }
 
-function findContours(
-  binary: Uint8Array,
-  width: number,
-  height: number
-): Point[][] {
+function findContours(binary: Uint8Array, width: number, height: number): Point[][] {
   const contours: Point[][] = [];
   const visited = new Uint8Array(binary.length);
 
@@ -281,7 +256,7 @@ function traceContour(
   height: number,
   startX: number,
   startY: number,
-  visited: Uint8Array
+  visited: Uint8Array,
 ): Point[] {
   const contour: Point[] = [];
   const dx = [1, 1, 0, -1, -1, -1, 0, 1];
@@ -458,12 +433,7 @@ function orderCorners(corners: Point[]): Point[] {
 
 // ====== MARKER DETECTION ======
 
-function findMarkersInImage(
-  gray: Uint8Array,
-  width: number,
-  height: number,
-  scale: number
-): ArucoMarker[] {
+function findMarkersInImage(gray: Uint8Array, width: number, height: number, scale: number): ArucoMarker[] {
   const markers: ArucoMarker[] = [];
   const foundCenters: { x: number; y: number }[] = [];
 
@@ -532,9 +502,7 @@ function findMarkersInImage(
 
         // Check for duplicates
         const isDuplicate = foundCenters.some(
-          (fc) =>
-            Math.abs(fc.x - center.x) < minSide * 0.3 &&
-            Math.abs(fc.y - center.y) < minSide * 0.3
+          (fc) => Math.abs(fc.x - center.x) < minSide * 0.3 && Math.abs(fc.y - center.y) < minSide * 0.3,
         );
 
         if (!isDuplicate) {
@@ -550,7 +518,7 @@ function findMarkersInImage(
             y: center.y / scale,
           };
 
-          const markerSize = ((side1 + side2 + side3 + side4) / 4) / scale;
+          const markerSize = (side1 + side2 + side3 + side4) / 4 / scale;
 
           markers.push({
             id: result.id,
@@ -560,9 +528,7 @@ function findMarkersInImage(
             confidence: result.confidence,
           });
 
-          console.log(
-            `[ArUco v11] ✓ Marker ID=${result.id} (confidence=${result.confidence.toFixed(2)})`
-          );
+          console.log(`[ArUco v11] ✓ Marker ID=${result.id} (confidence=${result.confidence.toFixed(2)})`);
         }
       }
     }
@@ -577,7 +543,7 @@ function decodeMarkerStrict(
   gray: Uint8Array,
   width: number,
   height: number,
-  corners: Point[]
+  corners: Point[],
 ): { id: number; confidence: number } | null {
   const gridSize = 7; // 5x5 data + border
   const cellValues: number[][] = [];
@@ -729,10 +695,7 @@ function decodeMarkerStrict(
   return { id: matchedId, confidence };
 }
 
-function findClosestPattern(
-  pattern: string,
-  maxErrors: number
-): { id: number; errors: number } | null {
+function findClosestPattern(pattern: string, maxErrors: number): { id: number; errors: number } | null {
   let bestMatch: { id: number; errors: number } | null = null;
 
   for (const [knownPattern, id] of Object.entries(ARUCO_5X5_50_PATTERNS)) {
@@ -790,12 +753,7 @@ function otsuThreshold(values: number[]): number {
   return threshold;
 }
 
-function bilinearInterp(
-  corners: Point[],
-  u: number,
-  v: number,
-  coord: "x" | "y"
-): number {
+function bilinearInterp(corners: Point[], u: number, v: number, coord: "x" | "y"): number {
   const tl = corners[0][coord];
   const tr = corners[1][coord];
   const br = corners[2][coord];
