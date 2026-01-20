@@ -1,15 +1,14 @@
 // ============================================
 // COMPONENT: useOpenCVAruco
 // Détection ArUco 100% JavaScript (sans OpenCV)
-// VERSION: 18.2
+// VERSION: 18.3
 // ============================================
+//
+// CHANGELOG v18.3 (20/01/2026):
+// - Tolérance par défaut à 0 (strict) pour éliminer faux positifs (ID 29)
 //
 // CHANGELOG v18.2 (20/01/2026):
 // - Tolérance paramétrable via detectMarkers(image, { tolerance: 0|1|2 })
-// - Permet de relancer la détection avec différents niveaux
-//
-// CHANGELOG v18.1 (20/01/2026):
-// - Tolérance réduite de 2 à 1 bit pour éviter faux positifs (ID 29)
 //
 // CHANGELOG v18 (20/01/2026):
 // - FIX CRITIQUE: Inversion des bits dans matchPattern4x4
@@ -151,7 +150,7 @@ export function useOpenCVAruco(
     ): Promise<ArucoMarker[]> => {
       if (!isLoaded) return [];
 
-      const tolerance = options?.tolerance ?? 1; // v18.2: tolérance paramétrable (défaut 1)
+      const tolerance = options?.tolerance ?? 0; // v18.3: tolérance 0 par défaut (strict)
 
       const w = image.width || (image as HTMLImageElement).naturalWidth;
       const h = image.height || (image as HTMLImageElement).naturalHeight;
