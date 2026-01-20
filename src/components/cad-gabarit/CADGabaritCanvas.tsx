@@ -1,16 +1,15 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.43
+// VERSION: 7.44
 // ============================================
+//
+// CHANGELOG v7.44 (20/01/2026):
+// - Support scaleX et scaleY séparés pour corriger les distorsions
+// - Import ArucoStitcher avec scales anisotropes
 //
 // CHANGELOG v7.43 (20/01/2026):
 // - FIX SCALE CRITIQUE: pxPerCm en px/cm mais scaleFactor en px/mm
-// - Position: mm × scaleFactor (px/mm) = pixels
-// - Scale: scaleFactor / (pxPerCm/10) = canvas_px_per_mm / photo_px_per_mm
-//
-// CHANGELOG v7.42 (20/01/2026):
-// - Fix positions: utiliser scaleFactor au lieu de pxPerCm
 //
 // CHANGELOG v7.41 (20/01/2026):
 // - Fix canvas freeze: onStitched reçoit un tableau StitchedImage[]
@@ -8605,8 +8604,11 @@ export function CADGabaritCanvas({
 
         const width = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.width : imageToDraw.width;
         const height = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.height : imageToDraw.height;
-        const scaledWidth = width * bgImage.scale;
-        const scaledHeight = height * bgImage.scale;
+        // v3.1: Utiliser scaleX et scaleY séparés
+        const effectiveScaleX = bgImage.scaleX ?? bgImage.scale;
+        const effectiveScaleY = bgImage.scaleY ?? bgImage.scale;
+        const scaledWidth = width * effectiveScaleX;
+        const scaledHeight = height * effectiveScaleY;
 
         // Vérifier si le point est dans le rectangle de l'image
         const left = bgImage.x - scaledWidth / 2;
@@ -19047,19 +19049,15 @@ export function CADGabaritCanvas({
         <ArucoMarkerGenerator isOpen={showArucoGenerator} onClose={() => setShowArucoGenerator(false)} />
 
         {/* v7.40: Assemblage de photos par markers ArUco */}
-        {/* v7.43: FIX SCALE - pxPerCm est en px/cm, scaleFactor en px/mm */}
+        {/* v7.44: Support scaleX et scaleY séparés */}
         <ArucoStitcher
           isOpen={showArucoStitcher}
           onClose={() => setShowArucoStitcher(false)}
           markerSizeMm={100}
           onStitched={(stitchedImages, pxPerCm) => {
-            // v7.43: Calcul corrigé
+            // v7.44: Calcul corrigé avec scaleX et scaleY
             // pxPerCm = pixels/cm des images sources
             // scaleFactor = pixels/mm du canvas (ex: 2.5)
-            // Pour que 1mm photo = 1mm canvas:
-            //   scale = canvas_px_per_mm / photo_px_per_mm
-            //         = scaleFactor / (pxPerCm / 10)
-            //         = scaleFactor * 10 / pxPerCm
             
             const photoPixelsPerMm = pxPerCm / 10;
             
@@ -19071,10 +19069,13 @@ export function CADGabaritCanvas({
               const posXpx = stitchedImg.position.x * scaleFactor;
               const posYpx = stitchedImg.position.y * scaleFactor;
               
-              // v7.43: Scale corrigé
-              // stitchedImg.scale normalise les photos entre elles
+              // v7.44: Scales X et Y séparés
+              // stitchedImg.scaleX/Y normalise les photos entre elles
               // scaleFactor/photoPixelsPerMm adapte photo→canvas
-              const finalScale = stitchedImg.scale * (scaleFactor / photoPixelsPerMm);
+              const baseScale = scaleFactor / photoPixelsPerMm;
+              const finalScaleX = (stitchedImg.scaleX ?? stitchedImg.scale) * baseScale;
+              const finalScaleY = (stitchedImg.scaleY ?? stitchedImg.scale) * baseScale;
+              const finalScale = (finalScaleX + finalScaleY) / 2; // Rétrocompatibilité
               
               const bgImage: BackgroundImage = {
                 id: `stitched-${Date.now()}-${i}`,
@@ -19083,6 +19084,8 @@ export function CADGabaritCanvas({
                 x: posXpx,
                 y: posYpx,
                 scale: finalScale,
+                scaleX: finalScaleX,
+                scaleY: finalScaleY,
                 opacity: imageOpacity,
                 visible: true,
                 locked: false,
@@ -19095,7 +19098,7 @@ export function CADGabaritCanvas({
               addedCount++;
             }
             
-            console.log(`[ArucoStitcher] Import: ${addedCount} images, scaleFactor=${scaleFactor}px/mm, pxPerCm=${pxPerCm}px/cm, finalScale≈${(scaleFactor / photoPixelsPerMm).toFixed(3)}`);
+            console.log(`[ArucoStitcher] Import: ${addedCount} images, scaleFactor=${scaleFactor}px/mm, pxPerCm=${pxPerCm}px/cm`);
             toast.success(`${addedCount} image(s) assemblée(s) ajoutée(s) au canvas !`);
             setShowArucoStitcher(false);
           }}
