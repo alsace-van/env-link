@@ -1,17 +1,18 @@
 // ============================================
 // COMPONENT: useOpenCVAruco
 // Détection ArUco 100% JavaScript (sans OpenCV)
-// VERSION: 18.1
+// VERSION: 18.2
 // ============================================
+//
+// CHANGELOG v18.2 (20/01/2026):
+// - Tolérance paramétrable via detectMarkers(image, { tolerance: 0|1|2 })
+// - Permet de relancer la détection avec différents niveaux
 //
 // CHANGELOG v18.1 (20/01/2026):
 // - Tolérance réduite de 2 à 1 bit pour éviter faux positifs (ID 29)
 //
 // CHANGELOG v18 (20/01/2026):
 // - FIX CRITIQUE: Inversion des bits dans matchPattern4x4
-//
-// CHANGELOG v17 (20/01/2026):
-// - Paramètres équilibrés: tolérance 2 bits, contraste 0.20, confiance 0.35
 // ============================================
 
 import { useState, useCallback, useEffect } from "react";
@@ -40,7 +41,8 @@ interface UseOpenCVArucoReturn {
   isLoading: boolean;
   error: string | null;
   detectMarkers: (
-    image: HTMLImageElement | HTMLCanvasElement
+    image: HTMLImageElement | HTMLCanvasElement,
+    options?: { tolerance?: number }
   ) => Promise<ArucoMarker[]>;
   calculateScale: (markers: ArucoMarker[], markerSizeCm: number) => number | null;
   correctPerspective: (
@@ -144,14 +146,17 @@ export function useOpenCVAruco(
 
   const detectMarkers = useCallback(
     async (
-      image: HTMLImageElement | HTMLCanvasElement
+      image: HTMLImageElement | HTMLCanvasElement,
+      options?: { tolerance?: number }
     ): Promise<ArucoMarker[]> => {
       if (!isLoaded) return [];
+
+      const tolerance = options?.tolerance ?? 1; // v18.2: tolérance paramétrable (défaut 1)
 
       const w = image.width || (image as HTMLImageElement).naturalWidth;
       const h = image.height || (image as HTMLImageElement).naturalHeight;
 
-      console.log(`[ArUco v18] Detecting in ${w}x${h} image`);
+      console.log(`[ArUco v18] Detecting in ${w}x${h} image (tolerance=${tolerance})`);
 
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -170,7 +175,7 @@ export function useOpenCVAruco(
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const gray = toGrayscale(imageData);
 
-      const markers = findMarkersInImage(gray, canvas.width, canvas.height, scale);
+      const markers = findMarkersInImage(gray, canvas.width, canvas.height, scale, tolerance);
 
       console.log(`[ArUco v18] Found ${markers.length} markers`);
       return markers;
@@ -502,13 +507,14 @@ function orderCorners(corners: Point[]): Point[] {
   return result;
 }
 
-// ====== MARKER DETECTION v17 - MODE ÉQUILIBRÉ ======
+// ====== MARKER DETECTION v18.2 - TOLÉRANCE PARAMÉTRABLE ======
 
 function findMarkersInImage(
   gray: Uint8Array,
   width: number,
   height: number,
-  scale: number
+  scale: number,
+  tolerance: number = 1
 ): ArucoMarker[] {
   const markersByID = new Map<number, ArucoMarker>();
   
@@ -525,7 +531,7 @@ function findMarkersInImage(
   const minArea = Math.pow(minDim * 0.018, 2);
   const maxArea = Math.pow(minDim * 0.38, 2);
 
-  console.log(`[ArUco v18] Area: ${minArea.toFixed(0)}-${maxArea.toFixed(0)}, conf>=${MIN_CONFIDENCE}, contrast>=${MIN_CONTRAST}`);
+  console.log(`[ArUco v18] Area: ${minArea.toFixed(0)}-${maxArea.toFixed(0)}, conf>=${MIN_CONFIDENCE}, tolerance=${tolerance}`);
 
   let rawDetections = 0;
   let rejectedLowConfidence = 0;
@@ -566,7 +572,7 @@ function findMarkersInImage(
 
       if (sideRatio < MIN_SIDE_RATIO) continue;
 
-      const result = decodeMarker4x4(gray, width, height, ordered);
+      const result = decodeMarker4x4(gray, width, height, ordered, tolerance);
 
       if (result !== null) {
         rawDetections++;
@@ -635,7 +641,8 @@ function decodeMarker4x4(
   gray: Uint8Array,
   width: number,
   height: number,
-  corners: Point[]
+  corners: Point[],
+  maxTolerance: number = 1
 ): { id: number; confidence: number } | null {
   const gridSize = 6;
   const cellValues: number[][] = [];
@@ -747,7 +754,7 @@ function decodeMarker4x4(
     return null;
   }
 
-  // Exact match
+  // Exact match (toujours)
   for (let rotation = 0; rotation < 4; rotation++) {
     const rotatedBits = rotatePattern4x4(innerBits, rotation);
     const matchedId = matchPattern4x4(rotatedBits);
@@ -758,19 +765,21 @@ function decodeMarker4x4(
     }
   }
 
-  // 1-bit tolerance
-  for (let rotation = 0; rotation < 4; rotation++) {
-    const rotatedBits = rotatePattern4x4(innerBits, rotation);
-    const matchedId = matchPattern4x4WithTolerance(rotatedBits, 1);
+  // 1-bit tolerance (si autorisé)
+  if (maxTolerance >= 1) {
+    for (let rotation = 0; rotation < 4; rotation++) {
+      const rotatedBits = rotatePattern4x4(innerBits, rotation);
+      const matchedId = matchPattern4x4WithTolerance(rotatedBits, 1);
 
-    if (matchedId !== -1) {
-      const confidence = borderScore * (0.45 + contrast * 0.35);
-      return { id: matchedId, confidence };
+      if (matchedId !== -1) {
+        const confidence = borderScore * (0.45 + contrast * 0.35);
+        return { id: matchedId, confidence };
+      }
     }
   }
 
-  // 2-bit tolerance (v17)
-  if (MAX_BIT_TOLERANCE >= 2) {
+  // 2-bit tolerance (si autorisé)
+  if (maxTolerance >= 2) {
     for (let rotation = 0; rotation < 4; rotation++) {
       const rotatedBits = rotatePattern4x4(innerBits, rotation);
       const matchedId = matchPattern4x4WithTolerance(rotatedBits, 2);
