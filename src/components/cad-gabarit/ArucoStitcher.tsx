@@ -1,13 +1,13 @@
 // ============================================
 // COMPONENT: ArucoStitcher
 // Assemblage de photos via markers ArUco partagés
-// VERSION: 2.0 - Images séparées positionnées (non fusionnées)
+// VERSION: 2.1 - Images séparées avec ROTATION
 // ============================================
-// MODIFICATIONS v2.0:
-// - Retourne des images SÉPARÉES avec leurs positions calculées
-// - Chaque image peut être ajustée individuellement après import
-// - Nouveau callback: onStitched(images: StitchedImage[], pixelsPerCm)
-// - Preview affiche les images positionnées mais non fusionnées
+// MODIFICATIONS v2.1:
+// - Calcul de la rotation entre photos via markers communs
+// - Nouveau champ `rotation` (degrés) dans StitchedImage
+// - Affichage de la rotation dans le preview
+// - Support de 2+ markers pour un calcul précis
 // ============================================
 
 import { useState, useCallback, useRef, useEffect } from "react";
@@ -32,16 +32,18 @@ import {
   Download,
   Eye,
   Bug,
+  RotateCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useOpenCVAruco, ArucoMarker } from "./useOpenCVAruco";
 
-// v2.0: Nouvelle interface pour les images positionnées
+// v2.1: Interface avec rotation
 export interface StitchedImage {
   image: HTMLImageElement;
   imageUrl: string;
-  position: { x: number; y: number }; // Position en mm
+  position: { x: number; y: number }; // Position en mm (coin supérieur gauche après rotation)
   scale: number; // Facteur d'échelle à appliquer
+  rotation: number; // v2.1: Rotation en degrés (sens horaire)
   originalFile: File;
   markers: ArucoMarker[];
 }
@@ -49,7 +51,6 @@ export interface StitchedImage {
 interface ArucoStitcherProps {
   isOpen: boolean;
   onClose: () => void;
-  // v2.0: Nouveau callback avec images séparées
   onStitched: (images: StitchedImage[], pixelsPerCm: number) => void;
   markerSizeMm: number;
 }
@@ -73,7 +74,6 @@ interface MarkerMatch {
   pos2: { x: number; y: number };
 }
 
-// v2.0: Résultat du calcul de positions
 interface PositionResult {
   images: StitchedImage[];
   pixelsPerCm: number;
@@ -94,8 +94,8 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
   const { isLoaded, isLoading, error: opencvError, detectMarkers } = useOpenCVAruco();
 
   const addDebugLog = useCallback((msg: string) => {
-    console.log(`[ArucoStitcher v2] ${msg}`);
-    setDebugLogs(prev => [...prev.slice(-20), `${new Date().toLocaleTimeString()}: ${msg}`]);
+    console.log(`[ArucoStitcher v2.1] ${msg}`);
+    setDebugLogs(prev => [...prev.slice(-30), `${new Date().toLocaleTimeString()}: ${msg}`]);
   }, []);
 
   useEffect(() => {
@@ -119,6 +119,104 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
       totalPixelsPerMm += sizePixels / markerSizeMm;
     }
     return totalPixelsPerMm / markers.length;
+  };
+
+  // v2.1: Calculer l'angle de rotation entre deux photos
+  const calculateRotation = (
+    photo1Markers: ArucoMarker[],
+    photo2Markers: ArucoMarker[],
+    photo1PixelsPerMm: number,
+    photo2PixelsPerMm: number
+  ): number => {
+    // Trouver les markers communs
+    const commonMarkers: { id: number; p1: { x: number; y: number }; p2: { x: number; y: number } }[] = [];
+    
+    for (const m1 of photo1Markers) {
+      const m2 = photo2Markers.find(m => m.id === m1.id);
+      if (m2) {
+        commonMarkers.push({
+          id: m1.id,
+          p1: { x: m1.center.x / photo1PixelsPerMm, y: m1.center.y / photo1PixelsPerMm },
+          p2: { x: m2.center.x / photo2PixelsPerMm, y: m2.center.y / photo2PixelsPerMm },
+        });
+      }
+    }
+
+    if (commonMarkers.length < 2) {
+      // Pas assez de markers pour calculer une rotation
+      return 0;
+    }
+
+    // Calculer l'angle moyen entre les paires de markers
+    const angles: number[] = [];
+
+    for (let i = 0; i < commonMarkers.length; i++) {
+      for (let j = i + 1; j < commonMarkers.length; j++) {
+        const m1 = commonMarkers[i];
+        const m2 = commonMarkers[j];
+
+        // Vecteur dans photo1
+        const v1 = {
+          x: m2.p1.x - m1.p1.x,
+          y: m2.p1.y - m1.p1.y,
+        };
+
+        // Vecteur dans photo2
+        const v2 = {
+          x: m2.p2.x - m1.p2.x,
+          y: m2.p2.y - m1.p2.y,
+        };
+
+        // Angle de chaque vecteur
+        const angle1 = Math.atan2(v1.y, v1.x);
+        const angle2 = Math.atan2(v2.y, v2.x);
+
+        // Différence d'angle (photo2 par rapport à photo1)
+        let angleDiff = (angle2 - angle1) * 180 / Math.PI;
+        
+        // Normaliser entre -180 et 180
+        while (angleDiff > 180) angleDiff -= 360;
+        while (angleDiff < -180) angleDiff += 360;
+
+        angles.push(angleDiff);
+      }
+    }
+
+    if (angles.length === 0) return 0;
+
+    // Moyenne des angles (attention aux wrapping)
+    // Utiliser la moyenne circulaire
+    let sumSin = 0;
+    let sumCos = 0;
+    for (const angle of angles) {
+      const rad = angle * Math.PI / 180;
+      sumSin += Math.sin(rad);
+      sumCos += Math.cos(rad);
+    }
+    const avgAngle = Math.atan2(sumSin, sumCos) * 180 / Math.PI;
+
+    return avgAngle;
+  };
+
+  // v2.1: Calculer la position après rotation
+  const rotatePoint = (
+    x: number,
+    y: number,
+    cx: number,
+    cy: number,
+    angleDeg: number
+  ): { x: number; y: number } => {
+    const angleRad = angleDeg * Math.PI / 180;
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+    
+    const dx = x - cx;
+    const dy = y - cy;
+    
+    return {
+      x: cx + dx * cos - dy * sin,
+      y: cy + dx * sin + dy * cos,
+    };
   };
 
   const handleAddPhotos = useCallback(async (files: FileList | null) => {
@@ -231,7 +329,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
     return matches;
   }, [photos]);
 
-  // v2.0: Calculer les positions sans fusionner les images
+  // v2.1: Calculer les positions ET rotations
   const handleCalculatePositions = useCallback(async () => {
     if (photos.length < 2) {
       toast.error("Il faut au moins 2 photos");
@@ -255,28 +353,30 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
     try {
       const markerSizeNum = parseFloat(markerSize) || 100;
 
-      // Trouver l'échelle cible (utiliser la plus haute résolution)
+      // Échelle cible
       const targetPixelsPerMm = Math.max(...photosWithMarkers.map(p => p.pixelsPerMm));
       const targetPixelsPerCm = targetPixelsPerMm * 10;
 
-      addDebugLog(`Échelle cible: ${targetPixelsPerMm.toFixed(2)} px/mm = ${targetPixelsPerCm.toFixed(1)} px/cm`);
+      addDebugLog(`Échelle cible: ${targetPixelsPerMm.toFixed(2)} px/mm`);
 
-      // Calculer les facteurs d'échelle pour chaque photo
+      // Facteurs d'échelle
       const scaleFactors = photos.map(p => {
         if (p.pixelsPerMm === 0) return 1;
         return targetPixelsPerMm / p.pixelsPerMm;
       });
 
-      // Calculer les positions relatives en mm
-      interface PhotoPosition {
-        x: number;
-        y: number;
+      // v2.1: Structure avec position ET rotation
+      interface PhotoTransform {
+        x: number; // mm
+        y: number; // mm
+        rotation: number; // degrés
         scale: number;
       }
 
-      const photoPositions: PhotoPosition[] = photos.map((_, i) => ({
+      const photoTransforms: PhotoTransform[] = photos.map((_, i) => ({
         x: 0,
         y: 0,
+        rotation: 0,
         scale: scaleFactors[i]
       }));
 
@@ -287,12 +387,14 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
       while (queue.length > 0) {
         const currentIdx = queue.shift()!;
         const currentPhoto = photos[currentIdx];
+        const currentTransform = photoTransforms[currentIdx];
 
         for (let otherIdx = 0; otherIdx < photos.length; otherIdx++) {
           if (processed.has(otherIdx)) continue;
 
           const otherPhoto = photos[otherIdx];
 
+          // Trouver les markers communs
           const commonMatches = matches.filter(
             m => (m.photo1Index === currentIdx && m.photo2Index === otherIdx) ||
                  (m.photo1Index === otherIdx && m.photo2Index === currentIdx)
@@ -300,6 +402,17 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
 
           if (commonMatches.length === 0) continue;
 
+          // v2.1: Calculer la rotation
+          const rotation = calculateRotation(
+            currentPhoto.markers,
+            otherPhoto.markers,
+            currentPhoto.pixelsPerMm,
+            otherPhoto.pixelsPerMm
+          );
+
+          addDebugLog(`Rotation photo ${otherIdx + 1} vs photo ${currentIdx + 1}: ${rotation.toFixed(1)}°`);
+
+          // Calculer le décalage moyen en mm (en tenant compte de la rotation)
           let totalDxMm = 0;
           let totalDyMm = 0;
 
@@ -315,32 +428,57 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
               pos2InOther = match.pos1;
             }
 
+            // Convertir en mm
             const pos1Mm = {
               x: pos1InCurrent.x / currentPhoto.pixelsPerMm,
               y: pos1InCurrent.y / currentPhoto.pixelsPerMm
             };
-            const pos2Mm = {
+            let pos2Mm = {
               x: pos2InOther.x / otherPhoto.pixelsPerMm,
               y: pos2InOther.y / otherPhoto.pixelsPerMm
             };
 
-            totalDxMm += pos1Mm.x - pos2Mm.x;
-            totalDyMm += pos1Mm.y - pos2Mm.y;
+            // v2.1: Appliquer la rotation au point de la photo other
+            // Le centre de rotation est le centre de l'image other
+            const otherCenterMm = {
+              x: (otherPhoto.image.width / otherPhoto.pixelsPerMm) / 2,
+              y: (otherPhoto.image.height / otherPhoto.pixelsPerMm) / 2
+            };
+
+            const rotatedPos2 = rotatePoint(
+              pos2Mm.x,
+              pos2Mm.y,
+              otherCenterMm.x,
+              otherCenterMm.y,
+              rotation
+            );
+
+            // Position globale du marker dans le référentiel current
+            const globalPos1 = {
+              x: currentTransform.x + pos1Mm.x,
+              y: currentTransform.y + pos1Mm.y
+            };
+
+            // Position de other pour que le marker rotated coïncide
+            totalDxMm += globalPos1.x - rotatedPos2.x;
+            totalDyMm += globalPos1.y - rotatedPos2.y;
           }
 
           const avgDxMm = totalDxMm / commonMatches.length;
           const avgDyMm = totalDyMm / commonMatches.length;
 
-          photoPositions[otherIdx] = {
-            x: photoPositions[currentIdx].x + avgDxMm,
-            y: photoPositions[currentIdx].y + avgDyMm,
+          // v2.1: Stocker position ET rotation (cumulée)
+          photoTransforms[otherIdx] = {
+            x: avgDxMm,
+            y: avgDyMm,
+            rotation: currentTransform.rotation + rotation,
             scale: scaleFactors[otherIdx]
           };
 
+          addDebugLog(`Photo ${otherIdx + 1}: pos=(${avgDxMm.toFixed(0)}, ${avgDyMm.toFixed(0)})mm, rot=${(currentTransform.rotation + rotation).toFixed(1)}°`);
+
           processed.add(otherIdx);
           queue.push(otherIdx);
-
-          addDebugLog(`Photo ${otherIdx + 1} positionnée: (${avgDxMm.toFixed(0)}, ${avgDyMm.toFixed(0)}) mm`);
         }
       }
 
@@ -351,33 +489,65 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
         return;
       }
 
-      // Calculer les bounds
+      // Calculer les bounds en tenant compte des rotations
       let minXmm = Infinity, minYmm = Infinity, maxXmm = -Infinity, maxYmm = -Infinity;
 
       for (let i = 0; i < photos.length; i++) {
-        const pos = photoPositions[i];
+        const transform = photoTransforms[i];
         const photo = photos[i];
         const widthMm = photo.image.width / photo.pixelsPerMm;
         const heightMm = photo.image.height / photo.pixelsPerMm;
 
-        minXmm = Math.min(minXmm, pos.x);
-        minYmm = Math.min(minYmm, pos.y);
-        maxXmm = Math.max(maxXmm, pos.x + widthMm);
-        maxYmm = Math.max(maxYmm, pos.y + heightMm);
+        // Les 4 coins de l'image
+        const corners = [
+          { x: 0, y: 0 },
+          { x: widthMm, y: 0 },
+          { x: widthMm, y: heightMm },
+          { x: 0, y: heightMm },
+        ];
+
+        // Rotation autour du centre de l'image
+        const centerX = widthMm / 2;
+        const centerY = heightMm / 2;
+
+        for (const corner of corners) {
+          const rotated = rotatePoint(corner.x, corner.y, centerX, centerY, transform.rotation);
+          const globalX = transform.x + rotated.x;
+          const globalY = transform.y + rotated.y;
+
+          minXmm = Math.min(minXmm, globalX);
+          minYmm = Math.min(minYmm, globalY);
+          maxXmm = Math.max(maxXmm, globalX);
+          maxYmm = Math.max(maxYmm, globalY);
+        }
       }
 
-      // Normaliser les positions (décaler pour que le min soit à 0)
-      const stitchedImages: StitchedImage[] = photos.map((photo, i) => ({
-        image: photo.image,
-        imageUrl: photo.imageUrl,
-        position: {
-          x: photoPositions[i].x - minXmm,
-          y: photoPositions[i].y - minYmm
-        },
-        scale: photoPositions[i].scale,
-        originalFile: photo.file,
-        markers: photo.markers,
-      }));
+      // Normaliser les positions
+      const stitchedImages: StitchedImage[] = photos.map((photo, i) => {
+        const transform = photoTransforms[i];
+        
+        // Position du coin (0,0) après rotation
+        const widthMm = photo.image.width / photo.pixelsPerMm;
+        const heightMm = photo.image.height / photo.pixelsPerMm;
+        const centerX = widthMm / 2;
+        const centerY = heightMm / 2;
+        
+        // Le coin (0,0) rotated
+        const rotatedOrigin = rotatePoint(0, 0, centerX, centerY, transform.rotation);
+        
+        return {
+          image: photo.image,
+          imageUrl: photo.imageUrl,
+          position: {
+            x: transform.x + rotatedOrigin.x - minXmm,
+            y: transform.y + rotatedOrigin.y - minYmm
+          },
+          scale: transform.scale,
+          rotation: transform.rotation,
+          originalFile: photo.file,
+          markers: photo.markers,
+        };
+      });
 
       const totalWidthMm = maxXmm - minXmm;
       const totalHeightMm = maxYmm - minYmm;
@@ -391,7 +561,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
         totalHeightMm,
       });
 
-      toast.success(`Positions calculées ! ${matches.length} markers communs, ${totalWidthMm.toFixed(0)}×${totalHeightMm.toFixed(0)}mm`);
+      toast.success(`Positions calculées ! ${totalWidthMm.toFixed(0)}×${totalHeightMm.toFixed(0)}mm`);
 
     } catch (err) {
       console.error("Erreur calcul positions:", err);
@@ -401,22 +571,19 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
     }
   }, [photos, findMarkerMatches, markerSize, addDebugLog]);
 
-  // v2.0: Envoyer les images séparées au canvas
   const handleConfirm = useCallback(() => {
     if (!positionResult) return;
-
     onStitched(positionResult.images, positionResult.pixelsPerCm);
     onClose();
   }, [positionResult, onStitched, onClose]);
 
-  // Télécharger un aperçu fusionné (pour debug)
+  // Preview fusionné avec rotation
   const handleDownloadPreview = useCallback(() => {
     if (!positionResult) return;
 
     const { images, pixelsPerCm, totalWidthMm, totalHeightMm } = positionResult;
     const targetPixelsPerMm = pixelsPerCm / 10;
 
-    // Limiter la taille
     const maxDimension = 4000;
     let outputScale = 1;
     const finalWidthPx = totalWidthMm * targetPixelsPerMm;
@@ -436,14 +603,23 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
     ctx.fillStyle = "white";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Dessiner chaque image
+    // Dessiner chaque image avec rotation
     for (const img of images) {
-      const drawX = img.position.x * targetPixelsPerMm * outputScale;
-      const drawY = img.position.y * targetPixelsPerMm * outputScale;
+      const widthMm = img.image.width / (targetPixelsPerMm / img.scale);
+      const heightMm = img.image.height / (targetPixelsPerMm / img.scale);
+      
       const drawWidth = img.image.width * img.scale * outputScale;
       const drawHeight = img.image.height * img.scale * outputScale;
 
-      ctx.drawImage(img.image, drawX, drawY, drawWidth, drawHeight);
+      // Centre de l'image pour la rotation
+      const centerXpx = (img.position.x + widthMm / 2) * targetPixelsPerMm * outputScale;
+      const centerYpx = (img.position.y + heightMm / 2) * targetPixelsPerMm * outputScale;
+
+      ctx.save();
+      ctx.translate(centerXpx, centerYpx);
+      ctx.rotate(img.rotation * Math.PI / 180);
+      ctx.drawImage(img.image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+      ctx.restore();
     }
 
     const link = document.createElement("a");
@@ -452,7 +628,6 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
     link.click();
   }, [positionResult]);
 
-  // Stats
   const totalMarkers = photos.reduce((sum, p) => sum + p.markers.length, 0);
   const matches = findMarkerMatches();
   const uniqueMatchedIds = new Set(matches.map(m => m.markerId)).size;
@@ -466,37 +641,35 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
             Assemblage par markers ArUco
           </DialogTitle>
           <DialogDescription>
-            Les photos seront positionnées séparément (ajustables après import)
+            Photos positionnées et tournées automatiquement (ajustables après import)
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Status OpenCV */}
           {isLoading && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted p-2 rounded">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Chargement d'OpenCV.js...
+              Chargement...
             </div>
           )}
 
           {opencvError && (
             <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-2 rounded">
               <AlertCircle className="h-4 w-4" />
-              Erreur OpenCV: {opencvError}
+              Erreur: {opencvError}
             </div>
           )}
 
           {isLoaded && (
             <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded">
               <CheckCircle2 className="h-4 w-4" />
-              Détecteur ArUco v16 chargé (mode strict)
+              Détecteur ArUco v17 (mode équilibré + rotation)
             </div>
           )}
 
-          {/* Taille des markers */}
           <div className="flex items-center gap-4">
             <Label htmlFor="markerSizeInput" className="text-sm whitespace-nowrap">
-              Taille réelle des markers:
+              Taille markers:
             </Label>
             <Input
               id="markerSizeInput"
@@ -510,7 +683,6 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
             <span className="text-sm text-muted-foreground">mm ({(parseFloat(markerSize) || 100) / 10}cm)</span>
           </div>
 
-          {/* Bouton ajouter et debug */}
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -525,7 +697,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
               variant="ghost"
               size="icon"
               onClick={() => setShowDebug(!showDebug)}
-              title="Afficher les logs de debug"
+              title="Debug"
             >
               <Bug className={`h-4 w-4 ${showDebug ? "text-yellow-500" : ""}`} />
             </Button>
@@ -539,9 +711,8 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
             />
           </div>
 
-          {/* Debug Panel */}
           {showDebug && (
-            <div className="p-3 bg-gray-900 text-green-400 font-mono text-xs rounded-lg max-h-40 overflow-y-auto">
+            <div className="p-3 bg-gray-900 text-green-400 font-mono text-xs rounded-lg max-h-48 overflow-y-auto">
               <div className="flex justify-between items-center mb-2">
                 <span className="text-yellow-400">🐛 Debug Logs</span>
                 <Button
@@ -554,7 +725,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
                 </Button>
               </div>
               {debugLogs.length === 0 ? (
-                <div className="text-gray-500">Aucun log. Ajoutez des photos pour voir les logs.</div>
+                <div className="text-gray-500">Aucun log.</div>
               ) : (
                 debugLogs.map((log, i) => (
                   <div key={i} className="border-b border-gray-700 py-1">{log}</div>
@@ -563,19 +734,15 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
             </div>
           )}
 
-          {/* Liste des photos */}
           {photos.length > 0 && (
             <div className="space-y-2">
               <div className="text-sm font-medium flex justify-between">
                 <span>Photos ({photos.length}) - {totalMarkers} markers</span>
-                <span className="text-muted-foreground">{uniqueMatchedIds} markers communs</span>
+                <span className="text-muted-foreground">{uniqueMatchedIds} communs</span>
               </div>
               <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto">
                 {photos.map((photo, idx) => (
-                  <div
-                    key={photo.id}
-                    className="relative border rounded p-2 bg-muted/50"
-                  >
+                  <div key={photo.id} className="relative border rounded p-2 bg-muted/50">
                     <img
                       src={photo.imageUrl}
                       alt={`Photo ${idx + 1}`}
@@ -604,11 +771,8 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
                     >
                       <Trash2 className="h-3 w-3" />
                     </Button>
-                    <div className="text-xs mt-1 text-muted-foreground">
-                      <div className="truncate">IDs: {photo.markers.map(m => m.id).join(", ") || "aucun"}</div>
-                      {photo.pixelsPerMm > 0 && (
-                        <div>Échelle: {photo.pixelsPerMm.toFixed(2)} px/mm</div>
-                      )}
+                    <div className="text-xs mt-1 text-muted-foreground truncate">
+                      IDs: {photo.markers.map(m => m.id).join(", ") || "aucun"}
                     </div>
                   </div>
                 ))}
@@ -616,24 +780,29 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
             </div>
           )}
 
-          {/* v2.0: Aperçu des positions calculées */}
+          {/* v2.1: Aperçu avec rotation */}
           {positionResult && (
             <div className="border rounded-lg p-3 bg-blue-50">
               <div className="text-sm font-medium mb-2 flex justify-between items-center">
-                <span className="text-blue-700">
-                  ✓ Positions calculées ({positionResult.images.length} images)
+                <span className="text-blue-700 flex items-center gap-1">
+                  <RotateCw className="h-4 w-4" />
+                  Positions + Rotations calculées
                 </span>
                 <span className="text-muted-foreground">
                   {positionResult.totalWidthMm.toFixed(0)}×{positionResult.totalHeightMm.toFixed(0)}mm
                 </span>
               </div>
-              <div className="text-xs text-blue-600 space-y-1">
+              <div className="text-xs text-blue-600 space-y-1 max-h-32 overflow-y-auto">
                 {positionResult.images.map((img, i) => (
-                  <div key={i} className="flex justify-between">
+                  <div key={i} className="flex justify-between items-center">
                     <span>Photo {i + 1}:</span>
-                    <span>
-                      ({img.position.x.toFixed(0)}, {img.position.y.toFixed(0)}) mm, 
-                      scale ×{img.scale.toFixed(2)}
+                    <span className="font-mono">
+                      ({img.position.x.toFixed(0)}, {img.position.y.toFixed(0)})mm
+                      {img.rotation !== 0 && (
+                        <span className="ml-2 text-orange-600">
+                          ⟳ {img.rotation.toFixed(1)}°
+                        </span>
+                      )}
                     </span>
                   </div>
                 ))}
@@ -644,24 +813,28 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
             </div>
           )}
 
-          {/* Instructions */}
           {photos.length === 0 && (
             <div className="text-sm text-muted-foreground bg-muted p-3 rounded-lg">
-              <p className="font-medium mb-2">Comment ça marche :</p>
+              <p className="font-medium mb-2">Mode v2.1 avec rotation :</p>
               <ol className="list-decimal list-inside space-y-1 text-xs">
-                <li>Place des markers ArUco sur la surface (même taille pour tous !)</li>
-                <li>Prends plusieurs photos avec des markers <strong>en commun</strong> sur les chevauchements</li>
-                <li>Les photos seront <strong>positionnées automatiquement</strong> mais restent séparées</li>
-                <li>Tu pourras <strong>ajuster manuellement</strong> chaque image après import</li>
+                <li>Place des markers ArUco (≥2 communs entre photos adjacentes)</li>
+                <li>Les photos seront <strong>positionnées ET tournées</strong> automatiquement</li>
+                <li>Tu pourras ajuster manuellement après import</li>
               </ol>
             </div>
           )}
 
-          {/* Avertissement si pas assez de markers communs */}
           {photos.length >= 2 && uniqueMatchedIds === 0 && (
             <div className="text-sm text-amber-600 bg-amber-50 p-2 rounded flex items-center gap-2">
               <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              <span>Aucun marker commun. Assurez-vous que les photos se chevauchent avec le même marker visible.</span>
+              <span>Aucun marker commun trouvé.</span>
+            </div>
+          )}
+
+          {photos.length >= 2 && uniqueMatchedIds > 0 && uniqueMatchedIds < 2 && (
+            <div className="text-sm text-amber-600 bg-amber-50 p-2 rounded flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              <span>1 seul marker commun → rotation non calculable (il en faut ≥2)</span>
             </div>
           )}
         </div>
@@ -675,7 +848,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
             <>
               <Button variant="outline" onClick={handleDownloadPreview}>
                 <Download className="h-4 w-4 mr-2" />
-                Aperçu fusionné
+                Aperçu
               </Button>
               <Button onClick={handleConfirm}>
                 <Eye className="h-4 w-4 mr-2" />
@@ -694,7 +867,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
               ) : (
                 <Images className="h-4 w-4 mr-2" />
               )}
-              Calculer les positions ({photos.length} photos)
+              Calculer ({photos.length} photos)
             </Button>
           )}
         </DialogFooter>
