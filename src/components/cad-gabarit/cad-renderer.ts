@@ -830,9 +830,11 @@ export class CADRenderer {
       const width = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.width : imageToDraw.width;
       const height = imageToDraw instanceof HTMLCanvasElement ? imageToDraw.height : imageToDraw.height;
 
-      // Appliquer l'échelle
-      const scaledWidth = width * bgImage.scale;
-      const scaledHeight = height * bgImage.scale;
+      // v3.1: Appliquer l'échelle séparée X/Y (ou uniforme si non défini)
+      const effectiveScaleX = bgImage.scaleX ?? bgImage.scale;
+      const effectiveScaleY = bgImage.scaleY ?? bgImage.scale;
+      const scaledWidth = width * effectiveScaleX;
+      const scaledHeight = height * effectiveScaleY;
 
       // MOD v3.76: Mode damier fin pour alignement (permet de voir à travers)
       if (bgImage.blendMode === "stripes") {
