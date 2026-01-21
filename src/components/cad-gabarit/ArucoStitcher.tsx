@@ -1,8 +1,13 @@
 // ============================================
 // COMPONENT: ArucoStitcher
 // Assemblage de photos via markers ArUco partagés
-// VERSION: 4.1
+// VERSION: 4.2
 // ============================================
+//
+// CHANGELOG v4.2 (21/01/2026):
+// - FIX: Crop fonctionne correctement (conversion coordonnées CSS → Canvas)
+// - Rotation améliorée: slider -180° à +180°, boutons ±1°, input numérique
+// - Panneau de contrôles élargi (w-56)
 //
 // CHANGELOG v4.1 (21/01/2026):
 // - NOUVEAU: Outil de recadrage (crop) interactif
@@ -33,6 +38,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import {
   Dialog,
   DialogContent,
@@ -271,7 +277,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     return duplicates;
   }, [addDebugLog]);
 
-  // v4.0: Appliquer rotation à une image
+  // v4.2: Appliquer rotation à une image (supporte tous les angles)
   const applyTransformations = useCallback(async (photo: PhotoWithMarkers): Promise<{
     image: HTMLImageElement;
     url: string;
@@ -295,25 +301,22 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
       srcH = Math.round(image.height * edit.crop.height / 100);
     }
 
-    const isRotated90or270 = Math.abs(edit.rotation % 180) === 90;
+    // Calculer la bounding box après rotation pour n'importe quel angle
+    const radians = (edit.rotation * Math.PI) / 180;
+    const cos = Math.abs(Math.cos(radians));
+    const sin = Math.abs(Math.sin(radians));
     
-    if (isRotated90or270) {
-      canvas.width = srcH;
-      canvas.height = srcW;
-    } else {
-      canvas.width = srcW;
-      canvas.height = srcH;
-    }
+    // Nouvelle taille du canvas pour contenir l'image tournée
+    const newWidth = Math.ceil(srcW * cos + srcH * sin);
+    const newHeight = Math.ceil(srcW * sin + srcH * cos);
+    
+    canvas.width = newWidth;
+    canvas.height = newHeight;
 
     ctx.save();
     ctx.translate(canvas.width / 2, canvas.height / 2);
-    ctx.rotate((edit.rotation * Math.PI) / 180);
-    
-    if (isRotated90or270) {
-      ctx.drawImage(image, srcX, srcY, srcW, srcH, -srcW / 2, -srcH / 2, srcW, srcH);
-    } else {
-      ctx.drawImage(image, srcX, srcY, srcW, srcH, -srcW / 2, -srcH / 2, srcW, srcH);
-    }
+    ctx.rotate(radians);
+    ctx.drawImage(image, srcX, srcY, srcW, srcH, -srcW / 2, -srcH / 2, srcW, srcH);
     ctx.restore();
 
     const blob = await new Promise<Blob | null>(resolve => 
@@ -347,12 +350,16 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     const maxWidth = canvas.width;
     const maxHeight = canvas.height;
     
+    // v4.2: Calculer la bounding box pour n'importe quel angle de rotation
     let imgW = image.width;
     let imgH = image.height;
     
-    // Simuler la rotation pour les dimensions
-    if (!photo.transformedImage && (edit.rotation === 90 || edit.rotation === 270 || edit.rotation === -90 || edit.rotation === -270)) {
-      [imgW, imgH] = [imgH, imgW];
+    if (!photo.transformedImage && edit.rotation !== 0) {
+      const radians = (edit.rotation * Math.PI) / 180;
+      const cos = Math.abs(Math.cos(radians));
+      const sin = Math.abs(Math.sin(radians));
+      imgW = image.width * cos + image.height * sin;
+      imgH = image.width * sin + image.height * cos;
     }
 
     const scale = Math.min(maxWidth / imgW, maxHeight / imgH) * 0.95;
@@ -432,30 +439,31 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
       const markers = photo.markers;
       
       for (const marker of markers) {
-        let mx = marker.center.x;
-        let my = marker.center.y;
+        let screenX: number;
+        let screenY: number;
         
-        // Transformer les coordonnées selon la rotation actuelle
-        if (!photo.transformedImage) {
+        if (photo.transformedImage) {
+          // Image déjà transformée, coordonnées directes
+          screenX = offsetX + marker.center.x * scale;
+          screenY = offsetY + marker.center.y * scale;
+        } else {
+          // Transformer les coordonnées selon la rotation
           const imgCx = photo.image.width / 2;
           const imgCy = photo.image.height / 2;
           const rad = (edit.rotation * Math.PI) / 180;
           const cos = Math.cos(rad);
           const sin = Math.sin(rad);
-          const dx = mx - imgCx;
-          const dy = my - imgCy;
-          mx = imgCx + dx * cos - dy * sin;
-          my = imgCy + dx * sin + dy * cos;
           
-          if (edit.rotation === 90 || edit.rotation === -270) {
-            [mx, my] = [photo.image.height - my + (photo.image.width - photo.image.height) / 2, mx - (photo.image.width - photo.image.height) / 2];
-          } else if (edit.rotation === 270 || edit.rotation === -90) {
-            [mx, my] = [my - (photo.image.width - photo.image.height) / 2, photo.image.width - mx + (photo.image.width - photo.image.height) / 2];
-          }
+          // Rotation autour du centre de l'image
+          const dx = marker.center.x - imgCx;
+          const dy = marker.center.y - imgCy;
+          const rotX = dx * cos - dy * sin;
+          const rotY = dx * sin + dy * cos;
+          
+          // Position dans la bounding box
+          screenX = maxWidth / 2 + rotX * scale;
+          screenY = maxHeight / 2 + rotY * scale;
         }
-
-        const screenX = offsetX + mx * scale;
-        const screenY = offsetY + my * scale;
 
         ctx.beginPath();
         ctx.arc(screenX, screenY, 8, 0, Math.PI * 2);
@@ -492,7 +500,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     }
   }, [photos, currentEditIndex, isCropMode, cropStart, cropEnd]);
 
-  // v4.1: Handlers pour le crop
+  // v4.2: Handlers pour le crop - avec conversion coordonnées CSS → Canvas
   const handleCropMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isCropMode || !canvasMapping) return;
     
@@ -500,13 +508,21 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     if (!canvas) return;
     
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    
+    // Convertir coordonnées CSS → coordonnées canvas internes
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
     
     // Vérifier que le clic est dans l'image
     const { offsetX, offsetY, scale, imgW, imgH } = canvasMapping;
-    if (x >= offsetX && x <= offsetX + imgW * scale && 
-        y >= offsetY && y <= offsetY + imgH * scale) {
+    const imgLeft = offsetX;
+    const imgTop = offsetY;
+    const imgRight = offsetX + imgW * scale;
+    const imgBottom = offsetY + imgH * scale;
+    
+    if (x >= imgLeft && x <= imgRight && y >= imgTop && y <= imgBottom) {
       setCropStart({ x, y });
       setCropEnd({ x, y });
       setIsDraggingCrop(true);
@@ -520,11 +536,18 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     if (!canvas) return;
     
     const rect = canvas.getBoundingClientRect();
+    
+    // Convertir coordonnées CSS → coordonnées canvas internes
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    let x = (e.clientX - rect.left) * scaleX;
+    let y = (e.clientY - rect.top) * scaleY;
+    
     const { offsetX, offsetY, scale, imgW, imgH } = canvasMapping;
     
     // Contraindre aux limites de l'image
-    let x = Math.max(offsetX, Math.min(e.clientX - rect.left, offsetX + imgW * scale));
-    let y = Math.max(offsetY, Math.min(e.clientY - rect.top, offsetY + imgH * scale));
+    x = Math.max(offsetX, Math.min(x, offsetX + imgW * scale));
+    y = Math.max(offsetY, Math.min(y, offsetY + imgH * scale));
     
     setCropEnd({ x, y });
   }, [isDraggingCrop, canvasMapping]);
@@ -603,13 +626,15 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     }
   }, [editMode, drawPreview, photos, currentEditIndex, isCropMode, cropStart, cropEnd]);
 
-  // v4.0: Handlers de rotation
+  // v4.2: Handlers de rotation améliorés
   const handleRotate = useCallback((degrees: number) => {
     setPhotos(prev => prev.map((p, i) => {
       if (i !== currentEditIndex) return p;
       
-      let newRotation = (p.edit.rotation + degrees) % 360;
-      if (newRotation < 0) newRotation += 360;
+      let newRotation = p.edit.rotation + degrees;
+      // Normaliser entre -180 et 180 pour le slider
+      while (newRotation > 180) newRotation -= 360;
+      while (newRotation < -180) newRotation += 360;
       
       return {
         ...p,
@@ -618,9 +643,21 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
         transformedUrl: undefined
       };
     }));
-    
-    addDebugLog(`Rotation: +${degrees}°`);
-  }, [currentEditIndex, addDebugLog]);
+  }, [currentEditIndex]);
+
+  // v4.2: Définir une rotation absolue (pour le slider)
+  const handleSetRotation = useCallback((degrees: number) => {
+    setPhotos(prev => prev.map((p, i) => {
+      if (i !== currentEditIndex) return p;
+      
+      return {
+        ...p,
+        edit: { ...p.edit, rotation: degrees, needsRedetect: true },
+        transformedImage: undefined,
+        transformedUrl: undefined
+      };
+    }));
+  }, [currentEditIndex]);
 
   // v4.0: Appliquer les transformations et re-détecter
   const handleApplyAndRedetect = useCallback(async () => {
@@ -1259,9 +1296,12 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
             </div>
 
             {/* Panneau de contrôles */}
-            <div className="w-52 flex flex-col gap-3">
-              <div className="p-3 bg-muted rounded-lg">
-                <Label className="text-xs font-medium mb-2 block">Rotation</Label>
+            <div className="w-56 flex flex-col gap-3">
+              {/* v4.2: Rotation améliorée */}
+              <div className="p-3 bg-muted rounded-lg space-y-3">
+                <Label className="text-xs font-medium block">Rotation</Label>
+                
+                {/* Boutons ±90° */}
                 <div className="grid grid-cols-2 gap-2">
                   <Button size="sm" variant="outline" onClick={() => handleRotate(-90)} disabled={isCropMode}>
                     <RotateCcw className="h-4 w-4 mr-1" /> -90°
@@ -1270,8 +1310,42 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
                     <RotateCw className="h-4 w-4 mr-1" /> +90°
                   </Button>
                 </div>
-                <div className="text-center text-xs text-muted-foreground mt-2">
-                  Actuel: {currentPhoto.edit.rotation}°
+                
+                {/* Slider -180° à +180° */}
+                <div className="space-y-1">
+                  <Slider
+                    value={[currentPhoto.edit.rotation]}
+                    onValueChange={(v) => handleSetRotation(v[0])}
+                    min={-180}
+                    max={180}
+                    step={1}
+                    disabled={isCropMode}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-[10px] text-muted-foreground">
+                    <span>-180°</span>
+                    <span>0°</span>
+                    <span>+180°</span>
+                  </div>
+                </div>
+                
+                {/* Ajustement fin et valeur */}
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => handleRotate(-1)} disabled={isCropMode}>
+                    -1°
+                  </Button>
+                  <Input
+                    type="number"
+                    value={currentPhoto.edit.rotation}
+                    onChange={(e) => handleSetRotation(parseFloat(e.target.value) || 0)}
+                    className="h-7 w-16 text-center text-xs"
+                    min={-180}
+                    max={180}
+                    disabled={isCropMode}
+                  />
+                  <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => handleRotate(1)} disabled={isCropMode}>
+                    +1°
+                  </Button>
                 </div>
               </div>
 
