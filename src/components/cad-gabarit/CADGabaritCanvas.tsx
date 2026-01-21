@@ -1,8 +1,13 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.49
+// VERSION: 7.50
 // ============================================
+//
+// CHANGELOG v7.50 (21/01/2026):
+// - Bouton "Réassembler (N photos)" dans le menu contextuel
+// - Sélectionner plusieurs images puis clic droit pour réassembler
+// - Passe les images existantes à ArucoStitcher
 //
 // CHANGELOG v7.49 (21/01/2026):
 // - FIX: Touches clavier mode étiré prioritaires (avant input focus check)
@@ -909,6 +914,12 @@ export function CADGabaritCanvas({
   const [pendingArucoImage, setPendingArucoImage] = useState<BackgroundImage | null>(null);
   const [showArucoGenerator, setShowArucoGenerator] = useState(false);
   const [showArucoStitcher, setShowArucoStitcher] = useState(false);
+  // v7.50: Images existantes à réassembler (markers re-détectés par ArucoStitcher)
+  const [imagesToReassemble, setImagesToReassemble] = useState<Array<{
+    id: string;
+    name: string;
+    image: HTMLImageElement;
+  }> | undefined>(undefined);
 
   // ============================================
   // NOUVEAU SYSTÈME DE TOOLBAR CONFIGURABLE (v7.11)
@@ -20011,10 +20022,15 @@ export function CADGabaritCanvas({
 
         {/* v7.40: Assemblage de photos par markers ArUco */}
         {/* v7.44: Support scaleX et scaleY séparés */}
+        {/* v7.50: Support réassemblage d'images existantes */}
         <ArucoStitcher
           isOpen={showArucoStitcher}
-          onClose={() => setShowArucoStitcher(false)}
+          onClose={() => {
+            setShowArucoStitcher(false);
+            setImagesToReassemble(undefined);
+          }}
           markerSizeMm={100}
+          initialImages={imagesToReassemble}
           onStitched={(stitchedImages, pxPerCm) => {
             // v7.44: Calcul corrigé avec scaleX et scaleY
             // pxPerCm = pixels/cm des images sources
@@ -23320,12 +23336,27 @@ export function CADGabaritCanvas({
                       <button
                         className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5 text-green-600"
                         onClick={() => {
-                          handleStitchImages();
+                          // v7.50: Si plusieurs images sélectionnées, les réassembler
+                          if (multiCount >= 2) {
+                            const selectedImages = backgroundImages
+                              .filter(img => imagesToUpdate.has(img.id) && img.image)
+                              .map(img => ({
+                                id: img.id,
+                                name: img.name || `image-${img.id}`,
+                                image: img.image!,
+                                // Note: on ne passe pas les markers car ImageMarker ≠ ArucoMarker
+                                // ArucoStitcher les re-détectera
+                              }));
+                            setImagesToReassemble(selectedImages);
+                          } else {
+                            setImagesToReassemble(undefined);
+                          }
+                          setShowArucoStitcher(true);
                           setContextMenu(null);
                         }}
                       >
                         <GitMerge className="h-3 w-3" />
-                        Assembler les photos
+                        {multiCount >= 2 ? `Réassembler (${multiCount} photos)` : "Assembler des photos"}
                       </button>
                       {/* v7.47: Mode étiré pour ajuster scaleX/scaleY */}
                       <button
