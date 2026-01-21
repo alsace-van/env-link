@@ -579,10 +579,11 @@ export function CADGabaritCanvas({
   const [showCalibrationRulerGenerator, setShowCalibrationRulerGenerator] = useState(false);
   
   // v7.47: Mode étiré pour ajuster scaleX/scaleY manuellement
+  // v7.47.2: Ajout des coins (top-left, top-right, bottom-left, bottom-right)
   const [stretchMode, setStretchMode] = useState(false);
   const [stretchingHandle, setStretchingHandle] = useState<{
     imageId: string;
-    handle: "left" | "right" | "top" | "bottom";
+    handle: "left" | "right" | "top" | "bottom" | "top-left" | "top-right" | "bottom-left" | "bottom-right";
     startX: number;
     startY: number;
     startScaleX: number;
@@ -3674,46 +3675,52 @@ export function CADGabaritCanvas({
         // Taille des poignées
         const handleSize = 10;
         const handleColor = "#F97316"; // Orange
+        const cornerColor = "#8B5CF6"; // Violet pour les coins
 
-        // Dessiner les 4 poignées sur les milieux des bords
-        const handles = [
-          { x: leftX, y: centerScreenY, cursor: "ew-resize", type: "left" },
-          { x: rightX, y: centerScreenY, cursor: "ew-resize", type: "right" },
-          { x: centerScreenX, y: topY, cursor: "ns-resize", type: "top" },
-          { x: centerScreenX, y: bottomY, cursor: "ns-resize", type: "bottom" },
+        // v7.47.2: Poignées sur les bords (X ou Y seul)
+        const edgeHandles = [
+          { x: leftX, y: centerScreenY, type: "left" },
+          { x: rightX, y: centerScreenY, type: "right" },
+          { x: centerScreenX, y: topY, type: "top" },
+          { x: centerScreenX, y: bottomY, type: "bottom" },
         ];
 
-        handles.forEach((handle) => {
-          // Fond blanc
+        // v7.47.2: Poignées aux coins (X et Y ensemble)
+        const cornerHandles = [
+          { x: leftX, y: topY, type: "top-left" },
+          { x: rightX, y: topY, type: "top-right" },
+          { x: leftX, y: bottomY, type: "bottom-left" },
+          { x: rightX, y: bottomY, type: "bottom-right" },
+        ];
+
+        // Dessiner les poignées de bord (orange, carrées)
+        edgeHandles.forEach((handle) => {
           ctx.fillStyle = "#FFFFFF";
           ctx.fillRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
-          
-          // Bordure orange
           ctx.strokeStyle = handleColor;
           ctx.lineWidth = 2;
           ctx.strokeRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
+        });
 
-          // Flèches indicatrices
-          ctx.fillStyle = handleColor;
-          if (handle.type === "left" || handle.type === "right") {
-            // Flèches horizontales
-            ctx.beginPath();
-            ctx.moveTo(handle.x - 3, handle.y);
-            ctx.lineTo(handle.x + 3, handle.y);
-            ctx.lineTo(handle.x, handle.y - 2);
-            ctx.moveTo(handle.x + 3, handle.y);
-            ctx.lineTo(handle.x, handle.y + 2);
-            ctx.stroke();
-          } else {
-            // Flèches verticales
-            ctx.beginPath();
-            ctx.moveTo(handle.x, handle.y - 3);
-            ctx.lineTo(handle.x, handle.y + 3);
-            ctx.lineTo(handle.x - 2, handle.y);
-            ctx.moveTo(handle.x, handle.y + 3);
-            ctx.lineTo(handle.x + 2, handle.y);
-            ctx.stroke();
-          }
+        // Dessiner les poignées de coin (violet, rondes)
+        cornerHandles.forEach((handle) => {
+          ctx.fillStyle = "#FFFFFF";
+          ctx.beginPath();
+          ctx.arc(handle.x, handle.y, handleSize / 2 + 1, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = cornerColor;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          
+          // Petite croix au centre pour indiquer X+Y
+          ctx.strokeStyle = cornerColor;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(handle.x - 3, handle.y);
+          ctx.lineTo(handle.x + 3, handle.y);
+          ctx.moveTo(handle.x, handle.y - 3);
+          ctx.lineTo(handle.x, handle.y + 3);
+          ctx.stroke();
         });
 
         // Bordure orange autour de l'image
@@ -10184,14 +10191,41 @@ export function CADGabaritCanvas({
             const bottomY = centerScreenY + (imgHeight / 2) * viewport.scale;
 
             const handleSize = 15; // Zone de détection plus grande
-            const handles: Array<{ x: number; y: number; type: "left" | "right" | "top" | "bottom" }> = [
+
+            // v7.47.2: D'abord vérifier les coins (prioritaires)
+            const cornerHandles: Array<{ x: number; y: number; type: "top-left" | "top-right" | "bottom-left" | "bottom-right" }> = [
+              { x: leftX, y: topY, type: "top-left" },
+              { x: rightX, y: topY, type: "top-right" },
+              { x: leftX, y: bottomY, type: "bottom-left" },
+              { x: rightX, y: bottomY, type: "bottom-right" },
+            ];
+
+            for (const handle of cornerHandles) {
+              if (Math.abs(screenX - handle.x) < handleSize && Math.abs(screenY - handle.y) < handleSize) {
+                addToImageHistory(backgroundImages, markerLinks);
+                setStretchingHandle({
+                  imageId: img.id,
+                  handle: handle.type,
+                  startX: screenX,
+                  startY: screenY,
+                  startScaleX: effectiveScaleX,
+                  startScaleY: effectiveScaleY,
+                  startImgX: img.x,
+                  startImgY: img.y,
+                });
+                return;
+              }
+            }
+
+            // Ensuite vérifier les bords
+            const edgeHandles: Array<{ x: number; y: number; type: "left" | "right" | "top" | "bottom" }> = [
               { x: leftX, y: centerScreenY, type: "left" },
               { x: rightX, y: centerScreenY, type: "right" },
               { x: centerScreenX, y: topY, type: "top" },
               { x: centerScreenX, y: bottomY, type: "bottom" },
             ];
 
-            for (const handle of handles) {
+            for (const handle of edgeHandles) {
               if (Math.abs(screenX - handle.x) < handleSize && Math.abs(screenY - handle.y) < handleSize) {
                 // Commencer le stretch
                 addToImageHistory(backgroundImages, markerLinks);
@@ -11527,32 +11561,69 @@ export function CADGabaritCanvas({
 
           if (stretchingHandle.handle === "left") {
             // Étirer vers la gauche : dx négatif = agrandir
-            // Nouveau width écran = currentWidthScreen - dx
             const newWidthScreen = currentWidthScreen - dx;
             newScaleX = Math.max(0.1, (newWidthScreen / viewport.scale) / img.image.width);
-            // Compenser le centre pour garder le côté droit fixe
             const widthDiff = (newScaleX - stretchingHandle.startScaleX) * img.image.width;
             newX = stretchingHandle.startImgX - widthDiff / 2;
           } else if (stretchingHandle.handle === "right") {
             // Étirer vers la droite : dx positif = agrandir
             const newWidthScreen = currentWidthScreen + dx;
             newScaleX = Math.max(0.1, (newWidthScreen / viewport.scale) / img.image.width);
-            // Compenser le centre pour garder le côté gauche fixe
             const widthDiff = (newScaleX - stretchingHandle.startScaleX) * img.image.width;
             newX = stretchingHandle.startImgX + widthDiff / 2;
           } else if (stretchingHandle.handle === "top") {
             // Étirer vers le haut : dy négatif = agrandir
             const newHeightScreen = currentHeightScreen - dy;
             newScaleY = Math.max(0.1, (newHeightScreen / viewport.scale) / img.image.height);
-            // Compenser le centre pour garder le côté bas fixe
             const heightDiff = (newScaleY - stretchingHandle.startScaleY) * img.image.height;
             newY = stretchingHandle.startImgY - heightDiff / 2;
           } else if (stretchingHandle.handle === "bottom") {
             // Étirer vers le bas : dy positif = agrandir
             const newHeightScreen = currentHeightScreen + dy;
             newScaleY = Math.max(0.1, (newHeightScreen / viewport.scale) / img.image.height);
-            // Compenser le centre pour garder le côté haut fixe
             const heightDiff = (newScaleY - stretchingHandle.startScaleY) * img.image.height;
+            newY = stretchingHandle.startImgY + heightDiff / 2;
+          }
+          // v7.47.2: Poignées de coin (X et Y ensemble)
+          else if (stretchingHandle.handle === "top-left") {
+            // Coin haut-gauche : dx négatif = agrandir X, dy négatif = agrandir Y
+            const newWidthScreen = currentWidthScreen - dx;
+            const newHeightScreen = currentHeightScreen - dy;
+            newScaleX = Math.max(0.1, (newWidthScreen / viewport.scale) / img.image.width);
+            newScaleY = Math.max(0.1, (newHeightScreen / viewport.scale) / img.image.height);
+            const widthDiff = (newScaleX - stretchingHandle.startScaleX) * img.image.width;
+            const heightDiff = (newScaleY - stretchingHandle.startScaleY) * img.image.height;
+            newX = stretchingHandle.startImgX - widthDiff / 2;
+            newY = stretchingHandle.startImgY - heightDiff / 2;
+          } else if (stretchingHandle.handle === "top-right") {
+            // Coin haut-droit : dx positif = agrandir X, dy négatif = agrandir Y
+            const newWidthScreen = currentWidthScreen + dx;
+            const newHeightScreen = currentHeightScreen - dy;
+            newScaleX = Math.max(0.1, (newWidthScreen / viewport.scale) / img.image.width);
+            newScaleY = Math.max(0.1, (newHeightScreen / viewport.scale) / img.image.height);
+            const widthDiff = (newScaleX - stretchingHandle.startScaleX) * img.image.width;
+            const heightDiff = (newScaleY - stretchingHandle.startScaleY) * img.image.height;
+            newX = stretchingHandle.startImgX + widthDiff / 2;
+            newY = stretchingHandle.startImgY - heightDiff / 2;
+          } else if (stretchingHandle.handle === "bottom-left") {
+            // Coin bas-gauche : dx négatif = agrandir X, dy positif = agrandir Y
+            const newWidthScreen = currentWidthScreen - dx;
+            const newHeightScreen = currentHeightScreen + dy;
+            newScaleX = Math.max(0.1, (newWidthScreen / viewport.scale) / img.image.width);
+            newScaleY = Math.max(0.1, (newHeightScreen / viewport.scale) / img.image.height);
+            const widthDiff = (newScaleX - stretchingHandle.startScaleX) * img.image.width;
+            const heightDiff = (newScaleY - stretchingHandle.startScaleY) * img.image.height;
+            newX = stretchingHandle.startImgX - widthDiff / 2;
+            newY = stretchingHandle.startImgY + heightDiff / 2;
+          } else if (stretchingHandle.handle === "bottom-right") {
+            // Coin bas-droit : dx positif = agrandir X, dy positif = agrandir Y
+            const newWidthScreen = currentWidthScreen + dx;
+            const newHeightScreen = currentHeightScreen + dy;
+            newScaleX = Math.max(0.1, (newWidthScreen / viewport.scale) / img.image.width);
+            newScaleY = Math.max(0.1, (newHeightScreen / viewport.scale) / img.image.height);
+            const widthDiff = (newScaleX - stretchingHandle.startScaleX) * img.image.width;
+            const heightDiff = (newScaleY - stretchingHandle.startScaleY) * img.image.height;
+            newX = stretchingHandle.startImgX + widthDiff / 2;
             newY = stretchingHandle.startImgY + heightDiff / 2;
           }
 
