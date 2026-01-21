@@ -556,6 +556,9 @@ export function CADGabaritCanvas({
   // v7.47.4: Refs pour le mode étiré (évite stale closures dans handleKeyDown)
   const stretchModeRef = useRef(false);
   const selectedImageIdRef = useRef<string | null>(null);
+  // v7.47.5: Ref pour debounce de l'historique (évite de sauvegarder à chaque touche)
+  const stretchHistorySavedRef = useRef(false);
+  const stretchHistoryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // === Marqueurs inter-photos ===
   const [markerLinks, setMarkerLinks] = useState<ImageMarkerLink[]>([]);
@@ -14537,6 +14540,19 @@ export function CADGabaritCanvas({
         const img = backgroundImagesRef.current.find((i) => i.id === selectedImageIdRef.current);
         if (!img) return;
 
+        // v7.47.5: Sauvegarder l'historique au premier appui (debounce 500ms)
+        if (!stretchHistorySavedRef.current) {
+          addToImageHistoryRef.current(backgroundImagesRef.current, markerLinksRef.current);
+          stretchHistorySavedRef.current = true;
+        }
+        // Reset le flag après 500ms d'inactivité
+        if (stretchHistoryTimeoutRef.current) {
+          clearTimeout(stretchHistoryTimeoutRef.current);
+        }
+        stretchHistoryTimeoutRef.current = setTimeout(() => {
+          stretchHistorySavedRef.current = false;
+        }, 500);
+
         // Incrément de base : 0.1% (0.001)
         // Shift : 0.01% (0.0001) - très précis
         // Ctrl/Cmd : 1% (0.01) - plus rapide
@@ -14584,6 +14600,18 @@ export function CADGabaritCanvas({
         const img = backgroundImagesRef.current.find((i) => i.id === selectedImageIdRef.current);
         if (!img) return;
 
+        // v7.47.5: Sauvegarder l'historique au premier appui (debounce 500ms)
+        if (!stretchHistorySavedRef.current) {
+          addToImageHistoryRef.current(backgroundImagesRef.current, markerLinksRef.current);
+          stretchHistorySavedRef.current = true;
+        }
+        if (stretchHistoryTimeoutRef.current) {
+          clearTimeout(stretchHistoryTimeoutRef.current);
+        }
+        stretchHistoryTimeoutRef.current = setTimeout(() => {
+          stretchHistorySavedRef.current = false;
+        }, 500);
+
         let increment = 0.001;
         if (e.shiftKey) increment = 0.0001;
         if (e.ctrlKey || e.metaKey) increment = 0.01;
@@ -14612,6 +14640,9 @@ export function CADGabaritCanvas({
         
         const img = backgroundImagesRef.current.find((i) => i.id === selectedImageIdRef.current);
         if (!img) return;
+
+        // v7.47.5: Toujours sauvegarder pour R (action ponctuelle)
+        addToImageHistoryRef.current(backgroundImagesRef.current, markerLinksRef.current);
 
         const currentScaleX = img.scaleX ?? img.scale;
         const currentScaleY = img.scaleY ?? img.scale;
