@@ -1,8 +1,14 @@
 // ============================================
 // COMPONENT: ArucoStitcher
 // Assemblage de photos via markers ArUco partagés
-// VERSION: 4.4
+// VERSION: 4.5
 // ============================================
+//
+// CHANGELOG v4.5 (21/01/2026):
+// - FIX: Crop ne déforme plus l'image
+// - Désactive le crop quand rotation non appliquée (message d'avertissement)
+// - Utilise dimensions originales (origW/origH) pour calcul du crop
+// - Cohérence entre affichage et calcul du crop
 //
 // CHANGELOG v4.4 (21/01/2026):
 // - FIX: Fond transparent au lieu de noir après rotation/crop
@@ -185,8 +191,11 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     offsetX: number;
     offsetY: number;
     scale: number;
-    imgW: number;
+    imgW: number;  // Dimensions affichées (bounding box si rotation)
     imgH: number;
+    origW: number; // Dimensions originales de l'image
+    origH: number;
+    rotation: number; // Rotation actuelle
   } | null>(null);
 
   const { isLoaded, isLoading, error: opencvError, detectMarkers } = useOpenCVAruco();
@@ -389,7 +398,18 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     const offsetY = (maxHeight - drawH) / 2;
 
     // Stocker le mapping pour les handlers de crop
-    setCanvasMapping({ offsetX, offsetY, scale, imgW, imgH });
+    // origW/origH = dimensions de l'image source (pour le calcul du crop)
+    const sourceImg = photo.transformedImage || photo.image;
+    setCanvasMapping({ 
+      offsetX, 
+      offsetY, 
+      scale, 
+      imgW, 
+      imgH,
+      origW: sourceImg.width,
+      origH: sourceImg.height,
+      rotation: photo.transformedImage ? 0 : edit.rotation
+    });
 
     // Clear avec fond sombre
     ctx.fillStyle = '#1a1a2e';
@@ -425,7 +445,12 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     }
     ctx.restore();
 
-    // v4.3: Dessiner le crop - priorité au drag en cours, sinon crop existant
+    // v4.5: Dessiner le crop - priorité au drag en cours, sinon crop existant
+    // Utiliser origW/origH (dimensions de l'image source) car le crop est en % de l'image
+    const cropSourceImg = photo.transformedImage || photo.image;
+    const origW = cropSourceImg.width;
+    const origH = cropSourceImg.height;
+    
     let cropToDraw: { x: number; y: number; w: number; h: number } | null = null;
     
     if (isCropMode && isDraggingCrop && cropStart && cropEnd) {
@@ -439,18 +464,18 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     } else if (isCropMode && edit.crop) {
       // En mode crop avec un crop existant (pas en train de drag)
       cropToDraw = {
-        x: offsetX + (edit.crop.x / 100) * imgW * scale,
-        y: offsetY + (edit.crop.y / 100) * imgH * scale,
-        w: (edit.crop.width / 100) * imgW * scale,
-        h: (edit.crop.height / 100) * imgH * scale
+        x: offsetX + (edit.crop.x / 100) * origW * scale,
+        y: offsetY + (edit.crop.y / 100) * origH * scale,
+        w: (edit.crop.width / 100) * origW * scale,
+        h: (edit.crop.height / 100) * origH * scale
       };
     } else if (!isCropMode && edit.crop) {
       // Hors mode crop mais avec un crop existant (affichage simple)
       cropToDraw = {
-        x: offsetX + (edit.crop.x / 100) * imgW * scale,
-        y: offsetY + (edit.crop.y / 100) * imgH * scale,
-        w: (edit.crop.width / 100) * imgW * scale,
-        h: (edit.crop.height / 100) * imgH * scale
+        x: offsetX + (edit.crop.x / 100) * origW * scale,
+        y: offsetY + (edit.crop.y / 100) * origH * scale,
+        w: (edit.crop.width / 100) * origW * scale,
+        h: (edit.crop.height / 100) * origH * scale
       };
     }
 
@@ -595,18 +620,19 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     }
   }, [photos, currentEditIndex, isCropMode, cropStart, cropEnd, cropDragType, isDraggingCrop]);
 
-  // v4.3: Helper - obtenir le crop existant en coordonnées canvas
+  // v4.5: Helper - obtenir le crop existant en coordonnées canvas
   const getExistingCropInCanvas = useCallback((): { x: number; y: number; w: number; h: number } | null => {
     if (!canvasMapping) return null;
     const photo = photos[currentEditIndex];
     if (!photo?.edit.crop) return null;
     
-    const { offsetX, offsetY, scale, imgW, imgH } = canvasMapping;
+    // Utiliser origW/origH car le crop est en % de l'image source
+    const { offsetX, offsetY, scale, origW, origH } = canvasMapping;
     return {
-      x: offsetX + (photo.edit.crop.x / 100) * imgW * scale,
-      y: offsetY + (photo.edit.crop.y / 100) * imgH * scale,
-      w: (photo.edit.crop.width / 100) * imgW * scale,
-      h: (photo.edit.crop.height / 100) * imgH * scale
+      x: offsetX + (photo.edit.crop.x / 100) * origW * scale,
+      y: offsetY + (photo.edit.crop.y / 100) * origH * scale,
+      w: (photo.edit.crop.width / 100) * origW * scale,
+      h: (photo.edit.crop.height / 100) * origH * scale
     };
   }, [canvasMapping, photos, currentEditIndex]);
 
@@ -761,17 +787,19 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
 
   const handleCropMouseUp = useCallback(() => {
     if (isDraggingCrop && cropStart && cropEnd && canvasMapping) {
-      const { offsetX, offsetY, scale, imgW, imgH } = canvasMapping;
+      // v4.5: Utiliser origW/origH (dimensions de l'image source) pour le calcul du crop
+      const { offsetX, offsetY, scale, origW, origH } = canvasMapping;
       
       const x1 = Math.min(cropStart.x, cropEnd.x);
       const y1 = Math.min(cropStart.y, cropEnd.y);
       const x2 = Math.max(cropStart.x, cropEnd.x);
       const y2 = Math.max(cropStart.y, cropEnd.y);
       
-      const cropX = ((x1 - offsetX) / (imgW * scale)) * 100;
-      const cropY = ((y1 - offsetY) / (imgH * scale)) * 100;
-      const cropW = ((x2 - x1) / (imgW * scale)) * 100;
-      const cropH = ((y2 - y1) / (imgH * scale)) * 100;
+      // Calculer le crop en pourcentage de l'image originale
+      const cropX = ((x1 - offsetX) / (origW * scale)) * 100;
+      const cropY = ((y1 - offsetY) / (origH * scale)) * 100;
+      const cropW = ((x2 - x1) / (origW * scale)) * 100;
+      const cropH = ((y2 - y1) / (origH * scale)) * 100;
       
       // Sauvegarder automatiquement si crop valide
       if (cropW >= 5 && cropH >= 5) {
@@ -1596,7 +1624,12 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
               {/* v4.1: Section Recadrage */}
               <div className="p-3 bg-muted rounded-lg">
                 <Label className="text-xs font-medium mb-2 block">Recadrage</Label>
-                {!isCropMode ? (
+                {/* v4.5: Désactiver crop si rotation non appliquée */}
+                {currentPhoto.edit.rotation !== 0 && !currentPhoto.transformedImage ? (
+                  <div className="text-xs text-amber-600">
+                    ⚠️ Appliquez d'abord la rotation avant de recadrer
+                  </div>
+                ) : !isCropMode ? (
                   <div className="space-y-2">
                     <Button 
                       size="sm" 
