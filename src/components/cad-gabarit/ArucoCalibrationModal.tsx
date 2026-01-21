@@ -1,7 +1,7 @@
 // ============================================
 // COMPONENT: ArucoCalibrationModal
 // Modale de calibration automatique via ArUco markers
-// VERSION: 2.2 - Layout horizontal + labels discrets
+// VERSION: 2.2 - Layout horizontal + labels discrets + mm
 // ============================================
 //
 // CHANGELOG v2.2 (21/01/2026):
@@ -9,6 +9,7 @@
 // - Labels markers discrets: fond transparent, texte 11px, juste l'ID
 // - Liste des markers avec confiance dans le panneau droit
 // - Modale élargie (max-w-5xl)
+// - FIX: Taille markers en mm (pas cm), défaut 100mm
 //
 // CHANGELOG v2.1 (21/01/2026):
 // - FIX: Image trop grande - utilise ResizeObserver pour dimensions réelles
@@ -66,7 +67,7 @@ export function ArucoCalibrationModal({
   const debugCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const [markerSizeCm, setMarkerSizeCm] = useState<string>("10");
+  const [markerSizeMm, setMarkerSizeMm] = useState<string>("100");
   const [detectedMarkers, setDetectedMarkers] = useState<ArucoMarker[]>([]);
   const [calculatedScale, setCalculatedScale] = useState<number | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -276,8 +277,10 @@ export function ArucoCalibrationModal({
       setDebugInfo(newDebugInfo);
 
       if (markers.length > 0) {
-        const size = parseFloat(markerSizeCm) || 10;
-        const scale = calculateScale(markers, size);
+        // v2.2: Conversion mm → cm pour calculateScale
+        const sizeMm = parseFloat(markerSizeMm) || 100;
+        const sizeCm = sizeMm / 10;
+        const scale = calculateScale(markers, sizeCm);
         setCalculatedScale(scale);
 
         if (scale) {
@@ -294,16 +297,18 @@ export function ArucoCalibrationModal({
     } finally {
       setIsProcessing(false);
     }
-  }, [image, isLoaded, detectMarkers, calculateScale, markerSizeCm]);
+  }, [image, isLoaded, detectMarkers, calculateScale, markerSizeMm]);
 
   // Recalculer l'échelle quand la taille du marker change
   useEffect(() => {
     if (detectedMarkers.length > 0) {
-      const size = parseFloat(markerSizeCm) || 10;
-      const scale = calculateScale(detectedMarkers, size);
+      // v2.2: Conversion mm → cm pour calculateScale
+      const sizeMm = parseFloat(markerSizeMm) || 100;
+      const sizeCm = sizeMm / 10;
+      const scale = calculateScale(detectedMarkers, sizeCm);
       setCalculatedScale(scale);
     }
-  }, [markerSizeCm, detectedMarkers, calculateScale]);
+  }, [markerSizeMm, detectedMarkers, calculateScale]);
 
   // Appliquer la calibration
   const handleApply = useCallback(() => {
@@ -446,16 +451,16 @@ export function ArucoCalibrationModal({
             {/* Paramètres */}
             <div className="space-y-2">
               <Label htmlFor="markerSize" className="text-sm font-medium">
-                Taille markers (cm)
+                Taille markers (mm)
               </Label>
               <Input
                 id="markerSize"
                 type="number"
-                value={markerSizeCm}
-                onChange={(e) => setMarkerSizeCm(e.target.value)}
-                min="1"
-                max="100"
-                step="0.5"
+                value={markerSizeMm}
+                onChange={(e) => setMarkerSizeMm(e.target.value)}
+                min="10"
+                max="1000"
+                step="5"
               />
             </div>
 
