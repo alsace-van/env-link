@@ -140,6 +140,7 @@ import {
   FilePlus,
   FolderOpen,
   QrCode,
+  Expand, // v7.47: Mode étiré
 } from "lucide-react";
 
 import {
@@ -576,6 +577,20 @@ export function CADGabaritCanvas({
   const [showCropDialog, setShowCropDialog] = useState(false);
   // v7.34: Générateur d'équerre de calibration
   const [showCalibrationRulerGenerator, setShowCalibrationRulerGenerator] = useState(false);
+  
+  // v7.47: Mode étiré pour ajuster scaleX/scaleY manuellement
+  const [stretchMode, setStretchMode] = useState(false);
+  const [stretchingHandle, setStretchingHandle] = useState<{
+    imageId: string;
+    handle: "left" | "right" | "top" | "bottom";
+    startX: number;
+    startY: number;
+    startScaleX: number;
+    startScaleY: number;
+    startImgX: number;
+    startImgY: number;
+  } | null>(null);
+  
   const [cropSelection, setCropSelection] = useState<{ x: number; y: number; width: number; height: number }>({
     x: 0,
     y: 0,
@@ -3633,6 +3648,83 @@ export function CADGabaritCanvas({
         ctx.restore();
       }
     }
+
+    // v7.47: Dessiner les poignées d'étirement si le mode est actif
+    if (stretchMode && selectedImageId && canvasRef.current) {
+      const ctx = canvasRef.current.getContext("2d");
+      const img = backgroundImages.find((i) => i.id === selectedImageId);
+      if (ctx && img && img.image) {
+        const effectiveScaleX = img.scaleX ?? img.scale;
+        const effectiveScaleY = img.scaleY ?? img.scale;
+        const imgWidth = img.image.width * effectiveScaleX;
+        const imgHeight = img.image.height * effectiveScaleY;
+
+        // Coordonnées écran du centre de l'image
+        const centerScreenX = img.x * viewport.scale + viewport.offsetX;
+        const centerScreenY = img.y * viewport.scale + viewport.offsetY;
+
+        // Coordonnées écran des bords
+        const leftX = centerScreenX - (imgWidth / 2) * viewport.scale;
+        const rightX = centerScreenX + (imgWidth / 2) * viewport.scale;
+        const topY = centerScreenY - (imgHeight / 2) * viewport.scale;
+        const bottomY = centerScreenY + (imgHeight / 2) * viewport.scale;
+
+        ctx.save();
+
+        // Taille des poignées
+        const handleSize = 10;
+        const handleColor = "#F97316"; // Orange
+
+        // Dessiner les 4 poignées sur les milieux des bords
+        const handles = [
+          { x: leftX, y: centerScreenY, cursor: "ew-resize", type: "left" },
+          { x: rightX, y: centerScreenY, cursor: "ew-resize", type: "right" },
+          { x: centerScreenX, y: topY, cursor: "ns-resize", type: "top" },
+          { x: centerScreenX, y: bottomY, cursor: "ns-resize", type: "bottom" },
+        ];
+
+        handles.forEach((handle) => {
+          // Fond blanc
+          ctx.fillStyle = "#FFFFFF";
+          ctx.fillRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
+          
+          // Bordure orange
+          ctx.strokeStyle = handleColor;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(handle.x - handleSize / 2, handle.y - handleSize / 2, handleSize, handleSize);
+
+          // Flèches indicatrices
+          ctx.fillStyle = handleColor;
+          if (handle.type === "left" || handle.type === "right") {
+            // Flèches horizontales
+            ctx.beginPath();
+            ctx.moveTo(handle.x - 3, handle.y);
+            ctx.lineTo(handle.x + 3, handle.y);
+            ctx.lineTo(handle.x, handle.y - 2);
+            ctx.moveTo(handle.x + 3, handle.y);
+            ctx.lineTo(handle.x, handle.y + 2);
+            ctx.stroke();
+          } else {
+            // Flèches verticales
+            ctx.beginPath();
+            ctx.moveTo(handle.x, handle.y - 3);
+            ctx.lineTo(handle.x, handle.y + 3);
+            ctx.lineTo(handle.x - 2, handle.y);
+            ctx.moveTo(handle.x, handle.y + 3);
+            ctx.lineTo(handle.x + 2, handle.y);
+            ctx.stroke();
+          }
+        });
+
+        // Bordure orange autour de l'image
+        ctx.strokeStyle = handleColor;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.strokeRect(leftX, topY, rightX - leftX, bottomY - topY);
+
+        ctx.restore();
+      }
+    }
   }, [
     sketch,
     viewport,
@@ -3696,6 +3788,8 @@ export function CADGabaritCanvas({
     selectedA4Cells,
     a4OverlapMm,
     a4CutMode,
+    stretchMode,
+    selectedImageId,
   ]);
 
   useEffect(() => {
@@ -10070,6 +10164,53 @@ export function CADGabaritCanvas({
           }
         }
 
+        // v7.47: Vérifier si on clique sur une poignée d'étirement
+        if (stretchMode && selectedImageId) {
+          const img = backgroundImages.find((i) => i.id === selectedImageId);
+          if (img && img.image) {
+            const effectiveScaleX = img.scaleX ?? img.scale;
+            const effectiveScaleY = img.scaleY ?? img.scale;
+            const imgWidth = img.image.width * effectiveScaleX;
+            const imgHeight = img.image.height * effectiveScaleY;
+
+            // Coordonnées écran du centre de l'image
+            const centerScreenX = img.x * viewport.scale + viewport.offsetX;
+            const centerScreenY = img.y * viewport.scale + viewport.offsetY;
+
+            // Coordonnées écran des bords
+            const leftX = centerScreenX - (imgWidth / 2) * viewport.scale;
+            const rightX = centerScreenX + (imgWidth / 2) * viewport.scale;
+            const topY = centerScreenY - (imgHeight / 2) * viewport.scale;
+            const bottomY = centerScreenY + (imgHeight / 2) * viewport.scale;
+
+            const handleSize = 15; // Zone de détection plus grande
+            const handles: Array<{ x: number; y: number; type: "left" | "right" | "top" | "bottom" }> = [
+              { x: leftX, y: centerScreenY, type: "left" },
+              { x: rightX, y: centerScreenY, type: "right" },
+              { x: centerScreenX, y: topY, type: "top" },
+              { x: centerScreenX, y: bottomY, type: "bottom" },
+            ];
+
+            for (const handle of handles) {
+              if (Math.abs(screenX - handle.x) < handleSize && Math.abs(screenY - handle.y) < handleSize) {
+                // Commencer le stretch
+                addToImageHistory(backgroundImages, markerLinks);
+                setStretchingHandle({
+                  imageId: img.id,
+                  handle: handle.type,
+                  startX: screenX,
+                  startY: screenY,
+                  startScaleX: effectiveScaleX,
+                  startScaleY: effectiveScaleY,
+                  startImgX: img.x,
+                  startImgY: img.y,
+                });
+                return;
+              }
+            }
+          }
+        }
+
         // PRIORITÉ 3: Vérifier s'il y a une entité géométrique sous le curseur
         // Les entités ont la priorité sur les photos
         const entityUnderCursor = findEntityAtPosition(worldPos.x, worldPos.y);
@@ -11306,6 +11447,8 @@ export function CADGabaritCanvas({
       a4GridRows,
       a4GridCols,
       selectedA4Cells,
+      // v7.47: Mode étiré
+      stretchMode,
       // Note: isDraggingRevealRef.current utilisé directement (pas dans deps)
     ],
   );
@@ -11360,6 +11503,63 @@ export function CADGabaritCanvas({
             img.id === selectedImageId ? { ...img, x: imageDragStart.imgX + dx, y: imageDragStart.imgY + dy } : img,
           ),
         );
+        return;
+      }
+
+      // v7.47: Stretching d'une image (modification scaleX/scaleY)
+      if (stretchingHandle) {
+        const img = backgroundImages.find((i) => i.id === stretchingHandle.imageId);
+        if (img && img.image) {
+          const dx = screenX - stretchingHandle.startX;
+          const dy = screenY - stretchingHandle.startY;
+
+          // Calculer le changement de scale en fonction de la poignée
+          let newScaleX = stretchingHandle.startScaleX;
+          let newScaleY = stretchingHandle.startScaleY;
+          let newX = stretchingHandle.startImgX;
+          let newY = stretchingHandle.startImgY;
+
+          // Sensibilité du stretch (pixels écran → changement de scale)
+          const sensitivity = 0.002 / viewport.scale;
+
+          if (stretchingHandle.handle === "left") {
+            // Étirer vers la gauche = réduire scaleX (dx négatif = augmente)
+            const scaleDelta = -dx * sensitivity * img.image.width;
+            newScaleX = Math.max(0.1, stretchingHandle.startScaleX + scaleDelta);
+            // Compenser le centre pour garder le côté droit fixe
+            const widthDiff = (newScaleX - stretchingHandle.startScaleX) * img.image.width;
+            newX = stretchingHandle.startImgX - widthDiff / 2;
+          } else if (stretchingHandle.handle === "right") {
+            // Étirer vers la droite = augmenter scaleX
+            const scaleDelta = dx * sensitivity * img.image.width;
+            newScaleX = Math.max(0.1, stretchingHandle.startScaleX + scaleDelta);
+            // Compenser le centre pour garder le côté gauche fixe
+            const widthDiff = (newScaleX - stretchingHandle.startScaleX) * img.image.width;
+            newX = stretchingHandle.startImgX + widthDiff / 2;
+          } else if (stretchingHandle.handle === "top") {
+            // Étirer vers le haut = réduire scaleY (dy négatif = augmente)
+            const scaleDelta = -dy * sensitivity * img.image.height;
+            newScaleY = Math.max(0.1, stretchingHandle.startScaleY + scaleDelta);
+            // Compenser le centre pour garder le côté bas fixe
+            const heightDiff = (newScaleY - stretchingHandle.startScaleY) * img.image.height;
+            newY = stretchingHandle.startImgY - heightDiff / 2;
+          } else if (stretchingHandle.handle === "bottom") {
+            // Étirer vers le bas = augmenter scaleY
+            const scaleDelta = dy * sensitivity * img.image.height;
+            newScaleY = Math.max(0.1, stretchingHandle.startScaleY + scaleDelta);
+            // Compenser le centre pour garder le côté haut fixe
+            const heightDiff = (newScaleY - stretchingHandle.startScaleY) * img.image.height;
+            newY = stretchingHandle.startImgY + heightDiff / 2;
+          }
+
+          setBackgroundImages((prev) =>
+            prev.map((i) =>
+              i.id === stretchingHandle.imageId
+                ? { ...i, scaleX: newScaleX, scaleY: newScaleY, x: newX, y: newY }
+                : i,
+            ),
+          );
+        }
         return;
       }
 
@@ -11975,6 +12175,8 @@ export function CADGabaritCanvas({
       mirrorSelectionData,
       // Grille A4
       isDraggingA4Origin,
+      // v7.47: Mode étiré
+      stretchingHandle,
       // Note: isDraggingRevealRef.current utilisé directement (pas dans deps)
     ],
   );
@@ -12036,6 +12238,22 @@ export function CADGabaritCanvas({
         }
         setIsDraggingImage(false);
         setImageDragStart(null);
+        return;
+      }
+
+      // v7.47: Fin du stretch d'une image
+      if (stretchingHandle) {
+        const img = backgroundImages.find((i) => i.id === stretchingHandle.imageId);
+        if (img) {
+          const scaleXChanged = (img.scaleX ?? img.scale) !== stretchingHandle.startScaleX;
+          const scaleYChanged = (img.scaleY ?? img.scale) !== stretchingHandle.startScaleY;
+          if (scaleXChanged || scaleYChanged) {
+            toast.success(
+              `Échelle ajustée: X=${((img.scaleX ?? img.scale) * 100).toFixed(0)}% Y=${((img.scaleY ?? img.scale) * 100).toFixed(0)}%`
+            );
+          }
+        }
+        setStretchingHandle(null);
         return;
       }
 
@@ -12313,6 +12531,8 @@ export function CADGabaritCanvas({
       endGizmoDrag,
       // Grille A4
       isDraggingA4Origin,
+      // v7.47: Mode étiré
+      stretchingHandle,
     ],
   );
 
@@ -22646,6 +22866,19 @@ export function CADGabaritCanvas({
                       >
                         <GitMerge className="h-3 w-3" />
                         Assembler les photos
+                      </button>
+                      {/* v7.47: Mode étiré pour ajuster scaleX/scaleY */}
+                      <button
+                        className={`w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5 ${stretchMode ? "text-orange-600 bg-orange-50" : "text-orange-600"}`}
+                        onClick={() => {
+                          setStretchMode(!stretchMode);
+                          setSelectedImageId(contextMenu.entityId);
+                          toast.info(stretchMode ? "Mode étiré désactivé" : "Mode étiré activé - Tirez sur les poignées");
+                          setContextMenu(null);
+                        }}
+                      >
+                        <Expand className="h-3 w-3" />
+                        {stretchMode ? "✓ Mode étiré" : "Mode étiré"}
                       </button>
                       <div className="border-t my-0.5" />
                       <button
