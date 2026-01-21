@@ -1,8 +1,19 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.44
+// VERSION: 7.49
 // ============================================
+//
+// CHANGELOG v7.49 (21/01/2026):
+// - FIX: Touches clavier mode étiré prioritaires (avant input focus check)
+// - Ajout stopImmediatePropagation() pour éviter conflits macOS
+// - Bandeau d'aide discret en bas de l'image (raccourcis clavier)
+// - Indicateur d'action visible (X↔, Y↕, X+Y, Reset, Equalize)
+//
+// CHANGELOG v7.48 (21/01/2026):
+// - Indicateur visuel discret pour le mode étiré (X↔, Y↕, X+Y, Reset)
+// - stopPropagation() sur les touches pour éviter conflits macOS
+// - Affichage temporaire (600ms) de l'action en cours
 //
 // CHANGELOG v7.44 (20/01/2026):
 // - Support scaleX et scaleY séparés pour corriger les distorsions
@@ -597,6 +608,13 @@ export function CADGabaritCanvas({
     startImgX: number;
     startImgY: number;
   } | null>(null);
+  
+  // v7.48: Indicateur visuel pour les raccourcis clavier du mode étiré
+  const [stretchKeyIndicator, setStretchKeyIndicator] = useState<{
+    action: "X" | "Y" | "XY" | "reset" | "equalize";
+    direction: "+" | "-" | "";
+  } | null>(null);
+  const stretchKeyIndicatorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   const [cropSelection, setCropSelection] = useState<{ x: number; y: number; width: number; height: number }>({
     x: 0,
@@ -3769,6 +3787,110 @@ export function CADGabaritCanvas({
         ctx.restore();
       }
     }
+    
+    // v7.48: Indicateur d'action clavier (affiché séparément pour être toujours visible)
+    if (stretchMode && stretchKeyIndicator && selectedImageId && canvasRef.current) {
+      const ctx = canvasRef.current.getContext("2d");
+      const img = backgroundImages.find((i) => i.id === selectedImageId);
+      if (ctx && img && img.image) {
+        const effectiveScaleX = img.scaleX ?? img.scale;
+        const effectiveScaleY = img.scaleY ?? img.scale;
+        const imgWidth = img.image.width * effectiveScaleX;
+        const imgHeight = img.image.height * effectiveScaleY;
+        
+        const centerScreenX = img.x * viewport.scale + viewport.offsetX;
+        const centerScreenY = img.y * viewport.scale + viewport.offsetY;
+        const rightX = centerScreenX + (imgWidth / 2) * viewport.scale;
+        const topY = centerScreenY - (imgHeight / 2) * viewport.scale;
+        
+        ctx.save();
+        
+        // Indicateur compact à droite de l'image
+        let indicatorText = "";
+        let indicatorColor = "#F97316"; // Orange par défaut
+        
+        if (stretchKeyIndicator.action === "X") {
+          indicatorText = `X ${stretchKeyIndicator.direction === "+" ? "↔+" : "↔-"}`;
+          indicatorColor = "#F97316";
+        } else if (stretchKeyIndicator.action === "Y") {
+          indicatorText = `Y ${stretchKeyIndicator.direction === "+" ? "↕+" : "↕-"}`;
+          indicatorColor = "#3B82F6";
+        } else if (stretchKeyIndicator.action === "XY") {
+          indicatorText = `X+Y ${stretchKeyIndicator.direction}`;
+          indicatorColor = "#8B5CF6";
+        } else if (stretchKeyIndicator.action === "reset") {
+          indicatorText = "⟲ Reset";
+          indicatorColor = "#10B981";
+        } else if (stretchKeyIndicator.action === "equalize") {
+          indicatorText = "X=Y ✓";
+          indicatorColor = "#10B981";
+        }
+        
+        // Position: coin supérieur droit + 10px
+        const indX = rightX + 10;
+        const indY = topY;
+        
+        // Fond arrondi
+        ctx.fillStyle = indicatorColor;
+        ctx.beginPath();
+        const w = ctx.measureText(indicatorText).width + 16;
+        const h = 24;
+        const r = 4;
+        ctx.moveTo(indX + r, indY);
+        ctx.lineTo(indX + w - r, indY);
+        ctx.quadraticCurveTo(indX + w, indY, indX + w, indY + r);
+        ctx.lineTo(indX + w, indY + h - r);
+        ctx.quadraticCurveTo(indX + w, indY + h, indX + w - r, indY + h);
+        ctx.lineTo(indX + r, indY + h);
+        ctx.quadraticCurveTo(indX, indY + h, indX, indY + h - r);
+        ctx.lineTo(indX, indY + r);
+        ctx.quadraticCurveTo(indX, indY, indX + r, indY);
+        ctx.fill();
+        
+        // Texte
+        ctx.fillStyle = "#FFFFFF";
+        ctx.font = "bold 13px sans-serif";
+        ctx.fillText(indicatorText, indX + 8, indY + 17);
+
+        ctx.restore();
+      }
+    }
+    
+    // v7.49: Bandeau d'aide discret en bas quand stretch mode actif (sans action en cours)
+    if (stretchMode && selectedImageId && !stretchKeyIndicator && canvasRef.current) {
+      const ctx = canvasRef.current.getContext("2d");
+      const img = backgroundImages.find((i) => i.id === selectedImageId);
+      if (ctx && img && img.image) {
+        const effectiveScaleX = img.scaleX ?? img.scale;
+        const effectiveScaleY = img.scaleY ?? img.scale;
+        const imgWidth = img.image.width * effectiveScaleX;
+        const imgHeight = img.image.height * effectiveScaleY;
+        
+        const centerScreenX = img.x * viewport.scale + viewport.offsetX;
+        const centerScreenY = img.y * viewport.scale + viewport.offsetY;
+        const leftX = centerScreenX - (imgWidth / 2) * viewport.scale;
+        const bottomY = centerScreenY + (imgHeight / 2) * viewport.scale;
+        
+        ctx.save();
+        
+        // Petit texte d'aide en bas à gauche
+        const helpText = "← → X  |  ↑ ↓ Y  |  +/- XY  |  R reset  |  Esc quitter";
+        ctx.font = "11px sans-serif";
+        const textWidth = ctx.measureText(helpText).width;
+        
+        // Fond semi-transparent
+        ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+        ctx.beginPath();
+        ctx.roundRect(leftX, bottomY + 8, textWidth + 16, 22, 4);
+        ctx.fill();
+        
+        // Texte
+        ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+        ctx.fillText(helpText, leftX + 8, bottomY + 23);
+        
+        ctx.restore();
+      }
+    }
   }, [
     sketch,
     viewport,
@@ -3833,6 +3955,7 @@ export function CADGabaritCanvas({
     a4OverlapMm,
     a4CutMode,
     stretchMode,
+    stretchKeyIndicator,
     selectedImageId,
   ]);
 
@@ -14475,6 +14598,183 @@ export function CADGabaritCanvas({
   // Gestion clavier (DOIT être après les fonctions copySelectedEntities, pasteEntities, duplicateSelectedEntities)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // v7.48: PRIORITÉ ABSOLUE au mode stretch pour éviter les conflits macOS
+      // On vérifie d'abord si on est en mode stretch avant tout le reste
+      if (stretchModeRef.current && selectedImageIdRef.current) {
+        // Flèches pour ajuster l'échelle
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown") {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation?.();
+          
+          const img = backgroundImagesRef.current.find((i) => i.id === selectedImageIdRef.current);
+          if (!img) return;
+
+          // v7.47.5: Sauvegarder l'historique au premier appui (debounce 500ms)
+          if (!stretchHistorySavedRef.current) {
+            addToImageHistoryRef.current(backgroundImagesRef.current, markerLinksRef.current);
+            stretchHistorySavedRef.current = true;
+          }
+          if (stretchHistoryTimeoutRef.current) {
+            clearTimeout(stretchHistoryTimeoutRef.current);
+          }
+          stretchHistoryTimeoutRef.current = setTimeout(() => {
+            stretchHistorySavedRef.current = false;
+          }, 500);
+
+          // Incrément: Shift=0.01%, Normal=0.1%, Ctrl/Cmd=1%
+          let increment = 0.001;
+          if (e.shiftKey) increment = 0.0001;
+          if (e.ctrlKey || e.metaKey) increment = 0.01;
+
+          const currentScaleX = img.scaleX ?? img.scale;
+          const currentScaleY = img.scaleY ?? img.scale;
+          let newScaleX = currentScaleX;
+          let newScaleY = currentScaleY;
+          
+          let indicatorAction: "X" | "Y" | "XY" = "X";
+          let indicatorDirection: "+" | "-" = "+";
+
+          if (e.altKey) {
+            // Alt/Option : appliquer le même changement aux deux axes
+            const delta = (e.key === "ArrowLeft" || e.key === "ArrowDown") ? -increment : increment;
+            newScaleX = Math.max(0.01, currentScaleX + delta);
+            newScaleY = Math.max(0.01, currentScaleY + delta);
+            indicatorAction = "XY";
+            indicatorDirection = delta > 0 ? "+" : "-";
+          } else if (e.key === "ArrowLeft") {
+            newScaleX = Math.max(0.01, currentScaleX - increment);
+            indicatorAction = "X";
+            indicatorDirection = "-";
+          } else if (e.key === "ArrowRight") {
+            newScaleX = currentScaleX + increment;
+            indicatorAction = "X";
+            indicatorDirection = "+";
+          } else if (e.key === "ArrowUp") {
+            newScaleY = currentScaleY + increment;
+            indicatorAction = "Y";
+            indicatorDirection = "+";
+          } else if (e.key === "ArrowDown") {
+            newScaleY = Math.max(0.01, currentScaleY - increment);
+            indicatorAction = "Y";
+            indicatorDirection = "-";
+          }
+
+          setStretchKeyIndicator({ action: indicatorAction, direction: indicatorDirection });
+          if (stretchKeyIndicatorTimeoutRef.current) {
+            clearTimeout(stretchKeyIndicatorTimeoutRef.current);
+          }
+          stretchKeyIndicatorTimeoutRef.current = setTimeout(() => {
+            setStretchKeyIndicator(null);
+          }, 600);
+
+          const imgId = selectedImageIdRef.current;
+          setBackgroundImages((prev) =>
+            prev.map((i) =>
+              i.id === imgId
+                ? { ...i, scaleX: newScaleX, scaleY: newScaleY }
+                : i,
+            ),
+          );
+          return;
+        }
+
+        // + et - pour échelle uniforme (X et Y ensemble)
+        if (e.key === "+" || e.key === "=" || e.key === "-" || e.key === "_") {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation?.();
+          
+          const img = backgroundImagesRef.current.find((i) => i.id === selectedImageIdRef.current);
+          if (!img) return;
+
+          if (!stretchHistorySavedRef.current) {
+            addToImageHistoryRef.current(backgroundImagesRef.current, markerLinksRef.current);
+            stretchHistorySavedRef.current = true;
+          }
+          if (stretchHistoryTimeoutRef.current) {
+            clearTimeout(stretchHistoryTimeoutRef.current);
+          }
+          stretchHistoryTimeoutRef.current = setTimeout(() => {
+            stretchHistorySavedRef.current = false;
+          }, 500);
+
+          let increment = 0.001;
+          if (e.shiftKey) increment = 0.0001;
+          if (e.ctrlKey || e.metaKey) increment = 0.01;
+
+          const currentScaleX = img.scaleX ?? img.scale;
+          const currentScaleY = img.scaleY ?? img.scale;
+          
+          const delta = (e.key === "+" || e.key === "=") ? increment : -increment;
+          const newScaleX = Math.max(0.01, currentScaleX + delta);
+          const newScaleY = Math.max(0.01, currentScaleY + delta);
+
+          setStretchKeyIndicator({ action: "XY", direction: delta > 0 ? "+" : "-" });
+          if (stretchKeyIndicatorTimeoutRef.current) {
+            clearTimeout(stretchKeyIndicatorTimeoutRef.current);
+          }
+          stretchKeyIndicatorTimeoutRef.current = setTimeout(() => {
+            setStretchKeyIndicator(null);
+          }, 600);
+
+          const imgId = selectedImageIdRef.current;
+          setBackgroundImages((prev) =>
+            prev.map((i) =>
+              i.id === imgId
+                ? { ...i, scaleX: newScaleX, scaleY: newScaleY }
+                : i,
+            ),
+          );
+          return;
+        }
+
+        // R pour réinitialiser ou égaliser
+        if (e.key === "r" || e.key === "R") {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation?.();
+          
+          const img = backgroundImagesRef.current.find((i) => i.id === selectedImageIdRef.current);
+          if (!img) return;
+
+          addToImageHistoryRef.current(backgroundImagesRef.current, markerLinksRef.current);
+
+          const currentScaleX = img.scaleX ?? img.scale;
+          const currentScaleY = img.scaleY ?? img.scale;
+          const imgId = selectedImageIdRef.current;
+          const baseScale = img.scale;
+          
+          if (e.shiftKey) {
+            // Shift+R : Égaliser X et Y
+            const avgScale = (currentScaleX + currentScaleY) / 2;
+            setBackgroundImages((prev) =>
+              prev.map((i) =>
+                i.id === imgId
+                  ? { ...i, scaleX: avgScale, scaleY: avgScale }
+                  : i,
+              ),
+            );
+            setStretchKeyIndicator({ action: "equalize", direction: "" });
+            stretchKeyIndicatorTimeoutRef.current = setTimeout(() => setStretchKeyIndicator(null), 800);
+            toast.success(`Échelle égalisée: ${(avgScale * 100).toFixed(2)}%`);
+          } else {
+            // R seul : Réinitialiser
+            setBackgroundImages((prev) =>
+              prev.map((i) =>
+                i.id === imgId
+                  ? { ...i, scaleX: baseScale, scaleY: baseScale }
+                  : i,
+              ),
+            );
+            setStretchKeyIndicator({ action: "reset", direction: "" });
+            stretchKeyIndicatorTimeoutRef.current = setTimeout(() => setStretchKeyIndicator(null), 800);
+            toast.success("Échelle réinitialisée");
+          }
+          return;
+        }
+      }
+
       // MODIFICATION v7.11: Ignorer les raccourcis si le focus est sur un input/textarea
       const activeElement = document.activeElement;
       const isInputFocused =
@@ -14530,148 +14830,6 @@ export function CADGabaritCanvas({
           setTempGeometry(null);
           setActiveTool("select");
         }
-      }
-
-      // v7.47.4: Flèches pour ajuster l'échelle en mode stretch
-      // Utiliser les refs pour éviter les stale closures
-      if (stretchModeRef.current && selectedImageIdRef.current && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown")) {
-        e.preventDefault();
-        
-        const img = backgroundImagesRef.current.find((i) => i.id === selectedImageIdRef.current);
-        if (!img) return;
-
-        // v7.47.5: Sauvegarder l'historique au premier appui (debounce 500ms)
-        if (!stretchHistorySavedRef.current) {
-          addToImageHistoryRef.current(backgroundImagesRef.current, markerLinksRef.current);
-          stretchHistorySavedRef.current = true;
-        }
-        // Reset le flag après 500ms d'inactivité
-        if (stretchHistoryTimeoutRef.current) {
-          clearTimeout(stretchHistoryTimeoutRef.current);
-        }
-        stretchHistoryTimeoutRef.current = setTimeout(() => {
-          stretchHistorySavedRef.current = false;
-        }, 500);
-
-        // Incrément de base : 0.1% (0.001)
-        // Shift : 0.01% (0.0001) - très précis
-        // Ctrl/Cmd : 1% (0.01) - plus rapide
-        let increment = 0.001;
-        if (e.shiftKey) increment = 0.0001;
-        if (e.ctrlKey || e.metaKey) increment = 0.01;
-
-        const currentScaleX = img.scaleX ?? img.scale;
-        const currentScaleY = img.scaleY ?? img.scale;
-        let newScaleX = currentScaleX;
-        let newScaleY = currentScaleY;
-
-        if (e.key === "ArrowLeft") {
-          newScaleX = Math.max(0.01, currentScaleX - increment);
-        } else if (e.key === "ArrowRight") {
-          newScaleX = currentScaleX + increment;
-        } else if (e.key === "ArrowUp") {
-          newScaleY = currentScaleY + increment;
-        } else if (e.key === "ArrowDown") {
-          newScaleY = Math.max(0.01, currentScaleY - increment);
-        }
-
-        // Si Alt/Option est enfoncé, appliquer le même changement aux deux axes
-        if (e.altKey) {
-          const delta = (e.key === "ArrowLeft" || e.key === "ArrowDown") ? -increment : increment;
-          newScaleX = Math.max(0.01, currentScaleX + delta);
-          newScaleY = Math.max(0.01, currentScaleY + delta);
-        }
-
-        const imgId = selectedImageIdRef.current;
-        setBackgroundImages((prev) =>
-          prev.map((i) =>
-            i.id === imgId
-              ? { ...i, scaleX: newScaleX, scaleY: newScaleY }
-              : i,
-          ),
-        );
-        return;
-      }
-
-      // v7.47.4: + et - pour échelle uniforme (X et Y ensemble)
-      if (stretchModeRef.current && selectedImageIdRef.current && (e.key === "+" || e.key === "=" || e.key === "-" || e.key === "_")) {
-        e.preventDefault();
-        
-        const img = backgroundImagesRef.current.find((i) => i.id === selectedImageIdRef.current);
-        if (!img) return;
-
-        // v7.47.5: Sauvegarder l'historique au premier appui (debounce 500ms)
-        if (!stretchHistorySavedRef.current) {
-          addToImageHistoryRef.current(backgroundImagesRef.current, markerLinksRef.current);
-          stretchHistorySavedRef.current = true;
-        }
-        if (stretchHistoryTimeoutRef.current) {
-          clearTimeout(stretchHistoryTimeoutRef.current);
-        }
-        stretchHistoryTimeoutRef.current = setTimeout(() => {
-          stretchHistorySavedRef.current = false;
-        }, 500);
-
-        let increment = 0.001;
-        if (e.shiftKey) increment = 0.0001;
-        if (e.ctrlKey || e.metaKey) increment = 0.01;
-
-        const currentScaleX = img.scaleX ?? img.scale;
-        const currentScaleY = img.scaleY ?? img.scale;
-        
-        const delta = (e.key === "+" || e.key === "=") ? increment : -increment;
-        const newScaleX = Math.max(0.01, currentScaleX + delta);
-        const newScaleY = Math.max(0.01, currentScaleY + delta);
-
-        const imgId = selectedImageIdRef.current;
-        setBackgroundImages((prev) =>
-          prev.map((i) =>
-            i.id === imgId
-              ? { ...i, scaleX: newScaleX, scaleY: newScaleY }
-              : i,
-          ),
-        );
-        return;
-      }
-
-      // v7.47.4: R pour réinitialiser l'échelle à 100% (ou égaliser X et Y)
-      if (stretchModeRef.current && selectedImageIdRef.current && (e.key === "r" || e.key === "R")) {
-        e.preventDefault();
-        
-        const img = backgroundImagesRef.current.find((i) => i.id === selectedImageIdRef.current);
-        if (!img) return;
-
-        // v7.47.5: Toujours sauvegarder pour R (action ponctuelle)
-        addToImageHistoryRef.current(backgroundImagesRef.current, markerLinksRef.current);
-
-        const currentScaleX = img.scaleX ?? img.scale;
-        const currentScaleY = img.scaleY ?? img.scale;
-        const imgId = selectedImageIdRef.current;
-        const baseScale = img.scale;
-        
-        if (e.shiftKey) {
-          // Shift+R : Égaliser X et Y (moyenne)
-          const avgScale = (currentScaleX + currentScaleY) / 2;
-          setBackgroundImages((prev) =>
-            prev.map((i) =>
-              i.id === imgId
-                ? { ...i, scaleX: avgScale, scaleY: avgScale }
-                : i,
-            ),
-          );
-          toast.success(`Échelle égalisée: ${(avgScale * 100).toFixed(2)}%`);
-        } else {
-          // R seul : Réinitialiser à l'échelle de base
-          setBackgroundImages((prev) =>
-            prev.map((i) =>
-              i.id === imgId
-                ? { ...i, scaleX: baseScale, scaleY: baseScale }
-                : i,
-            ),
-          );
-          toast.success("Échelle réinitialisée");
-        }
-        return;
       }
 
       // Supprimer
