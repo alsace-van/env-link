@@ -1,8 +1,15 @@
 // ============================================
 // COMPONENT: ArucoStitcher
 // Assemblage de photos via markers ArUco partagés
-// VERSION: 4.2
+// VERSION: 4.3
 // ============================================
+//
+// CHANGELOG v4.3 (21/01/2026):
+// - Poignées draggables pour le crop (8 poignées: 4 coins + 4 milieux)
+// - Déplacer le crop en cliquant à l'intérieur
+// - Curseur change selon la zone (resize, move, crosshair)
+// - Grille des tiers dans le crop
+// - Sauvegarde automatique du crop au relâchement
 //
 // CHANGELOG v4.2 (21/01/2026):
 // - FIX: Crop fonctionne correctement (conversion coordonnées CSS → Canvas)
@@ -158,11 +165,15 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
   const [editMode, setEditMode] = useState<boolean>(false);
   const [currentEditIndex, setCurrentEditIndex] = useState<number>(0);
 
-  // v4.1: Mode crop interactif
+  // v4.3: Mode crop interactif amélioré avec poignées draggables
   const [isCropMode, setIsCropMode] = useState<boolean>(false);
   const [cropStart, setCropStart] = useState<{ x: number; y: number } | null>(null);
   const [cropEnd, setCropEnd] = useState<{ x: number; y: number } | null>(null);
   const [isDraggingCrop, setIsDraggingCrop] = useState<boolean>(false);
+  
+  // Type de drag: 'new' = nouveau rectangle, 'move' = déplacer, 'nw'/'ne'/'sw'/'se' = coins
+  const [cropDragType, setCropDragType] = useState<'new' | 'move' | 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w' | null>(null);
+  const [cropDragStart, setCropDragStart] = useState<{ x: number; y: number; crop: { x: number; y: number; w: number; h: number } } | null>(null);
 
   // Pour le mapping coordonnées écran <-> image
   const [canvasMapping, setCanvasMapping] = useState<{
@@ -389,22 +400,34 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     }
     ctx.restore();
 
-    // v4.1: Dessiner le crop existant ou en cours
-    const cropToDraw = (isCropMode && cropStart && cropEnd) 
-      ? { 
-          x: Math.min(cropStart.x, cropEnd.x),
-          y: Math.min(cropStart.y, cropEnd.y),
-          w: Math.abs(cropEnd.x - cropStart.x),
-          h: Math.abs(cropEnd.y - cropStart.y)
-        }
-      : edit.crop 
-        ? {
-            x: offsetX + (edit.crop.x / 100) * imgW * scale,
-            y: offsetY + (edit.crop.y / 100) * imgH * scale,
-            w: (edit.crop.width / 100) * imgW * scale,
-            h: (edit.crop.height / 100) * imgH * scale
-          }
-        : null;
+    // v4.3: Dessiner le crop - priorité au drag en cours, sinon crop existant
+    let cropToDraw: { x: number; y: number; w: number; h: number } | null = null;
+    
+    if (isCropMode && isDraggingCrop && cropStart && cropEnd) {
+      // Pendant un drag (nouveau rectangle ou modification)
+      cropToDraw = { 
+        x: Math.min(cropStart.x, cropEnd.x),
+        y: Math.min(cropStart.y, cropEnd.y),
+        w: Math.abs(cropEnd.x - cropStart.x),
+        h: Math.abs(cropEnd.y - cropStart.y)
+      };
+    } else if (isCropMode && edit.crop) {
+      // En mode crop avec un crop existant (pas en train de drag)
+      cropToDraw = {
+        x: offsetX + (edit.crop.x / 100) * imgW * scale,
+        y: offsetY + (edit.crop.y / 100) * imgH * scale,
+        w: (edit.crop.width / 100) * imgW * scale,
+        h: (edit.crop.height / 100) * imgH * scale
+      };
+    } else if (!isCropMode && edit.crop) {
+      // Hors mode crop mais avec un crop existant (affichage simple)
+      cropToDraw = {
+        x: offsetX + (edit.crop.x / 100) * imgW * scale,
+        y: offsetY + (edit.crop.y / 100) * imgH * scale,
+        w: (edit.crop.width / 100) * imgW * scale,
+        h: (edit.crop.height / 100) * imgH * scale
+      };
+    }
 
     if (cropToDraw && cropToDraw.w > 5 && cropToDraw.h > 5) {
       // Assombrir l'extérieur du crop
@@ -421,17 +444,63 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
       // Bordure du crop
       ctx.strokeStyle = '#ff6600';
       ctx.lineWidth = 2;
-      ctx.setLineDash([5, 5]);
       ctx.strokeRect(cropToDraw.x, cropToDraw.y, cropToDraw.w, cropToDraw.h);
+
+      // Grille des tiers (lignes intérieures)
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      // Verticales
+      ctx.beginPath();
+      ctx.moveTo(cropToDraw.x + cropToDraw.w / 3, cropToDraw.y);
+      ctx.lineTo(cropToDraw.x + cropToDraw.w / 3, cropToDraw.y + cropToDraw.h);
+      ctx.moveTo(cropToDraw.x + cropToDraw.w * 2 / 3, cropToDraw.y);
+      ctx.lineTo(cropToDraw.x + cropToDraw.w * 2 / 3, cropToDraw.y + cropToDraw.h);
+      // Horizontales
+      ctx.moveTo(cropToDraw.x, cropToDraw.y + cropToDraw.h / 3);
+      ctx.lineTo(cropToDraw.x + cropToDraw.w, cropToDraw.y + cropToDraw.h / 3);
+      ctx.moveTo(cropToDraw.x, cropToDraw.y + cropToDraw.h * 2 / 3);
+      ctx.lineTo(cropToDraw.x + cropToDraw.w, cropToDraw.y + cropToDraw.h * 2 / 3);
+      ctx.stroke();
       ctx.setLineDash([]);
 
-      // Poignées aux coins
-      const handleSize = 8;
-      ctx.fillStyle = '#ff6600';
-      ctx.fillRect(cropToDraw.x - handleSize/2, cropToDraw.y - handleSize/2, handleSize, handleSize);
-      ctx.fillRect(cropToDraw.x + cropToDraw.w - handleSize/2, cropToDraw.y - handleSize/2, handleSize, handleSize);
-      ctx.fillRect(cropToDraw.x - handleSize/2, cropToDraw.y + cropToDraw.h - handleSize/2, handleSize, handleSize);
-      ctx.fillRect(cropToDraw.x + cropToDraw.w - handleSize/2, cropToDraw.y + cropToDraw.h - handleSize/2, handleSize, handleSize);
+      // v4.3: Poignées draggables - 8 poignées (4 coins + 4 milieux)
+      const handleSize = 12;
+      const halfHandle = handleSize / 2;
+      
+      // Fonction pour dessiner une poignée
+      const drawHandle = (x: number, y: number) => {
+        ctx.fillStyle = '#ff6600';
+        ctx.fillRect(x - halfHandle, y - halfHandle, handleSize, handleSize);
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x - halfHandle, y - halfHandle, handleSize, handleSize);
+      };
+      
+      // Coins
+      drawHandle(cropToDraw.x, cropToDraw.y);                                    // NW
+      drawHandle(cropToDraw.x + cropToDraw.w, cropToDraw.y);                     // NE
+      drawHandle(cropToDraw.x, cropToDraw.y + cropToDraw.h);                     // SW
+      drawHandle(cropToDraw.x + cropToDraw.w, cropToDraw.y + cropToDraw.h);      // SE
+      
+      // Milieux des côtés
+      drawHandle(cropToDraw.x + cropToDraw.w / 2, cropToDraw.y);                 // N
+      drawHandle(cropToDraw.x + cropToDraw.w / 2, cropToDraw.y + cropToDraw.h);  // S
+      drawHandle(cropToDraw.x, cropToDraw.y + cropToDraw.h / 2);                 // W
+      drawHandle(cropToDraw.x + cropToDraw.w, cropToDraw.y + cropToDraw.h / 2);  // E
+      
+      // Dimensions en pixels
+      if (cropToDraw.w > 60 && cropToDraw.h > 30) {
+        ctx.font = 'bold 11px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        const dimText = `${Math.round(cropToDraw.w)}×${Math.round(cropToDraw.h)}`;
+        const textW = ctx.measureText(dimText).width;
+        ctx.fillRect(cropToDraw.x + cropToDraw.w / 2 - textW / 2 - 4, cropToDraw.y + cropToDraw.h + 4, textW + 8, 16);
+        ctx.fillStyle = 'white';
+        ctx.fillText(dimText, cropToDraw.x + cropToDraw.w / 2, cropToDraw.y + cropToDraw.h + 6);
+      }
     }
 
     // Dessiner les markers détectés (sauf en mode crop)
@@ -491,16 +560,62 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     // Indicateur mode crop
     if (isCropMode) {
       ctx.fillStyle = 'rgba(255, 102, 0, 0.8)';
-      ctx.fillRect(10, 10, 120, 24);
+      ctx.fillRect(10, 10, 150, 24);
       ctx.fillStyle = 'white';
-      ctx.font = 'bold 12px sans-serif';
+      ctx.font = 'bold 11px sans-serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText('✂️ Mode Recadrage', 16, 22);
+      const hint = cropDragType === 'move' ? '✋ Déplacer' : cropDragType ? '↔️ Redimensionner' : '✂️ Dessiner/Ajuster';
+      ctx.fillText(hint, 16, 22);
     }
-  }, [photos, currentEditIndex, isCropMode, cropStart, cropEnd]);
+  }, [photos, currentEditIndex, isCropMode, cropStart, cropEnd, cropDragType, isDraggingCrop]);
 
-  // v4.2: Handlers pour le crop - avec conversion coordonnées CSS → Canvas
+  // v4.3: Helper - obtenir le crop existant en coordonnées canvas
+  const getExistingCropInCanvas = useCallback((): { x: number; y: number; w: number; h: number } | null => {
+    if (!canvasMapping) return null;
+    const photo = photos[currentEditIndex];
+    if (!photo?.edit.crop) return null;
+    
+    const { offsetX, offsetY, scale, imgW, imgH } = canvasMapping;
+    return {
+      x: offsetX + (photo.edit.crop.x / 100) * imgW * scale,
+      y: offsetY + (photo.edit.crop.y / 100) * imgH * scale,
+      w: (photo.edit.crop.width / 100) * imgW * scale,
+      h: (photo.edit.crop.height / 100) * imgH * scale
+    };
+  }, [canvasMapping, photos, currentEditIndex]);
+
+  // v4.3: Détecter sur quelle poignée on clique
+  const detectHandle = useCallback((x: number, y: number, crop: { x: number; y: number; w: number; h: number }): 
+    'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w' | 'move' | null => {
+    const tolerance = 15; // Zone de détection
+    
+    const handles = [
+      { type: 'nw' as const, hx: crop.x, hy: crop.y },
+      { type: 'ne' as const, hx: crop.x + crop.w, hy: crop.y },
+      { type: 'sw' as const, hx: crop.x, hy: crop.y + crop.h },
+      { type: 'se' as const, hx: crop.x + crop.w, hy: crop.y + crop.h },
+      { type: 'n' as const, hx: crop.x + crop.w / 2, hy: crop.y },
+      { type: 's' as const, hx: crop.x + crop.w / 2, hy: crop.y + crop.h },
+      { type: 'w' as const, hx: crop.x, hy: crop.y + crop.h / 2 },
+      { type: 'e' as const, hx: crop.x + crop.w, hy: crop.y + crop.h / 2 },
+    ];
+    
+    for (const { type, hx, hy } of handles) {
+      if (Math.abs(x - hx) <= tolerance && Math.abs(y - hy) <= tolerance) {
+        return type;
+      }
+    }
+    
+    // Vérifier si à l'intérieur du crop (pour déplacer)
+    if (x >= crop.x && x <= crop.x + crop.w && y >= crop.y && y <= crop.y + crop.h) {
+      return 'move';
+    }
+    
+    return null;
+  }, []);
+
+  // v4.3: Handlers pour le crop avec poignées draggables
   const handleCropMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isCropMode || !canvasMapping) return;
     
@@ -508,36 +623,46 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     if (!canvas) return;
     
     const rect = canvas.getBoundingClientRect();
-    
-    // Convertir coordonnées CSS → coordonnées canvas internes
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
     const x = (e.clientX - rect.left) * scaleX;
     const y = (e.clientY - rect.top) * scaleY;
     
-    // Vérifier que le clic est dans l'image
     const { offsetX, offsetY, scale, imgW, imgH } = canvasMapping;
     const imgLeft = offsetX;
     const imgTop = offsetY;
     const imgRight = offsetX + imgW * scale;
     const imgBottom = offsetY + imgH * scale;
     
+    // Vérifier si on clique sur un crop existant
+    const existingCrop = getExistingCropInCanvas();
+    
+    if (existingCrop) {
+      const handle = detectHandle(x, y, existingCrop);
+      
+      if (handle) {
+        // Clic sur poignée ou intérieur du crop
+        setCropDragType(handle);
+        setCropDragStart({ x, y, crop: existingCrop });
+        setIsDraggingCrop(true);
+        return;
+      }
+    }
+    
+    // Sinon, nouveau rectangle si dans l'image
     if (x >= imgLeft && x <= imgRight && y >= imgTop && y <= imgBottom) {
+      setCropDragType('new');
       setCropStart({ x, y });
       setCropEnd({ x, y });
       setIsDraggingCrop(true);
     }
-  }, [isCropMode, canvasMapping]);
+  }, [isCropMode, canvasMapping, getExistingCropInCanvas, detectHandle]);
 
   const handleCropMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDraggingCrop || !canvasMapping) return;
-    
     const canvas = previewCanvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !canvasMapping) return;
     
     const rect = canvas.getBoundingClientRect();
-    
-    // Convertir coordonnées CSS → coordonnées canvas internes
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
     let x = (e.clientX - rect.left) * scaleX;
@@ -549,12 +674,104 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     x = Math.max(offsetX, Math.min(x, offsetX + imgW * scale));
     y = Math.max(offsetY, Math.min(y, offsetY + imgH * scale));
     
-    setCropEnd({ x, y });
-  }, [isDraggingCrop, canvasMapping]);
+    // Changer le curseur selon la zone
+    if (isCropMode && !isDraggingCrop) {
+      const existingCrop = getExistingCropInCanvas();
+      if (existingCrop) {
+        const handle = detectHandle(x, y, existingCrop);
+        if (handle === 'nw' || handle === 'se') canvas.style.cursor = 'nwse-resize';
+        else if (handle === 'ne' || handle === 'sw') canvas.style.cursor = 'nesw-resize';
+        else if (handle === 'n' || handle === 's') canvas.style.cursor = 'ns-resize';
+        else if (handle === 'e' || handle === 'w') canvas.style.cursor = 'ew-resize';
+        else if (handle === 'move') canvas.style.cursor = 'move';
+        else canvas.style.cursor = 'crosshair';
+      } else {
+        canvas.style.cursor = 'crosshair';
+      }
+    }
+    
+    if (!isDraggingCrop) return;
+    
+    if (cropDragType === 'new') {
+      // Nouveau rectangle
+      setCropEnd({ x, y });
+    } else if (cropDragType === 'move' && cropDragStart) {
+      // Déplacer le crop
+      const dx = x - cropDragStart.x;
+      const dy = y - cropDragStart.y;
+      
+      let newX = cropDragStart.crop.x + dx;
+      let newY = cropDragStart.crop.y + dy;
+      
+      // Contraindre aux limites
+      newX = Math.max(offsetX, Math.min(newX, offsetX + imgW * scale - cropDragStart.crop.w));
+      newY = Math.max(offsetY, Math.min(newY, offsetY + imgH * scale - cropDragStart.crop.h));
+      
+      setCropStart({ x: newX, y: newY });
+      setCropEnd({ x: newX + cropDragStart.crop.w, y: newY + cropDragStart.crop.h });
+    } else if (cropDragStart) {
+      // Redimensionner depuis une poignée
+      const { crop } = cropDragStart;
+      let newX1 = crop.x;
+      let newY1 = crop.y;
+      let newX2 = crop.x + crop.w;
+      let newY2 = crop.y + crop.h;
+      
+      switch (cropDragType) {
+        case 'nw': newX1 = x; newY1 = y; break;
+        case 'ne': newX2 = x; newY1 = y; break;
+        case 'sw': newX1 = x; newY2 = y; break;
+        case 'se': newX2 = x; newY2 = y; break;
+        case 'n': newY1 = y; break;
+        case 's': newY2 = y; break;
+        case 'w': newX1 = x; break;
+        case 'e': newX2 = x; break;
+      }
+      
+      // Assurer que x1 < x2 et y1 < y2
+      setCropStart({ x: Math.min(newX1, newX2), y: Math.min(newY1, newY2) });
+      setCropEnd({ x: Math.max(newX1, newX2), y: Math.max(newY1, newY2) });
+    }
+  }, [isDraggingCrop, canvasMapping, cropDragType, cropDragStart, isCropMode, getExistingCropInCanvas, detectHandle]);
 
   const handleCropMouseUp = useCallback(() => {
+    if (isDraggingCrop && cropStart && cropEnd && canvasMapping) {
+      const { offsetX, offsetY, scale, imgW, imgH } = canvasMapping;
+      
+      const x1 = Math.min(cropStart.x, cropEnd.x);
+      const y1 = Math.min(cropStart.y, cropEnd.y);
+      const x2 = Math.max(cropStart.x, cropEnd.x);
+      const y2 = Math.max(cropStart.y, cropEnd.y);
+      
+      const cropX = ((x1 - offsetX) / (imgW * scale)) * 100;
+      const cropY = ((y1 - offsetY) / (imgH * scale)) * 100;
+      const cropW = ((x2 - x1) / (imgW * scale)) * 100;
+      const cropH = ((y2 - y1) / (imgH * scale)) * 100;
+      
+      // Sauvegarder automatiquement si crop valide
+      if (cropW >= 5 && cropH >= 5) {
+        setPhotos(prev => prev.map((p, i) => {
+          if (i !== currentEditIndex) return p;
+          return {
+            ...p,
+            edit: {
+              ...p.edit,
+              crop: { x: cropX, y: cropY, width: cropW, height: cropH },
+              needsRedetect: true
+            },
+            transformedImage: undefined,
+            transformedUrl: undefined
+          };
+        }));
+      }
+    }
+    
     setIsDraggingCrop(false);
-  }, []);
+    setCropDragType(null);
+    setCropDragStart(null);
+    setCropStart(null);
+    setCropEnd(null);
+  }, [isDraggingCrop, cropStart, cropEnd, canvasMapping, currentEditIndex]);
 
   // v4.1: Confirmer le crop
   const handleConfirmCrop = useCallback(() => {
@@ -624,7 +841,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     if (editMode) {
       drawPreview();
     }
-  }, [editMode, drawPreview, photos, currentEditIndex, isCropMode, cropStart, cropEnd]);
+  }, [editMode, drawPreview, photos, currentEditIndex, isCropMode, cropStart, cropEnd, isDraggingCrop]);
 
   // v4.2: Handlers de rotation améliorés
   const handleRotate = useCallback((degrees: number) => {
@@ -1256,15 +1473,17 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
                   )}
                 </div>
 
-                {/* Boutons de confirmation crop */}
-                {isCropMode && cropStart && cropEnd && Math.abs(cropEnd.x - cropStart.x) > 10 && (
+                {/* Bouton pour quitter le mode crop */}
+                {isCropMode && (
                   <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2">
-                    <Button size="sm" variant="default" onClick={handleConfirmCrop} className="bg-orange-600 hover:bg-orange-700">
-                      <Check className="h-4 w-4 mr-1" /> Valider
+                    <Button size="sm" variant="default" onClick={handleCancelCrop} className="bg-orange-600 hover:bg-orange-700">
+                      <Check className="h-4 w-4 mr-1" /> Terminé
                     </Button>
-                    <Button size="sm" variant="outline" onClick={handleCancelCrop}>
-                      <X className="h-4 w-4 mr-1" /> Annuler
-                    </Button>
+                    {currentPhoto?.edit.crop && (
+                      <Button size="sm" variant="outline" onClick={handleRemoveCrop}>
+                        <Trash2 className="h-4 w-4 mr-1" /> Supprimer
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>
