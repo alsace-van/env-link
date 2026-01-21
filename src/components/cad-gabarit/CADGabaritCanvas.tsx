@@ -11541,6 +11541,7 @@ export function CADGabaritCanvas({
       }
 
       // v7.47: Stretching d'une image (modification scaleX/scaleY)
+      // v7.47.3: Shift = échelle proportionnelle (même ratio X/Y)
       if (stretchingHandle) {
         const img = backgroundImages.find((i) => i.id === stretchingHandle.imageId);
         if (img && img.image) {
@@ -11554,41 +11555,69 @@ export function CADGabaritCanvas({
           let newY = stretchingHandle.startImgY;
 
           // v7.47.1: Calcul proportionnel direct
-          // Le déplacement en pixels écran correspond au changement de taille réel
-          // currentWidthScreen = img.image.width * startScaleX * viewport.scale
           const currentWidthScreen = img.image.width * stretchingHandle.startScaleX * viewport.scale;
           const currentHeightScreen = img.image.height * stretchingHandle.startScaleY * viewport.scale;
 
+          // v7.47.3: Mode proportionnel avec Shift
+          const proportional = e.shiftKey;
+
           if (stretchingHandle.handle === "left") {
-            // Étirer vers la gauche : dx négatif = agrandir
             const newWidthScreen = currentWidthScreen - dx;
             newScaleX = Math.max(0.1, (newWidthScreen / viewport.scale) / img.image.width);
+            if (proportional) {
+              // Appliquer le même ratio à Y
+              const ratio = newScaleX / stretchingHandle.startScaleX;
+              newScaleY = stretchingHandle.startScaleY * ratio;
+            }
             const widthDiff = (newScaleX - stretchingHandle.startScaleX) * img.image.width;
+            const heightDiff = (newScaleY - stretchingHandle.startScaleY) * img.image.height;
             newX = stretchingHandle.startImgX - widthDiff / 2;
+            if (proportional) newY = stretchingHandle.startImgY - heightDiff / 2;
           } else if (stretchingHandle.handle === "right") {
-            // Étirer vers la droite : dx positif = agrandir
             const newWidthScreen = currentWidthScreen + dx;
             newScaleX = Math.max(0.1, (newWidthScreen / viewport.scale) / img.image.width);
+            if (proportional) {
+              const ratio = newScaleX / stretchingHandle.startScaleX;
+              newScaleY = stretchingHandle.startScaleY * ratio;
+            }
             const widthDiff = (newScaleX - stretchingHandle.startScaleX) * img.image.width;
+            const heightDiff = (newScaleY - stretchingHandle.startScaleY) * img.image.height;
             newX = stretchingHandle.startImgX + widthDiff / 2;
+            if (proportional) newY = stretchingHandle.startImgY + heightDiff / 2;
           } else if (stretchingHandle.handle === "top") {
-            // Étirer vers le haut : dy négatif = agrandir
             const newHeightScreen = currentHeightScreen - dy;
             newScaleY = Math.max(0.1, (newHeightScreen / viewport.scale) / img.image.height);
+            if (proportional) {
+              const ratio = newScaleY / stretchingHandle.startScaleY;
+              newScaleX = stretchingHandle.startScaleX * ratio;
+            }
+            const widthDiff = (newScaleX - stretchingHandle.startScaleX) * img.image.width;
             const heightDiff = (newScaleY - stretchingHandle.startScaleY) * img.image.height;
             newY = stretchingHandle.startImgY - heightDiff / 2;
+            if (proportional) newX = stretchingHandle.startImgX - widthDiff / 2;
           } else if (stretchingHandle.handle === "bottom") {
-            // Étirer vers le bas : dy positif = agrandir
             const newHeightScreen = currentHeightScreen + dy;
             newScaleY = Math.max(0.1, (newHeightScreen / viewport.scale) / img.image.height);
+            if (proportional) {
+              const ratio = newScaleY / stretchingHandle.startScaleY;
+              newScaleX = stretchingHandle.startScaleX * ratio;
+            }
+            const widthDiff = (newScaleX - stretchingHandle.startScaleX) * img.image.width;
             const heightDiff = (newScaleY - stretchingHandle.startScaleY) * img.image.height;
             newY = stretchingHandle.startImgY + heightDiff / 2;
+            if (proportional) newX = stretchingHandle.startImgX + widthDiff / 2;
           }
           // v7.47.2: Poignées de coin (X et Y ensemble)
+          // v7.47.3: Avec Shift, les coins gardent aussi le ratio
           else if (stretchingHandle.handle === "top-left") {
-            // Coin haut-gauche : dx négatif = agrandir X, dy négatif = agrandir Y
-            const newWidthScreen = currentWidthScreen - dx;
-            const newHeightScreen = currentHeightScreen - dy;
+            let newWidthScreen = currentWidthScreen - dx;
+            let newHeightScreen = currentHeightScreen - dy;
+            if (proportional) {
+              // Utiliser la diagonale pour le scale uniforme
+              const avgDelta = ((-dx / currentWidthScreen) + (-dy / currentHeightScreen)) / 2;
+              newWidthScreen = currentWidthScreen * (1 + avgDelta);
+              newHeightScreen = currentHeightScreen * (1 + avgDelta);
+            }
             newScaleX = Math.max(0.1, (newWidthScreen / viewport.scale) / img.image.width);
             newScaleY = Math.max(0.1, (newHeightScreen / viewport.scale) / img.image.height);
             const widthDiff = (newScaleX - stretchingHandle.startScaleX) * img.image.width;
@@ -11596,9 +11625,13 @@ export function CADGabaritCanvas({
             newX = stretchingHandle.startImgX - widthDiff / 2;
             newY = stretchingHandle.startImgY - heightDiff / 2;
           } else if (stretchingHandle.handle === "top-right") {
-            // Coin haut-droit : dx positif = agrandir X, dy négatif = agrandir Y
-            const newWidthScreen = currentWidthScreen + dx;
-            const newHeightScreen = currentHeightScreen - dy;
+            let newWidthScreen = currentWidthScreen + dx;
+            let newHeightScreen = currentHeightScreen - dy;
+            if (proportional) {
+              const avgDelta = ((dx / currentWidthScreen) + (-dy / currentHeightScreen)) / 2;
+              newWidthScreen = currentWidthScreen * (1 + avgDelta);
+              newHeightScreen = currentHeightScreen * (1 + avgDelta);
+            }
             newScaleX = Math.max(0.1, (newWidthScreen / viewport.scale) / img.image.width);
             newScaleY = Math.max(0.1, (newHeightScreen / viewport.scale) / img.image.height);
             const widthDiff = (newScaleX - stretchingHandle.startScaleX) * img.image.width;
@@ -11606,9 +11639,13 @@ export function CADGabaritCanvas({
             newX = stretchingHandle.startImgX + widthDiff / 2;
             newY = stretchingHandle.startImgY - heightDiff / 2;
           } else if (stretchingHandle.handle === "bottom-left") {
-            // Coin bas-gauche : dx négatif = agrandir X, dy positif = agrandir Y
-            const newWidthScreen = currentWidthScreen - dx;
-            const newHeightScreen = currentHeightScreen + dy;
+            let newWidthScreen = currentWidthScreen - dx;
+            let newHeightScreen = currentHeightScreen + dy;
+            if (proportional) {
+              const avgDelta = ((-dx / currentWidthScreen) + (dy / currentHeightScreen)) / 2;
+              newWidthScreen = currentWidthScreen * (1 + avgDelta);
+              newHeightScreen = currentHeightScreen * (1 + avgDelta);
+            }
             newScaleX = Math.max(0.1, (newWidthScreen / viewport.scale) / img.image.width);
             newScaleY = Math.max(0.1, (newHeightScreen / viewport.scale) / img.image.height);
             const widthDiff = (newScaleX - stretchingHandle.startScaleX) * img.image.width;
@@ -11616,9 +11653,13 @@ export function CADGabaritCanvas({
             newX = stretchingHandle.startImgX - widthDiff / 2;
             newY = stretchingHandle.startImgY + heightDiff / 2;
           } else if (stretchingHandle.handle === "bottom-right") {
-            // Coin bas-droit : dx positif = agrandir X, dy positif = agrandir Y
-            const newWidthScreen = currentWidthScreen + dx;
-            const newHeightScreen = currentHeightScreen + dy;
+            let newWidthScreen = currentWidthScreen + dx;
+            let newHeightScreen = currentHeightScreen + dy;
+            if (proportional) {
+              const avgDelta = ((dx / currentWidthScreen) + (dy / currentHeightScreen)) / 2;
+              newWidthScreen = currentWidthScreen * (1 + avgDelta);
+              newHeightScreen = currentHeightScreen * (1 + avgDelta);
+            }
             newScaleX = Math.max(0.1, (newWidthScreen / viewport.scale) / img.image.width);
             newScaleY = Math.max(0.1, (newHeightScreen / viewport.scale) / img.image.height);
             const widthDiff = (newScaleX - stretchingHandle.startScaleX) * img.image.width;
