@@ -5523,10 +5523,11 @@ export function CADGabaritCanvas({
 
   // v7.45: Assembler toutes les images visibles en une seule
   const handleStitchImages = useCallback(() => {
-    const visibleImages = backgroundImages.filter((img) => img.visible !== false);
+    // Filtrer les images visibles ET qui ont un element chargé
+    const visibleImages = backgroundImages.filter((img) => img.visible !== false && img.element);
 
     if (visibleImages.length < 2) {
-      toast.error("Il faut au moins 2 images visibles");
+      toast.error("Il faut au moins 2 images visibles et chargées");
       return;
     }
 
@@ -5540,8 +5541,13 @@ export function CADGabaritCanvas({
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
       for (const img of visibleImages) {
+        if (!img.element) continue; // Double vérification
+        
         const imgWidth = img.element.naturalWidth;
         const imgHeight = img.element.naturalHeight;
+        
+        if (!imgWidth || !imgHeight) continue; // Image pas encore chargée
+        
         // img.scale convertit pixels image -> unités canvas
         const scaledWidth = imgWidth * img.scale;
         const scaledHeight = imgHeight * img.scale;
@@ -19305,9 +19311,12 @@ export function CADGabaritCanvas({
                   applied: true,
                   mode: "simple",
                 },
-                // Appliquer l'échelle: 1cm = pixelsPerCm pixels dans l'image
-                // Donc le scale de l'image doit être ajusté
-                scale: scaleFactor / pixelsPerCm, // Convertir en unités du canvas
+                // FIX v7.46: Appliquer l'échelle correcte
+                // pixelsPerCm = pixels image pour 1 cm réel
+                // scaleFactor = pixels canvas pour 1 mm réel
+                // Donc: 1 cm réel = pixelsPerCm px image = 10 * scaleFactor px canvas
+                // scale = (10 * scaleFactor) / pixelsPerCm
+                scale: (scaleFactor * 10) / pixelsPerCm,
               };
               addImageWithLayer(calibratedImage);
               toast.success(`Calibration ArUco appliquée (${markers.length} markers, ${pixelsPerCm.toFixed(1)} px/cm)`);
