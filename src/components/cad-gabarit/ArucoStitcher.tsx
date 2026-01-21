@@ -1,8 +1,13 @@
 // ============================================
 // COMPONENT: ArucoStitcher
 // Assemblage de photos via markers ArUco partagés
-// VERSION: 4.3
+// VERSION: 4.4
 // ============================================
+//
+// CHANGELOG v4.4 (21/01/2026):
+// - FIX: Fond transparent au lieu de noir après rotation/crop
+// - Export en PNG au lieu de JPEG pour la transparence
+// - Motif damier dans le preview pour visualiser la transparence
 //
 // CHANGELOG v4.3 (21/01/2026):
 // - Poignées draggables pour le crop (8 poignées: 4 coins + 4 milieux)
@@ -288,7 +293,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     return duplicates;
   }, [addDebugLog]);
 
-  // v4.2: Appliquer rotation à une image (supporte tous les angles)
+  // v4.4: Appliquer rotation à une image (supporte tous les angles, avec transparence)
   const applyTransformations = useCallback(async (photo: PhotoWithMarkers): Promise<{
     image: HTMLImageElement;
     url: string;
@@ -324,14 +329,18 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     canvas.width = newWidth;
     canvas.height = newHeight;
 
+    // Effacer le canvas (transparent par défaut)
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
     ctx.save();
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.rotate(radians);
     ctx.drawImage(image, srcX, srcY, srcW, srcH, -srcW / 2, -srcH / 2, srcW, srcH);
     ctx.restore();
 
+    // Utiliser PNG pour supporter la transparence
     const blob = await new Promise<Blob | null>(resolve => 
-      canvas.toBlob(resolve, 'image/jpeg', 0.95)
+      canvas.toBlob(resolve, 'image/png')
     );
     if (!blob) throw new Error("Impossible de créer le blob");
 
@@ -382,9 +391,25 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     // Stocker le mapping pour les handlers de crop
     setCanvasMapping({ offsetX, offsetY, scale, imgW, imgH });
 
-    // Clear
+    // Clear avec fond sombre
     ctx.fillStyle = '#1a1a2e';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // v4.4: Dessiner un motif damier pour indiquer la transparence dans la zone de l'image
+    const checkerSize = 10;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(offsetX, offsetY, drawW, drawH);
+    ctx.clip();
+    
+    for (let y = offsetY; y < offsetY + drawH; y += checkerSize) {
+      for (let x = offsetX; x < offsetX + drawW; x += checkerSize) {
+        const isLight = ((Math.floor((x - offsetX) / checkerSize) + Math.floor((y - offsetY) / checkerSize)) % 2) === 0;
+        ctx.fillStyle = isLight ? '#3a3a4e' : '#2a2a3e';
+        ctx.fillRect(x, y, checkerSize, checkerSize);
+      }
+    }
+    ctx.restore();
 
     // Dessiner l'image
     ctx.save();
