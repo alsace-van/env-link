@@ -23076,7 +23076,10 @@ export function CADGabaritCanvas({
                   const image = backgroundImages.find((img) => img.id === contextMenu.entityId);
                   if (!image) return null;
                   const currentLayer = sketch.layers.get(image.layerId || "");
-                  const multiCount = selectedImageIds.size > 1 ? selectedImageIds.size : 0;
+                  // v7.50: Vérifier si l'image cliquée fait partie de la sélection multiple
+                  const isClickedImageInSelection = selectedImageIds.has(contextMenu.entityId);
+                  // Utiliser la multi-sélection SEULEMENT si l'image cliquée en fait partie
+                  const multiCount = isClickedImageInSelection && selectedImageIds.size > 1 ? selectedImageIds.size : 0;
                   const imagesToUpdate = multiCount > 0 ? selectedImageIds : new Set([contextMenu.entityId]);
 
                   return (
