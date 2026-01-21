@@ -14622,10 +14622,11 @@ export function CADGabaritCanvas({
             stretchHistorySavedRef.current = false;
           }, 500);
 
-          // Incrément: Shift=0.01%, Normal=0.1%, Ctrl/Cmd=1%
+          // Incrément: Shift=0.01%, Normal=0.1%, Cmd=1%
+          // v7.49: ctrlKey retiré (conflit macOS Mission Control)
           let increment = 0.001;
           if (e.shiftKey) increment = 0.0001;
-          if (e.ctrlKey || e.metaKey) increment = 0.01;
+          if (e.metaKey) increment = 0.01;
 
           const currentScaleX = img.scaleX ?? img.scale;
           const currentScaleY = img.scaleY ?? img.scale;
@@ -14701,7 +14702,7 @@ export function CADGabaritCanvas({
 
           let increment = 0.001;
           if (e.shiftKey) increment = 0.0001;
-          if (e.ctrlKey || e.metaKey) increment = 0.01;
+          if (e.metaKey) increment = 0.01; // v7.49: ctrlKey retiré
 
           const currentScaleX = img.scaleX ?? img.scale;
           const currentScaleY = img.scaleY ?? img.scale;
