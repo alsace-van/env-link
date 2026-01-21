@@ -1,29 +1,32 @@
 // ============================================
-// COMPONENT: ArucoCalibrationModal
-// Modale de calibration automatique via ArUco markers
-// VERSION: 2.2 - Layout horizontal + labels discrets + mm
+// COMPONENT: ArucoStitcher
+// Assemblage de photos via markers ArUco partagés
+// VERSION: 4.0
 // ============================================
 //
-// CHANGELOG v2.2 (21/01/2026):
-// - Layout horizontal: image grande à gauche, panneau contrôles à droite
-// - Labels markers discrets: fond transparent, texte 11px, juste l'ID
-// - Liste des markers avec confiance dans le panneau droit
-// - Modale élargie (max-w-5xl)
-// - FIX: Taille markers en mm (pas cm), défaut 100mm
+// CHANGELOG v4.0 (21/01/2026):
+// - NOUVEAU: Mode édition par photo avant assemblage
+// - Grande préview avec rotation et crop
+// - Navigation Précédent/Suivant entre photos
+// - Re-détection markers après modifications
+// - Canvas interactif pour crop
 //
-// CHANGELOG v2.1 (21/01/2026):
-// - FIX: Image trop grande - utilise ResizeObserver pour dimensions réelles
-// - Zone de prévisualisation agrandie (400px au lieu de 350px)
-// - Canvas se redimensionne dynamiquement
+// CHANGELOG v3.6 (21/01/2026):
+// - Nouvelle prop `initialImages` pour réassembler des images existantes
 //
-// CHANGELOG v2.0:
-// - Debug visuel amélioré
+// CHANGELOG v3.5 (21/01/2026):
+// - Modale agrandie (max-w-5xl)
+// - Grille 4 colonnes avec miniatures plus grandes
+//
+// CHANGELOG v3.4 (21/01/2026):
+// - FIX CRITIQUE: Utilise pxPerMmX et pxPerMmY séparément
 // ============================================
 
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -33,543 +36,1198 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  QrCode,
+  Images,
   Loader2,
-  Check,
+  Plus,
+  Trash2,
+  CheckCircle2,
   AlertCircle,
-  Download,
-  Camera,
-  Ruler,
-  Info,
   Bug,
-  Eye
+  RotateCw,
+  RotateCcw,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  Check,
+  X,
+  Eye,
 } from "lucide-react";
-import { useOpenCVAruco, ArucoMarker } from "./useOpenCVAruco";
-import type { BackgroundImage } from "./types";
 import { toast } from "sonner";
+import { useOpenCVAruco, ArucoMarker } from "./useOpenCVAruco";
 
-interface ArucoCalibrationModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  image: BackgroundImage | null;
-  onCalibrated: (pixelsPerCm: number, markers: ArucoMarker[]) => void;
-  onSkip: () => void;
+// Interface d'export
+export interface StitchedImage {
+  image: HTMLImageElement;
+  imageUrl: string;
+  position: { x: number; y: number };
+  scale: number;
+  scaleX?: number;
+  scaleY?: number;
+  rotation: number;
+  originalFile: File;
+  markers: ArucoMarker[];
 }
 
-export function ArucoCalibrationModal({
-  isOpen,
-  onClose,
-  image,
-  onCalibrated,
-  onSkip,
-}: ArucoCalibrationModalProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const debugCanvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+interface ArucoStitcherProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onStitched: (images: StitchedImage[], pixelsPerCm: number) => void;
+  markerSizeMm: number;
+  initialImages?: Array<{
+    id: string;
+    name: string;
+    image: HTMLImageElement;
+  }>;
+}
 
-  const [markerSizeMm, setMarkerSizeMm] = useState<string>("100");
-  const [detectedMarkers, setDetectedMarkers] = useState<ArucoMarker[]>([]);
-  const [calculatedScale, setCalculatedScale] = useState<number | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
+// v4.0: Édition par photo
+interface PhotoEdit {
+  rotation: number;
+  crop: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null;
+  needsRedetect: boolean;
+}
+
+interface PhotoWithMarkers {
+  id: string;
+  file: File;
+  image: HTMLImageElement;
+  imageUrl: string;
+  markers: ArucoMarker[];
+  isProcessing: boolean;
+  error?: string;
+  pixelsPerMm: number;
+  pixelsPerMmX: number;
+  pixelsPerMmY: number;
+  edit: PhotoEdit;
+  transformedImage?: HTMLImageElement;
+  transformedUrl?: string;
+}
+
+interface MarkerMatch {
+  markerId: number;
+  photo1Index: number;
+  photo2Index: number;
+  pos1: { x: number; y: number };
+  pos2: { x: number; y: number };
+}
+
+interface PositionResult {
+  images: StitchedImage[];
+  pixelsPerCm: number;
+  totalWidthMm: number;
+  totalHeightMm: number;
+}
+
+export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100, initialImages }: ArucoStitcherProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  const [photos, setPhotos] = useState<PhotoWithMarkers[]>([]);
+  const [isStitching, setIsStitching] = useState(false);
+  const [positionResult, setPositionResult] = useState<PositionResult | null>(null);
+  const [markerSize, setMarkerSize] = useState<string>(markerSizeMm.toString());
   const [showDebug, setShowDebug] = useState(false);
-  const [debugInfo, setDebugInfo] = useState<string[]>([]);
-
-  const {
-    isLoaded,
-    isLoading,
-    error,
-    detectMarkers,
-    calculateScale,
-  } = useOpenCVAruco();
-
-  // Viewport pour prévisualisation
-  const [previewViewport, setPreviewViewport] = useState({
-    scale: 1,
-    offsetX: 0,
-    offsetY: 0,
-  });
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
   
-  // v2.1: Dimensions du container (mis à jour par ResizeObserver)
-  const [containerSize, setContainerSize] = useState({ width: 600, height: 400 });
+  const [tolerance, setTolerance] = useState<number>(0);
+  const [duplicatePhotoIds, setDuplicatePhotoIds] = useState<Set<string>>(new Set());
+  
+  const [autoRotation, setAutoRotation] = useState<boolean>(false);
+  const [referencePhotoId, setReferencePhotoId] = useState<string | null>(null);
 
-  // v2.1: Observer les changements de taille du container
-  useEffect(() => {
-    if (!containerRef.current) return;
-    
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
-          setContainerSize({ width, height });
-        }
-      }
-    });
-    
-    resizeObserver.observe(containerRef.current);
-    return () => resizeObserver.disconnect();
-  }, [isOpen]);
+  // v4.0: Mode édition
+  const [editMode, setEditMode] = useState<boolean>(false);
+  const [currentEditIndex, setCurrentEditIndex] = useState<number>(0);
 
-  // Reset quand l'image change ou les dimensions du container
-  useEffect(() => {
-    if (image && isOpen && image.image) {
-      setDetectedMarkers([]);
-      setCalculatedScale(null);
-      setDebugInfo([]);
+  const { isLoaded, isLoading, error: opencvError, detectMarkers } = useOpenCVAruco();
 
-      // v2.1: Calculer le scale avec les dimensions observées
-      const containerWidth = containerSize.width || 600;
-      const containerHeight = containerSize.height || 400;
-      const imgWidth = image.image.width;
-      const imgHeight = image.image.height;
-
-      const scaleX = (containerWidth - 40) / imgWidth;
-      const scaleY = (containerHeight - 40) / imgHeight;
-      const scale = Math.min(scaleX, scaleY, 1);
-
-      setPreviewViewport({
-        scale,
-        offsetX: (containerWidth - imgWidth * scale) / 2,
-        offsetY: (containerHeight - imgHeight * scale) / 2,
-      });
-    }
-  }, [image, isOpen, containerSize]);
-
-  // Détecter automatiquement quand OpenCV est chargé
-  useEffect(() => {
-    if (!isOpen) return;
-    if (!isLoaded || !image?.image) return;
-    if (detectedMarkers.length > 0) return;
-    
-    // Petit délai pour laisser le render se faire
-    const timer = setTimeout(() => {
-      handleDetect();
-    }, 100);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoaded, image, isOpen]);
-
-  // Dessiner le canvas avec les markers détectés
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !image?.image) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const { scale, offsetX, offsetY } = previewViewport;
-
-    // Clear
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Background
-    ctx.fillStyle = "#1a1a2e";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Draw image
-    ctx.save();
-    ctx.translate(offsetX, offsetY);
-    ctx.scale(scale, scale);
-    ctx.drawImage(image.image, 0, 0);
-    ctx.restore();
-
-    // Draw detected markers
-    detectedMarkers.forEach((marker, idx) => {
-      // Dessiner le contour du marker
-      ctx.beginPath();
-      ctx.strokeStyle = marker.confidence && marker.confidence < 1 ? "#ffff00" : "#00ff00";
-      ctx.lineWidth = 3;
-
-      const corners = marker.corners.map((c) => ({
-        x: c.x * scale + offsetX,
-        y: c.y * scale + offsetY,
-      }));
-
-      ctx.moveTo(corners[0].x, corners[0].y);
-      corners.forEach((c, i) => {
-        if (i > 0) ctx.lineTo(c.x, c.y);
-      });
-      ctx.closePath();
-      ctx.stroke();
-
-      // Remplissage semi-transparent
-      ctx.fillStyle = marker.confidence && marker.confidence < 1
-        ? "rgba(255, 255, 0, 0.2)"
-        : "rgba(0, 255, 0, 0.2)";
-      ctx.fill();
-
-      // Numéroter les coins
-      corners.forEach((c, cornerIdx) => {
-        ctx.fillStyle = ["#ff0000", "#00ff00", "#0000ff", "#ff00ff"][cornerIdx];
-        ctx.beginPath();
-        ctx.arc(c.x, c.y, 5, 0, Math.PI * 2);
-        ctx.fill();
-      });
-
-      // Afficher l'ID au centre - v2.2: plus discret
-      const centerX = marker.center.x * scale + offsetX;
-      const centerY = marker.center.y * scale + offsetY;
-
-      // v2.2: Fond très transparent, texte plus petit
-      ctx.font = "bold 11px monospace";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-
-      // Juste l'ID, pas le pourcentage (affiché dans le panneau)
-      const text = `#${marker.id}`;
-      const textWidth = ctx.measureText(text).width;
-      
-      // Fond semi-transparent discret
-      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-      ctx.fillRect(centerX - textWidth / 2 - 4, centerY - 8, textWidth + 8, 16);
-
-      ctx.fillStyle = marker.confidence && marker.confidence < 1 ? "#ffff00" : "#00ff00";
-      ctx.fillText(text, centerX, centerY);
-    });
-
-    // Afficher le statut
-    ctx.font = "bold 14px sans-serif";
-    ctx.textAlign = "left";
-    ctx.fillStyle = detectedMarkers.length > 0 ? "#00ff00" : "#ff6b6b";
-
-    const statusBg = "rgba(0, 0, 0, 0.7)";
-    const statusText = detectedMarkers.length > 0
-      ? `✓ ${detectedMarkers.length} marker(s) détecté(s)`
-      : "✗ Aucun marker détecté";
-
-    const statusWidth = ctx.measureText(statusText).width;
-    ctx.fillStyle = statusBg;
-    ctx.fillRect(5, canvas.height - 30, statusWidth + 20, 25);
-
-    ctx.fillStyle = detectedMarkers.length > 0 ? "#00ff00" : "#ff6b6b";
-    ctx.fillText(statusText, 15, canvas.height - 13);
-
-  }, [image, previewViewport, detectedMarkers, containerSize]);
-
-  // Lancer la détection
-  const handleDetect = useCallback(async () => {
-    if (!image?.image || !isLoaded) return;
-
-    setIsProcessing(true);
-    setDebugInfo(["Démarrage de la détection..."]);
-
-    try {
-      const startTime = performance.now();
-      const markers = await detectMarkers(image.image);
-      const elapsed = performance.now() - startTime;
-
-      setDetectedMarkers(markers);
-
-      const newDebugInfo = [
-        `Temps de détection: ${elapsed.toFixed(0)}ms`,
-        `Image: ${image.image.width}x${image.image.height}px`,
-        `Markers trouvés: ${markers.length}`,
-      ];
-
-      markers.forEach(m => {
-        newDebugInfo.push(
-          `  → ID ${m.id}: pos(${m.center.x.toFixed(0)}, ${m.center.y.toFixed(0)}) ` +
-          `taille(${m.size.width.toFixed(0)}x${m.size.height.toFixed(0)}) ` +
-          `conf:${((m.confidence || 1) * 100).toFixed(0)}%`
-        );
-      });
-
-      setDebugInfo(newDebugInfo);
-
-      if (markers.length > 0) {
-        // v2.2: Conversion mm → cm pour calculateScale
-        const sizeMm = parseFloat(markerSizeMm) || 100;
-        const sizeCm = sizeMm / 10;
-        const scale = calculateScale(markers, sizeCm);
-        setCalculatedScale(scale);
-
-        if (scale) {
-          toast.success(`${markers.length} marker(s) détecté(s) - Échelle: ${scale.toFixed(2)} px/cm`);
-        }
-      } else {
-        toast.warning("Aucun marker ArUco détecté. Vérifiez que les markers sont visibles et bien éclairés.");
-        setCalculatedScale(null);
-      }
-    } catch (err) {
-      console.error("Erreur détection:", err);
-      setDebugInfo(prev => [...prev, `ERREUR: ${err}`]);
-      toast.error("Erreur lors de la détection des markers");
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [image, isLoaded, detectMarkers, calculateScale, markerSizeMm]);
-
-  // Recalculer l'échelle quand la taille du marker change
-  useEffect(() => {
-    if (detectedMarkers.length > 0) {
-      // v2.2: Conversion mm → cm pour calculateScale
-      const sizeMm = parseFloat(markerSizeMm) || 100;
-      const sizeCm = sizeMm / 10;
-      const scale = calculateScale(detectedMarkers, sizeCm);
-      setCalculatedScale(scale);
-    }
-  }, [markerSizeMm, detectedMarkers, calculateScale]);
-
-  // Appliquer la calibration
-  const handleApply = useCallback(() => {
-    if (calculatedScale && detectedMarkers.length > 0) {
-      onCalibrated(calculatedScale, detectedMarkers);
-      toast.success("Calibration ArUco appliquée");
-    }
-  }, [calculatedScale, detectedMarkers, onCalibrated]);
-
-  // Télécharger la planche de markers
-  const handleDownloadMarkers = useCallback(() => {
-    // Ouvrir le générateur de markers ArUco
-    window.open("https://chev.me/arucogen/", "_blank");
-    toast.info("Sélectionnez: Dictionary=4x4 (50 markers), Marker ID=0-11, puis téléchargez");
+  const addDebugLog = useCallback((msg: string) => {
+    console.log(`[ArucoStitcher v4.0] ${msg}`);
+    setDebugLogs(prev => [...prev.slice(-30), `${new Date().toLocaleTimeString()}: ${msg}`]);
   }, []);
 
-  // Générer une image de test avec des markers
-  const handleGenerateTestImage = useCallback(() => {
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
+  // Cleanup
+  useEffect(() => {
+    return () => {
+      photos.forEach(p => {
+        if (p.imageUrl.startsWith('blob:')) URL.revokeObjectURL(p.imageUrl);
+        if (p.transformedUrl?.startsWith('blob:')) URL.revokeObjectURL(p.transformedUrl);
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setPositionResult(null);
+      setEditMode(false);
+      setCurrentEditIndex(0);
+    }
+  }, [isOpen]);
+
+  const createDefaultEdit = (): PhotoEdit => ({
+    rotation: 0,
+    crop: null,
+    needsRedetect: false
+  });
+
+  const calculatePhotoScale = (markers: ArucoMarker[], markerSizeMm: number): { 
+    pixelsPerMm: number; 
+    pixelsPerMmX: number; 
+    pixelsPerMmY: number; 
+  } => {
+    if (markers.length === 0) return { pixelsPerMm: 0, pixelsPerMmX: 0, pixelsPerMmY: 0 };
+
+    let totalPxPerMmX = 0;
+    let totalPxPerMmY = 0;
+    for (const marker of markers) {
+      totalPxPerMmX += marker.size.width / markerSizeMm;
+      totalPxPerMmY += marker.size.height / markerSizeMm;
+    }
+    const pixelsPerMmX = totalPxPerMmX / markers.length;
+    const pixelsPerMmY = totalPxPerMmY / markers.length;
+    const pixelsPerMm = (pixelsPerMmX + pixelsPerMmY) / 2;
+    
+    return { pixelsPerMm, pixelsPerMmX, pixelsPerMmY };
+  };
+
+  const detectDuplicates = useCallback((photosList: PhotoWithMarkers[]) => {
+    const duplicates = new Set<string>();
+    const POSITION_TOLERANCE = 15;
+
+    for (let i = 0; i < photosList.length; i++) {
+      for (let j = i + 1; j < photosList.length; j++) {
+        const photo1 = photosList[i];
+        const photo2 = photosList[j];
+
+        if (photo1.markers.length === 0 || photo2.markers.length === 0) continue;
+
+        const ids1 = new Set(photo1.markers.map(m => m.id));
+        const ids2 = new Set(photo2.markers.map(m => m.id));
+
+        if (ids1.size !== ids2.size) continue;
+        
+        let allMatch = true;
+        for (const id of ids1) {
+          if (!ids2.has(id)) {
+            allMatch = false;
+            break;
+          }
+        }
+        if (!allMatch) continue;
+
+        let positionsMatch = true;
+        for (const m1 of photo1.markers) {
+          const m2 = photo2.markers.find(m => m.id === m1.id);
+          if (!m2) { positionsMatch = false; break; }
+          
+          const ref1 = photo1.markers[0];
+          const ref2 = photo2.markers[0];
+          
+          const dx = Math.abs((m1.center.x - ref1.center.x) - (m2.center.x - ref2.center.x));
+          const dy = Math.abs((m1.center.y - ref1.center.y) - (m2.center.y - ref2.center.y));
+          
+          if (dx > POSITION_TOLERANCE || dy > POSITION_TOLERANCE) {
+            positionsMatch = false;
+            break;
+          }
+        }
+
+        if (positionsMatch) {
+          duplicates.add(photo2.id);
+          addDebugLog(`⚠️ Doublon: Photo ${j + 1} ≈ Photo ${i + 1}`);
+        }
+      }
+    }
+
+    setDuplicatePhotoIds(duplicates);
+    return duplicates;
+  }, [addDebugLog]);
+
+  // v4.0: Appliquer rotation à une image
+  const applyTransformations = useCallback(async (photo: PhotoWithMarkers): Promise<{
+    image: HTMLImageElement;
+    url: string;
+  }> => {
+    const { edit, image } = photo;
+    
+    if (edit.rotation === 0 && !edit.crop) {
+      return { image, url: photo.imageUrl };
+    }
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error("Impossible de créer le contexte canvas");
+
+    let srcX = 0, srcY = 0, srcW = image.width, srcH = image.height;
+    
+    if (edit.crop) {
+      srcX = Math.round(image.width * edit.crop.x / 100);
+      srcY = Math.round(image.height * edit.crop.y / 100);
+      srcW = Math.round(image.width * edit.crop.width / 100);
+      srcH = Math.round(image.height * edit.crop.height / 100);
+    }
+
+    const isRotated90or270 = Math.abs(edit.rotation % 180) === 90;
+    
+    if (isRotated90or270) {
+      canvas.width = srcH;
+      canvas.height = srcW;
+    } else {
+      canvas.width = srcW;
+      canvas.height = srcH;
+    }
+
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate((edit.rotation * Math.PI) / 180);
+    
+    if (isRotated90or270) {
+      ctx.drawImage(image, srcX, srcY, srcW, srcH, -srcW / 2, -srcH / 2, srcW, srcH);
+    } else {
+      ctx.drawImage(image, srcX, srcY, srcW, srcH, -srcW / 2, -srcH / 2, srcW, srcH);
+    }
+    ctx.restore();
+
+    const blob = await new Promise<Blob | null>(resolve => 
+      canvas.toBlob(resolve, 'image/jpeg', 0.95)
+    );
+    if (!blob) throw new Error("Impossible de créer le blob");
+
+    const url = URL.createObjectURL(blob);
+    const newImage = new Image();
+    await new Promise<void>((resolve, reject) => {
+      newImage.onload = () => resolve();
+      newImage.onerror = reject;
+      newImage.src = url;
+    });
+
+    return { image: newImage, url };
+  }, []);
+
+  // v4.0: Dessiner la préview avec markers
+  const drawPreview = useCallback(() => {
+    const canvas = previewCanvasRef.current;
+    if (!canvas || photos.length === 0 || currentEditIndex >= photos.length) return;
+
+    const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    canvas.width = 800;
-    canvas.height = 600;
+    const photo = photos[currentEditIndex];
+    const image = photo.transformedImage || photo.image;
+    const edit = photo.edit;
 
-    // Fond
-    ctx.fillStyle = "#f0f0f0";
+    const maxWidth = canvas.width;
+    const maxHeight = canvas.height;
+    
+    let imgW = image.width;
+    let imgH = image.height;
+    
+    // Simuler la rotation pour les dimensions
+    if (!photo.transformedImage && (edit.rotation === 90 || edit.rotation === 270 || edit.rotation === -90 || edit.rotation === -270)) {
+      [imgW, imgH] = [imgH, imgW];
+    }
+
+    const scale = Math.min(maxWidth / imgW, maxHeight / imgH) * 0.95;
+    const drawW = imgW * scale;
+    const drawH = imgH * scale;
+    const offsetX = (maxWidth - drawW) / 2;
+    const offsetY = (maxHeight - drawH) / 2;
+
+    // Clear
+    ctx.fillStyle = '#1a1a2e';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Dessiner quelques markers 4x4 simplifiés
-    const drawMarker = (x: number, y: number, size: number, id: number) => {
-      const cellSize = size / 6;
+    // Dessiner l'image
+    ctx.save();
+    ctx.translate(maxWidth / 2, maxHeight / 2);
+    
+    if (photo.transformedImage) {
+      ctx.drawImage(image, -drawW / 2, -drawH / 2, drawW, drawH);
+    } else {
+      ctx.rotate((edit.rotation * Math.PI) / 180);
+      const origW = photo.image.width * scale;
+      const origH = photo.image.height * scale;
+      ctx.drawImage(photo.image, -origW / 2, -origH / 2, origW, origH);
+    }
+    ctx.restore();
 
-      // Bordure noire
-      ctx.fillStyle = "#000";
-      ctx.fillRect(x, y, size, size);
+    // Dessiner les markers détectés
+    const markers = photo.markers;
+    
+    for (const marker of markers) {
+      let mx = marker.center.x;
+      let my = marker.center.y;
+      
+      // Transformer les coordonnées selon la rotation actuelle
+      if (!photo.transformedImage) {
+        const imgCx = photo.image.width / 2;
+        const imgCy = photo.image.height / 2;
+        const rad = (edit.rotation * Math.PI) / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        const dx = mx - imgCx;
+        const dy = my - imgCy;
+        mx = imgCx + dx * cos - dy * sin;
+        my = imgCy + dx * sin + dy * cos;
+        
+        // Ajuster pour la nouvelle taille si rotation 90/270
+        if (edit.rotation === 90 || edit.rotation === -270) {
+          [mx, my] = [photo.image.height - my + (photo.image.width - photo.image.height) / 2, mx - (photo.image.width - photo.image.height) / 2];
+        } else if (edit.rotation === 270 || edit.rotation === -90) {
+          [mx, my] = [my - (photo.image.width - photo.image.height) / 2, photo.image.width - mx + (photo.image.width - photo.image.height) / 2];
+        }
+      }
 
-      // Pattern intérieur (simplifié)
-      ctx.fillStyle = "#fff";
-      const patterns: number[][] = [
-        [1,0,1,0, 1,1,1,0, 1,1,1,1, 0,1,1,0], // ID 0 approx
-        [1,1,0,1, 0,1,1,0, 1,0,1,1, 0,1,1,0], // ID 1 approx
-        [0,1,1,0, 1,1,0,1, 1,0,1,0, 0,1,1,1], // ID 2 approx
-        [0,0,0,1, 1,0,0,1, 1,1,0,1, 0,1,0,1], // ID 3 approx
-      ];
+      const screenX = offsetX + mx * scale;
+      const screenY = offsetY + my * scale;
 
-      const pattern = patterns[id % patterns.length];
-      for (let row = 0; row < 4; row++) {
-        for (let col = 0; col < 4; col++) {
-          if (pattern[row * 4 + col] === 1) {
-            ctx.fillRect(
-              x + (col + 1) * cellSize,
-              y + (row + 1) * cellSize,
-              cellSize,
-              cellSize
-            );
+      // Cercle pour le marker
+      ctx.beginPath();
+      ctx.arc(screenX, screenY, 8, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+      ctx.fill();
+      ctx.strokeStyle = '#00ff00';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Label
+      ctx.font = 'bold 11px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      
+      const label = `#${marker.id}`;
+      const tw = ctx.measureText(label).width;
+      
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(screenX - tw / 2 - 3, screenY - 18, tw + 6, 14);
+      
+      ctx.fillStyle = '#00ff00';
+      ctx.fillText(label, screenX, screenY - 11);
+    }
+  }, [photos, currentEditIndex]);
+
+  useEffect(() => {
+    if (editMode) {
+      drawPreview();
+    }
+  }, [editMode, drawPreview, photos, currentEditIndex]);
+
+  // v4.0: Handlers de rotation
+  const handleRotate = useCallback((degrees: number) => {
+    setPhotos(prev => prev.map((p, i) => {
+      if (i !== currentEditIndex) return p;
+      
+      let newRotation = (p.edit.rotation + degrees) % 360;
+      if (newRotation < 0) newRotation += 360;
+      
+      return {
+        ...p,
+        edit: { ...p.edit, rotation: newRotation, needsRedetect: true },
+        transformedImage: undefined,
+        transformedUrl: undefined
+      };
+    }));
+    
+    addDebugLog(`Rotation: +${degrees}°`);
+  }, [currentEditIndex, addDebugLog]);
+
+  // v4.0: Appliquer les transformations et re-détecter
+  const handleApplyAndRedetect = useCallback(async () => {
+    const photo = photos[currentEditIndex];
+    if (!photo) return;
+
+    setPhotos(prev => prev.map((p, i) => 
+      i === currentEditIndex ? { ...p, isProcessing: true } : p
+    ));
+
+    try {
+      const { image: transformedImage, url: transformedUrl } = await applyTransformations(photo);
+      
+      addDebugLog(`Re-détection après transformation...`);
+      const markers = await detectMarkers(transformedImage, { tolerance });
+      const markerSizeNum = parseFloat(markerSize) || 100;
+      const scales = calculatePhotoScale(markers, markerSizeNum);
+      
+      addDebugLog(`Photo ${currentEditIndex + 1}: ${markers.length} markers après transformation`);
+
+      setPhotos(prev => prev.map((p, i) => {
+        if (i !== currentEditIndex) return p;
+        
+        if (p.transformedUrl?.startsWith('blob:')) {
+          URL.revokeObjectURL(p.transformedUrl);
+        }
+        
+        return {
+          ...p,
+          markers,
+          isProcessing: false,
+          transformedImage,
+          transformedUrl,
+          ...scales,
+          edit: { ...p.edit, needsRedetect: false }
+        };
+      }));
+
+      toast.success(`${markers.length} markers détectés`);
+    } catch (err) {
+      console.error("Erreur transformation:", err);
+      toast.error("Erreur lors de la transformation");
+      setPhotos(prev => prev.map((p, i) => 
+        i === currentEditIndex ? { ...p, isProcessing: false } : p
+      ));
+    }
+  }, [photos, currentEditIndex, applyTransformations, detectMarkers, tolerance, markerSize, addDebugLog]);
+
+  const handleResetEdit = useCallback(() => {
+    const photo = photos[currentEditIndex];
+    if (!photo) return;
+
+    setPhotos(prev => prev.map((p, i) => {
+      if (i !== currentEditIndex) return p;
+      
+      if (p.transformedUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(p.transformedUrl);
+      }
+      
+      return {
+        ...p,
+        edit: createDefaultEdit(),
+        transformedImage: undefined,
+        transformedUrl: undefined,
+      };
+    }));
+    
+    // Re-détecter sur l'image originale
+    setTimeout(async () => {
+      const p = photos[currentEditIndex];
+      if (!p) return;
+      
+      setPhotos(prev => prev.map((ph, i) => 
+        i === currentEditIndex ? { ...ph, isProcessing: true } : ph
+      ));
+
+      try {
+        const markers = await detectMarkers(p.image, { tolerance });
+        const markerSizeNum = parseFloat(markerSize) || 100;
+        const scales = calculatePhotoScale(markers, markerSizeNum);
+        
+        setPhotos(prev => prev.map((ph, i) => 
+          i === currentEditIndex ? { ...ph, markers, isProcessing: false, ...scales } : ph
+        ));
+      } catch {
+        setPhotos(prev => prev.map((ph, i) => 
+          i === currentEditIndex ? { ...ph, isProcessing: false } : ph
+        ));
+      }
+    }, 100);
+  }, [currentEditIndex, photos, detectMarkers, tolerance, markerSize]);
+
+  const handlePrevPhoto = useCallback(() => {
+    if (currentEditIndex > 0) {
+      setCurrentEditIndex(prev => prev - 1);
+    }
+  }, [currentEditIndex]);
+
+  const handleNextPhoto = useCallback(() => {
+    if (currentEditIndex < photos.length - 1) {
+      setCurrentEditIndex(prev => prev + 1);
+    }
+  }, [currentEditIndex, photos.length]);
+
+  // v3.6: Charger les images existantes
+  useEffect(() => {
+    if (!isOpen || !initialImages || initialImages.length === 0) return;
+    if (!isLoaded) return;
+    
+    photos.forEach(p => {
+      if (p.imageUrl.startsWith('blob:')) URL.revokeObjectURL(p.imageUrl);
+      if (p.transformedUrl?.startsWith('blob:')) URL.revokeObjectURL(p.transformedUrl);
+    });
+    
+    const markerSizeMmValue = parseFloat(markerSize) || 100;
+    
+    const loadExistingImages = async () => {
+      const newPhotos: PhotoWithMarkers[] = [];
+      
+      for (const img of initialImages) {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.image.naturalWidth || img.image.width;
+        canvas.height = img.image.naturalHeight || img.image.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) continue;
+        
+        ctx.drawImage(img.image, 0, 0);
+        
+        const blob = await new Promise<Blob | null>(resolve => 
+          canvas.toBlob(resolve, 'image/jpeg', 0.95)
+        );
+        if (!blob) continue;
+        
+        const file = new File([blob], img.name || `image-${img.id}.jpg`, { type: 'image/jpeg' });
+        const imageUrl = URL.createObjectURL(blob);
+        
+        let markers: ArucoMarker[] = [];
+        try {
+          markers = await detectMarkers(img.image, tolerance);
+          addDebugLog(`Image ${img.name}: ${markers.length} markers`);
+        } catch (e) {
+          console.warn('Erreur détection:', e);
+        }
+        
+        const scales = calculatePhotoScale(markers, markerSizeMmValue);
+        
+        newPhotos.push({
+          id: img.id,
+          file,
+          image: img.image,
+          imageUrl,
+          markers,
+          isProcessing: false,
+          ...scales,
+          edit: createDefaultEdit()
+        });
+      }
+      
+      setPhotos(newPhotos);
+      addDebugLog(`${newPhotos.length} images chargées`);
+      detectDuplicates(newPhotos);
+      
+      if (newPhotos.length > 0) {
+        setEditMode(true);
+        setCurrentEditIndex(0);
+      }
+    };
+    
+    loadExistingImages();
+  }, [isOpen, initialImages, isLoaded, tolerance, detectMarkers, markerSize]);
+
+  // Ajouter des photos
+  const handleAddPhotos = useCallback(async (files: FileList | null) => {
+    if (!files || !isLoaded) return;
+
+    addDebugLog(`Ajout de ${files.length} fichier(s)...`);
+    const markerSizeNum = parseFloat(markerSize) || 100;
+    const newPhotos: PhotoWithMarkers[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file.type.startsWith("image/")) continue;
+
+      const imageUrl = URL.createObjectURL(file);
+      const image = new Image();
+
+      await new Promise<void>((resolve) => {
+        image.onload = () => resolve();
+        image.onerror = () => resolve();
+        image.src = imageUrl;
+      });
+
+      if (image.width === 0) continue;
+
+      addDebugLog(`Image: ${file.name} (${image.width}x${image.height})`);
+
+      newPhotos.push({
+        id: `photo-${Date.now()}-${i}`,
+        file,
+        image,
+        imageUrl,
+        markers: [],
+        isProcessing: true,
+        pixelsPerMm: 0,
+        pixelsPerMmX: 0,
+        pixelsPerMmY: 0,
+        edit: createDefaultEdit()
+      });
+    }
+
+    setPhotos(prev => [...prev, ...newPhotos]);
+
+    for (const photo of newPhotos) {
+      try {
+        const markers = await detectMarkers(photo.image, { tolerance });
+        const scales = calculatePhotoScale(markers, markerSizeNum);
+
+        addDebugLog(`${photo.file.name}: ${markers.length} markers`);
+
+        setPhotos(prev => prev.map(p =>
+          p.id === photo.id ? { ...p, markers, isProcessing: false, ...scales } : p
+        ));
+      } catch {
+        setPhotos(prev => prev.map(p =>
+          p.id === photo.id ? { ...p, isProcessing: false, error: "Erreur" } : p
+        ));
+      }
+    }
+
+    setTimeout(() => {
+      setPhotos(current => {
+        detectDuplicates(current);
+        return current;
+      });
+    }, 100);
+  }, [isLoaded, detectMarkers, markerSize, tolerance, addDebugLog, detectDuplicates]);
+
+  const handleRemovePhoto = useCallback((id: string) => {
+    setPhotos(prev => {
+      const photo = prev.find(p => p.id === id);
+      if (photo) {
+        if (photo.imageUrl.startsWith('blob:')) URL.revokeObjectURL(photo.imageUrl);
+        if (photo.transformedUrl?.startsWith('blob:')) URL.revokeObjectURL(photo.transformedUrl);
+      }
+      const newPhotos = prev.filter(p => p.id !== id);
+      
+      if (currentEditIndex >= newPhotos.length) {
+        setCurrentEditIndex(Math.max(0, newPhotos.length - 1));
+      }
+      
+      return newPhotos;
+    });
+  }, [currentEditIndex]);
+
+  // Stats
+  const totalMarkers = photos.reduce((sum, p) => sum + p.markers.length, 0);
+  const markerIdCounts = new Map<number, number>();
+  photos.forEach(p => p.markers.forEach(m => {
+    markerIdCounts.set(m.id, (markerIdCounts.get(m.id) || 0) + 1);
+  }));
+  const uniqueMatchedIds = Array.from(markerIdCounts.entries()).filter(([_, count]) => count >= 2).length;
+
+  const findMarkerMatches = useCallback((): MarkerMatch[] => {
+    const matches: MarkerMatch[] = [];
+
+    for (let i = 0; i < photos.length; i++) {
+      for (let j = i + 1; j < photos.length; j++) {
+        for (const m1 of photos[i].markers) {
+          const m2 = photos[j].markers.find(m => m.id === m1.id);
+          if (m2) {
+            matches.push({
+              markerId: m1.id,
+              photo1Index: i,
+              photo2Index: j,
+              pos1: m1.center,
+              pos2: m2.center,
+            });
           }
         }
       }
-    };
+    }
 
-    // Placer 4 markers
-    drawMarker(50, 50, 100, 0);
-    drawMarker(650, 50, 100, 1);
-    drawMarker(50, 450, 100, 2);
-    drawMarker(650, 450, 100, 3);
+    return matches;
+  }, [photos]);
 
-    // Texte
-    ctx.fillStyle = "#333";
-    ctx.font = "20px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("Image de test ArUco - 4 markers", canvas.width / 2, canvas.height / 2);
+  const calculateRotation = (
+    photo1Markers: ArucoMarker[],
+    photo2Markers: ArucoMarker[],
+    p1PxPerMmX: number,
+    p1PxPerMmY: number,
+    p2PxPerMmX: number,
+    p2PxPerMmY: number
+  ): number => {
+    const MAX_ROTATION = 15, MAX_STD_DEV = 3, MIN_ROTATION = 0.5;
 
-    // Télécharger
-    const link = document.createElement("a");
-    link.download = "aruco_test_image.png";
-    link.href = canvas.toDataURL("image/png");
-    link.click();
+    const commonMarkers: { id: number; p1: { x: number; y: number }; p2: { x: number; y: number } }[] = [];
 
-    toast.success("Image de test téléchargée - utilisez-la pour tester la détection");
-  }, []);
+    for (const m1 of photo1Markers) {
+      const m2 = photo2Markers.find(m => m.id === m1.id);
+      if (m2) {
+        commonMarkers.push({
+          id: m1.id,
+          p1: { x: m1.center.x / p1PxPerMmX, y: m1.center.y / p1PxPerMmY },
+          p2: { x: m2.center.x / p2PxPerMmX, y: m2.center.y / p2PxPerMmY },
+        });
+      }
+    }
+
+    if (commonMarkers.length < 2) return 0;
+
+    const angles: number[] = [];
+
+    for (let i = 0; i < commonMarkers.length; i++) {
+      for (let j = i + 1; j < commonMarkers.length; j++) {
+        const m1 = commonMarkers[i];
+        const m2 = commonMarkers[j];
+
+        const v1 = { x: m2.p1.x - m1.p1.x, y: m2.p1.y - m1.p1.y };
+        const v2 = { x: m2.p2.x - m1.p2.x, y: m2.p2.y - m1.p2.y };
+
+        let angleDiff = (Math.atan2(v2.y, v2.x) - Math.atan2(v1.y, v1.x)) * 180 / Math.PI;
+        while (angleDiff > 180) angleDiff -= 360;
+        while (angleDiff < -180) angleDiff += 360;
+
+        angles.push(angleDiff);
+      }
+    }
+
+    if (angles.length === 0) return 0;
+
+    let sumSin = 0, sumCos = 0;
+    for (const angle of angles) {
+      sumSin += Math.sin(angle * Math.PI / 180);
+      sumCos += Math.cos(angle * Math.PI / 180);
+    }
+    let avgAngle = Math.atan2(sumSin, sumCos) * 180 / Math.PI;
+
+    if (angles.length > 1) {
+      const variance = angles.reduce((sum, a) => {
+        let diff = a - avgAngle;
+        while (diff > 180) diff -= 360;
+        while (diff < -180) diff += 360;
+        return sum + diff * diff;
+      }, 0) / angles.length;
+      
+      if (Math.sqrt(variance) > MAX_STD_DEV) return 0;
+    }
+
+    if (Math.abs(avgAngle) < MIN_ROTATION) return 0;
+    return Math.max(-MAX_ROTATION, Math.min(MAX_ROTATION, avgAngle));
+  };
+
+  const rotatePoint = (x: number, y: number, cx: number, cy: number, angleDeg: number): { x: number; y: number } => {
+    const rad = angleDeg * Math.PI / 180;
+    const dx = x - cx, dy = y - cy;
+    return { x: cx + dx * Math.cos(rad) - dy * Math.sin(rad), y: cy + dx * Math.sin(rad) + dy * Math.cos(rad) };
+  };
+
+  const handleCalculatePositions = useCallback(async () => {
+    if (photos.length < 2) {
+      toast.error("Il faut au moins 2 photos");
+      return;
+    }
+
+    const matches = findMarkerMatches();
+    if (matches.length === 0) {
+      toast.error("Aucun marker commun trouvé");
+      return;
+    }
+
+    const photosWithMarkers = photos.filter(p => p.markers.length > 0 && p.pixelsPerMm > 0);
+    if (photosWithMarkers.length < 2) {
+      toast.error("Au moins 2 photos doivent avoir des markers");
+      return;
+    }
+
+    setIsStitching(true);
+
+    try {
+      const markerSizeNum = parseFloat(markerSize) || 100;
+
+      const targetPixelsPerMm = Math.max(...photos.filter(p => p.pixelsPerMm > 0).map(p => p.pixelsPerMm));
+      const targetPixelsPerCm = targetPixelsPerMm * 10;
+
+      const scaleFactorsXY = photos.map(p => {
+        if (p.pixelsPerMm === 0) return { scaleX: 1, scaleY: 1 };
+        return { 
+          scaleX: targetPixelsPerMm / (p.pixelsPerMmX || p.pixelsPerMm),
+          scaleY: targetPixelsPerMm / (p.pixelsPerMmY || p.pixelsPerMm)
+        };
+      });
+
+      interface PhotoTransform { x: number; y: number; rotation: number; scaleX: number; scaleY: number; }
+
+      const photoTransforms: PhotoTransform[] = photos.map((_, i) => ({
+        x: 0, y: 0, rotation: 0,
+        scaleX: scaleFactorsXY[i].scaleX,
+        scaleY: scaleFactorsXY[i].scaleY
+      }));
+
+      let refIndex = referencePhotoId ? photos.findIndex(p => p.id === referencePhotoId) : 0;
+      if (refIndex === -1) refIndex = 0;
+
+      const processed = new Set<number>([refIndex]);
+      const queue = [refIndex];
+
+      while (queue.length > 0) {
+        const currentIdx = queue.shift()!;
+        const currentPhoto = photos[currentIdx];
+        const currentTransform = photoTransforms[currentIdx];
+
+        for (let otherIdx = 0; otherIdx < photos.length; otherIdx++) {
+          if (processed.has(otherIdx)) continue;
+
+          const otherPhoto = photos[otherIdx];
+
+          const commonMatches = matches.filter(
+            m => (m.photo1Index === currentIdx && m.photo2Index === otherIdx) ||
+                 (m.photo1Index === otherIdx && m.photo2Index === currentIdx)
+          );
+
+          if (commonMatches.length === 0) continue;
+
+          let rotation = 0;
+          if (autoRotation) {
+            rotation = calculateRotation(
+              currentPhoto.markers, otherPhoto.markers,
+              currentPhoto.pixelsPerMmX, currentPhoto.pixelsPerMmY,
+              otherPhoto.pixelsPerMmX, otherPhoto.pixelsPerMmY
+            );
+          }
+
+          const finalRotation = autoRotation ? (currentTransform.rotation + rotation) : 0;
+
+          let totalDxMm = 0, totalDyMm = 0;
+
+          for (const match of commonMatches) {
+            const [pos1InCurrent, pos2InOther] = match.photo1Index === currentIdx
+              ? [match.pos1, match.pos2]
+              : [match.pos2, match.pos1];
+
+            const pos1Mm = { x: pos1InCurrent.x / currentPhoto.pixelsPerMmX, y: pos1InCurrent.y / currentPhoto.pixelsPerMmY };
+            const pos2Mm = { x: pos2InOther.x / otherPhoto.pixelsPerMmX, y: pos2InOther.y / otherPhoto.pixelsPerMmY };
+
+            const img = otherPhoto.transformedImage || otherPhoto.image;
+            const otherCenterMm = { x: (img.width / otherPhoto.pixelsPerMmX) / 2, y: (img.height / otherPhoto.pixelsPerMmY) / 2 };
+
+            const rotatedPos2 = rotatePoint(pos2Mm.x, pos2Mm.y, otherCenterMm.x, otherCenterMm.y, rotation);
+
+            totalDxMm += (currentTransform.x + pos1Mm.x) - rotatedPos2.x;
+            totalDyMm += (currentTransform.y + pos1Mm.y) - rotatedPos2.y;
+          }
+
+          photoTransforms[otherIdx] = {
+            x: totalDxMm / commonMatches.length,
+            y: totalDyMm / commonMatches.length,
+            rotation: finalRotation,
+            scaleX: scaleFactorsXY[otherIdx].scaleX,
+            scaleY: scaleFactorsXY[otherIdx].scaleY
+          };
+
+          processed.add(otherIdx);
+          queue.push(otherIdx);
+        }
+      }
+
+      if (processed.size < photos.length) {
+        toast.error(`${photos.length - processed.size} photo(s) non connectée(s)`);
+        setIsStitching(false);
+        return;
+      }
+
+      let minXmm = Infinity, minYmm = Infinity, maxXmm = -Infinity, maxYmm = -Infinity;
+
+      for (let i = 0; i < photos.length; i++) {
+        const transform = photoTransforms[i];
+        const photo = photos[i];
+        const img = photo.transformedImage || photo.image;
+        const widthMm = img.width / photo.pixelsPerMmX;
+        const heightMm = img.height / photo.pixelsPerMmY;
+
+        const corners = [{ x: 0, y: 0 }, { x: widthMm, y: 0 }, { x: widthMm, y: heightMm }, { x: 0, y: heightMm }];
+        const centerX = widthMm / 2, centerY = heightMm / 2;
+
+        for (const corner of corners) {
+          const rotated = rotatePoint(corner.x, corner.y, centerX, centerY, transform.rotation);
+          minXmm = Math.min(minXmm, transform.x + rotated.x);
+          minYmm = Math.min(minYmm, transform.y + rotated.y);
+          maxXmm = Math.max(maxXmm, transform.x + rotated.x);
+          maxYmm = Math.max(maxYmm, transform.y + rotated.y);
+        }
+      }
+
+      const stitchedImages: StitchedImage[] = photos.map((photo, i) => {
+        const transform = photoTransforms[i];
+        const img = photo.transformedImage || photo.image;
+        const widthMm = img.width / photo.pixelsPerMmX;
+        const heightMm = img.height / photo.pixelsPerMmY;
+        const rotatedOrigin = rotatePoint(0, 0, widthMm / 2, heightMm / 2, transform.rotation);
+        
+        return {
+          image: img,
+          imageUrl: photo.transformedUrl || photo.imageUrl,
+          position: { x: transform.x + rotatedOrigin.x - minXmm, y: transform.y + rotatedOrigin.y - minYmm },
+          scale: (transform.scaleX + transform.scaleY) / 2,
+          scaleX: transform.scaleX,
+          scaleY: transform.scaleY,
+          rotation: transform.rotation,
+          originalFile: photo.file,
+          markers: photo.markers,
+        };
+      });
+
+      setPositionResult({
+        images: stitchedImages,
+        pixelsPerCm: targetPixelsPerCm,
+        totalWidthMm: maxXmm - minXmm,
+        totalHeightMm: maxYmm - minYmm,
+      });
+
+      toast.success(`Assemblage: ${(maxXmm - minXmm).toFixed(0)}×${(maxYmm - minYmm).toFixed(0)}mm`);
+      setEditMode(false);
+
+    } catch (err) {
+      console.error("Erreur:", err);
+      toast.error("Erreur: " + (err as Error).message);
+    } finally {
+      setIsStitching(false);
+    }
+  }, [photos, findMarkerMatches, markerSize, referencePhotoId, autoRotation]);
+
+  const handleConfirm = useCallback(() => {
+    if (!positionResult) return;
+    onStitched(positionResult.images, positionResult.pixelsPerCm);
+    onClose();
+  }, [positionResult, onStitched, onClose]);
+
+  const currentPhoto = photos[currentEditIndex];
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <QrCode className="h-5 w-5" />
-            Calibration automatique ArUco v6.0
+            <Images className="h-5 w-5" />
+            Assemblage ArUco v4.0
+            {editMode && currentPhoto && (
+              <span className="text-sm font-normal text-muted-foreground ml-2">
+                — Photo {currentEditIndex + 1}/{photos.length}
+              </span>
+            )}
           </DialogTitle>
           <DialogDescription>
-            Détection automatique des markers ArUco pour calibrer l'échelle de l'image
+            {editMode ? "Ajustez rotation, puis validez" : "Ajoutez vos photos avec markers ArUco"}
           </DialogDescription>
         </DialogHeader>
 
-        {/* v2.2: Layout horizontal - image à gauche, panneau à droite */}
-        <div className="flex gap-4">
-          {/* Colonne gauche: Canvas de prévisualisation (plus grand) */}
-          <div className="flex-1 min-w-0">
-            {/* Status OpenCV */}
-            {isLoading && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted p-2 rounded mb-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Chargement d'OpenCV.js...
-              </div>
-            )}
-
-            {error && (
-              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-2 rounded mb-2">
-                <AlertCircle className="h-4 w-4" />
-                {error}
-              </div>
-            )}
-
-            <div
-              ref={containerRef}
-              className="relative border rounded-lg overflow-hidden bg-muted"
-              style={{ height: 450 }}
-            >
-              <canvas
-                ref={canvasRef}
-                width={containerSize.width || 600}
-                height={containerSize.height || 450}
-                className="w-full h-full"
-              />
-
-              {isProcessing && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                  <div className="flex items-center gap-2 text-white bg-black/70 px-4 py-2 rounded-lg">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    Analyse en cours...
+        {/* Mode édition */}
+        {editMode && currentPhoto ? (
+          <div className="flex gap-4 flex-1 overflow-hidden">
+            {/* Grande préview */}
+            <div className="flex-1 flex flex-col min-w-0">
+              <div className="relative flex-1 bg-gray-900 rounded-lg overflow-hidden" style={{ minHeight: 400 }}>
+                <canvas
+                  ref={previewCanvasRef}
+                  width={700}
+                  height={450}
+                  className="w-full h-full"
+                />
+                
+                {currentPhoto.isProcessing && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                    <Loader2 className="h-8 w-8 animate-spin text-white" />
                   </div>
+                )}
+
+                <div className="absolute top-2 left-2 flex gap-2">
+                  {currentPhoto.markers.length > 0 && (
+                    <span className="bg-green-600 text-white text-xs px-2 py-1 rounded">
+                      {currentPhoto.markers.length} markers
+                    </span>
+                  )}
+                  {currentPhoto.edit.rotation !== 0 && (
+                    <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded">
+                      {currentPhoto.edit.rotation}°
+                    </span>
+                  )}
                 </div>
-              )}
+              </div>
+
+              {/* Navigation */}
+              <div className="flex items-center justify-between mt-2">
+                <Button variant="outline" size="sm" onClick={handlePrevPhoto} disabled={currentEditIndex === 0}>
+                  <ChevronLeft className="h-4 w-4 mr-1" /> Précédent
+                </Button>
+                
+                <div className="flex gap-1 max-w-[400px] overflow-x-auto">
+                  {photos.map((p, i) => (
+                    <button
+                      key={p.id}
+                      onClick={() => setCurrentEditIndex(i)}
+                      className={`w-10 h-10 rounded border-2 overflow-hidden flex-shrink-0 ${
+                        i === currentEditIndex ? 'border-blue-500 ring-2 ring-blue-300' : 'border-gray-300'
+                      }`}
+                    >
+                      <img src={p.transformedUrl || p.imageUrl} alt="" className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+
+                <Button variant="outline" size="sm" onClick={handleNextPhoto} disabled={currentEditIndex === photos.length - 1}>
+                  Suivant <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Panneau de contrôles */}
+            <div className="w-52 flex flex-col gap-3">
+              <div className="p-3 bg-muted rounded-lg">
+                <Label className="text-xs font-medium mb-2 block">Rotation</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button size="sm" variant="outline" onClick={() => handleRotate(-90)}>
+                    <RotateCcw className="h-4 w-4 mr-1" /> -90°
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => handleRotate(90)}>
+                    <RotateCw className="h-4 w-4 mr-1" /> +90°
+                  </Button>
+                </div>
+                <div className="text-center text-xs text-muted-foreground mt-2">
+                  Actuel: {currentPhoto.edit.rotation}°
+                </div>
+              </div>
+
+              <div className="p-3 bg-muted rounded-lg space-y-2">
+                <Button 
+                  size="sm" variant="outline" className="w-full"
+                  onClick={handleApplyAndRedetect}
+                  disabled={currentPhoto.isProcessing || currentPhoto.edit.rotation === 0}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-1 ${currentPhoto.isProcessing ? 'animate-spin' : ''}`} />
+                  Appliquer & Détecter
+                </Button>
+                
+                <Button size="sm" variant="ghost" className="w-full" onClick={handleResetEdit}>
+                  <X className="h-4 w-4 mr-1" /> Réinitialiser
+                </Button>
+              </div>
+
+              <div className="p-3 bg-muted rounded-lg">
+                <Label className="text-xs font-medium mb-2 block">Markers</Label>
+                {currentPhoto.markers.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {currentPhoto.markers.map(m => (
+                      <span key={m.id} className="text-xs bg-green-100 text-green-800 px-1.5 py-0.5 rounded">
+                        #{m.id}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-orange-600">Aucun marker</p>
+                )}
+              </div>
+
+              <Button size="sm" variant="destructive" className="w-full" onClick={() => handleRemovePhoto(currentPhoto.id)}>
+                <Trash2 className="h-4 w-4 mr-1" /> Supprimer
+              </Button>
+
+              <div className="p-3 bg-muted rounded-lg text-xs">
+                <div className="flex items-center gap-2">
+                  <Switch id="autoRot" checked={autoRotation} onCheckedChange={setAutoRotation} />
+                  <Label htmlFor="autoRot" className="cursor-pointer">Rotation auto</Label>
+                </div>
+              </div>
             </div>
           </div>
+        ) : (
+          /* Mode liste */
+          <div className="space-y-4 overflow-y-auto flex-1">
+            {isLoading && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted p-2 rounded">
+                <Loader2 className="h-4 w-4 animate-spin" /> Chargement...
+              </div>
+            )}
 
-          {/* Colonne droite: Contrôles et résultats */}
-          <div className="w-64 flex flex-col gap-3">
-            {/* Paramètres */}
-            <div className="space-y-2">
-              <Label htmlFor="markerSize" className="text-sm font-medium">
-                Taille markers (mm)
-              </Label>
-              <Input
-                id="markerSize"
-                type="number"
-                value={markerSizeMm}
-                onChange={(e) => setMarkerSizeMm(e.target.value)}
-                min="10"
-                max="1000"
-                step="5"
-              />
+            {opencvError && (
+              <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 p-2 rounded">
+                <AlertCircle className="h-4 w-4" /> Erreur: {opencvError}
+              </div>
+            )}
+
+            {isLoaded && (
+              <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded">
+                <CheckCircle2 className="h-4 w-4" /> Détecteur ArUco prêt
+              </div>
+            )}
+
+            <div className="flex items-center gap-4">
+              <Label className="text-sm whitespace-nowrap">Taille markers:</Label>
+              <Input type="number" value={markerSize} onChange={(e) => setMarkerSize(e.target.value)} className="w-24" min="10" max="500" />
+              <span className="text-sm text-muted-foreground">mm</span>
             </div>
 
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDetect}
-                disabled={!isLoaded || isProcessing || !image}
-                className="flex-1"
-              >
-                {isProcessing ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                ) : (
-                  <Camera className="h-4 w-4 mr-1" />
-                )}
-                Détecter
+              <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={!isLoaded} className="flex-1">
+                <Plus className="h-4 w-4 mr-2" /> Ajouter des photos
               </Button>
-              
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowDebug(!showDebug)}
-                title="Debug"
-              >
-                <Bug className="h-4 w-4" />
+              <Button variant="ghost" size="icon" onClick={() => setShowDebug(!showDebug)}>
+                <Bug className={`h-4 w-4 ${showDebug ? "text-yellow-500" : ""}`} />
               </Button>
+              <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleAddPhotos(e.target.files)} />
             </div>
 
-            {/* Markers détectés */}
-            {detectedMarkers.length > 0 && (
-              <div className="border rounded-lg p-2 bg-muted/50">
-                <div className="text-xs font-medium text-green-600 mb-2">
-                  ✓ {detectedMarkers.length} marker(s)
+            {showDebug && (
+              <div className="p-3 bg-gray-900 text-green-400 font-mono text-xs rounded-lg max-h-32 overflow-y-auto">
+                {debugLogs.length === 0 ? <div className="text-gray-500">Aucun log.</div> : debugLogs.map((log, i) => <div key={i} className="py-1">{log}</div>)}
+              </div>
+            )}
+
+            {photos.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-sm font-medium flex justify-between">
+                  <span>Photos ({photos.length}) - {totalMarkers} markers</span>
+                  <span className="text-muted-foreground">{uniqueMatchedIds} communs</span>
                 </div>
-                <div className="space-y-1 max-h-[150px] overflow-y-auto">
-                  {detectedMarkers.map((m) => (
-                    <div key={m.id} className="text-xs flex justify-between items-center px-1 py-0.5 rounded bg-background">
-                      <span className="font-mono">#{m.id}</span>
-                      <span className={`${m.confidence && m.confidence < 1 ? 'text-yellow-600' : 'text-green-600'}`}>
-                        {m.confidence ? `${(m.confidence * 100).toFixed(0)}%` : '100%'}
-                      </span>
+
+                <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2 max-h-[300px] overflow-y-auto p-1">
+                  {photos.map((photo, idx) => (
+                    <div 
+                      key={photo.id} 
+                      className={`relative rounded p-1 bg-muted/50 border cursor-pointer hover:border-blue-400 ${duplicatePhotoIds.has(photo.id) ? "border-orange-500" : ""}`}
+                      onClick={() => { setCurrentEditIndex(idx); setEditMode(true); }}
+                    >
+                      <img src={photo.transformedUrl || photo.imageUrl} alt="" className="w-full h-24 object-cover rounded" />
+                      <div className="absolute top-1 right-1 bg-black/70 text-white text-[10px] px-1 rounded">{photo.markers.length}</div>
+                      {photo.isProcessing && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded">
+                          <Loader2 className="h-4 w-4 animate-spin text-white" />
+                        </div>
+                      )}
+                      <button className="absolute bottom-1 right-1 p-1 bg-red-500/80 text-white rounded hover:bg-red-600" onClick={(e) => { e.stopPropagation(); handleRemovePhoto(photo.id); }}>
+                        <Trash2 className="h-3 w-3" />
+                      </button>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Résultat calibration */}
-            {calculatedScale && (
-              <div className="border rounded-lg p-2 bg-green-50 dark:bg-green-950">
-                <div className="flex items-center gap-1 text-green-700 dark:text-green-400 text-sm font-medium mb-1">
-                  <Ruler className="h-3.5 w-3.5" />
-                  Échelle calculée
-                </div>
-                <div className="text-lg font-bold text-green-800 dark:text-green-300">
-                  {calculatedScale.toFixed(2)} px/cm
+            {positionResult && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center gap-2 text-green-700">
+                  <CheckCircle2 className="h-5 w-5" />
+                  <span className="font-medium">Prêt: {positionResult.totalWidthMm.toFixed(0)} × {positionResult.totalHeightMm.toFixed(0)} mm</span>
                 </div>
               </div>
             )}
-
-            {/* Aide */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowHelp(!showHelp)}
-              className="text-xs justify-start"
-            >
-              <Info className="h-3.5 w-3.5 mr-1" />
-              {showHelp ? "Masquer l'aide" : "Aide"}
-            </Button>
-
-            {showHelp && (
-              <div className="text-xs text-muted-foreground bg-muted p-2 rounded space-y-1">
-                <p>• Utilisez des markers ArUco 4×4</p>
-                <p>• Taille réelle = dimension imprimée</p>
-                <p>• Minimum 1 marker requis</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Debug info - pleine largeur */}
-        {showDebug && debugInfo.length > 0 && (
-          <div className="p-3 bg-gray-900 text-green-400 font-mono text-xs rounded-lg max-h-32 overflow-y-auto">
-            {debugInfo.map((line, i) => (
-              <div key={i}>{line}</div>
-            ))}
           </div>
         )}
 
-        <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={onSkip}>
-            Passer
-          </Button>
-          <Button variant="outline" onClick={onClose}>
-            Annuler
-          </Button>
-          <Button
-            onClick={handleApply}
-            disabled={calculatedScale === null}
-          >
-            <Check className="h-4 w-4 mr-2" />
-            Appliquer ({detectedMarkers.length} markers)
-          </Button>
+        <DialogFooter className="gap-2 border-t pt-4">
+          <Button variant="ghost" onClick={onClose}>Annuler</Button>
+          
+          {editMode ? (
+            <>
+              <Button variant="outline" onClick={() => setEditMode(false)}>Retour</Button>
+              <Button onClick={handleCalculatePositions} disabled={photos.length < 2 || isStitching || photos.some(p => p.isProcessing)}>
+                {isStitching ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Check className="h-4 w-4 mr-2" />}
+                Assembler ({photos.length})
+              </Button>
+            </>
+          ) : (
+            <>
+              {photos.length > 0 && (
+                <Button variant="outline" onClick={() => { setCurrentEditIndex(0); setEditMode(true); }}>
+                  <Eye className="h-4 w-4 mr-2" /> Éditer
+                </Button>
+              )}
+              {positionResult ? (
+                <Button onClick={handleConfirm}>
+                  <Check className="h-4 w-4 mr-2" /> Importer ({positionResult.images.length})
+                </Button>
+              ) : (
+                <Button onClick={handleCalculatePositions} disabled={photos.length < 2 || isStitching}>
+                  {isStitching ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Images className="h-4 w-4 mr-2" />}
+                  Calculer
+                </Button>
+              )}
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-export default ArucoCalibrationModal;
+export default ArucoStitcher;
