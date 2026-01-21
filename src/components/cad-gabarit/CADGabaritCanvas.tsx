@@ -11519,34 +11519,38 @@ export function CADGabaritCanvas({
           let newX = stretchingHandle.startImgX;
           let newY = stretchingHandle.startImgY;
 
-          // Sensibilité du stretch (pixels écran → changement de scale)
-          const sensitivity = 0.002 / viewport.scale;
+          // v7.47.1: Calcul proportionnel direct
+          // Le déplacement en pixels écran correspond au changement de taille réel
+          // currentWidthScreen = img.image.width * startScaleX * viewport.scale
+          const currentWidthScreen = img.image.width * stretchingHandle.startScaleX * viewport.scale;
+          const currentHeightScreen = img.image.height * stretchingHandle.startScaleY * viewport.scale;
 
           if (stretchingHandle.handle === "left") {
-            // Étirer vers la gauche = réduire scaleX (dx négatif = augmente)
-            const scaleDelta = -dx * sensitivity * img.image.width;
-            newScaleX = Math.max(0.1, stretchingHandle.startScaleX + scaleDelta);
+            // Étirer vers la gauche : dx négatif = agrandir
+            // Nouveau width écran = currentWidthScreen - dx
+            const newWidthScreen = currentWidthScreen - dx;
+            newScaleX = Math.max(0.1, (newWidthScreen / viewport.scale) / img.image.width);
             // Compenser le centre pour garder le côté droit fixe
             const widthDiff = (newScaleX - stretchingHandle.startScaleX) * img.image.width;
             newX = stretchingHandle.startImgX - widthDiff / 2;
           } else if (stretchingHandle.handle === "right") {
-            // Étirer vers la droite = augmenter scaleX
-            const scaleDelta = dx * sensitivity * img.image.width;
-            newScaleX = Math.max(0.1, stretchingHandle.startScaleX + scaleDelta);
+            // Étirer vers la droite : dx positif = agrandir
+            const newWidthScreen = currentWidthScreen + dx;
+            newScaleX = Math.max(0.1, (newWidthScreen / viewport.scale) / img.image.width);
             // Compenser le centre pour garder le côté gauche fixe
             const widthDiff = (newScaleX - stretchingHandle.startScaleX) * img.image.width;
             newX = stretchingHandle.startImgX + widthDiff / 2;
           } else if (stretchingHandle.handle === "top") {
-            // Étirer vers le haut = réduire scaleY (dy négatif = augmente)
-            const scaleDelta = -dy * sensitivity * img.image.height;
-            newScaleY = Math.max(0.1, stretchingHandle.startScaleY + scaleDelta);
+            // Étirer vers le haut : dy négatif = agrandir
+            const newHeightScreen = currentHeightScreen - dy;
+            newScaleY = Math.max(0.1, (newHeightScreen / viewport.scale) / img.image.height);
             // Compenser le centre pour garder le côté bas fixe
             const heightDiff = (newScaleY - stretchingHandle.startScaleY) * img.image.height;
             newY = stretchingHandle.startImgY - heightDiff / 2;
           } else if (stretchingHandle.handle === "bottom") {
-            // Étirer vers le bas = augmenter scaleY
-            const scaleDelta = dy * sensitivity * img.image.height;
-            newScaleY = Math.max(0.1, stretchingHandle.startScaleY + scaleDelta);
+            // Étirer vers le bas : dy positif = agrandir
+            const newHeightScreen = currentHeightScreen + dy;
+            newScaleY = Math.max(0.1, (newHeightScreen / viewport.scale) / img.image.height);
             // Compenser le centre pour garder le côté haut fixe
             const heightDiff = (newScaleY - stretchingHandle.startScaleY) * img.image.height;
             newY = stretchingHandle.startImgY + heightDiff / 2;
