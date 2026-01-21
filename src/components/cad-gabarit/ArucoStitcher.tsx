@@ -1,8 +1,12 @@
 // ============================================
 // COMPONENT: ArucoStitcher
 // Assemblage de photos via markers ArUco partagés
-// VERSION: 3.5
+// VERSION: 3.6
 // ============================================
+//
+// CHANGELOG v3.6 (21/01/2026):
+// - Nouvelle prop `initialImages` pour réassembler des images existantes
+// - Permet de relancer un assemblage depuis le menu contextuel
 //
 // CHANGELOG v3.5 (21/01/2026):
 // - Modale agrandie (max-w-5xl)
@@ -76,6 +80,12 @@ interface ArucoStitcherProps {
   onClose: () => void;
   onStitched: (images: StitchedImage[], pixelsPerCm: number) => void;
   markerSizeMm: number;
+  // v3.6: Images existantes à réassembler (optionnel)
+  initialImages?: Array<{
+    id: string;
+    name: string;
+    image: HTMLImageElement;
+  }>;
 }
 
 interface PhotoWithMarkers {
@@ -106,7 +116,7 @@ interface PositionResult {
   totalHeightMm: number;
 }
 
-export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 }: ArucoStitcherProps) {
+export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100, initialImages }: ArucoStitcherProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [photos, setPhotos] = useState<PhotoWithMarkers[]>([]);
@@ -144,6 +154,74 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
       setPositionResult(null);
     }
   }, [isOpen]);
+
+  // v3.6: Charger les images existantes si fournies
+  useEffect(() => {
+    if (!isOpen || !initialImages || initialImages.length === 0) return;
+    if (!isLoaded) return; // Attendre OpenCV
+    
+    // Reset les photos existantes
+    photos.forEach(p => {
+      if (p.imageUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(p.imageUrl);
+      }
+    });
+    
+    const markerSizeMmValue = parseFloat(markerSize) || 100;
+    
+    // Convertir les BackgroundImages en PhotoWithMarkers
+    const loadExistingImages = async () => {
+      const newPhotos: PhotoWithMarkers[] = [];
+      
+      for (const img of initialImages) {
+        // Créer une URL blob à partir de l'image existante
+        const canvas = document.createElement('canvas');
+        canvas.width = img.image.naturalWidth || img.image.width;
+        canvas.height = img.image.naturalHeight || img.image.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) continue;
+        
+        ctx.drawImage(img.image, 0, 0);
+        
+        const blob = await new Promise<Blob | null>(resolve => 
+          canvas.toBlob(resolve, 'image/jpeg', 0.95)
+        );
+        if (!blob) continue;
+        
+        const file = new File([blob], img.name || `image-${img.id}.jpg`, { type: 'image/jpeg' });
+        const imageUrl = URL.createObjectURL(blob);
+        
+        // Toujours re-détecter les markers
+        let markers: ArucoMarker[] = [];
+        try {
+          markers = await detectMarkers(img.image, tolerance);
+          addDebugLog(`Image ${img.name}: ${markers.length} markers détectés`);
+        } catch (e) {
+          console.warn('Erreur détection markers:', e);
+        }
+        
+        const scales = calculatePhotoScale(markers, markerSizeMmValue);
+        
+        newPhotos.push({
+          id: img.id,
+          file,
+          image: img.image,
+          imageUrl,
+          markers,
+          isProcessing: false,
+          ...scales
+        });
+      }
+      
+      setPhotos(newPhotos);
+      addDebugLog(`${newPhotos.length} images existantes chargées`);
+      
+      // Détecter les doublons
+      detectDuplicates(newPhotos);
+    };
+    
+    loadExistingImages();
+  }, [isOpen, initialImages, isLoaded, tolerance, detectMarkers, markerSize]);
 
   // v3.4: Calculer les échelles X et Y séparément
   const calculatePhotoScale = (markers: ArucoMarker[], markerSizeMm: number): { 
