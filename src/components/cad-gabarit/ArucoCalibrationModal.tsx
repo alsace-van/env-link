@@ -1,7 +1,16 @@
 // ============================================
 // COMPONENT: ArucoCalibrationModal
 // Modale de calibration automatique via ArUco markers
-// VERSION: 2.0 - Debug visuel amélioré
+// VERSION: 2.1 - Fix affichage image + zone agrandie
+// ============================================
+//
+// CHANGELOG v2.1 (21/01/2026):
+// - FIX: Image trop grande - utilise ResizeObserver pour dimensions réelles
+// - Zone de prévisualisation agrandie (400px au lieu de 350px)
+// - Canvas se redimensionne dynamiquement
+//
+// CHANGELOG v2.0:
+// - Debug visuel amélioré
 // ============================================
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
@@ -73,33 +82,51 @@ export function ArucoCalibrationModal({
     offsetX: 0,
     offsetY: 0,
   });
+  
+  // v2.1: Dimensions du container (mis à jour par ResizeObserver)
+  const [containerSize, setContainerSize] = useState({ width: 600, height: 400 });
 
-  // Reset quand l'image change
+  // v2.1: Observer les changements de taille du container
   useEffect(() => {
-    if (image && isOpen) {
+    if (!containerRef.current) return;
+    
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setContainerSize({ width, height });
+        }
+      }
+    });
+    
+    resizeObserver.observe(containerRef.current);
+    return () => resizeObserver.disconnect();
+  }, [isOpen]);
+
+  // Reset quand l'image change ou les dimensions du container
+  useEffect(() => {
+    if (image && isOpen && image.image) {
       setDetectedMarkers([]);
       setCalculatedScale(null);
       setDebugInfo([]);
 
-      // Calculer le scale pour que l'image rentre
-      if (image.image && containerRef.current) {
-        const containerWidth = containerRef.current.clientWidth || 600;
-        const containerHeight = 350;
-        const imgWidth = image.image.width;
-        const imgHeight = image.image.height;
+      // v2.1: Calculer le scale avec les dimensions observées
+      const containerWidth = containerSize.width || 600;
+      const containerHeight = containerSize.height || 400;
+      const imgWidth = image.image.width;
+      const imgHeight = image.image.height;
 
-        const scaleX = (containerWidth - 40) / imgWidth;
-        const scaleY = (containerHeight - 40) / imgHeight;
-        const scale = Math.min(scaleX, scaleY, 1);
+      const scaleX = (containerWidth - 40) / imgWidth;
+      const scaleY = (containerHeight - 40) / imgHeight;
+      const scale = Math.min(scaleX, scaleY, 1);
 
-        setPreviewViewport({
-          scale,
-          offsetX: (containerWidth - imgWidth * scale) / 2,
-          offsetY: (containerHeight - imgHeight * scale) / 2,
-        });
-      }
+      setPreviewViewport({
+        scale,
+        offsetX: (containerWidth - imgWidth * scale) / 2,
+        offsetY: (containerHeight - imgHeight * scale) / 2,
+      });
     }
-  }, [image, isOpen]);
+  }, [image, isOpen, containerSize]);
 
   // Détecter automatiquement quand OpenCV est chargé
   useEffect(() => {
@@ -210,7 +237,7 @@ export function ArucoCalibrationModal({
     ctx.fillStyle = detectedMarkers.length > 0 ? "#00ff00" : "#ff6b6b";
     ctx.fillText(statusText, 15, canvas.height - 13);
 
-  }, [image, previewViewport, detectedMarkers]);
+  }, [image, previewViewport, detectedMarkers, containerSize]);
 
   // Lancer la détection
   const handleDetect = useCallback(async () => {
@@ -382,16 +409,16 @@ export function ArucoCalibrationModal({
             </div>
           )}
 
-          {/* Canvas de prévisualisation */}
+          {/* Canvas de prévisualisation - v2.1: agrandi */}
           <div
             ref={containerRef}
             className="relative border rounded-lg overflow-hidden bg-muted"
-            style={{ height: 350 }}
+            style={{ height: 400 }}
           >
             <canvas
               ref={canvasRef}
-              width={600}
-              height={350}
+              width={containerSize.width || 600}
+              height={containerSize.height || 400}
               className="w-full h-full"
             />
 
