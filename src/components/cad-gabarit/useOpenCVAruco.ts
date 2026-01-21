@@ -1,8 +1,14 @@
 // ============================================
 // COMPONENT: useOpenCVAruco
 // Détection ArUco 100% JavaScript (sans OpenCV)
-// VERSION: 19.1
+// VERSION: 20
 // ============================================
+//
+// CHANGELOG v20 (21/01/2026):
+// - FIX CRITIQUE: width et height calculés SÉPARÉMENT
+//   - width = moyenne(côté_haut + côté_bas) → horizontaux
+//   - height = moyenne(côté_gauche + côté_droite) → verticaux
+// - Corrige le décalage de 50-60mm lors de l'assemblage multi-photos
 //
 // CHANGELOG v19.1 (21/01/2026):
 // - Raffinement Harris corner detector (plus robuste)
@@ -147,7 +153,7 @@ export function useOpenCVAruco(
     const timer = setTimeout(() => {
       setIsLoaded(true);
       setIsLoading(false);
-      console.log("[ArUco v19.1] Pure JS detector ready - BALANCED MODE");
+      console.log("[ArUco v20] Pure JS detector ready - SEPARATE X/Y SCALE");
     }, 100);
     return () => clearTimeout(timer);
   }, []);
@@ -164,7 +170,7 @@ export function useOpenCVAruco(
       const w = image.width || (image as HTMLImageElement).naturalWidth;
       const h = image.height || (image as HTMLImageElement).naturalHeight;
 
-      console.log(`[ArUco v19.1] Detecting in ${w}x${h} image (tolerance=${tolerance})`);
+      console.log(`[ArUco v20] Detecting in ${w}x${h} image (tolerance=${tolerance})`);
 
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -185,7 +191,7 @@ export function useOpenCVAruco(
 
       const markers = findMarkersInImage(gray, canvas.width, canvas.height, scale, tolerance);
 
-      console.log(`[ArUco v19.1] Found ${markers.length} markers`);
+      console.log(`[ArUco v20] Found ${markers.length} markers`);
       return markers;
     },
     [isLoaded]
@@ -621,7 +627,7 @@ function findMarkersInImage(
   const minArea = Math.pow(minDim * 0.018, 2);
   const maxArea = Math.pow(minDim * 0.38, 2);
 
-  console.log(`[ArUco v19.1] Area: ${minArea.toFixed(0)}-${maxArea.toFixed(0)}, conf>=${MIN_CONFIDENCE}, tolerance=${tolerance}`);
+  console.log(`[ArUco v20] Area: ${minArea.toFixed(0)}-${maxArea.toFixed(0)}, conf>=${MIN_CONFIDENCE}, tolerance=${tolerance}`);
 
   let rawDetections = 0;
   let rejectedLowConfidence = 0;
@@ -691,18 +697,23 @@ function findMarkersInImage(
           y: center.y / scale,
         };
 
-        // Recalculer la taille avec les coins raffinés
-        const refinedSide1 = distance(refinedCorners[0], refinedCorners[1]);
-        const refinedSide2 = distance(refinedCorners[1], refinedCorners[2]);
-        const refinedSide3 = distance(refinedCorners[2], refinedCorners[3]);
-        const refinedSide4 = distance(refinedCorners[3], refinedCorners[0]);
-        const markerSize = ((refinedSide1 + refinedSide2 + refinedSide3 + refinedSide4) / 4) / scale;
+        // v20: Recalculer width et height SÉPARÉMENT
+        // Coins ordonnés: [0]=top-left, [1]=top-right, [2]=bottom-right, [3]=bottom-left
+        const refinedSide1 = distance(refinedCorners[0], refinedCorners[1]); // Haut (horizontal)
+        const refinedSide2 = distance(refinedCorners[1], refinedCorners[2]); // Droite (vertical)
+        const refinedSide3 = distance(refinedCorners[2], refinedCorners[3]); // Bas (horizontal)
+        const refinedSide4 = distance(refinedCorners[3], refinedCorners[0]); // Gauche (vertical)
+        
+        // v20: Width = moyenne des côtés horizontaux (haut + bas)
+        const markerWidth = ((refinedSide1 + refinedSide3) / 2) / scale;
+        // v20: Height = moyenne des côtés verticaux (droite + gauche)
+        const markerHeight = ((refinedSide2 + refinedSide4) / 2) / scale;
 
         const newMarker: ArucoMarker = {
           id: result.id,
           corners: scaledCorners,
           center: scaledCenter,
-          size: { width: markerSize, height: markerSize },
+          size: { width: markerWidth, height: markerHeight }, // v20: valeurs différentes
           confidence: result.confidence,
         };
 
@@ -714,13 +725,13 @@ function findMarkersInImage(
           
           if (newConfidence > existingConfidence) {
             markersByID.set(result.id, newMarker);
-            console.log(`[ArUco v19.1] ↻ ID=${result.id} (${existingConfidence.toFixed(2)}→${newConfidence.toFixed(2)})`);
+            console.log(`[ArUco v20] ↻ ID=${result.id} (${existingConfidence.toFixed(2)}→${newConfidence.toFixed(2)})`);
           } else {
             duplicatesSkipped++;
           }
         } else {
           markersByID.set(result.id, newMarker);
-          console.log(`[ArUco v19.1] ✓ ID=${result.id} (conf=${result.confidence.toFixed(2)})`);
+          console.log(`[ArUco v20] ✓ ID=${result.id} (conf=${result.confidence.toFixed(2)})`);
         }
       }
     }
@@ -729,9 +740,9 @@ function findMarkersInImage(
   const markers = Array.from(markersByID.values());
   markers.sort((a, b) => a.id - b.id);
 
-  console.log(`[ArUco v19.1] === RÉSUMÉ ===`);
-  console.log(`[ArUco v19.1] Brut: ${rawDetections}, Rejetés: ${rejectedLowConfidence}, Doublons: ${duplicatesSkipped}`);
-  console.log(`[ArUco v19.1] Valides: ${markers.length} → IDs: [${markers.map(m => m.id).join(', ')}]`);
+  console.log(`[ArUco v20] === RÉSUMÉ ===`);
+  console.log(`[ArUco v20] Brut: ${rawDetections}, Rejetés: ${rejectedLowConfidence}, Doublons: ${duplicatesSkipped}`);
+  console.log(`[ArUco v20] Valides: ${markers.length} → IDs: [${markers.map(m => m.id).join(', ')}]`);
   
   return markers;
 }
