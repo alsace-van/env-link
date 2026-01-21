@@ -1,14 +1,19 @@
 // ============================================
 // COMPONENT: ArucoStitcher
 // Assemblage de photos via markers ArUco partagés
-// VERSION: 4.5
+// VERSION: 4.6
 // ============================================
 //
+// CHANGELOG v4.6 (21/01/2026):
+// - FIX CRITIQUE: Crop ne déforme plus l'image !
+// - Après "Appliquer & Détecter": edit.rotation = 0, edit.crop = null
+// - applyTransformations utilise transformedImage si elle existe
+// - Crop est appliqué sur transformedImage (pas l'originale)
+// - Ne reset plus transformedImage quand on dessine un crop
+//
 // CHANGELOG v4.5 (21/01/2026):
-// - FIX: Crop ne déforme plus l'image
 // - Désactive le crop quand rotation non appliquée (message d'avertissement)
 // - Utilise dimensions originales (origW/origH) pour calcul du crop
-// - Cohérence entre affichage et calcul du crop
 //
 // CHANGELOG v4.4 (21/01/2026):
 // - FIX: Fond transparent au lieu de noir après rotation/crop
@@ -25,27 +30,15 @@
 // CHANGELOG v4.2 (21/01/2026):
 // - FIX: Crop fonctionne correctement (conversion coordonnées CSS → Canvas)
 // - Rotation améliorée: slider -180° à +180°, boutons ±1°, input numérique
-// - Panneau de contrôles élargi (w-56)
 //
 // CHANGELOG v4.1 (21/01/2026):
 // - NOUVEAU: Outil de recadrage (crop) interactif
-// - Dessiner un rectangle sur l'image pour recadrer
-// - Prévisualisation avec zone assombrie
-// - Boutons Valider/Annuler pour le crop
 //
 // CHANGELOG v4.0 (21/01/2026):
 // - NOUVEAU: Mode édition par photo avant assemblage
-// - Grande préview avec rotation et crop
-// - Navigation Précédent/Suivant entre photos
-// - Re-détection markers après modifications
-// - Canvas interactif pour crop
 //
 // CHANGELOG v3.6 (21/01/2026):
 // - Nouvelle prop `initialImages` pour réassembler des images existantes
-//
-// CHANGELOG v3.5 (21/01/2026):
-// - Modale agrandie (max-w-5xl)
-// - Grille 4 colonnes avec miniatures plus grandes
 //
 // CHANGELOG v3.4 (21/01/2026):
 // - FIX CRITIQUE: Utilise pxPerMmX et pxPerMmY séparément
@@ -302,28 +295,35 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     return duplicates;
   }, [addDebugLog]);
 
-  // v4.4: Appliquer rotation à une image (supporte tous les angles, avec transparence)
+  // v4.6: Appliquer rotation/crop à une image (supporte tous les angles, avec transparence)
   const applyTransformations = useCallback(async (photo: PhotoWithMarkers): Promise<{
     image: HTMLImageElement;
     url: string;
   }> => {
-    const { edit, image } = photo;
+    const { edit } = photo;
     
+    // Utiliser transformedImage si elle existe (transformations précédentes déjà appliquées)
+    // Sinon utiliser l'image originale
+    const sourceImage = photo.transformedImage || photo.image;
+    const sourceUrl = photo.transformedUrl || photo.imageUrl;
+    
+    // Si pas de modifications à faire, retourner l'image source
     if (edit.rotation === 0 && !edit.crop) {
-      return { image, url: photo.imageUrl };
+      return { image: sourceImage, url: sourceUrl };
     }
 
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error("Impossible de créer le contexte canvas");
 
-    let srcX = 0, srcY = 0, srcW = image.width, srcH = image.height;
+    // Le crop est en % de l'image SOURCE (transformedImage ou originale)
+    let srcX = 0, srcY = 0, srcW = sourceImage.width, srcH = sourceImage.height;
     
     if (edit.crop) {
-      srcX = Math.round(image.width * edit.crop.x / 100);
-      srcY = Math.round(image.height * edit.crop.y / 100);
-      srcW = Math.round(image.width * edit.crop.width / 100);
-      srcH = Math.round(image.height * edit.crop.height / 100);
+      srcX = Math.round(sourceImage.width * edit.crop.x / 100);
+      srcY = Math.round(sourceImage.height * edit.crop.y / 100);
+      srcW = Math.round(sourceImage.width * edit.crop.width / 100);
+      srcH = Math.round(sourceImage.height * edit.crop.height / 100);
     }
 
     // Calculer la bounding box après rotation pour n'importe quel angle
@@ -344,7 +344,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     ctx.save();
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.rotate(radians);
-    ctx.drawImage(image, srcX, srcY, srcW, srcH, -srcW / 2, -srcH / 2, srcW, srcH);
+    ctx.drawImage(sourceImage, srcX, srcY, srcW, srcH, -srcW / 2, -srcH / 2, srcW, srcH);
     ctx.restore();
 
     // Utiliser PNG pour supporter la transparence
@@ -787,7 +787,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
 
   const handleCropMouseUp = useCallback(() => {
     if (isDraggingCrop && cropStart && cropEnd && canvasMapping) {
-      // v4.5: Utiliser origW/origH (dimensions de l'image source) pour le calcul du crop
+      // v4.6: Utiliser origW/origH (dimensions de l'image source) pour le calcul du crop
       const { offsetX, offsetY, scale, origW, origH } = canvasMapping;
       
       const x1 = Math.min(cropStart.x, cropEnd.x);
@@ -795,13 +795,14 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
       const x2 = Math.max(cropStart.x, cropEnd.x);
       const y2 = Math.max(cropStart.y, cropEnd.y);
       
-      // Calculer le crop en pourcentage de l'image originale
+      // Calculer le crop en pourcentage de l'image source (transformedImage ou originale)
       const cropX = ((x1 - offsetX) / (origW * scale)) * 100;
       const cropY = ((y1 - offsetY) / (origH * scale)) * 100;
       const cropW = ((x2 - x1) / (origW * scale)) * 100;
       const cropH = ((y2 - y1) / (origH * scale)) * 100;
       
       // Sauvegarder automatiquement si crop valide
+      // NE PAS reset transformedImage - le crop sera appliqué dessus
       if (cropW >= 5 && cropH >= 5) {
         setPhotos(prev => prev.map((p, i) => {
           if (i !== currentEditIndex) return p;
@@ -811,9 +812,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
               ...p.edit,
               crop: { x: cropX, y: cropY, width: cropW, height: cropH },
               needsRedetect: true
-            },
-            transformedImage: undefined,
-            transformedUrl: undefined
+            }
           };
         }));
       }
@@ -826,22 +825,23 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     setCropEnd(null);
   }, [isDraggingCrop, cropStart, cropEnd, canvasMapping, currentEditIndex]);
 
-  // v4.1: Confirmer le crop
+  // v4.6: Confirmer le crop (ancienne méthode, maintenant sauvegarde auto)
   const handleConfirmCrop = useCallback(() => {
     if (!cropStart || !cropEnd || !canvasMapping) return;
     
-    const { offsetX, offsetY, scale, imgW, imgH } = canvasMapping;
+    // Utiliser origW/origH pour le calcul du crop
+    const { offsetX, offsetY, scale, origW, origH } = canvasMapping;
     
-    // Convertir les coordonnées écran en pourcentages de l'image
+    // Convertir les coordonnées écran en pourcentages de l'image source
     const x1 = Math.min(cropStart.x, cropEnd.x);
     const y1 = Math.min(cropStart.y, cropEnd.y);
     const x2 = Math.max(cropStart.x, cropEnd.x);
     const y2 = Math.max(cropStart.y, cropEnd.y);
     
-    const cropX = ((x1 - offsetX) / (imgW * scale)) * 100;
-    const cropY = ((y1 - offsetY) / (imgH * scale)) * 100;
-    const cropW = ((x2 - x1) / (imgW * scale)) * 100;
-    const cropH = ((y2 - y1) / (imgH * scale)) * 100;
+    const cropX = ((x1 - offsetX) / (origW * scale)) * 100;
+    const cropY = ((y1 - offsetY) / (origH * scale)) * 100;
+    const cropW = ((x2 - x1) / (origW * scale)) * 100;
+    const cropH = ((y2 - y1) / (origH * scale)) * 100;
     
     // Ignorer les crops trop petits
     if (cropW < 5 || cropH < 5) {
@@ -849,6 +849,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
       return;
     }
     
+    // Ne pas reset transformedImage - le crop sera appliqué dessus
     setPhotos(prev => prev.map((p, i) => {
       if (i !== currentEditIndex) return p;
       return {
@@ -857,9 +858,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
           ...p.edit,
           crop: { x: cropX, y: cropY, width: cropW, height: cropH },
           needsRedetect: true
-        },
-        transformedImage: undefined,
-        transformedUrl: undefined
+        }
       };
     }));
     
@@ -876,15 +875,13 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     setCropEnd(null);
   }, []);
 
-  // v4.1: Supprimer le crop existant
+  // v4.6: Supprimer le crop existant (garder transformedImage si elle existe)
   const handleRemoveCrop = useCallback(() => {
     setPhotos(prev => prev.map((p, i) => {
       if (i !== currentEditIndex) return p;
       return {
         ...p,
-        edit: { ...p.edit, crop: null, needsRedetect: true },
-        transformedImage: undefined,
-        transformedUrl: undefined
+        edit: { ...p.edit, crop: null, needsRedetect: true }
       };
     }));
     addDebugLog("Crop supprimé");
@@ -962,7 +959,8 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
           transformedImage,
           transformedUrl,
           ...scales,
-          edit: { ...p.edit, needsRedetect: false }
+          // v4.6: Réinitialiser rotation et crop car maintenant intégrés dans transformedImage
+          edit: { rotation: 0, crop: null, needsRedetect: false }
         };
       }));
 
