@@ -553,6 +553,9 @@ export function CADGabaritCanvas({
   // Refs pour accéder aux images depuis les event handlers (évite stale closures)
   const backgroundImagesRef = useRef<BackgroundImage[]>([]);
   const markerLinksRef = useRef<ImageMarkerLink[]>([]);
+  // v7.47.4: Refs pour le mode étiré (évite stale closures dans handleKeyDown)
+  const stretchModeRef = useRef(false);
+  const selectedImageIdRef = useRef<string | null>(null);
 
   // === Marqueurs inter-photos ===
   const [markerLinks, setMarkerLinks] = useState<ImageMarkerLink[]>([]);
@@ -627,6 +630,15 @@ export function CADGabaritCanvas({
   useEffect(() => {
     markerLinksRef.current = markerLinks;
   }, [markerLinks]);
+
+  // v7.47.4: Synchroniser les refs pour le mode étiré
+  useEffect(() => {
+    stretchModeRef.current = stretchMode;
+  }, [stretchMode]);
+
+  useEffect(() => {
+    selectedImageIdRef.current = selectedImageId;
+  }, [selectedImageId]);
 
   // Surbrillance des formes fermées
   const [highlightOpacity, setHighlightOpacity] = useState(0.12);
@@ -14480,7 +14492,7 @@ export function CADGabaritCanvas({
           return;
         }
         // v7.47.4: Quitter le mode stretch
-        if (stretchMode) {
+        if (stretchModeRef.current) {
           setStretchMode(false);
           toast.info("Mode étiré désactivé");
           return;
@@ -14518,15 +14530,16 @@ export function CADGabaritCanvas({
       }
 
       // v7.47.4: Flèches pour ajuster l'échelle en mode stretch
-      if (stretchMode && selectedImageId && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      // Utiliser les refs pour éviter les stale closures
+      if (stretchModeRef.current && selectedImageIdRef.current && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown")) {
         e.preventDefault();
         
-        const img = backgroundImages.find((i) => i.id === selectedImageId);
+        const img = backgroundImagesRef.current.find((i) => i.id === selectedImageIdRef.current);
         if (!img) return;
 
         // Incrément de base : 0.1% (0.001)
         // Shift : 0.01% (0.0001) - très précis
-        // Ctrl : 1% (0.01) - plus rapide
+        // Ctrl/Cmd : 1% (0.01) - plus rapide
         let increment = 0.001;
         if (e.shiftKey) increment = 0.0001;
         if (e.ctrlKey || e.metaKey) increment = 0.01;
@@ -14546,16 +14559,17 @@ export function CADGabaritCanvas({
           newScaleY = Math.max(0.01, currentScaleY - increment);
         }
 
-        // Si Alt est enfoncé, appliquer le même changement aux deux axes
+        // Si Alt/Option est enfoncé, appliquer le même changement aux deux axes
         if (e.altKey) {
           const delta = (e.key === "ArrowLeft" || e.key === "ArrowDown") ? -increment : increment;
           newScaleX = Math.max(0.01, currentScaleX + delta);
           newScaleY = Math.max(0.01, currentScaleY + delta);
         }
 
+        const imgId = selectedImageIdRef.current;
         setBackgroundImages((prev) =>
           prev.map((i) =>
-            i.id === selectedImageId
+            i.id === imgId
               ? { ...i, scaleX: newScaleX, scaleY: newScaleY }
               : i,
           ),
@@ -14564,10 +14578,10 @@ export function CADGabaritCanvas({
       }
 
       // v7.47.4: + et - pour échelle uniforme (X et Y ensemble)
-      if (stretchMode && selectedImageId && (e.key === "+" || e.key === "=" || e.key === "-" || e.key === "_")) {
+      if (stretchModeRef.current && selectedImageIdRef.current && (e.key === "+" || e.key === "=" || e.key === "-" || e.key === "_")) {
         e.preventDefault();
         
-        const img = backgroundImages.find((i) => i.id === selectedImageId);
+        const img = backgroundImagesRef.current.find((i) => i.id === selectedImageIdRef.current);
         if (!img) return;
 
         let increment = 0.001;
@@ -14581,9 +14595,10 @@ export function CADGabaritCanvas({
         const newScaleX = Math.max(0.01, currentScaleX + delta);
         const newScaleY = Math.max(0.01, currentScaleY + delta);
 
+        const imgId = selectedImageIdRef.current;
         setBackgroundImages((prev) =>
           prev.map((i) =>
-            i.id === selectedImageId
+            i.id === imgId
               ? { ...i, scaleX: newScaleX, scaleY: newScaleY }
               : i,
           ),
@@ -14592,32 +14607,34 @@ export function CADGabaritCanvas({
       }
 
       // v7.47.4: R pour réinitialiser l'échelle à 100% (ou égaliser X et Y)
-      if (stretchMode && selectedImageId && (e.key === "r" || e.key === "R")) {
+      if (stretchModeRef.current && selectedImageIdRef.current && (e.key === "r" || e.key === "R")) {
         e.preventDefault();
         
-        const img = backgroundImages.find((i) => i.id === selectedImageId);
+        const img = backgroundImagesRef.current.find((i) => i.id === selectedImageIdRef.current);
         if (!img) return;
 
         const currentScaleX = img.scaleX ?? img.scale;
         const currentScaleY = img.scaleY ?? img.scale;
+        const imgId = selectedImageIdRef.current;
+        const baseScale = img.scale;
         
         if (e.shiftKey) {
           // Shift+R : Égaliser X et Y (moyenne)
           const avgScale = (currentScaleX + currentScaleY) / 2;
           setBackgroundImages((prev) =>
             prev.map((i) =>
-              i.id === selectedImageId
+              i.id === imgId
                 ? { ...i, scaleX: avgScale, scaleY: avgScale }
                 : i,
             ),
           );
           toast.success(`Échelle égalisée: ${(avgScale * 100).toFixed(2)}%`);
         } else {
-          // R seul : Réinitialiser à 100%
+          // R seul : Réinitialiser à l'échelle de base
           setBackgroundImages((prev) =>
             prev.map((i) =>
-              i.id === selectedImageId
-                ? { ...i, scaleX: img.scale, scaleY: img.scale }
+              i.id === imgId
+                ? { ...i, scaleX: baseScale, scaleY: baseScale }
                 : i,
             ),
           );
@@ -14902,7 +14919,7 @@ export function CADGabaritCanvas({
     showTransformGizmo,
     gizmoDrag, // Ajouté pour s'assurer que handleKeyDown est à jour
     textInput, // Pour fermer l'input texte avec Echap
-    // Note: gizmoDragRef utilisé aussi pour éviter stale closure
+    // v7.47.4: stretchModeRef et backgroundImagesRef utilisés (pas dans deps)
   ]);
 
   // === FONCTIONS DE CALIBRATION ===
