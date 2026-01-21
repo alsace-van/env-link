@@ -1,8 +1,13 @@
 // ============================================
 // COMPONENT: useOpenCVAruco
 // Détection ArUco 100% JavaScript (sans OpenCV)
-// VERSION: 18.3
+// VERSION: 19
 // ============================================
+//
+// CHANGELOG v19 (21/01/2026):
+// - Raffinement sub-pixel des coins (cornerSubPix)
+// - Meilleure précision de détection des coins
+// - Utilise les gradients (Sobel) pour trouver les vrais coins
 //
 // CHANGELOG v18.3 (20/01/2026):
 // - Tolérance par défaut à 0 (strict) pour éliminer faux positifs (ID 29)
@@ -138,7 +143,7 @@ export function useOpenCVAruco(
     const timer = setTimeout(() => {
       setIsLoaded(true);
       setIsLoading(false);
-      console.log("[ArUco v18] Pure JS detector ready - BALANCED MODE");
+      console.log("[ArUco v19] Pure JS detector ready - BALANCED MODE");
     }, 100);
     return () => clearTimeout(timer);
   }, []);
@@ -155,7 +160,7 @@ export function useOpenCVAruco(
       const w = image.width || (image as HTMLImageElement).naturalWidth;
       const h = image.height || (image as HTMLImageElement).naturalHeight;
 
-      console.log(`[ArUco v18] Detecting in ${w}x${h} image (tolerance=${tolerance})`);
+      console.log(`[ArUco v19] Detecting in ${w}x${h} image (tolerance=${tolerance})`);
 
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -176,7 +181,7 @@ export function useOpenCVAruco(
 
       const markers = findMarkersInImage(gray, canvas.width, canvas.height, scale, tolerance);
 
-      console.log(`[ArUco v18] Found ${markers.length} markers`);
+      console.log(`[ArUco v19] Found ${markers.length} markers`);
       return markers;
     },
     [isLoaded]
@@ -506,6 +511,106 @@ function orderCorners(corners: Point[]): Point[] {
   return result;
 }
 
+// v19: Raffinement sub-pixel des coins (cornerSubPix)
+// Utilise les gradients pour trouver la position précise des coins
+function refineCorners(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  corners: Point[],
+  windowSize: number = 5,
+  maxIterations: number = 10
+): Point[] {
+  const halfWin = Math.floor(windowSize / 2);
+  const refined: Point[] = [];
+
+  for (const corner of corners) {
+    let cx = corner.x;
+    let cy = corner.y;
+
+    // Itérer pour converger vers le vrai coin
+    for (let iter = 0; iter < maxIterations; iter++) {
+      let sumGx2 = 0, sumGy2 = 0, sumGxGy = 0;
+      let sumGx2X = 0, sumGy2Y = 0, sumGxGyX = 0, sumGxGyY = 0;
+
+      // Parcourir la fenêtre autour du coin actuel
+      for (let dy = -halfWin; dy <= halfWin; dy++) {
+        for (let dx = -halfWin; dx <= halfWin; dx++) {
+          const px = Math.round(cx) + dx;
+          const py = Math.round(cy) + dy;
+
+          // Vérifier les limites
+          if (px < 1 || px >= width - 1 || py < 1 || py >= height - 1) continue;
+
+          // Calculer les gradients (Sobel simplifié)
+          const gx = (
+            gray[(py - 1) * width + (px + 1)] - gray[(py - 1) * width + (px - 1)] +
+            2 * (gray[py * width + (px + 1)] - gray[py * width + (px - 1)]) +
+            gray[(py + 1) * width + (px + 1)] - gray[(py + 1) * width + (px - 1)]
+          ) / 8;
+
+          const gy = (
+            gray[(py + 1) * width + (px - 1)] - gray[(py - 1) * width + (px - 1)] +
+            2 * (gray[(py + 1) * width + px] - gray[(py - 1) * width + px]) +
+            gray[(py + 1) * width + (px + 1)] - gray[(py - 1) * width + (px + 1)]
+          ) / 8;
+
+          // Accumuler pour la matrice du système linéaire
+          sumGx2 += gx * gx;
+          sumGy2 += gy * gy;
+          sumGxGy += gx * gy;
+          sumGx2X += gx * gx * px;
+          sumGy2Y += gy * gy * py;
+          sumGxGyX += gx * gy * px;
+          sumGxGyY += gx * gy * py;
+        }
+      }
+
+      // Résoudre le système 2x2 pour trouver le nouveau centre
+      // [sumGx2   sumGxGy] [x]   [sumGx2X + sumGxGyY]
+      // [sumGxGy  sumGy2 ] [y] = [sumGxGyX + sumGy2Y]
+      const det = sumGx2 * sumGy2 - sumGxGy * sumGxGy;
+      
+      if (Math.abs(det) < 1e-6) break; // Matrice singulière
+
+      const bx = sumGx2X + sumGxGyY;
+      const by = sumGxGyX + sumGy2Y;
+
+      const newX = (sumGy2 * bx - sumGxGy * by) / det;
+      const newY = (sumGx2 * by - sumGxGy * bx) / det;
+
+      // Vérifier que le nouveau point est dans les limites
+      if (newX < 0 || newX >= width || newY < 0 || newY >= height) break;
+
+      // Vérifier la convergence
+      const deltaX = newX - cx;
+      const deltaY = newY - cy;
+      
+      // Limiter le déplacement à halfWin pour éviter les sauts
+      const maxMove = halfWin;
+      const clampedDeltaX = Math.max(-maxMove, Math.min(maxMove, deltaX));
+      const clampedDeltaY = Math.max(-maxMove, Math.min(maxMove, deltaY));
+      
+      cx += clampedDeltaX;
+      cy += clampedDeltaY;
+
+      // Si convergé (déplacement < 0.01 pixel), arrêter
+      if (Math.abs(clampedDeltaX) < 0.01 && Math.abs(clampedDeltaY) < 0.01) break;
+    }
+
+    // Vérifier que le coin raffiné n'est pas trop loin de l'original
+    const maxDrift = windowSize * 1.5;
+    if (Math.abs(cx - corner.x) > maxDrift || Math.abs(cy - corner.y) > maxDrift) {
+      // Garder l'original si le raffinement a divergé
+      refined.push({ x: corner.x, y: corner.y });
+    } else {
+      refined.push({ x: cx, y: cy });
+    }
+  }
+
+  return refined;
+}
+
 // ====== MARKER DETECTION v18.2 - TOLÉRANCE PARAMÉTRABLE ======
 
 function findMarkersInImage(
@@ -530,7 +635,7 @@ function findMarkersInImage(
   const minArea = Math.pow(minDim * 0.018, 2);
   const maxArea = Math.pow(minDim * 0.38, 2);
 
-  console.log(`[ArUco v18] Area: ${minArea.toFixed(0)}-${maxArea.toFixed(0)}, conf>=${MIN_CONFIDENCE}, tolerance=${tolerance}`);
+  console.log(`[ArUco v19] Area: ${minArea.toFixed(0)}-${maxArea.toFixed(0)}, conf>=${MIN_CONFIDENCE}, tolerance=${tolerance}`);
 
   let rawDetections = 0;
   let rejectedLowConfidence = 0;
@@ -581,12 +686,15 @@ function findMarkersInImage(
           continue;
         }
 
+        // v19: Raffiner les coins pour une précision sub-pixel
+        const refinedCorners = refineCorners(gray, width, height, ordered, 7, 15);
+
         const center = {
-          x: ordered.reduce((s, c) => s + c.x, 0) / 4,
-          y: ordered.reduce((s, c) => s + c.y, 0) / 4,
+          x: refinedCorners.reduce((s, c) => s + c.x, 0) / 4,
+          y: refinedCorners.reduce((s, c) => s + c.y, 0) / 4,
         };
 
-        const scaledCorners = ordered.map((c) => ({
+        const scaledCorners = refinedCorners.map((c) => ({
           x: c.x / scale,
           y: c.y / scale,
         }));
@@ -596,7 +704,12 @@ function findMarkersInImage(
           y: center.y / scale,
         };
 
-        const markerSize = ((side1 + side2 + side3 + side4) / 4) / scale;
+        // Recalculer la taille avec les coins raffinés
+        const refinedSide1 = distance(refinedCorners[0], refinedCorners[1]);
+        const refinedSide2 = distance(refinedCorners[1], refinedCorners[2]);
+        const refinedSide3 = distance(refinedCorners[2], refinedCorners[3]);
+        const refinedSide4 = distance(refinedCorners[3], refinedCorners[0]);
+        const markerSize = ((refinedSide1 + refinedSide2 + refinedSide3 + refinedSide4) / 4) / scale;
 
         const newMarker: ArucoMarker = {
           id: result.id,
@@ -614,13 +727,13 @@ function findMarkersInImage(
           
           if (newConfidence > existingConfidence) {
             markersByID.set(result.id, newMarker);
-            console.log(`[ArUco v18] ↻ ID=${result.id} (${existingConfidence.toFixed(2)}→${newConfidence.toFixed(2)})`);
+            console.log(`[ArUco v19] ↻ ID=${result.id} (${existingConfidence.toFixed(2)}→${newConfidence.toFixed(2)})`);
           } else {
             duplicatesSkipped++;
           }
         } else {
           markersByID.set(result.id, newMarker);
-          console.log(`[ArUco v18] ✓ ID=${result.id} (conf=${result.confidence.toFixed(2)})`);
+          console.log(`[ArUco v19] ✓ ID=${result.id} (conf=${result.confidence.toFixed(2)})`);
         }
       }
     }
@@ -629,9 +742,9 @@ function findMarkersInImage(
   const markers = Array.from(markersByID.values());
   markers.sort((a, b) => a.id - b.id);
 
-  console.log(`[ArUco v18] === RÉSUMÉ ===`);
-  console.log(`[ArUco v18] Brut: ${rawDetections}, Rejetés: ${rejectedLowConfidence}, Doublons: ${duplicatesSkipped}`);
-  console.log(`[ArUco v18] Valides: ${markers.length} → IDs: [${markers.map(m => m.id).join(', ')}]`);
+  console.log(`[ArUco v19] === RÉSUMÉ ===`);
+  console.log(`[ArUco v19] Brut: ${rawDetections}, Rejetés: ${rejectedLowConfidence}, Doublons: ${duplicatesSkipped}`);
+  console.log(`[ArUco v19] Valides: ${markers.length} → IDs: [${markers.map(m => m.id).join(', ')}]`);
   
   return markers;
 }
