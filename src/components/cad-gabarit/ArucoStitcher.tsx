@@ -1,8 +1,14 @@
 // ============================================
 // COMPONENT: ArucoStitcher
 // Assemblage de photos via markers ArUco partagés
-// VERSION: 4.0
+// VERSION: 4.1
 // ============================================
+//
+// CHANGELOG v4.1 (21/01/2026):
+// - NOUVEAU: Outil de recadrage (crop) interactif
+// - Dessiner un rectangle sur l'image pour recadrer
+// - Prévisualisation avec zone assombrie
+// - Boutons Valider/Annuler pour le crop
 //
 // CHANGELOG v4.0 (21/01/2026):
 // - NOUVEAU: Mode édition par photo avant assemblage
@@ -51,6 +57,8 @@ import {
   Check,
   X,
   Eye,
+  Crop,
+  Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useOpenCVAruco, ArucoMarker } from "./useOpenCVAruco";
@@ -143,6 +151,21 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
   // v4.0: Mode édition
   const [editMode, setEditMode] = useState<boolean>(false);
   const [currentEditIndex, setCurrentEditIndex] = useState<number>(0);
+
+  // v4.1: Mode crop interactif
+  const [isCropMode, setIsCropMode] = useState<boolean>(false);
+  const [cropStart, setCropStart] = useState<{ x: number; y: number } | null>(null);
+  const [cropEnd, setCropEnd] = useState<{ x: number; y: number } | null>(null);
+  const [isDraggingCrop, setIsDraggingCrop] = useState<boolean>(false);
+
+  // Pour le mapping coordonnées écran <-> image
+  const [canvasMapping, setCanvasMapping] = useState<{
+    offsetX: number;
+    offsetY: number;
+    scale: number;
+    imgW: number;
+    imgH: number;
+  } | null>(null);
 
   const { isLoaded, isLoading, error: opencvError, detectMarkers } = useOpenCVAruco();
 
@@ -309,7 +332,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     return { image: newImage, url };
   }, []);
 
-  // v4.0: Dessiner la préview avec markers
+  // v4.0: Dessiner la préview avec markers et crop
   const drawPreview = useCallback(() => {
     const canvas = previewCanvasRef.current;
     if (!canvas || photos.length === 0 || currentEditIndex >= photos.length) return;
@@ -338,6 +361,9 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     const offsetX = (maxWidth - drawW) / 2;
     const offsetY = (maxHeight - drawH) / 2;
 
+    // Stocker le mapping pour les handlers de crop
+    setCanvasMapping({ offsetX, offsetY, scale, imgW, imgH });
+
     // Clear
     ctx.fillStyle = '#1a1a2e';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -356,66 +382,226 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     }
     ctx.restore();
 
-    // Dessiner les markers détectés
-    const markers = photo.markers;
-    
-    for (const marker of markers) {
-      let mx = marker.center.x;
-      let my = marker.center.y;
-      
-      // Transformer les coordonnées selon la rotation actuelle
-      if (!photo.transformedImage) {
-        const imgCx = photo.image.width / 2;
-        const imgCy = photo.image.height / 2;
-        const rad = (edit.rotation * Math.PI) / 180;
-        const cos = Math.cos(rad);
-        const sin = Math.sin(rad);
-        const dx = mx - imgCx;
-        const dy = my - imgCy;
-        mx = imgCx + dx * cos - dy * sin;
-        my = imgCy + dx * sin + dy * cos;
-        
-        // Ajuster pour la nouvelle taille si rotation 90/270
-        if (edit.rotation === 90 || edit.rotation === -270) {
-          [mx, my] = [photo.image.height - my + (photo.image.width - photo.image.height) / 2, mx - (photo.image.width - photo.image.height) / 2];
-        } else if (edit.rotation === 270 || edit.rotation === -90) {
-          [mx, my] = [my - (photo.image.width - photo.image.height) / 2, photo.image.width - mx + (photo.image.width - photo.image.height) / 2];
+    // v4.1: Dessiner le crop existant ou en cours
+    const cropToDraw = (isCropMode && cropStart && cropEnd) 
+      ? { 
+          x: Math.min(cropStart.x, cropEnd.x),
+          y: Math.min(cropStart.y, cropEnd.y),
+          w: Math.abs(cropEnd.x - cropStart.x),
+          h: Math.abs(cropEnd.y - cropStart.y)
         }
-      }
+      : edit.crop 
+        ? {
+            x: offsetX + (edit.crop.x / 100) * imgW * scale,
+            y: offsetY + (edit.crop.y / 100) * imgH * scale,
+            w: (edit.crop.width / 100) * imgW * scale,
+            h: (edit.crop.height / 100) * imgH * scale
+          }
+        : null;
 
-      const screenX = offsetX + mx * scale;
-      const screenY = offsetY + my * scale;
+    if (cropToDraw && cropToDraw.w > 5 && cropToDraw.h > 5) {
+      // Assombrir l'extérieur du crop
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      // Haut
+      ctx.fillRect(offsetX, offsetY, drawW, cropToDraw.y - offsetY);
+      // Bas
+      ctx.fillRect(offsetX, cropToDraw.y + cropToDraw.h, drawW, (offsetY + drawH) - (cropToDraw.y + cropToDraw.h));
+      // Gauche
+      ctx.fillRect(offsetX, cropToDraw.y, cropToDraw.x - offsetX, cropToDraw.h);
+      // Droite
+      ctx.fillRect(cropToDraw.x + cropToDraw.w, cropToDraw.y, (offsetX + drawW) - (cropToDraw.x + cropToDraw.w), cropToDraw.h);
 
-      // Cercle pour le marker
-      ctx.beginPath();
-      ctx.arc(screenX, screenY, 8, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
-      ctx.fill();
-      ctx.strokeStyle = '#00ff00';
+      // Bordure du crop
+      ctx.strokeStyle = '#ff6600';
       ctx.lineWidth = 2;
-      ctx.stroke();
+      ctx.setLineDash([5, 5]);
+      ctx.strokeRect(cropToDraw.x, cropToDraw.y, cropToDraw.w, cropToDraw.h);
+      ctx.setLineDash([]);
 
-      // Label
-      ctx.font = 'bold 11px monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      
-      const label = `#${marker.id}`;
-      const tw = ctx.measureText(label).width;
-      
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-      ctx.fillRect(screenX - tw / 2 - 3, screenY - 18, tw + 6, 14);
-      
-      ctx.fillStyle = '#00ff00';
-      ctx.fillText(label, screenX, screenY - 11);
+      // Poignées aux coins
+      const handleSize = 8;
+      ctx.fillStyle = '#ff6600';
+      ctx.fillRect(cropToDraw.x - handleSize/2, cropToDraw.y - handleSize/2, handleSize, handleSize);
+      ctx.fillRect(cropToDraw.x + cropToDraw.w - handleSize/2, cropToDraw.y - handleSize/2, handleSize, handleSize);
+      ctx.fillRect(cropToDraw.x - handleSize/2, cropToDraw.y + cropToDraw.h - handleSize/2, handleSize, handleSize);
+      ctx.fillRect(cropToDraw.x + cropToDraw.w - handleSize/2, cropToDraw.y + cropToDraw.h - handleSize/2, handleSize, handleSize);
     }
-  }, [photos, currentEditIndex]);
+
+    // Dessiner les markers détectés (sauf en mode crop)
+    if (!isCropMode) {
+      const markers = photo.markers;
+      
+      for (const marker of markers) {
+        let mx = marker.center.x;
+        let my = marker.center.y;
+        
+        // Transformer les coordonnées selon la rotation actuelle
+        if (!photo.transformedImage) {
+          const imgCx = photo.image.width / 2;
+          const imgCy = photo.image.height / 2;
+          const rad = (edit.rotation * Math.PI) / 180;
+          const cos = Math.cos(rad);
+          const sin = Math.sin(rad);
+          const dx = mx - imgCx;
+          const dy = my - imgCy;
+          mx = imgCx + dx * cos - dy * sin;
+          my = imgCy + dx * sin + dy * cos;
+          
+          if (edit.rotation === 90 || edit.rotation === -270) {
+            [mx, my] = [photo.image.height - my + (photo.image.width - photo.image.height) / 2, mx - (photo.image.width - photo.image.height) / 2];
+          } else if (edit.rotation === 270 || edit.rotation === -90) {
+            [mx, my] = [my - (photo.image.width - photo.image.height) / 2, photo.image.width - mx + (photo.image.width - photo.image.height) / 2];
+          }
+        }
+
+        const screenX = offsetX + mx * scale;
+        const screenY = offsetY + my * scale;
+
+        ctx.beginPath();
+        ctx.arc(screenX, screenY, 8, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 255, 0, 0.3)';
+        ctx.fill();
+        ctx.strokeStyle = '#00ff00';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.font = 'bold 11px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        const label = `#${marker.id}`;
+        const tw = ctx.measureText(label).width;
+        
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(screenX - tw / 2 - 3, screenY - 18, tw + 6, 14);
+        
+        ctx.fillStyle = '#00ff00';
+        ctx.fillText(label, screenX, screenY - 11);
+      }
+    }
+
+    // Indicateur mode crop
+    if (isCropMode) {
+      ctx.fillStyle = 'rgba(255, 102, 0, 0.8)';
+      ctx.fillRect(10, 10, 120, 24);
+      ctx.fillStyle = 'white';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('✂️ Mode Recadrage', 16, 22);
+    }
+  }, [photos, currentEditIndex, isCropMode, cropStart, cropEnd]);
+
+  // v4.1: Handlers pour le crop
+  const handleCropMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isCropMode || !canvasMapping) return;
+    
+    const canvas = previewCanvasRef.current;
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Vérifier que le clic est dans l'image
+    const { offsetX, offsetY, scale, imgW, imgH } = canvasMapping;
+    if (x >= offsetX && x <= offsetX + imgW * scale && 
+        y >= offsetY && y <= offsetY + imgH * scale) {
+      setCropStart({ x, y });
+      setCropEnd({ x, y });
+      setIsDraggingCrop(true);
+    }
+  }, [isCropMode, canvasMapping]);
+
+  const handleCropMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDraggingCrop || !canvasMapping) return;
+    
+    const canvas = previewCanvasRef.current;
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const { offsetX, offsetY, scale, imgW, imgH } = canvasMapping;
+    
+    // Contraindre aux limites de l'image
+    let x = Math.max(offsetX, Math.min(e.clientX - rect.left, offsetX + imgW * scale));
+    let y = Math.max(offsetY, Math.min(e.clientY - rect.top, offsetY + imgH * scale));
+    
+    setCropEnd({ x, y });
+  }, [isDraggingCrop, canvasMapping]);
+
+  const handleCropMouseUp = useCallback(() => {
+    setIsDraggingCrop(false);
+  }, []);
+
+  // v4.1: Confirmer le crop
+  const handleConfirmCrop = useCallback(() => {
+    if (!cropStart || !cropEnd || !canvasMapping) return;
+    
+    const { offsetX, offsetY, scale, imgW, imgH } = canvasMapping;
+    
+    // Convertir les coordonnées écran en pourcentages de l'image
+    const x1 = Math.min(cropStart.x, cropEnd.x);
+    const y1 = Math.min(cropStart.y, cropEnd.y);
+    const x2 = Math.max(cropStart.x, cropEnd.x);
+    const y2 = Math.max(cropStart.y, cropEnd.y);
+    
+    const cropX = ((x1 - offsetX) / (imgW * scale)) * 100;
+    const cropY = ((y1 - offsetY) / (imgH * scale)) * 100;
+    const cropW = ((x2 - x1) / (imgW * scale)) * 100;
+    const cropH = ((y2 - y1) / (imgH * scale)) * 100;
+    
+    // Ignorer les crops trop petits
+    if (cropW < 5 || cropH < 5) {
+      toast.error("Zone de recadrage trop petite");
+      return;
+    }
+    
+    setPhotos(prev => prev.map((p, i) => {
+      if (i !== currentEditIndex) return p;
+      return {
+        ...p,
+        edit: {
+          ...p.edit,
+          crop: { x: cropX, y: cropY, width: cropW, height: cropH },
+          needsRedetect: true
+        },
+        transformedImage: undefined,
+        transformedUrl: undefined
+      };
+    }));
+    
+    setIsCropMode(false);
+    setCropStart(null);
+    setCropEnd(null);
+    addDebugLog(`Crop: ${cropW.toFixed(0)}% × ${cropH.toFixed(0)}%`);
+  }, [cropStart, cropEnd, canvasMapping, currentEditIndex, addDebugLog]);
+
+  // v4.1: Annuler le crop
+  const handleCancelCrop = useCallback(() => {
+    setIsCropMode(false);
+    setCropStart(null);
+    setCropEnd(null);
+  }, []);
+
+  // v4.1: Supprimer le crop existant
+  const handleRemoveCrop = useCallback(() => {
+    setPhotos(prev => prev.map((p, i) => {
+      if (i !== currentEditIndex) return p;
+      return {
+        ...p,
+        edit: { ...p.edit, crop: null, needsRedetect: true },
+        transformedImage: undefined,
+        transformedUrl: undefined
+      };
+    }));
+    addDebugLog("Crop supprimé");
+  }, [currentEditIndex, addDebugLog]);
 
   useEffect(() => {
     if (editMode) {
       drawPreview();
     }
-  }, [editMode, drawPreview, photos, currentEditIndex]);
+  }, [editMode, drawPreview, photos, currentEditIndex, isCropMode, cropStart, cropEnd]);
 
   // v4.0: Handlers de rotation
   const handleRotate = useCallback((degrees: number) => {
@@ -1002,7 +1188,11 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
                   ref={previewCanvasRef}
                   width={700}
                   height={450}
-                  className="w-full h-full"
+                  className={`w-full h-full ${isCropMode ? 'cursor-crosshair' : ''}`}
+                  onMouseDown={handleCropMouseDown}
+                  onMouseMove={handleCropMouseMove}
+                  onMouseUp={handleCropMouseUp}
+                  onMouseLeave={handleCropMouseUp}
                 />
                 
                 {currentPhoto.isProcessing && (
@@ -1012,17 +1202,34 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
                 )}
 
                 <div className="absolute top-2 left-2 flex gap-2">
-                  {currentPhoto.markers.length > 0 && (
+                  {currentPhoto.markers.length > 0 && !isCropMode && (
                     <span className="bg-green-600 text-white text-xs px-2 py-1 rounded">
                       {currentPhoto.markers.length} markers
                     </span>
                   )}
-                  {currentPhoto.edit.rotation !== 0 && (
+                  {currentPhoto.edit.rotation !== 0 && !isCropMode && (
                     <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded">
                       {currentPhoto.edit.rotation}°
                     </span>
                   )}
+                  {currentPhoto.edit.crop && !isCropMode && (
+                    <span className="bg-orange-600 text-white text-xs px-2 py-1 rounded">
+                      Crop
+                    </span>
+                  )}
                 </div>
+
+                {/* Boutons de confirmation crop */}
+                {isCropMode && cropStart && cropEnd && Math.abs(cropEnd.x - cropStart.x) > 10 && (
+                  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2">
+                    <Button size="sm" variant="default" onClick={handleConfirmCrop} className="bg-orange-600 hover:bg-orange-700">
+                      <Check className="h-4 w-4 mr-1" /> Valider
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleCancelCrop}>
+                      <X className="h-4 w-4 mr-1" /> Annuler
+                    </Button>
+                  </div>
+                )}
               </div>
 
               {/* Navigation */}
@@ -1056,10 +1263,10 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
               <div className="p-3 bg-muted rounded-lg">
                 <Label className="text-xs font-medium mb-2 block">Rotation</Label>
                 <div className="grid grid-cols-2 gap-2">
-                  <Button size="sm" variant="outline" onClick={() => handleRotate(-90)}>
+                  <Button size="sm" variant="outline" onClick={() => handleRotate(-90)} disabled={isCropMode}>
                     <RotateCcw className="h-4 w-4 mr-1" /> -90°
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => handleRotate(90)}>
+                  <Button size="sm" variant="outline" onClick={() => handleRotate(90)} disabled={isCropMode}>
                     <RotateCw className="h-4 w-4 mr-1" /> +90°
                   </Button>
                 </div>
@@ -1068,17 +1275,54 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
                 </div>
               </div>
 
+              {/* v4.1: Section Recadrage */}
+              <div className="p-3 bg-muted rounded-lg">
+                <Label className="text-xs font-medium mb-2 block">Recadrage</Label>
+                {!isCropMode ? (
+                  <div className="space-y-2">
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="w-full"
+                      onClick={() => setIsCropMode(true)}
+                    >
+                      <Crop className="h-4 w-4 mr-1" /> 
+                      {currentPhoto.edit.crop ? 'Modifier' : 'Recadrer'}
+                    </Button>
+                    {currentPhoto.edit.crop && (
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        className="w-full text-orange-600"
+                        onClick={handleRemoveCrop}
+                      >
+                        <X className="h-4 w-4 mr-1" /> Supprimer crop
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-orange-600">
+                    Dessinez un rectangle sur l'image
+                  </p>
+                )}
+                {currentPhoto.edit.crop && !isCropMode && (
+                  <div className="text-xs text-muted-foreground mt-2">
+                    Zone: {currentPhoto.edit.crop.width.toFixed(0)}% × {currentPhoto.edit.crop.height.toFixed(0)}%
+                  </div>
+                )}
+              </div>
+
               <div className="p-3 bg-muted rounded-lg space-y-2">
                 <Button 
                   size="sm" variant="outline" className="w-full"
                   onClick={handleApplyAndRedetect}
-                  disabled={currentPhoto.isProcessing || currentPhoto.edit.rotation === 0}
+                  disabled={currentPhoto.isProcessing || isCropMode || (currentPhoto.edit.rotation === 0 && !currentPhoto.edit.crop)}
                 >
                   <RefreshCw className={`h-4 w-4 mr-1 ${currentPhoto.isProcessing ? 'animate-spin' : ''}`} />
                   Appliquer & Détecter
                 </Button>
                 
-                <Button size="sm" variant="ghost" className="w-full" onClick={handleResetEdit}>
+                <Button size="sm" variant="ghost" className="w-full" onClick={handleResetEdit} disabled={isCropMode}>
                   <X className="h-4 w-4 mr-1" /> Réinitialiser
                 </Button>
               </div>
@@ -1098,7 +1342,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
                 )}
               </div>
 
-              <Button size="sm" variant="destructive" className="w-full" onClick={() => handleRemovePhoto(currentPhoto.id)}>
+              <Button size="sm" variant="destructive" className="w-full" onClick={() => handleRemovePhoto(currentPhoto.id)} disabled={isCropMode}>
                 <Trash2 className="h-4 w-4 mr-1" /> Supprimer
               </Button>
 
