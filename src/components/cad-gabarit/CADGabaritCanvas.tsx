@@ -3729,6 +3729,28 @@ export function CADGabaritCanvas({
         ctx.setLineDash([5, 5]);
         ctx.strokeRect(leftX, topY, rightX - leftX, bottomY - topY);
 
+        // v7.47.4: Afficher l'échelle actuelle et les raccourcis clavier
+        ctx.setLineDash([]);
+        const scaleXPercent = (effectiveScaleX * 100).toFixed(2);
+        const scaleYPercent = (effectiveScaleY * 100).toFixed(2);
+        
+        // Fond semi-transparent pour le texte
+        ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+        const infoX = leftX;
+        const infoY = topY - 75;
+        ctx.fillRect(infoX, infoY, 240, 70);
+        
+        // Texte
+        ctx.fillStyle = "#FFFFFF";
+        ctx.font = "bold 12px monospace";
+        ctx.fillText(`X: ${scaleXPercent}%   Y: ${scaleYPercent}%`, infoX + 8, infoY + 16);
+        
+        ctx.font = "11px sans-serif";
+        ctx.fillStyle = "#AAAAAA";
+        ctx.fillText("←→ X  ↑↓ Y  +/- X+Y  Alt: sync", infoX + 8, infoY + 32);
+        ctx.fillText("Shift: ×0.01%  Ctrl: ×1%", infoX + 8, infoY + 46);
+        ctx.fillText("R: reset  Shift+R: égaliser  Esc: quitter", infoX + 8, infoY + 60);
+
         ctx.restore();
       }
     }
@@ -14457,6 +14479,12 @@ export function CADGabaritCanvas({
           setTextInput(null);
           return;
         }
+        // v7.47.4: Quitter le mode stretch
+        if (stretchMode) {
+          setStretchMode(false);
+          toast.info("Mode étiré désactivé");
+          return;
+        }
         // Annuler le drag du gizmo
         if (gizmoDrag) {
           // Restaurer les positions initiales
@@ -14487,6 +14515,115 @@ export function CADGabaritCanvas({
           setTempGeometry(null);
           setActiveTool("select");
         }
+      }
+
+      // v7.47.4: Flèches pour ajuster l'échelle en mode stretch
+      if (stretchMode && selectedImageId && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        e.preventDefault();
+        
+        const img = backgroundImages.find((i) => i.id === selectedImageId);
+        if (!img) return;
+
+        // Incrément de base : 0.1% (0.001)
+        // Shift : 0.01% (0.0001) - très précis
+        // Ctrl : 1% (0.01) - plus rapide
+        let increment = 0.001;
+        if (e.shiftKey) increment = 0.0001;
+        if (e.ctrlKey || e.metaKey) increment = 0.01;
+
+        const currentScaleX = img.scaleX ?? img.scale;
+        const currentScaleY = img.scaleY ?? img.scale;
+        let newScaleX = currentScaleX;
+        let newScaleY = currentScaleY;
+
+        if (e.key === "ArrowLeft") {
+          newScaleX = Math.max(0.01, currentScaleX - increment);
+        } else if (e.key === "ArrowRight") {
+          newScaleX = currentScaleX + increment;
+        } else if (e.key === "ArrowUp") {
+          newScaleY = currentScaleY + increment;
+        } else if (e.key === "ArrowDown") {
+          newScaleY = Math.max(0.01, currentScaleY - increment);
+        }
+
+        // Si Alt est enfoncé, appliquer le même changement aux deux axes
+        if (e.altKey) {
+          const delta = (e.key === "ArrowLeft" || e.key === "ArrowDown") ? -increment : increment;
+          newScaleX = Math.max(0.01, currentScaleX + delta);
+          newScaleY = Math.max(0.01, currentScaleY + delta);
+        }
+
+        setBackgroundImages((prev) =>
+          prev.map((i) =>
+            i.id === selectedImageId
+              ? { ...i, scaleX: newScaleX, scaleY: newScaleY }
+              : i,
+          ),
+        );
+        return;
+      }
+
+      // v7.47.4: + et - pour échelle uniforme (X et Y ensemble)
+      if (stretchMode && selectedImageId && (e.key === "+" || e.key === "=" || e.key === "-" || e.key === "_")) {
+        e.preventDefault();
+        
+        const img = backgroundImages.find((i) => i.id === selectedImageId);
+        if (!img) return;
+
+        let increment = 0.001;
+        if (e.shiftKey) increment = 0.0001;
+        if (e.ctrlKey || e.metaKey) increment = 0.01;
+
+        const currentScaleX = img.scaleX ?? img.scale;
+        const currentScaleY = img.scaleY ?? img.scale;
+        
+        const delta = (e.key === "+" || e.key === "=") ? increment : -increment;
+        const newScaleX = Math.max(0.01, currentScaleX + delta);
+        const newScaleY = Math.max(0.01, currentScaleY + delta);
+
+        setBackgroundImages((prev) =>
+          prev.map((i) =>
+            i.id === selectedImageId
+              ? { ...i, scaleX: newScaleX, scaleY: newScaleY }
+              : i,
+          ),
+        );
+        return;
+      }
+
+      // v7.47.4: R pour réinitialiser l'échelle à 100% (ou égaliser X et Y)
+      if (stretchMode && selectedImageId && (e.key === "r" || e.key === "R")) {
+        e.preventDefault();
+        
+        const img = backgroundImages.find((i) => i.id === selectedImageId);
+        if (!img) return;
+
+        const currentScaleX = img.scaleX ?? img.scale;
+        const currentScaleY = img.scaleY ?? img.scale;
+        
+        if (e.shiftKey) {
+          // Shift+R : Égaliser X et Y (moyenne)
+          const avgScale = (currentScaleX + currentScaleY) / 2;
+          setBackgroundImages((prev) =>
+            prev.map((i) =>
+              i.id === selectedImageId
+                ? { ...i, scaleX: avgScale, scaleY: avgScale }
+                : i,
+            ),
+          );
+          toast.success(`Échelle égalisée: ${(avgScale * 100).toFixed(2)}%`);
+        } else {
+          // R seul : Réinitialiser à 100%
+          setBackgroundImages((prev) =>
+            prev.map((i) =>
+              i.id === selectedImageId
+                ? { ...i, scaleX: img.scale, scaleY: img.scale }
+                : i,
+            ),
+          );
+          toast.success("Échelle réinitialisée");
+        }
+        return;
       }
 
       // Supprimer
