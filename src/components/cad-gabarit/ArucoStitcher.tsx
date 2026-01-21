@@ -1,8 +1,13 @@
 // ============================================
 // COMPONENT: ArucoStitcher
 // Assemblage de photos via markers ArUco partagés
-// VERSION: 3.3
+// VERSION: 3.4
 // ============================================
+//
+// CHANGELOG v3.4 (21/01/2026):
+// - FIX CRITIQUE: Utilise pxPerMmX et pxPerMmY séparément
+// - Conversion pixels→mm avec échelles X et Y distinctes
+// - Corrige le décalage de 50-60mm lors de l'assemblage
 //
 // CHANGELOG v3.3 (21/01/2026):
 // - FIX: Rotation auto OFF = toutes les photos à rotation 0
@@ -76,7 +81,9 @@ interface PhotoWithMarkers {
   markers: ArucoMarker[];
   isProcessing: boolean;
   error?: string;
-  pixelsPerMm: number;
+  pixelsPerMm: number; // Moyenne (rétrocompatibilité)
+  pixelsPerMmX: number; // v3.4: Échelle horizontale
+  pixelsPerMmY: number; // v3.4: Échelle verticale
 }
 
 interface MarkerMatch {
@@ -133,15 +140,26 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
     }
   }, [isOpen]);
 
-  const calculatePhotoScale = (markers: ArucoMarker[], markerSizeMm: number): number => {
-    if (markers.length === 0) return 0;
+  // v3.4: Calculer les échelles X et Y séparément
+  const calculatePhotoScale = (markers: ArucoMarker[], markerSizeMm: number): { 
+    pixelsPerMm: number; 
+    pixelsPerMmX: number; 
+    pixelsPerMmY: number; 
+  } => {
+    if (markers.length === 0) return { pixelsPerMm: 0, pixelsPerMmX: 0, pixelsPerMmY: 0 };
 
-    let totalPixelsPerMm = 0;
+    let totalPxPerMmX = 0;
+    let totalPxPerMmY = 0;
     for (const marker of markers) {
-      const sizePixels = (marker.size.width + marker.size.height) / 2;
-      totalPixelsPerMm += sizePixels / markerSizeMm;
+      // v3.4: Utiliser width pour X et height pour Y
+      totalPxPerMmX += marker.size.width / markerSizeMm;
+      totalPxPerMmY += marker.size.height / markerSizeMm;
     }
-    return totalPixelsPerMm / markers.length;
+    const pixelsPerMmX = totalPxPerMmX / markers.length;
+    const pixelsPerMmY = totalPxPerMmY / markers.length;
+    const pixelsPerMm = (pixelsPerMmX + pixelsPerMmY) / 2; // Moyenne pour rétrocompatibilité
+    
+    return { pixelsPerMm, pixelsPerMmX, pixelsPerMmY };
   };
 
   // v2.2: Détecter les doublons (100% markers identiques + positions similaires)
@@ -228,16 +246,21 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
         const startTime = performance.now();
         const markers = await detectMarkers(photo.image, { tolerance });
         const elapsed = performance.now() - startTime;
-        const pixelsPerMm = calculatePhotoScale(markers, markerSizeNum);
+        const scales = calculatePhotoScale(markers, markerSizeNum);
 
         addDebugLog(`${photo.file.name}: ${markers.length} markers en ${elapsed.toFixed(0)}ms`);
         if (markers.length > 0) {
           addDebugLog(`  IDs: ${markers.map(m => `#${m.id}`).join(', ')}`);
+          // v3.4: Log si distorsion détectée
+          const distortion = Math.abs(scales.pixelsPerMmX - scales.pixelsPerMmY) / scales.pixelsPerMm * 100;
+          if (distortion > 1) {
+            addDebugLog(`  ⚠️ Distorsion ${distortion.toFixed(1)}% (X=${scales.pixelsPerMmX.toFixed(2)}, Y=${scales.pixelsPerMmY.toFixed(2)})`);
+          }
         }
 
         setPhotos(prev => prev.map(p =>
           p.id === photo.id
-            ? { ...p, markers, isProcessing: false, pixelsPerMm, error: undefined }
+            ? { ...p, markers, isProcessing: false, ...scales, error: undefined }
             : p
         ));
       } catch (err) {
@@ -262,15 +285,17 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
     toast.success(`Détection relancée (tolérance=${tolerance})`);
   }, [isLoaded, photos, tolerance, markerSize, detectMarkers, addDebugLog, calculatePhotoScale, detectDuplicates]);
 
-  // v3.1: Calculer l'angle de rotation entre deux photos
+  // v3.4: Calculer l'angle de rotation entre deux photos avec échelles X/Y séparées
   // - Seuil minimum: si < 2°, considéré comme 0 (pas de rotation)
   // - Cohérence: si écart-type > 5°, rotation ignorée (données incohérentes)
   // - Limite max: ±15°
   const calculateRotation = (
     photo1Markers: ArucoMarker[],
     photo2Markers: ArucoMarker[],
-    photo1PixelsPerMm: number,
-    photo2PixelsPerMm: number
+    photo1PxPerMmX: number,
+    photo1PxPerMmY: number,
+    photo2PxPerMmX: number,
+    photo2PxPerMmY: number
   ): number => {
     const MAX_ROTATION = 15; // Limite max
     const MIN_ROTATION = 2; // Seuil minimum (en dessous = 0)
@@ -282,10 +307,11 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
     for (const m1 of photo1Markers) {
       const m2 = photo2Markers.find(m => m.id === m1.id);
       if (m2) {
+        // v3.4: Utiliser échelles X et Y séparées
         commonMarkers.push({
           id: m1.id,
-          p1: { x: m1.center.x / photo1PixelsPerMm, y: m1.center.y / photo1PixelsPerMm },
-          p2: { x: m2.center.x / photo2PixelsPerMm, y: m2.center.y / photo2PixelsPerMm },
+          p1: { x: m1.center.x / photo1PxPerMmX, y: m1.center.y / photo1PxPerMmY },
+          p2: { x: m2.center.x / photo2PxPerMmX, y: m2.center.y / photo2PxPerMmY },
         });
       }
     }
@@ -437,6 +463,8 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
         markers: [],
         isProcessing: true,
         pixelsPerMm: 0,
+        pixelsPerMmX: 0, // v3.4
+        pixelsPerMmY: 0, // v3.4
       });
     }
 
@@ -449,16 +477,21 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
         // v2.2: Utiliser la tolérance configurée
         const markers = await detectMarkers(photo.image, { tolerance });
         const elapsed = performance.now() - startTime;
-        const pixelsPerMm = calculatePhotoScale(markers, markerSizeNum);
+        const scales = calculatePhotoScale(markers, markerSizeNum);
 
         addDebugLog(`${photo.file.name}: ${markers.length} markers en ${elapsed.toFixed(0)}ms`);
         if (markers.length > 0) {
           addDebugLog(`  IDs: ${markers.map(m => `#${m.id}`).join(', ')}`);
+          // v3.4: Log si distorsion détectée
+          const distortion = Math.abs(scales.pixelsPerMmX - scales.pixelsPerMmY) / scales.pixelsPerMm * 100;
+          if (distortion > 1) {
+            addDebugLog(`  ⚠️ Distorsion ${distortion.toFixed(1)}% (X=${scales.pixelsPerMmX.toFixed(2)}, Y=${scales.pixelsPerMmY.toFixed(2)})`);
+          }
         }
 
         setPhotos(prev => prev.map(p =>
           p.id === photo.id
-            ? { ...p, markers, isProcessing: false, pixelsPerMm }
+            ? { ...p, markers, isProcessing: false, ...scales }
             : p
         ));
       } catch (err) {
@@ -647,12 +680,14 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
           // - Si autoRotation ON → calculer la rotation par rapport à la référence
           let rotation = 0;
           if (autoRotation) {
-            // Calculer la rotation par rapport à la photo COURANTE (pas cumul)
+            // v3.4: Calculer la rotation avec échelles X/Y séparées
             rotation = calculateRotation(
               currentPhoto.markers,
               otherPhoto.markers,
-              currentPhoto.pixelsPerMm,
-              otherPhoto.pixelsPerMm
+              currentPhoto.pixelsPerMmX,
+              currentPhoto.pixelsPerMmY,
+              otherPhoto.pixelsPerMmX,
+              otherPhoto.pixelsPerMmY
             );
             addDebugLog(`Rotation photo ${otherIdx + 1} vs photo ${currentIdx + 1}: ${rotation.toFixed(1)}°`);
           }
@@ -677,21 +712,20 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
               pos2InOther = match.pos1;
             }
 
-            // Convertir en mm
+            // v3.4: Convertir en mm avec échelles X et Y SÉPARÉES
             const pos1Mm = {
-              x: pos1InCurrent.x / currentPhoto.pixelsPerMm,
-              y: pos1InCurrent.y / currentPhoto.pixelsPerMm
+              x: pos1InCurrent.x / currentPhoto.pixelsPerMmX,
+              y: pos1InCurrent.y / currentPhoto.pixelsPerMmY
             };
             let pos2Mm = {
-              x: pos2InOther.x / otherPhoto.pixelsPerMm,
-              y: pos2InOther.y / otherPhoto.pixelsPerMm
+              x: pos2InOther.x / otherPhoto.pixelsPerMmX,
+              y: pos2InOther.y / otherPhoto.pixelsPerMmY
             };
 
-            // v2.1: Appliquer la rotation au point de la photo other
-            // Le centre de rotation est le centre de l'image other
+            // v3.4: Centre de rotation avec échelles X et Y séparées
             const otherCenterMm = {
-              x: (otherPhoto.image.width / otherPhoto.pixelsPerMm) / 2,
-              y: (otherPhoto.image.height / otherPhoto.pixelsPerMm) / 2
+              x: (otherPhoto.image.width / otherPhoto.pixelsPerMmX) / 2,
+              y: (otherPhoto.image.height / otherPhoto.pixelsPerMmY) / 2
             };
 
             // v3.3: Utiliser rotation locale (pas finalRotation) pour le calcul de position
@@ -746,8 +780,9 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
       for (let i = 0; i < photos.length; i++) {
         const transform = photoTransforms[i];
         const photo = photos[i];
-        const widthMm = photo.image.width / photo.pixelsPerMm;
-        const heightMm = photo.image.height / photo.pixelsPerMm;
+        // v3.4: Utiliser échelles X et Y séparées pour les dimensions
+        const widthMm = photo.image.width / photo.pixelsPerMmX;
+        const heightMm = photo.image.height / photo.pixelsPerMmY;
 
         // Les 4 coins de l'image
         const corners = [
@@ -777,9 +812,9 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100 
       const stitchedImages: StitchedImage[] = photos.map((photo, i) => {
         const transform = photoTransforms[i];
         
-        // Position du coin (0,0) après rotation
-        const widthMm = photo.image.width / photo.pixelsPerMm;
-        const heightMm = photo.image.height / photo.pixelsPerMm;
+        // v3.4: Position du coin (0,0) après rotation - utiliser échelles X/Y séparées
+        const widthMm = photo.image.width / photo.pixelsPerMmX;
+        const heightMm = photo.image.height / photo.pixelsPerMmY;
         const centerX = widthMm / 2;
         const centerY = heightMm / 2;
         
