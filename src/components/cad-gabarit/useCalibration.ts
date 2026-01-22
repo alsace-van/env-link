@@ -1,8 +1,12 @@
 // ============================================
 // HOOK: useCalibration
 // Gestion de la calibration des images CAD
-// VERSION: 1.1 - Correction mode anisotrope + logs debug
+// VERSION: 1.2 - Recalcul des dimensions après calibration
 // ============================================
+//
+// CHANGELOG v1.2 (22/01/2026):
+// - FIX: Les dimensions (cotations) sont maintenant recalculées quand le scaleFactor change
+// - Fonctionne pour calibration anisotrope et correction de perspective
 //
 // CHANGELOG v1.1 (17/01/2026):
 // - Correction du bug mode anisotrope (condition mode === "anisotrope" manquante)
@@ -528,10 +532,52 @@ export function useCalibration({
       });
 
       // Mettre à jour le sketch avec le nouveau scaleFactor
-      setSketch((prev) => ({
-        ...prev,
-        scaleFactor: newScaleFactor,
-      }));
+      // FIX v1.2: Recalculer aussi les dimensions existantes
+      setSketch((prev) => {
+        const newDimensions = new Map(prev.dimensions);
+        
+        // Recalculer chaque dimension avec le nouveau scaleFactor
+        newDimensions.forEach((dim, dimId) => {
+          if (dim.type === "horizontal" || dim.type === "vertical" || dim.type === "linear") {
+            const p1 = prev.points.get(dim.entities[0]);
+            const p2 = prev.points.get(dim.entities[1]);
+            if (p1 && p2) {
+              let newValue: number;
+              if (dim.type === "horizontal") {
+                newValue = Math.abs(p2.x - p1.x);
+              } else if (dim.type === "vertical") {
+                newValue = Math.abs(p2.y - p1.y);
+              } else {
+                newValue = distance(p1, p2);
+              }
+              // Convertir en mm avec le nouveau scaleFactor
+              if (newScaleFactor > 0) {
+                newValue = newValue / newScaleFactor;
+              }
+              newDimensions.set(dimId, { ...dim, value: newValue });
+            }
+          } else if (dim.type === "radius" || dim.type === "diameter") {
+            // Pour les cercles, recalculer depuis le rayon en pixels
+            const geo = prev.geometries.get(dim.entities[0]);
+            if (geo && geo.type === "circle") {
+              const radiusPx = (geo as { radius: number }).radius;
+              const radiusMm = radiusPx / newScaleFactor;
+              newDimensions.set(dimId, { 
+                ...dim, 
+                value: dim.type === "diameter" ? radiusMm * 2 : radiusMm 
+              });
+            }
+          }
+        });
+        
+        console.log("[applyCalibration] Dimensions recalculées:", newDimensions.size);
+        
+        return {
+          ...prev,
+          scaleFactor: newScaleFactor,
+          dimensions: newDimensions,
+        };
+      });
 
       // Mettre à jour l'image avec le canvas transformé
       console.log(
@@ -798,12 +844,42 @@ export function useCalibration({
               : undefined,
         }));
 
-        setSketch((prev) => ({
-          ...prev,
-          points: newSketchPoints,
-          geometries: newGeometries,
-          scaleFactor: 1,
-        }));
+        // FIX v1.2: Recalculer les dimensions avec le nouveau scaleFactor (1)
+        setSketch((prev) => {
+          const newScaleFactor = 1;
+          const newDimensions = new Map(prev.dimensions);
+          
+          // Recalculer chaque dimension avec le nouveau scaleFactor
+          newDimensions.forEach((dim, dimId) => {
+            if (dim.type === "horizontal" || dim.type === "vertical" || dim.type === "linear") {
+              // Utiliser newSketchPoints car les points peuvent avoir changé
+              const p1 = newSketchPoints.get(dim.entities[0]) || prev.points.get(dim.entities[0]);
+              const p2 = newSketchPoints.get(dim.entities[1]) || prev.points.get(dim.entities[1]);
+              if (p1 && p2) {
+                let newValue: number;
+                if (dim.type === "horizontal") {
+                  newValue = Math.abs(p2.x - p1.x);
+                } else if (dim.type === "vertical") {
+                  newValue = Math.abs(p2.y - p1.y);
+                } else {
+                  newValue = distance(p1, p2);
+                }
+                if (newScaleFactor > 0) {
+                  newValue = newValue / newScaleFactor;
+                }
+                newDimensions.set(dimId, { ...dim, value: newValue });
+              }
+            }
+          });
+          
+          return {
+            ...prev,
+            points: newSketchPoints,
+            geometries: newGeometries,
+            scaleFactor: newScaleFactor,
+            dimensions: newDimensions,
+          };
+        });
 
         const methodLabel =
           perspectiveMethod === "rectangle"
