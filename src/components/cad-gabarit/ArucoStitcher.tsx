@@ -1,17 +1,15 @@
 // ============================================
 // COMPONENT: ArucoStitcher
 // Assemblage de photos via markers ArUco partagés
-// VERSION: 4.8
+// VERSION: 4.9
 // ============================================
 //
-// CHANGELOG v4.8 (21/01/2026):
-// - FIX CRITIQUE: Canvas avec aspect ratio fixe (évite l'étirement)
-// - Canvas utilise max-w-full/max-h-full + aspectRatio CSS
-// - Centré dans son conteneur
-// - origW/origH = dimensions RÉELLES de l'image source
+// CHANGELOG v4.9 (22/01/2026):
+// - FIX: Modale ne change plus de taille en mode crop
+// - Conteneur du canvas avec hauteur FIXE (450px)
 //
-// CHANGELOG v4.7 (21/01/2026):
-// - Dimensions affichées en pixels RÉELS
+// CHANGELOG v4.8 (21/01/2026):
+// - Canvas avec aspect ratio fixe
 //
 // CHANGELOG v4.6 (21/01/2026):
 // - Reset edit après Appliquer & Détecter
@@ -1477,8 +1475,11 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
           <div className="flex gap-4 flex-1 overflow-hidden">
             {/* Grande préview */}
             <div className="flex-1 flex flex-col min-w-0">
-              {/* v4.8: Container avec aspect ratio fixe pour éviter l'étirement */}
-              <div className="relative flex-1 bg-gray-900 rounded-lg overflow-hidden flex items-center justify-center" style={{ minHeight: 400 }}>
+              {/* v4.9: Container avec hauteur FIXE pour éviter le redimensionnement de la modale */}
+              <div 
+                className="relative bg-gray-900 rounded-lg overflow-hidden flex items-center justify-center" 
+                style={{ height: 450 }}
+              >
                 <canvas
                   ref={previewCanvasRef}
                   width={700}
