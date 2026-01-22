@@ -1,12 +1,17 @@
 // ============================================
 // COMPONENT: ArucoStitcher
 // Assemblage de photos via markers ArUco partagés
-// VERSION: 4.9
+// VERSION: 4.10
 // ============================================
 //
+// CHANGELOG v4.10 (22/01/2026):
+// - FIX: Modale ne rétrécit plus en mode crop
+// - DialogContent avec min-h-[650px]
+// - Conteneur mode édition avec hauteur fixe (520px)
+// - Panneau de contrôles avec maxHeight et scroll
+//
 // CHANGELOG v4.9 (22/01/2026):
-// - FIX: Modale ne change plus de taille en mode crop
-// - Conteneur du canvas avec hauteur FIXE (450px)
+// - Container canvas hauteur fixe
 //
 // CHANGELOG v4.8 (21/01/2026):
 // - Canvas avec aspect ratio fixe
@@ -1454,7 +1459,8 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
+      {/* v4.10: min-h-[650px] pour éviter que la modale rétrécisse */}
+      <DialogContent className="max-w-6xl max-h-[95vh] min-h-[650px] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Images className="h-5 w-5" />
@@ -1472,10 +1478,10 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
 
         {/* Mode édition */}
         {editMode && currentPhoto ? (
-          <div className="flex gap-4 flex-1 overflow-hidden">
+          <div className="flex gap-4 overflow-hidden" style={{ height: 520 }}>
             {/* Grande préview */}
             <div className="flex-1 flex flex-col min-w-0">
-              {/* v4.9: Container avec hauteur FIXE pour éviter le redimensionnement de la modale */}
+              {/* v4.10: Container avec hauteur FIXE */}
               <div 
                 className="relative bg-gray-900 rounded-lg overflow-hidden flex items-center justify-center" 
                 style={{ height: 450 }}
@@ -1557,8 +1563,8 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
               </div>
             </div>
 
-            {/* Panneau de contrôles */}
-            <div className="w-56 flex flex-col gap-3">
+            {/* Panneau de contrôles - v4.10: hauteur fixe avec scroll */}
+            <div className="w-56 flex flex-col gap-3 overflow-y-auto" style={{ maxHeight: 520 }}>
               {/* v4.2: Rotation améliorée */}
               <div className="p-3 bg-muted rounded-lg space-y-3">
                 <Label className="text-xs font-medium block">Rotation</Label>
