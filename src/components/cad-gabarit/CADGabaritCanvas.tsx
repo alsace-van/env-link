@@ -1,8 +1,11 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.53
+// VERSION: 7.54
 // ============================================
+//
+// CHANGELOG v7.54 (22/01/2026):
+// - MOD: Incrément SHIFT+flèches changé de 0.01% à 0.05%
 //
 // CHANGELOG v7.53 (22/01/2026):
 // - FIX: Crop utilise le canvas le plus récent (transformedCanvas si calibré)
@@ -3805,7 +3808,7 @@ export function CADGabaritCanvas({
         ctx.font = "11px sans-serif";
         ctx.fillStyle = "#AAAAAA";
         ctx.fillText("←→ X  ↑↓ Y  +/- X+Y  Alt: sync", infoX + 8, infoY + 32);
-        ctx.fillText("Shift: ×0.01%  Ctrl: ×1%", infoX + 8, infoY + 46);
+        ctx.fillText("Shift: ×0.05%  Ctrl: ×1%", infoX + 8, infoY + 46);
         ctx.fillText("R: reset  Shift+R: égaliser  Esc: quitter", infoX + 8, infoY + 60);
 
         ctx.restore();
@@ -14741,10 +14744,11 @@ export function CADGabaritCanvas({
             stretchHistorySavedRef.current = false;
           }, 500);
 
-          // Incrément: Shift=0.01%, Normal=0.1%, Cmd=1%
+          // Incrément: Shift=0.05%, Normal=0.1%, Cmd=1%
           // v7.49: ctrlKey retiré (conflit macOS Mission Control)
+          // v7.54: Shift changé de 0.01% à 0.05%
           let increment = 0.001;
-          if (e.shiftKey) increment = 0.0001;
+          if (e.shiftKey) increment = 0.0005;
           if (e.metaKey) increment = 0.01;
 
           const currentScaleX = img.scaleX ?? img.scale;
