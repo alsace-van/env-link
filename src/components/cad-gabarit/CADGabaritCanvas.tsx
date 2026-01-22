@@ -4888,6 +4888,9 @@ export function CADGabaritCanvas({
               radius: arc.radius,
               counterClockwise: !arc.counterClockwise,
               layerId: arc.layerId,
+              strokeWidth: arc.strokeWidth,
+              strokeColor: arc.strokeColor,
+              isFillet: arc.isFillet,
             };
             newSketch.geometries.set(newArc.id, newArc);
           }
@@ -6399,6 +6402,8 @@ export function CADGabaritCanvas({
         layerId: currentLine1.layerId || "trace",
         counterClockwise: counterClockwise,
         isFillet: true, // Marquer comme congé pour permettre la restauration du coin
+        strokeWidth: defaultStrokeWidthRef.current,
+        strokeColor: defaultStrokeColorRef.current,
       };
       newSketch.geometries.set(arcId, arc);
 
@@ -7946,6 +7951,9 @@ export function CADGabaritCanvas({
         radius: newRadius,
         layerId: arc.layerId,
         counterClockwise: arc.counterClockwise,
+        strokeWidth: arc.strokeWidth,
+        strokeColor: arc.strokeColor,
+        isFillet: arc.isFillet,
       };
       newSketch.geometries.set(newArc.id, newArc);
       createdCount++;
@@ -8411,6 +8419,8 @@ export function CADGabaritCanvas({
           radius: circleRadius,
           layerId: layerId,
           counterClockwise: false, // Sens horaire pour dessiner l'arc "direct" entre les deux points
+          strokeWidth: defaultStrokeWidthRef.current,
+          strokeColor: defaultStrokeColorRef.current,
         };
         sketchToModify.geometries.set(arc.id, arc);
       }
@@ -13139,6 +13149,8 @@ export function CADGabaritCanvas({
           closed: false,
           tension: 0.5,
           layerId: currentSketch.activeLayerId,
+          strokeWidth: defaultStrokeWidthRef.current,
+          strokeColor: defaultStrokeColorRef.current,
         };
         newSketch.geometries.set(spline.id, spline);
 
@@ -16185,6 +16197,67 @@ export function CADGabaritCanvas({
           const sweep = arc.counterClockwise ? 0 : 1;
           svgContent += `\n    <path d="M ${startPt.x} ${startPt.y} A ${arc.radius} ${arc.radius} 0 ${largeArc} ${sweep} ${endPt.x} ${endPt.y}" stroke="${color}" stroke-width="${strokeWidth / scale}" fill="none"/>`;
         }
+      } else if (geo.type === "spline") {
+        // v7.53: Export des splines (courbes Catmull-Rom converties en Bézier)
+        const spline = geo as Spline;
+        const points: Point[] = [];
+        for (const pointId of spline.points) {
+          const pt = sketch.points.get(pointId);
+          if (pt) points.push(pt);
+        }
+
+        if (points.length >= 2) {
+          const tension = spline.tension ?? 0.5;
+          let pathData = `M ${points[0].x} ${points[0].y}`;
+
+          if (points.length === 2) {
+            // Juste une ligne
+            pathData += ` L ${points[1].x} ${points[1].y}`;
+          } else {
+            // Courbe Catmull-Rom convertie en Bézier cubique
+            for (let i = 0; i < points.length - 1; i++) {
+              const p0 = points[i === 0 ? (spline.closed ? points.length - 1 : 0) : i - 1];
+              const p1 = points[i];
+              const p2 = points[i + 1];
+              const p3 = points[i === points.length - 2 ? (spline.closed ? 0 : i + 1) : i + 2];
+
+              // Points de contrôle pour la courbe de Bézier
+              const cp1x = p1.x + ((p2.x - p0.x) * tension) / 3;
+              const cp1y = p1.y + ((p2.y - p0.y) * tension) / 3;
+              const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3;
+              const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3;
+
+              pathData += ` C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${p2.x} ${p2.y}`;
+            }
+
+            // Fermer la spline si nécessaire
+            if (spline.closed && points.length >= 3) {
+              const p0 = points[points.length - 2];
+              const p1 = points[points.length - 1];
+              const p2 = points[0];
+              const p3 = points[1];
+
+              const cp1x = p1.x + ((p2.x - p0.x) * tension) / 3;
+              const cp1y = p1.y + ((p2.y - p0.y) * tension) / 3;
+              const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3;
+              const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3;
+
+              pathData += ` C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${p2.x} ${p2.y} Z`;
+            }
+          }
+
+          svgContent += `\n    <path d="${pathData}" stroke="${color}" stroke-width="${strokeWidth / scale}" fill="none"/>`;
+        }
+      } else if (geo.type === "rectangle") {
+        // v7.53: Export des rectangles
+        const rect = geo as Rectangle;
+        const p1 = sketch.points.get(rect.p1);
+        const p2 = sketch.points.get(rect.p2);
+        const p3 = sketch.points.get(rect.p3);
+        const p4 = sketch.points.get(rect.p4);
+        if (p1 && p2 && p3 && p4) {
+          svgContent += `\n    <polygon points="${p1.x},${p1.y} ${p2.x},${p2.y} ${p3.x},${p3.y} ${p4.x},${p4.y}" stroke="${color}" stroke-width="${strokeWidth / scale}" fill="none"/>`;
+        }
       }
     });
 
@@ -16468,6 +16541,121 @@ export function CADGabaritCanvas({
               const y2 = cp.y + radiusMm * Math.sin(a2);
               doc.line(x1, y1, x2, y2);
             }
+          }
+        } else if (geo.type === "spline") {
+          // v7.53: Export des splines dans le PDF A4
+          const spline = geo as Spline;
+          const points: Point[] = [];
+          for (const pointId of spline.points) {
+            const pt = sketch.points.get(pointId);
+            if (pt) points.push(pt);
+          }
+
+          if (points.length >= 2) {
+            // Vérifier si la spline intersecte la cellule
+            const splineMinX = Math.min(...points.map(p => p.x));
+            const splineMaxX = Math.max(...points.map(p => p.x));
+            const splineMinY = Math.min(...points.map(p => p.y));
+            const splineMaxY = Math.max(...points.map(p => p.y));
+
+            if (splineMaxX < exportMinX || splineMinX > exportMaxX || splineMaxY < exportMinY || splineMinY > exportMaxY) {
+              return;
+            }
+
+            const tension = spline.tension ?? 0.5;
+
+            if (points.length === 2) {
+              // Juste une ligne
+              const pp1 = toPage(points[0].x, points[0].y);
+              const pp2 = toPage(points[1].x, points[1].y);
+              doc.line(pp1.x, pp1.y, pp2.x, pp2.y);
+            } else {
+              // Courbe Catmull-Rom approximée par des segments
+              const steps = 20; // Segments par section de courbe
+
+              for (let i = 0; i < points.length - 1; i++) {
+                const p0 = points[i === 0 ? (spline.closed ? points.length - 1 : 0) : i - 1];
+                const p1 = points[i];
+                const p2 = points[i + 1];
+                const p3 = points[i === points.length - 2 ? (spline.closed ? 0 : i + 1) : i + 2];
+
+                // Points de contrôle Bézier
+                const cp1x = p1.x + ((p2.x - p0.x) * tension) / 3;
+                const cp1y = p1.y + ((p2.y - p0.y) * tension) / 3;
+                const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3;
+                const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3;
+
+                // Approximer la courbe de Bézier par des segments
+                for (let t = 0; t < steps; t++) {
+                  const t1 = t / steps;
+                  const t2 = (t + 1) / steps;
+
+                  // Évaluation de Bézier cubique
+                  const bezier = (t: number, p0: number, p1: number, p2: number, p3: number) => {
+                    const u = 1 - t;
+                    return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
+                  };
+
+                  const x1 = bezier(t1, p1.x, cp1x, cp2x, p2.x);
+                  const y1 = bezier(t1, p1.y, cp1y, cp2y, p2.y);
+                  const x2 = bezier(t2, p1.x, cp1x, cp2x, p2.x);
+                  const y2 = bezier(t2, p1.y, cp1y, cp2y, p2.y);
+
+                  const pp1 = toPage(x1, y1);
+                  const pp2 = toPage(x2, y2);
+                  doc.line(pp1.x, pp1.y, pp2.x, pp2.y);
+                }
+              }
+
+              // Fermer la spline si nécessaire
+              if (spline.closed && points.length >= 3) {
+                const p0 = points[points.length - 2];
+                const p1 = points[points.length - 1];
+                const p2 = points[0];
+                const p3 = points[1];
+
+                const cp1x = p1.x + ((p2.x - p0.x) * tension) / 3;
+                const cp1y = p1.y + ((p2.y - p0.y) * tension) / 3;
+                const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3;
+                const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3;
+
+                for (let t = 0; t < steps; t++) {
+                  const t1 = t / steps;
+                  const t2 = (t + 1) / steps;
+
+                  const bezier = (t: number, p0: number, p1: number, p2: number, p3: number) => {
+                    const u = 1 - t;
+                    return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
+                  };
+
+                  const x1 = bezier(t1, p1.x, cp1x, cp2x, p2.x);
+                  const y1 = bezier(t1, p1.y, cp1y, cp2y, p2.y);
+                  const x2 = bezier(t2, p1.x, cp1x, cp2x, p2.x);
+                  const y2 = bezier(t2, p1.y, cp1y, cp2y, p2.y);
+
+                  const pp1 = toPage(x1, y1);
+                  const pp2 = toPage(x2, y2);
+                  doc.line(pp1.x, pp1.y, pp2.x, pp2.y);
+                }
+              }
+            }
+          }
+        } else if (geo.type === "rectangle") {
+          // v7.53: Export des rectangles dans le PDF A4
+          const rect = geo as Rectangle;
+          const p1 = sketch.points.get(rect.p1);
+          const p2 = sketch.points.get(rect.p2);
+          const p3 = sketch.points.get(rect.p3);
+          const p4 = sketch.points.get(rect.p4);
+          if (p1 && p2 && p3 && p4) {
+            const pp1 = toPage(p1.x, p1.y);
+            const pp2 = toPage(p2.x, p2.y);
+            const pp3 = toPage(p3.x, p3.y);
+            const pp4 = toPage(p4.x, p4.y);
+            doc.line(pp1.x, pp1.y, pp2.x, pp2.y);
+            doc.line(pp2.x, pp2.y, pp3.x, pp3.y);
+            doc.line(pp3.x, pp3.y, pp4.x, pp4.y);
+            doc.line(pp4.x, pp4.y, pp1.x, pp1.y);
           }
         }
       });
