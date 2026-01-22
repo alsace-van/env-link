@@ -17727,6 +17727,15 @@ export function CADGabaritCanvas({
       ref={containerRef}
       className={`flex flex-col overflow-hidden ${isFullscreen ? "fixed inset-0 z-50 bg-white" : "h-[700px]"}`}
     >
+      {/* v7.54: Input caché pour l'import JSON - DOIT être hors du DropdownMenu */}
+      <input
+        ref={jsonImportInputRef}
+        type="file"
+        accept=".json"
+        onChange={loadLocalBackup}
+        className="hidden"
+        style={{ display: 'none', position: 'absolute', top: -9999, left: -9999 }}
+      />
       {/* Toolbar Ligne 1 - Fichiers */}
       <div className="flex items-center gap-0 p-2 bg-gray-100 border-b flex-shrink-0">
         {/* Zone de drop au début */}
@@ -17780,15 +17789,7 @@ export function CADGabaritCanvas({
                     <FolderOpen className="h-4 w-4 mr-2 text-blue-600" />
                     Ouvrir fichier local...
                   </DropdownMenuItem>
-                  {/* Input caché pour l'import JSON */}
-                  <input
-                    ref={jsonImportInputRef}
-                    type="file"
-                    accept=".json"
-                    onChange={loadLocalBackup}
-                    className="hidden"
-                    style={{ display: 'none' }}
-                  />
+                  {/* v7.54: Input déplacé hors du DropdownMenu pour éviter le démontage */}
 
                   <DropdownMenuSeparator />
 
@@ -25667,4 +25668,3 @@ function exportToSVG(sketch: Sketch): string {
   return svg;
 }
 
-export default CADGabaritCanvas;
