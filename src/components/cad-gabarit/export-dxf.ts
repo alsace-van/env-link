@@ -1,10 +1,10 @@
 // ============================================
 // EXPORT DXF: Export au format AutoCAD R12
 // Compatible Fusion 360, AutoCAD, LibreCAD
-// VERSION: 2.2 - Lignes de construction en pointillé
+// VERSION: 2.3 - Ajout splines et rectangles
 // ============================================
 
-import { Sketch, Line, Circle as CircleType, Arc } from "./types";
+import { Sketch, Line, Circle as CircleType, Arc, Spline, Rectangle, Point } from "./types";
 
 /**
  * Exporte un sketch au format DXF (AutoCAD R12 - format le plus compatible)
@@ -99,6 +99,16 @@ export function exportToDXF(sketch: Sketch): string {
       }
       case "arc": {
         dxf += exportArc(geo as Arc, sketch, scale);
+        break;
+      }
+      case "spline": {
+        // v2.3: Export des splines comme polylignes (approximation)
+        dxf += exportSpline(geo as Spline, sketch, scale);
+        break;
+      }
+      case "rectangle": {
+        // v2.3: Export des rectangles comme 4 lignes
+        dxf += exportRectangle(geo as Rectangle, sketch, scale);
         break;
       }
     }
@@ -199,6 +209,159 @@ function exportArc(arc: Arc, sketch: Sketch, scale: number): string {
   dxf += `40\n${r}\n`;
   dxf += `50\n${startAngle.toFixed(4)}\n`;
   dxf += `51\n${endAngle.toFixed(4)}\n`;
+
+  return dxf;
+}
+
+/**
+ * v2.3: Exporte une spline comme une polyligne (approximation par segments)
+ */
+function exportSpline(spline: Spline, sketch: Sketch, scale: number): string {
+  const points: Point[] = [];
+  for (const pointId of spline.points) {
+    const pt = sketch.points.get(pointId);
+    if (pt) points.push(pt);
+  }
+
+  if (points.length < 2) return "";
+
+  const tension = spline.tension ?? 0.5;
+  const layer = spline.isConstruction ? "Construction" : "0";
+
+  // Pour DXF R12, on utilise une POLYLINE avec des sommets
+  let dxf = "";
+  dxf += "0\nPOLYLINE\n";
+  dxf += `8\n${layer}\n`; // Calque
+  dxf += "66\n1\n"; // Vertices follow
+  dxf += "70\n0\n"; // Polyline flags (0 = open, 1 = closed)
+  if (spline.closed) {
+    dxf = dxf.replace("70\n0\n", "70\n1\n"); // Closed polyline
+  }
+
+  if (points.length === 2) {
+    // Juste 2 points - ligne simple
+    for (const pt of points) {
+      const x = (pt.x / scale).toFixed(4);
+      const y = (-pt.y / scale).toFixed(4);
+      dxf += "0\nVERTEX\n";
+      dxf += `8\n${layer}\n`;
+      dxf += `10\n${x}\n`;
+      dxf += `20\n${y}\n`;
+      dxf += "30\n0.0\n";
+    }
+  } else {
+    // Courbe Catmull-Rom approximée par des segments
+    const steps = 10; // Segments par section de courbe
+    const allPoints: { x: number; y: number }[] = [];
+
+    // Générer tous les points de la courbe
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[i === 0 ? (spline.closed ? points.length - 1 : 0) : i - 1];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[i === points.length - 2 ? (spline.closed ? 0 : i + 1) : i + 2];
+
+      // Points de contrôle Bézier
+      const cp1x = p1.x + ((p2.x - p0.x) * tension) / 3;
+      const cp1y = p1.y + ((p2.y - p0.y) * tension) / 3;
+      const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3;
+      const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3;
+
+      // Évaluation de Bézier cubique
+      const bezier = (t: number, v0: number, v1: number, v2: number, v3: number) => {
+        const u = 1 - t;
+        return u * u * u * v0 + 3 * u * u * t * v1 + 3 * u * t * t * v2 + t * t * t * v3;
+      };
+
+      for (let t = 0; t <= steps; t++) {
+        const tt = t / steps;
+        // Ne pas ajouter le premier point des segments suivants (déjà ajouté)
+        if (i > 0 && t === 0) continue;
+
+        allPoints.push({
+          x: bezier(tt, p1.x, cp1x, cp2x, p2.x),
+          y: bezier(tt, p1.y, cp1y, cp2y, p2.y),
+        });
+      }
+    }
+
+    // Si fermé, ajouter le dernier segment de fermeture
+    if (spline.closed && points.length >= 3) {
+      const p0 = points[points.length - 2];
+      const p1 = points[points.length - 1];
+      const p2 = points[0];
+      const p3 = points[1];
+
+      const cp1x = p1.x + ((p2.x - p0.x) * tension) / 3;
+      const cp1y = p1.y + ((p2.y - p0.y) * tension) / 3;
+      const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3;
+      const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3;
+
+      const bezier = (t: number, v0: number, v1: number, v2: number, v3: number) => {
+        const u = 1 - t;
+        return u * u * u * v0 + 3 * u * u * t * v1 + 3 * u * t * t * v2 + t * t * t * v3;
+      };
+
+      for (let t = 1; t <= steps; t++) {
+        const tt = t / steps;
+        allPoints.push({
+          x: bezier(tt, p1.x, cp1x, cp2x, p2.x),
+          y: bezier(tt, p1.y, cp1y, cp2y, p2.y),
+        });
+      }
+    }
+
+    // Ajouter tous les vertices
+    for (const pt of allPoints) {
+      const x = (pt.x / scale).toFixed(4);
+      const y = (-pt.y / scale).toFixed(4);
+      dxf += "0\nVERTEX\n";
+      dxf += `8\n${layer}\n`;
+      dxf += `10\n${x}\n`;
+      dxf += `20\n${y}\n`;
+      dxf += "30\n0.0\n";
+    }
+  }
+
+  dxf += "0\nSEQEND\n";
+  dxf += `8\n${layer}\n`;
+
+  return dxf;
+}
+
+/**
+ * v2.3: Exporte un rectangle comme 4 lignes
+ */
+function exportRectangle(rect: Rectangle, sketch: Sketch, scale: number): string {
+  const p1 = sketch.points.get(rect.p1);
+  const p2 = sketch.points.get(rect.p2);
+  const p3 = sketch.points.get(rect.p3);
+  const p4 = sketch.points.get(rect.p4);
+
+  if (!p1 || !p2 || !p3 || !p4) return "";
+
+  const layer = (rect as any).isConstruction ? "Construction" : "0";
+
+  // Convertir les 4 coins en mm
+  const pts = [p1, p2, p3, p4].map(p => ({
+    x: (p.x / scale).toFixed(4),
+    y: (-p.y / scale).toFixed(4),
+  }));
+
+  let dxf = "";
+
+  // 4 lignes: p1-p2, p2-p3, p3-p4, p4-p1
+  const edges = [[0, 1], [1, 2], [2, 3], [3, 0]];
+  for (const [i, j] of edges) {
+    dxf += "0\nLINE\n";
+    dxf += `8\n${layer}\n`;
+    dxf += `10\n${pts[i].x}\n`;
+    dxf += `20\n${pts[i].y}\n`;
+    dxf += "30\n0.0\n";
+    dxf += `11\n${pts[j].x}\n`;
+    dxf += `21\n${pts[j].y}\n`;
+    dxf += "31\n0.0\n";
+  }
 
   return dxf;
 }
