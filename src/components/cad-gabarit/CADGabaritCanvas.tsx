@@ -25572,6 +25572,32 @@ function exportToSVG(sketch: Sketch): string {
           maxY = Math.max(maxY, pt.y);
         }
       }
+    } else if (geo.type === "bezier") {
+      // v7.56: Support des courbes de Bézier dans l'export SVG
+      const bezier = geo as Bezier;
+      const pts = [bezier.p1, bezier.p2, bezier.cp1, bezier.cp2];
+      for (const pid of pts) {
+        const pt = sketch.points.get(pid);
+        if (pt) {
+          minX = Math.min(minX, pt.x);
+          minY = Math.min(minY, pt.y);
+          maxX = Math.max(maxX, pt.x);
+          maxY = Math.max(maxY, pt.y);
+        }
+      }
+    } else if (geo.type === "text") {
+      // v7.57: Support des annotations texte dans l'export SVG
+      const textGeo = geo as TextAnnotation;
+      const pt = sketch.points.get(textGeo.position);
+      if (pt) {
+        // Estimation approximative des bounds du texte
+        const fontSize = textGeo.fontSize || 5;
+        const textWidth = textGeo.content.length * fontSize * 0.6; // Approximation
+        minX = Math.min(minX, pt.x);
+        minY = Math.min(minY, pt.y - fontSize);
+        maxX = Math.max(maxX, pt.x + textWidth);
+        maxY = Math.max(maxY, pt.y);
+      }
     }
   });
 
@@ -25723,6 +25749,64 @@ function exportToSVG(sketch: Sketch): string {
       const p4 = sketch.points.get(rect.p4);
       if (p1 && p2 && p3 && p4) {
         svg += `    <polygon points="${xToSvg(p1.x)},${yToSvg(p1.y)} ${xToSvg(p2.x)},${yToSvg(p2.y)} ${xToSvg(p3.x)},${yToSvg(p3.y)} ${xToSvg(p4.x)},${yToSvg(p4.y)}"/>\n`;
+      }
+    } else if (geo.type === "bezier") {
+      // v7.56: Export des courbes de Bézier comme polylignes (pour compatibilité Fusion 360)
+      const bezier = geo as Bezier;
+      const p1 = sketch.points.get(bezier.p1);
+      const p2 = sketch.points.get(bezier.p2);
+      const cp1 = sketch.points.get(bezier.cp1);
+      const cp2 = sketch.points.get(bezier.cp2);
+
+      if (p1 && p2 && cp1 && cp2) {
+        // Approximer la courbe par des segments
+        const steps = 20;
+        const allPoints: { x: number; y: number }[] = [];
+
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const u = 1 - t;
+          const tt = t * t;
+          const uu = u * u;
+          const uuu = uu * u;
+          const ttt = tt * t;
+
+          allPoints.push({
+            x: uuu * p1.x + 3 * uu * t * cp1.x + 3 * u * tt * cp2.x + ttt * p2.x,
+            y: uuu * p1.y + 3 * uu * t * cp1.y + 3 * u * tt * cp2.y + ttt * p2.y,
+          });
+        }
+
+        const pointsStr = allPoints.map(p => `${xToSvg(p.x)},${yToSvg(p.y)}`).join(" ");
+        svg += `    <polyline points="${pointsStr}"/>\n`;
+      }
+    } else if (geo.type === "text") {
+      // v7.57: Export des annotations texte
+      const textGeo = geo as TextAnnotation;
+      const position = sketch.points.get(textGeo.position);
+
+      if (position) {
+        const x = xToSvg(position.x);
+        const y = yToSvg(position.y);
+        const fontSize = toMm(textGeo.fontSize * scale); // fontSize est en mm, convertir
+        const fontFamily = textGeo.fontFamily || "Arial";
+        const color = textGeo.color || "#000000";
+        const rotation = textGeo.rotation || 0;
+        const anchor = textGeo.alignment === "center" ? "middle" : textGeo.alignment === "right" ? "end" : "start";
+
+        // Échapper les caractères spéciaux XML
+        const escapedContent = textGeo.content
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+
+        let transform = "";
+        if (rotation !== 0) {
+          transform = ` transform="rotate(${rotation} ${x} ${y})"`;
+        }
+
+        svg += `    <text x="${x}" y="${y}" font-size="${fontSize}" font-family="${fontFamily}" fill="${color}" text-anchor="${anchor}"${transform}>${escapedContent}</text>\n`;
       }
     }
   });
