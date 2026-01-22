@@ -1,8 +1,13 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.77 - Fix contour sélection après crop
+// VERSION: 3.78 - Fix ordre priorité canvas (calibration > crop)
 // ============================================
+//
+// CHANGELOG v3.78 (22/01/2026):
+// - FIX: Ordre de priorité corrigé pour calibration ET crop
+// - transformedCanvas (calibration) > croppedCanvas > adjustedCanvas > image
+// - La calibration crée transformedCanvas à partir de croppedCanvas
 //
 // CHANGELOG v3.77 (22/01/2026):
 // - FIX: Le contour de sélection suit maintenant les dimensions après crop
@@ -821,10 +826,10 @@ export class CADRenderer {
       const layerOpacity = layer?.opacity ?? 1;
       this.ctx.globalAlpha = bgImage.opacity * layerOpacity;
 
-      // FIX v7.52: Ordre de priorité corrigé - croppedCanvas doit être prioritaire
-      // croppedCanvas (crop) > transformedCanvas (calibration) > adjustedCanvas (luminosité) > image originale
-      // Sinon le contour de sélection garde les dimensions originales après un crop
-      const imageToDraw = bgImage.croppedCanvas || bgImage.transformedCanvas || bgImage.adjustedCanvas || bgImage.image;
+      // FIX v3.78: Ordre de priorité corrigé pour calibration ET crop
+      // transformedCanvas (calibration, inclut crop si applicable) > croppedCanvas > adjustedCanvas > image originale
+      // La calibration crée transformedCanvas à partir de croppedCanvas, donc transformedCanvas est plus récent
+      const imageToDraw = bgImage.transformedCanvas || bgImage.croppedCanvas || bgImage.adjustedCanvas || bgImage.image;
 
       // FIX #85c: Vérifier que l'image existe avant de la dessiner
       if (!imageToDraw) {
