@@ -686,6 +686,9 @@ export function CADGabaritCanvas({
   // Surbrillance des formes fermées
   const [highlightOpacity, setHighlightOpacity] = useState(0.12);
   const [mouseWorldPos, setMouseWorldPos] = useState<{ x: number; y: number } | null>(null);
+  // v7.53: Throttle pour mouseWorldPos - évite les re-renders excessifs
+  const lastMouseWorldPosUpdateRef = useRef<number>(0);
+  const MOUSE_WORLD_POS_THROTTLE_MS = 50; // Max 20 updates/seconde au lieu de 60+
 
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
@@ -11721,8 +11724,12 @@ export function CADGabaritCanvas({
       const screenY = e.clientY - rect.top;
       const worldPos = screenToWorld(screenX, screenY);
 
-      // Mettre à jour la position de la souris pour l'effet hover des formes fermées
-      setMouseWorldPos(worldPos);
+      // v7.53: Mettre à jour la position de la souris avec throttle pour éviter la saturation CPU
+      const now = Date.now();
+      if (now - lastMouseWorldPosUpdateRef.current > MOUSE_WORLD_POS_THROTTLE_MS) {
+        lastMouseWorldPosUpdateRef.current = now;
+        setMouseWorldPos(worldPos);
+      }
 
       // Pan
       if (isPanning) {
