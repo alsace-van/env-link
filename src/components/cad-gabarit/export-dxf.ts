@@ -102,22 +102,18 @@ export function exportToDXF(sketch: Sketch): string {
         break;
       }
       case "spline": {
-        // v2.3: Export des splines comme polylignes (approximation)
         dxf += exportSpline(geo as Spline, sketch, scale);
         break;
       }
       case "rectangle": {
-        // v2.3: Export des rectangles comme 4 lignes
         dxf += exportRectangle(geo as Rectangle, sketch, scale);
         break;
       }
       case "bezier": {
-        // v2.5: Export des courbes de Bézier comme séries de LINE
         dxf += exportBezier(geo as Bezier, sketch, scale);
         break;
       }
       case "text": {
-        // v2.6: Export des annotations texte
         dxf += exportText(geo as TextAnnotation, sketch, scale);
         break;
       }
@@ -138,24 +134,21 @@ function exportLine(line: Line, sketch: Sketch, scale: number): string {
 
   if (!p1 || !p2) return "";
 
-  // Coordonnées en mm (diviser par scale car scale = px/mm)
-  // Y inversé pour DXF (système de coordonnées différent)
   const x1 = (p1.x / scale).toFixed(4);
   const y1 = (-p1.y / scale).toFixed(4);
   const x2 = (p2.x / scale).toFixed(4);
   const y2 = (-p2.y / scale).toFixed(4);
 
-  // MOD v7.12d: Lignes de construction sur calque séparé
   const layer = line.isConstruction ? "CONSTRUCTION" : "0";
 
   let dxf = "";
   dxf += "0\nLINE\n";
-  dxf += `8\n${layer}\n`; // Calque
-  dxf += `10\n${x1}\n`;
-  dxf += `20\n${y1}\n`;
+  dxf += "8\n" + layer + "\n";
+  dxf += "10\n" + x1 + "\n";
+  dxf += "20\n" + y1 + "\n";
   dxf += "30\n0.0\n";
-  dxf += `11\n${x2}\n`;
-  dxf += `21\n${y2}\n`;
+  dxf += "11\n" + x2 + "\n";
+  dxf += "21\n" + y2 + "\n";
   dxf += "31\n0.0\n";
 
   return dxf;
@@ -166,7 +159,6 @@ function exportCircle(circle: CircleType, sketch: Sketch, scale: number): string
 
   if (!center) return "";
 
-  // Diviser par scale (px/mm) pour obtenir des mm
   const cx = (center.x / scale).toFixed(4);
   const cy = (-center.y / scale).toFixed(4);
   const r = (circle.radius / scale).toFixed(4);
@@ -174,10 +166,10 @@ function exportCircle(circle: CircleType, sketch: Sketch, scale: number): string
   let dxf = "";
   dxf += "0\nCIRCLE\n";
   dxf += "8\n0\n";
-  dxf += `10\n${cx}\n`;
-  dxf += `20\n${cy}\n`;
+  dxf += "10\n" + cx + "\n";
+  dxf += "20\n" + cy + "\n";
   dxf += "30\n0.0\n";
-  dxf += `40\n${r}\n`;
+  dxf += "40\n" + r + "\n";
 
   return dxf;
 }
@@ -189,44 +181,35 @@ function exportArc(arc: Arc, sketch: Sketch, scale: number): string {
 
   if (!center || !startPt || !endPt) return "";
 
-  // Diviser par scale (px/mm) pour obtenir des mm
   const cx = (center.x / scale).toFixed(4);
   const cy = (-center.y / scale).toFixed(4);
   const r = (arc.radius / scale).toFixed(4);
 
-  // Calculer les angles en degrés pour DXF
-  // Note: Y est inversé, donc on inverse aussi le signe de Y dans atan2
   let startAngle = (Math.atan2(-(startPt.y - center.y), startPt.x - center.x) * 180) / Math.PI;
   let endAngle = (Math.atan2(-(endPt.y - center.y), endPt.x - center.x) * 180) / Math.PI;
 
-  // Si counterClockwise est false, inverser les angles
   if (arc.counterClockwise === false) {
     const temp = startAngle;
     startAngle = endAngle;
     endAngle = temp;
   }
 
-  // Normaliser les angles entre 0 et 360
   while (startAngle < 0) startAngle += 360;
   while (endAngle < 0) endAngle += 360;
 
   let dxf = "";
   dxf += "0\nARC\n";
   dxf += "8\n0\n";
-  dxf += `10\n${cx}\n`;
-  dxf += `20\n${cy}\n`;
+  dxf += "10\n" + cx + "\n";
+  dxf += "20\n" + cy + "\n";
   dxf += "30\n0.0\n";
-  dxf += `40\n${r}\n`;
-  dxf += `50\n${startAngle.toFixed(4)}\n`;
-  dxf += `51\n${endAngle.toFixed(4)}\n`;
+  dxf += "40\n" + r + "\n";
+  dxf += "50\n" + startAngle.toFixed(4) + "\n";
+  dxf += "51\n" + endAngle.toFixed(4) + "\n";
 
   return dxf;
 }
 
-/**
- * v2.4: Exporte une spline comme une série de LINE (meilleure compatibilité Fusion 360)
- * Utiliser des LINE au lieu de POLYLINE pour une compatibilité maximale
- */
 function exportSpline(spline: Spline, sketch: Sketch, scale: number): string {
   const points: Point[] = [];
   for (const pointId of spline.points) {
@@ -242,57 +225,50 @@ function exportSpline(spline: Spline, sketch: Sketch, scale: number): string {
   let dxf = "";
 
   if (points.length === 2) {
-    // Juste 2 points - une seule ligne
     const x1 = (points[0].x / scale).toFixed(4);
     const y1 = (-points[0].y / scale).toFixed(4);
     const x2 = (points[1].x / scale).toFixed(4);
     const y2 = (-points[1].y / scale).toFixed(4);
 
     dxf += "0\nLINE\n";
-    dxf += `8\n${layer}\n`;
-    dxf += `10\n${x1}\n`;
-    dxf += `20\n${y1}\n`;
+    dxf += "8\n" + layer + "\n";
+    dxf += "10\n" + x1 + "\n";
+    dxf += "20\n" + y1 + "\n";
     dxf += "30\n0.0\n";
-    dxf += `11\n${x2}\n`;
-    dxf += `21\n${y2}\n`;
+    dxf += "11\n" + x2 + "\n";
+    dxf += "21\n" + y2 + "\n";
     dxf += "31\n0.0\n";
   } else {
-    // Courbe Catmull-Rom approximée par des segments LINE
-    const steps = 10; // Segments par section de courbe
+    const steps = 10;
     const allPoints: { x: number; y: number }[] = [];
 
-    // Générer tous les points de la courbe
     for (let i = 0; i < points.length - 1; i++) {
       const p0 = points[i === 0 ? (spline.closed ? points.length - 1 : 0) : i - 1];
       const p1 = points[i];
       const p2 = points[i + 1];
       const p3 = points[i === points.length - 2 ? (spline.closed ? 0 : i + 1) : i + 2];
 
-      // Points de contrôle Bézier
       const cp1x = p1.x + ((p2.x - p0.x) * tension) / 3;
       const cp1y = p1.y + ((p2.y - p0.y) * tension) / 3;
       const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3;
       const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3;
 
-      // Évaluation de Bézier cubique
-      const bezier = (t: number, v0: number, v1: number, v2: number, v3: number) => {
+      const bezierCalc = (t: number, v0: number, v1: number, v2: number, v3: number) => {
         const u = 1 - t;
         return u * u * u * v0 + 3 * u * u * t * v1 + 3 * u * t * t * v2 + t * t * t * v3;
       };
 
       for (let t = 0; t <= steps; t++) {
         const tt = t / steps;
-        // Ne pas ajouter le premier point des segments suivants (déjà ajouté)
         if (i > 0 && t === 0) continue;
 
         allPoints.push({
-          x: bezier(tt, p1.x, cp1x, cp2x, p2.x),
-          y: bezier(tt, p1.y, cp1y, cp2y, p2.y),
+          x: bezierCalc(tt, p1.x, cp1x, cp2x, p2.x),
+          y: bezierCalc(tt, p1.y, cp1y, cp2y, p2.y),
         });
       }
     }
 
-    // Si fermé, ajouter le dernier segment de fermeture
     if (spline.closed && points.length >= 3) {
       const p0 = points[points.length - 2];
       const p1 = points[points.length - 1];
@@ -304,7 +280,7 @@ function exportSpline(spline: Spline, sketch: Sketch, scale: number): string {
       const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3;
       const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3;
 
-      const bezier = (t: number, v0: number, v1: number, v2: number, v3: number) => {
+      const bezierCalc = (t: number, v0: number, v1: number, v2: number, v3: number) => {
         const u = 1 - t;
         return u * u * u * v0 + 3 * u * u * t * v1 + 3 * u * t * t * v2 + t * t * t * v3;
       };
@@ -312,13 +288,12 @@ function exportSpline(spline: Spline, sketch: Sketch, scale: number): string {
       for (let t = 1; t <= steps; t++) {
         const tt = t / steps;
         allPoints.push({
-          x: bezier(tt, p1.x, cp1x, cp2x, p2.x),
-          y: bezier(tt, p1.y, cp1y, cp2y, p2.y),
+          x: bezierCalc(tt, p1.x, cp1x, cp2x, p2.x),
+          y: bezierCalc(tt, p1.y, cp1y, cp2y, p2.y),
         });
       }
     }
 
-    // Créer des LINE entre chaque paire de points consécutifs
     for (let i = 0; i < allPoints.length - 1; i++) {
       const pt1 = allPoints[i];
       const pt2 = allPoints[i + 1];
@@ -329,16 +304,15 @@ function exportSpline(spline: Spline, sketch: Sketch, scale: number): string {
       const y2 = (-pt2.y / scale).toFixed(4);
 
       dxf += "0\nLINE\n";
-      dxf += `8\n${layer}\n`;
-      dxf += `10\n${x1}\n`;
-      dxf += `20\n${y1}\n`;
+      dxf += "8\n" + layer + "\n";
+      dxf += "10\n" + x1 + "\n";
+      dxf += "20\n" + y1 + "\n";
       dxf += "30\n0.0\n";
-      dxf += `11\n${x2}\n`;
-      dxf += `21\n${y2}\n`;
+      dxf += "11\n" + x2 + "\n";
+      dxf += "21\n" + y2 + "\n";
       dxf += "31\n0.0\n";
     }
 
-    // Si fermé, ajouter une ligne de fermeture
     if (spline.closed && allPoints.length > 0) {
       const pt1 = allPoints[allPoints.length - 1];
       const pt2 = allPoints[0];
@@ -349,12 +323,12 @@ function exportSpline(spline: Spline, sketch: Sketch, scale: number): string {
       const y2 = (-pt2.y / scale).toFixed(4);
 
       dxf += "0\nLINE\n";
-      dxf += `8\n${layer}\n`;
-      dxf += `10\n${x1}\n`;
-      dxf += `20\n${y1}\n`;
+      dxf += "8\n" + layer + "\n";
+      dxf += "10\n" + x1 + "\n";
+      dxf += "20\n" + y1 + "\n";
       dxf += "30\n0.0\n";
-      dxf += `11\n${x2}\n`;
-      dxf += `21\n${y2}\n`;
+      dxf += "11\n" + x2 + "\n";
+      dxf += "21\n" + y2 + "\n";
       dxf += "31\n0.0\n";
     }
   }
@@ -362,9 +336,6 @@ function exportSpline(spline: Spline, sketch: Sketch, scale: number): string {
   return dxf;
 }
 
-/**
- * v2.3: Exporte un rectangle comme 4 lignes
- */
 function exportRectangle(rect: Rectangle, sketch: Sketch, scale: number): string {
   const p1 = sketch.points.get(rect.p1);
   const p2 = sketch.points.get(rect.p2);
@@ -375,7 +346,6 @@ function exportRectangle(rect: Rectangle, sketch: Sketch, scale: number): string
 
   const layer = (rect as any).isConstruction ? "CONSTRUCTION" : "0";
 
-  // Convertir les 4 coins en mm
   const pts = [p1, p2, p3, p4].map(p => ({
     x: (p.x / scale).toFixed(4),
     y: (-p.y / scale).toFixed(4),
@@ -383,10 +353,97 @@ function exportRectangle(rect: Rectangle, sketch: Sketch, scale: number): string
 
   let dxf = "";
 
-  // 4 lignes: p1-p2, p2-p3, p3-p4, p4-p1
   const edges = [[0, 1], [1, 2], [2, 3], [3, 0]];
   for (const [i, j] of edges) {
     dxf += "0\nLINE\n";
-    dxf += `8\n${layer}\n`;
-    dxf += `10\n${pts[i].x}\n`;
-    dxf += `20\n${pts[i].y}\n`;
+    dxf += "8\n" + layer + "\n";
+    dxf += "10\n" + pts[i].x + "\n";
+    dxf += "20\n" + pts[i].y + "\n";
+    dxf += "30\n0.0\n";
+    dxf += "11\n" + pts[j].x + "\n";
+    dxf += "21\n" + pts[j].y + "\n";
+    dxf += "31\n0.0\n";
+  }
+
+  return dxf;
+}
+
+function exportBezier(bezier: Bezier, sketch: Sketch, scale: number): string {
+  const p1 = sketch.points.get(bezier.p1);
+  const p2 = sketch.points.get(bezier.p2);
+  const cp1 = sketch.points.get(bezier.cp1);
+  const cp2 = sketch.points.get(bezier.cp2);
+
+  if (!p1 || !p2 || !cp1 || !cp2) return "";
+
+  const layer = bezier.isConstruction ? "CONSTRUCTION" : "0";
+
+  const steps = 20;
+  const allPoints: { x: number; y: number }[] = [];
+
+  const bezierPoint = (t: number) => {
+    const u = 1 - t;
+    const tt = t * t;
+    const uu = u * u;
+    const uuu = uu * u;
+    const ttt = tt * t;
+
+    return {
+      x: uuu * p1.x + 3 * uu * t * cp1.x + 3 * u * tt * cp2.x + ttt * p2.x,
+      y: uuu * p1.y + 3 * uu * t * cp1.y + 3 * u * tt * cp2.y + ttt * p2.y,
+    };
+  };
+
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    allPoints.push(bezierPoint(t));
+  }
+
+  let dxf = "";
+
+  for (let i = 0; i < allPoints.length - 1; i++) {
+    const pt1 = allPoints[i];
+    const pt2 = allPoints[i + 1];
+
+    const x1 = (pt1.x / scale).toFixed(4);
+    const y1 = (-pt1.y / scale).toFixed(4);
+    const x2 = (pt2.x / scale).toFixed(4);
+    const y2 = (-pt2.y / scale).toFixed(4);
+
+    dxf += "0\nLINE\n";
+    dxf += "8\n" + layer + "\n";
+    dxf += "10\n" + x1 + "\n";
+    dxf += "20\n" + y1 + "\n";
+    dxf += "30\n0.0\n";
+    dxf += "11\n" + x2 + "\n";
+    dxf += "21\n" + y2 + "\n";
+    dxf += "31\n0.0\n";
+  }
+
+  return dxf;
+}
+
+function exportText(text: TextAnnotation, sketch: Sketch, scale: number): string {
+  const position = sketch.points.get(text.position);
+
+  if (!position) return "";
+
+  const x = (position.x / scale).toFixed(4);
+  const y = (-position.y / scale).toFixed(4);
+  const height = (text.fontSize || 5).toFixed(4);
+  const rotation = text.rotation || 0;
+
+  let dxf = "";
+  dxf += "0\nTEXT\n";
+  dxf += "8\n0\n";
+  dxf += "10\n" + x + "\n";
+  dxf += "20\n" + y + "\n";
+  dxf += "30\n0.0\n";
+  dxf += "40\n" + height + "\n";
+  dxf += "1\n" + text.content + "\n";
+  if (rotation !== 0) {
+    dxf += "50\n" + rotation + "\n";
+  }
+  const hAlign = text.alignment === "center" ? 1 : text.alignment === "right" ? 2 : 0;
+  if (hAlign !== 0) {
+    dxf += "72\n" + hAlign + "\n";
