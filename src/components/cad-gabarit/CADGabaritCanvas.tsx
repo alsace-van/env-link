@@ -1,8 +1,13 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.52
+// VERSION: 7.53
 // ============================================
+//
+// CHANGELOG v7.53 (22/01/2026):
+// - FIX: Crop utilise le canvas le plus récent (transformedCanvas si calibré)
+// - FIX: Efface transformedCanvas après crop pour utiliser croppedCanvas
+// - FIX: Ordre de priorité cohérent avec cad-renderer
 //
 // CHANGELOG v7.52 (22/01/2026):
 // - FIX: Hit-testing utilise les dimensions cropées (cohérent avec cad-renderer)
@@ -9156,8 +9161,9 @@ export function CADGabaritCanvas({
         .sort((a, b) => b.order - a.order);
 
       for (const bgImage of sortedImages) {
-        // FIX v7.52: Même ordre que dans cad-renderer pour la cohérence
-        const imageToDraw = bgImage.croppedCanvas || bgImage.transformedCanvas || bgImage.adjustedCanvas || bgImage.image;
+        // FIX v7.53: Même ordre que dans cad-renderer pour la cohérence
+        // transformedCanvas (calibration) > croppedCanvas > adjustedCanvas > image
+        const imageToDraw = bgImage.transformedCanvas || bgImage.croppedCanvas || bgImage.adjustedCanvas || bgImage.image;
         // FIX #85c: Vérifier que l'image existe
         if (!imageToDraw) continue;
 
@@ -9510,12 +9516,15 @@ export function CADGabaritCanvas({
       const newImages = prev.map((img) => {
         if (img.id !== selectedImageId) return img;
 
-        // Créer le canvas croppé - utiliser l'image originale pour le crop
-        const sourceImage = img.adjustedCanvas || img.image;
+        // FIX v7.53: Utiliser le canvas le plus récent comme source
+        // Si transformedCanvas existe (calibration précédente), on croppe dessus
+        // Sinon on utilise adjustedCanvas ou image
+        const sourceImage = img.transformedCanvas || img.adjustedCanvas || img.image;
         const srcWidth = sourceImage.width;
         const srcHeight = sourceImage.height;
 
         console.log("[CROP] Source image size:", srcWidth, "x", srcHeight);
+        console.log("[CROP] Source type:", img.transformedCanvas ? "transformedCanvas" : img.adjustedCanvas ? "adjustedCanvas" : "image");
 
         // Calculer les coordonnées en pixels
         const cropX = Math.round((cropSelection.x / 100) * srcWidth);
@@ -9559,12 +9568,14 @@ export function CADGabaritCanvas({
         console.log("[CROP] New position:", { x: img.x + offsetX, y: img.y + offsetY });
 
         // Retourner un nouvel objet avec le croppedCanvas et la position ajustée
+        // FIX v7.53: Effacer transformedCanvas car le crop a été appliqué dessus
         const newImg = {
           ...img,
           x: img.x + offsetX,
           y: img.y + offsetY,
           crop: { ...cropSelection },
           croppedCanvas: croppedCanvas,
+          transformedCanvas: undefined, // Le crop est maintenant le canvas le plus récent
         };
 
         console.log("[CROP] New image has croppedCanvas:", !!newImg.croppedCanvas);
