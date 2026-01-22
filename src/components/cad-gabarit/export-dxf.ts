@@ -136,7 +136,7 @@ function exportLine(line: Line, sketch: Sketch, scale: number): string {
   const y2 = (-p2.y / scale).toFixed(4);
 
   // MOD v7.12d: Lignes de construction sur calque séparé
-  const layer = line.isConstruction ? "Construction" : "0";
+  const layer = line.isConstruction ? "CONSTRUCTION" : "0";
 
   let dxf = "";
   dxf += "0\nLINE\n";
@@ -214,7 +214,8 @@ function exportArc(arc: Arc, sketch: Sketch, scale: number): string {
 }
 
 /**
- * v2.3: Exporte une spline comme une polyligne (approximation par segments)
+ * v2.4: Exporte une spline comme une série de LINE (meilleure compatibilité Fusion 360)
+ * Utiliser des LINE au lieu de POLYLINE pour une compatibilité maximale
  */
 function exportSpline(spline: Spline, sketch: Sketch, scale: number): string {
   const points: Point[] = [];
@@ -226,31 +227,27 @@ function exportSpline(spline: Spline, sketch: Sketch, scale: number): string {
   if (points.length < 2) return "";
 
   const tension = spline.tension ?? 0.5;
-  const layer = spline.isConstruction ? "Construction" : "0";
+  const layer = spline.isConstruction ? "CONSTRUCTION" : "0";
 
-  // Pour DXF R12, on utilise une POLYLINE avec des sommets
   let dxf = "";
-  dxf += "0\nPOLYLINE\n";
-  dxf += `8\n${layer}\n`; // Calque
-  dxf += "66\n1\n"; // Vertices follow
-  dxf += "70\n0\n"; // Polyline flags (0 = open, 1 = closed)
-  if (spline.closed) {
-    dxf = dxf.replace("70\n0\n", "70\n1\n"); // Closed polyline
-  }
 
   if (points.length === 2) {
-    // Juste 2 points - ligne simple
-    for (const pt of points) {
-      const x = (pt.x / scale).toFixed(4);
-      const y = (-pt.y / scale).toFixed(4);
-      dxf += "0\nVERTEX\n";
-      dxf += `8\n${layer}\n`;
-      dxf += `10\n${x}\n`;
-      dxf += `20\n${y}\n`;
-      dxf += "30\n0.0\n";
-    }
+    // Juste 2 points - une seule ligne
+    const x1 = (points[0].x / scale).toFixed(4);
+    const y1 = (-points[0].y / scale).toFixed(4);
+    const x2 = (points[1].x / scale).toFixed(4);
+    const y2 = (-points[1].y / scale).toFixed(4);
+
+    dxf += "0\nLINE\n";
+    dxf += `8\n${layer}\n`;
+    dxf += `10\n${x1}\n`;
+    dxf += `20\n${y1}\n`;
+    dxf += "30\n0.0\n";
+    dxf += `11\n${x2}\n`;
+    dxf += `21\n${y2}\n`;
+    dxf += "31\n0.0\n";
   } else {
-    // Courbe Catmull-Rom approximée par des segments
+    // Courbe Catmull-Rom approximée par des segments LINE
     const steps = 10; // Segments par section de courbe
     const allPoints: { x: number; y: number }[] = [];
 
@@ -311,20 +308,46 @@ function exportSpline(spline: Spline, sketch: Sketch, scale: number): string {
       }
     }
 
-    // Ajouter tous les vertices
-    for (const pt of allPoints) {
-      const x = (pt.x / scale).toFixed(4);
-      const y = (-pt.y / scale).toFixed(4);
-      dxf += "0\nVERTEX\n";
+    // Créer des LINE entre chaque paire de points consécutifs
+    for (let i = 0; i < allPoints.length - 1; i++) {
+      const pt1 = allPoints[i];
+      const pt2 = allPoints[i + 1];
+
+      const x1 = (pt1.x / scale).toFixed(4);
+      const y1 = (-pt1.y / scale).toFixed(4);
+      const x2 = (pt2.x / scale).toFixed(4);
+      const y2 = (-pt2.y / scale).toFixed(4);
+
+      dxf += "0\nLINE\n";
       dxf += `8\n${layer}\n`;
-      dxf += `10\n${x}\n`;
-      dxf += `20\n${y}\n`;
+      dxf += `10\n${x1}\n`;
+      dxf += `20\n${y1}\n`;
       dxf += "30\n0.0\n";
+      dxf += `11\n${x2}\n`;
+      dxf += `21\n${y2}\n`;
+      dxf += "31\n0.0\n";
+    }
+
+    // Si fermé, ajouter une ligne de fermeture
+    if (spline.closed && allPoints.length > 0) {
+      const pt1 = allPoints[allPoints.length - 1];
+      const pt2 = allPoints[0];
+
+      const x1 = (pt1.x / scale).toFixed(4);
+      const y1 = (-pt1.y / scale).toFixed(4);
+      const x2 = (pt2.x / scale).toFixed(4);
+      const y2 = (-pt2.y / scale).toFixed(4);
+
+      dxf += "0\nLINE\n";
+      dxf += `8\n${layer}\n`;
+      dxf += `10\n${x1}\n`;
+      dxf += `20\n${y1}\n`;
+      dxf += "30\n0.0\n";
+      dxf += `11\n${x2}\n`;
+      dxf += `21\n${y2}\n`;
+      dxf += "31\n0.0\n";
     }
   }
-
-  dxf += "0\nSEQEND\n";
-  dxf += `8\n${layer}\n`;
 
   return dxf;
 }
@@ -340,7 +363,7 @@ function exportRectangle(rect: Rectangle, sketch: Sketch, scale: number): string
 
   if (!p1 || !p2 || !p3 || !p4) return "";
 
-  const layer = (rect as any).isConstruction ? "Construction" : "0";
+  const layer = (rect as any).isConstruction ? "CONSTRUCTION" : "0";
 
   // Convertir les 4 coins en mm
   const pts = [p1, p2, p3, p4].map(p => ({
