@@ -1,10 +1,10 @@
 // ============================================
 // EXPORT DXF: Export au format AutoCAD R12
 // Compatible Fusion 360, AutoCAD, LibreCAD
-// VERSION: 2.3 - Ajout splines et rectangles
+// VERSION: 2.6 - Ajout TextAnnotation
 // ============================================
 
-import { Sketch, Line, Circle as CircleType, Arc, Spline, Rectangle, Point } from "./types";
+import { Sketch, Line, Circle as CircleType, Arc, Spline, Rectangle, Point, Bezier, TextAnnotation } from "./types";
 
 /**
  * Exporte un sketch au format DXF (AutoCAD R12 - format le plus compatible)
@@ -109,6 +109,16 @@ export function exportToDXF(sketch: Sketch): string {
       case "rectangle": {
         // v2.3: Export des rectangles comme 4 lignes
         dxf += exportRectangle(geo as Rectangle, sketch, scale);
+        break;
+      }
+      case "bezier": {
+        // v2.5: Export des courbes de Bézier comme séries de LINE
+        dxf += exportBezier(geo as Bezier, sketch, scale);
+        break;
+      }
+      case "text": {
+        // v2.6: Export des annotations texte
+        dxf += exportText(geo as TextAnnotation, sketch, scale);
         break;
       }
     }
@@ -380,13 +390,3 @@ function exportRectangle(rect: Rectangle, sketch: Sketch, scale: number): string
     dxf += `8\n${layer}\n`;
     dxf += `10\n${pts[i].x}\n`;
     dxf += `20\n${pts[i].y}\n`;
-    dxf += "30\n0.0\n";
-    dxf += `11\n${pts[j].x}\n`;
-    dxf += `21\n${pts[j].y}\n`;
-    dxf += "31\n0.0\n";
-  }
-
-  return dxf;
-}
-
-export default exportToDXF;
