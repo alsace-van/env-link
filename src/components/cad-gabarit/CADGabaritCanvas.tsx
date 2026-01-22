@@ -4364,46 +4364,95 @@ export function CADGabaritCanvas({
   }, [saveSketch, performNewSketch]);
 
   // v7.37: Sauvegarder localement (téléchargement fichier JSON avec images)
-  const saveLocalBackup = useCallback(() => {
+  // v7.56: Convertir une image en base64 data URL via canvas
+  const imageToBase64 = useCallback((img: HTMLImageElement): string | null => {
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+      ctx.drawImage(img, 0, 0);
+      // Utiliser JPEG pour les photos (meilleure compression)
+      return canvas.toDataURL("image/jpeg", 0.85);
+    } catch (error) {
+      console.warn("[LocalBackup] Erreur conversion base64:", error);
+      return null;
+    }
+  }, []);
+
+  const saveLocalBackup = useCallback(async () => {
     const toastId = toast.loading("Préparation de la sauvegarde locale...");
 
     try {
-      // Sérialiser les images avec leurs data URLs
-      const serializedImages = backgroundImages.map((img) => ({
-        id: img.id,
-        name: img.name,
-        src: img.src || img.image?.src || null,
-        x: img.x,
-        y: img.y,
-        scale: img.scale,
-        rotation: img.rotation,
-        opacity: img.opacity,
-        visible: img.visible,
-        locked: img.locked,
-        markers: img.markers,
-        adjustments: img.adjustments,
-        layerId: img.layerId,
-        order: img.order,
-        crop: img.crop,
-        blendMode: img.blendMode,
-        calibrationData: img.calibrationData
-          ? {
-              mode: img.calibrationData.mode,
-              scale: img.calibrationData.scale,
-              scaleX: img.calibrationData.scaleX,
-              scaleY: img.calibrationData.scaleY,
-              error: img.calibrationData.error,
-              errorX: img.calibrationData.errorX,
-              errorY: img.calibrationData.errorY,
-              applied: img.calibrationData.applied,
-              points: img.calibrationData.points ? Array.from(img.calibrationData.points.entries()) : [],
-              pairs: img.calibrationData.pairs ? Array.from(img.calibrationData.pairs.entries()) : [],
+      // v7.56: Sérialiser les images en convertissant en base64
+      const serializedImages = await Promise.all(
+        backgroundImages.map(async (img) => {
+          let base64Src: string | null = null;
+
+          // Essayer de convertir l'image en base64
+          if (img.image) {
+            // Si l'image HTMLImageElement est disponible, la convertir
+            base64Src = imageToBase64(img.image);
+          } else if (img.src && img.src.startsWith("data:")) {
+            // Déjà en base64
+            base64Src = img.src;
+          } else if (img.src) {
+            // Essayer de charger et convertir
+            try {
+              const tempImg = new Image();
+              tempImg.crossOrigin = "anonymous";
+              await new Promise<void>((resolve, reject) => {
+                tempImg.onload = () => resolve();
+                tempImg.onerror = () => reject(new Error("Échec chargement"));
+                tempImg.src = img.src!;
+              });
+              base64Src = imageToBase64(tempImg);
+            } catch {
+              console.warn("[LocalBackup] Impossible de convertir:", img.name);
             }
-          : undefined,
-      }));
+          }
+
+          return {
+            id: img.id,
+            name: img.name,
+            src: base64Src, // Maintenant en base64 !
+            x: img.x,
+            y: img.y,
+            scale: img.scale,
+            rotation: img.rotation,
+            opacity: img.opacity,
+            visible: img.visible,
+            locked: img.locked,
+            markers: img.markers,
+            adjustments: img.adjustments,
+            layerId: img.layerId,
+            order: img.order,
+            crop: img.crop,
+            blendMode: img.blendMode,
+            calibrationData: img.calibrationData
+              ? {
+                  mode: img.calibrationData.mode,
+                  scale: img.calibrationData.scale,
+                  scaleX: img.calibrationData.scaleX,
+                  scaleY: img.calibrationData.scaleY,
+                  error: img.calibrationData.error,
+                  errorX: img.calibrationData.errorX,
+                  errorY: img.calibrationData.errorY,
+                  applied: img.calibrationData.applied,
+                  points: img.calibrationData.points ? Array.from(img.calibrationData.points.entries()) : [],
+                  pairs: img.calibrationData.pairs ? Array.from(img.calibrationData.pairs.entries()) : [],
+                }
+              : undefined,
+          };
+        })
+      );
+
+      // Compter les images converties avec succès
+      const imagesWithData = serializedImages.filter((img) => img.src !== null).length;
 
       const localBackupData = {
-        version: "1.0",
+        version: "1.1", // v7.56: Version avec images base64
         exportedAt: new Date().toISOString(),
         sketch: {
           id: sketch.id,
@@ -4446,7 +4495,9 @@ export function CADGabaritCanvas({
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      toast.success(`Sauvegarde locale téléchargée ! (${backgroundImages.length} photos)`, { id: toastId });
+      // Calculer la taille approximative
+      const sizeMB = (jsonStr.length / (1024 * 1024)).toFixed(1);
+      toast.success(`Sauvegarde téléchargée ! (${imagesWithData}/${backgroundImages.length} photos, ${sizeMB} Mo)`, { id: toastId });
     } catch (error) {
       console.error("[LocalBackup] Error:", error);
       toast.error("Erreur lors de la sauvegarde locale", { id: toastId });
@@ -4462,6 +4513,7 @@ export function CADGabaritCanvas({
     a4OverlapMm,
     a4CutMode,
     measurements,
+    imageToBase64,
   ]);
 
   // v7.37: Charger une sauvegarde locale
@@ -17727,14 +17779,24 @@ export function CADGabaritCanvas({
       ref={containerRef}
       className={`flex flex-col overflow-hidden ${isFullscreen ? "fixed inset-0 z-50 bg-white" : "h-[700px]"}`}
     >
-      {/* v7.54: Input caché pour l'import JSON - DOIT être hors du DropdownMenu */}
+      {/* v7.55: Input caché pour l'import JSON - avec ID pour label */}
       <input
+        id="json-import-input"
         ref={jsonImportInputRef}
         type="file"
         accept=".json"
-        onChange={loadLocalBackup}
-        className="hidden"
-        style={{ display: 'none', position: 'absolute', top: -9999, left: -9999 }}
+        onChange={(e) => {
+          console.log("[LocalBackup] onChange triggered!", e.target.files);
+          loadLocalBackup(e);
+        }}
+        style={{
+          position: 'absolute',
+          top: -9999,
+          left: -9999,
+          width: 1,
+          height: 1,
+          opacity: 0,
+        }}
       />
       {/* Toolbar Ligne 1 - Fichiers */}
       <div className="flex items-center gap-0 p-2 bg-gray-100 border-b flex-shrink-0">
@@ -17779,15 +17841,18 @@ export function CADGabaritCanvas({
                     Télécharger (avec photos)
                   </DropdownMenuItem>
 
-                  {/* Charger backup local - v7.53: Fix avec ref et onClick */}
-                  <DropdownMenuItem
-                    onClick={() => {
-                      console.log("[LocalBackup] Menu item clicked, triggering file input");
-                      jsonImportInputRef.current?.click();
-                    }}
-                  >
-                    <FolderOpen className="h-4 w-4 mr-2 text-blue-600" />
-                    Ouvrir fichier local...
+                  {/* Charger backup local - v7.55: Utiliser label htmlFor pour contourner sandbox iframe */}
+                  <DropdownMenuItem asChild>
+                    <label
+                      htmlFor="json-import-input"
+                      className="flex items-center cursor-pointer w-full"
+                      onClick={(e) => {
+                        console.log("[LocalBackup] Label clicked for json-import-input");
+                      }}
+                    >
+                      <FolderOpen className="h-4 w-4 mr-2 text-blue-600" />
+                      Ouvrir fichier local...
+                    </label>
                   </DropdownMenuItem>
                   {/* v7.54: Input déplacé hors du DropdownMenu pour éviter le démontage */}
 
