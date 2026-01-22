@@ -1,8 +1,16 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.50
+// VERSION: 7.52
 // ============================================
+//
+// CHANGELOG v7.52 (22/01/2026):
+// - FIX: Hit-testing utilise les dimensions cropées (cohérent avec cad-renderer)
+//
+// CHANGELOG v7.51 (22/01/2026):
+// - FIX: Les cotations suivent maintenant le rectangle lors du déplacement
+// - Mise à jour automatique des dimensions quand les points bougent
+// - Fonctionne pour: drag de point, drag de ligne, drag de sélection
 //
 // CHANGELOG v7.50 (21/01/2026):
 // - Bouton "Réassembler (N photos)" dans le menu contextuel
@@ -9148,7 +9156,8 @@ export function CADGabaritCanvas({
         .sort((a, b) => b.order - a.order);
 
       for (const bgImage of sortedImages) {
-        const imageToDraw = bgImage.transformedCanvas || bgImage.image;
+        // FIX v7.52: Même ordre que dans cad-renderer pour la cohérence
+        const imageToDraw = bgImage.croppedCanvas || bgImage.transformedCanvas || bgImage.adjustedCanvas || bgImage.image;
         // FIX #85c: Vérifier que l'image existe
         if (!imageToDraw) continue;
 
@@ -12021,6 +12030,35 @@ export function CADGabaritCanvas({
             }
           });
 
+          // v7.51: Mettre à jour les dimensions liées aux points déplacés
+          if (newSketch.dimensions.size > 0 && pointsToMove.size > 0) {
+            newSketch.dimensions = new Map(currentSketch.dimensions);
+            const movedPointIds = Array.from(pointsToMove);
+            newSketch.dimensions.forEach((dim, dimId) => {
+              const hasMovedPoint = dim.entities.some(e => movedPointIds.includes(e));
+              if (hasMovedPoint) {
+                if (dim.type === "horizontal" || dim.type === "vertical" || dim.type === "linear") {
+                  const dp1 = newSketch.points.get(dim.entities[0]);
+                  const dp2 = newSketch.points.get(dim.entities[1]);
+                  if (dp1 && dp2) {
+                    let newValue: number;
+                    if (dim.type === "horizontal") {
+                      newValue = Math.abs(dp2.x - dp1.x);
+                    } else if (dim.type === "vertical") {
+                      newValue = Math.abs(dp2.y - dp1.y);
+                    } else {
+                      newValue = distance(dp1, dp2);
+                    }
+                    if (newSketch.scaleFactor > 0) {
+                      newValue = newValue / newSketch.scaleFactor;
+                    }
+                    newSketch.dimensions.set(dimId, { ...dim, value: newValue });
+                  }
+                }
+              }
+            });
+          }
+
           setSketch(newSketch);
           setSelectionDragStart(worldPos);
           return;
@@ -12073,6 +12111,36 @@ export function CADGabaritCanvas({
               x: targetPos.x,
               y: targetPos.y,
             });
+            
+            // v7.51: Mettre à jour les dimensions liées au point déplacé
+            if (newSketch.dimensions.size > 0) {
+              newSketch.dimensions = new Map(currentSketch.dimensions);
+              newSketch.dimensions.forEach((dim, dimId) => {
+                if (dim.entities.includes(dragTarget.id)) {
+                  // Recalculer la valeur de la dimension
+                  if (dim.type === "horizontal" || dim.type === "vertical" || dim.type === "linear") {
+                    const p1 = newSketch.points.get(dim.entities[0]);
+                    const p2 = newSketch.points.get(dim.entities[1]);
+                    if (p1 && p2) {
+                      let newValue: number;
+                      if (dim.type === "horizontal") {
+                        newValue = Math.abs(p2.x - p1.x);
+                      } else if (dim.type === "vertical") {
+                        newValue = Math.abs(p2.y - p1.y);
+                      } else {
+                        newValue = distance(p1, p2);
+                      }
+                      // Convertir en mm si scaleFactor est défini
+                      if (newSketch.scaleFactor > 0) {
+                        newValue = newValue / newSketch.scaleFactor;
+                      }
+                      newSketch.dimensions.set(dimId, { ...dim, value: newValue });
+                    }
+                  }
+                }
+              });
+            }
+            
             setSketch(newSketch);
           }
         } else if (dragTarget.type === "handle" && dragTarget.handleType === "circleResize") {
@@ -12115,6 +12183,35 @@ export function CADGabaritCanvas({
                 x: p2.x + deltaX,
                 y: p2.y + deltaY,
               });
+
+              // v7.51: Mettre à jour les dimensions liées aux points déplacés
+              if (newSketch.dimensions.size > 0) {
+                newSketch.dimensions = new Map(currentSketch.dimensions);
+                const movedPointIds = [line.p1, line.p2];
+                newSketch.dimensions.forEach((dim, dimId) => {
+                  const hasMovedPoint = dim.entities.some(e => movedPointIds.includes(e));
+                  if (hasMovedPoint) {
+                    if (dim.type === "horizontal" || dim.type === "vertical" || dim.type === "linear") {
+                      const dp1 = newSketch.points.get(dim.entities[0]);
+                      const dp2 = newSketch.points.get(dim.entities[1]);
+                      if (dp1 && dp2) {
+                        let newValue: number;
+                        if (dim.type === "horizontal") {
+                          newValue = Math.abs(dp2.x - dp1.x);
+                        } else if (dim.type === "vertical") {
+                          newValue = Math.abs(dp2.y - dp1.y);
+                        } else {
+                          newValue = distance(dp1, dp2);
+                        }
+                        if (newSketch.scaleFactor > 0) {
+                          newValue = newValue / newSketch.scaleFactor;
+                        }
+                        newSketch.dimensions.set(dimId, { ...dim, value: newValue });
+                      }
+                    }
+                  }
+                });
+              }
 
               setSketch(newSketch);
               setLastDragPos(targetPos);
