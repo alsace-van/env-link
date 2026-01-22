@@ -361,6 +361,7 @@ export function CADGabaritCanvas({
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dxfInputRef = useRef<HTMLInputElement>(null);
+  const jsonImportInputRef = useRef<HTMLInputElement>(null); // v7.53: Ref séparé pour l'import JSON
   const lastMiddleClickRef = useRef<number>(0); // Pour détecter le double-clic molette
   const renderRequestRef = useRef<number | null>(null); // Pour throttler le rendu avec RAF
   const renderDebugTimeRef = useRef<number>(0); // Pour limiter les logs debug
@@ -17574,14 +17575,25 @@ export function CADGabaritCanvas({
                     Télécharger (avec photos)
                   </DropdownMenuItem>
 
-                  {/* Charger backup local */}
-                  <DropdownMenuItem asChild>
-                    <label className="cursor-pointer flex items-center">
-                      <FolderOpen className="h-4 w-4 mr-2 text-blue-600" />
-                      Ouvrir fichier local...
-                      <input type="file" accept=".json" onChange={loadLocalBackup} className="hidden" />
-                    </label>
+                  {/* Charger backup local - v7.53: Fix avec ref et onClick */}
+                  <DropdownMenuItem
+                    onClick={() => {
+                      console.log("[LocalBackup] Menu item clicked, triggering file input");
+                      jsonImportInputRef.current?.click();
+                    }}
+                  >
+                    <FolderOpen className="h-4 w-4 mr-2 text-blue-600" />
+                    Ouvrir fichier local...
                   </DropdownMenuItem>
+                  {/* Input caché pour l'import JSON */}
+                  <input
+                    ref={jsonImportInputRef}
+                    type="file"
+                    accept=".json"
+                    onChange={loadLocalBackup}
+                    className="hidden"
+                    style={{ display: 'none' }}
+                  />
 
                   <DropdownMenuSeparator />
 
