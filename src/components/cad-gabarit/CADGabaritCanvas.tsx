@@ -723,12 +723,15 @@ export function CADGabaritCanvas({
   } | null>(null);
 
   // v7.31: État pour édition inline d'une dimension (double-clic sur cotation)
+  // v7.52: Ajout du type "rectangle" avec info sur quel côté est modifié
   const [editingDimension, setEditingDimension] = useState<{
     dimensionId: string;
     entityId: string; // ID de la géométrie à modifier
-    type: "line" | "circle";
+    type: "line" | "circle" | "rectangle";
     currentValue: number; // Valeur actuelle en mm
     screenPos: { x: number; y: number };
+    rectangleSide?: "horizontal" | "vertical"; // Pour les rectangles: quel côté est modifié
+    rectanglePointIds?: [string, string]; // Les 2 points du côté modifié
   } | null>(null);
 
   // Interface pour les entrées d'historique avec description
@@ -12935,11 +12938,19 @@ export function CADGabaritCanvas({
   );
 
   // v7.31: Fonction pour trouver une cotation (dimension text) à une position écran
+  // v7.52: Support des rectangles - détecte si les points appartiennent à un rectangle
   const findDimensionAtScreenPos = useCallback(
     (
       screenX: number,
       screenY: number,
-    ): { dimensionId: string; entityId: string; type: "line" | "circle"; value: number } | null => {
+    ): {
+      dimensionId: string;
+      entityId: string;
+      type: "line" | "circle" | "rectangle";
+      value: number;
+      rectangleSide?: "horizontal" | "vertical";
+      rectanglePointIds?: [string, string];
+    } | null => {
       const currentSketch = sketchRef.current;
 
       // Parcourir les dimensions existantes
@@ -12985,7 +12996,7 @@ export function CADGabaritCanvas({
             screenY >= textScreenY - hitHeight / 2 &&
             screenY <= textScreenY + hitHeight / 2
           ) {
-            // Chercher la ligne qui utilise ces deux points
+            // Chercher d'abord une ligne qui utilise ces deux points
             let foundLineId = "";
             for (const [geoId, geo] of currentSketch.geometries) {
               if (geo.type === "line") {
@@ -12999,6 +13010,43 @@ export function CADGabaritCanvas({
                 }
               }
             }
+
+            // Si pas de ligne trouvée, chercher un rectangle qui contient ces points
+            if (!foundLineId) {
+              for (const [geoId, geo] of currentSketch.geometries) {
+                if (geo.type === "rectangle") {
+                  const rect = geo as Rectangle;
+                  const rectPoints = [rect.p1, rect.p2, rect.p3, rect.p4];
+                  const dimP1 = dimension.entities[0];
+                  const dimP2 = dimension.entities[1];
+
+                  // Vérifier si les deux points de la dimension sont des coins adjacents du rectangle
+                  if (rectPoints.includes(dimP1) && rectPoints.includes(dimP2)) {
+                    // Déterminer quel côté du rectangle (horizontal ou vertical)
+                    // Rectangle: p1 (haut-gauche), p2 (haut-droit), p3 (bas-droit), p4 (bas-gauche)
+                    // Côtés horizontaux: p1-p2 (haut) et p4-p3 (bas)
+                    // Côtés verticaux: p2-p3 (droite) et p1-p4 (gauche)
+                    const isHorizontalTop = (dimP1 === rect.p1 && dimP2 === rect.p2) || (dimP1 === rect.p2 && dimP2 === rect.p1);
+                    const isHorizontalBottom = (dimP1 === rect.p4 && dimP2 === rect.p3) || (dimP1 === rect.p3 && dimP2 === rect.p4);
+                    const isVerticalRight = (dimP1 === rect.p2 && dimP2 === rect.p3) || (dimP1 === rect.p3 && dimP2 === rect.p2);
+                    const isVerticalLeft = (dimP1 === rect.p1 && dimP2 === rect.p4) || (dimP1 === rect.p4 && dimP2 === rect.p1);
+
+                    if (isHorizontalTop || isHorizontalBottom || isVerticalRight || isVerticalLeft) {
+                      const side: "horizontal" | "vertical" = (isHorizontalTop || isHorizontalBottom) ? "horizontal" : "vertical";
+                      return {
+                        dimensionId: dimId,
+                        entityId: geoId,
+                        type: "rectangle",
+                        value: dimension.value,
+                        rectangleSide: side,
+                        rectanglePointIds: [dimP1, dimP2]
+                      };
+                    }
+                  }
+                }
+              }
+            }
+
             return { dimensionId: dimId, entityId: foundLineId, type: "line", value: dimension.value };
           }
         }
@@ -13019,6 +13067,7 @@ export function CADGabaritCanvas({
       const worldPos = screenToWorld(screenX, screenY);
 
       // v7.31: Vérifier d'abord si on double-clic sur une cotation existante
+      // v7.52: Support des rectangles lors de l'édition de cotation
       if (activeTool === "select" && showDimensions) {
         const dimHit = findDimensionAtScreenPos(screenX, screenY);
         if (dimHit) {
@@ -13028,6 +13077,8 @@ export function CADGabaritCanvas({
             type: dimHit.type,
             currentValue: dimHit.value,
             screenPos: { x: screenX, y: screenY },
+            rectangleSide: dimHit.rectangleSide,
+            rectanglePointIds: dimHit.rectanglePointIds,
           });
           return;
         }
@@ -20344,6 +20395,82 @@ export function CADGabaritCanvas({
                         const circle = geo as CircleType;
                         const newCircle = { ...circle, radius: newValuePx };
                         newSketch.geometries.set(circle.id, newCircle);
+                      } else if (editingDimension.type === "rectangle" && geo.type === "rectangle") {
+                        // v7.52: Redimensionner le rectangle entier en préservant sa forme
+                        // Supporte les rectangles pivotés grâce aux vecteurs directionnels
+                        const rect = geo as Rectangle;
+                        const pt1 = newSketch.points.get(rect.p1);
+                        const pt2 = newSketch.points.get(rect.p2);
+                        const pt3 = newSketch.points.get(rect.p3);
+                        const pt4 = newSketch.points.get(rect.p4);
+
+                        if (pt1 && pt2 && pt3 && pt4 && editingDimension.rectangleSide) {
+                          if (editingDimension.rectangleSide === "horizontal") {
+                            // Modification de la largeur (côté p1-p2 ou p4-p3)
+                            // Calculer le vecteur direction du côté horizontal
+                            const dx = pt2.x - pt1.x;
+                            const dy = pt2.y - pt1.y;
+                            const currentWidth = Math.sqrt(dx * dx + dy * dy);
+
+                            if (currentWidth > 0) {
+                              // Vecteur unitaire dans la direction de la largeur
+                              const ux = dx / currentWidth;
+                              const uy = dy / currentWidth;
+
+                              // Delta à appliquer
+                              const delta = newValuePx - currentWidth;
+
+                              // Garder le côté gauche fixe (p1, p4), déplacer le côté droit (p2, p3)
+                              newSketch.points.set(rect.p2, { ...pt2, x: pt2.x + ux * delta, y: pt2.y + uy * delta });
+                              newSketch.points.set(rect.p3, { ...pt3, x: pt3.x + ux * delta, y: pt3.y + uy * delta });
+
+                              // Mettre à jour aussi la cotation de l'autre côté parallèle (p4-p3)
+                              for (const [dimId, dim] of newSketch.dimensions) {
+                                if (dim.type === "horizontal") {
+                                  const dimPts = dim.entities;
+                                  if (
+                                    (dimPts[0] === rect.p4 && dimPts[1] === rect.p3) ||
+                                    (dimPts[0] === rect.p3 && dimPts[1] === rect.p4)
+                                  ) {
+                                    newSketch.dimensions.set(dimId, { ...dim, value: newValue });
+                                  }
+                                }
+                              }
+                            }
+                          } else {
+                            // Modification de la hauteur (côté p2-p3 ou p1-p4)
+                            // Calculer le vecteur direction du côté vertical
+                            const dx = pt3.x - pt2.x;
+                            const dy = pt3.y - pt2.y;
+                            const currentHeight = Math.sqrt(dx * dx + dy * dy);
+
+                            if (currentHeight > 0) {
+                              // Vecteur unitaire dans la direction de la hauteur
+                              const ux = dx / currentHeight;
+                              const uy = dy / currentHeight;
+
+                              // Delta à appliquer
+                              const delta = newValuePx - currentHeight;
+
+                              // Garder le côté haut fixe (p1, p2), déplacer le côté bas (p3, p4)
+                              newSketch.points.set(rect.p3, { ...pt3, x: pt3.x + ux * delta, y: pt3.y + uy * delta });
+                              newSketch.points.set(rect.p4, { ...pt4, x: pt4.x + ux * delta, y: pt4.y + uy * delta });
+
+                              // Mettre à jour aussi la cotation de l'autre côté parallèle (p1-p4)
+                              for (const [dimId, dim] of newSketch.dimensions) {
+                                if (dim.type === "vertical") {
+                                  const dimPts = dim.entities;
+                                  if (
+                                    (dimPts[0] === rect.p1 && dimPts[1] === rect.p4) ||
+                                    (dimPts[0] === rect.p4 && dimPts[1] === rect.p1)
+                                  ) {
+                                    newSketch.dimensions.set(dimId, { ...dim, value: newValue });
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
                       }
 
                       // Mettre à jour la dimension
