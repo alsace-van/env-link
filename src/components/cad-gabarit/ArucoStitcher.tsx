@@ -1,47 +1,32 @@
 // ============================================
 // COMPONENT: ArucoStitcher
 // Assemblage de photos via markers ArUco partagés
-// VERSION: 4.6
+// VERSION: 4.8
 // ============================================
 //
+// CHANGELOG v4.8 (21/01/2026):
+// - FIX CRITIQUE: Canvas avec aspect ratio fixe (évite l'étirement)
+// - Canvas utilise max-w-full/max-h-full + aspectRatio CSS
+// - Centré dans son conteneur
+// - origW/origH = dimensions RÉELLES de l'image source
+//
+// CHANGELOG v4.7 (21/01/2026):
+// - Dimensions affichées en pixels RÉELS
+//
 // CHANGELOG v4.6 (21/01/2026):
-// - FIX CRITIQUE: Crop ne déforme plus l'image !
-// - Après "Appliquer & Détecter": edit.rotation = 0, edit.crop = null
-// - applyTransformations utilise transformedImage si elle existe
-// - Crop est appliqué sur transformedImage (pas l'originale)
-// - Ne reset plus transformedImage quand on dessine un crop
+// - Reset edit après Appliquer & Détecter
 //
 // CHANGELOG v4.5 (21/01/2026):
-// - Désactive le crop quand rotation non appliquée (message d'avertissement)
-// - Utilise dimensions originales (origW/origH) pour calcul du crop
+// - Désactive crop si rotation non appliquée
 //
 // CHANGELOG v4.4 (21/01/2026):
-// - FIX: Fond transparent au lieu de noir après rotation/crop
-// - Export en PNG au lieu de JPEG pour la transparence
-// - Motif damier dans le preview pour visualiser la transparence
+// - PNG transparent, motif damier
 //
 // CHANGELOG v4.3 (21/01/2026):
-// - Poignées draggables pour le crop (8 poignées: 4 coins + 4 milieux)
-// - Déplacer le crop en cliquant à l'intérieur
-// - Curseur change selon la zone (resize, move, crosshair)
-// - Grille des tiers dans le crop
-// - Sauvegarde automatique du crop au relâchement
+// - Poignées draggables pour le crop
 //
-// CHANGELOG v4.2 (21/01/2026):
-// - FIX: Crop fonctionne correctement (conversion coordonnées CSS → Canvas)
-// - Rotation améliorée: slider -180° à +180°, boutons ±1°, input numérique
-//
-// CHANGELOG v4.1 (21/01/2026):
-// - NOUVEAU: Outil de recadrage (crop) interactif
-//
-// CHANGELOG v4.0 (21/01/2026):
-// - NOUVEAU: Mode édition par photo avant assemblage
-//
-// CHANGELOG v3.6 (21/01/2026):
-// - Nouvelle prop `initialImages` pour réassembler des images existantes
-//
-// CHANGELOG v3.4 (21/01/2026):
-// - FIX CRITIQUE: Utilise pxPerMmX et pxPerMmY séparément
+// CHANGELOG v4.0-4.2 (21/01/2026):
+// - Mode édition, crop interactif, rotation libre
 // ============================================
 
 import { useState, useCallback, useRef, useEffect } from "react";
@@ -397,8 +382,8 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     const offsetX = (maxWidth - drawW) / 2;
     const offsetY = (maxHeight - drawH) / 2;
 
-    // Stocker le mapping pour les handlers de crop
-    // origW/origH = dimensions de l'image source (pour le calcul du crop)
+    // v4.8: Utiliser les dimensions de l'image SOURCE (pas la bounding box)
+    // C'est crucial car le crop est en % de l'image source
     const sourceImg = photo.transformedImage || photo.image;
     setCanvasMapping({ 
       offsetX, 
@@ -406,8 +391,8 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
       scale, 
       imgW, 
       imgH,
-      origW: sourceImg.width,
-      origH: sourceImg.height,
+      origW: sourceImg.width,   // Dimensions RÉELLES de l'image source
+      origH: sourceImg.height,  // Dimensions RÉELLES de l'image source
       rotation: photo.transformedImage ? 0 : edit.rotation
     });
 
@@ -539,13 +524,17 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
       drawHandle(cropToDraw.x, cropToDraw.y + cropToDraw.h / 2);                 // W
       drawHandle(cropToDraw.x + cropToDraw.w, cropToDraw.y + cropToDraw.h / 2);  // E
       
-      // Dimensions en pixels
+      // v4.7: Dimensions en pixels RÉELS (pas canvas)
       if (cropToDraw.w > 60 && cropToDraw.h > 30) {
+        // Calculer les dimensions réelles (diviser par scale)
+        const realW = Math.round(cropToDraw.w / scale);
+        const realH = Math.round(cropToDraw.h / scale);
+        
         ctx.font = 'bold 11px monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
         ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        const dimText = `${Math.round(cropToDraw.w)}×${Math.round(cropToDraw.h)}`;
+        const dimText = `${realW}×${realH}px`;
         const textW = ctx.measureText(dimText).width;
         ctx.fillRect(cropToDraw.x + cropToDraw.w / 2 - textW / 2 - 4, cropToDraw.y + cropToDraw.h + 4, textW + 8, 16);
         ctx.fillStyle = 'white';
@@ -1488,12 +1477,14 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
           <div className="flex gap-4 flex-1 overflow-hidden">
             {/* Grande préview */}
             <div className="flex-1 flex flex-col min-w-0">
-              <div className="relative flex-1 bg-gray-900 rounded-lg overflow-hidden" style={{ minHeight: 400 }}>
+              {/* v4.8: Container avec aspect ratio fixe pour éviter l'étirement */}
+              <div className="relative flex-1 bg-gray-900 rounded-lg overflow-hidden flex items-center justify-center" style={{ minHeight: 400 }}>
                 <canvas
                   ref={previewCanvasRef}
                   width={700}
                   height={450}
-                  className={`w-full h-full ${isCropMode ? 'cursor-crosshair' : ''}`}
+                  className={`max-w-full max-h-full ${isCropMode ? 'cursor-crosshair' : ''}`}
+                  style={{ aspectRatio: '700/450' }}
                   onMouseDown={handleCropMouseDown}
                   onMouseMove={handleCropMouseMove}
                   onMouseUp={handleCropMouseUp}
