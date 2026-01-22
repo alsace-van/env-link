@@ -2,9 +2,11 @@
 // HOOK: useCADAutoBackup
 // Sauvegarde automatique du canvas CAD sur Supabase
 // Protection contre les pertes de données spontanées
-// VERSION: 1.2 - Restauration automatique au chargement
+// VERSION: 1.4 - Fix sauvegardes trop grosses + anti-spam restore
 // ============================================
 // CHANGELOG:
+// v1.4 - Limite taille images (500KB), ignore backups >24h, persiste tentative restore
+// v1.3 - Restaurer les géométries même si les images échouent (HEIC non supporté)
 // v1.2 - Restauration automatique quand canvas vide et backup existe
 // v1.1 - Fix types Supabase
 // ============================================
@@ -86,48 +88,89 @@ function serializeSketchForBackup(sketch: Sketch): SerializedSketch {
 }
 
 // Sérialiser les images de fond (sans HTMLImageElement)
+// v1.3: Limiter la taille des src pour éviter les erreurs 500 Supabase
+const MAX_SRC_SIZE = 500000; // 500KB max par image src
+
 function serializeBackgroundImages(images: BackgroundImage[]): unknown[] {
-  return images.map((img) => ({
-    id: img.id,
-    name: img.name,
+  let totalSize = 0;
+  let skippedCount = 0;
+  
+  const serialized = images.map((img) => {
     // FIX #86b: Utiliser img.src ou img.image.src comme fallback
-    src: img.src || img.image?.src || null,
-    x: img.x,
-    y: img.y,
-    scale: img.scale,
-    rotation: img.rotation,
-    opacity: img.opacity,
-    visible: img.visible,
-    locked: img.locked,
-    markers: img.markers,
-    adjustments: img.adjustments,
-    layerId: img.layerId,
-    order: img.order,
-    crop: img.crop,
-    // FIX #86: Sérialiser calibrationData (Map → Array pour JSON)
-    calibrationData: img.calibrationData
-      ? {
-          mode: img.calibrationData.mode,
-          scale: img.calibrationData.scale,
-          scaleX: img.calibrationData.scaleX,
-          scaleY: img.calibrationData.scaleY,
-          error: img.calibrationData.error,
-          errorX: img.calibrationData.errorX,
-          errorY: img.calibrationData.errorY,
-          applied: img.calibrationData.applied,
-          // Convertir les Map en tableaux pour la sérialisation JSON
-          points: img.calibrationData.points ? Array.from(img.calibrationData.points.entries()) : [],
-          pairs: img.calibrationData.pairs ? Array.from(img.calibrationData.pairs.entries()) : [],
-        }
-      : undefined,
-    // Exclure img.image (HTMLImageElement non sérialisable)
-  }));
+    let src = img.src || img.image?.src || null;
+    
+    // v1.3: Si le src est trop gros (data URL base64), ne pas le sauvegarder
+    if (src && src.length > MAX_SRC_SIZE) {
+      console.warn(`[AutoBackup] Image "${img.name}" src too large (${(src.length / 1024).toFixed(0)}KB), skipping src`);
+      skippedCount++;
+      src = null; // Ne pas sauvegarder le src
+    }
+    
+    if (src) {
+      totalSize += src.length;
+    }
+    
+    return {
+      id: img.id,
+      name: img.name,
+      src: src,
+      x: img.x,
+      y: img.y,
+      scale: img.scale,
+      scaleX: img.scaleX,
+      scaleY: img.scaleY,
+      rotation: img.rotation,
+      opacity: img.opacity,
+      visible: img.visible,
+      locked: img.locked,
+      markers: img.markers,
+      adjustments: img.adjustments,
+      layerId: img.layerId,
+      order: img.order,
+      crop: img.crop,
+      // v1.3: Sauvegarder les dimensions originales pour référence
+      originalWidth: img.image?.width,
+      originalHeight: img.image?.height,
+      // FIX #86: Sérialiser calibrationData (Map → Array pour JSON)
+      calibrationData: img.calibrationData
+        ? {
+            mode: img.calibrationData.mode,
+            scale: img.calibrationData.scale,
+            scaleX: img.calibrationData.scaleX,
+            scaleY: img.calibrationData.scaleY,
+            error: img.calibrationData.error,
+            errorX: img.calibrationData.errorX,
+            errorY: img.calibrationData.errorY,
+            applied: img.calibrationData.applied,
+            // Convertir les Map en tableaux pour la sérialisation JSON
+            points: img.calibrationData.points ? Array.from(img.calibrationData.points.entries()) : [],
+            pairs: img.calibrationData.pairs ? Array.from(img.calibrationData.pairs.entries()) : [],
+          }
+        : undefined,
+      // Exclure img.image (HTMLImageElement non sérialisable)
+    };
+  });
+  
+  if (skippedCount > 0) {
+    console.log(`[AutoBackup] ${skippedCount} image(s) src skipped (too large). Total size: ${(totalSize / 1024).toFixed(0)}KB`);
+  }
+  
+  return serialized;
 }
 
 // FIX #86: Désérialiser les images de fond (reconvertir Arrays en Maps)
 // FIX #86b: Charger les HTMLImageElement de façon asynchrone
-async function deserializeBackgroundImages(images: unknown[]): Promise<BackgroundImage[]> {
+// FIX v1.3: Retourner aussi le nombre d'images échouées pour diagnostic
+interface DeserializeResult {
+  images: BackgroundImage[];
+  failedCount: number;
+  failedNames: string[];
+}
+
+async function deserializeBackgroundImages(images: unknown[]): Promise<DeserializeResult> {
   const loadedImages: BackgroundImage[] = [];
+  let failedCount = 0;
+  const failedNames: string[] = [];
 
   for (const imgData of images) {
     const img = imgData as Record<string, unknown>;
@@ -135,6 +178,7 @@ async function deserializeBackgroundImages(images: unknown[]): Promise<Backgroun
 
     // Charger l'HTMLImageElement depuis le src
     const src = img.src as string | undefined;
+    const imgName = (img.name as string) || "unknown";
     let htmlImage: HTMLImageElement | null = null;
 
     if (src) {
@@ -142,16 +186,20 @@ async function deserializeBackgroundImages(images: unknown[]): Promise<Backgroun
         htmlImage = await new Promise<HTMLImageElement>((resolve, reject) => {
           const image = new Image();
           image.onload = () => resolve(image);
-          image.onerror = () => reject(new Error(`Failed to load image: ${img.name}`));
+          image.onerror = () => reject(new Error(`Failed to load image: ${imgName}`));
           image.src = src;
         });
       } catch (error) {
-        console.error("[AutoBackup] Failed to load image:", img.name, error);
+        console.error("[AutoBackup] Failed to load image:", imgName, error);
+        failedCount++;
+        failedNames.push(imgName);
         // Continuer sans cette image
         continue;
       }
     } else {
-      console.warn("[AutoBackup] Image without src, skipping:", img.name);
+      console.warn("[AutoBackup] Image without src, skipping:", imgName);
+      failedCount++;
+      failedNames.push(imgName);
       continue;
     }
 
@@ -184,7 +232,7 @@ async function deserializeBackgroundImages(images: unknown[]): Promise<Backgroun
     } as BackgroundImage);
   }
 
-  return loadedImages;
+  return { images: loadedImages, failedCount, failedNames };
 }
 
 // Client Supabase non typé pour les nouvelles tables
@@ -363,6 +411,19 @@ export function useCADAutoBackup(
 
         if (error) {
           console.error("[AutoBackup] Failed to save:", error);
+          
+          // v1.3: Afficher un message à l'utilisateur si c'est une erreur de taille
+          if (error.message?.includes('413') || error.code === '413' || error.message?.includes('too large')) {
+            toast.error("Sauvegarde automatique échouée", {
+              description: "Les images sont trop volumineuses. Réduisez la résolution ou le nombre d'images.",
+              duration: 10000,
+            });
+          } else if (error.code === '500' || error.message?.includes('500')) {
+            // v1.3: Erreur 500 souvent liée à la taille
+            console.warn("[AutoBackup] Error 500 - likely payload too large");
+            // Ne pas spammer l'utilisateur avec des toasts, juste logger
+          }
+          
           return false;
         }
 
@@ -481,16 +542,25 @@ export function useCADAutoBackup(
         // FIX #86: Vérifier que le backup a du contenu (géométries OU images OU points de calibration)
         const backupGeoCount = backup.geometry_count || 0;
         // FIX #86b: Désérialiser les images de façon asynchrone (charge les HTMLImageElement)
-        const backupImages =
+        // FIX v1.3: Récupérer aussi les infos sur les images qui ont échoué
+        const originalImageCount = backup.background_images?.length || 0;
+        const deserializeResult =
           backup.background_images && Array.isArray(backup.background_images)
             ? await deserializeBackgroundImages(backup.background_images)
-            : [];
+            : { images: [], failedCount: 0, failedNames: [] };
+        
+        const backupImages = deserializeResult.images;
         const backupImageCount = backupImages.length;
+        const failedImageCount = deserializeResult.failedCount;
+        const failedImageNames = deserializeResult.failedNames;
+        
         const backupCalibPointCount = backupImages.reduce((acc, img) => {
           return acc + (img.calibrationData?.points?.size || 0);
         }, 0);
 
-        const hasContent = backupGeoCount >= minGeometryCount || backupImageCount > 0 || backupCalibPointCount > 0;
+        // FIX v1.3: Restaurer les géométries même si TOUTES les images ont échoué
+        // Le backup a du contenu si: géométries OU images chargées OU il y avait des images (même échouées)
+        const hasContent = backupGeoCount >= minGeometryCount || backupImageCount > 0 || originalImageCount > 0;
 
         if (!hasContent) {
           console.log("[AutoBackup] Backup has no significant content");
@@ -498,11 +568,25 @@ export function useCADAutoBackup(
           return false;
         }
 
+        // FIX v1.3: Avertir si des images n'ont pas pu être chargées (HEIC non supporté, etc.)
+        if (failedImageCount > 0) {
+          console.warn(`[AutoBackup] ${failedImageCount}/${originalImageCount} images failed to load:`, failedImageNames);
+          
+          // Vérifier si ce sont des fichiers HEIC
+          const heicFiles = failedImageNames.filter(name => name.toLowerCase().endsWith('.heic'));
+          if (heicFiles.length > 0) {
+            toast.warning(`${heicFiles.length} image(s) HEIC non supportée(s)`, {
+              description: "Convertissez vos photos en JPEG avant l'import",
+              duration: 8000,
+            });
+          }
+        }
+
         console.log(
-          `[AutoBackup] Restoring backup: ${backupGeoCount} geometries, ${backupImageCount} images, ${backupCalibPointCount} calib points`,
+          `[AutoBackup] Restoring backup: ${backupGeoCount} geometries, ${backupImageCount}/${originalImageCount} images, ${backupCalibPointCount} calib points`,
         );
 
-        // Restaurer le sketch
+        // Restaurer le sketch (géométries, points, calques, etc.)
         loadSketchData(backup.sketch_data);
 
         // FIX #86: Restaurer les images de fond avec calibrationData désérialisé
@@ -670,8 +754,23 @@ export function useCADAutoBackup(
 
   // v1.2: Restauration AUTOMATIQUE au chargement si le canvas est vide et qu'un backup existe
   // L'utilisateur n'a plus besoin de cliquer sur "Restaurer"
+  // v1.3: Persister dans localStorage pour éviter de réessayer après chaque refresh
   useEffect(() => {
     if (!enabled || state.hasRestoredThisSession) return;
+
+    // v1.3: Vérifier si on a déjà essayé de restaurer ce template
+    const restoreKey = `cad_restored_${templateId || 'default'}`;
+    const lastRestoreAttempt = localStorage.getItem(restoreKey);
+    if (lastRestoreAttempt) {
+      const lastAttemptTime = parseInt(lastRestoreAttempt, 10);
+      const timeSinceLastAttempt = Date.now() - lastAttemptTime;
+      // Si on a essayé dans les 5 dernières minutes, ne pas réessayer
+      if (timeSinceLastAttempt < 5 * 60 * 1000) {
+        console.log("[AutoBackup] Already attempted restore recently, skipping");
+        setState((prev) => ({ ...prev, hasRestoredThisSession: true }));
+        return;
+      }
+    }
 
     const checkAndAutoRestoreOnMount = async () => {
       // Attendre que le composant soit complètement initialisé
@@ -705,11 +804,27 @@ export function useCADAutoBackup(
 
         const backupAge = Date.now() - new Date(backup.created_at).getTime();
         const ageMinutes = Math.round(backupAge / 60000);
+        const ageHours = ageMinutes / 60;
+
+        // v1.3: Ignorer les backups trop vieux (plus de 24h) pour éviter de restaurer de vieilles données
+        if (ageHours > 24) {
+          console.log(`[AutoBackup] Backup too old (${ageHours.toFixed(1)}h), skipping auto-restore`);
+          toast.info("Sauvegarde automatique ignorée", {
+            description: `La sauvegarde date de ${Math.round(ageHours)}h. Utilisez le menu pour restaurer manuellement si nécessaire.`,
+            duration: 8000,
+          });
+          localStorage.setItem(restoreKey, Date.now().toString());
+          setState((prev) => ({ ...prev, hasRestoredThisSession: true }));
+          return;
+        }
 
         console.log(
           `[AutoBackup] Found backup: ${backupGeoCount} geometries, ${backupImageCount} images, age: ${ageMinutes}min`,
         );
         console.log("[AutoBackup] Auto-restoring because canvas is empty...");
+
+        // Marquer qu'on tente la restauration
+        localStorage.setItem(restoreKey, Date.now().toString());
 
         // v1.2: Restauration AUTOMATIQUE - plus besoin de cliquer
         const success = await restoreFromBackup(false); // false = pas de toast de succès
@@ -721,6 +836,12 @@ export function useCADAutoBackup(
             description: `${backupGeoCount} éléments, ${backupImageCount} images (sauvegarde de ${ageText})`,
             duration: 5000,
           });
+        } else {
+          // v1.3: Si la restauration échoue (images HEIC par ex), proposer de supprimer le backup
+          toast.error("Restauration échouée", {
+            description: "Les images n'ont pas pu être chargées. Le backup sera ignoré.",
+            duration: 8000,
+          });
         }
       }
 
@@ -730,6 +851,46 @@ export function useCADAutoBackup(
 
     checkAndAutoRestoreOnMount();
   }, [enabled]); // Dépendances minimales - exécuter une seule fois au montage
+
+  // v1.4: Fonction pour supprimer les vieux backups (utilitaire)
+  const deleteOldBackups = useCallback(async (maxAgeHours = 24): Promise<number> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return 0;
+
+      const cutoffDate = new Date(Date.now() - maxAgeHours * 60 * 60 * 1000).toISOString();
+      
+      const { data, error } = await supabaseAny
+        .from("cad_autobackups")
+        .delete()
+        .eq("user_id", user.id)
+        .lt("created_at", cutoffDate)
+        .select("id");
+
+      if (error) {
+        console.error("[AutoBackup] Failed to delete old backups:", error);
+        return 0;
+      }
+
+      const count = data?.length || 0;
+      if (count > 0) {
+        console.log(`[AutoBackup] Deleted ${count} old backup(s)`);
+        toast.success(`${count} ancienne(s) sauvegarde(s) supprimée(s)`);
+      }
+      return count;
+    } catch (error) {
+      console.error("[AutoBackup] Error deleting old backups:", error);
+      return 0;
+    }
+  }, []);
+
+  // v1.4: Réinitialiser le flag de restauration (pour forcer une nouvelle tentative)
+  const resetRestoreFlag = useCallback(() => {
+    const restoreKey = `cad_restored_${templateId || 'default'}`;
+    localStorage.removeItem(restoreKey);
+    setState((prev) => ({ ...prev, hasRestoredThisSession: false }));
+    console.log("[AutoBackup] Restore flag reset");
+  }, [templateId]);
 
   return {
     // État
@@ -742,6 +903,8 @@ export function useCADAutoBackup(
     saveBackup,
     restoreFromBackup,
     getLatestBackup,
+    deleteOldBackups,  // v1.4
+    resetRestoreFlag,  // v1.4
 
     // Pour affichage dans l'UI
     formattedLastBackup: state.lastBackupTime ? new Date(state.lastBackupTime).toLocaleTimeString("fr-FR") : null,
