@@ -4463,23 +4463,40 @@ export function CADGabaritCanvas({
   // v7.37: Charger une sauvegarde locale
   const loadLocalBackup = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
+      console.log("[LocalBackup] loadLocalBackup triggered");
       const file = e.target.files?.[0];
-      if (!file) return;
+      if (!file) {
+        console.log("[LocalBackup] No file selected");
+        return;
+      }
+      console.log("[LocalBackup] File selected:", file.name, "Size:", file.size);
 
       const reader = new FileReader();
       reader.onload = async (event) => {
+        console.log("[LocalBackup] FileReader onload triggered");
         const toastId = toast.loading("Chargement de la sauvegarde...");
 
         try {
           const jsonStr = event.target?.result as string;
+          console.log("[LocalBackup] JSON length:", jsonStr?.length);
           const data = JSON.parse(jsonStr);
+          console.log("[LocalBackup] Parsed data:", {
+            version: data.version,
+            hasSketch: !!data.sketch,
+            sketchKeys: data.sketch ? Object.keys(data.sketch) : [],
+            geometriesCount: data.sketch?.geometries ? Object.keys(data.sketch.geometries).length : 0,
+            pointsCount: data.sketch?.points ? Object.keys(data.sketch.points).length : 0,
+            imagesCount: data.backgroundImages?.length || 0,
+          });
 
           if (!data.version || !data.sketch) {
             throw new Error("Format de fichier invalide");
           }
 
           // Charger le sketch
+          console.log("[LocalBackup] Calling loadSketchData...");
           loadSketchData(data.sketch);
+          console.log("[LocalBackup] loadSketchData completed");
 
           // Charger les images
           if (data.backgroundImages && data.backgroundImages.length > 0) {
@@ -4537,13 +4554,20 @@ export function CADGabaritCanvas({
             setMeasurements(data.measurements);
           }
 
+          console.log("[LocalBackup] Import completed successfully");
           toast.success(`Sauvegarde chargée ! (${data.backgroundImages?.length || 0} photos)`, { id: toastId });
         } catch (error) {
           console.error("[LocalBackup] Error loading:", error);
-          toast.error("Erreur lors du chargement", { id: toastId });
+          toast.error(`Erreur lors du chargement: ${error instanceof Error ? error.message : 'Erreur inconnue'}`, { id: toastId });
         }
       };
 
+      reader.onerror = (error) => {
+        console.error("[LocalBackup] FileReader error:", error);
+        toast.error("Erreur de lecture du fichier");
+      };
+
+      console.log("[LocalBackup] Starting to read file...");
       reader.readAsText(file);
       e.target.value = ""; // Reset pour permettre de re-sélectionner le même fichier
     },
