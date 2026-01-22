@@ -1,8 +1,12 @@
 // ============================================
 // COMPONENT: ArucoStitcher
 // Assemblage de photos via markers ArUco partagés
-// VERSION: 4.10
+// VERSION: 4.11
 // ============================================
+//
+// CHANGELOG v4.11 (22/01/2026):
+// - FIX: Application automatique des transformations (crop/rotation) avant export
+// - Les photos transformées sont maintenant correctement exportées vers le canvas
 //
 // CHANGELOG v4.10 (22/01/2026):
 // - FIX: Modale ne rétrécit plus en mode crop
@@ -1297,12 +1301,43 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     setIsStitching(true);
 
     try {
+      // v4.11: Appliquer automatiquement les transformations pendantes avant l'export
+      const photosToUse = [...photos];
+      for (let i = 0; i < photosToUse.length; i++) {
+        const photo = photosToUse[i];
+        const hasPendingRotation = !photo.transformedImage && photo.edit.rotation !== 0;
+        const hasPendingCrop = !photo.transformedImage && photo.edit.crop;
+        
+        if (hasPendingRotation || hasPendingCrop) {
+          console.log(`[Stitch] Photo ${i}: applying pending transformations (rotation=${photo.edit.rotation}, crop=${!!photo.edit.crop})`);
+          const { image: transformedImage, url: transformedUrl } = await applyTransformations(photo);
+          
+          // Redétecter les markers sur l'image transformée
+          const markers = await detectMarkers(transformedImage, { tolerance });
+          
+          // Mettre à jour la photo avec les transformations appliquées
+          photosToUse[i] = {
+            ...photo,
+            transformedImage,
+            transformedUrl,
+            markers,
+            pixelsPerMm: markers.length > 0 ? markers[0].pixelsPerMm || photo.pixelsPerMm : photo.pixelsPerMm,
+            pixelsPerMmX: markers.length > 0 ? markers[0].pixelsPerMmX || photo.pixelsPerMmX : photo.pixelsPerMmX,
+            pixelsPerMmY: markers.length > 0 ? markers[0].pixelsPerMmY || photo.pixelsPerMmY : photo.pixelsPerMmY,
+            edit: { rotation: 0, crop: null, needsRedetect: false }
+          };
+        }
+      }
+      
+      // Mettre à jour les photos avec les transformations appliquées
+      setPhotos(photosToUse);
+
       const markerSizeNum = parseFloat(markerSize) || 100;
 
-      const targetPixelsPerMm = Math.max(...photos.filter(p => p.pixelsPerMm > 0).map(p => p.pixelsPerMm));
+      const targetPixelsPerMm = Math.max(...photosToUse.filter(p => p.pixelsPerMm > 0).map(p => p.pixelsPerMm));
       const targetPixelsPerCm = targetPixelsPerMm * 10;
 
-      const scaleFactorsXY = photos.map(p => {
+      const scaleFactorsXY = photosToUse.map(p => {
         if (p.pixelsPerMm === 0) return { scaleX: 1, scaleY: 1 };
         return { 
           scaleX: targetPixelsPerMm / (p.pixelsPerMmX || p.pixelsPerMm),
@@ -1312,13 +1347,13 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
 
       interface PhotoTransform { x: number; y: number; rotation: number; scaleX: number; scaleY: number; }
 
-      const photoTransforms: PhotoTransform[] = photos.map((_, i) => ({
+      const photoTransforms: PhotoTransform[] = photosToUse.map((_, i) => ({
         x: 0, y: 0, rotation: 0,
         scaleX: scaleFactorsXY[i].scaleX,
         scaleY: scaleFactorsXY[i].scaleY
       }));
 
-      let refIndex = referencePhotoId ? photos.findIndex(p => p.id === referencePhotoId) : 0;
+      let refIndex = referencePhotoId ? photosToUse.findIndex(p => p.id === referencePhotoId) : 0;
       if (refIndex === -1) refIndex = 0;
 
       const processed = new Set<number>([refIndex]);
@@ -1326,13 +1361,13 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
 
       while (queue.length > 0) {
         const currentIdx = queue.shift()!;
-        const currentPhoto = photos[currentIdx];
+        const currentPhoto = photosToUse[currentIdx];
         const currentTransform = photoTransforms[currentIdx];
 
-        for (let otherIdx = 0; otherIdx < photos.length; otherIdx++) {
+        for (let otherIdx = 0; otherIdx < photosToUse.length; otherIdx++) {
           if (processed.has(otherIdx)) continue;
 
-          const otherPhoto = photos[otherIdx];
+          const otherPhoto = photosToUse[otherIdx];
 
           const commonMatches = matches.filter(
             m => (m.photo1Index === currentIdx && m.photo2Index === otherIdx) ||
@@ -1384,17 +1419,17 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
         }
       }
 
-      if (processed.size < photos.length) {
-        toast.error(`${photos.length - processed.size} photo(s) non connectée(s)`);
+      if (processed.size < photosToUse.length) {
+        toast.error(`${photosToUse.length - processed.size} photo(s) non connectée(s)`);
         setIsStitching(false);
         return;
       }
 
       let minXmm = Infinity, minYmm = Infinity, maxXmm = -Infinity, maxYmm = -Infinity;
 
-      for (let i = 0; i < photos.length; i++) {
+      for (let i = 0; i < photosToUse.length; i++) {
         const transform = photoTransforms[i];
-        const photo = photos[i];
+        const photo = photosToUse[i];
         const img = photo.transformedImage || photo.image;
         const widthMm = img.width / photo.pixelsPerMmX;
         const heightMm = img.height / photo.pixelsPerMmY;
@@ -1411,7 +1446,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
         }
       }
 
-      const stitchedImages: StitchedImage[] = photos.map((photo, i) => {
+      const stitchedImages: StitchedImage[] = photosToUse.map((photo, i) => {
         const transform = photoTransforms[i];
         const img = photo.transformedImage || photo.image;
         const widthMm = img.width / photo.pixelsPerMmX;
@@ -1447,7 +1482,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
     } finally {
       setIsStitching(false);
     }
-  }, [photos, findMarkerMatches, markerSize, referencePhotoId, autoRotation]);
+  }, [photos, findMarkerMatches, markerSize, referencePhotoId, autoRotation, applyTransformations, detectMarkers, tolerance, setPhotos]);
 
   const handleConfirm = useCallback(() => {
     if (!positionResult) return;
