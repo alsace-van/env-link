@@ -25438,29 +25438,230 @@ function deserializeSketch(data: any): Sketch {
 }
 
 function exportToSVG(sketch: Sketch): string {
-  let svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-500 -500 1000 1000">
-<g stroke="black" stroke-width="1" fill="none">
-`;
+  // Calculer les bounds du dessin (exclure les lignes de construction)
+  let minX = Infinity, minY = Infinity;
+  let maxX = -Infinity, maxY = -Infinity;
 
+  const exportGeometries: Geometry[] = [];
   sketch.geometries.forEach((geo) => {
+    if (!(geo as any).isConstruction) {
+      exportGeometries.push(geo);
+    }
+  });
+
+  if (exportGeometries.length === 0) {
+    return '<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg"></svg>';
+  }
+
+  // Calculer les bounds
+  exportGeometries.forEach((geo) => {
     if (geo.type === "line") {
       const line = geo as Line;
       const p1 = sketch.points.get(line.p1);
       const p2 = sketch.points.get(line.p2);
       if (p1 && p2) {
-        svg += `  <line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}"/>\n`;
+        minX = Math.min(minX, p1.x, p2.x);
+        minY = Math.min(minY, p1.y, p2.y);
+        maxX = Math.max(maxX, p1.x, p2.x);
+        maxY = Math.max(maxY, p1.y, p2.y);
       }
     } else if (geo.type === "circle") {
       const circle = geo as CircleType;
       const center = sketch.points.get(circle.center);
       if (center) {
-        svg += `  <circle cx="${center.x}" cy="${center.y}" r="${circle.radius}"/>\n`;
+        minX = Math.min(minX, center.x - circle.radius);
+        minY = Math.min(minY, center.y - circle.radius);
+        maxX = Math.max(maxX, center.x + circle.radius);
+        maxY = Math.max(maxY, center.y + circle.radius);
+      }
+    } else if (geo.type === "arc") {
+      const arc = geo as Arc;
+      const center = sketch.points.get(arc.center);
+      if (center) {
+        minX = Math.min(minX, center.x - arc.radius);
+        minY = Math.min(minY, center.y - arc.radius);
+        maxX = Math.max(maxX, center.x + arc.radius);
+        maxY = Math.max(maxY, center.y + arc.radius);
+      }
+    } else if (geo.type === "spline") {
+      const spline = geo as Spline;
+      for (const pointId of spline.points) {
+        const pt = sketch.points.get(pointId);
+        if (pt) {
+          minX = Math.min(minX, pt.x);
+          minY = Math.min(minY, pt.y);
+          maxX = Math.max(maxX, pt.x);
+          maxY = Math.max(maxY, pt.y);
+        }
+      }
+    } else if (geo.type === "rectangle") {
+      const rect = geo as Rectangle;
+      const pts = [rect.p1, rect.p2, rect.p3, rect.p4];
+      for (const pid of pts) {
+        const pt = sketch.points.get(pid);
+        if (pt) {
+          minX = Math.min(minX, pt.x);
+          minY = Math.min(minY, pt.y);
+          maxX = Math.max(maxX, pt.x);
+          maxY = Math.max(maxY, pt.y);
+        }
       }
     }
   });
 
-  svg += `</g>
+  if (!isFinite(minX)) {
+    return '<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg"></svg>';
+  }
+
+  // Convertir en mm (scaleFactor = px/mm)
+  const scale = sketch.scaleFactor || 1;
+  const padding = 5; // 5mm de marge
+
+  const widthMm = (maxX - minX) / scale + padding * 2;
+  const heightMm = (maxY - minY) / scale + padding * 2;
+
+  // SVG avec dimensions explicites en mm pour Fusion 360
+  let svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="${widthMm.toFixed(4)}mm"
+     height="${heightMm.toFixed(4)}mm"
+     viewBox="0 0 ${widthMm.toFixed(4)} ${heightMm.toFixed(4)}">
+  <g fill="none" stroke="#000000" stroke-width="0.1">
+`;
+
+  // Fonction pour convertir coordonnées sketch -> SVG en mm
+  const toMm = (val: number) => (val / scale).toFixed(4);
+  const xToSvg = (x: number) => ((x - minX) / scale + padding).toFixed(4);
+  const yToSvg = (y: number) => ((y - minY) / scale + padding).toFixed(4);
+
+  exportGeometries.forEach((geo) => {
+    if (geo.type === "line") {
+      const line = geo as Line;
+      const p1 = sketch.points.get(line.p1);
+      const p2 = sketch.points.get(line.p2);
+      if (p1 && p2) {
+        svg += `    <line x1="${xToSvg(p1.x)}" y1="${yToSvg(p1.y)}" x2="${xToSvg(p2.x)}" y2="${yToSvg(p2.y)}"/>\n`;
+      }
+    } else if (geo.type === "circle") {
+      const circle = geo as CircleType;
+      const center = sketch.points.get(circle.center);
+      if (center) {
+        svg += `    <circle cx="${xToSvg(center.x)}" cy="${yToSvg(center.y)}" r="${toMm(circle.radius)}"/>\n`;
+      }
+    } else if (geo.type === "arc") {
+      const arc = geo as Arc;
+      const center = sketch.points.get(arc.center);
+      const startPt = sketch.points.get(arc.startPoint);
+      const endPt = sketch.points.get(arc.endPoint);
+      if (center && startPt && endPt) {
+        // Calculer l'angle de l'arc pour déterminer large-arc-flag
+        const startAngle = Math.atan2(startPt.y - center.y, startPt.x - center.x);
+        const endAngle = Math.atan2(endPt.y - center.y, endPt.x - center.x);
+        let angleDiff = endAngle - startAngle;
+        if (arc.counterClockwise) {
+          if (angleDiff > 0) angleDiff -= 2 * Math.PI;
+        } else {
+          if (angleDiff < 0) angleDiff += 2 * Math.PI;
+        }
+        const largeArc = Math.abs(angleDiff) > Math.PI ? 1 : 0;
+        const sweep = arc.counterClockwise ? 0 : 1;
+        const r = toMm(arc.radius);
+        svg += `    <path d="M ${xToSvg(startPt.x)} ${yToSvg(startPt.y)} A ${r} ${r} 0 ${largeArc} ${sweep} ${xToSvg(endPt.x)} ${yToSvg(endPt.y)}"/>\n`;
+      }
+    } else if (geo.type === "spline") {
+      // Pour Fusion 360, convertir les splines en polylignes (approximation)
+      const spline = geo as Spline;
+      const points: Point[] = [];
+      for (const pointId of spline.points) {
+        const pt = sketch.points.get(pointId);
+        if (pt) points.push(pt);
+      }
+
+      if (points.length >= 2) {
+        const tension = spline.tension ?? 0.5;
+
+        if (points.length === 2) {
+          // Juste une ligne
+          svg += `    <line x1="${xToSvg(points[0].x)}" y1="${yToSvg(points[0].y)}" x2="${xToSvg(points[1].x)}" y2="${yToSvg(points[1].y)}"/>\n`;
+        } else {
+          // Approximer par des segments de ligne (polyline) pour compatibilité Fusion 360
+          const allPoints: { x: number; y: number }[] = [];
+          const steps = 10;
+
+          for (let i = 0; i < points.length - 1; i++) {
+            const p0 = points[i === 0 ? (spline.closed ? points.length - 1 : 0) : i - 1];
+            const p1 = points[i];
+            const p2 = points[i + 1];
+            const p3 = points[i === points.length - 2 ? (spline.closed ? 0 : i + 1) : i + 2];
+
+            const cp1x = p1.x + ((p2.x - p0.x) * tension) / 3;
+            const cp1y = p1.y + ((p2.y - p0.y) * tension) / 3;
+            const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3;
+            const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3;
+
+            const bezier = (t: number, v0: number, v1: number, v2: number, v3: number) => {
+              const u = 1 - t;
+              return u * u * u * v0 + 3 * u * u * t * v1 + 3 * u * t * t * v2 + t * t * t * v3;
+            };
+
+            for (let t = 0; t <= steps; t++) {
+              const tt = t / steps;
+              if (i > 0 && t === 0) continue;
+              allPoints.push({
+                x: bezier(tt, p1.x, cp1x, cp2x, p2.x),
+                y: bezier(tt, p1.y, cp1y, cp2y, p2.y),
+              });
+            }
+          }
+
+          // Fermer si nécessaire
+          if (spline.closed && points.length >= 3) {
+            const p0 = points[points.length - 2];
+            const p1 = points[points.length - 1];
+            const p2 = points[0];
+            const p3 = points[1];
+
+            const cp1x = p1.x + ((p2.x - p0.x) * tension) / 3;
+            const cp1y = p1.y + ((p2.y - p0.y) * tension) / 3;
+            const cp2x = p2.x - ((p3.x - p1.x) * tension) / 3;
+            const cp2y = p2.y - ((p3.y - p1.y) * tension) / 3;
+
+            const bezier = (t: number, v0: number, v1: number, v2: number, v3: number) => {
+              const u = 1 - t;
+              return u * u * u * v0 + 3 * u * u * t * v1 + 3 * u * t * t * v2 + t * t * t * v3;
+            };
+
+            for (let t = 1; t <= steps; t++) {
+              const tt = t / steps;
+              allPoints.push({
+                x: bezier(tt, p1.x, cp1x, cp2x, p2.x),
+                y: bezier(tt, p1.y, cp1y, cp2y, p2.y),
+              });
+            }
+          }
+
+          // Générer la polyline
+          const pointsStr = allPoints.map(p => `${xToSvg(p.x)},${yToSvg(p.y)}`).join(" ");
+          if (spline.closed) {
+            svg += `    <polygon points="${pointsStr}"/>\n`;
+          } else {
+            svg += `    <polyline points="${pointsStr}"/>\n`;
+          }
+        }
+      }
+    } else if (geo.type === "rectangle") {
+      const rect = geo as Rectangle;
+      const p1 = sketch.points.get(rect.p1);
+      const p2 = sketch.points.get(rect.p2);
+      const p3 = sketch.points.get(rect.p3);
+      const p4 = sketch.points.get(rect.p4);
+      if (p1 && p2 && p3 && p4) {
+        svg += `    <polygon points="${xToSvg(p1.x)},${yToSvg(p1.y)} ${xToSvg(p2.x)},${yToSvg(p2.y)} ${xToSvg(p3.x)},${yToSvg(p3.y)} ${xToSvg(p4.x)},${yToSvg(p4.y)}"/>\n`;
+      }
+    }
+  });
+
+  svg += `  </g>
 </svg>`;
 
   return svg;
