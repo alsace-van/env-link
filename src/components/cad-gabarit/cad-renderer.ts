@@ -1,8 +1,12 @@
 // ============================================
 // CAD RENDERER: Rendu Canvas professionnel
 // Dessin de la géométrie, contraintes et cotations
-// VERSION: 3.76 - Mode rayures pour alignement de photos
+// VERSION: 3.77 - Fix contour sélection après crop
 // ============================================
+//
+// CHANGELOG v3.77 (22/01/2026):
+// - FIX: Le contour de sélection suit maintenant les dimensions après crop
+// - Ordre de priorité corrigé: croppedCanvas > transformedCanvas > adjustedCanvas > image
 //
 // CHANGELOG v3.76 (19/01/2026):
 // - Mode "rayures" (blendMode: stripes) pour les images
@@ -817,9 +821,10 @@ export class CADRenderer {
       const layerOpacity = layer?.opacity ?? 1;
       this.ctx.globalAlpha = bgImage.opacity * layerOpacity;
 
-      // MOD v80.18: Ordre de priorité corrigé pour calibration anisotrope
-      // transformedCanvas (calibration) > adjustedCanvas (luminosité) > croppedCanvas > image originale
-      const imageToDraw = bgImage.transformedCanvas || bgImage.adjustedCanvas || bgImage.croppedCanvas || bgImage.image;
+      // FIX v7.52: Ordre de priorité corrigé - croppedCanvas doit être prioritaire
+      // croppedCanvas (crop) > transformedCanvas (calibration) > adjustedCanvas (luminosité) > image originale
+      // Sinon le contour de sélection garde les dimensions originales après un crop
+      const imageToDraw = bgImage.croppedCanvas || bgImage.transformedCanvas || bgImage.adjustedCanvas || bgImage.image;
 
       // FIX #85c: Vérifier que l'image existe avant de la dessiner
       if (!imageToDraw) {
