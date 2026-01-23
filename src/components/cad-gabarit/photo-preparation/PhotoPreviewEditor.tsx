@@ -57,7 +57,7 @@ interface PhotoPreviewEditorProps {
   pendingMeasurePoint: MeasurePoint | null;
   activeTool: "none" | "measure" | "crop";
   scaleFactor: number;
-  
+
   // Actions
   onRotate: (direction: "cw" | "ccw") => void;
   onSetCrop: (crop: ImageCropData | null) => void;
@@ -69,7 +69,7 @@ interface PhotoPreviewEditorProps {
   onRemoveMeasurement: (id: string) => void;
   onClearMeasurements: () => void;
   onUpdatePhoto: (updates: Partial<PhotoToProcess>) => void;
-  
+
   // Navigation
   onPrev: () => void;
   onNext: () => void;
@@ -77,7 +77,7 @@ interface PhotoPreviewEditorProps {
   onSkip: () => void;
   onBackToGrid: () => void;
   onClose: () => void; // Fermer la modale
-  
+
   // Calculs
   getDimensionsMm: (photo: PhotoToProcess) => { widthMm: number; heightMm: number };
   calculateDistanceMm: (p1: MeasurePoint, p2: MeasurePoint) => number;
@@ -113,19 +113,19 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   const rootRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  
+
   // État local
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  
+
   // Inputs pour dimensions
   const { widthMm, heightMm } = getDimensionsMm(photo);
   const [targetWidthMm, setTargetWidthMm] = useState(widthMm.toFixed(1));
   const [targetHeightMm, setTargetHeightMm] = useState(heightMm.toFixed(1));
-  
+
   // ArUco
   const { isOpenCVLoaded, isDetecting, detectMarkers } = useArucoDetection();
   const [arucoProcessed, setArucoProcessed] = useState(false);
@@ -163,13 +163,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
 
   // Détection ArUco automatique
   useEffect(() => {
-    if (
-      photo.image &&
-      isOpenCVLoaded &&
-      !arucoProcessed &&
-      !photo.arucoDetected &&
-      !photo.arucoScaleX
-    ) {
+    if (photo.image && isOpenCVLoaded && !arucoProcessed && !photo.arucoDetected && !photo.arucoScaleX) {
       runArucoDetection();
     }
   }, [photo.id, photo.image, isOpenCVLoaded, arucoProcessed]);
@@ -182,18 +176,18 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   // Fit to view
   const fitToView = useCallback(() => {
     if (!photo.image || containerSize.width === 0) return;
-    
+
     const padding = 40;
     const availableWidth = containerSize.width - padding * 2;
     const availableHeight = containerSize.height - padding * 2;
-    
+
     const imgWidth = photo.currentWidth * photo.stretchX;
     const imgHeight = photo.currentHeight * photo.stretchY;
-    
+
     const scaleX = availableWidth / imgWidth;
     const scaleY = availableHeight / imgHeight;
     const newZoom = Math.min(scaleX, scaleY, 1);
-    
+
     setZoom(newZoom);
     setPan({ x: 0, y: 0 });
   }, [photo, containerSize]);
@@ -201,22 +195,19 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   // Détection ArUco
   const runArucoDetection = useCallback(async () => {
     if (!photo.image) return;
-    
+
     setArucoProcessed(true);
-    
+
     const result = await detectMarkers(photo.image);
-    
+
     if (result.markers.length > 0 && result.scaleX && result.scaleY) {
       onUpdatePhoto({
         arucoDetected: true,
         arucoScaleX: result.scaleX,
         arucoScaleY: result.scaleY,
       });
-      
-      toast.success(
-        `${result.markers.length} marqueur(s) ArUco détecté(s)`,
-        { duration: 2000 }
-      );
+
+      toast.success(`${result.markers.length} marqueur(s) ArUco détecté(s)`, { duration: 2000 });
     }
   }, [photo.image, detectMarkers, onUpdatePhoto]);
 
@@ -231,13 +222,13 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      
+
       // Si la souris est sur le canvas (container), faire le zoom
       if (container && container.contains(e.target as Node)) {
         const delta = e.deltaY > 0 ? 0.9 : 1.1;
         setZoom((z) => Math.max(0.1, Math.min(5, z * delta)));
       }
-      
+
       return false;
     };
 
@@ -256,37 +247,32 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         // Mode mesure : ajouter un point
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect || !photo.image) return;
-        
+
         // Convertir la position écran en % de l'image
         const imgWidth = photo.currentWidth * photo.stretchX * zoom;
         const imgHeight = photo.currentHeight * photo.stretchY * zoom;
         const imgX = (containerSize.width - imgWidth) / 2 + pan.x;
         const imgY = (containerSize.height - imgHeight) / 2 + pan.y;
-        
+
         const clickX = e.clientX - rect.left;
         const clickY = e.clientY - rect.top;
-        
+
         // Vérifier si le clic est sur l'image
-        if (
-          clickX >= imgX &&
-          clickX <= imgX + imgWidth &&
-          clickY >= imgY &&
-          clickY <= imgY + imgHeight
-        ) {
+        if (clickX >= imgX && clickX <= imgX + imgWidth && clickY >= imgY && clickY <= imgY + imgHeight) {
           const xPercent = ((clickX - imgX) / imgWidth) * 100;
           const yPercent = ((clickY - imgY) / imgHeight) * 100;
           onAddMeasurePoint(xPercent, yPercent);
         }
         return;
       }
-      
+
       // Mode normal : pan
       if (e.button === 0) {
         setIsPanning(true);
         setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
       }
     },
-    [activeTool, zoom, pan, containerSize, photo, onAddMeasurePoint]
+    [activeTool, zoom, pan, containerSize, photo, onAddMeasurePoint],
   );
 
   const handleMouseMove = useCallback(
@@ -298,7 +284,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         });
       }
     },
-    [isPanning, panStart]
+    [isPanning, panStart],
   );
 
   const handleMouseUp = useCallback(() => {
@@ -309,25 +295,22 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   const applyTargetDimensions = useCallback(() => {
     const newWidth = parseFloat(targetWidthMm.replace(",", "."));
     const newHeight = parseFloat(targetHeightMm.replace(",", "."));
-    
+
     if (isNaN(newWidth) || isNaN(newHeight) || newWidth <= 0 || newHeight <= 0) {
       toast.error("Dimensions invalides");
       return;
     }
-    
+
     const newStretchX = (newWidth / widthMm) * photo.stretchX;
     const newStretchY = (newHeight / heightMm) * photo.stretchY;
-    
+
     onSetStretch(newStretchX, newStretchY);
   }, [targetWidthMm, targetHeightMm, widthMm, heightMm, photo.stretchX, photo.stretchY, onSetStretch]);
 
   // Raccourcis clavier
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
 
@@ -389,13 +372,13 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       const imgHeight = photo.currentHeight * photo.stretchY * zoom;
       const imgX = (containerSize.width - imgWidth) / 2 + pan.x;
       const imgY = (containerSize.height - imgHeight) / 2 + pan.y;
-      
+
       return {
         x: imgX + (point.xPercent / 100) * imgWidth,
         y: imgY + (point.yPercent / 100) * imgHeight,
       };
     },
-    [photo, zoom, pan, containerSize]
+    [photo, zoom, pan, containerSize],
   );
 
   // Render de l'image
@@ -442,11 +425,11 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     // Mesures existantes
     for (const measurement of measurements) {
       if (!measurement.visible) continue;
-      
+
       const p1Screen = getMeasurePointScreenPos(measurement.point1);
       const p2Screen = getMeasurePointScreenPos(measurement.point2);
       const distance = calculateDistanceMm(measurement.point1, measurement.point2);
-      
+
       // Ligne
       elements.push(
         <line
@@ -457,9 +440,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
           y2={p2Screen.y}
           stroke={measurement.color}
           strokeWidth={2}
-        />
+        />,
       );
-      
+
       // Points
       elements.push(
         <circle
@@ -470,7 +453,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
           fill={measurement.color}
           stroke="white"
           strokeWidth={2}
-        />
+        />,
       );
       elements.push(
         <circle
@@ -481,30 +464,16 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
           fill={measurement.color}
           stroke="white"
           strokeWidth={2}
-        />
+        />,
       );
-      
+
       // Label avec distance
       const midX = (p1Screen.x + p2Screen.x) / 2;
       const midY = (p1Screen.y + p2Screen.y) / 2;
       elements.push(
         <g key={`label-${measurement.id}`}>
-          <rect
-            x={midX - 40}
-            y={midY - 12}
-            width={80}
-            height={24}
-            rx={4}
-            fill={measurement.color}
-          />
-          <text
-            x={midX}
-            y={midY + 5}
-            textAnchor="middle"
-            fill="white"
-            fontSize={14}
-            fontWeight="bold"
-          >
+          <rect x={midX - 40} y={midY - 12} width={80} height={24} rx={4} fill={measurement.color} />
+          <text x={midX} y={midY + 5} textAnchor="middle" fill="white" fontSize={14} fontWeight="bold">
             {distance.toFixed(1)} mm
           </text>
           {/* Bouton supprimer */}
@@ -532,7 +501,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
           >
             ×
           </text>
-        </g>
+        </g>,
       );
     }
 
@@ -549,49 +518,35 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
           stroke="white"
           strokeWidth={2}
           className="animate-pulse"
-        />
+        />,
       );
     }
 
     return (
-      <svg
-        className="absolute inset-0 pointer-events-none"
-        style={{ overflow: "visible" }}
-      >
+      <svg className="absolute inset-0 pointer-events-none" style={{ overflow: "visible" }}>
         <g style={{ pointerEvents: "auto" }}>{elements}</g>
       </svg>
     );
   };
 
   return (
-    <div 
-      ref={rootRef}
-      className="flex flex-col h-full bg-gray-900"
-      style={{ touchAction: "none" }}
-    >
+    <div ref={rootRef} className="flex flex-col h-full bg-gray-900" style={{ touchAction: "none" }}>
       {/* Header */}
       <div className="flex items-center justify-between p-3 bg-gray-800 border-b border-gray-700">
         <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onBackToGrid}
-            className="text-gray-300 hover:text-white"
-          >
+          <Button variant="ghost" size="sm" onClick={onBackToGrid} className="text-gray-300 hover:text-white">
             <ArrowLeft className="h-4 w-4 mr-1" />
             Grille
           </Button>
-          
+
           <Separator orientation="vertical" className="h-6 bg-gray-600" />
-          
+
           <span className="text-white font-medium">
             Photo {photoIndex + 1} / {totalPhotos}
           </span>
-          
-          <span className="text-gray-400 text-sm truncate max-w-[200px]">
-            {photo.name}
-          </span>
-          
+
+          <span className="text-gray-400 text-sm truncate max-w-[200px]">{photo.name}</span>
+
           {photo.arucoDetected && (
             <Badge variant="secondary" className="bg-green-600 text-white">
               <QrCode className="h-3 w-3 mr-1" />
@@ -619,9 +574,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
           >
             <ChevronRight className="h-5 w-5" />
           </Button>
-          
+
           <Separator orientation="vertical" className="h-6 bg-gray-600 mx-2" />
-          
+
           <Button
             variant="ghost"
             size="icon"
@@ -650,7 +605,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         >
           {renderImage()}
           {renderMeasurements()}
-          
+
           {/* Indicateur de mode */}
           {activeTool === "measure" && (
             <div className="absolute top-4 left-4 bg-blue-500 text-white px-3 py-1.5 rounded-full text-sm font-medium flex items-center gap-2">
@@ -659,7 +614,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
               {pendingMeasurePoint && " (2ème point)"}
             </div>
           )}
-          
+
           {/* Contrôles de zoom */}
           <div className="absolute bottom-4 right-4 flex items-center gap-1 bg-black/50 rounded-lg p-1">
             <Button
@@ -670,9 +625,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
             >
               <ZoomOut className="h-4 w-4" />
             </Button>
-            <span className="text-white text-xs w-12 text-center">
-              {Math.round(zoom * 100)}%
-            </span>
+            <span className="text-white text-xs w-12 text-center">{Math.round(zoom * 100)}%</span>
             <Button
               variant="ghost"
               size="icon"
@@ -681,19 +634,14 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
             >
               <ZoomIn className="h-4 w-4" />
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-white hover:bg-white/20"
-              onClick={fitToView}
-            >
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20" onClick={fitToView}>
               <Maximize className="h-4 w-4" />
             </Button>
           </div>
         </div>
 
         {/* Panneau latéral */}
-        <div 
+        <div
           className="w-72 bg-gray-800 border-l border-gray-700 p-4 flex flex-col gap-4 overflow-y-auto"
           onWheel={(e) => e.stopPropagation()}
         >
@@ -720,7 +668,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
               </Button>
             </div>
           </div>
-          
+
           <Separator className="bg-gray-700" />
 
           {/* Rotation */}
@@ -752,10 +700,8 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
 
           {/* Dimensions */}
           <div>
-            <Label className="text-gray-400 text-xs mb-2 block">
-              DIMENSIONS (mm)
-            </Label>
-            
+            <Label className="text-gray-400 text-xs mb-2 block">DIMENSIONS (mm)</Label>
+
             <div className="space-y-2">
               {/* Largeur X */}
               <div className="flex items-center gap-2">
@@ -769,11 +715,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                   onWheel={(e) => e.currentTarget.blur()}
                   className="flex-1 h-8 bg-gray-700 border-gray-600 text-white text-sm"
                 />
-                <span className="text-gray-500 text-xs">
-                  (actuel: {widthMm.toFixed(1)})
-                </span>
+                <span className="text-gray-500 text-xs">(actuel: {widthMm.toFixed(1)})</span>
               </div>
-              
+
               {/* Hauteur Y */}
               <div className="flex items-center gap-2">
                 <Label className="text-gray-300 text-xs w-8">Y:</Label>
@@ -786,9 +730,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                   onWheel={(e) => e.currentTarget.blur()}
                   className="flex-1 h-8 bg-gray-700 border-gray-600 text-white text-sm"
                 />
-                <span className="text-gray-500 text-xs">
-                  (actuel: {heightMm.toFixed(1)})
-                </span>
+                <span className="text-gray-500 text-xs">(actuel: {heightMm.toFixed(1)})</span>
               </div>
             </div>
 
@@ -826,15 +768,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
               </div>
               <div className="space-y-1">
                 {measurements.map((m) => (
-                  <div
-                    key={m.id}
-                    className="flex items-center justify-between p-2 bg-gray-700 rounded text-sm"
-                  >
+                  <div key={m.id} className="flex items-center justify-between p-2 bg-gray-700 rounded text-sm">
                     <div className="flex items-center gap-2">
-                      <div
-                        className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: m.color }}
-                      />
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: m.color }} />
                       <span className="text-white font-medium">
                         {calculateDistanceMm(m.point1, m.point2).toFixed(1)} mm
                       </span>
@@ -866,11 +802,8 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
               <SkipForward className="h-4 w-4 mr-2" />
               Passer cette photo
             </Button>
-            
-            <Button
-              className="w-full bg-green-600 hover:bg-green-700"
-              onClick={onValidate}
-            >
+
+            <Button className="w-full bg-green-600 hover:bg-green-700" onClick={onValidate}>
               <Check className="h-4 w-4 mr-2" />
               Valider et continuer
             </Button>
