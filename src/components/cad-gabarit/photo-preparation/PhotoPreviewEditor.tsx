@@ -185,11 +185,11 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   useEffect(() => {
     if (!photo.image || initialFitDone) return;
     
-    // Petit délai pour s'assurer que le container est rendu
+    // Délai plus long pour s'assurer que le container est bien rendu
     const timer = setTimeout(() => {
       fitToView();
       setInitialFitDone(true);
-    }, 50);
+    }, 100);
     
     return () => clearTimeout(timer);
   }, [photo.image, initialFitDone, fitToView]);
@@ -431,6 +431,17 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
 
     const imgWidth = photo.currentWidth * photo.stretchX * zoom;
     const imgHeight = photo.currentHeight * photo.stretchY * zoom;
+    
+    // Debug log
+    console.log("[PhotoPreview] renderImage:", {
+      currentWidth: photo.currentWidth,
+      currentHeight: photo.currentHeight,
+      stretchX: photo.stretchX,
+      stretchY: photo.stretchY,
+      zoom,
+      imgWidth,
+      imgHeight,
+    });
 
     return (
       <div
@@ -447,8 +458,8 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
           src={photo.imageDataUrl || ""}
           alt={photo.name}
           style={{
-            width: imgWidth,
-            height: imgHeight,
+            width: `${imgWidth}px`,
+            height: `${imgHeight}px`,
             transform: `rotate(${photo.rotation}deg)`,
             transformOrigin: "center",
             // Empêcher toute contrainte CSS automatique
@@ -664,18 +675,18 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       </div>
 
       {/* Zone de preview */}
-      <div className="flex-1 flex min-h-0">
-        {/* Canvas principal - position absolue pour éviter les problèmes flexbox */}
+      <div className="flex-1 relative min-h-0">
+        {/* Canvas principal - positionnement absolu pour contrôler la taille exacte */}
         <div
           ref={containerRef}
-          className={`flex-1 relative ${
+          className={`absolute inset-0 ${
             activeTool === "measure" ? "cursor-crosshair" : "cursor-grab"
           } ${isPanning ? "cursor-grabbing" : ""}`}
           style={{ 
             touchAction: "none",
             overflow: "hidden",
-            minWidth: 0,
-            minHeight: 0,
+            // Laisser de la place pour le panneau latéral
+            right: "288px", // w-72 = 18rem = 288px
           }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
@@ -726,9 +737,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
           </div>
         </div>
 
-        {/* Panneau latéral */}
+        {/* Panneau latéral - positionné en absolu à droite */}
         <div 
-          className="w-72 bg-gray-800 border-l border-gray-700 p-4 flex flex-col gap-4 overflow-y-auto"
+          className="absolute top-0 right-0 bottom-0 w-72 bg-gray-800 border-l border-gray-700 p-4 flex flex-col gap-4 overflow-y-auto"
           onWheel={(e) => e.stopPropagation()}
         >
           {/* Outils */}
