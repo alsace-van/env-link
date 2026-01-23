@@ -132,6 +132,18 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   // État pour tracker si on a déjà fait le fit initial
   const [initialFitDone, setInitialFitDone] = useState(false);
 
+  // DEBUG: Log tous les changements d'état importants
+  useEffect(() => {
+    console.log("[DEBUG] Component state:", {
+      photoId: photo.id,
+      hasImage: !!photo.image,
+      initialFitDone,
+      zoom,
+      arucoProcessed,
+      arucoDetected: photo.arucoDetected,
+    });
+  });
+
   // Mettre à jour les inputs quand les dimensions changent
   useEffect(() => {
     setTargetWidthMm(widthMm.toFixed(1));
@@ -156,7 +168,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     return () => resizeObserver.disconnect();
   }, []);
 
-  // Fit to view - DOIT être défini AVANT les useEffects qui l'utilisent
+  // Fit to view - dépendances minimales pour éviter les re-renders
   const fitToView = useCallback(() => {
     const container = containerRef.current;
     if (!photo.image || !container) return;
@@ -174,29 +186,35 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const naturalHeight = photo.image.naturalHeight || photo.image.height;
     
     // Calculer le zoom pour que l'image tienne dans le container
+    // NOTE: On utilise stretchX/Y au moment de l'appel, pas comme dépendance
     const scaleX = availableWidth / (naturalWidth * photo.stretchX);
     const scaleY = availableHeight / (naturalHeight * photo.stretchY);
     const newZoom = Math.min(scaleX, scaleY);
     
+    console.log("[DEBUG] fitToView APPLYING zoom:", newZoom);
     setZoom(newZoom);
     setPan({ x: 0, y: 0 });
-  }, [photo]);
+  }, [photo.image, photo.stretchX, photo.stretchY]); // Dépendances réduites - pas tout l'objet photo
 
   // Fit to view UNIQUEMENT au chargement initial de la photo
+  // On utilise photo.id comme déclencheur principal, pas fitToView
   useEffect(() => {
+    console.log("[DEBUG] fitToView useEffect - check:", { hasImage: !!photo.image, initialFitDone, photoId: photo.id });
     if (!photo.image || initialFitDone) return;
     
     // Délai pour s'assurer que le layout CSS est calculé
     const timer = setTimeout(() => {
+      console.log("[DEBUG] fitToView useEffect - CALLING fitToView");
       fitToView();
       setInitialFitDone(true);
     }, 200);
     
     return () => clearTimeout(timer);
-  }, [photo.image, initialFitDone, fitToView]);
+  }, [photo.id, photo.image, initialFitDone]); // Retirer fitToView des dépendances - on l'appelle manuellement
 
   // Reset initialFitDone quand on change de photo
   useEffect(() => {
+    console.log("[DEBUG] Reset useEffect - photo.id changed:", photo.id);
     setInitialFitDone(false);
     setPan({ x: 0, y: 0 });
   }, [photo.id]);
