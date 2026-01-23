@@ -220,6 +220,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   // Gestion du zoom
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
     setZoom((z) => Math.max(0.1, Math.min(5, z * delta)));
   }, []);
@@ -601,6 +602,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
           className={`flex-1 relative overflow-hidden ${
             activeTool === "measure" ? "cursor-crosshair" : "cursor-grab"
           } ${isPanning ? "cursor-grabbing" : ""}`}
+          style={{ touchAction: "none" }}
           onWheel={handleWheel}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
