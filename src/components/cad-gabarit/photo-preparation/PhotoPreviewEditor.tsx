@@ -116,11 +116,6 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   
   // État local
   const [zoom, setZoom] = useState(1);
-  
-  // Debug: log zoom changes
-  useEffect(() => {
-    console.log("[PhotoPreviewEditor] ZOOM CHANGED to", zoom);
-  }, [zoom]);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
@@ -137,12 +132,6 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
 
   // État pour tracker si on a déjà fait le fit initial
   const [initialFitDone, setInitialFitDone] = useState(false);
-
-  // Debug: log mount/unmount
-  useEffect(() => {
-    console.log("[PhotoPreviewEditor] MOUNTED", { photoId: photo.id });
-    return () => console.log("[PhotoPreviewEditor] UNMOUNTED");
-  }, []);
 
   // Mettre à jour les inputs quand les dimensions changent
   useEffect(() => {
@@ -171,17 +160,11 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   // Fit to view - DOIT être défini AVANT les useEffects qui l'utilisent
   const fitToView = useCallback(() => {
     const container = containerRef.current;
-    if (!photo.image || !container) {
-      console.log("[fitToView] SKIP - no image or container");
-      return;
-    }
+    if (!photo.image || !container) return;
     
     // Utiliser les dimensions directement depuis le DOM
     const rect = container.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) {
-      console.log("[fitToView] SKIP - container size 0");
-      return;
-    }
+    if (rect.width === 0 || rect.height === 0) return;
     
     const padding = 40;
     const availableWidth = rect.width - padding * 2;
@@ -192,20 +175,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const naturalHeight = photo.image.naturalHeight || photo.image.height;
     
     // Calculer le zoom pour que l'image tienne dans le container
-    // PAS de limite à 1 - on veut que l'image remplisse l'espace
     const scaleX = availableWidth / (naturalWidth * photo.stretchX);
     const scaleY = availableHeight / (naturalHeight * photo.stretchY);
     const newZoom = Math.min(scaleX, scaleY);
-    
-    console.log("[fitToView] APPLYING", { 
-      containerW: rect.width, 
-      containerH: rect.height,
-      naturalW: naturalWidth,
-      naturalH: naturalHeight,
-      scaleX, 
-      scaleY, 
-      newZoom 
-    });
     
     setZoom(newZoom);
     setPan({ x: 0, y: 0 });
@@ -213,17 +185,10 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
 
   // Fit to view UNIQUEMENT au chargement initial de la photo
   useEffect(() => {
-    console.log("[useEffect fitToView] CHECK", { 
-      hasImage: !!photo.image, 
-      initialFitDone,
-      photoId: photo.id 
-    });
-    
     if (!photo.image || initialFitDone) return;
     
-    // Délai plus long pour s'assurer que le layout CSS est calculé
+    // Délai pour s'assurer que le layout CSS est calculé
     const timer = setTimeout(() => {
-      console.log("[useEffect fitToView] CALLING fitToView after timeout");
       fitToView();
       setInitialFitDone(true);
     }, 200);
@@ -232,9 +197,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   }, [photo.image, initialFitDone, fitToView]);
 
   // Reset initialFitDone quand on change de photo
-  // NE PAS reset le zoom ici car fitToView va le recalculer
   useEffect(() => {
-    console.log("[useEffect reset] photo.id changed to", photo.id);
     setInitialFitDone(false);
     setPan({ x: 0, y: 0 });
   }, [photo.id]);
@@ -710,8 +673,8 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         </div>
       </div>
 
-      {/* Zone de preview */}
-      <div className="flex-1 relative min-h-0">
+      {/* Zone de preview - hauteur calculée pour remplir l'espace */}
+      <div className="flex-1 relative" style={{ minHeight: 0 }}>
         {/* Canvas principal - positionnement absolu pour contrôler la taille exacte */}
         <div
           ref={containerRef}
