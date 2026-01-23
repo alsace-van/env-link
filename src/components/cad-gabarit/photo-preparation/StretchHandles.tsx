@@ -192,18 +192,20 @@ export const StretchHandles: React.FC<StretchHandlesProps> = ({
 
     if (isHorizontal) {
       // Poignée verticale (pour étirer X)
+      const handlePos = pos as { x: number; y: number; height: number };
       Object.assign(style, {
-        left: pos.x,
-        top: pos.y,
+        left: handlePos.x,
+        top: handlePos.y,
         width: HANDLE_SIZE,
-        height: pos.height,
+        height: handlePos.height,
       });
     } else {
       // Poignée horizontale (pour étirer Y)
+      const handlePos = pos as { x: number; y: number; width: number };
       Object.assign(style, {
-        left: pos.x,
-        top: pos.y,
-        width: pos.width,
+        left: handlePos.x,
+        top: handlePos.y,
+        width: handlePos.width,
         height: HANDLE_SIZE,
       });
     }
