@@ -170,8 +170,11 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const availableWidth = rect.width - padding * 2;
     const availableHeight = rect.height - padding * 2;
     
-    const imgWidth = photo.currentWidth * photo.stretchX;
-    const imgHeight = photo.currentHeight * photo.stretchY;
+    // Utiliser les dimensions NATIVES de l'image
+    const naturalWidth = photo.image.naturalWidth || photo.image.width;
+    const naturalHeight = photo.image.naturalHeight || photo.image.height;
+    const imgWidth = naturalWidth * photo.stretchX;
+    const imgHeight = naturalHeight * photo.stretchY;
     
     const scaleX = availableWidth / imgWidth;
     const scaleY = availableHeight / imgHeight;
@@ -278,9 +281,13 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect || !photo.image) return;
         
+        // Utiliser les dimensions NATIVES de l'image
+        const naturalWidth = photo.image.naturalWidth || photo.image.width;
+        const naturalHeight = photo.image.naturalHeight || photo.image.height;
+        
         // Convertir la position écran en % de l'image
-        const imgWidth = photo.currentWidth * photo.stretchX * zoom;
-        const imgHeight = photo.currentHeight * photo.stretchY * zoom;
+        const imgWidth = naturalWidth * photo.stretchX * zoom;
+        const imgHeight = naturalHeight * photo.stretchY * zoom;
         const imgX = (containerSize.width - imgWidth) / 2 + pan.x;
         const imgY = (containerSize.height - imgHeight) / 2 + pan.y;
         
@@ -406,8 +413,13 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   // Calculer la position d'un point de mesure en pixels écran
   const getMeasurePointScreenPos = useCallback(
     (point: MeasurePoint): { x: number; y: number } => {
-      const imgWidth = photo.currentWidth * photo.stretchX * zoom;
-      const imgHeight = photo.currentHeight * photo.stretchY * zoom;
+      if (!photo.image) return { x: 0, y: 0 };
+      
+      // Utiliser les dimensions NATIVES de l'image
+      const naturalWidth = photo.image.naturalWidth || photo.image.width;
+      const naturalHeight = photo.image.naturalHeight || photo.image.height;
+      const imgWidth = naturalWidth * photo.stretchX * zoom;
+      const imgHeight = naturalHeight * photo.stretchY * zoom;
       const imgX = (containerSize.width - imgWidth) / 2 + pan.x;
       const imgY = (containerSize.height - imgHeight) / 2 + pan.y;
       
@@ -429,9 +441,13 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       );
     }
 
-    // Dimensions de base de l'image (avec stretch appliqué)
-    const baseWidth = photo.currentWidth * photo.stretchX;
-    const baseHeight = photo.currentHeight * photo.stretchY;
+    // Utiliser les dimensions NATIVES de l'image HTMLImageElement
+    const naturalWidth = photo.image.naturalWidth || photo.image.width;
+    const naturalHeight = photo.image.naturalHeight || photo.image.height;
+    
+    // Dimensions de base avec stretch appliqué
+    const baseWidth = naturalWidth * photo.stretchX;
+    const baseHeight = naturalHeight * photo.stretchY;
 
     return (
       <div
