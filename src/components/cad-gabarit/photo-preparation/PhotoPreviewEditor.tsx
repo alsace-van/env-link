@@ -170,14 +170,14 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const availableWidth = rect.width - padding * 2;
     const availableHeight = rect.height - padding * 2;
     
-    // Utiliser les dimensions NATIVES de l'image
+    // Dimensions naturelles de l'image (sans stretch car stretch est appliqué séparément via transform)
     const naturalWidth = photo.image.naturalWidth || photo.image.width;
     const naturalHeight = photo.image.naturalHeight || photo.image.height;
-    const imgWidth = naturalWidth * photo.stretchX;
-    const imgHeight = naturalHeight * photo.stretchY;
     
-    const scaleX = availableWidth / imgWidth;
-    const scaleY = availableHeight / imgHeight;
+    // Calculer le zoom pour que l'image tienne dans le container
+    // Le stretch est appliqué en plus via transform
+    const scaleX = availableWidth / (naturalWidth * photo.stretchX);
+    const scaleY = availableHeight / (naturalHeight * photo.stretchY);
     const newZoom = Math.min(scaleX, scaleY, 1);
     
     setZoom(newZoom);
@@ -281,15 +281,17 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect || !photo.image) return;
         
-        // Utiliser les dimensions NATIVES de l'image
+        // Dimensions naturelles
         const naturalWidth = photo.image.naturalWidth || photo.image.width;
         const naturalHeight = photo.image.naturalHeight || photo.image.height;
         
-        // Convertir la position écran en % de l'image
-        const imgWidth = naturalWidth * photo.stretchX * zoom;
-        const imgHeight = naturalHeight * photo.stretchY * zoom;
-        const imgX = (containerSize.width - imgWidth) / 2 + pan.x;
-        const imgY = (containerSize.height - imgHeight) / 2 + pan.y;
+        // Dimensions affichées (avec zoom et stretch)
+        const displayWidth = naturalWidth * zoom * photo.stretchX;
+        const displayHeight = naturalHeight * zoom * photo.stretchY;
+        
+        // Position de l'image dans le container
+        const imgX = (containerSize.width - displayWidth) / 2 + pan.x;
+        const imgY = (containerSize.height - displayHeight) / 2 + pan.y;
         
         const clickX = e.clientX - rect.left;
         const clickY = e.clientY - rect.top;
@@ -297,12 +299,12 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         // Vérifier si le clic est sur l'image
         if (
           clickX >= imgX &&
-          clickX <= imgX + imgWidth &&
+          clickX <= imgX + displayWidth &&
           clickY >= imgY &&
-          clickY <= imgY + imgHeight
+          clickY <= imgY + displayHeight
         ) {
-          const xPercent = ((clickX - imgX) / imgWidth) * 100;
-          const yPercent = ((clickY - imgY) / imgHeight) * 100;
+          const xPercent = ((clickX - imgX) / displayWidth) * 100;
+          const yPercent = ((clickY - imgY) / displayHeight) * 100;
           onAddMeasurePoint(xPercent, yPercent);
         }
         return;
@@ -415,17 +417,21 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     (point: MeasurePoint): { x: number; y: number } => {
       if (!photo.image) return { x: 0, y: 0 };
       
-      // Utiliser les dimensions NATIVES de l'image
+      // Dimensions naturelles
       const naturalWidth = photo.image.naturalWidth || photo.image.width;
       const naturalHeight = photo.image.naturalHeight || photo.image.height;
-      const imgWidth = naturalWidth * photo.stretchX * zoom;
-      const imgHeight = naturalHeight * photo.stretchY * zoom;
-      const imgX = (containerSize.width - imgWidth) / 2 + pan.x;
-      const imgY = (containerSize.height - imgHeight) / 2 + pan.y;
+      
+      // Dimensions affichées (avec zoom et stretch)
+      const displayWidth = naturalWidth * zoom * photo.stretchX;
+      const displayHeight = naturalHeight * zoom * photo.stretchY;
+      
+      // Position de l'image dans le container
+      const imgX = (containerSize.width - displayWidth) / 2 + pan.x;
+      const imgY = (containerSize.height - displayHeight) / 2 + pan.y;
       
       return {
-        x: imgX + (point.xPercent / 100) * imgWidth,
-        y: imgY + (point.yPercent / 100) * imgHeight,
+        x: imgX + (point.xPercent / 100) * displayWidth,
+        y: imgY + (point.yPercent / 100) * displayHeight,
       };
     },
     [photo, zoom, pan, containerSize]
@@ -441,13 +447,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       );
     }
 
-    // Utiliser les dimensions NATIVES de l'image HTMLImageElement
-    const naturalWidth = photo.image.naturalWidth || photo.image.width;
-    const naturalHeight = photo.image.naturalHeight || photo.image.height;
-    
-    // Dimensions de base avec stretch appliqué
-    const baseWidth = naturalWidth * photo.stretchX;
-    const baseHeight = naturalHeight * photo.stretchY;
+    // Calculer le scale total (zoom + stretch)
+    const totalScaleX = zoom * photo.stretchX;
+    const totalScaleY = zoom * photo.stretchY;
 
     return (
       <div
@@ -455,7 +457,6 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
           position: "absolute",
           left: "50%",
           top: "50%",
-          // Centrer et appliquer le pan
           transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px)`,
           pointerEvents: "none",
         }}
@@ -464,11 +465,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
           src={photo.imageDataUrl || ""}
           alt={photo.name}
           style={{
-            // Utiliser les dimensions natives de l'image
-            width: baseWidth,
-            height: baseHeight,
-            // Appliquer le zoom via transform scale + rotation
-            transform: `scale(${zoom}) rotate(${photo.rotation}deg)`,
+            // NE PAS définir width/height - laisser l'image à sa taille naturelle
+            // Appliquer zoom ET stretch via transform
+            transform: `scale(${totalScaleX}, ${totalScaleY}) rotate(${photo.rotation}deg)`,
             transformOrigin: "center",
           }}
           draggable={false}
