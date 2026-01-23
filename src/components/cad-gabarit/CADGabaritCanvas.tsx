@@ -3718,6 +3718,7 @@ export function CADGabaritCanvas({
     }
 
     // v7.47: Dessiner les poignées d'étirement si le mode est actif
+    // v7.58: Poignées toujours visibles à l'écran (clampées aux bords)
     if (stretchMode && selectedImageId && canvasRef.current) {
       const ctx = canvasRef.current.getContext("2d");
       const img = backgroundImages.find((i) => i.id === selectedImageId);
@@ -3731,11 +3732,25 @@ export function CADGabaritCanvas({
         const centerScreenX = img.x * viewport.scale + viewport.offsetX;
         const centerScreenY = img.y * viewport.scale + viewport.offsetY;
 
-        // Coordonnées écran des bords
-        const leftX = centerScreenX - (imgWidth / 2) * viewport.scale;
-        const rightX = centerScreenX + (imgWidth / 2) * viewport.scale;
-        const topY = centerScreenY - (imgHeight / 2) * viewport.scale;
-        const bottomY = centerScreenY + (imgHeight / 2) * viewport.scale;
+        // Coordonnées écran des bords (réelles)
+        const leftXReal = centerScreenX - (imgWidth / 2) * viewport.scale;
+        const rightXReal = centerScreenX + (imgWidth / 2) * viewport.scale;
+        const topYReal = centerScreenY - (imgHeight / 2) * viewport.scale;
+        const bottomYReal = centerScreenY + (imgHeight / 2) * viewport.scale;
+
+        // Dimensions du canvas
+        const canvasWidth = canvasRef.current.width;
+        const canvasHeight = canvasRef.current.height;
+        const margin = 20; // Marge pour garder les poignées visibles
+
+        // v7.58: Clamper les poignées pour qu'elles restent toujours visibles
+        const clamp = (val: number, min: number, max: number) => Math.max(min, Math.min(max, val));
+        const leftX = clamp(leftXReal, margin, canvasWidth - margin);
+        const rightX = clamp(rightXReal, margin, canvasWidth - margin);
+        const topY = clamp(topYReal, margin, canvasHeight - margin);
+        const bottomY = clamp(bottomYReal, margin, canvasHeight - margin);
+        const clampedCenterX = clamp(centerScreenX, margin, canvasWidth - margin);
+        const clampedCenterY = clamp(centerScreenY, margin, canvasHeight - margin);
 
         ctx.save();
 
@@ -3744,15 +3759,15 @@ export function CADGabaritCanvas({
         const handleColor = "#F97316"; // Orange
         const cornerColor = "#8B5CF6"; // Violet pour les coins
 
-        // v7.47.2: Poignées sur les bords (X ou Y seul)
+        // v7.47.2: Poignées sur les bords (X ou Y seul) - avec positions clampées
         const edgeHandles = [
-          { x: leftX, y: centerScreenY, type: "left" },
-          { x: rightX, y: centerScreenY, type: "right" },
-          { x: centerScreenX, y: topY, type: "top" },
-          { x: centerScreenX, y: bottomY, type: "bottom" },
+          { x: leftX, y: clampedCenterY, type: "left" },
+          { x: rightX, y: clampedCenterY, type: "right" },
+          { x: clampedCenterX, y: topY, type: "top" },
+          { x: clampedCenterX, y: bottomY, type: "bottom" },
         ];
 
-        // v7.47.2: Poignées aux coins (X et Y ensemble)
+        // v7.47.2: Poignées aux coins (X et Y ensemble) - avec positions clampées
         const cornerHandles = [
           { x: leftX, y: topY, type: "top-left" },
           { x: rightX, y: topY, type: "top-right" },
@@ -3778,7 +3793,7 @@ export function CADGabaritCanvas({
           ctx.strokeStyle = cornerColor;
           ctx.lineWidth = 2;
           ctx.stroke();
-          
+
           // Petite croix au centre pour indiquer X+Y
           ctx.strokeStyle = cornerColor;
           ctx.lineWidth = 1.5;
@@ -3790,28 +3805,29 @@ export function CADGabaritCanvas({
           ctx.stroke();
         });
 
-        // Bordure orange autour de l'image
+        // Bordure orange autour de l'image (positions réelles, pas clampées)
         ctx.strokeStyle = handleColor;
         ctx.lineWidth = 2;
         ctx.setLineDash([5, 5]);
-        ctx.strokeRect(leftX, topY, rightX - leftX, bottomY - topY);
+        ctx.strokeRect(leftXReal, topYReal, rightXReal - leftXReal, bottomYReal - topYReal);
 
         // v7.47.4: Afficher l'échelle actuelle et les raccourcis clavier
+        // v7.58: Position du panneau d'info aussi clampée
         ctx.setLineDash([]);
         const scaleXPercent = (effectiveScaleX * 100).toFixed(2);
         const scaleYPercent = (effectiveScaleY * 100).toFixed(2);
-        
-        // Fond semi-transparent pour le texte
+
+        // Fond semi-transparent pour le texte - position clampée
         ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
-        const infoX = leftX;
-        const infoY = topY - 75;
+        const infoX = clamp(leftXReal, 10, canvasWidth - 250);
+        const infoY = clamp(topYReal - 75, 10, canvasHeight - 80);
         ctx.fillRect(infoX, infoY, 240, 70);
-        
+
         // Texte
         ctx.fillStyle = "#FFFFFF";
         ctx.font = "bold 12px monospace";
         ctx.fillText(`X: ${scaleXPercent}%   Y: ${scaleYPercent}%`, infoX + 8, infoY + 16);
-        
+
         ctx.font = "11px sans-serif";
         ctx.fillStyle = "#AAAAAA";
         ctx.fillText("←→ X  ↑↓ Y  +/- X+Y  Alt: sync", infoX + 8, infoY + 32);
@@ -10459,7 +10475,8 @@ export function CADGabaritCanvas({
         }
 
         // v7.47: Vérifier si on clique sur une poignée d'étirement
-        if (stretchMode && selectedImageId) {
+        // v7.58: Utiliser les positions clampées pour la détection
+        if (stretchMode && selectedImageId && canvasRef.current) {
           const img = backgroundImages.find((i) => i.id === selectedImageId);
           if (img && img.image) {
             const effectiveScaleX = img.scaleX ?? img.scale;
@@ -10471,15 +10488,27 @@ export function CADGabaritCanvas({
             const centerScreenX = img.x * viewport.scale + viewport.offsetX;
             const centerScreenY = img.y * viewport.scale + viewport.offsetY;
 
-            // Coordonnées écran des bords
-            const leftX = centerScreenX - (imgWidth / 2) * viewport.scale;
-            const rightX = centerScreenX + (imgWidth / 2) * viewport.scale;
-            const topY = centerScreenY - (imgHeight / 2) * viewport.scale;
-            const bottomY = centerScreenY + (imgHeight / 2) * viewport.scale;
+            // Coordonnées écran des bords (réelles)
+            const leftXReal = centerScreenX - (imgWidth / 2) * viewport.scale;
+            const rightXReal = centerScreenX + (imgWidth / 2) * viewport.scale;
+            const topYReal = centerScreenY - (imgHeight / 2) * viewport.scale;
+            const bottomYReal = centerScreenY + (imgHeight / 2) * viewport.scale;
+
+            // v7.58: Clamper les positions pour les poignées visibles
+            const canvasWidth = canvasRef.current.width;
+            const canvasHeight = canvasRef.current.height;
+            const margin = 20;
+            const clamp = (val: number, min: number, max: number) => Math.max(min, Math.min(max, val));
+            const leftX = clamp(leftXReal, margin, canvasWidth - margin);
+            const rightX = clamp(rightXReal, margin, canvasWidth - margin);
+            const topY = clamp(topYReal, margin, canvasHeight - margin);
+            const bottomY = clamp(bottomYReal, margin, canvasHeight - margin);
+            const clampedCenterX = clamp(centerScreenX, margin, canvasWidth - margin);
+            const clampedCenterY = clamp(centerScreenY, margin, canvasHeight - margin);
 
             const handleSize = 15; // Zone de détection plus grande
 
-            // v7.47.2: D'abord vérifier les coins (prioritaires)
+            // v7.47.2: D'abord vérifier les coins (prioritaires) - avec positions clampées
             const cornerHandles: Array<{ x: number; y: number; type: "top-left" | "top-right" | "bottom-left" | "bottom-right" }> = [
               { x: leftX, y: topY, type: "top-left" },
               { x: rightX, y: topY, type: "top-right" },
@@ -10504,12 +10533,12 @@ export function CADGabaritCanvas({
               }
             }
 
-            // Ensuite vérifier les bords
+            // Ensuite vérifier les bords - avec positions clampées
             const edgeHandles: Array<{ x: number; y: number; type: "left" | "right" | "top" | "bottom" }> = [
-              { x: leftX, y: centerScreenY, type: "left" },
-              { x: rightX, y: centerScreenY, type: "right" },
-              { x: centerScreenX, y: topY, type: "top" },
-              { x: centerScreenX, y: bottomY, type: "bottom" },
+              { x: leftX, y: clampedCenterY, type: "left" },
+              { x: rightX, y: clampedCenterY, type: "right" },
+              { x: clampedCenterX, y: topY, type: "top" },
+              { x: clampedCenterX, y: bottomY, type: "bottom" },
             ];
 
             for (const handle of edgeHandles) {
@@ -20285,6 +20314,7 @@ export function CADGabaritCanvas({
             setMeasurements={setMeasurements}
             measurePhase={measureState.phase}
             hasCalibration={!!calibrationData.scale || !!getSelectedImageCalibration().scale}
+            onStartMeasure={() => setActiveTool("measure")}
           />
         )}
 
@@ -25817,3 +25847,4 @@ function exportToSVG(sketch: Sketch): string {
   return svg;
 }
 
+export default CADGabaritCanvas;
