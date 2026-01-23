@@ -219,6 +219,7 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
             onValidate={handleValidatePhoto}
             onSkip={skipPhoto}
             onBackToGrid={handleBackToGrid}
+            onClose={onClose}
             getDimensionsMm={getDimensionsMm}
             calculateDistanceMm={calculateDistanceMm}
           />
@@ -246,8 +247,12 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
-        className="max-w-[95vw] w-[1400px] h-[90vh] p-0 flex flex-col"
+        className="max-w-[95vw] w-[1400px] h-[90vh] p-0 flex flex-col [&>button.absolute]:hidden"
         onPointerDownOutside={(e) => e.preventDefault()}
+        onWheel={(e) => {
+          // Bloquer le wheel sur toute la modale pour éviter les effets de bord
+          e.stopPropagation();
+        }}
       >
         {/* Header minimal pour grid et summary */}
         {state.step !== "preview" && (
