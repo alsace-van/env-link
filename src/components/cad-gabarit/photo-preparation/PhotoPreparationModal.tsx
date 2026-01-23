@@ -10,7 +10,7 @@
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
 
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -48,6 +48,7 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
   onImport,
   initialScaleFactor = 1,
 }) => {
+  const modalRef = useRef<HTMLDivElement>(null);
   const {
     state,
     currentPhoto,
@@ -76,13 +77,34 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
     handleKeyDown,
   } = usePhotoPreparation();
 
-  // Écouter les touches clavier
+  // Bloquer le wheel globalement quand la modale est ouverte en mode preview
+  // pour éviter les conflits avec le canvas principal de CAD
   useEffect(() => {
-    if (!isOpen || state.step !== "preview") return;
+    if (!isOpen) return;
+
+    const blockGlobalWheel = (e: WheelEvent) => {
+      // Bloquer le wheel au niveau du document pour empêcher
+      // tout comportement indésirable du canvas CAD derrière
+      const modal = modalRef.current;
+      if (modal && modal.contains(e.target as Node)) {
+        // L'événement est dans la modale, ne pas bloquer ici
+        // (le composant enfant gère le zoom)
+        return;
+      }
+      // Bloquer les événements wheel en dehors de la modale
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    // Note: on n'ajoute plus le listener keydown ici car PhotoPreviewEditor
+    // a déjà son propre handler qui fonctionne mieux
+
+    document.addEventListener("wheel", blockGlobalWheel, { passive: false, capture: true });
     
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, state.step, handleKeyDown]);
+    return () => {
+      document.removeEventListener("wheel", blockGlobalWheel, { capture: true });
+    };
+  }, [isOpen]);
 
   // Commencer la préparation (passer à la preview)
   const handleStartPreparation = useCallback(() => {
