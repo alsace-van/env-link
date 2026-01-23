@@ -208,9 +208,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   }, [photo.image, initialFitDone, fitToView]);
 
   // Reset initialFitDone quand on change de photo
+  // NE PAS reset le zoom ici car fitToView va le recalculer
   useEffect(() => {
     setInitialFitDone(false);
-    setZoom(1); // Reset zoom aussi
     setPan({ x: 0, y: 0 });
   }, [photo.id]);
 
