@@ -157,45 +157,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     return () => resizeObserver.disconnect();
   }, []);
 
-  // Fit to view UNIQUEMENT au chargement initial de la photo
-  useEffect(() => {
-    if (!photo.image || initialFitDone) return;
-    
-    // Petit délai pour s'assurer que le container est rendu
-    const timer = setTimeout(() => {
-      fitToView();
-      setInitialFitDone(true);
-    }, 50);
-    
-    return () => clearTimeout(timer);
-  }, [photo.image, initialFitDone, fitToView]);
-
-  // Reset initialFitDone quand on change de photo
-  useEffect(() => {
-    setInitialFitDone(false);
-    setZoom(1); // Reset zoom aussi
-    setPan({ x: 0, y: 0 });
-  }, [photo.id]);
-
-  // Détection ArUco automatique
-  useEffect(() => {
-    if (
-      photo.image &&
-      isOpenCVLoaded &&
-      !arucoProcessed &&
-      !photo.arucoDetected &&
-      !photo.arucoScaleX
-    ) {
-      runArucoDetection();
-    }
-  }, [photo.id, photo.image, isOpenCVLoaded, arucoProcessed]);
-
-  // Reset arucoProcessed quand on change de photo
-  useEffect(() => {
-    setArucoProcessed(false);
-  }, [photo.id]);
-
-  // Fit to view
+  // Fit to view - DOIT être défini AVANT les useEffects qui l'utilisent
   const fitToView = useCallback(() => {
     const container = containerRef.current;
     if (!photo.image || !container) return;
@@ -219,7 +181,27 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     setPan({ x: 0, y: 0 });
   }, [photo]);
 
-  // Détection ArUco
+  // Fit to view UNIQUEMENT au chargement initial de la photo
+  useEffect(() => {
+    if (!photo.image || initialFitDone) return;
+    
+    // Petit délai pour s'assurer que le container est rendu
+    const timer = setTimeout(() => {
+      fitToView();
+      setInitialFitDone(true);
+    }, 50);
+    
+    return () => clearTimeout(timer);
+  }, [photo.image, initialFitDone, fitToView]);
+
+  // Reset initialFitDone quand on change de photo
+  useEffect(() => {
+    setInitialFitDone(false);
+    setZoom(1); // Reset zoom aussi
+    setPan({ x: 0, y: 0 });
+  }, [photo.id]);
+
+  // Détection ArUco - DOIT être défini AVANT le useEffect qui l'utilise
   const runArucoDetection = useCallback(async () => {
     if (!photo.image) return;
     
@@ -240,6 +222,24 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       );
     }
   }, [photo.image, detectMarkers, onUpdatePhoto]);
+
+  // Détection ArUco automatique
+  useEffect(() => {
+    if (
+      photo.image &&
+      isOpenCVLoaded &&
+      !arucoProcessed &&
+      !photo.arucoDetected &&
+      !photo.arucoScaleX
+    ) {
+      runArucoDetection();
+    }
+  }, [photo.id, photo.image, isOpenCVLoaded, arucoProcessed, runArucoDetection]);
+
+  // Reset arucoProcessed quand on change de photo
+  useEffect(() => {
+    setArucoProcessed(false);
+  }, [photo.id]);
 
   // Gestion du zoom - bloquer wheel sur tout le composant racine
   useEffect(() => {
