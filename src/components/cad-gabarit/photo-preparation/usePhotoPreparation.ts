@@ -55,7 +55,7 @@ function reducer(
       return { ...state, step: action.step };
 
     case "ADD_PHOTOS": {
-      const newPhotos = action.files.map((file) => createEmptyPhoto(file));
+      const newPhotos = action.files.map(({ file, id }) => createEmptyPhoto(file, id));
       return { ...state, photos: [...state.photos, ...newPhotos] };
     }
 
@@ -295,13 +295,18 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
     if (fileArray.length === 0) return;
 
     dispatch({ type: "SET_LOADING", isLoading: true, message: "Chargement des photos..." });
-    dispatch({ type: "ADD_PHOTOS", files: fileArray });
+    
+    // Générer les IDs en amont pour pouvoir les retrouver après
+    const filesWithIds = fileArray.map((file) => ({
+      file,
+      id: generateId(),
+    }));
+    
+    // Ajouter les photos avec leurs IDs pré-générés
+    dispatch({ type: "ADD_PHOTOS", files: filesWithIds });
 
     // Charger les images et calculer les hash
-    for (const file of fileArray) {
-      const photoId = stateRef.current.photos.find((p) => p.file === file)?.id;
-      if (!photoId) continue;
-
+    for (const { file, id: photoId } of filesWithIds) {
       try {
         // Charger l'image
         const dataUrl = await readFileAsDataUrl(file);
