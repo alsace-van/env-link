@@ -40,14 +40,13 @@ import {
   Measurement,
   MeasurePoint,
   ImageCropData,
-  ArucoDetectionResult,
   STRETCH_INCREMENT_NORMAL,
   STRETCH_INCREMENT_FINE,
   STRETCH_INCREMENT_FAST,
   generateId,
   getNextMeasureColor,
 } from "./types";
-import { useArucoDetection } from "./useArucoDetection";
+import { useOpenCVAruco } from "../useOpenCVAruco";
 
 interface PhotoPreviewEditorProps {
   photo: PhotoToProcess;
@@ -126,8 +125,8 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   const [targetWidthMm, setTargetWidthMm] = useState(widthMm.toFixed(1));
   const [targetHeightMm, setTargetHeightMm] = useState(heightMm.toFixed(1));
   
-  // ArUco
-  const { isOpenCVLoaded, isDetecting, detectMarkers } = useArucoDetection();
+  // ArUco - Utilise le détecteur JS existant qui fonctionne
+  const { isLoaded: isArucoLoaded, detectMarkers } = useOpenCVAruco({ markerSizeCm: 5 });
   const [arucoProcessed, setArucoProcessed] = useState(false);
 
   // État pour tracker si on a déjà fait le fit initial
@@ -203,22 +202,39 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   }, [photo.id]);
 
   // Détection ArUco - DOIT être défini AVANT le useEffect qui l'utilise
+  // Taille des marqueurs ArUco en mm
+  const ARUCO_MARKER_SIZE_MM = 50;
+  
   const runArucoDetection = useCallback(async () => {
     if (!photo.image) return;
     
     setArucoProcessed(true);
     
-    const result = await detectMarkers(photo.image);
+    // useOpenCVAruco.detectMarkers retourne directement ArucoMarker[]
+    const markers = await detectMarkers(photo.image);
     
-    if (result.markers.length > 0 && result.scaleX && result.scaleY) {
+    if (markers.length > 0) {
+      // Calculer le scale X et Y séparément à partir des tailles des marqueurs
+      let totalScaleX = 0;
+      let totalScaleY = 0;
+      
+      for (const marker of markers) {
+        // marker.size.width et marker.size.height sont en pixels
+        totalScaleX += marker.size.width / ARUCO_MARKER_SIZE_MM;
+        totalScaleY += marker.size.height / ARUCO_MARKER_SIZE_MM;
+      }
+      
+      const scaleX = totalScaleX / markers.length;
+      const scaleY = totalScaleY / markers.length;
+      
       onUpdatePhoto({
         arucoDetected: true,
-        arucoScaleX: result.scaleX,
-        arucoScaleY: result.scaleY,
+        arucoScaleX: scaleX,
+        arucoScaleY: scaleY,
       });
       
       toast.success(
-        `${result.markers.length} marqueur(s) ArUco détecté(s)`,
+        `${markers.length} marqueur(s) ArUco détecté(s)`,
         { duration: 2000 }
       );
     }
@@ -228,14 +244,14 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   useEffect(() => {
     if (
       photo.image &&
-      isOpenCVLoaded &&
+      isArucoLoaded &&
       !arucoProcessed &&
       !photo.arucoDetected &&
       !photo.arucoScaleX
     ) {
       runArucoDetection();
     }
-  }, [photo.id, photo.image, isOpenCVLoaded, arucoProcessed, runArucoDetection]);
+  }, [photo.id, photo.image, isArucoLoaded, arucoProcessed, runArucoDetection]);
 
   // Reset arucoProcessed quand on change de photo
   useEffect(() => {
