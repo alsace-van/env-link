@@ -429,19 +429,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       );
     }
 
-    const imgWidth = photo.currentWidth * photo.stretchX * zoom;
-    const imgHeight = photo.currentHeight * photo.stretchY * zoom;
-    
-    // Debug log
-    console.log("[PhotoPreview] renderImage:", {
-      currentWidth: photo.currentWidth,
-      currentHeight: photo.currentHeight,
-      stretchX: photo.stretchX,
-      stretchY: photo.stretchY,
-      zoom,
-      imgWidth,
-      imgHeight,
-    });
+    // Dimensions de base de l'image (avec stretch appliqué)
+    const baseWidth = photo.currentWidth * photo.stretchX;
+    const baseHeight = photo.currentHeight * photo.stretchY;
 
     return (
       <div
@@ -449,8 +439,8 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
           position: "absolute",
           left: "50%",
           top: "50%",
+          // Centrer et appliquer le pan
           transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px)`,
-          // Empêcher l'image d'affecter le layout parent
           pointerEvents: "none",
         }}
       >
@@ -458,16 +448,12 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
           src={photo.imageDataUrl || ""}
           alt={photo.name}
           style={{
-            width: `${imgWidth}px`,
-            height: `${imgHeight}px`,
-            transform: `rotate(${photo.rotation}deg)`,
+            // Utiliser les dimensions natives de l'image
+            width: baseWidth,
+            height: baseHeight,
+            // Appliquer le zoom via transform scale + rotation
+            transform: `scale(${zoom}) rotate(${photo.rotation}deg)`,
             transformOrigin: "center",
-            // Empêcher toute contrainte CSS automatique
-            maxWidth: "none",
-            maxHeight: "none",
-            objectFit: "none",
-            flexShrink: 0,
-            flexGrow: 0,
           }}
           draggable={false}
         />
