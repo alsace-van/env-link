@@ -11,7 +11,7 @@
 //
 // CHANGELOG v3.0:
 // - Détection automatique des contours fermés
-// - Export en LWPOLYLINE pour continuité parfaite
+// - Export en POLYLINE R12 pour continuité parfaite (plus compatible que LWPOLYLINE)
 // - Les courbes de Bézier sont discrétisées avec points exacts
 // - Fusion 360 peut maintenant extruder les contours
 //
@@ -458,22 +458,34 @@ function mergeContourVertices(contour: ContourSegment[], sketch: Sketch): Vertex
 }
 
 /**
- * Exporte un contour fermé en LWPOLYLINE
+ * Exporte un contour fermé en POLYLINE (format R12 - plus compatible que LWPOLYLINE)
  */
 function exportClosedContour(vertices: Vertex[], scale: number, layer: string): string {
   if (vertices.length < 3) return "";
 
-  let dxf = "0\nLWPOLYLINE\n";
-  dxf += "8\n" + layer + "\n";
-  dxf += "100\nAcDbEntity\n";
-  dxf += "100\nAcDbPolyline\n";
-  dxf += "90\n" + vertices.length + "\n"; // Nombre de vertices
-  dxf += "70\n1\n"; // Flag: 1 = fermé
+  let dxf = "";
 
+  // Entité POLYLINE (début)
+  dxf += "0\nPOLYLINE\n";
+  dxf += "8\n" + layer + "\n";
+  dxf += "66\n1\n"; // Vertices follow flag
+  dxf += "70\n1\n"; // Flag: 1 = closed polyline
+  dxf += "10\n0.0\n"; // Dummy point (required)
+  dxf += "20\n0.0\n";
+  dxf += "30\n0.0\n";
+
+  // Vertices
   for (const v of vertices) {
+    dxf += "0\nVERTEX\n";
+    dxf += "8\n" + layer + "\n";
     dxf += "10\n" + (v.x / scale).toFixed(6) + "\n";
     dxf += "20\n" + (-v.y / scale).toFixed(6) + "\n";
+    dxf += "30\n0.0\n";
   }
+
+  // Fin de la polyline
+  dxf += "0\nSEQEND\n";
+  dxf += "8\n" + layer + "\n";
 
   return dxf;
 }
@@ -490,7 +502,7 @@ export function exportToDXF(sketch: Sketch): string {
   dxf += "0\nSECTION\n";
   dxf += "2\nHEADER\n";
   dxf += "9\n$ACADVER\n";
-  dxf += "1\nAC1015\n"; // AutoCAD 2000 pour LWPOLYLINE
+  dxf += "1\nAC1009\n"; // AutoCAD R12 - format le plus compatible
   dxf += "9\n$INSUNITS\n";
   dxf += "70\n4\n"; // 4 = millimètres
   dxf += "0\nENDSEC\n";
@@ -677,7 +689,7 @@ function exportSpline(spline: Spline, sketch: Sketch, scale: number): string {
 
   const layer = spline.isConstruction ? "CONSTRUCTION" : "0";
 
-  // Pour les splines fermées, exporter en LWPOLYLINE
+  // Pour les splines fermées, exporter en POLYLINE
   if (spline.closed) {
     const vertices = splineToVertices(spline, sketch, 10);
 
@@ -735,20 +747,8 @@ function exportRectangle(rect: Rectangle, sketch: Sketch, scale: number): string
   const layer = (rect as any).isConstruction ? "CONSTRUCTION" : "0";
   const vertices = [p1, p2, p3, p4];
 
-  // Exporter en LWPOLYLINE fermée
-  let dxf = "0\nLWPOLYLINE\n";
-  dxf += "8\n" + layer + "\n";
-  dxf += "100\nAcDbEntity\n";
-  dxf += "100\nAcDbPolyline\n";
-  dxf += "90\n4\n";
-  dxf += "70\n1\n"; // Fermé
-
-  for (const v of vertices) {
-    dxf += "10\n" + (v.x / scale).toFixed(6) + "\n";
-    dxf += "20\n" + (-v.y / scale).toFixed(6) + "\n";
-  }
-
-  return dxf;
+  // Exporter en POLYLINE fermée (format R12)
+  return exportClosedContour(vertices, scale, layer);
 }
 
 function exportBezier(bezier: Bezier, sketch: Sketch, scale: number): string {
