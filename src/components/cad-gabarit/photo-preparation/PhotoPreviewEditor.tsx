@@ -130,6 +130,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   const { isOpenCVLoaded, isDetecting, detectMarkers } = useArucoDetection();
   const [arucoProcessed, setArucoProcessed] = useState(false);
 
+  // État pour tracker si on a déjà fait le fit initial
+  const [initialFitDone, setInitialFitDone] = useState(false);
+
   // Mettre à jour les inputs quand les dimensions changent
   useEffect(() => {
     setTargetWidthMm(widthMm.toFixed(1));
@@ -154,12 +157,25 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     return () => resizeObserver.disconnect();
   }, []);
 
-  // Fit to view au chargement
+  // Fit to view UNIQUEMENT au chargement initial de la photo
   useEffect(() => {
-    if (photo.image && containerSize.width > 0) {
+    if (!photo.image || initialFitDone) return;
+    
+    // Petit délai pour s'assurer que le container est rendu
+    const timer = setTimeout(() => {
       fitToView();
-    }
-  }, [photo.id, containerSize]);
+      setInitialFitDone(true);
+    }, 50);
+    
+    return () => clearTimeout(timer);
+  }, [photo.image, initialFitDone, fitToView]);
+
+  // Reset initialFitDone quand on change de photo
+  useEffect(() => {
+    setInitialFitDone(false);
+    setZoom(1); // Reset zoom aussi
+    setPan({ x: 0, y: 0 });
+  }, [photo.id]);
 
   // Détection ArUco automatique
   useEffect(() => {
@@ -181,11 +197,16 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
 
   // Fit to view
   const fitToView = useCallback(() => {
-    if (!photo.image || containerSize.width === 0) return;
+    const container = containerRef.current;
+    if (!photo.image || !container) return;
+    
+    // Utiliser les dimensions directement depuis le DOM
+    const rect = container.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
     
     const padding = 40;
-    const availableWidth = containerSize.width - padding * 2;
-    const availableHeight = containerSize.height - padding * 2;
+    const availableWidth = rect.width - padding * 2;
+    const availableHeight = rect.height - padding * 2;
     
     const imgWidth = photo.currentWidth * photo.stretchX;
     const imgHeight = photo.currentHeight * photo.stretchY;
@@ -196,7 +217,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     
     setZoom(newZoom);
     setPan({ x: 0, y: 0 });
-  }, [photo, containerSize]);
+  }, [photo]);
 
   // Détection ArUco
   const runArucoDetection = useCallback(async () => {
