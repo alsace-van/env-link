@@ -269,7 +269,8 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
-        className="max-w-[95vw] w-[1400px] h-[90vh] p-0 flex flex-col min-h-0 overflow-hidden [&>button.absolute]:hidden"
+        className="max-w-[95vw] w-[1400px] p-0 flex flex-col overflow-hidden [&>button.absolute]:hidden"
+        style={{ height: "90vh", minHeight: 0 }}
         onPointerDownOutside={(e) => e.preventDefault()}
         onWheel={(e) => {
           // Bloquer le wheel sur toute la modale pour éviter les effets de bord
@@ -295,8 +296,8 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
           </DialogHeader>
         )}
         
-        {/* Contenu principal */}
-        <div className="flex-1 overflow-hidden min-h-0">
+        {/* Contenu principal - DOIT avoir h-full pour propager la hauteur */}
+        <div className="flex-1 overflow-hidden min-h-0 h-full">
           {renderContent()}
         </div>
       </DialogContent>
