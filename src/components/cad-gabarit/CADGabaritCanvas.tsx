@@ -1,8 +1,15 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.54
+// VERSION: 7.55
 // ============================================
+//
+// CHANGELOG v7.55 (23/01/2026):
+// - ADD: Nouvelle modale de préparation photo (photo-preparation/)
+// - ADD: Détection ArUco simplifiée, mesures en temps réel, étirement X/Y
+// - ADD: Vue grille avec détection doublons, rotation, validation
+// - ADD: Bouton "Préparer photos" dans menu Importer
+// - ADD: Import automatique avec création de calques par photo
 //
 // CHANGELOG v7.54 (22/01/2026):
 // - MOD: Incrément SHIFT+flèches changé de 0.01% à 0.05%
@@ -12,50 +19,7 @@
 // - FIX: Efface transformedCanvas après crop pour utiliser croppedCanvas
 // - FIX: Ordre de priorité cohérent avec cad-renderer
 //
-// CHANGELOG v7.52 (22/01/2026):
-// - FIX: Hit-testing utilise les dimensions cropées (cohérent avec cad-renderer)
-//
-// CHANGELOG v7.51 (22/01/2026):
-// - FIX: Les cotations suivent maintenant le rectangle lors du déplacement
-// - Mise à jour automatique des dimensions quand les points bougent
-// - Fonctionne pour: drag de point, drag de ligne, drag de sélection
-//
-// CHANGELOG v7.50 (21/01/2026):
-// - Bouton "Réassembler (N photos)" dans le menu contextuel
-// - Sélectionner plusieurs images puis clic droit pour réassembler
-// - Passe les images existantes à ArucoStitcher
-//
-// CHANGELOG v7.49 (21/01/2026):
-// - FIX: Touches clavier mode étiré prioritaires (avant input focus check)
-// - Ajout stopImmediatePropagation() pour éviter conflits macOS
-// - Bandeau d'aide discret en bas de l'image (raccourcis clavier)
-// - Indicateur d'action visible (X↔, Y↕, X+Y, Reset, Equalize)
-//
-// CHANGELOG v7.48 (21/01/2026):
-// - Indicateur visuel discret pour le mode étiré (X↔, Y↕, X+Y, Reset)
-// - stopPropagation() sur les touches pour éviter conflits macOS
-// - Affichage temporaire (600ms) de l'action en cours
-//
-// CHANGELOG v7.44 (20/01/2026):
-// - Support scaleX et scaleY séparés pour corriger les distorsions
-// - Import ArucoStitcher avec scales anisotropes
-//
-// CHANGELOG v7.43 (20/01/2026):
-// - FIX SCALE CRITIQUE: pxPerCm en px/cm mais scaleFactor en px/mm
-//
-// CHANGELOG v7.41 (20/01/2026):
-// - Fix canvas freeze: onStitched reçoit un tableau StitchedImage[]
-//
-//
-// CHANGELOG v7.15 (17/01/2026):
-// - Extraction du panneau de calibration dans CalibrationPanel.tsx (~1000 lignes)
-// - Panneau de calibration flottant et draggable (position: fixed)
-// - Réduction du fichier de 23186 à 22257 lignes (-929 lignes)
-// - Import du nouveau composant CalibrationPanel
-// - Suppression des états isDraggingCalibPanel et calibPanelDragStart (gérés dans CalibrationPanel)
-//
-// CHANGELOG v7.14:
-// - Auto-backup Supabase pour protection contre les pertes de données
+// Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -89,6 +53,10 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+
+// Import du nouveau système de préparation photo
+import { PhotoPreparationModal, PreparedPhoto } from "./photo-preparation";
+
 import {
   MousePointer,
   Hand,
@@ -937,6 +905,10 @@ export function CADGabaritCanvas({
   const [pendingArucoImage, setPendingArucoImage] = useState<BackgroundImage | null>(null);
   const [showArucoGenerator, setShowArucoGenerator] = useState(false);
   const [showArucoStitcher, setShowArucoStitcher] = useState(false);
+  
+  // v7.55: Nouvelle modale de préparation photo
+  const [showPhotoPreparationModal, setShowPhotoPreparationModal] = useState(false);
+  
   // v7.50: Images existantes à réassembler (markers re-détectés par ArucoStitcher)
   const [imagesToReassemble, setImagesToReassemble] = useState<Array<{
     id: string;
@@ -5798,6 +5770,86 @@ export function CADGabaritCanvas({
       toast.success(`Image déplacée vers nouveau calque`);
     },
     [backgroundImages],
+  );
+
+  // v7.55: Importer les photos depuis la modale de préparation
+  const handleImportPreparedPhotos = useCallback(
+    (preparedPhotos: PreparedPhoto[]) => {
+      if (preparedPhotos.length === 0) return;
+
+      const layerColors = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4", "#84CC16", "#EF4444"];
+      const newBackgroundImages: BackgroundImage[] = [];
+      const newLayers: Array<{ id: string; layer: Layer }> = [];
+
+      preparedPhotos.forEach((photo, index) => {
+        // Créer un calque pour chaque photo
+        const newLayerId = generateId();
+        const layerNumber = sketch.layers.size + index + 1;
+        
+        newLayers.push({
+          id: newLayerId,
+          layer: {
+            id: newLayerId,
+            name: photo.name.replace(/\.[^.]+$/, ""), // Nom sans extension
+            color: layerColors[(sketch.layers.size + index) % layerColors.length],
+            visible: true,
+            locked: false,
+            order: sketch.layers.size + index,
+          },
+        });
+
+        // Créer une image HTML depuis le canvas
+        const img = new window.Image();
+        img.src = photo.dataUrl;
+
+        // Position en ligne (espacées horizontalement)
+        const xOffset = index * (photo.widthMm + 50); // 50mm d'espacement
+
+        const bgImage: BackgroundImage = {
+          id: photo.id,
+          name: photo.name,
+          src: photo.dataUrl,
+          image: img,
+          x: xOffset + photo.widthMm / 2, // Centre de l'image
+          y: photo.heightMm / 2,
+          scale: 1 / photo.scale, // scale = mm/px
+          scaleX: 1 / photo.scale,
+          scaleY: 1 / photo.scale,
+          rotation: 0,
+          opacity: imageOpacity,
+          visible: true,
+          locked: false,
+          order: backgroundImages.length + index,
+          layerId: newLayerId,
+          markers: [],
+        };
+
+        newBackgroundImages.push(bgImage);
+      });
+
+      // Ajouter les calques
+      setSketch((prev) => {
+        const updatedLayers = new Map(prev.layers);
+        newLayers.forEach(({ id, layer }) => {
+          updatedLayers.set(id, layer);
+        });
+        return { ...prev, layers: updatedLayers };
+      });
+
+      // Ajouter les images
+      setBackgroundImages((prev) => [...prev, ...newBackgroundImages]);
+
+      // Fermer la modale
+      setShowPhotoPreparationModal(false);
+
+      toast.success(`${preparedPhotos.length} photo(s) importée(s) avec leurs calques`);
+
+      // Forcer une sauvegarde
+      setTimeout(() => {
+        autoBackupSave(true);
+      }, 2000);
+    },
+    [sketch.layers.size, imageOpacity, backgroundImages.length, autoBackupSave],
   );
 
   // v7.45: Redresser une image (correction de perspective via ArUco)
@@ -17911,6 +17963,15 @@ export function CADGabaritCanvas({
                       )}
                     </DropdownMenuSubTrigger>
                     <DropdownMenuSubContent className="w-56">
+                      {/* v7.55: Nouveau système de préparation photo */}
+                      <DropdownMenuItem onClick={() => setShowPhotoPreparationModal(true)}>
+                        <ImageIcon className="h-4 w-4 mr-2 text-green-600" />
+                        Préparer photos...
+                        <Badge variant="outline" className="ml-auto text-[10px] px-1">Nouveau</Badge>
+                      </DropdownMenuItem>
+                      
+                      <DropdownMenuSeparator />
+                      
                       <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
                         <FileUp className="h-4 w-4 mr-2" />
                         DXF, images...
@@ -20569,6 +20630,14 @@ export function CADGabaritCanvas({
             toast.success(`${addedCount} image(s) assemblée(s) ajoutée(s) au canvas !`);
             setShowArucoStitcher(false);
           }}
+        />
+
+        {/* v7.55: Nouvelle modale de préparation photo */}
+        <PhotoPreparationModal
+          isOpen={showPhotoPreparationModal}
+          onClose={() => setShowPhotoPreparationModal(false)}
+          onImport={handleImportPreparedPhotos}
+          initialScaleFactor={scaleFactor}
         />
 
         {/* v7.38: Modale de confirmation avant nouveau projet */}
