@@ -22,7 +22,7 @@ import {
 export const DEFAULT_SNAP_SETTINGS: SnapSettings = {
   enabled: true,
   types: new Set(["endpoint", "midpoint", "center", "intersection", "quadrant", "nearest", "grid"]),
-  tolerance: 25, // pixels - augmenté pour meilleur accrochage
+  tolerance: 10, // pixels - réduit pour déplacement plus fluide (était 25)
   gridSize: 10, // mm
   showGrid: true,
 };
