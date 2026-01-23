@@ -170,15 +170,25 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const availableWidth = rect.width - padding * 2;
     const availableHeight = rect.height - padding * 2;
     
-    // Dimensions naturelles de l'image (sans stretch car stretch est appliqué séparément via transform)
+    // Dimensions naturelles de l'image
     const naturalWidth = photo.image.naturalWidth || photo.image.width;
     const naturalHeight = photo.image.naturalHeight || photo.image.height;
     
     // Calculer le zoom pour que l'image tienne dans le container
-    // Le stretch est appliqué en plus via transform
+    // PAS de limite à 1 - on veut que l'image remplisse l'espace
     const scaleX = availableWidth / (naturalWidth * photo.stretchX);
     const scaleY = availableHeight / (naturalHeight * photo.stretchY);
-    const newZoom = Math.min(scaleX, scaleY, 1);
+    const newZoom = Math.min(scaleX, scaleY);
+    
+    console.log("[fitToView]", { 
+      containerW: rect.width, 
+      containerH: rect.height,
+      naturalW: naturalWidth,
+      naturalH: naturalHeight,
+      scaleX, 
+      scaleY, 
+      newZoom 
+    });
     
     setZoom(newZoom);
     setPan({ x: 0, y: 0 });
@@ -188,11 +198,11 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   useEffect(() => {
     if (!photo.image || initialFitDone) return;
     
-    // Délai plus long pour s'assurer que le container est bien rendu
+    // Délai plus long pour s'assurer que le layout CSS est calculé
     const timer = setTimeout(() => {
       fitToView();
       setInitialFitDone(true);
-    }, 100);
+    }, 200);
     
     return () => clearTimeout(timer);
   }, [photo.image, initialFitDone, fitToView]);
