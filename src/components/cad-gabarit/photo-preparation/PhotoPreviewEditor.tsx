@@ -418,6 +418,8 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
           left: "50%",
           top: "50%",
           transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px)`,
+          // Empêcher l'image d'affecter le layout parent
+          pointerEvents: "none",
         }}
       >
         <img
@@ -428,6 +430,12 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
             height: imgHeight,
             transform: `rotate(${photo.rotation}deg)`,
             transformOrigin: "center",
+            // Empêcher toute contrainte CSS automatique
+            maxWidth: "none",
+            maxHeight: "none",
+            objectFit: "none",
+            flexShrink: 0,
+            flexGrow: 0,
           }}
           draggable={false}
         />
@@ -566,8 +574,8 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   return (
     <div 
       ref={rootRef}
-      className="flex flex-col h-full bg-gray-900"
-      style={{ touchAction: "none" }}
+      className="flex flex-col h-full bg-gray-900 min-h-0"
+      style={{ touchAction: "none", overflow: "hidden" }}
     >
       {/* Header */}
       <div className="flex items-center justify-between p-3 bg-gray-800 border-b border-gray-700">
@@ -635,14 +643,19 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       </div>
 
       {/* Zone de preview */}
-      <div className="flex-1 flex">
-        {/* Canvas principal */}
+      <div className="flex-1 flex min-h-0">
+        {/* Canvas principal - position absolue pour éviter les problèmes flexbox */}
         <div
           ref={containerRef}
-          className={`flex-1 relative overflow-hidden ${
+          className={`flex-1 relative ${
             activeTool === "measure" ? "cursor-crosshair" : "cursor-grab"
           } ${isPanning ? "cursor-grabbing" : ""}`}
-          style={{ touchAction: "none" }}
+          style={{ 
+            touchAction: "none",
+            overflow: "hidden",
+            minWidth: 0,
+            minHeight: 0,
+          }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
