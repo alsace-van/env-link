@@ -1,8 +1,13 @@
 // ============================================
 // EXPORT DXF: Export au format AutoCAD R12
 // Compatible Fusion 360, AutoCAD, LibreCAD
-// VERSION: 3.0 - Contours fermés avec LWPOLYLINE
+// VERSION: 3.1 - Connexion par proximité de coordonnées
 // ============================================
+//
+// CHANGELOG v3.1:
+// - Détection des connexions par proximité (tolérance 0.5px)
+// - Fusionne les points proches même s'ils ont des IDs différents
+// - Résout le problème des Béziers qui se touchent sans partager de point
 //
 // CHANGELOG v3.0:
 // - Détection automatique des contours fermés
@@ -15,6 +20,9 @@
 // ============================================
 
 import { Sketch, Line, Circle as CircleType, Arc, Spline, Rectangle, Point, Bezier, TextAnnotation, Geometry } from "./types";
+
+// Tolérance pour considérer deux points comme identiques (en pixels)
+const PROXIMITY_TOLERANCE = 0.5;
 
 // Type pour un point avec coordonnées
 interface Vertex {
@@ -207,15 +215,41 @@ function geometryToSegment(geo: Geometry, sketch: Sketch): ContourSegment | null
 }
 
 /**
+ * Calcule la distance entre deux points
+ */
+function pointDistance(p1: Vertex, p2: Vertex): number {
+  return Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+}
+
+/**
+ * Vérifie si deux points sont proches (même coordonnées ou presque)
+ */
+function arePointsClose(p1: Vertex, p2: Vertex, tolerance: number = PROXIMITY_TOLERANCE): boolean {
+  return pointDistance(p1, p2) <= tolerance;
+}
+
+/**
+ * Récupère les coordonnées d'un point par son ID
+ */
+function getPointCoords(pointId: string, sketch: Sketch): Vertex | null {
+  const pt = sketch.points.get(pointId);
+  return pt ? { x: pt.x, y: pt.y } : null;
+}
+
+/**
  * Détecte les contours fermés en suivant les connexions entre géométries
+ * Version 3.1: Utilise la proximité des coordonnées en plus des IDs de points
  */
 function detectClosedContours(sketch: Sketch): ContourSegment[][] {
   const contours: ContourSegment[][] = [];
   const usedGeoIds = new Set<string>();
 
-  // Construire un index des géométries par point
+  // Construire un index des géométries par point ET par coordonnées
   const geoByPoint = new Map<string, ContourSegment[]>();
   const allSegments: ContourSegment[] = [];
+
+  // Stocker les coordonnées des endpoints pour chaque segment
+  const segmentEndpoints = new Map<string, { start: Vertex; end: Vertex }>();
 
   sketch.geometries.forEach((geo) => {
     // Ignorer les cercles, rectangles, textes (pas de contours chaînés)
@@ -228,7 +262,14 @@ function detectClosedContours(sketch: Sketch): ContourSegment[][] {
 
     allSegments.push(segment);
 
-    // Indexer par les deux endpoints
+    // Stocker les coordonnées des endpoints
+    const startCoords = getPointCoords(segment.startPointId, sketch);
+    const endCoords = getPointCoords(segment.endPointId, sketch);
+    if (startCoords && endCoords) {
+      segmentEndpoints.set(segment.geometryId, { start: startCoords, end: endCoords });
+    }
+
+    // Indexer par les deux endpoints (par ID)
     if (!geoByPoint.has(segment.startPointId)) {
       geoByPoint.set(segment.startPointId, []);
     }
@@ -240,6 +281,64 @@ function detectClosedContours(sketch: Sketch): ContourSegment[][] {
     geoByPoint.get(segment.endPointId)!.push(segment);
   });
 
+  /**
+   * Trouve les segments connectés à un point donné
+   * Cherche par ID ET par proximité de coordonnées
+   */
+  function findConnectedSegments(pointId: string, excludeGeoId: string): Array<{ segment: ContourSegment; connectsAtStart: boolean }> {
+    const results: Array<{ segment: ContourSegment; connectsAtStart: boolean }> = [];
+    const currentCoords = getPointCoords(pointId, sketch);
+
+    // 1. Chercher par ID de point (méthode originale)
+    const byId = geoByPoint.get(pointId) || [];
+    for (const seg of byId) {
+      if (seg.geometryId === excludeGeoId || usedGeoIds.has(seg.geometryId)) continue;
+
+      if (seg.startPointId === pointId) {
+        results.push({ segment: seg, connectsAtStart: true });
+      } else if (seg.endPointId === pointId) {
+        results.push({ segment: seg, connectsAtStart: false });
+      }
+    }
+
+    // 2. Chercher par proximité de coordonnées (nouveau)
+    if (currentCoords) {
+      for (const seg of allSegments) {
+        if (seg.geometryId === excludeGeoId || usedGeoIds.has(seg.geometryId)) continue;
+        // Éviter les doublons (déjà trouvés par ID)
+        if (results.some(r => r.segment.geometryId === seg.geometryId)) continue;
+
+        const endpoints = segmentEndpoints.get(seg.geometryId);
+        if (!endpoints) continue;
+
+        // Vérifier si le start ou end de ce segment est proche de notre point
+        if (arePointsClose(currentCoords, endpoints.start)) {
+          results.push({ segment: seg, connectsAtStart: true });
+        } else if (arePointsClose(currentCoords, endpoints.end)) {
+          results.push({ segment: seg, connectsAtStart: false });
+        }
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Vérifie si deux points sont connectés (par ID ou par proximité)
+   */
+  function arePointsConnected(pointId1: string, pointId2: string): boolean {
+    if (pointId1 === pointId2) return true;
+
+    const coords1 = getPointCoords(pointId1, sketch);
+    const coords2 = getPointCoords(pointId2, sketch);
+
+    if (coords1 && coords2) {
+      return arePointsClose(coords1, coords2);
+    }
+
+    return false;
+  }
+
   // Pour chaque segment non utilisé, essayer de construire un contour fermé
   for (const startSegment of allSegments) {
     if (usedGeoIds.has(startSegment.geometryId)) continue;
@@ -250,24 +349,26 @@ function detectClosedContours(sketch: Sketch): ContourSegment[][] {
     let currentPointId = startSegment.endPointId;
     const startPointId = startSegment.startPointId;
     let maxIterations = 1000;
+    let lastGeoId = startSegment.geometryId;
 
-    while (currentPointId !== startPointId && maxIterations-- > 0) {
-      // Chercher le prochain segment connecté
-      const candidates = geoByPoint.get(currentPointId) || [];
+    while (!arePointsConnected(currentPointId, startPointId) && maxIterations-- > 0) {
+      // Chercher le prochain segment connecté (par ID ou proximité)
+      const candidates = findConnectedSegments(currentPointId, lastGeoId);
       let foundNext = false;
 
-      for (const candidate of candidates) {
+      for (const { segment: candidate, connectsAtStart } of candidates) {
         if (usedGeoIds.has(candidate.geometryId)) continue;
 
-        // Vérifier la connexion
-        if (candidate.startPointId === currentPointId) {
+        if (connectsAtStart) {
+          // Le segment se connecte par son start
           contour.push(candidate);
           usedGeoIds.add(candidate.geometryId);
           currentPointId = candidate.endPointId;
+          lastGeoId = candidate.geometryId;
           foundNext = true;
           break;
-        } else if (candidate.endPointId === currentPointId) {
-          // Inverser le segment
+        } else {
+          // Le segment se connecte par son end, il faut l'inverser
           const reversed: ContourSegment = {
             ...candidate,
             startPointId: candidate.endPointId,
@@ -277,6 +378,7 @@ function detectClosedContours(sketch: Sketch): ContourSegment[][] {
           contour.push(reversed);
           usedGeoIds.add(candidate.geometryId);
           currentPointId = reversed.endPointId;
+          lastGeoId = candidate.geometryId;
           foundNext = true;
           break;
         }
@@ -285,8 +387,8 @@ function detectClosedContours(sketch: Sketch): ContourSegment[][] {
       if (!foundNext) break; // Pas de suite, contour ouvert
     }
 
-    // Vérifier si le contour est fermé
-    if (currentPointId === startPointId && contour.length >= 2) {
+    // Vérifier si le contour est fermé (par ID ou par proximité)
+    if (arePointsConnected(currentPointId, startPointId) && contour.length >= 2) {
       contours.push(contour);
     } else {
       // Contour non fermé, remettre les segments comme non utilisés
@@ -302,6 +404,7 @@ function detectClosedContours(sketch: Sketch): ContourSegment[][] {
 
 /**
  * Fusionne les vertices d'un contour en assurant la continuité parfaite
+ * Version 3.1: Utilise le point de connexion exact entre segments adjacents
  */
 function mergeContourVertices(contour: ContourSegment[], sketch: Sketch): Vertex[] {
   if (contour.length === 0) return [];
@@ -312,20 +415,37 @@ function mergeContourVertices(contour: ContourSegment[], sketch: Sketch): Vertex
     const segment = contour[i];
     const nextSegment = contour[(i + 1) % contour.length];
 
-    // Ajouter tous les vertices sauf le dernier (qui sera le premier du suivant)
+    // Ajouter tous les vertices sauf le dernier
     for (let j = 0; j < segment.vertices.length - 1; j++) {
       allVertices.push(segment.vertices[j]);
     }
 
-    // Pour le dernier vertex, utiliser le point exact de connexion
-    // pour assurer la continuité parfaite
-    const connectionPointId = segment.endPointId;
-    const connectionPoint = sketch.points.get(connectionPointId);
-    if (connectionPoint) {
-      allVertices.push({ x: connectionPoint.x, y: connectionPoint.y });
+    // Pour le point de connexion, calculer le point moyen entre:
+    // - Le dernier vertex du segment courant
+    // - Le premier vertex du segment suivant
+    // Cela garantit la continuité même si les points ne sont pas exactement identiques
+    const lastVertex = segment.vertices[segment.vertices.length - 1];
+    const firstNextVertex = nextSegment.vertices[0];
+
+    // Utiliser le point moyen pour une connexion parfaite
+    const connectionPoint: Vertex = {
+      x: (lastVertex.x + firstNextVertex.x) / 2,
+      y: (lastVertex.y + firstNextVertex.y) / 2,
+    };
+
+    // Si les points sont très proches, utiliser directement le point du sketch
+    const connectionPointFromSketch = sketch.points.get(segment.endPointId);
+    if (connectionPointFromSketch) {
+      const sketchVertex = { x: connectionPointFromSketch.x, y: connectionPointFromSketch.y };
+      // Vérifier si le point du sketch est proche du point calculé
+      if (arePointsClose(sketchVertex, lastVertex, 1.0)) {
+        allVertices.push(sketchVertex);
+      } else {
+        // Sinon utiliser le point moyen
+        allVertices.push(connectionPoint);
+      }
     } else {
-      // Fallback: utiliser le dernier vertex du segment
-      allVertices.push(segment.vertices[segment.vertices.length - 1]);
+      allVertices.push(connectionPoint);
     }
   }
 
