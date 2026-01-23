@@ -76,6 +76,7 @@ interface PhotoPreviewEditorProps {
   onValidate: () => void;
   onSkip: () => void;
   onBackToGrid: () => void;
+  onClose: () => void; // Fermer la modale
   
   // Calculs
   getDimensionsMm: (photo: PhotoToProcess) => { widthMm: number; heightMm: number };
@@ -105,6 +106,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   onValidate,
   onSkip,
   onBackToGrid,
+  onClose,
   getDimensionsMm,
   calculateDistanceMm,
 }) => {
@@ -223,17 +225,32 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     if (!container) return;
 
     const handleWheel = (e: WheelEvent) => {
+      // Bloquer TOUT comportement par défaut
       e.preventDefault();
       e.stopPropagation();
+      e.stopImmediatePropagation();
+      
+      // Seulement zoomer, jamais autre chose
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
       setZoom((z) => Math.max(0.1, Math.min(5, z * delta)));
+      
+      return false;
     };
 
-    // Ajouter avec passive: false pour pouvoir preventDefault
-    container.addEventListener("wheel", handleWheel, { passive: false });
+    // Bloquer aussi le scroll sur le document quand on est dans ce composant
+    const blockDocumentScroll = (e: WheelEvent) => {
+      if (container.contains(e.target as Node)) {
+        e.preventDefault();
+      }
+    };
+
+    // Ajouter avec passive: false et capture: true pour intercepter en premier
+    container.addEventListener("wheel", handleWheel, { passive: false, capture: true });
+    document.addEventListener("wheel", blockDocumentScroll, { passive: false });
 
     return () => {
-      container.removeEventListener("wheel", handleWheel);
+      container.removeEventListener("wheel", handleWheel, { capture: true });
+      document.removeEventListener("wheel", blockDocumentScroll);
     };
   }, []);
 
@@ -603,6 +620,18 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
           >
             <ChevronRight className="h-5 w-5" />
           </Button>
+          
+          <Separator orientation="vertical" className="h-6 bg-gray-600 mx-2" />
+          
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="text-gray-300 hover:text-white hover:bg-red-500/20"
+            title="Fermer"
+          >
+            <X className="h-5 w-5" />
+          </Button>
         </div>
       </div>
 
@@ -665,7 +694,10 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         </div>
 
         {/* Panneau latéral */}
-        <div className="w-72 bg-gray-800 border-l border-gray-700 p-4 flex flex-col gap-4 overflow-y-auto">
+        <div 
+          className="w-72 bg-gray-800 border-l border-gray-700 p-4 flex flex-col gap-4 overflow-y-auto"
+          onWheel={(e) => e.stopPropagation()}
+        >
           {/* Outils */}
           <div>
             <Label className="text-gray-400 text-xs mb-2 block">OUTILS</Label>
@@ -735,6 +767,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                   onChange={(e) => setTargetWidthMm(e.target.value)}
                   onBlur={applyTargetDimensions}
                   onKeyDown={(e) => e.key === "Enter" && applyTargetDimensions()}
+                  onWheel={(e) => e.currentTarget.blur()}
                   className="flex-1 h-8 bg-gray-700 border-gray-600 text-white text-sm"
                 />
                 <span className="text-gray-500 text-xs">
@@ -751,6 +784,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                   onChange={(e) => setTargetHeightMm(e.target.value)}
                   onBlur={applyTargetDimensions}
                   onKeyDown={(e) => e.key === "Enter" && applyTargetDimensions()}
+                  onWheel={(e) => e.currentTarget.blur()}
                   className="flex-1 h-8 bg-gray-700 border-gray-600 text-white text-sm"
                 />
                 <span className="text-gray-500 text-xs">
