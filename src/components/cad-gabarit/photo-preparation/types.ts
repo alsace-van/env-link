@@ -152,7 +152,7 @@ export interface PhotoPreparationState {
 
 export type PhotoPreparationAction =
   | { type: "SET_STEP"; step: PreparationStep }
-  | { type: "ADD_PHOTOS"; files: File[] }
+  | { type: "ADD_PHOTOS"; files: Array<{ file: File; id: string }> }
   | { type: "REMOVE_PHOTO"; photoId: string }
   | { type: "REMOVE_DUPLICATES" }
   | { type: "SET_CURRENT_INDEX"; index: number }
@@ -219,9 +219,9 @@ export function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
-export function createEmptyPhoto(file: File): PhotoToProcess {
+export function createEmptyPhoto(file: File, id?: string): PhotoToProcess {
   return {
-    id: generateId(),
+    id: id || generateId(),
     file,
     name: file.name,
     image: null,
