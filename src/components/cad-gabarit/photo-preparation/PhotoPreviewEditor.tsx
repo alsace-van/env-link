@@ -1,6 +1,6 @@
 // ============================================
-// COMPOSANT: PhotoPreviewEditor
-// Preview individuelle avec outils de transformation
+// COMPOSANT: PhotoPreparationModal
+// Modale principale orchestrant la préparation des photos
 // VERSION: 1.0.0
 // ============================================
 //
@@ -10,870 +10,419 @@
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
-  RotateCcw,
-  RotateCw,
-  Scissors,
-  Ruler,
-  ChevronLeft,
-  ChevronRight,
-  Check,
+  CheckCircle2,
   SkipForward,
-  ArrowLeft,
-  ZoomIn,
-  ZoomOut,
-  Maximize,
-  QrCode,
-  Loader2,
+  Clock,
+  ArrowRight,
   X,
-  Trash2,
+  ImageIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import {
-  PhotoToProcess,
-  Measurement,
-  MeasurePoint,
-  ImageCropData,
-  ArucoDetectionResult,
-  STRETCH_INCREMENT_NORMAL,
-  STRETCH_INCREMENT_FINE,
-  STRETCH_INCREMENT_FAST,
-  generateId,
-  getNextMeasureColor,
-} from "./types";
-import { useArucoDetection } from "./useArucoDetection";
+import { usePhotoPreparation } from "./usePhotoPreparation";
+import { PhotoGridView } from "./PhotoGridView";
+import { PhotoPreviewEditor } from "./PhotoPreviewEditor";
+import { PreparedPhoto } from "./types";
 
-interface PhotoPreviewEditorProps {
-  photo: PhotoToProcess;
-  photoIndex: number;
-  totalPhotos: number;
-  measurements: Measurement[];
-  pendingMeasurePoint: MeasurePoint | null;
-  activeTool: "none" | "measure" | "crop";
-  scaleFactor: number;
-  
-  // Actions
-  onRotate: (direction: "cw" | "ccw") => void;
-  onSetCrop: (crop: ImageCropData | null) => void;
-  onSetStretch: (stretchX: number, stretchY: number) => void;
-  onAdjustStretchX: (deltaMm: number) => void;
-  onAdjustStretchY: (deltaMm: number) => void;
-  onSetActiveTool: (tool: "none" | "measure" | "crop") => void;
-  onAddMeasurePoint: (xPercent: number, yPercent: number) => void;
-  onRemoveMeasurement: (id: string) => void;
-  onClearMeasurements: () => void;
-  onUpdatePhoto: (updates: Partial<PhotoToProcess>) => void;
-  
-  // Navigation
-  onPrev: () => void;
-  onNext: () => void;
-  onValidate: () => void;
-  onSkip: () => void;
-  onBackToGrid: () => void;
-  onClose: () => void; // Fermer la modale
-  
-  // Calculs
-  getDimensionsMm: (photo: PhotoToProcess) => { widthMm: number; heightMm: number };
-  calculateDistanceMm: (p1: MeasurePoint, p2: MeasurePoint) => number;
+interface PhotoPreparationModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onImport: (photos: PreparedPhoto[]) => void;
+  initialScaleFactor?: number;
 }
 
-export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
-  photo,
-  photoIndex,
-  totalPhotos,
-  measurements,
-  pendingMeasurePoint,
-  activeTool,
-  scaleFactor,
-  onRotate,
-  onSetCrop,
-  onSetStretch,
-  onAdjustStretchX,
-  onAdjustStretchY,
-  onSetActiveTool,
-  onAddMeasurePoint,
-  onRemoveMeasurement,
-  onClearMeasurements,
-  onUpdatePhoto,
-  onPrev,
-  onNext,
-  onValidate,
-  onSkip,
-  onBackToGrid,
+export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
+  isOpen,
   onClose,
-  getDimensionsMm,
-  calculateDistanceMm,
+  onImport,
+  initialScaleFactor = 1,
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  
-  // État local
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [isPanning, setIsPanning] = useState(false);
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  
-  // Inputs pour dimensions
-  const { widthMm, heightMm } = getDimensionsMm(photo);
-  const [targetWidthMm, setTargetWidthMm] = useState(widthMm.toFixed(1));
-  const [targetHeightMm, setTargetHeightMm] = useState(heightMm.toFixed(1));
-  
-  // ArUco
-  const { isOpenCVLoaded, isDetecting, detectMarkers } = useArucoDetection();
-  const [arucoProcessed, setArucoProcessed] = useState(false);
+  const {
+    state,
+    currentPhoto,
+    setStep,
+    goToPhoto,
+    nextPhoto,
+    prevPhoto,
+    addPhotos,
+    removePhoto,
+    removeDuplicates,
+    rotatePhoto,
+    setCrop,
+    setStretch,
+    adjustStretchX,
+    adjustStretchY,
+    validatePhoto,
+    skipPhoto,
+    setActiveTool,
+    addMeasurePoint,
+    removeMeasurement,
+    clearMeasurements,
+    calculateDistanceMm,
+    getDimensionsMm,
+    getValidatedPhotos,
+    prepareForExport,
+    handleKeyDown,
+  } = usePhotoPreparation();
 
-  // Mettre à jour les inputs quand les dimensions changent
+  // Écouter les touches clavier
   useEffect(() => {
-    setTargetWidthMm(widthMm.toFixed(1));
-    setTargetHeightMm(heightMm.toFixed(1));
-  }, [widthMm, heightMm]);
-
-  // Observer la taille du container
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setContainerSize({
-          width: entry.contentRect.width,
-          height: entry.contentRect.height,
-        });
-      }
-    });
-
-    resizeObserver.observe(container);
-    return () => resizeObserver.disconnect();
-  }, []);
-
-  // Fit to view au chargement
-  useEffect(() => {
-    if (photo.image && containerSize.width > 0) {
-      fitToView();
-    }
-  }, [photo.id, containerSize]);
-
-  // Détection ArUco automatique
-  useEffect(() => {
-    if (
-      photo.image &&
-      isOpenCVLoaded &&
-      !arucoProcessed &&
-      !photo.arucoDetected &&
-      !photo.arucoScaleX
-    ) {
-      runArucoDetection();
-    }
-  }, [photo.id, photo.image, isOpenCVLoaded, arucoProcessed]);
-
-  // Reset arucoProcessed quand on change de photo
-  useEffect(() => {
-    setArucoProcessed(false);
-  }, [photo.id]);
-
-  // Fit to view
-  const fitToView = useCallback(() => {
-    if (!photo.image || containerSize.width === 0) return;
+    if (!isOpen || state.step !== "preview") return;
     
-    const padding = 40;
-    const availableWidth = containerSize.width - padding * 2;
-    const availableHeight = containerSize.height - padding * 2;
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, state.step, handleKeyDown]);
+
+  // Commencer la préparation (passer à la preview)
+  const handleStartPreparation = useCallback(() => {
+    const validPhotos = state.photos.filter(
+      (p) => p.image && !p.isDuplicate
+    );
     
-    const imgWidth = photo.currentWidth * photo.stretchX;
-    const imgHeight = photo.currentHeight * photo.stretchY;
-    
-    const scaleX = availableWidth / imgWidth;
-    const scaleY = availableHeight / imgHeight;
-    const newZoom = Math.min(scaleX, scaleY, 1);
-    
-    setZoom(newZoom);
-    setPan({ x: 0, y: 0 });
-  }, [photo, containerSize]);
-
-  // Détection ArUco
-  const runArucoDetection = useCallback(async () => {
-    if (!photo.image) return;
-    
-    setArucoProcessed(true);
-    
-    const result = await detectMarkers(photo.image);
-    
-    if (result.markers.length > 0 && result.scaleX && result.scaleY) {
-      onUpdatePhoto({
-        arucoDetected: true,
-        arucoScaleX: result.scaleX,
-        arucoScaleY: result.scaleY,
-      });
-      
-      toast.success(
-        `${result.markers.length} marqueur(s) ArUco détecté(s)`,
-        { duration: 2000 }
-      );
-    }
-  }, [photo.image, detectMarkers, onUpdatePhoto]);
-
-  // Gestion du zoom avec événement non-passif
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const handleWheel = (e: WheelEvent) => {
-      // Bloquer TOUT comportement par défaut
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-      
-      // Seulement zoomer, jamais autre chose
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      setZoom((z) => Math.max(0.1, Math.min(5, z * delta)));
-      
-      return false;
-    };
-
-    // Bloquer aussi le scroll sur le document quand on est dans ce composant
-    const blockDocumentScroll = (e: WheelEvent) => {
-      if (container.contains(e.target as Node)) {
-        e.preventDefault();
-      }
-    };
-
-    // Ajouter avec passive: false et capture: true pour intercepter en premier
-    container.addEventListener("wheel", handleWheel, { passive: false, capture: true });
-    document.addEventListener("wheel", blockDocumentScroll, { passive: false });
-
-    return () => {
-      container.removeEventListener("wheel", handleWheel, { capture: true });
-      document.removeEventListener("wheel", blockDocumentScroll);
-    };
-  }, []);
-
-  // Gestion du pan
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      if (activeTool === "measure") {
-        // Mode mesure : ajouter un point
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (!rect || !photo.image) return;
-        
-        // Convertir la position écran en % de l'image
-        const imgWidth = photo.currentWidth * photo.stretchX * zoom;
-        const imgHeight = photo.currentHeight * photo.stretchY * zoom;
-        const imgX = (containerSize.width - imgWidth) / 2 + pan.x;
-        const imgY = (containerSize.height - imgHeight) / 2 + pan.y;
-        
-        const clickX = e.clientX - rect.left;
-        const clickY = e.clientY - rect.top;
-        
-        // Vérifier si le clic est sur l'image
-        if (
-          clickX >= imgX &&
-          clickX <= imgX + imgWidth &&
-          clickY >= imgY &&
-          clickY <= imgY + imgHeight
-        ) {
-          const xPercent = ((clickX - imgX) / imgWidth) * 100;
-          const yPercent = ((clickY - imgY) / imgHeight) * 100;
-          onAddMeasurePoint(xPercent, yPercent);
-        }
-        return;
-      }
-      
-      // Mode normal : pan
-      if (e.button === 0) {
-        setIsPanning(true);
-        setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-      }
-    },
-    [activeTool, zoom, pan, containerSize, photo, onAddMeasurePoint]
-  );
-
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
-      if (isPanning) {
-        setPan({
-          x: e.clientX - panStart.x,
-          y: e.clientY - panStart.y,
-        });
-      }
-    },
-    [isPanning, panStart]
-  );
-
-  const handleMouseUp = useCallback(() => {
-    setIsPanning(false);
-  }, []);
-
-  // Appliquer les dimensions saisies
-  const applyTargetDimensions = useCallback(() => {
-    const newWidth = parseFloat(targetWidthMm.replace(",", "."));
-    const newHeight = parseFloat(targetHeightMm.replace(",", "."));
-    
-    if (isNaN(newWidth) || isNaN(newHeight) || newWidth <= 0 || newHeight <= 0) {
-      toast.error("Dimensions invalides");
+    if (validPhotos.length === 0) {
+      toast.error("Aucune photo valide à préparer");
       return;
     }
     
-    const newStretchX = (newWidth / widthMm) * photo.stretchX;
-    const newStretchY = (newHeight / heightMm) * photo.stretchY;
+    // Trouver le premier index valide
+    const firstValidIndex = state.photos.findIndex(
+      (p) => p.image && !p.isDuplicate
+    );
     
-    onSetStretch(newStretchX, newStretchY);
-  }, [targetWidthMm, targetHeightMm, widthMm, heightMm, photo.stretchX, photo.stretchY, onSetStretch]);
+    goToPhoto(firstValidIndex);
+    setStep("preview");
+  }, [state.photos, goToPhoto, setStep]);
 
-  // Raccourcis clavier
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) {
-        return;
-      }
+  // Passer au résumé
+  const handleGoToSummary = useCallback(() => {
+    setStep("summary");
+  }, [setStep]);
 
-      let increment = STRETCH_INCREMENT_NORMAL;
-      if (e.shiftKey && !e.ctrlKey && !e.metaKey) {
-        increment = STRETCH_INCREMENT_FINE;
-      } else if (e.ctrlKey || e.metaKey) {
-        increment = STRETCH_INCREMENT_FAST;
-      }
+  // Valider et passer à la suivante (ou au résumé si c'est la dernière)
+  const handleValidatePhoto = useCallback(() => {
+    validatePhoto();
+    
+    // Vérifier s'il reste des photos à traiter
+    const remainingPhotos = state.photos.filter(
+      (p, i) => i > state.currentPhotoIndex && p.image && !p.isDuplicate && p.status === "pending"
+    );
+    
+    if (remainingPhotos.length === 0) {
+      // Toutes les photos ont été traitées
+      setStep("summary");
+    }
+  }, [validatePhoto, state.photos, state.currentPhotoIndex, setStep]);
 
-      switch (e.key) {
-        case "ArrowLeft":
-          e.preventDefault();
-          onAdjustStretchX(-increment);
-          break;
-        case "ArrowRight":
-          e.preventDefault();
-          onAdjustStretchX(increment);
-          break;
-        case "ArrowUp":
-          e.preventDefault();
-          onAdjustStretchY(-increment);
-          break;
-        case "ArrowDown":
-          e.preventDefault();
-          onAdjustStretchY(increment);
-          break;
-        case "r":
-        case "R":
-          e.preventDefault();
-          onRotate(e.shiftKey ? "ccw" : "cw");
-          break;
-        case "m":
-        case "M":
-          e.preventDefault();
-          onSetActiveTool(activeTool === "measure" ? "none" : "measure");
-          break;
-        case "Escape":
-          e.preventDefault();
-          if (activeTool !== "none") {
-            onSetActiveTool("none");
-          }
-          break;
-        case "Enter":
-          e.preventDefault();
-          onValidate();
-          break;
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeTool, onAdjustStretchX, onAdjustStretchY, onRotate, onSetActiveTool, onValidate]);
-
-  // Calculer la position d'un point de mesure en pixels écran
-  const getMeasurePointScreenPos = useCallback(
-    (point: MeasurePoint): { x: number; y: number } => {
-      const imgWidth = photo.currentWidth * photo.stretchX * zoom;
-      const imgHeight = photo.currentHeight * photo.stretchY * zoom;
-      const imgX = (containerSize.width - imgWidth) / 2 + pan.x;
-      const imgY = (containerSize.height - imgHeight) / 2 + pan.y;
+  // Mettre à jour une photo
+  const handleUpdatePhoto = useCallback(
+    (updates: Partial<typeof currentPhoto>) => {
+      if (!currentPhoto) return;
       
-      return {
-        x: imgX + (point.xPercent / 100) * imgWidth,
-        y: imgY + (point.yPercent / 100) * imgHeight,
-      };
+      // Le hook usePhotoPreparation a une action UPDATE_PHOTO
+      // On doit l'appeler via dispatch, mais comme on n'expose pas dispatch,
+      // on utilise les setters individuels si nécessaire
+      
+      if (updates.arucoDetected !== undefined || updates.arucoScaleX !== undefined || updates.arucoScaleY !== undefined) {
+        // Ces updates sont gérés par le hook via SET_ARUCO_RESULT
+        // Pour l'instant on ne fait rien car useArucoDetection les gère dans PhotoPreviewEditor
+      }
     },
-    [photo, zoom, pan, containerSize]
+    [currentPhoto]
   );
 
-  // Render de l'image
-  const renderImage = () => {
-    if (!photo.image) {
-      return (
-        <div className="flex items-center justify-center h-full text-gray-400">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
-      );
+  // Finaliser l'import
+  const handleFinalImport = useCallback(async () => {
+    const validatedPhotos = getValidatedPhotos();
+    
+    if (validatedPhotos.length === 0) {
+      toast.error("Aucune photo validée à importer");
+      return;
     }
+    
+    toast.loading("Préparation des photos...", { id: "export" });
+    
+    try {
+      const preparedPhotos = await prepareForExport();
+      toast.success(`${preparedPhotos.length} photo(s) prête(s) à importer`, { id: "export" });
+      onImport(preparedPhotos);
+      onClose();
+    } catch (error) {
+      console.error("Erreur export:", error);
+      toast.error("Erreur lors de la préparation", { id: "export" });
+    }
+  }, [getValidatedPhotos, prepareForExport, onImport, onClose]);
 
-    const imgWidth = photo.currentWidth * photo.stretchX * zoom;
-    const imgHeight = photo.currentHeight * photo.stretchY * zoom;
+  // Retour à la grille
+  const handleBackToGrid = useCallback(() => {
+    setStep("grid");
+  }, [setStep]);
 
-    return (
-      <div
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: "50%",
-          transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px)`,
-        }}
-      >
-        <img
-          src={photo.imageDataUrl || ""}
-          alt={photo.name}
-          style={{
-            width: imgWidth,
-            height: imgHeight,
-            transform: `rotate(${photo.rotation}deg)`,
-            transformOrigin: "center",
-          }}
-          draggable={false}
-        />
-      </div>
-    );
-  };
-
-  // Render des mesures
-  const renderMeasurements = () => {
-    const elements: React.ReactNode[] = [];
-
-    // Mesures existantes
-    for (const measurement of measurements) {
-      if (!measurement.visible) continue;
-      
-      const p1Screen = getMeasurePointScreenPos(measurement.point1);
-      const p2Screen = getMeasurePointScreenPos(measurement.point2);
-      const distance = calculateDistanceMm(measurement.point1, measurement.point2);
-      
-      // Ligne
-      elements.push(
-        <line
-          key={`line-${measurement.id}`}
-          x1={p1Screen.x}
-          y1={p1Screen.y}
-          x2={p2Screen.x}
-          y2={p2Screen.y}
-          stroke={measurement.color}
-          strokeWidth={2}
-        />
-      );
-      
-      // Points
-      elements.push(
-        <circle
-          key={`p1-${measurement.id}`}
-          cx={p1Screen.x}
-          cy={p1Screen.y}
-          r={6}
-          fill={measurement.color}
-          stroke="white"
-          strokeWidth={2}
-        />
-      );
-      elements.push(
-        <circle
-          key={`p2-${measurement.id}`}
-          cx={p2Screen.x}
-          cy={p2Screen.y}
-          r={6}
-          fill={measurement.color}
-          stroke="white"
-          strokeWidth={2}
-        />
-      );
-      
-      // Label avec distance
-      const midX = (p1Screen.x + p2Screen.x) / 2;
-      const midY = (p1Screen.y + p2Screen.y) / 2;
-      elements.push(
-        <g key={`label-${measurement.id}`}>
-          <rect
-            x={midX - 40}
-            y={midY - 12}
-            width={80}
-            height={24}
-            rx={4}
-            fill={measurement.color}
-          />
-          <text
-            x={midX}
-            y={midY + 5}
-            textAnchor="middle"
-            fill="white"
-            fontSize={14}
-            fontWeight="bold"
-          >
-            {distance.toFixed(1)} mm
-          </text>
-          {/* Bouton supprimer */}
-          <circle
-            cx={midX + 50}
-            cy={midY}
-            r={10}
-            fill="white"
-            stroke={measurement.color}
-            strokeWidth={2}
-            style={{ cursor: "pointer" }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemoveMeasurement(measurement.id);
+  // Render selon l'étape
+  const renderContent = () => {
+    switch (state.step) {
+      case "grid":
+        return (
+          <PhotoGridView
+            photos={state.photos}
+            onPhotoClick={(index) => {
+              goToPhoto(index);
+              setStep("preview");
             }}
+            onRemovePhoto={removePhoto}
+            onRemoveDuplicates={removeDuplicates}
+            onAddPhotos={(files) => addPhotos(files)}
+            onStartPreparation={handleStartPreparation}
           />
-          <text
-            x={midX + 50}
-            y={midY + 4}
-            textAnchor="middle"
-            fill={measurement.color}
-            fontSize={12}
-            fontWeight="bold"
-            style={{ cursor: "pointer", pointerEvents: "none" }}
-          >
-            ×
-          </text>
-        </g>
-      );
-    }
+        );
 
-    // Point en attente
-    if (pendingMeasurePoint) {
-      const pos = getMeasurePointScreenPos(pendingMeasurePoint);
-      elements.push(
-        <circle
-          key="pending"
-          cx={pos.x}
-          cy={pos.y}
-          r={8}
-          fill="#E74C3C"
-          stroke="white"
-          strokeWidth={2}
-          className="animate-pulse"
-        />
-      );
-    }
+      case "preview":
+        if (!currentPhoto) {
+          return (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-gray-500">Aucune photo sélectionnée</p>
+            </div>
+          );
+        }
+        
+        return (
+          <PhotoPreviewEditor
+            photo={currentPhoto}
+            photoIndex={state.currentPhotoIndex}
+            totalPhotos={state.photos.filter((p) => p.image && !p.isDuplicate).length}
+            measurements={state.currentMeasurements}
+            pendingMeasurePoint={state.pendingMeasurePoint}
+            activeTool={state.activeTool}
+            scaleFactor={state.scaleFactor}
+            onRotate={rotatePhoto}
+            onSetCrop={setCrop}
+            onSetStretch={setStretch}
+            onAdjustStretchX={adjustStretchX}
+            onAdjustStretchY={adjustStretchY}
+            onSetActiveTool={setActiveTool}
+            onAddMeasurePoint={addMeasurePoint}
+            onRemoveMeasurement={removeMeasurement}
+            onClearMeasurements={clearMeasurements}
+            onUpdatePhoto={handleUpdatePhoto}
+            onPrev={prevPhoto}
+            onNext={nextPhoto}
+            onValidate={handleValidatePhoto}
+            onSkip={skipPhoto}
+            onBackToGrid={handleBackToGrid}
+            onClose={onClose}
+            getDimensionsMm={getDimensionsMm}
+            calculateDistanceMm={calculateDistanceMm}
+          />
+        );
 
-    return (
-      <svg
-        className="absolute inset-0 pointer-events-none"
-        style={{ overflow: "visible" }}
-      >
-        <g style={{ pointerEvents: "auto" }}>{elements}</g>
-      </svg>
-    );
+      case "summary":
+        return (
+          <SummaryView
+            photos={state.photos}
+            onBack={() => setStep("grid")}
+            onEditPhoto={(index) => {
+              goToPhoto(index);
+              setStep("preview");
+            }}
+            onImport={handleFinalImport}
+            getDimensionsMm={getDimensionsMm}
+          />
+        );
+
+      default:
+        return null;
+    }
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-900">
-      {/* Header */}
-      <div className="flex items-center justify-between p-3 bg-gray-800 border-b border-gray-700">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onBackToGrid}
-            className="text-gray-300 hover:text-white"
-          >
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Grille
-          </Button>
-          
-          <Separator orientation="vertical" className="h-6 bg-gray-600" />
-          
-          <span className="text-white font-medium">
-            Photo {photoIndex + 1} / {totalPhotos}
-          </span>
-          
-          <span className="text-gray-400 text-sm truncate max-w-[200px]">
-            {photo.name}
-          </span>
-          
-          {photo.arucoDetected && (
-            <Badge variant="secondary" className="bg-green-600 text-white">
-              <QrCode className="h-3 w-3 mr-1" />
-              ArUco
-            </Badge>
-          )}
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        className="max-w-[95vw] w-[1400px] h-[90vh] p-0 flex flex-col [&>button.absolute]:hidden"
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onWheel={(e) => {
+          // Bloquer le wheel sur toute la modale pour éviter les effets de bord
+          e.stopPropagation();
+        }}
+      >
+        {/* Header minimal pour grid et summary */}
+        {state.step !== "preview" && (
+          <DialogHeader className="p-4 border-b shrink-0">
+            <div className="flex items-center justify-between">
+              <DialogTitle className="flex items-center gap-2">
+                <ImageIcon className="h-5 w-5" />
+                Préparation des photos
+              </DialogTitle>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onClose}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </DialogHeader>
+        )}
+        
+        {/* Contenu principal */}
+        <div className="flex-1 overflow-hidden">
+          {renderContent()}
         </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
 
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onPrev}
-            disabled={photoIndex === 0}
-            className="text-gray-300 hover:text-white"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onNext}
-            disabled={photoIndex === totalPhotos - 1}
-            className="text-gray-300 hover:text-white"
-          >
-            <ChevronRight className="h-5 w-5" />
-          </Button>
-          
-          <Separator orientation="vertical" className="h-6 bg-gray-600 mx-2" />
-          
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            className="text-gray-300 hover:text-white hover:bg-red-500/20"
-            title="Fermer"
-          >
-            <X className="h-5 w-5" />
-          </Button>
-        </div>
+// === SOUS-COMPOSANT: Vue Résumé ===
+
+interface SummaryViewProps {
+  photos: ReturnType<typeof usePhotoPreparation>["state"]["photos"];
+  onBack: () => void;
+  onEditPhoto: (index: number) => void;
+  onImport: () => void;
+  getDimensionsMm: ReturnType<typeof usePhotoPreparation>["getDimensionsMm"];
+}
+
+const SummaryView: React.FC<SummaryViewProps> = ({
+  photos,
+  onBack,
+  onEditPhoto,
+  onImport,
+  getDimensionsMm,
+}) => {
+  const validatedPhotos = photos.filter((p) => p.status === "validated");
+  const skippedPhotos = photos.filter((p) => p.status === "skipped");
+  const pendingPhotos = photos.filter((p) => p.status === "pending" && p.image && !p.isDuplicate);
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="p-4 border-b bg-gray-50">
+        <h2 className="text-lg font-semibold">Résumé de la préparation</h2>
+        <p className="text-sm text-gray-600">
+          Vérifiez les photos avant de les importer dans le canvas
+        </p>
       </div>
 
-      {/* Zone de preview */}
-      <div className="flex-1 flex">
-        {/* Canvas principal */}
-        <div
-          ref={containerRef}
-          className={`flex-1 relative overflow-hidden ${
-            activeTool === "measure" ? "cursor-crosshair" : "cursor-grab"
-          } ${isPanning ? "cursor-grabbing" : ""}`}
-          style={{ touchAction: "none" }}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-        >
-          {renderImage()}
-          {renderMeasurements()}
-          
-          {/* Indicateur de mode */}
-          {activeTool === "measure" && (
-            <div className="absolute top-4 left-4 bg-blue-500 text-white px-3 py-1.5 rounded-full text-sm font-medium flex items-center gap-2">
-              <Ruler className="h-4 w-4" />
-              Cliquez pour mesurer
-              {pendingMeasurePoint && " (2ème point)"}
-            </div>
-          )}
-          
-          {/* Contrôles de zoom */}
-          <div className="absolute bottom-4 right-4 flex items-center gap-1 bg-black/50 rounded-lg p-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-white hover:bg-white/20"
-              onClick={() => setZoom((z) => Math.max(0.1, z * 0.8))}
-            >
-              <ZoomOut className="h-4 w-4" />
-            </Button>
-            <span className="text-white text-xs w-12 text-center">
-              {Math.round(zoom * 100)}%
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-white hover:bg-white/20"
-              onClick={() => setZoom((z) => Math.min(5, z * 1.2))}
-            >
-              <ZoomIn className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-white hover:bg-white/20"
-              onClick={fitToView}
-            >
-              <Maximize className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-
-        {/* Panneau latéral */}
-        <div 
-          className="w-72 bg-gray-800 border-l border-gray-700 p-4 flex flex-col gap-4 overflow-y-auto"
-          onWheel={(e) => e.stopPropagation()}
-        >
-          {/* Outils */}
-          <div>
-            <Label className="text-gray-400 text-xs mb-2 block">OUTILS</Label>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant={activeTool === "none" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => onSetActiveTool("none")}
-                className="text-gray-300"
-              >
-                Déplacer
-              </Button>
-              <Button
-                variant={activeTool === "measure" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => onSetActiveTool("measure")}
-                className="text-gray-300"
-              >
-                <Ruler className="h-4 w-4 mr-1" />
-                Mesurer
-              </Button>
-            </div>
-          </div>
-          
-          <Separator className="bg-gray-700" />
-
-          {/* Rotation */}
-          <div>
-            <Label className="text-gray-400 text-xs mb-2 block">ROTATION</Label>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onRotate("ccw")}
-                className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700"
-              >
-                <RotateCcw className="h-4 w-4 mr-1" />
-                -90°
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onRotate("cw")}
-                className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700"
-              >
-                <RotateCw className="h-4 w-4 mr-1" />
-                +90°
-              </Button>
-            </div>
-          </div>
-
-          <Separator className="bg-gray-700" />
-
-          {/* Dimensions */}
-          <div>
-            <Label className="text-gray-400 text-xs mb-2 block">
-              DIMENSIONS (mm)
-            </Label>
-            
-            <div className="space-y-2">
-              {/* Largeur X */}
-              <div className="flex items-center gap-2">
-                <Label className="text-gray-300 text-xs w-8">X:</Label>
-                <Input
-                  type="text"
-                  value={targetWidthMm}
-                  onChange={(e) => setTargetWidthMm(e.target.value)}
-                  onBlur={applyTargetDimensions}
-                  onKeyDown={(e) => e.key === "Enter" && applyTargetDimensions()}
-                  onWheel={(e) => e.currentTarget.blur()}
-                  className="flex-1 h-8 bg-gray-700 border-gray-600 text-white text-sm"
-                />
-                <span className="text-gray-500 text-xs">
-                  (actuel: {widthMm.toFixed(1)})
-                </span>
-              </div>
+      {/* Liste des photos */}
+      <ScrollArea className="flex-1 p-4">
+        <div className="space-y-2">
+          {photos
+            .filter((p) => p.image && !p.isDuplicate)
+            .map((photo, index) => {
+              const dims = getDimensionsMm(photo);
+              const originalIndex = photos.findIndex((p) => p.id === photo.id);
               
-              {/* Hauteur Y */}
-              <div className="flex items-center gap-2">
-                <Label className="text-gray-300 text-xs w-8">Y:</Label>
-                <Input
-                  type="text"
-                  value={targetHeightMm}
-                  onChange={(e) => setTargetHeightMm(e.target.value)}
-                  onBlur={applyTargetDimensions}
-                  onKeyDown={(e) => e.key === "Enter" && applyTargetDimensions()}
-                  onWheel={(e) => e.currentTarget.blur()}
-                  className="flex-1 h-8 bg-gray-700 border-gray-600 text-white text-sm"
-                />
-                <span className="text-gray-500 text-xs">
-                  (actuel: {heightMm.toFixed(1)})
-                </span>
-              </div>
-            </div>
+              return (
+                <div
+                  key={photo.id}
+                  className={`
+                    flex items-center gap-4 p-3 rounded-lg border
+                    ${photo.status === "validated"
+                      ? "bg-green-50 border-green-200"
+                      : photo.status === "skipped"
+                      ? "bg-gray-50 border-gray-200"
+                      : "bg-yellow-50 border-yellow-200"
+                    }
+                  `}
+                >
+                  {/* Thumbnail */}
+                  <div className="w-16 h-16 rounded overflow-hidden bg-gray-200 shrink-0">
+                    {photo.imageDataUrl && (
+                      <img
+                        src={photo.imageDataUrl}
+                        alt={photo.name}
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                  </div>
 
-            {/* Delta */}
-            {(photo.stretchX !== 1 || photo.stretchY !== 1) && (
-              <div className="mt-2 p-2 bg-blue-900/30 rounded text-xs text-blue-300">
-                <p>Étirement X: ×{photo.stretchX.toFixed(4)}</p>
-                <p>Étirement Y: ×{photo.stretchY.toFixed(4)}</p>
-              </div>
+                  {/* Infos */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{photo.name}</p>
+                    <p className="text-sm text-gray-600">
+                      {dims.widthMm.toFixed(1)} × {dims.heightMm.toFixed(1)} mm
+                    </p>
+                    {photo.rotation !== 0 && (
+                      <p className="text-xs text-gray-500">
+                        Rotation: {photo.rotation}°
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Statut */}
+                  <div className="shrink-0">
+                    {photo.status === "validated" ? (
+                      <Badge className="bg-green-500">
+                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                        Validée
+                      </Badge>
+                    ) : photo.status === "skipped" ? (
+                      <Badge variant="secondary">
+                        <SkipForward className="h-3 w-3 mr-1" />
+                        Passée
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-yellow-400 text-yellow-700">
+                        <Clock className="h-3 w-3 mr-1" />
+                        En attente
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onEditPhoto(originalIndex)}
+                  >
+                    Modifier
+                  </Button>
+                </div>
+              );
+            })}
+        </div>
+      </ScrollArea>
+
+      {/* Footer */}
+      <div className="p-4 border-t bg-gray-50">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4 text-sm">
+            <span className="text-green-600 font-medium">
+              {validatedPhotos.length} validée(s)
+            </span>
+            {skippedPhotos.length > 0 && (
+              <span className="text-gray-500">
+                {skippedPhotos.length} passée(s)
+              </span>
             )}
-
-            <p className="text-gray-500 text-[10px] mt-2">
-              Raccourcis: ←→ = X ±1mm, ↑↓ = Y ±1mm
-              <br />
-              SHIFT = ±0.1mm, CTRL = ±5mm
-            </p>
+            {pendingPhotos.length > 0 && (
+              <span className="text-yellow-600">
+                {pendingPhotos.length} en attente
+              </span>
+            )}
           </div>
 
-          <Separator className="bg-gray-700" />
-
-          {/* Mesures */}
-          {measurements.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <Label className="text-gray-400 text-xs">MESURES</Label>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onClearMeasurements}
-                  className="h-6 text-xs text-gray-400 hover:text-red-400"
-                >
-                  <Trash2 className="h-3 w-3 mr-1" />
-                  Effacer
-                </Button>
-              </div>
-              <div className="space-y-1">
-                {measurements.map((m) => (
-                  <div
-                    key={m.id}
-                    className="flex items-center justify-between p-2 bg-gray-700 rounded text-sm"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: m.color }}
-                      />
-                      <span className="text-white font-medium">
-                        {calculateDistanceMm(m.point1, m.point2).toFixed(1)} mm
-                      </span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-gray-400 hover:text-red-400"
-                      onClick={() => onRemoveMeasurement(m.id)}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Spacer */}
-          <div className="flex-1" />
-
-          {/* Actions */}
-          <div className="space-y-2">
-            <Button
-              variant="outline"
-              className="w-full border-gray-600 text-gray-300 hover:bg-gray-700"
-              onClick={onSkip}
-            >
-              <SkipForward className="h-4 w-4 mr-2" />
-              Passer cette photo
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={onBack}>
+              Retour
             </Button>
-            
             <Button
-              className="w-full bg-green-600 hover:bg-green-700"
-              onClick={onValidate}
+              onClick={onImport}
+              disabled={validatedPhotos.length === 0}
+              className="gap-2"
             >
-              <Check className="h-4 w-4 mr-2" />
-              Valider et continuer
+              Importer {validatedPhotos.length} photo(s)
+              <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -882,4 +431,4 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   );
 };
 
-export default PhotoPreviewEditor;
+export default PhotoPreparationModal;
