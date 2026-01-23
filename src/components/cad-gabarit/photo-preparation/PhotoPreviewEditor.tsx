@@ -217,12 +217,24 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     }
   }, [photo.image, detectMarkers, onUpdatePhoto]);
 
-  // Gestion du zoom
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    setZoom((z) => Math.max(0.1, Math.min(5, z * delta)));
+  // Gestion du zoom avec événement non-passif
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      setZoom((z) => Math.max(0.1, Math.min(5, z * delta)));
+    };
+
+    // Ajouter avec passive: false pour pouvoir preventDefault
+    container.addEventListener("wheel", handleWheel, { passive: false });
+
+    return () => {
+      container.removeEventListener("wheel", handleWheel);
+    };
   }, []);
 
   // Gestion du pan
@@ -603,7 +615,6 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
             activeTool === "measure" ? "cursor-crosshair" : "cursor-grab"
           } ${isPanning ? "cursor-grabbing" : ""}`}
           style={{ touchAction: "none" }}
-          onWheel={handleWheel}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
