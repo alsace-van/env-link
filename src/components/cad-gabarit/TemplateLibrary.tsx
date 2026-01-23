@@ -1,7 +1,13 @@
 // ============================================
 // COMPOSANT: TemplateLibrary
 // Panneau latéral de bibliothèque de templates CAD
-// VERSION: 1.0
+// VERSION: 1.1 - Ajout mise à jour de template existant
+// ============================================
+//
+// CHANGELOG v1.1:
+// - Ajout de l'option "Mettre à jour" dans le dialog de sauvegarde
+// - Sélecteur de template existant pour mise à jour
+// - Mise à jour du sketch_data et du thumbnail
 // ============================================
 
 import React, { useState, useCallback, useRef } from "react";
@@ -115,9 +121,13 @@ export function TemplateLibrary({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
-  
+
   const [selectedTemplate, setSelectedTemplate] = useState<CADTemplate | null>(null);
   const [savingTemplate, setSavingTemplate] = useState(false);
+
+  // Mode de sauvegarde: "new" = nouveau template, "update" = mettre à jour existant
+  const [saveMode, setSaveMode] = useState<"new" | "update">("new");
+  const [templateToUpdate, setTemplateToUpdate] = useState<CADTemplate | null>(null);
 
   // Formulaire nouveau template
   const [newTemplateName, setNewTemplateName] = useState("");
@@ -135,30 +145,64 @@ export function TemplateLibrary({
   // Formulaire nouvelle catégorie
   const [newCategoryName, setNewCategoryName] = useState("");
 
-  // Sauvegarder le sketch actuel comme template
-  const handleSaveTemplate = useCallback(async () => {
-    if (!newTemplateName.trim()) {
-      toast.error("Veuillez entrer un nom pour le template");
-      return;
-    }
+  // Sérialiser le sketch pour stockage
+  const serializeSketchData = useCallback((sketch: Sketch) => {
+    return {
+      id: sketch.id,
+      name: sketch.name,
+      scaleFactor: sketch.scaleFactor,
+      activeLayerId: sketch.activeLayerId,
+      points: Array.from(sketch.points.entries()),
+      geometries: Array.from(sketch.geometries.entries()),
+      constraints: Array.from(sketch.constraints.entries()),
+      dimensions: Array.from(sketch.dimensions.entries()),
+      layers: Array.from(sketch.layers.entries()),
+      layerGroups: Array.from(sketch.layerGroups.entries()),
+      groups: Array.from(sketch.groups.entries()),
+      shapeFills: Array.from(sketch.shapeFills.entries()),
+    };
+  }, []);
 
+  // Sauvegarder le sketch actuel comme template (nouveau ou mise à jour)
+  const handleSaveTemplate = useCallback(async () => {
     setSavingTemplate(true);
     try {
       // Générer la miniature
       const thumbnail = onGenerateThumbnail();
 
-      const tags = newTemplateTags
-        .split(",")
-        .map((t) => t.trim())
-        .filter((t) => t.length > 0);
+      if (saveMode === "update" && templateToUpdate) {
+        // Mode mise à jour: mettre à jour le sketch_data et le thumbnail d'un template existant
+        const sketchData = serializeSketchData(currentSketch);
 
-      await saveTemplate(newTemplateName.trim(), currentSketch, {
-        description: newTemplateDescription.trim() || undefined,
-        categoryId: newTemplateCategory || undefined,
-        tags,
-        isPublic: newTemplatePublic,
-        thumbnail: thumbnail || undefined,
-      });
+        await updateTemplate(templateToUpdate.id, {
+          sketch_data: sketchData,
+          thumbnail: thumbnail || templateToUpdate.thumbnail,
+          geometry_count: currentSketch.geometries.size,
+          updated_at: new Date().toISOString(),
+        } as any);
+
+        toast.success(`Template "${templateToUpdate.name}" mis à jour`);
+      } else {
+        // Mode nouveau: créer un nouveau template
+        if (!newTemplateName.trim()) {
+          toast.error("Veuillez entrer un nom pour le template");
+          setSavingTemplate(false);
+          return;
+        }
+
+        const tags = newTemplateTags
+          .split(",")
+          .map((t) => t.trim())
+          .filter((t) => t.length > 0);
+
+        await saveTemplate(newTemplateName.trim(), currentSketch, {
+          description: newTemplateDescription.trim() || undefined,
+          categoryId: newTemplateCategory || undefined,
+          tags,
+          isPublic: newTemplatePublic,
+          thumbnail: thumbnail || undefined,
+        });
+      }
 
       // Reset formulaire
       setNewTemplateName("");
@@ -166,11 +210,15 @@ export function TemplateLibrary({
       setNewTemplateCategory(null);
       setNewTemplateTags("");
       setNewTemplatePublic(false);
+      setSaveMode("new");
+      setTemplateToUpdate(null);
       setSaveDialogOpen(false);
     } finally {
       setSavingTemplate(false);
     }
   }, [
+    saveMode,
+    templateToUpdate,
     newTemplateName,
     newTemplateDescription,
     newTemplateCategory,
@@ -178,7 +226,9 @@ export function TemplateLibrary({
     newTemplatePublic,
     currentSketch,
     saveTemplate,
+    updateTemplate,
     onGenerateThumbnail,
+    serializeSketchData,
   ]);
 
   // Ouvrir le dialog d'édition
@@ -506,100 +556,199 @@ export function TemplateLibrary({
       </div>
 
       {/* Dialog: Sauvegarder template */}
-      <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
-        <DialogContent>
+      <Dialog open={saveDialogOpen} onOpenChange={(open) => {
+        setSaveDialogOpen(open);
+        if (!open) {
+          setSaveMode("new");
+          setTemplateToUpdate(null);
+        }
+      }}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Sauvegarder comme template</DialogTitle>
+            <DialogTitle>Sauvegarder le sketch</DialogTitle>
             <DialogDescription>
-              Sauvegardez le sketch actuel pour le réutiliser plus tard
+              Créez un nouveau template ou mettez à jour un existant
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="template-name">Nom *</Label>
-              <Input
-                id="template-name"
-                placeholder="Mon template"
-                value={newTemplateName}
-                onChange={(e) => setNewTemplateName(e.target.value)}
-              />
+            {/* Choix du mode: nouveau ou mise à jour */}
+            <div className="flex gap-2 p-1 bg-muted rounded-lg">
+              <Button
+                variant={saveMode === "new" ? "default" : "ghost"}
+                size="sm"
+                className="flex-1"
+                onClick={() => {
+                  setSaveMode("new");
+                  setTemplateToUpdate(null);
+                }}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Nouveau
+              </Button>
+              <Button
+                variant={saveMode === "update" ? "default" : "ghost"}
+                size="sm"
+                className="flex-1"
+                onClick={() => setSaveMode("update")}
+                disabled={templates.length === 0}
+              >
+                <RefreshCw className="h-4 w-4 mr-1" />
+                Mettre à jour
+              </Button>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="template-description">Description</Label>
-              <Textarea
-                id="template-description"
-                placeholder="Description optionnelle..."
-                value={newTemplateDescription}
-                onChange={(e) => setNewTemplateDescription(e.target.value)}
-                rows={2}
-              />
-            </div>
+            {saveMode === "update" ? (
+              <>
+                {/* Mode mise à jour: sélection du template */}
+                <div className="space-y-2">
+                  <Label>Sélectionner le template à mettre à jour</Label>
+                  <Select
+                    value={templateToUpdate?.id || "none"}
+                    onValueChange={(v) => {
+                      const template = templates.find(t => t.id === v);
+                      setTemplateToUpdate(template || null);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choisir un template..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none" disabled>Choisir un template...</SelectItem>
+                      {templates.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          <div className="flex items-center gap-2">
+                            {t.thumbnail && (
+                              <img src={t.thumbnail} alt="" className="w-6 h-6 object-contain rounded" />
+                            )}
+                            <span>{t.name}</span>
+                            {t.category && (
+                              <Badge variant="secondary" className="text-[10px] h-4 ml-auto">
+                                {t.category.name}
+                              </Badge>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="template-category">Catégorie</Label>
-              <div className="flex gap-2">
-                <Select
-                  value={newTemplateCategory || "none"}
-                  onValueChange={(v) => setNewTemplateCategory(v === "none" ? null : v)}
-                >
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Sélectionner une catégorie" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Aucune catégorie</SelectItem>
-                    {categories.map((cat) => (
-                      <SelectItem key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setCategoryDialogOpen(true)}
-                  title="Nouvelle catégorie"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
+                {templateToUpdate && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      {templateToUpdate.thumbnail && (
+                        <img
+                          src={templateToUpdate.thumbnail}
+                          alt={templateToUpdate.name}
+                          className="w-16 h-16 object-contain border rounded bg-white"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">{templateToUpdate.name}</p>
+                        {templateToUpdate.description && (
+                          <p className="text-xs text-muted-foreground truncate">{templateToUpdate.description}</p>
+                        )}
+                        <p className="text-xs text-amber-700 mt-1">
+                          ⚠️ Le contenu du sketch actuel remplacera celui du template
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {/* Mode nouveau: formulaire complet */}
+                <div className="space-y-2">
+                  <Label htmlFor="template-name">Nom *</Label>
+                  <Input
+                    id="template-name"
+                    placeholder="Mon template"
+                    value={newTemplateName}
+                    onChange={(e) => setNewTemplateName(e.target.value)}
+                  />
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="template-tags">Tags (séparés par des virgules)</Label>
-              <Input
-                id="template-tags"
-                placeholder="meuble, cuisine, base..."
-                value={newTemplateTags}
-                onChange={(e) => setNewTemplateTags(e.target.value)}
-              />
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="template-description">Description</Label>
+                  <Textarea
+                    id="template-description"
+                    placeholder="Description optionnelle..."
+                    value={newTemplateDescription}
+                    onChange={(e) => setNewTemplateDescription(e.target.value)}
+                    rows={2}
+                  />
+                </div>
 
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="template-public">Rendre public</Label>
-                <p className="text-xs text-muted-foreground">
-                  Les autres utilisateurs pourront voir ce template
-                </p>
-              </div>
-              <Switch
-                id="template-public"
-                checked={newTemplatePublic}
-                onCheckedChange={setNewTemplatePublic}
-              />
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="template-category">Catégorie</Label>
+                  <div className="flex gap-2">
+                    <Select
+                      value={newTemplateCategory || "none"}
+                      onValueChange={(v) => setNewTemplateCategory(v === "none" ? null : v)}
+                    >
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Sélectionner une catégorie" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Aucune catégorie</SelectItem>
+                        {categories.map((cat) => (
+                          <SelectItem key={cat.id} value={cat.id}>
+                            {cat.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setCategoryDialogOpen(true)}
+                      title="Nouvelle catégorie"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="template-tags">Tags (séparés par des virgules)</Label>
+                  <Input
+                    id="template-tags"
+                    placeholder="meuble, cuisine, base..."
+                    value={newTemplateTags}
+                    onChange={(e) => setNewTemplateTags(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="template-public">Rendre public</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Les autres utilisateurs pourront voir ce template
+                    </p>
+                  </div>
+                  <Switch
+                    id="template-public"
+                    checked={newTemplatePublic}
+                    onCheckedChange={setNewTemplatePublic}
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setSaveDialogOpen(false)}>
               Annuler
             </Button>
-            <Button onClick={handleSaveTemplate} disabled={savingTemplate}>
+            <Button
+              onClick={handleSaveTemplate}
+              disabled={savingTemplate || (saveMode === "new" && !newTemplateName.trim()) || (saveMode === "update" && !templateToUpdate)}
+            >
               {savingTemplate && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Sauvegarder
+              {saveMode === "update" ? "Mettre à jour" : "Créer"}
             </Button>
           </DialogFooter>
         </DialogContent>
