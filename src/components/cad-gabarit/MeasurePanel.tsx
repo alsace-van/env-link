@@ -92,6 +92,9 @@ interface MeasurePanelProps {
   backgroundImages?: BackgroundImageSimple[];
   scaleFactor?: number; // px/mm du sketch
   isStretching?: boolean; // Mode stretch actif (pour badge LIVE)
+
+  // v1.3: Callback pour démarrer une nouvelle mesure
+  onStartMeasure?: () => void;
 }
 
 // v1.2: Calculer les mm en temps réel pour une mesure liée à une image
@@ -156,6 +159,7 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
   backgroundImages = [],
   scaleFactor = 1,
   isStretching = false,
+  onStartMeasure,
 }) => {
   const dragStartRef = useRef({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -355,15 +359,30 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
           </div>
         </div>
 
-        {/* État actuel */}
-        <div
-          className={`text-xs px-2 py-1 rounded ${
-            measurePhase === "idle" ? "text-gray-600 bg-gray-100" : "text-blue-600 bg-blue-50"
-          }`}
-        >
-          {measurePhase === "idle" && "Cliquez pour mesurer"}
-          {measurePhase === "waitingSecond" && "📍 Cliquez le 2ème point"}
-          {measurePhase === "complete" && "✓ Mesure terminée"}
+        {/* État actuel + Bouton nouvelle mesure */}
+        <div className="flex items-center gap-2">
+          <div
+            className={`flex-1 text-xs px-2 py-1 rounded ${
+              measurePhase === "idle" ? "text-gray-600 bg-gray-100" : "text-blue-600 bg-blue-50"
+            }`}
+          >
+            {measurePhase === "idle" && "Cliquez pour mesurer"}
+            {measurePhase === "waitingSecond" && "📍 Cliquez le 2ème point"}
+            {measurePhase === "complete" && "✓ Mesure terminée"}
+          </div>
+          {/* v1.3: Bouton pour démarrer une nouvelle mesure */}
+          {onStartMeasure && measurePhase === "idle" && (
+            <Button
+              variant="default"
+              size="sm"
+              className="h-6 px-2 text-xs bg-green-600 hover:bg-green-700"
+              onClick={onStartMeasure}
+              title="Nouvelle mesure"
+            >
+              <Ruler className="h-3 w-3 mr-1" />
+              Mesurer
+            </Button>
+          )}
         </div>
 
         {/* v1.2: Info mode stretch */}
