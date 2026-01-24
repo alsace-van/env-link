@@ -1,16 +1,16 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.0.18
+// VERSION: 1.0.19
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.0.19 (2025-01-24) : FIX - Guard contre onUpdateMeasurementPoint undefined
 // - v1.0.18 (2025-01-24) : REFONTE CANVAS - Comme ImageCalibrationModal
 //   - Utilisation d'un Canvas 2D pour dessiner l'image ET les marqueurs
 //   - Plus de problèmes de synchronisation CSS/positions
 //   - Système viewport simple: scale + offsetX/Y
 // - v1.0.17 (2025-01-24) : Tentative SVG intégré (échec)
-// - v1.0.16 (2025-01-24) : FIX - Retour au fitToView automatique
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -113,6 +113,13 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   getDimensionsMm,
   calculateDistanceMm,
 }) => {
+  // v1.0.19: Debug - vérifier que les callbacks sont bien reçus
+  console.log("[PhotoPreviewEditor] Props received:", {
+    hasOnUpdateMeasurementPoint: typeof onUpdateMeasurementPoint === 'function',
+    hasOnAddMeasurePoint: typeof onAddMeasurePoint === 'function',
+    hasOnRemoveMeasurement: typeof onRemoveMeasurement === 'function',
+  });
+
   const rootRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -609,7 +616,11 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       const yPercent = (clampedY / imgHeight) * 100;
 
       console.log("[DRAG] Updating point:", draggingHandle.measurementId, draggingHandle.pointIndex, xPercent, yPercent);
-      onUpdateMeasurementPoint(draggingHandle.measurementId, draggingHandle.pointIndex, xPercent, yPercent);
+      if (typeof onUpdateMeasurementPoint === 'function') {
+        onUpdateMeasurementPoint(draggingHandle.measurementId, draggingHandle.pointIndex, xPercent, yPercent);
+      } else {
+        console.error("[DRAG] onUpdateMeasurementPoint is not a function!", onUpdateMeasurementPoint);
+      }
       return;
     }
 
