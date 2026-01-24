@@ -1,10 +1,11 @@
 // ============================================
 // COMPOSANT: PhotoPreparationModal
 // Modale principale orchestrant la préparation des photos
-// VERSION: 1.0.0
+// VERSION: 1.0.1
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.0.1 (2025-01-24) : Fix handleUpdatePhoto pour propager les données ArUco
 // - v1.0.0 (2025-01-23) : Création initiale
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
@@ -75,6 +76,7 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
     getValidatedPhotos,
     prepareForExport,
     handleKeyDown,
+    setArucoResult, // v1.0.1: Pour mise à jour ArUco depuis PhotoPreviewEditor
   } = usePhotoPreparation();
 
   // Bloquer le wheel globalement quand la modale est ouverte en mode preview
@@ -147,20 +149,21 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
   }, [validatePhoto, state.photos, state.currentPhotoIndex, setStep]);
 
   // Mettre à jour une photo
+  // v1.0.1: Correction - propage maintenant les résultats ArUco au state
   const handleUpdatePhoto = useCallback(
     (updates: Partial<typeof currentPhoto>) => {
       if (!currentPhoto) return;
-      
-      // Le hook usePhotoPreparation a une action UPDATE_PHOTO
-      // On doit l'appeler via dispatch, mais comme on n'expose pas dispatch,
-      // on utilise les setters individuels si nécessaire
-      
-      if (updates.arucoDetected !== undefined || updates.arucoScaleX !== undefined || updates.arucoScaleY !== undefined) {
-        // Ces updates sont gérés par le hook via SET_ARUCO_RESULT
-        // Pour l'instant on ne fait rien car useArucoDetection les gère dans PhotoPreviewEditor
+
+      // Propagation des résultats ArUco au state via setArucoResult
+      if (updates.arucoScaleX !== undefined && updates.arucoScaleY !== undefined) {
+        setArucoResult(currentPhoto.id, {
+          markers: [], // Les marqueurs sont déjà traités dans PhotoPreviewEditor
+          scaleX: updates.arucoScaleX,
+          scaleY: updates.arucoScaleY,
+        });
       }
     },
-    [currentPhoto]
+    [currentPhoto, setArucoResult]
   );
 
   // Finaliser l'import
