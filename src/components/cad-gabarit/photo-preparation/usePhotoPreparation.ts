@@ -1,10 +1,11 @@
 // ============================================
 // HOOK: usePhotoPreparation
 // Gestion de l'état principal pour la préparation des photos
-// VERSION: 1.0.0
+// VERSION: 1.0.1
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.0.1 (2025-01-24) : Ajout setArucoResult pour propagation depuis PhotoPreviewEditor
 // - v1.0.0 (2025-01-23) : Création initiale
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
@@ -462,6 +463,17 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
     dispatch({ type: "CLEAR_MEASUREMENTS" });
   }, []);
 
+  // === ARUCO ===
+
+  // v1.0.1: Ajout de setArucoResult pour permettre la mise à jour depuis PhotoPreviewEditor
+  const setArucoResult = useCallback((photoId: string, result: { markers: unknown[]; scaleX: number; scaleY: number }) => {
+    dispatch({
+      type: "SET_ARUCO_RESULT",
+      photoId,
+      result,
+    });
+  }, []);
+
   // === CALCULS ===
 
   const calculateDistanceMm = useCallback(
@@ -657,6 +669,7 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
     getValidatedPhotos,
     prepareForExport,
     handleKeyDown,
+    setArucoResult, // v1.0.1: Ajout pour mise à jour ArUco depuis PhotoPreviewEditor
   };
 }
 
