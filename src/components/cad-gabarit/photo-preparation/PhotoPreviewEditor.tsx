@@ -1,15 +1,15 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.0.5
+// VERSION: 1.0.6
 // ============================================
 //
 // Changelog (3 dernières versions) :
-// - v1.0.5 (2025-01-24) : Fix calcul position marqueurs ArUco
-//   - L'image est centrée avec CSS transform (translate -50%), pas avec width/height
-//   - Calcul correct: imgCenter = container/2 + pan, imgTopLeft = imgCenter - displaySize/2
+// - v1.0.6 (2025-01-24) : Fix calcul position marqueurs - scale depuis le centre
+//   - Le scale() CSS s'applique depuis transformOrigin:center de l'image
+//   - Calcul: position relative au centre → scale → ajouter au centre du div
+// - v1.0.5 (2025-01-24) : Tentative fix (incorrect)
 // - v1.0.4 (2025-01-24) : Zoom initial à 0.25, marqueurs après fitToView
-// - v1.0.3 (2025-01-24) : Zoom minimum 25% pour images lisibles
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -708,7 +708,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
 
   // v1.0.1: Render des marqueurs ArUco détectés
   // v1.0.4: Ne pas afficher avant que le fitToView initial soit fait
-  // v1.0.5: Fix calcul position - l'image est centrée avec transform, pas avec width/height
+  // v1.0.6: Fix calcul position - prendre en compte que scale() est sur l'img, pas le div
   const renderArucoMarkers = () => {
     if (detectedMarkers.length === 0 || !photo.image || !initialFitDone) return null;
 
@@ -722,29 +722,36 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const totalScaleX = zoom * photo.stretchX;
     const totalScaleY = zoom * photo.stretchY;
 
-    // Dimensions visuelles de l'image après scale
-    const displayWidth = naturalWidth * totalScaleX;
-    const displayHeight = naturalHeight * totalScaleY;
-
-    // L'image est positionnée avec:
-    // - left: 50%, top: 50% → centre du container
-    // - translate(-50%, -50%) → recentre l'image sur ce point
-    // - translate(pan.x, pan.y) → déplacement utilisateur
-    // - scale(totalScaleX, totalScaleY) avec transformOrigin: center
+    // L'image est positionnée ainsi:
+    // 1. Le div parent est à left:50%, top:50% du container
+    // 2. Le div parent est translaté de (-50%, -50%) de SA PROPRE TAILLE (= taille naturelle de l'img)
+    // 3. Le div parent est translaté de (pan.x, pan.y)
+    // 4. L'img à l'intérieur est scalée avec transformOrigin:center
     //
-    // Donc le coin supérieur gauche de l'image scalée est à:
-    const imgCenterX = containerSize.width / 2 + pan.x;
-    const imgCenterY = containerSize.height / 2 + pan.y;
-    const imgX = imgCenterX - displayWidth / 2;
-    const imgY = imgCenterY - displayHeight / 2;
+    // Le centre du div parent (et donc de l'image non-scalée) est à:
+    const divCenterX = containerSize.width / 2 + pan.x;
+    const divCenterY = containerSize.height / 2 + pan.y;
 
     for (const marker of detectedMarkers) {
-      // Convertir les coins du marqueur (en pixels de l'image originale) en coordonnées écran
-      // corner.x/y sont en pixels de l'image originale
-      const screenCorners = marker.corners.map(corner => ({
-        x: imgX + (corner.x / naturalWidth) * displayWidth,
-        y: imgY + (corner.y / naturalHeight) * displayHeight,
-      }));
+      // corner.x/y sont en pixels de l'image originale (0 à naturalWidth/Height)
+      // On doit:
+      // 1. Trouver la position du coin dans le div (= position dans l'image non-scalée)
+      // 2. Appliquer la transformation scale() avec origin au centre de l'image
+      const screenCorners = marker.corners.map(corner => {
+        // Position relative au centre de l'image (en pixels originaux)
+        const relX = corner.x - naturalWidth / 2;
+        const relY = corner.y - naturalHeight / 2;
+
+        // Appliquer le scale (depuis le centre)
+        const scaledRelX = relX * totalScaleX;
+        const scaledRelY = relY * totalScaleY;
+
+        // Position finale = centre du div + position relative scalée
+        return {
+          x: divCenterX + scaledRelX,
+          y: divCenterY + scaledRelY,
+        };
+      });
 
       // Dessiner le contour du marqueur
       const pathData = screenCorners
@@ -777,9 +784,11 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         );
       }
 
-      // Afficher l'ID du marqueur au centre
-      const centerX = imgX + (marker.center.x / naturalWidth) * displayWidth;
-      const centerY = imgY + (marker.center.y / naturalHeight) * displayHeight;
+      // Afficher l'ID du marqueur au centre (même calcul que pour les coins)
+      const centerRelX = marker.center.x - naturalWidth / 2;
+      const centerRelY = marker.center.y - naturalHeight / 2;
+      const centerX = divCenterX + centerRelX * totalScaleX;
+      const centerY = divCenterY + centerRelY * totalScaleY;
 
       elements.push(
         <g key={`marker-label-${marker.id}`}>
