@@ -1,15 +1,15 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.0.7
+// VERSION: 1.0.9
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.0.9 (2025-01-24) : Zoom par défaut à 100%
+//   - L'image s'affiche à sa taille réelle (zoom = 1.0) par défaut
+//   - Le bouton "Fit to view" reste disponible pour ajuster si nécessaire
+// - v1.0.8 (2025-01-24) : Fix CRITIQUE synchronisation marqueurs/image
 // - v1.0.7 (2025-01-24) : Suppression zoom minimum artificiel
-//   - Le zoom min de 25% causait une désynchronisation image/marqueurs
-//   - Laisser le zoom calculé naturellement (~15-20% pour grandes images)
-// - v1.0.6 (2025-01-24) : Fix calcul position marqueurs - scale depuis le centre
-// - v1.0.4 (2025-01-24) : Zoom initial, marqueurs après fitToView
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -118,8 +118,8 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
   // État local
-  // v1.0.7: Zoom initial à 0.15 (valeur typique pour grandes images en attendant fitToView)
-  const [zoom, setZoom] = useState(0.15);
+  // v1.0.9: Zoom par défaut à 100% (1.0) - l'image s'affiche à sa taille réelle
+  const [zoom, setZoom] = useState(1.0);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
@@ -239,39 +239,39 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     setPan({ x: 0, y: 0 });
   }, [photo.stretchX, photo.stretchY, containerSize]); // v1.0.2: Ajout containerSize
 
-  // Fit to view UNIQUEMENT au chargement initial de la photo
-  // v1.0.2: Utilise containerSize comme déclencheur pour s'assurer que le layout est prêt
+  // v1.0.9: Initialisation au chargement de la photo - zoom à 100% par défaut
   const fitDoneForPhotoRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Ne faire le fit que si c'est une nouvelle photo
+    // Ne faire l'init que si c'est une nouvelle photo
     if (fitDoneForPhotoRef.current === photo.id) return;
     if (!photo.image) return;
-    // v1.0.2: Attendre que le container ait des dimensions valides
+    // Attendre que le container ait des dimensions valides
     if (containerSize.width < 200 || containerSize.height < 200) {
-      console.log("[DEBUG] fitToView useEffect - waiting for container size:", containerSize);
+      console.log("[DEBUG] init useEffect - waiting for container size:", containerSize);
       return;
     }
 
-    console.log("[DEBUG] fitToView useEffect - NEW photo:", photo.id, "container ready:", containerSize);
+    console.log("[DEBUG] init useEffect - NEW photo:", photo.id, "setting zoom to 100%");
 
     // Petit délai pour stabilisation finale
     const timer = setTimeout(() => {
-      console.log("[DEBUG] fitToView useEffect - CALLING fitToView for:", photo.id);
-      fitToView();
+      // v1.0.9: Zoom à 100% par défaut (pas de fitToView automatique)
+      setZoom(1.0);
+      setPan({ x: 0, y: 0 });
       fitDoneForPhotoRef.current = photo.id;
       setInitialFitDone(true);
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [photo.id, photo.image, fitToView, containerSize]); // v1.0.2: Ajout containerSize
+  }, [photo.id, photo.image, containerSize]);
 
   // Reset initialFitDone quand on change de photo
   useEffect(() => {
     console.log("[DEBUG] Reset useEffect - photo.id changed:", photo.id);
     setInitialFitDone(false);
     setPan({ x: 0, y: 0 });
-    setZoom(0.15); // v1.0.7: Reset zoom à valeur typique
+    setZoom(1.0); // v1.0.9: Reset zoom à 100%
   }, [photo.id]);
 
   // Détection ArUco - DOIT être défini AVANT le useEffect qui l'utilise
@@ -701,52 +701,43 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     );
   };
 
-  // v1.0.1: Render des marqueurs ArUco détectés
-  // v1.0.4: Ne pas afficher avant que le fitToView initial soit fait
-  // v1.0.6: Fix calcul position - prendre en compte que scale() est sur l'img, pas le div
+  // v1.0.8: Render des marqueurs ArUco - utilise la même logique que getMeasurePointScreenPos
+  // Convertit les coordonnées pixels → pourcentage → position écran pour synchronisation parfaite
   const renderArucoMarkers = () => {
     if (detectedMarkers.length === 0 || !photo.image || !initialFitDone) return null;
 
     const elements: React.ReactNode[] = [];
 
-    // Dimensions naturelles de l'image
+    // Dimensions naturelles de l'image (pour conversion pixel → pourcentage)
     const naturalWidth = photo.image.naturalWidth || photo.image.width;
     const naturalHeight = photo.image.naturalHeight || photo.image.height;
 
-    // Scale total appliqué à l'image via CSS transform
-    const totalScaleX = zoom * photo.stretchX;
-    const totalScaleY = zoom * photo.stretchY;
+    // Fonction helper pour convertir un point pixel en position écran
+    // Utilise EXACTEMENT la même logique que getMeasurePointScreenPos
+    const pixelToScreenPos = (pixelX: number, pixelY: number): { x: number; y: number } => {
+      // Convertir les pixels en pourcentage de l'image
+      const xPercent = (pixelX / naturalWidth) * 100;
+      const yPercent = (pixelY / naturalHeight) * 100;
 
-    // L'image est positionnée ainsi:
-    // 1. Le div parent est à left:50%, top:50% du container
-    // 2. Le div parent est translaté de (-50%, -50%) de SA PROPRE TAILLE (= taille naturelle de l'img)
-    // 3. Le div parent est translaté de (pan.x, pan.y)
-    // 4. L'img à l'intérieur est scalée avec transformOrigin:center
-    //
-    // Le centre du div parent (et donc de l'image non-scalée) est à:
-    const divCenterX = containerSize.width / 2 + pan.x;
-    const divCenterY = containerSize.height / 2 + pan.y;
+      // Dimensions affichées (avec zoom et stretch) - même calcul que getMeasurePointScreenPos
+      const displayWidth = naturalWidth * zoom * photo.stretchX;
+      const displayHeight = naturalHeight * zoom * photo.stretchY;
+
+      // Position de l'image dans le container
+      const imgX = (containerSize.width - displayWidth) / 2 + pan.x;
+      const imgY = (containerSize.height - displayHeight) / 2 + pan.y;
+
+      return {
+        x: imgX + (xPercent / 100) * displayWidth,
+        y: imgY + (yPercent / 100) * displayHeight,
+      };
+    };
 
     for (const marker of detectedMarkers) {
-      // corner.x/y sont en pixels de l'image originale (0 à naturalWidth/Height)
-      // On doit:
-      // 1. Trouver la position du coin dans le div (= position dans l'image non-scalée)
-      // 2. Appliquer la transformation scale() avec origin au centre de l'image
-      const screenCorners = marker.corners.map(corner => {
-        // Position relative au centre de l'image (en pixels originaux)
-        const relX = corner.x - naturalWidth / 2;
-        const relY = corner.y - naturalHeight / 2;
-
-        // Appliquer le scale (depuis le centre)
-        const scaledRelX = relX * totalScaleX;
-        const scaledRelY = relY * totalScaleY;
-
-        // Position finale = centre du div + position relative scalée
-        return {
-          x: divCenterX + scaledRelX,
-          y: divCenterY + scaledRelY,
-        };
-      });
+      // Convertir chaque coin de pixel vers position écran
+      const screenCorners = marker.corners.map(corner =>
+        pixelToScreenPos(corner.x, corner.y)
+      );
 
       // Dessiner le contour du marqueur
       const pathData = screenCorners
@@ -779,25 +770,22 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         );
       }
 
-      // Afficher l'ID du marqueur au centre (même calcul que pour les coins)
-      const centerRelX = marker.center.x - naturalWidth / 2;
-      const centerRelY = marker.center.y - naturalHeight / 2;
-      const centerX = divCenterX + centerRelX * totalScaleX;
-      const centerY = divCenterY + centerRelY * totalScaleY;
+      // Afficher l'ID du marqueur au centre
+      const centerScreen = pixelToScreenPos(marker.center.x, marker.center.y);
 
       elements.push(
         <g key={`marker-label-${marker.id}`}>
           <rect
-            x={centerX - 16}
-            y={centerY - 10}
+            x={centerScreen.x - 16}
+            y={centerScreen.y - 10}
             width={32}
             height={20}
             rx={4}
             fill="rgba(0, 0, 0, 0.7)"
           />
           <text
-            x={centerX}
-            y={centerY + 5}
+            x={centerScreen.x}
+            y={centerScreen.y + 5}
             textAnchor="middle"
             fill="#00FF00"
             fontSize={12}
