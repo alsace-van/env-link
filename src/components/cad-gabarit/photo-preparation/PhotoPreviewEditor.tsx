@@ -190,7 +190,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
 
   // Fit to view - v1.0.17: Ref stable pour éviter les re-renders
   const fitToViewRef = useRef<() => void>(() => {});
-  
+
   fitToViewRef.current = () => {
     const image = imageRef.current;
     if (!image) {
