@@ -1,16 +1,16 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.0.15
+// VERSION: 1.0.16
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.0.16 (2025-01-24) : FIX - Retour au fitToView automatique
+//   - L'image est adaptée au container au chargement (pas 100% forcé)
+//   - Les marqueurs et l'image utilisent le même zoom calculé
 // - v1.0.15 (2025-01-24) : FIX CRITIQUE - Synchronisation COMPLÈTE image/marqueurs
-//   - Le CSS de l'image: centre au milieu du container + pan, puis scale()
-//   - Corrigé getMeasurePointScreenPos, renderArucoMarkers ET handleMouseDown
 //   - Formule: screenPos = containerCenter + pan + (pixel - naturalSize/2) * scale
 // - v1.0.14 (2025-01-24) : Tentative partielle (marqueurs seulement)
-// - v1.0.13 (2025-01-24) : Tentative avec centre image
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -240,7 +240,8 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     setPan({ x: 0, y: 0 });
   }, [photo.stretchX, photo.stretchY, containerSize]); // v1.0.2: Ajout containerSize
 
-  // v1.0.9: Initialisation au chargement de la photo - zoom à 100% par défaut
+  // v1.0.16: Initialisation au chargement de la photo - fitToView automatique
+  // Le fitToView calcule le zoom pour que l'image tienne dans le container
   const fitDoneForPhotoRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -253,26 +254,25 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       return;
     }
 
-    console.log("[DEBUG] init useEffect - NEW photo:", photo.id, "setting zoom to 100%");
+    console.log("[DEBUG] init useEffect - NEW photo:", photo.id, "calling fitToView");
 
     // Petit délai pour stabilisation finale
     const timer = setTimeout(() => {
-      // v1.0.9: Zoom à 100% par défaut (pas de fitToView automatique)
-      setZoom(1.0);
-      setPan({ x: 0, y: 0 });
+      // v1.0.16: fitToView automatique pour adapter l'image au container
+      fitToView();
       fitDoneForPhotoRef.current = photo.id;
       setInitialFitDone(true);
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [photo.id, photo.image, containerSize]);
+  }, [photo.id, photo.image, containerSize, fitToView]);
 
   // Reset initialFitDone quand on change de photo
   useEffect(() => {
     console.log("[DEBUG] Reset useEffect - photo.id changed:", photo.id);
     setInitialFitDone(false);
     setPan({ x: 0, y: 0 });
-    setZoom(1.0); // v1.0.9: Reset zoom à 100%
+    // v1.0.16: Ne pas forcer le zoom ici, laisser fitToView le calculer
   }, [photo.id]);
 
   // Détection ArUco - DOIT être défini AVANT le useEffect qui l'utilise
