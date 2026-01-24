@@ -1,13 +1,15 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.0.11
+// VERSION: 1.0.12
 // ============================================
 //
 // Changelog (3 dernières versions) :
-// - v1.0.11 (2025-01-24) : Ajout logs DEBUG pour diagnostic échelle marqueurs
-// - v1.0.10 (2025-01-24) : Fix synchronisation marqueurs - même transformation CSS
-// - v1.0.9 (2025-01-24) : Zoom par défaut à 100%
+// - v1.0.12 (2025-01-24) : SIMPLIFIÉ - même approche que ArucoCalibrationModal
+//   - Calcul basé sur ratio position (0-1) × displayWidth/Height
+//   - Plus de calculs complexes depuis le centre
+// - v1.0.11 (2025-01-24) : Ajout logs DEBUG pour diagnostic
+// - v1.0.10 (2025-01-24) : Fix synchronisation marqueurs
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -715,8 +717,8 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     );
   };
 
-  // v1.0.11: Render des marqueurs ArUco - même transformation que l'image CSS
-  // L'image utilise: position absolute center + translate(-50%,-50%) + translate(pan) + scale(zoom*stretch)
+  // v1.0.12: Render des marqueurs ArUco - SIMPLIFIÉ comme ArucoCalibrationModal
+  // Approche: calculer displayWidth/Height puis positionner les marqueurs proportionnellement
   const renderArucoMarkers = () => {
     if (detectedMarkers.length === 0 || !photo.image || !initialFitDone) return null;
 
@@ -726,54 +728,45 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const naturalWidth = photo.image.naturalWidth || photo.image.width;
     const naturalHeight = photo.image.naturalHeight || photo.image.height;
 
-    // DEBUG: Loguer les infos pour diagnostic
-    if (detectedMarkers.length > 0) {
-      const firstMarker = detectedMarkers[0];
-      console.log("[DEBUG renderArucoMarkers] Image dimensions:", {
-        naturalWidth,
-        naturalHeight,
-        "photo.image.width": photo.image.width,
-        "photo.image.height": photo.image.height,
-      });
-      console.log("[DEBUG renderArucoMarkers] First marker coords:", {
-        id: firstMarker.id,
-        center: firstMarker.center,
-        "corner[0]": firstMarker.corners[0],
-      });
-      console.log("[DEBUG renderArucoMarkers] Zoom/stretch:", {
-        zoom,
-        stretchX: photo.stretchX,
-        stretchY: photo.stretchY,
-        containerSize,
-      });
-    }
-
     // Scale total (zoom + stretch)
     const scaleX = zoom * photo.stretchX;
     const scaleY = zoom * photo.stretchY;
 
-    // Centre du container (où le div parent de l'image est positionné)
-    const containerCenterX = containerSize.width / 2;
-    const containerCenterY = containerSize.height / 2;
+    // Dimensions affichées de l'image
+    const displayWidth = naturalWidth * scaleX;
+    const displayHeight = naturalHeight * scaleY;
 
-    // Fonction helper: même transformation que l'image CSS
-    // L'image CSS fait: translate(-50%, -50%) translate(pan) puis scale() avec origin center
-    // Donc le centre de l'image est à: containerCenter + pan
-    // Et un pixel (px, py) de l'image originale se retrouve à:
-    //   centerScreen + (px - naturalWidth/2) * scaleX, (py - naturalHeight/2) * scaleY
+    // Position du coin supérieur-gauche de l'image affichée
+    // L'image est centrée dans le container avec un pan
+    const imgLeft = (containerSize.width - displayWidth) / 2 + pan.x;
+    const imgTop = (containerSize.height - displayHeight) / 2 + pan.y;
+
+    // DEBUG: Log une seule fois les infos de calcul
+    console.log("[DEBUG renderArucoMarkers v1.0.12]", {
+      naturalWidth,
+      naturalHeight,
+      scaleX,
+      scaleY,
+      displayWidth,
+      displayHeight,
+      imgLeft,
+      imgTop,
+      containerSize,
+      pan,
+      firstMarkerCenter: detectedMarkers[0]?.center,
+    });
+
+    // Fonction helper: convertit coordonnées pixel image → coordonnées écran
+    // Même logique simple que ArucoCalibrationModal qui fonctionne
     const pixelToScreenPos = (pixelX: number, pixelY: number): { x: number; y: number } => {
-      // Position relative au centre de l'image originale
-      const relX = pixelX - naturalWidth / 2;
-      const relY = pixelY - naturalHeight / 2;
+      // Ratio de la position dans l'image (0 à 1)
+      const ratioX = pixelX / naturalWidth;
+      const ratioY = pixelY / naturalHeight;
 
-      // Appliquer le scale (depuis le centre)
-      const scaledX = relX * scaleX;
-      const scaledY = relY * scaleY;
-
-      // Position finale = centre du container + pan + position relative scalée
+      // Position écran = coin de l'image + ratio * dimensions affichées
       return {
-        x: containerCenterX + pan.x + scaledX,
-        y: containerCenterY + pan.y + scaledY,
+        x: imgLeft + ratioX * displayWidth,
+        y: imgTop + ratioY * displayHeight,
       };
     };
 
