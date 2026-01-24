@@ -89,12 +89,24 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
       // Bloquer le wheel au niveau du document pour empêcher
       // tout comportement indésirable du canvas CAD derrière
       const modal = modalRef.current;
-      if (modal && modal.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const isInsideModal = modal && modal.contains(target);
+
+      console.log("[MODAL WHEEL] Event captured:", {
+        target: (target as Element)?.tagName,
+        targetClass: (target as Element)?.className,
+        modalRef: !!modal,
+        isInsideModal,
+      });
+
+      if (isInsideModal) {
         // L'événement est dans la modale, ne pas bloquer ici
         // (le composant enfant gère le zoom)
+        console.log("[MODAL WHEEL] Inside modal, letting through");
         return;
       }
       // Bloquer les événements wheel en dehors de la modale
+      console.log("[MODAL WHEEL] Outside modal, blocking");
       e.preventDefault();
       e.stopPropagation();
     };
