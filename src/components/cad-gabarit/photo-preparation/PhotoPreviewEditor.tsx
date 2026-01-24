@@ -185,8 +185,11 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     return () => resizeObserver.disconnect();
   }, []);
 
+  // v1.0.20: Ref stable pour fitToView afin d'éviter les re-triggers
+  const fitToViewRef = useRef<() => void>(() => {});
+  
   // v1.0.18: Fit to view - calculer scale et offset pour centrer l'image
-  const fitToView = useCallback(() => {
+  fitToViewRef.current = () => {
     if (!photo.image) return;
 
     const padding = 40;
@@ -208,24 +211,38 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const offsetX = (canvasSize.width - effectiveWidth * scale) / 2;
     const offsetY = (canvasSize.height - effectiveHeight * scale) / 2;
 
+    console.log("[fitToView] Setting viewport:", { scale, offsetX, offsetY, effectiveWidth, effectiveHeight });
     setViewport({ scale, offsetX, offsetY });
     setInitialFitDone(true);
-  }, [photo.image, photo.stretchX, photo.stretchY, canvasSize]);
+  };
 
-  // Fit initial au chargement
+  // Wrapper stable pour les appels externes (bouton zoom fit, etc.)
+  const fitToView = useCallback(() => {
+    fitToViewRef.current();
+  }, []);
+
+  // v1.0.20: Fit initial au chargement - SANS fitToView dans les dépendances
+  // On utilise le ref pour éviter que les changements de stretch/scale re-déclenchent l'init
   const fitDoneForPhotoRef = useRef<string | null>(null);
   useEffect(() => {
-    if (fitDoneForPhotoRef.current === photo.id) return;
+    // Guard: ne pas re-fit si déjà fait pour cette photo
+    if (fitDoneForPhotoRef.current === photo.id) {
+      console.log("[INIT] Already fit for photo:", photo.id);
+      return;
+    }
     if (!photo.image) return;
     if (canvasSize.width < 200 || canvasSize.height < 200) return;
 
+    console.log("[INIT] Initial fit for new photo:", photo.id);
     const timer = setTimeout(() => {
-      fitToView();
+      // Double-check le guard au moment de l'exécution
+      if (fitDoneForPhotoRef.current === photo.id) return;
+      fitToViewRef.current();
       fitDoneForPhotoRef.current = photo.id;
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [photo.id, photo.image, canvasSize, fitToView]);
+  }, [photo.id, photo.image, canvasSize.width, canvasSize.height]); // PAS de fitToView ici!
 
   // Reset quand on change de photo
   useEffect(() => {

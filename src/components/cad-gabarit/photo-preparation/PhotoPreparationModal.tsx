@@ -70,6 +70,7 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
     setActiveTool,
     addMeasurePoint,
     removeMeasurement,
+    updateMeasurementPoint,
     clearMeasurements,
     calculateDistanceMm,
     getDimensionsMm,
@@ -239,6 +240,7 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
             onSetActiveTool={setActiveTool}
             onAddMeasurePoint={addMeasurePoint}
             onRemoveMeasurement={removeMeasurement}
+            onUpdateMeasurementPoint={updateMeasurementPoint}
             onClearMeasurements={clearMeasurements}
             onUpdatePhoto={handleUpdatePhoto}
             onPrev={prevPhoto}
