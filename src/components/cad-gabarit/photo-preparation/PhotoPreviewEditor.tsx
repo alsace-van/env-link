@@ -533,7 +533,10 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     return null;
   }, [photo.image, measurements, imageToScreen]);
 
-  // Gestion du pan, clic mesure et drag poignées
+  // v1.0.20: Gestion du pan, clic mesure et drag poignées
+  // - Clic molette (button 1) : TOUJOURS pan, quel que soit l'outil
+  // - Clic gauche sur poignée : TOUJOURS drag de la poignée
+  // - Clic gauche ailleurs : dépend de l'outil (mesure ou pan)
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -542,33 +545,39 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
 
-    // v1.0.19: Vérifier d'abord si on clique sur une poignée existante
-    const handle = findHandleAtPosition(clickX, clickY);
-    if (handle) {
-      setDraggingHandle(handle);
-      return;
-    }
-
-    if (activeTool === "measure" && photo.image) {
-      // Convertir en coordonnées image
-      const imgPos = screenToImage(clickX, clickY);
-      const imgWidth = photo.image.naturalWidth || photo.image.width;
-      const imgHeight = photo.image.naturalHeight || photo.image.height;
-
-      // Vérifier si le clic est sur l'image
-      if (imgPos.x >= 0 && imgPos.x <= imgWidth && imgPos.y >= 0 && imgPos.y <= imgHeight) {
-        const xPercent = (imgPos.x / imgWidth) * 100;
-        const yPercent = (imgPos.y / imgHeight) * 100;
-        onAddMeasurePoint(xPercent, yPercent);
-      }
-      return;
-    }
-
-    // Mode pan
-    if (e.button === 0) {
+    // Clic molette (bouton du milieu) = TOUJOURS pan
+    if (e.button === 1) {
+      e.preventDefault();
       setIsPanning(true);
       setPanStart({ x: e.clientX, y: e.clientY });
       setPanStartOffset({ x: viewport.offsetX, y: viewport.offsetY });
+      return;
+    }
+
+    // Clic gauche
+    if (e.button === 0) {
+      // 1. Vérifier d'abord si on clique sur une poignée existante (prioritaire)
+      const handle = findHandleAtPosition(clickX, clickY);
+      if (handle) {
+        setDraggingHandle(handle);
+        return;
+      }
+
+      // 2. Mode mesure : ajouter un nouveau point
+      if (activeTool === "measure" && photo.image) {
+        const imgPos = screenToImage(clickX, clickY);
+        const imgWidth = photo.image.naturalWidth || photo.image.width;
+        const imgHeight = photo.image.naturalHeight || photo.image.height;
+
+        if (imgPos.x >= 0 && imgPos.x <= imgWidth && imgPos.y >= 0 && imgPos.y <= imgHeight) {
+          const xPercent = (imgPos.x / imgWidth) * 100;
+          const yPercent = (imgPos.y / imgHeight) * 100;
+          onAddMeasurePoint(xPercent, yPercent);
+        }
+        return;
+      }
+
+      // 3. Pan uniquement avec clic molette (pas de pan sur clic gauche)
     }
   }, [activeTool, photo.image, viewport, screenToImage, onAddMeasurePoint, findHandleAtPosition]);
 
@@ -783,6 +792,8 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
               onMouseMove={handleCanvasMouseMove}
               onMouseUp={handleCanvasMouseUp}
               onMouseLeave={handleCanvasMouseUp}
+              onContextMenu={(e) => e.preventDefault()}
+              onAuxClick={(e) => e.preventDefault()}
             />
           )}
 
