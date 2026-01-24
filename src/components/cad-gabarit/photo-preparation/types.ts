@@ -164,6 +164,7 @@ export type PhotoPreparationAction =
   | { type: "SET_ACTIVE_TOOL"; tool: "none" | "measure" | "crop" }
   | { type: "ADD_MEASUREMENT"; measurement: Measurement }
   | { type: "REMOVE_MEASUREMENT"; measurementId: string }
+  | { type: "UPDATE_MEASUREMENT_POINT"; measurementId: string; pointIndex: 1 | 2; xPercent: number; yPercent: number }
   | { type: "CLEAR_MEASUREMENTS" }
   | { type: "SET_PENDING_MEASURE_POINT"; point: MeasurePoint | null }
   | { type: "UPDATE_PHOTO"; photoId: string; updates: Partial<PhotoToProcess> }

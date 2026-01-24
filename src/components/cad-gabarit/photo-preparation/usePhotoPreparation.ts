@@ -167,6 +167,19 @@ function reducer(
         ),
       };
 
+    case "UPDATE_MEASUREMENT_POINT":
+      return {
+        ...state,
+        currentMeasurements: state.currentMeasurements.map((m) => {
+          if (m.id !== action.measurementId) return m;
+          if (action.pointIndex === 1) {
+            return { ...m, point1: { ...m.point1, xPercent: action.xPercent, yPercent: action.yPercent } };
+          } else {
+            return { ...m, point2: { ...m.point2, xPercent: action.xPercent, yPercent: action.yPercent } };
+          }
+        }),
+      };
+
     case "CLEAR_MEASUREMENTS":
       return {
         ...state,
@@ -237,6 +250,7 @@ export interface UsePhotoPreparationReturn {
   // Mesures
   addMeasurePoint: (xPercent: number, yPercent: number) => void;
   removeMeasurement: (measurementId: string) => void;
+  updateMeasurementPoint: (measurementId: string, pointIndex: 1 | 2, xPercent: number, yPercent: number) => void;
   clearMeasurements: () => void;
   
   // Calculs
@@ -462,6 +476,10 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
     dispatch({ type: "REMOVE_MEASUREMENT", measurementId });
   }, []);
 
+  const updateMeasurementPoint = useCallback((measurementId: string, pointIndex: 1 | 2, xPercent: number, yPercent: number) => {
+    dispatch({ type: "UPDATE_MEASUREMENT_POINT", measurementId, pointIndex, xPercent, yPercent });
+  }, []);
+
   const clearMeasurements = useCallback(() => {
     dispatch({ type: "CLEAR_MEASUREMENTS" });
   }, []);
@@ -666,6 +684,7 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
     setActiveTool,
     addMeasurePoint,
     removeMeasurement,
+    updateMeasurementPoint,
     clearMeasurements,
     calculateDistanceMm,
     getDimensionsMm,
