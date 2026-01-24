@@ -1,16 +1,16 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.0.14
+// VERSION: 1.0.15
 // ============================================
 //
 // Changelog (3 dernières versions) :
-// - v1.0.14 (2025-01-24) : FIX CRITIQUE - Calcul position marqueurs ArUco
-//   - Le CSS de l'image utilise: translate(-50%, -50%) puis translate(pan)
-//   - Puis scale(zoom*stretch) avec transformOrigin:center
-//   - Donc: screenPos = containerCenter + pan + (pixel - naturalSize/2) * scale
+// - v1.0.15 (2025-01-24) : FIX CRITIQUE - Synchronisation COMPLÈTE image/marqueurs
+//   - Le CSS de l'image: centre au milieu du container + pan, puis scale()
+//   - Corrigé getMeasurePointScreenPos, renderArucoMarkers ET handleMouseDown
+//   - Formule: screenPos = containerCenter + pan + (pixel - naturalSize/2) * scale
+// - v1.0.14 (2025-01-24) : Tentative partielle (marqueurs seulement)
 // - v1.0.13 (2025-01-24) : Tentative avec centre image
-// - v1.0.12 (2025-01-24) : SIMPLIFIÉ - même approche que ArucoCalibrationModal
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -387,43 +387,57 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     };
   }, []);
 
-  // Gestion du pan
+  // v1.0.15: Gestion du pan et clic mesure
+  // DOIT correspondre EXACTEMENT au CSS de l'image (centre au milieu + pan, puis scale)
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       if (activeTool === "measure") {
         // Mode mesure : ajouter un point
         const rect = containerRef.current?.getBoundingClientRect();
         if (!rect || !photo.image) return;
-        
+
         // Dimensions naturelles
         const naturalWidth = photo.image.naturalWidth || photo.image.width;
         const naturalHeight = photo.image.naturalHeight || photo.image.height;
-        
-        // Dimensions affichées (avec zoom et stretch)
-        const displayWidth = naturalWidth * zoom * photo.stretchX;
-        const displayHeight = naturalHeight * zoom * photo.stretchY;
-        
-        // Position de l'image dans le container
-        const imgX = (containerSize.width - displayWidth) / 2 + pan.x;
-        const imgY = (containerSize.height - displayHeight) / 2 + pan.y;
-        
+
+        // Scale total
+        const scaleX = zoom * photo.stretchX;
+        const scaleY = zoom * photo.stretchY;
+
+        // Le CENTRE de l'image est à: containerCenter + pan
+        const imageCenterX = containerSize.width / 2 + pan.x;
+        const imageCenterY = containerSize.height / 2 + pan.y;
+
+        // Position du clic dans le container
         const clickX = e.clientX - rect.left;
         const clickY = e.clientY - rect.top;
-        
+
+        // Convertir position écran → position relative au centre de l'image (après scale)
+        const scaledRelativeX = clickX - imageCenterX;
+        const scaledRelativeY = clickY - imageCenterY;
+
+        // Convertir position relative scalée → position relative naturelle
+        const relativeX = scaledRelativeX / scaleX;
+        const relativeY = scaledRelativeY / scaleY;
+
+        // Convertir position relative → pixels dans l'image naturelle
+        const pixelX = relativeX + naturalWidth / 2;
+        const pixelY = relativeY + naturalHeight / 2;
+
         // Vérifier si le clic est sur l'image
         if (
-          clickX >= imgX &&
-          clickX <= imgX + displayWidth &&
-          clickY >= imgY &&
-          clickY <= imgY + displayHeight
+          pixelX >= 0 &&
+          pixelX <= naturalWidth &&
+          pixelY >= 0 &&
+          pixelY <= naturalHeight
         ) {
-          const xPercent = ((clickX - imgX) / displayWidth) * 100;
-          const yPercent = ((clickY - imgY) / displayHeight) * 100;
+          const xPercent = (pixelX / naturalWidth) * 100;
+          const yPercent = (pixelY / naturalHeight) * 100;
           onAddMeasurePoint(xPercent, yPercent);
         }
         return;
       }
-      
+
       // Mode normal : pan
       if (e.button === 0) {
         setIsPanning(true);
@@ -526,26 +540,43 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [activeTool, onAdjustStretchX, onAdjustStretchY, onRotate, onSetActiveTool, onValidate]);
 
-  // Calculer la position d'un point de mesure en pixels écran
+  // v1.0.14: Calculer la position d'un point de mesure en pixels écran
+  // DOIT correspondre EXACTEMENT au CSS de l'image:
+  //   - Div: left:50%, top:50%, translate(-50%, -50%) translate(pan)
+  //   - Img: scale(zoom*stretch) avec transformOrigin:center
+  // Le CENTRE de l'image (après scaling) est au centre du container + pan
   const getMeasurePointScreenPos = useCallback(
     (point: MeasurePoint): { x: number; y: number } => {
       if (!photo.image) return { x: 0, y: 0 };
-      
-      // Dimensions naturelles
+
+      // Dimensions naturelles de l'image
       const naturalWidth = photo.image.naturalWidth || photo.image.width;
       const naturalHeight = photo.image.naturalHeight || photo.image.height;
-      
-      // Dimensions affichées (avec zoom et stretch)
-      const displayWidth = naturalWidth * zoom * photo.stretchX;
-      const displayHeight = naturalHeight * zoom * photo.stretchY;
-      
-      // Position de l'image dans le container
-      const imgX = (containerSize.width - displayWidth) / 2 + pan.x;
-      const imgY = (containerSize.height - displayHeight) / 2 + pan.y;
-      
+
+      // Scale total appliqué par le CSS
+      const scaleX = zoom * photo.stretchX;
+      const scaleY = zoom * photo.stretchY;
+
+      // Le CENTRE de l'image est positionné à: containerCenter + pan
+      const imageCenterX = containerSize.width / 2 + pan.x;
+      const imageCenterY = containerSize.height / 2 + pan.y;
+
+      // Le point est à (xPercent%, yPercent%) de l'image
+      // En pixels naturels: (xPercent/100 * naturalWidth, yPercent/100 * naturalHeight)
+      // Position relative au centre de l'image naturelle:
+      const pixelX = (point.xPercent / 100) * naturalWidth;
+      const pixelY = (point.yPercent / 100) * naturalHeight;
+      const relativeX = pixelX - naturalWidth / 2;
+      const relativeY = pixelY - naturalHeight / 2;
+
+      // Après scale, la position relative devient:
+      const scaledRelativeX = relativeX * scaleX;
+      const scaledRelativeY = relativeY * scaleY;
+
+      // Position écran = centre de l'image + position relative scalée
       return {
-        x: imgX + (point.xPercent / 100) * displayWidth,
-        y: imgY + (point.yPercent / 100) * displayHeight,
+        x: imageCenterX + scaledRelativeX,
+        y: imageCenterY + scaledRelativeY,
       };
     },
     [photo, zoom, pan, containerSize]
@@ -718,8 +749,12 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     );
   };
 
-  // v1.0.14: Render des marqueurs ArUco - EXACTEMENT même logique que getMeasurePointScreenPos
-  // getMeasurePointScreenPos fonctionne pour les mesures, utilisons la même approche
+  // v1.0.15: Render des marqueurs ArUco - EXACTEMENT même logique que getMeasurePointScreenPos
+  // Le CSS de l'image utilise:
+  //   - Div: left:50%, top:50%, translate(-50%, -50%) translate(pan)
+  //   - Img: scale(zoom*stretch) avec transformOrigin:center
+  // Donc le CENTRE de l'image est à: containerCenter + pan
+  // Et un pixel à position (px, py) est à: center + (px - naturalWidth/2) * scaleX
   const renderArucoMarkers = () => {
     if (detectedMarkers.length === 0 || !photo.image || !initialFitDone) return null;
 
@@ -729,22 +764,22 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const naturalWidth = photo.image.naturalWidth || photo.image.width;
     const naturalHeight = photo.image.naturalHeight || photo.image.height;
 
-    // Dimensions affichées (avec zoom et stretch) - EXACTEMENT comme getMeasurePointScreenPos
-    const displayWidth = naturalWidth * zoom * photo.stretchX;
-    const displayHeight = naturalHeight * zoom * photo.stretchY;
+    // Scale total appliqué par le CSS
+    const scaleX = zoom * photo.stretchX;
+    const scaleY = zoom * photo.stretchY;
 
-    // Position de l'image dans le container - EXACTEMENT comme getMeasurePointScreenPos
-    const imgX = (containerSize.width - displayWidth) / 2 + pan.x;
-    const imgY = (containerSize.height - displayHeight) / 2 + pan.y;
+    // Le CENTRE de l'image est positionné à: containerCenter + pan
+    const imageCenterX = containerSize.width / 2 + pan.x;
+    const imageCenterY = containerSize.height / 2 + pan.y;
 
     // DEBUG: Log les infos de calcul
-    console.log("[DEBUG renderArucoMarkers v1.0.14]", {
+    console.log("[DEBUG renderArucoMarkers v1.0.15]", {
       naturalWidth,
       naturalHeight,
-      displayWidth,
-      displayHeight,
-      imgX,
-      imgY,
+      scaleX,
+      scaleY,
+      imageCenterX,
+      imageCenterY,
       containerSize,
       pan,
       zoom,
@@ -754,17 +789,20 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     });
 
     // Fonction helper: convertit coordonnées pixel image → coordonnées écran
-    // Utilise la MÊME logique que getMeasurePointScreenPos
-    // Les coordonnées des marqueurs sont en pixels de l'image originale (0 à naturalWidth/Height)
+    // EXACTEMENT la même logique que getMeasurePointScreenPos
     const pixelToScreenPos = (pixelX: number, pixelY: number): { x: number; y: number } => {
-      // Convertir pixel → pourcentage de l'image
-      const xPercent = (pixelX / naturalWidth) * 100;
-      const yPercent = (pixelY / naturalHeight) * 100;
+      // Position relative au centre de l'image naturelle
+      const relativeX = pixelX - naturalWidth / 2;
+      const relativeY = pixelY - naturalHeight / 2;
 
-      // Puis pourcentage → position écran (même calcul que getMeasurePointScreenPos)
+      // Après scale, la position relative devient:
+      const scaledRelativeX = relativeX * scaleX;
+      const scaledRelativeY = relativeY * scaleY;
+
+      // Position écran = centre de l'image + position relative scalée
       return {
-        x: imgX + (xPercent / 100) * displayWidth,
-        y: imgY + (yPercent / 100) * displayHeight,
+        x: imageCenterX + scaledRelativeX,
+        y: imageCenterY + scaledRelativeY,
       };
     };
 
