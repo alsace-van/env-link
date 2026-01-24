@@ -103,7 +103,7 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
     // a déjà son propre handler qui fonctionne mieux
 
     document.addEventListener("wheel", blockGlobalWheel, { passive: false, capture: true });
-    
+
     return () => {
       document.removeEventListener("wheel", blockGlobalWheel, { capture: true });
     };
@@ -114,17 +114,17 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
     const validPhotos = state.photos.filter(
       (p) => p.image && !p.isDuplicate
     );
-    
+
     if (validPhotos.length === 0) {
       toast.error("Aucune photo valide à préparer");
       return;
     }
-    
+
     // Trouver le premier index valide
     const firstValidIndex = state.photos.findIndex(
       (p) => p.image && !p.isDuplicate
     );
-    
+
     goToPhoto(firstValidIndex);
     setStep("preview");
   }, [state.photos, goToPhoto, setStep]);
@@ -137,12 +137,12 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
   // Valider et passer à la suivante (ou au résumé si c'est la dernière)
   const handleValidatePhoto = useCallback(() => {
     validatePhoto();
-    
+
     // Vérifier s'il reste des photos à traiter
     const remainingPhotos = state.photos.filter(
       (p, i) => i > state.currentPhotoIndex && p.image && !p.isDuplicate && p.status === "pending"
     );
-    
+
     if (remainingPhotos.length === 0) {
       // Toutes les photos ont été traitées
       setStep("summary");
@@ -172,14 +172,14 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
   // Finaliser l'import
   const handleFinalImport = useCallback(async () => {
     const validatedPhotos = getValidatedPhotos();
-    
+
     if (validatedPhotos.length === 0) {
       toast.error("Aucune photo validée à importer");
       return;
     }
-    
+
     toast.loading("Préparation des photos...", { id: "export" });
-    
+
     try {
       const preparedPhotos = await prepareForExport();
       toast.success(`${preparedPhotos.length} photo(s) prête(s) à importer`, { id: "export" });
@@ -222,7 +222,7 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
             </div>
           );
         }
-        
+
         return (
           <PhotoPreviewEditor
             photo={currentPhoto}
@@ -276,13 +276,10 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
+        ref={modalRef}
         className="max-w-[95vw] w-[1400px] p-0 flex flex-col overflow-hidden [&>button.absolute]:hidden"
         style={{ height: "90vh", minHeight: 0 }}
         onPointerDownOutside={(e) => e.preventDefault()}
-        onWheel={(e) => {
-          // Bloquer le wheel sur toute la modale pour éviter les effets de bord
-          e.stopPropagation();
-        }}
       >
         {/* Header minimal pour grid et summary */}
         {state.step !== "preview" && (
@@ -302,7 +299,7 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
             </div>
           </DialogHeader>
         )}
-        
+
         {/* Contenu principal - DOIT avoir h-full pour propager la hauteur */}
         <div className="flex-1 overflow-hidden min-h-0 h-full">
           {renderContent()}
@@ -351,7 +348,7 @@ const SummaryView: React.FC<SummaryViewProps> = ({
             .map((photo, index) => {
               const dims = getDimensionsMm(photo);
               const originalIndex = photos.findIndex((p) => p.id === photo.id);
-              
+
               return (
                 <div
                   key={photo.id}
@@ -360,8 +357,8 @@ const SummaryView: React.FC<SummaryViewProps> = ({
                     ${photo.status === "validated"
                       ? "bg-green-50 border-green-200"
                       : photo.status === "skipped"
-                      ? "bg-gray-50 border-gray-200"
-                      : "bg-yellow-50 border-yellow-200"
+                        ? "bg-gray-50 border-gray-200"
+                        : "bg-yellow-50 border-yellow-200"
                     }
                   `}
                 >
