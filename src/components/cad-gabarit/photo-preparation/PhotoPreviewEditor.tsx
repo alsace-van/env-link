@@ -1,15 +1,15 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.0.6
+// VERSION: 1.0.7
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.0.7 (2025-01-24) : Suppression zoom minimum artificiel
+//   - Le zoom min de 25% causait une désynchronisation image/marqueurs
+//   - Laisser le zoom calculé naturellement (~15-20% pour grandes images)
 // - v1.0.6 (2025-01-24) : Fix calcul position marqueurs - scale depuis le centre
-//   - Le scale() CSS s'applique depuis transformOrigin:center de l'image
-//   - Calcul: position relative au centre → scale → ajouter au centre du div
-// - v1.0.5 (2025-01-24) : Tentative fix (incorrect)
-// - v1.0.4 (2025-01-24) : Zoom initial à 0.25, marqueurs après fitToView
+// - v1.0.4 (2025-01-24) : Zoom initial, marqueurs après fitToView
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -118,8 +118,8 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
   // État local
-  // v1.0.4: Initialiser zoom à 0.25 (minimum) pour éviter le flash à 100% avant fitToView
-  const [zoom, setZoom] = useState(0.25);
+  // v1.0.7: Zoom initial à 0.15 (valeur typique pour grandes images en attendant fitToView)
+  const [zoom, setZoom] = useState(0.15);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
@@ -225,14 +225,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const scaleY = availableHeight / (naturalHeight * currentStretchY);
     let newZoom = Math.min(scaleX, scaleY);
 
-    // v1.0.3: Zoom minimum de 25% pour que l'image soit toujours visible
-    // Les grandes images (3000x4000px) seraient sinon à ~15% ce qui est trop petit
-    const MIN_ZOOM = 0.25;
+    // v1.0.7: Pas de zoom minimum artificiel - laisser le calcul naturel
+    // Sinon les marqueurs et l'image sont désynchronisés
     const MAX_ZOOM = 2;
-    if (newZoom < MIN_ZOOM) {
-      console.log("[DEBUG] fitToView CLAMPED from", (newZoom * 100).toFixed(1) + "% to", (MIN_ZOOM * 100) + "%");
-      newZoom = MIN_ZOOM;
-    }
     if (newZoom > MAX_ZOOM) {
       newZoom = MAX_ZOOM;
     }
@@ -276,7 +271,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     console.log("[DEBUG] Reset useEffect - photo.id changed:", photo.id);
     setInitialFitDone(false);
     setPan({ x: 0, y: 0 });
-    setZoom(0.25); // v1.0.4: Reset zoom au minimum pour éviter flash
+    setZoom(0.15); // v1.0.7: Reset zoom à valeur typique
   }, [photo.id]);
 
   // Détection ArUco - DOIT être défini AVANT le useEffect qui l'utilise
