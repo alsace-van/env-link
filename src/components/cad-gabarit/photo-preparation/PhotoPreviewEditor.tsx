@@ -143,11 +143,13 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   // ArUco
   const { isLoaded: isArucoLoaded, detectMarkers } = useOpenCVAruco({ markerSizeCm: 5 });
   const [arucoProcessed, setArucoProcessed] = useState(false);
-  const [detectedMarkers, setDetectedMarkers] = useState<Array<{
-    id: number;
-    corners: { x: number; y: number }[];
-    center: { x: number; y: number };
-  }>>([]);
+  const [detectedMarkers, setDetectedMarkers] = useState<
+    Array<{
+      id: number;
+      corners: { x: number; y: number }[];
+      center: { x: number; y: number };
+    }>
+  >([]);
   const [initialFitDone, setInitialFitDone] = useState(false);
 
   // Taille des marqueurs ArUco en mm
@@ -234,11 +236,13 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
 
     const markers = await detectMarkers(photo.image);
     if (markers.length > 0) {
-      setDetectedMarkers(markers.map(m => ({
-        id: m.id,
-        corners: m.corners,
-        center: m.center,
-      })));
+      setDetectedMarkers(
+        markers.map((m) => ({
+          id: m.id,
+          corners: m.corners,
+          center: m.center,
+        })),
+      );
 
       let totalScaleX = 0;
       let totalScaleY = 0;
@@ -266,24 +270,30 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   }, [photo.id, photo.image, isArucoLoaded, arucoProcessed, runArucoDetection]);
 
   // v1.0.18: Convertir coordonnées image -> écran (comme ImageCalibrationModal)
-  const imageToScreen = useCallback((imgX: number, imgY: number) => {
-    const { scale, offsetX, offsetY } = viewport;
-    // Prendre en compte le stretch
-    const effectiveScale = scale;
-    return {
-      x: imgX * photo.stretchX * effectiveScale + offsetX,
-      y: imgY * photo.stretchY * effectiveScale + offsetY,
-    };
-  }, [viewport, photo.stretchX, photo.stretchY]);
+  const imageToScreen = useCallback(
+    (imgX: number, imgY: number) => {
+      const { scale, offsetX, offsetY } = viewport;
+      // Prendre en compte le stretch
+      const effectiveScale = scale;
+      return {
+        x: imgX * photo.stretchX * effectiveScale + offsetX,
+        y: imgY * photo.stretchY * effectiveScale + offsetY,
+      };
+    },
+    [viewport, photo.stretchX, photo.stretchY],
+  );
 
   // Convertir coordonnées écran -> image
-  const screenToImage = useCallback((screenX: number, screenY: number) => {
-    const { scale, offsetX, offsetY } = viewport;
-    return {
-      x: (screenX - offsetX) / (scale * photo.stretchX),
-      y: (screenY - offsetY) / (scale * photo.stretchY),
-    };
-  }, [viewport, photo.stretchX, photo.stretchY]);
+  const screenToImage = useCallback(
+    (screenX: number, screenY: number) => {
+      const { scale, offsetX, offsetY } = viewport;
+      return {
+        x: (screenX - offsetX) / (scale * photo.stretchX),
+        y: (screenY - offsetY) / (scale * photo.stretchY),
+      };
+    },
+    [viewport, photo.stretchX, photo.stretchY],
+  );
 
   // v1.0.18: Dessiner le canvas - IMAGE + MARQUEURS + MESURES
   useEffect(() => {
@@ -313,7 +323,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     if (detectedMarkers.length > 0 && initialFitDone) {
       for (const marker of detectedMarkers) {
         // Convertir les coins en coordonnées écran
-        const screenCorners = marker.corners.map(c => imageToScreen(c.x, c.y));
+        const screenCorners = marker.corners.map((c) => imageToScreen(c.x, c.y));
 
         // Dessiner le polygone
         ctx.beginPath();
@@ -381,7 +391,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
 
       // Points - Croix de ciblage précises
       const crossSize = 12; // Taille de la croix
-      const crossGap = 3;   // Espace au centre
+      const crossGap = 3; // Espace au centre
       for (const p of [p1Screen, p2Screen]) {
         ctx.strokeStyle = measurement.color;
         ctx.lineWidth = 2;
@@ -461,8 +471,18 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       ctx.fillStyle = "#E74C3C";
       ctx.fill();
     }
-
-  }, [photo.image, photo.stretchX, photo.stretchY, viewport, detectedMarkers, initialFitDone, measurements, pendingMeasurePoint, imageToScreen, calculateDistanceMm]);
+  }, [
+    photo.image,
+    photo.stretchX,
+    photo.stretchY,
+    viewport,
+    detectedMarkers,
+    initialFitDone,
+    measurements,
+    pendingMeasurePoint,
+    imageToScreen,
+    calculateDistanceMm,
+  ]);
 
   // Gestion du zoom avec la molette - useEffect avec addEventListener pour pouvoir preventDefault
   useEffect(() => {
@@ -478,7 +498,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
 
-      setViewport(v => {
+      setViewport((v) => {
         const newScale = Math.max(0.05, Math.min(5, v.scale * delta));
         const scaleChange = newScale / v.scale;
         const newOffsetX = mouseX - (mouseX - v.offsetX) * scaleChange;
@@ -492,124 +512,139 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   }, [photo.image]); // Re-bindé quand l'image change (car le canvas peut être recréé)
 
   // v1.0.19: Trouver si un clic est proche d'une poignée de mesure
-  const findHandleAtPosition = useCallback((clickX: number, clickY: number): { measurementId: string; pointIndex: 1 | 2 } | null => {
-    if (!photo.image) return null;
+  const findHandleAtPosition = useCallback(
+    (clickX: number, clickY: number): { measurementId: string; pointIndex: 1 | 2 } | null => {
+      if (!photo.image) return null;
 
-    const imgWidth = photo.image.naturalWidth || photo.image.width;
-    const imgHeight = photo.image.naturalHeight || photo.image.height;
-    const hitRadius = 15; // Rayon de détection en pixels écran
+      const imgWidth = photo.image.naturalWidth || photo.image.width;
+      const imgHeight = photo.image.naturalHeight || photo.image.height;
+      const hitRadius = 15; // Rayon de détection en pixels écran
 
-    for (const measurement of measurements) {
-      // Point 1
-      const p1Img = {
-        x: (measurement.point1.xPercent / 100) * imgWidth,
-        y: (measurement.point1.yPercent / 100) * imgHeight,
-      };
-      const p1Screen = imageToScreen(p1Img.x, p1Img.y);
-      const dist1 = Math.sqrt((clickX - p1Screen.x) ** 2 + (clickY - p1Screen.y) ** 2);
-      if (dist1 < hitRadius) {
-        return { measurementId: measurement.id, pointIndex: 1 };
+      for (const measurement of measurements) {
+        // Point 1
+        const p1Img = {
+          x: (measurement.point1.xPercent / 100) * imgWidth,
+          y: (measurement.point1.yPercent / 100) * imgHeight,
+        };
+        const p1Screen = imageToScreen(p1Img.x, p1Img.y);
+        const dist1 = Math.sqrt((clickX - p1Screen.x) ** 2 + (clickY - p1Screen.y) ** 2);
+        if (dist1 < hitRadius) {
+          return { measurementId: measurement.id, pointIndex: 1 };
+        }
+
+        // Point 2
+        const p2Img = {
+          x: (measurement.point2.xPercent / 100) * imgWidth,
+          y: (measurement.point2.yPercent / 100) * imgHeight,
+        };
+        const p2Screen = imageToScreen(p2Img.x, p2Img.y);
+        const dist2 = Math.sqrt((clickX - p2Screen.x) ** 2 + (clickY - p2Screen.y) ** 2);
+        if (dist2 < hitRadius) {
+          return { measurementId: measurement.id, pointIndex: 2 };
+        }
       }
 
-      // Point 2
-      const p2Img = {
-        x: (measurement.point2.xPercent / 100) * imgWidth,
-        y: (measurement.point2.yPercent / 100) * imgHeight,
-      };
-      const p2Screen = imageToScreen(p2Img.x, p2Img.y);
-      const dist2 = Math.sqrt((clickX - p2Screen.x) ** 2 + (clickY - p2Screen.y) ** 2);
-      if (dist2 < hitRadius) {
-        return { measurementId: measurement.id, pointIndex: 2 };
-      }
-    }
-
-    return null;
-  }, [photo.image, measurements, imageToScreen]);
+      return null;
+    },
+    [photo.image, measurements, imageToScreen],
+  );
 
   // v1.0.20: Gestion du pan, clic mesure et drag poignées
   // - Clic molette (button 1) : TOUJOURS pan, quel que soit l'outil
   // - Clic gauche sur poignée : TOUJOURS drag de la poignée
   // - Clic gauche ailleurs : dépend de l'outil (mesure ou pan)
-  const handleCanvasMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  const handleCanvasMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
 
-    const rect = canvas.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
+      const rect = canvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
 
-    // Clic molette (bouton du milieu) = TOUJOURS pan
-    if (e.button === 1) {
-      e.preventDefault();
-      setIsPanning(true);
-      setPanStart({ x: e.clientX, y: e.clientY });
-      setPanStartOffset({ x: viewport.offsetX, y: viewport.offsetY });
-      return;
-    }
-
-    // Clic gauche
-    if (e.button === 0) {
-      // 1. Vérifier d'abord si on clique sur une poignée existante (prioritaire)
-      const handle = findHandleAtPosition(clickX, clickY);
-      if (handle) {
-        setDraggingHandle(handle);
+      // Clic molette (bouton du milieu) = TOUJOURS pan
+      if (e.button === 1) {
+        e.preventDefault();
+        setIsPanning(true);
+        setPanStart({ x: e.clientX, y: e.clientY });
+        setPanStartOffset({ x: viewport.offsetX, y: viewport.offsetY });
         return;
       }
 
-      // 2. Mode mesure : ajouter un nouveau point
-      if (activeTool === "measure" && photo.image) {
-        const imgPos = screenToImage(clickX, clickY);
+      // Clic gauche
+      if (e.button === 0) {
+        // 1. Vérifier d'abord si on clique sur une poignée existante (prioritaire)
+        const handle = findHandleAtPosition(clickX, clickY);
+        if (handle) {
+          setDraggingHandle(handle);
+          return;
+        }
+
+        // 2. Mode mesure : ajouter un nouveau point
+        if (activeTool === "measure" && photo.image) {
+          const imgPos = screenToImage(clickX, clickY);
+          const imgWidth = photo.image.naturalWidth || photo.image.width;
+          const imgHeight = photo.image.naturalHeight || photo.image.height;
+
+          if (imgPos.x >= 0 && imgPos.x <= imgWidth && imgPos.y >= 0 && imgPos.y <= imgHeight) {
+            const xPercent = (imgPos.x / imgWidth) * 100;
+            const yPercent = (imgPos.y / imgHeight) * 100;
+            onAddMeasurePoint(xPercent, yPercent);
+          }
+          return;
+        }
+
+        // 3. Pan uniquement avec clic molette (pas de pan sur clic gauche)
+      }
+    },
+    [activeTool, photo.image, viewport, screenToImage, onAddMeasurePoint, findHandleAtPosition],
+  );
+
+  const handleCanvasMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      // v1.0.19: Drag d'une poignée de mesure
+      if (draggingHandle && photo.image) {
+        const imgPos = screenToImage(mouseX, mouseY);
         const imgWidth = photo.image.naturalWidth || photo.image.width;
         const imgHeight = photo.image.naturalHeight || photo.image.height;
 
-        if (imgPos.x >= 0 && imgPos.x <= imgWidth && imgPos.y >= 0 && imgPos.y <= imgHeight) {
-          const xPercent = (imgPos.x / imgWidth) * 100;
-          const yPercent = (imgPos.y / imgHeight) * 100;
-          onAddMeasurePoint(xPercent, yPercent);
-        }
+        // Contraindre aux limites de l'image
+        const clampedX = Math.max(0, Math.min(imgWidth, imgPos.x));
+        const clampedY = Math.max(0, Math.min(imgHeight, imgPos.y));
+
+        const xPercent = (clampedX / imgWidth) * 100;
+        const yPercent = (clampedY / imgHeight) * 100;
+
+        console.log(
+          "[DRAG] Updating point:",
+          draggingHandle.measurementId,
+          draggingHandle.pointIndex,
+          xPercent,
+          yPercent,
+        );
+        onUpdateMeasurementPoint(draggingHandle.measurementId, draggingHandle.pointIndex, xPercent, yPercent);
         return;
       }
 
-      // 3. Pan uniquement avec clic molette (pas de pan sur clic gauche)
-    }
-  }, [activeTool, photo.image, viewport, screenToImage, onAddMeasurePoint, findHandleAtPosition]);
-
-  const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-
-    // v1.0.19: Drag d'une poignée de mesure
-    if (draggingHandle && photo.image) {
-      const imgPos = screenToImage(mouseX, mouseY);
-      const imgWidth = photo.image.naturalWidth || photo.image.width;
-      const imgHeight = photo.image.naturalHeight || photo.image.height;
-
-      // Contraindre aux limites de l'image
-      const clampedX = Math.max(0, Math.min(imgWidth, imgPos.x));
-      const clampedY = Math.max(0, Math.min(imgHeight, imgPos.y));
-
-      const xPercent = (clampedX / imgWidth) * 100;
-      const yPercent = (clampedY / imgHeight) * 100;
-
-      console.log("[DRAG] Updating point:", draggingHandle.measurementId, draggingHandle.pointIndex, xPercent, yPercent);
-      onUpdateMeasurementPoint(draggingHandle.measurementId, draggingHandle.pointIndex, xPercent, yPercent);
-      return;
-    }
-
-    if (isPanning) {
-      const dx = e.clientX - panStart.x;
-      const dy = e.clientY - panStart.y;
-      setViewport(v => ({
-        ...v,
-        offsetX: panStartOffset.x + dx,
-        offsetY: panStartOffset.y + dy,
-      }));
-    }
-  }, [isPanning, panStart, panStartOffset, draggingHandle, photo.image, screenToImage, onUpdateMeasurementPoint]);
+      if (isPanning) {
+        const dx = e.clientX - panStart.x;
+        const dy = e.clientY - panStart.y;
+        setViewport((v) => ({
+          ...v,
+          offsetX: panStartOffset.x + dx,
+          offsetY: panStartOffset.y + dy,
+        }));
+      }
+    },
+    [isPanning, panStart, panStartOffset, draggingHandle, photo.image, screenToImage, onUpdateMeasurementPoint],
+  );
 
   const handleCanvasMouseUp = useCallback(() => {
     setIsPanning(false);
@@ -702,12 +737,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between p-3 bg-gray-800 border-b border-gray-700">
         <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onBackToGrid}
-            className="text-gray-300 hover:text-white"
-          >
+          <Button variant="ghost" size="sm" onClick={onBackToGrid} className="text-gray-300 hover:text-white">
             <ArrowLeft className="h-4 w-4 mr-1" />
             Grille
           </Button>
@@ -718,9 +748,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
             Photo {photoIndex + 1} / {totalPhotos}
           </span>
 
-          <span className="text-gray-400 text-sm truncate max-w-[200px]">
-            {photo.name}
-          </span>
+          <span className="text-gray-400 text-sm truncate max-w-[200px]">{photo.name}</span>
 
           {photo.arucoDetected && (
             <Badge variant="secondary" className="bg-green-600 text-white">
@@ -767,11 +795,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       {/* Zone de preview */}
       <div className="flex-1 relative" style={{ minHeight: 0 }}>
         {/* Container du canvas */}
-        <div
-          ref={containerRef}
-          className="absolute inset-0"
-          style={{ right: "288px" }}
-        >
+        <div ref={containerRef} className="absolute inset-0" style={{ right: "288px" }}>
           {!photo.image ? (
             <div className="flex items-center justify-center h-full text-gray-400">
               <Loader2 className="h-8 w-8 animate-spin" />
@@ -806,27 +830,20 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-white hover:bg-white/20"
-              onClick={() => setViewport(v => ({ ...v, scale: Math.max(0.05, v.scale * 0.8) }))}
+              onClick={() => setViewport((v) => ({ ...v, scale: Math.max(0.05, v.scale * 0.8) }))}
             >
               <ZoomOut className="h-4 w-4" />
             </Button>
-            <span className="text-white text-xs w-12 text-center">
-              {zoomPercent}%
-            </span>
+            <span className="text-white text-xs w-12 text-center">{zoomPercent}%</span>
             <Button
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-white hover:bg-white/20"
-              onClick={() => setViewport(v => ({ ...v, scale: Math.min(5, v.scale * 1.2) }))}
+              onClick={() => setViewport((v) => ({ ...v, scale: Math.min(5, v.scale * 1.2) }))}
             >
               <ZoomIn className="h-4 w-4" />
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-white hover:bg-white/20"
-              onClick={fitToView}
-            >
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20" onClick={fitToView}>
               <Maximize className="h-4 w-4" />
             </Button>
           </div>
@@ -892,9 +909,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
 
           {/* Dimensions */}
           <div>
-            <Label className="text-gray-400 text-xs mb-2 block">
-              DIMENSIONS (mm)
-            </Label>
+            <Label className="text-gray-400 text-xs mb-2 block">DIMENSIONS (mm)</Label>
 
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -908,9 +923,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                   onWheel={(e) => e.currentTarget.blur()}
                   className="flex-1 h-8 bg-gray-700 border-gray-600 text-white text-sm"
                 />
-                <span className="text-gray-500 text-xs">
-                  (actuel: {widthMm.toFixed(1)})
-                </span>
+                <span className="text-gray-500 text-xs">(actuel: {widthMm.toFixed(1)})</span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -924,9 +937,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                   onWheel={(e) => e.currentTarget.blur()}
                   className="flex-1 h-8 bg-gray-700 border-gray-600 text-white text-sm"
                 />
-                <span className="text-gray-500 text-xs">
-                  (actuel: {heightMm.toFixed(1)})
-                </span>
+                <span className="text-gray-500 text-xs">(actuel: {heightMm.toFixed(1)})</span>
               </div>
             </div>
 
@@ -963,15 +974,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
               </div>
               <div className="space-y-1">
                 {measurements.map((m) => (
-                  <div
-                    key={m.id}
-                    className="flex items-center justify-between p-2 bg-gray-700 rounded text-sm"
-                  >
+                  <div key={m.id} className="flex items-center justify-between p-2 bg-gray-700 rounded text-sm">
                     <div className="flex items-center gap-2">
-                      <div
-                        className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: m.color }}
-                      />
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: m.color }} />
                       <span className="text-white font-medium">
                         {calculateDistanceMm(m.point1, m.point2).toFixed(1)} mm
                       </span>
@@ -1004,10 +1009,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
               Passer cette photo
             </Button>
 
-            <Button
-              className="w-full bg-green-600 hover:bg-green-700"
-              onClick={onValidate}
-            >
+            <Button className="w-full bg-green-600 hover:bg-green-700" onClick={onValidate}>
               <Check className="h-4 w-4 mr-2" />
               Valider et continuer
             </Button>
