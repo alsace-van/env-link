@@ -464,39 +464,27 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
 
   }, [photo.image, photo.stretchX, photo.stretchY, viewport, detectedMarkers, initialFitDone, measurements, pendingMeasurePoint, imageToScreen, calculateDistanceMm]);
 
-  // Gestion du zoom avec la molette
-  useEffect(() => {
-    const root = rootRef.current;
+  // Gestion du zoom avec la molette - directement sur le canvas
+  const handleCanvasWheel = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
     const canvas = canvasRef.current;
-    if (!root || !canvas) return;
+    if (!canvas) return;
 
-    const handleWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
 
-      if (canvas.contains(e.target as Node) || e.target === canvas) {
-        const delta = e.deltaY > 0 ? 0.9 : 1.1;
-        setViewport(v => {
-          const newScale = Math.max(0.05, Math.min(5, v.scale * delta));
-          // Zoom centré sur la position de la souris
-          const rect = canvas.getBoundingClientRect();
-          const mouseX = e.clientX - rect.left;
-          const mouseY = e.clientY - rect.top;
-
-          const scaleChange = newScale / v.scale;
-          const newOffsetX = mouseX - (mouseX - v.offsetX) * scaleChange;
-          const newOffsetY = mouseY - (mouseY - v.offsetY) * scaleChange;
-
-          return { scale: newScale, offsetX: newOffsetX, offsetY: newOffsetY };
-        });
-      }
-
-      return false;
-    };
-
-    root.addEventListener("wheel", handleWheel, { passive: false, capture: true });
-    return () => root.removeEventListener("wheel", handleWheel, { capture: true });
-  }, [photo.image]); // Re-attacher quand l'image change
+    setViewport(v => {
+      const newScale = Math.max(0.05, Math.min(5, v.scale * delta));
+      const scaleChange = newScale / v.scale;
+      const newOffsetX = mouseX - (mouseX - v.offsetX) * scaleChange;
+      const newOffsetY = mouseY - (mouseY - v.offsetY) * scaleChange;
+      return { scale: newScale, offsetX: newOffsetX, offsetY: newOffsetY };
+    });
+  }, []);
 
   // v1.0.19: Trouver si un clic est proche d'une poignée de mesure
   const findHandleAtPosition = useCallback((clickX: number, clickY: number): { measurementId: string; pointIndex: 1 | 2 } | null => {
@@ -792,6 +780,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
               onMouseMove={handleCanvasMouseMove}
               onMouseUp={handleCanvasMouseUp}
               onMouseLeave={handleCanvasMouseUp}
+              onWheel={handleCanvasWheel}
               onContextMenu={(e) => e.preventDefault()}
               onAuxClick={(e) => e.preventDefault()}
             />
