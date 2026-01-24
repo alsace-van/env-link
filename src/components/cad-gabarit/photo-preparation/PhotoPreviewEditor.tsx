@@ -1,16 +1,15 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.0.4
+// VERSION: 1.0.5
 // ============================================
 //
 // Changelog (3 dernières versions) :
-// - v1.0.4 (2025-01-24) : Fix marqueurs ArUco mal positionnés
-//   - Zoom initial à 0.25 au lieu de 1 pour éviter le flash
-//   - Reset zoom à 0.25 quand on change de photo
-//   - Marqueurs non affichés tant que fitToView n'est pas fait
+// - v1.0.5 (2025-01-24) : Fix calcul position marqueurs ArUco
+//   - L'image est centrée avec CSS transform (translate -50%), pas avec width/height
+//   - Calcul correct: imgCenter = container/2 + pan, imgTopLeft = imgCenter - displaySize/2
+// - v1.0.4 (2025-01-24) : Zoom initial à 0.25, marqueurs après fitToView
 // - v1.0.3 (2025-01-24) : Zoom minimum 25% pour images lisibles
-// - v1.0.2 (2025-01-24) : Fix fitToView utilise containerSize du ResizeObserver
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -709,6 +708,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
 
   // v1.0.1: Render des marqueurs ArUco détectés
   // v1.0.4: Ne pas afficher avant que le fitToView initial soit fait
+  // v1.0.5: Fix calcul position - l'image est centrée avec transform, pas avec width/height
   const renderArucoMarkers = () => {
     if (detectedMarkers.length === 0 || !photo.image || !initialFitDone) return null;
 
@@ -718,16 +718,29 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const naturalWidth = photo.image.naturalWidth || photo.image.width;
     const naturalHeight = photo.image.naturalHeight || photo.image.height;
 
-    // Dimensions affichées (avec zoom et stretch)
-    const displayWidth = naturalWidth * zoom * photo.stretchX;
-    const displayHeight = naturalHeight * zoom * photo.stretchY;
+    // Scale total appliqué à l'image via CSS transform
+    const totalScaleX = zoom * photo.stretchX;
+    const totalScaleY = zoom * photo.stretchY;
 
-    // Position de l'image dans le container
-    const imgX = (containerSize.width - displayWidth) / 2 + pan.x;
-    const imgY = (containerSize.height - displayHeight) / 2 + pan.y;
+    // Dimensions visuelles de l'image après scale
+    const displayWidth = naturalWidth * totalScaleX;
+    const displayHeight = naturalHeight * totalScaleY;
+
+    // L'image est positionnée avec:
+    // - left: 50%, top: 50% → centre du container
+    // - translate(-50%, -50%) → recentre l'image sur ce point
+    // - translate(pan.x, pan.y) → déplacement utilisateur
+    // - scale(totalScaleX, totalScaleY) avec transformOrigin: center
+    //
+    // Donc le coin supérieur gauche de l'image scalée est à:
+    const imgCenterX = containerSize.width / 2 + pan.x;
+    const imgCenterY = containerSize.height / 2 + pan.y;
+    const imgX = imgCenterX - displayWidth / 2;
+    const imgY = imgCenterY - displayHeight / 2;
 
     for (const marker of detectedMarkers) {
       // Convertir les coins du marqueur (en pixels de l'image originale) en coordonnées écran
+      // corner.x/y sont en pixels de l'image originale
       const screenCorners = marker.corners.map(corner => ({
         x: imgX + (corner.x / naturalWidth) * displayWidth,
         y: imgY + (corner.y / naturalHeight) * displayHeight,
