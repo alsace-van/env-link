@@ -467,11 +467,18 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   // Gestion du zoom avec la molette - useEffect avec addEventListener pour pouvoir preventDefault
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      console.log("[WHEEL] No canvas ref");
+      return;
+    }
+
+    console.log("[WHEEL] Attaching wheel listener to canvas");
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       e.stopPropagation();
+
+      console.log("[WHEEL] Wheel event detected, deltaY:", e.deltaY);
 
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
       const rect = canvas.getBoundingClientRect();
@@ -483,13 +490,17 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         const scaleChange = newScale / v.scale;
         const newOffsetX = mouseX - (mouseX - v.offsetX) * scaleChange;
         const newOffsetY = mouseY - (mouseY - v.offsetY) * scaleChange;
+        console.log("[WHEEL] New scale:", newScale);
         return { scale: newScale, offsetX: newOffsetX, offsetY: newOffsetY };
       });
     };
 
     canvas.addEventListener("wheel", handleWheel, { passive: false });
-    return () => canvas.removeEventListener("wheel", handleWheel);
-  }, [photo.image]); // Re-bindé quand l'image change (car le canvas peut être recréé)
+    return () => {
+      console.log("[WHEEL] Removing wheel listener");
+      canvas.removeEventListener("wheel", handleWheel);
+    };
+  }, [photo.image, canvasSize]); // Re-bindé quand l'image ou la taille du canvas change
 
   // v1.0.19: Trouver si un clic est proche d'une poignée de mesure
   const findHandleAtPosition = useCallback((clickX: number, clickY: number): { measurementId: string; pointIndex: 1 | 2 } | null => {
@@ -551,7 +562,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     if (e.button === 0) {
       // 1. Vérifier d'abord si on clique sur une poignée existante (prioritaire)
       const handle = findHandleAtPosition(clickX, clickY);
+      console.log("[MOUSEDOWN] Handle found:", handle);
       if (handle) {
+        console.log("[MOUSEDOWN] Setting draggingHandle:", handle);
         setDraggingHandle(handle);
         return;
       }
