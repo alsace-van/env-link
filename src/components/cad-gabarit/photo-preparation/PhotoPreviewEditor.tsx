@@ -1,13 +1,14 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.0.1
+// VERSION: 1.0.2
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.0.2 (2025-01-24) : Fix fitToView utilise maintenant containerSize du ResizeObserver
+//   - Attente que containerSize soit valide (>200px) avant de calculer le zoom
+//   - Suppression du MIN_ZOOM artificiel (15-20% est normal pour grandes images)
 // - v1.0.1 (2025-01-24) : Fix zoom minuscule + affichage marqueurs ArUco
-//   - Correction fitToView qui causait un zoom aberrant après détection ArUco
-//   - Ajout garde minimum de 5% pour le zoom
 //   - Ajout affichage visuel des marqueurs ArUco détectés (contour vert + ID)
 //   - Utilisation de refs stables pour éviter les re-renders
 // - v1.0.0 (2025-01-23) : Création initiale
@@ -185,23 +186,28 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     imageRef.current = photo.image;
   }, [photo.image]);
 
-  // Fit to view - v1.0.1: Corrigé pour éviter les zooms aberrants
+  // Fit to view - v1.0.2: Corrigé pour utiliser containerSize du ResizeObserver
   const fitToView = useCallback(() => {
-    const container = containerRef.current;
     const image = imageRef.current;
-    if (!image || !container) return;
+    if (!image) {
+      console.log("[DEBUG] fitToView SKIP - no image");
+      return;
+    }
 
-    // Utiliser les dimensions directement depuis le DOM
-    const rect = container.getBoundingClientRect();
-    // v1.0.1: Vérifier que le container a des dimensions valides
-    if (rect.width < 100 || rect.height < 100) {
-      console.log("[DEBUG] fitToView SKIP - container too small:", rect.width, rect.height);
+    // v1.0.2: Utiliser containerSize de l'état (mis à jour par ResizeObserver)
+    // C'est plus fiable que getBoundingClientRect() qui peut retourner 0 au premier render
+    const containerWidth = containerSize.width;
+    const containerHeight = containerSize.height;
+
+    // Vérifier que le container a des dimensions valides
+    if (containerWidth < 200 || containerHeight < 200) {
+      console.log("[DEBUG] fitToView SKIP - container too small:", containerWidth, containerHeight);
       return;
     }
 
     const padding = 40;
-    const availableWidth = rect.width - padding * 2;
-    const availableHeight = rect.height - padding * 2;
+    const availableWidth = containerWidth - padding * 2;
+    const availableHeight = containerHeight - padding * 2;
 
     // Dimensions naturelles de l'image
     const naturalWidth = image.naturalWidth || image.width;
@@ -213,7 +219,6 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     }
 
     // Calculer le zoom pour que l'image tienne dans le container
-    // v1.0.1: Utiliser les valeurs actuelles de stretch depuis la ref
     const currentStretchX = photo.stretchX;
     const currentStretchY = photo.stretchY;
 
@@ -221,43 +226,46 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const scaleY = availableHeight / (naturalHeight * currentStretchY);
     let newZoom = Math.min(scaleX, scaleY);
 
-    // v1.0.1: Garde minimum de 5% pour éviter les zooms aberrants
-    const MIN_ZOOM = 0.05;
+    // v1.0.2: Pas de minimum artificiel - laisser le zoom calculé même s'il est petit
+    // Car une image de 3000x4000px dans un container de 700x500 doit être à ~15-20%
     const MAX_ZOOM = 2;
-    if (newZoom < MIN_ZOOM) {
-      console.log("[DEBUG] fitToView CLAMPED from", newZoom, "to", MIN_ZOOM);
-      newZoom = MIN_ZOOM;
-    }
     if (newZoom > MAX_ZOOM) {
       newZoom = MAX_ZOOM;
     }
 
-    console.log("[DEBUG] fitToView APPLYING zoom:", newZoom, "container:", rect.width, "x", rect.height);
+    console.log("[DEBUG] fitToView APPLYING zoom:", (newZoom * 100).toFixed(1) + "%",
+      "container:", containerWidth, "x", containerHeight,
+      "image:", naturalWidth, "x", naturalHeight);
     setZoom(newZoom);
     setPan({ x: 0, y: 0 });
-  }, [photo.stretchX, photo.stretchY]); // v1.0.1: Pas de dépendance sur photo.image (utilise imageRef)
+  }, [photo.stretchX, photo.stretchY, containerSize]); // v1.0.2: Ajout containerSize
 
   // Fit to view UNIQUEMENT au chargement initial de la photo
-  // v1.0.1: Utilise une ref pour tracker si le fit a été fait pour cette photo
+  // v1.0.2: Utilise containerSize comme déclencheur pour s'assurer que le layout est prêt
   const fitDoneForPhotoRef = useRef<string | null>(null);
 
   useEffect(() => {
     // Ne faire le fit que si c'est une nouvelle photo
     if (fitDoneForPhotoRef.current === photo.id) return;
     if (!photo.image) return;
+    // v1.0.2: Attendre que le container ait des dimensions valides
+    if (containerSize.width < 200 || containerSize.height < 200) {
+      console.log("[DEBUG] fitToView useEffect - waiting for container size:", containerSize);
+      return;
+    }
 
-    console.log("[DEBUG] fitToView useEffect - NEW photo:", photo.id);
+    console.log("[DEBUG] fitToView useEffect - NEW photo:", photo.id, "container ready:", containerSize);
 
-    // Délai pour s'assurer que le layout CSS est calculé
+    // Petit délai pour stabilisation finale
     const timer = setTimeout(() => {
       console.log("[DEBUG] fitToView useEffect - CALLING fitToView for:", photo.id);
       fitToView();
       fitDoneForPhotoRef.current = photo.id;
       setInitialFitDone(true);
-    }, 250); // v1.0.1: Délai légèrement augmenté
+    }, 100);
 
     return () => clearTimeout(timer);
-  }, [photo.id, photo.image, fitToView]);
+  }, [photo.id, photo.image, fitToView, containerSize]); // v1.0.2: Ajout containerSize
 
   // Reset initialFitDone quand on change de photo
   useEffect(() => {
