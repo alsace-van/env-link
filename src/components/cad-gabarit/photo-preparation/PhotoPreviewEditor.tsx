@@ -371,15 +371,34 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // Points
+      // Points - Croix de ciblage précises
+      const crossSize = 12; // Taille de la croix
+      const crossGap = 3;   // Espace au centre
       for (const p of [p1Screen, p2Screen]) {
+        ctx.strokeStyle = measurement.color;
+        ctx.lineWidth = 2;
+
+        // Ligne horizontale (avec gap au centre)
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+        ctx.moveTo(p.x - crossSize, p.y);
+        ctx.lineTo(p.x - crossGap, p.y);
+        ctx.moveTo(p.x + crossGap, p.y);
+        ctx.lineTo(p.x + crossSize, p.y);
+        ctx.stroke();
+
+        // Ligne verticale (avec gap au centre)
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y - crossSize);
+        ctx.lineTo(p.x, p.y - crossGap);
+        ctx.moveTo(p.x, p.y + crossGap);
+        ctx.lineTo(p.x, p.y + crossSize);
+        ctx.stroke();
+
+        // Petit cercle central pour marquer le point exact
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
         ctx.fillStyle = measurement.color;
         ctx.fill();
-        ctx.strokeStyle = "white";
-        ctx.lineWidth = 2;
-        ctx.stroke();
       }
 
       // Label distance
@@ -397,7 +416,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       ctx.fillText(label, midX, midY);
     }
 
-    // Point en attente
+    // Point en attente - Croix de ciblage
     if (pendingMeasurePoint && photo.image) {
       const imgWidth = photo.image.naturalWidth || photo.image.width;
       const imgHeight = photo.image.naturalHeight || photo.image.height;
@@ -405,15 +424,34 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         x: (pendingMeasurePoint.xPercent / 100) * imgWidth,
         y: (pendingMeasurePoint.yPercent / 100) * imgHeight,
       };
-      const screenPos = imageToScreen(imgPos.x, imgPos.y);
+      const p = imageToScreen(imgPos.x, imgPos.y);
 
+      const crossSize = 14;
+      const crossGap = 4;
+      ctx.strokeStyle = "#E74C3C";
+      ctx.lineWidth = 2;
+
+      // Ligne horizontale
       ctx.beginPath();
-      ctx.arc(screenPos.x, screenPos.y, 8, 0, Math.PI * 2);
+      ctx.moveTo(p.x - crossSize, p.y);
+      ctx.lineTo(p.x - crossGap, p.y);
+      ctx.moveTo(p.x + crossGap, p.y);
+      ctx.lineTo(p.x + crossSize, p.y);
+      ctx.stroke();
+
+      // Ligne verticale
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y - crossSize);
+      ctx.lineTo(p.x, p.y - crossGap);
+      ctx.moveTo(p.x, p.y + crossGap);
+      ctx.lineTo(p.x, p.y + crossSize);
+      ctx.stroke();
+
+      // Petit cercle central
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
       ctx.fillStyle = "#E74C3C";
       ctx.fill();
-      ctx.strokeStyle = "white";
-      ctx.lineWidth = 2;
-      ctx.stroke();
     }
 
   }, [photo.image, photo.stretchX, photo.stretchY, viewport, detectedMarkers, initialFitDone, measurements, pendingMeasurePoint, imageToScreen, calculateDistanceMm]);
