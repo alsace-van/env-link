@@ -186,8 +186,8 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   }, []);
 
   // v1.0.20: Ref stable pour fitToView afin d'éviter les re-triggers
-  const fitToViewRef = useRef<() => void>(() => {});
-  
+  const fitToViewRef = useRef<() => void>(() => { });
+
   // v1.0.18: Fit to view - calculer scale et offset pour centrer l'image
   fitToViewRef.current = () => {
     if (!photo.image) return;
@@ -250,6 +250,28 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     setArucoProcessed(false);
     setDetectedMarkers([]);
   }, [photo.id]);
+
+  // DEBUG: Listener wheel au niveau document pour vérifier si les events arrivent
+  useEffect(() => {
+    const debugWheelHandler = (e: WheelEvent) => {
+      console.log("[DEBUG DOCUMENT WHEEL] Event at document level!", {
+        deltaY: e.deltaY,
+        target: (e.target as HTMLElement)?.tagName,
+        targetClass: (e.target as HTMLElement)?.className?.substring?.(0, 50),
+        defaultPrevented: e.defaultPrevented,
+        cancelBubble: e.cancelBubble,
+      });
+    };
+
+    // Ajouter en capture ET en bubble pour voir où ça s'arrête
+    document.addEventListener("wheel", debugWheelHandler, { capture: true });
+    console.log("[DEBUG] Document wheel listener attached (capture phase)");
+
+    return () => {
+      document.removeEventListener("wheel", debugWheelHandler, { capture: true });
+      console.log("[DEBUG] Document wheel listener removed");
+    };
+  }, []);
 
   // Détection ArUco
   const runArucoDetection = useCallback(async () => {
@@ -734,11 +756,21 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   // Zoom percentage pour l'affichage
   const zoomPercent = Math.round(viewport.scale * 100);
 
+  // DEBUG: Handler React synthétique pour vérifier si les events wheel arrivent
+  const handleRootWheel = useCallback((e: React.WheelEvent) => {
+    console.log("[ROOT WHEEL] React synthetic event received on root!", {
+      deltaY: e.deltaY,
+      target: (e.target as HTMLElement)?.tagName,
+      currentTarget: (e.currentTarget as HTMLElement)?.tagName,
+    });
+  }, []);
+
   return (
     <div
       ref={rootRef}
       className="flex flex-col h-full bg-gray-900 min-h-0"
       style={{ touchAction: "none", overflow: "hidden" }}
+      onWheelCapture={handleRootWheel}
     >
       {/* Header */}
       <div className="flex items-center justify-between p-3 bg-gray-800 border-b border-gray-700">
