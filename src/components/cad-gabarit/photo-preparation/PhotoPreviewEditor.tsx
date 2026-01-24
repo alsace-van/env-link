@@ -68,6 +68,7 @@ interface PhotoPreviewEditorProps {
   onSetActiveTool: (tool: "none" | "measure" | "crop") => void;
   onAddMeasurePoint: (xPercent: number, yPercent: number) => void;
   onRemoveMeasurement: (id: string) => void;
+  onUpdateMeasurementPoint: (measurementId: string, pointIndex: 1 | 2, xPercent: number, yPercent: number) => void;
   onClearMeasurements: () => void;
   onUpdatePhoto: (updates: Partial<PhotoToProcess>) => void;
 
@@ -100,6 +101,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   onSetActiveTool,
   onAddMeasurePoint,
   onRemoveMeasurement,
+  onUpdateMeasurementPoint,
   onClearMeasurements,
   onUpdatePhoto,
   onPrev,
@@ -126,6 +128,12 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [panStartOffset, setPanStartOffset] = useState({ x: 0, y: 0 });
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
+
+  // v1.0.19: État pour le drag des poignées de mesure
+  const [draggingHandle, setDraggingHandle] = useState<{
+    measurementId: string;
+    pointIndex: 1 | 2;
+  } | null>(null);
 
   // Inputs pour dimensions
   const { widthMm, heightMm } = getDimensionsMm(photo);
@@ -490,7 +498,42 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     return () => root.removeEventListener("wheel", handleWheel, { capture: true });
   }, []);
 
-  // Gestion du pan et clic mesure
+  // v1.0.19: Trouver si un clic est proche d'une poignée de mesure
+  const findHandleAtPosition = useCallback((clickX: number, clickY: number): { measurementId: string; pointIndex: 1 | 2 } | null => {
+    if (!photo.image) return null;
+
+    const imgWidth = photo.image.naturalWidth || photo.image.width;
+    const imgHeight = photo.image.naturalHeight || photo.image.height;
+    const hitRadius = 15; // Rayon de détection en pixels écran
+
+    for (const measurement of measurements) {
+      // Point 1
+      const p1Img = {
+        x: (measurement.point1.xPercent / 100) * imgWidth,
+        y: (measurement.point1.yPercent / 100) * imgHeight,
+      };
+      const p1Screen = imageToScreen(p1Img.x, p1Img.y);
+      const dist1 = Math.sqrt((clickX - p1Screen.x) ** 2 + (clickY - p1Screen.y) ** 2);
+      if (dist1 < hitRadius) {
+        return { measurementId: measurement.id, pointIndex: 1 };
+      }
+
+      // Point 2
+      const p2Img = {
+        x: (measurement.point2.xPercent / 100) * imgWidth,
+        y: (measurement.point2.yPercent / 100) * imgHeight,
+      };
+      const p2Screen = imageToScreen(p2Img.x, p2Img.y);
+      const dist2 = Math.sqrt((clickX - p2Screen.x) ** 2 + (clickY - p2Screen.y) ** 2);
+      if (dist2 < hitRadius) {
+        return { measurementId: measurement.id, pointIndex: 2 };
+      }
+    }
+
+    return null;
+  }, [photo.image, measurements, imageToScreen]);
+
+  // Gestion du pan, clic mesure et drag poignées
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -498,6 +541,13 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const rect = canvas.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
+
+    // v1.0.19: Vérifier d'abord si on clique sur une poignée existante
+    const handle = findHandleAtPosition(clickX, clickY);
+    if (handle) {
+      setDraggingHandle(handle);
+      return;
+    }
 
     if (activeTool === "measure" && photo.image) {
       // Convertir en coordonnées image
@@ -520,9 +570,33 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       setPanStart({ x: e.clientX, y: e.clientY });
       setPanStartOffset({ x: viewport.offsetX, y: viewport.offsetY });
     }
-  }, [activeTool, photo.image, viewport, screenToImage, onAddMeasurePoint]);
+  }, [activeTool, photo.image, viewport, screenToImage, onAddMeasurePoint, findHandleAtPosition]);
 
   const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // v1.0.19: Drag d'une poignée de mesure
+    if (draggingHandle && photo.image) {
+      const imgPos = screenToImage(mouseX, mouseY);
+      const imgWidth = photo.image.naturalWidth || photo.image.width;
+      const imgHeight = photo.image.naturalHeight || photo.image.height;
+
+      // Contraindre aux limites de l'image
+      const clampedX = Math.max(0, Math.min(imgWidth, imgPos.x));
+      const clampedY = Math.max(0, Math.min(imgHeight, imgPos.y));
+
+      const xPercent = (clampedX / imgWidth) * 100;
+      const yPercent = (clampedY / imgHeight) * 100;
+
+      onUpdateMeasurementPoint(draggingHandle.measurementId, draggingHandle.pointIndex, xPercent, yPercent);
+      return;
+    }
+
     if (isPanning) {
       const dx = e.clientX - panStart.x;
       const dy = e.clientY - panStart.y;
@@ -532,10 +606,11 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         offsetY: panStartOffset.y + dy,
       }));
     }
-  }, [isPanning, panStart, panStartOffset]);
+  }, [isPanning, panStart, panStartOffset, draggingHandle, photo.image, screenToImage, onUpdateMeasurementPoint]);
 
   const handleCanvasMouseUp = useCallback(() => {
     setIsPanning(false);
+    setDraggingHandle(null);
   }, []);
 
   // Appliquer les dimensions saisies
@@ -703,7 +778,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
               ref={canvasRef}
               width={canvasSize.width}
               height={canvasSize.height}
-              className={`${activeTool === "measure" ? "cursor-crosshair" : "cursor-grab"} ${isPanning ? "cursor-grabbing" : ""}`}
+              className={`${activeTool === "measure" ? "cursor-crosshair" : "cursor-grab"} ${isPanning ? "cursor-grabbing" : ""} ${draggingHandle ? "cursor-move" : ""}`}
               onMouseDown={handleCanvasMouseDown}
               onMouseMove={handleCanvasMouseMove}
               onMouseUp={handleCanvasMouseUp}
