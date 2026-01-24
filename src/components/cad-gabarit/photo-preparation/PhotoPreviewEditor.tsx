@@ -1,15 +1,16 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.0.12
+// VERSION: 1.0.14
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.0.14 (2025-01-24) : FIX CRITIQUE - Calcul position marqueurs ArUco
+//   - Le CSS de l'image utilise: translate(-50%, -50%) puis translate(pan)
+//   - Puis scale(zoom*stretch) avec transformOrigin:center
+//   - Donc: screenPos = containerCenter + pan + (pixel - naturalSize/2) * scale
+// - v1.0.13 (2025-01-24) : Tentative avec centre image
 // - v1.0.12 (2025-01-24) : SIMPLIFIÉ - même approche que ArucoCalibrationModal
-//   - Calcul basé sur ratio position (0-1) × displayWidth/Height
-//   - Plus de calculs complexes depuis le centre
-// - v1.0.11 (2025-01-24) : Ajout logs DEBUG pour diagnostic
-// - v1.0.10 (2025-01-24) : Fix synchronisation marqueurs
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -717,8 +718,8 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     );
   };
 
-  // v1.0.12: Render des marqueurs ArUco - SIMPLIFIÉ comme ArucoCalibrationModal
-  // Approche: calculer displayWidth/Height puis positionner les marqueurs proportionnellement
+  // v1.0.14: Render des marqueurs ArUco - EXACTEMENT même logique que getMeasurePointScreenPos
+  // getMeasurePointScreenPos fonctionne pour les mesures, utilisons la même approche
   const renderArucoMarkers = () => {
     if (detectedMarkers.length === 0 || !photo.image || !initialFitDone) return null;
 
@@ -728,45 +729,42 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const naturalWidth = photo.image.naturalWidth || photo.image.width;
     const naturalHeight = photo.image.naturalHeight || photo.image.height;
 
-    // Scale total (zoom + stretch)
-    const scaleX = zoom * photo.stretchX;
-    const scaleY = zoom * photo.stretchY;
+    // Dimensions affichées (avec zoom et stretch) - EXACTEMENT comme getMeasurePointScreenPos
+    const displayWidth = naturalWidth * zoom * photo.stretchX;
+    const displayHeight = naturalHeight * zoom * photo.stretchY;
 
-    // Dimensions affichées de l'image
-    const displayWidth = naturalWidth * scaleX;
-    const displayHeight = naturalHeight * scaleY;
+    // Position de l'image dans le container - EXACTEMENT comme getMeasurePointScreenPos
+    const imgX = (containerSize.width - displayWidth) / 2 + pan.x;
+    const imgY = (containerSize.height - displayHeight) / 2 + pan.y;
 
-    // Position du coin supérieur-gauche de l'image affichée
-    // L'image est centrée dans le container avec un pan
-    const imgLeft = (containerSize.width - displayWidth) / 2 + pan.x;
-    const imgTop = (containerSize.height - displayHeight) / 2 + pan.y;
-
-    // DEBUG: Log une seule fois les infos de calcul
-    console.log("[DEBUG renderArucoMarkers v1.0.12]", {
+    // DEBUG: Log les infos de calcul
+    console.log("[DEBUG renderArucoMarkers v1.0.14]", {
       naturalWidth,
       naturalHeight,
-      scaleX,
-      scaleY,
       displayWidth,
       displayHeight,
-      imgLeft,
-      imgTop,
+      imgX,
+      imgY,
       containerSize,
       pan,
+      zoom,
+      stretchX: photo.stretchX,
+      stretchY: photo.stretchY,
       firstMarkerCenter: detectedMarkers[0]?.center,
     });
 
     // Fonction helper: convertit coordonnées pixel image → coordonnées écran
-    // Même logique simple que ArucoCalibrationModal qui fonctionne
+    // Utilise la MÊME logique que getMeasurePointScreenPos
+    // Les coordonnées des marqueurs sont en pixels de l'image originale (0 à naturalWidth/Height)
     const pixelToScreenPos = (pixelX: number, pixelY: number): { x: number; y: number } => {
-      // Ratio de la position dans l'image (0 à 1)
-      const ratioX = pixelX / naturalWidth;
-      const ratioY = pixelY / naturalHeight;
+      // Convertir pixel → pourcentage de l'image
+      const xPercent = (pixelX / naturalWidth) * 100;
+      const yPercent = (pixelY / naturalHeight) * 100;
 
-      // Position écran = coin de l'image + ratio * dimensions affichées
+      // Puis pourcentage → position écran (même calcul que getMeasurePointScreenPos)
       return {
-        x: imgLeft + ratioX * displayWidth,
-        y: imgTop + ratioY * displayHeight,
+        x: imgX + (xPercent / 100) * displayWidth,
+        y: imgY + (yPercent / 100) * displayHeight,
       };
     };
 
