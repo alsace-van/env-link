@@ -785,7 +785,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const imageCenterY = containerSize.height / 2 + pan.y;
 
     // DEBUG: Log les infos de calcul
-    console.log("[DEBUG renderArucoMarkers v1.0.15]", {
+    console.log("[DEBUG renderArucoMarkers v1.0.19]", {
       naturalWidth,
       naturalHeight,
       scaleX,
