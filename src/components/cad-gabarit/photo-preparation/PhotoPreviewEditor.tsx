@@ -1,10 +1,15 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.0.0
+// VERSION: 1.0.1
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.0.1 (2025-01-24) : Fix zoom minuscule + affichage marqueurs ArUco
+//   - Correction fitToView qui causait un zoom aberrant après détection ArUco
+//   - Ajout garde minimum de 5% pour le zoom
+//   - Ajout affichage visuel des marqueurs ArUco détectés (contour vert + ID)
+//   - Utilisation de refs stables pour éviter les re-renders
 // - v1.0.0 (2025-01-23) : Création initiale
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
@@ -128,6 +133,12 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   // ArUco - Utilise le détecteur JS existant qui fonctionne
   const { isLoaded: isArucoLoaded, detectMarkers } = useOpenCVAruco({ markerSizeCm: 5 });
   const [arucoProcessed, setArucoProcessed] = useState(false);
+  // v1.0.1: Stocker les marqueurs détectés pour les afficher
+  const [detectedMarkers, setDetectedMarkers] = useState<Array<{
+    id: number;
+    corners: { x: number; y: number }[];
+    center: { x: number; y: number };
+  }>>([]);
 
   // État pour tracker si on a déjà fait le fit initial
   const [initialFitDone, setInitialFitDone] = useState(false);
@@ -168,49 +179,85 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     return () => resizeObserver.disconnect();
   }, []);
 
-  // Fit to view - dépendances minimales pour éviter les re-renders
+  // v1.0.1: Référence stable pour l'image (évite les re-renders)
+  const imageRef = useRef<HTMLImageElement | null>(null);
+  useEffect(() => {
+    imageRef.current = photo.image;
+  }, [photo.image]);
+
+  // Fit to view - v1.0.1: Corrigé pour éviter les zooms aberrants
   const fitToView = useCallback(() => {
     const container = containerRef.current;
-    if (!photo.image || !container) return;
-    
+    const image = imageRef.current;
+    if (!image || !container) return;
+
     // Utiliser les dimensions directement depuis le DOM
     const rect = container.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
-    
+    // v1.0.1: Vérifier que le container a des dimensions valides
+    if (rect.width < 100 || rect.height < 100) {
+      console.log("[DEBUG] fitToView SKIP - container too small:", rect.width, rect.height);
+      return;
+    }
+
     const padding = 40;
     const availableWidth = rect.width - padding * 2;
     const availableHeight = rect.height - padding * 2;
-    
+
     // Dimensions naturelles de l'image
-    const naturalWidth = photo.image.naturalWidth || photo.image.width;
-    const naturalHeight = photo.image.naturalHeight || photo.image.height;
-    
+    const naturalWidth = image.naturalWidth || image.width;
+    const naturalHeight = image.naturalHeight || image.height;
+
+    if (naturalWidth === 0 || naturalHeight === 0) {
+      console.log("[DEBUG] fitToView SKIP - image dimensions zero");
+      return;
+    }
+
     // Calculer le zoom pour que l'image tienne dans le container
-    // NOTE: On utilise stretchX/Y au moment de l'appel, pas comme dépendance
-    const scaleX = availableWidth / (naturalWidth * photo.stretchX);
-    const scaleY = availableHeight / (naturalHeight * photo.stretchY);
-    const newZoom = Math.min(scaleX, scaleY);
-    
-    console.log("[DEBUG] fitToView APPLYING zoom:", newZoom);
+    // v1.0.1: Utiliser les valeurs actuelles de stretch depuis la ref
+    const currentStretchX = photo.stretchX;
+    const currentStretchY = photo.stretchY;
+
+    const scaleX = availableWidth / (naturalWidth * currentStretchX);
+    const scaleY = availableHeight / (naturalHeight * currentStretchY);
+    let newZoom = Math.min(scaleX, scaleY);
+
+    // v1.0.1: Garde minimum de 5% pour éviter les zooms aberrants
+    const MIN_ZOOM = 0.05;
+    const MAX_ZOOM = 2;
+    if (newZoom < MIN_ZOOM) {
+      console.log("[DEBUG] fitToView CLAMPED from", newZoom, "to", MIN_ZOOM);
+      newZoom = MIN_ZOOM;
+    }
+    if (newZoom > MAX_ZOOM) {
+      newZoom = MAX_ZOOM;
+    }
+
+    console.log("[DEBUG] fitToView APPLYING zoom:", newZoom, "container:", rect.width, "x", rect.height);
     setZoom(newZoom);
     setPan({ x: 0, y: 0 });
-  }, [photo.image, photo.stretchX, photo.stretchY]); // Dépendances réduites - pas tout l'objet photo
+  }, [photo.stretchX, photo.stretchY]); // v1.0.1: Pas de dépendance sur photo.image (utilise imageRef)
 
   // Fit to view UNIQUEMENT au chargement initial de la photo
-  // On utilise photo.id comme déclencheur principal, pas fitToView
+  // v1.0.1: Utilise une ref pour tracker si le fit a été fait pour cette photo
+  const fitDoneForPhotoRef = useRef<string | null>(null);
+
   useEffect(() => {
-    console.log("[DEBUG] fitToView useEffect - check:", { hasImage: !!photo.image, initialFitDone, photoId: photo.id });
-    if (!photo.image || initialFitDone) return;
-    
+    // Ne faire le fit que si c'est une nouvelle photo
+    if (fitDoneForPhotoRef.current === photo.id) return;
+    if (!photo.image) return;
+
+    console.log("[DEBUG] fitToView useEffect - NEW photo:", photo.id);
+
     // Délai pour s'assurer que le layout CSS est calculé
     const timer = setTimeout(() => {
-      console.log("[DEBUG] fitToView useEffect - CALLING fitToView");
+      console.log("[DEBUG] fitToView useEffect - CALLING fitToView for:", photo.id);
       fitToView();
+      fitDoneForPhotoRef.current = photo.id;
       setInitialFitDone(true);
-    }, 200);
-    
+    }, 250); // v1.0.1: Délai légèrement augmenté
+
     return () => clearTimeout(timer);
-  }, [photo.id, photo.image, initialFitDone]); // Retirer fitToView des dépendances - on l'appelle manuellement
+  }, [photo.id, photo.image, fitToView]);
 
   // Reset initialFitDone quand on change de photo
   useEffect(() => {
@@ -225,36 +272,45 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   
   const runArucoDetection = useCallback(async () => {
     if (!photo.image) return;
-    
+
     setArucoProcessed(true);
-    
+
     // useOpenCVAruco.detectMarkers retourne directement ArucoMarker[]
     const markers = await detectMarkers(photo.image);
-    
+
     if (markers.length > 0) {
+      // v1.0.1: Stocker les marqueurs pour affichage visuel
+      setDetectedMarkers(markers.map(m => ({
+        id: m.id,
+        corners: m.corners,
+        center: m.center,
+      })));
+
       // Calculer le scale X et Y séparément à partir des tailles des marqueurs
       let totalScaleX = 0;
       let totalScaleY = 0;
-      
+
       for (const marker of markers) {
         // marker.size.width et marker.size.height sont en pixels
         totalScaleX += marker.size.width / ARUCO_MARKER_SIZE_MM;
         totalScaleY += marker.size.height / ARUCO_MARKER_SIZE_MM;
       }
-      
+
       const scaleX = totalScaleX / markers.length;
       const scaleY = totalScaleY / markers.length;
-      
+
       onUpdatePhoto({
         arucoDetected: true,
         arucoScaleX: scaleX,
         arucoScaleY: scaleY,
       });
-      
+
       toast.success(
         `${markers.length} marqueur(s) ArUco détecté(s)`,
         { duration: 2000 }
       );
+    } else {
+      setDetectedMarkers([]);
     }
   }, [photo.image, detectMarkers, onUpdatePhoto]);
 
@@ -271,9 +327,10 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     }
   }, [photo.id, photo.image, isArucoLoaded, arucoProcessed, runArucoDetection]);
 
-  // Reset arucoProcessed quand on change de photo
+  // Reset arucoProcessed et marqueurs quand on change de photo
   useEffect(() => {
     setArucoProcessed(false);
+    setDetectedMarkers([]); // v1.0.1: Reset les marqueurs aussi
   }, [photo.id]);
 
   // Gestion du zoom - bloquer wheel sur tout le composant racine
@@ -636,8 +693,102 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     );
   };
 
+  // v1.0.1: Render des marqueurs ArUco détectés
+  const renderArucoMarkers = () => {
+    if (detectedMarkers.length === 0 || !photo.image) return null;
+
+    const elements: React.ReactNode[] = [];
+
+    // Dimensions naturelles de l'image
+    const naturalWidth = photo.image.naturalWidth || photo.image.width;
+    const naturalHeight = photo.image.naturalHeight || photo.image.height;
+
+    // Dimensions affichées (avec zoom et stretch)
+    const displayWidth = naturalWidth * zoom * photo.stretchX;
+    const displayHeight = naturalHeight * zoom * photo.stretchY;
+
+    // Position de l'image dans le container
+    const imgX = (containerSize.width - displayWidth) / 2 + pan.x;
+    const imgY = (containerSize.height - displayHeight) / 2 + pan.y;
+
+    for (const marker of detectedMarkers) {
+      // Convertir les coins du marqueur (en pixels de l'image originale) en coordonnées écran
+      const screenCorners = marker.corners.map(corner => ({
+        x: imgX + (corner.x / naturalWidth) * displayWidth,
+        y: imgY + (corner.y / naturalHeight) * displayHeight,
+      }));
+
+      // Dessiner le contour du marqueur
+      const pathData = screenCorners
+        .map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x} ${c.y}`)
+        .join(' ') + ' Z';
+
+      elements.push(
+        <path
+          key={`marker-outline-${marker.id}`}
+          d={pathData}
+          fill="rgba(0, 255, 0, 0.15)"
+          stroke="#00FF00"
+          strokeWidth={2}
+        />
+      );
+
+      // Dessiner les coins
+      for (let i = 0; i < screenCorners.length; i++) {
+        const corner = screenCorners[i];
+        elements.push(
+          <circle
+            key={`marker-${marker.id}-corner-${i}`}
+            cx={corner.x}
+            cy={corner.y}
+            r={4}
+            fill={i === 0 ? "#FF0000" : "#00FF00"} // Premier coin en rouge
+            stroke="white"
+            strokeWidth={1}
+          />
+        );
+      }
+
+      // Afficher l'ID du marqueur au centre
+      const centerX = imgX + (marker.center.x / naturalWidth) * displayWidth;
+      const centerY = imgY + (marker.center.y / naturalHeight) * displayHeight;
+
+      elements.push(
+        <g key={`marker-label-${marker.id}`}>
+          <rect
+            x={centerX - 16}
+            y={centerY - 10}
+            width={32}
+            height={20}
+            rx={4}
+            fill="rgba(0, 0, 0, 0.7)"
+          />
+          <text
+            x={centerX}
+            y={centerY + 5}
+            textAnchor="middle"
+            fill="#00FF00"
+            fontSize={12}
+            fontWeight="bold"
+          >
+            {marker.id}
+          </text>
+        </g>
+      );
+    }
+
+    return (
+      <svg
+        className="absolute inset-0 pointer-events-none"
+        style={{ overflow: "visible" }}
+      >
+        {elements}
+      </svg>
+    );
+  };
+
   return (
-    <div 
+    <div
       ref={rootRef}
       className="flex flex-col h-full bg-gray-900 min-h-0"
       style={{ touchAction: "none", overflow: "hidden" }}
@@ -727,8 +878,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
           onMouseLeave={handleMouseUp}
         >
           {renderImage()}
+          {renderArucoMarkers()} {/* v1.0.1: Affichage des marqueurs ArUco */}
           {renderMeasurements()}
-          
+
           {/* Indicateur de mode */}
           {activeTool === "measure" && (
             <div className="absolute top-4 left-4 bg-blue-500 text-white px-3 py-1.5 rounded-full text-sm font-medium flex items-center gap-2">
