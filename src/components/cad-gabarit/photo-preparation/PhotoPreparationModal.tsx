@@ -1,10 +1,11 @@
 // ============================================
 // COMPOSANT: PhotoPreparationModal
 // Modale principale orchestrant la préparation des photos
-// VERSION: 1.0.1
+// VERSION: 1.0.2
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.0.2 (2025-01-24) : Fix wheel zoom - ref attaché au DialogContent et suppression onWheel blocking
 // - v1.0.1 (2025-01-24) : Fix handleUpdatePhoto pour propager les données ArUco
 // - v1.0.0 (2025-01-23) : Création initiale
 //
@@ -80,63 +81,25 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
     setArucoResult, // v1.0.1: Pour mise à jour ArUco depuis PhotoPreviewEditor
   } = usePhotoPreparation();
 
-  // Bloquer le wheel globalement quand la modale est ouverte en mode preview
-  // pour éviter les conflits avec le canvas principal de CAD
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const blockGlobalWheel = (e: WheelEvent) => {
-      // Bloquer le wheel au niveau du document pour empêcher
-      // tout comportement indésirable du canvas CAD derrière
-      const modal = modalRef.current;
-      const target = e.target as Node;
-      const isInsideModal = modal && modal.contains(target);
-
-      console.log("[MODAL WHEEL] Event captured:", {
-        target: (target as Element)?.tagName,
-        targetClass: (target as Element)?.className,
-        modalRef: !!modal,
-        isInsideModal,
-      });
-
-      if (isInsideModal) {
-        // L'événement est dans la modale, ne pas bloquer ici
-        // (le composant enfant gère le zoom)
-        console.log("[MODAL WHEEL] Inside modal, letting through");
-        return;
-      }
-      // Bloquer les événements wheel en dehors de la modale
-      console.log("[MODAL WHEEL] Outside modal, blocking");
-      e.preventDefault();
-      e.stopPropagation();
-    };
-
-    // Note: on n'ajoute plus le listener keydown ici car PhotoPreviewEditor
-    // a déjà son propre handler qui fonctionne mieux
-
-    document.addEventListener("wheel", blockGlobalWheel, { passive: false, capture: true });
-
-    return () => {
-      document.removeEventListener("wheel", blockGlobalWheel, { capture: true });
-    };
-  }, [isOpen]);
+  // v1.0.2: Plus de blocage global wheel - le canvas gère lui-même ses events
+  // L'ancien listener document capture bloquait les events avant qu'ils arrivent au canvas
 
   // Commencer la préparation (passer à la preview)
   const handleStartPreparation = useCallback(() => {
     const validPhotos = state.photos.filter(
       (p) => p.image && !p.isDuplicate
     );
-
+    
     if (validPhotos.length === 0) {
       toast.error("Aucune photo valide à préparer");
       return;
     }
-
+    
     // Trouver le premier index valide
     const firstValidIndex = state.photos.findIndex(
       (p) => p.image && !p.isDuplicate
     );
-
+    
     goToPhoto(firstValidIndex);
     setStep("preview");
   }, [state.photos, goToPhoto, setStep]);
@@ -149,12 +112,12 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
   // Valider et passer à la suivante (ou au résumé si c'est la dernière)
   const handleValidatePhoto = useCallback(() => {
     validatePhoto();
-
+    
     // Vérifier s'il reste des photos à traiter
     const remainingPhotos = state.photos.filter(
       (p, i) => i > state.currentPhotoIndex && p.image && !p.isDuplicate && p.status === "pending"
     );
-
+    
     if (remainingPhotos.length === 0) {
       // Toutes les photos ont été traitées
       setStep("summary");
@@ -184,14 +147,14 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
   // Finaliser l'import
   const handleFinalImport = useCallback(async () => {
     const validatedPhotos = getValidatedPhotos();
-
+    
     if (validatedPhotos.length === 0) {
       toast.error("Aucune photo validée à importer");
       return;
     }
-
+    
     toast.loading("Préparation des photos...", { id: "export" });
-
+    
     try {
       const preparedPhotos = await prepareForExport();
       toast.success(`${preparedPhotos.length} photo(s) prête(s) à importer`, { id: "export" });
@@ -234,7 +197,7 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
             </div>
           );
         }
-
+        
         return (
           <PhotoPreviewEditor
             photo={currentPhoto}
@@ -311,7 +274,7 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
             </div>
           </DialogHeader>
         )}
-
+        
         {/* Contenu principal - DOIT avoir h-full pour propager la hauteur */}
         <div className="flex-1 overflow-hidden min-h-0 h-full">
           {renderContent()}
@@ -360,7 +323,7 @@ const SummaryView: React.FC<SummaryViewProps> = ({
             .map((photo, index) => {
               const dims = getDimensionsMm(photo);
               const originalIndex = photos.findIndex((p) => p.id === photo.id);
-
+              
               return (
                 <div
                   key={photo.id}
@@ -369,8 +332,8 @@ const SummaryView: React.FC<SummaryViewProps> = ({
                     ${photo.status === "validated"
                       ? "bg-green-50 border-green-200"
                       : photo.status === "skipped"
-                        ? "bg-gray-50 border-gray-200"
-                        : "bg-yellow-50 border-yellow-200"
+                      ? "bg-gray-50 border-gray-200"
+                      : "bg-yellow-50 border-yellow-200"
                     }
                   `}
                 >
