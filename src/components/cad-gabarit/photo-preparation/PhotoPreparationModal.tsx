@@ -160,6 +160,8 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
           markers: [], // Les marqueurs sont déjà traités dans PhotoPreviewEditor
           scaleX: updates.arucoScaleX,
           scaleY: updates.arucoScaleY,
+          confidence: 1, // Les marqueurs ont été détectés avec succès
+          error: null,
         });
       }
     },

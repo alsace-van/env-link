@@ -840,7 +840,7 @@ export function useCADAutoBackup(
               user_id: "local",
               session_id: sessionId.current,
               template_id: localBackup.template_id,
-              sketch_data: localBackup.sketch_data,
+              sketch_data: localBackup.sketch_data as unknown as Record<string, unknown>,
               background_images: localBackup.background_images,
               marker_links: localBackup.marker_links,
               geometry_count: localBackup.geometry_count,
@@ -893,7 +893,7 @@ export function useCADAutoBackup(
         }
 
         // Mettre à jour le hash
-        const restoredSketch = backup.sketch_data as SerializedSketch;
+        const restoredSketch = backup.sketch_data as unknown as SerializedSketch;
         const newHash = `${restoredSketch.geometries ? Object.keys(restoredSketch.geometries).length : 0}:restored`;
         lastSavedHashRef.current = newHash;
 
@@ -1050,7 +1050,7 @@ export function useCADAutoBackup(
             user_id: "local",
             session_id: sessionId.current,
             template_id: localBackup.template_id,
-            sketch_data: localBackup.sketch_data,
+            sketch_data: localBackup.sketch_data as unknown as Record<string, unknown>,
             background_images: localBackup.background_images,
             marker_links: localBackup.marker_links,
             geometry_count: localBackup.geometry_count,

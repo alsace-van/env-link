@@ -448,7 +448,7 @@ export const MeasurePanel: React.FC<MeasurePanelProps> = ({
                           <span className={`font-bold ${m.isLive ? "text-orange-800" : "text-green-800"}`}>{m.name}</span>
                           {/* v1.2: Icône si lié à une image */}
                           {m.imageId && (
-                            <Image className="h-2.5 w-2.5 text-blue-500" title="Mesure liée à une image" />
+                            <Image className="h-2.5 w-2.5 text-blue-500" />
                           )}
                           <Pencil className="h-2.5 w-2.5 text-gray-400" />
                         </div>

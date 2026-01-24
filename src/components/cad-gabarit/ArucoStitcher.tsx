@@ -1060,7 +1060,7 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
         
         let markers: ArucoMarker[] = [];
         try {
-          markers = await detectMarkers(img.image, tolerance);
+          markers = await detectMarkers(img.image, { tolerance });
           addDebugLog(`Image ${img.name}: ${markers.length} markers`);
         } catch (e) {
           console.warn('Erreur détection:', e);
@@ -1315,15 +1315,19 @@ export function ArucoStitcher({ isOpen, onClose, onStitched, markerSizeMm = 100,
           // Redétecter les markers sur l'image transformée
           const markers = await detectMarkers(transformedImage, { tolerance });
           
+          // Recalculer les échelles à partir des nouveaux markers
+          const markerSizeMmValue = parseFloat(markerSize) || 100;
+          const recalculatedScales = calculatePhotoScale(markers, markerSizeMmValue);
+          
           // Mettre à jour la photo avec les transformations appliquées
           photosToUse[i] = {
             ...photo,
             transformedImage,
             transformedUrl,
             markers,
-            pixelsPerMm: markers.length > 0 ? markers[0].pixelsPerMm || photo.pixelsPerMm : photo.pixelsPerMm,
-            pixelsPerMmX: markers.length > 0 ? markers[0].pixelsPerMmX || photo.pixelsPerMmX : photo.pixelsPerMmX,
-            pixelsPerMmY: markers.length > 0 ? markers[0].pixelsPerMmY || photo.pixelsPerMmY : photo.pixelsPerMmY,
+            pixelsPerMm: recalculatedScales.pixelsPerMm || photo.pixelsPerMm,
+            pixelsPerMmX: recalculatedScales.pixelsPerMmX || photo.pixelsPerMmX,
+            pixelsPerMmY: recalculatedScales.pixelsPerMmY || photo.pixelsPerMmY,
             edit: { rotation: 0, crop: null, needsRedetect: false }
           };
         }

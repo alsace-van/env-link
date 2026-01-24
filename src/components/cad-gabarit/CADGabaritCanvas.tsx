@@ -5874,12 +5874,12 @@ export function CADGabaritCanvas({
         const tempCtx = tempCanvas.getContext("2d");
         if (!tempCtx) throw new Error("Impossible de créer le contexte canvas");
 
-        tempCanvas.width = image.element.naturalWidth;
-        tempCanvas.height = image.element.naturalHeight;
-        tempCtx.drawImage(image.element, 0, 0);
+        tempCanvas.width = image.image.naturalWidth;
+        tempCanvas.height = image.image.naturalHeight;
+        tempCtx.drawImage(image.image, 0, 0);
 
         // Détecter les markers ArUco
-        const markers = await detectMarkers(tempCanvas, 0); // Tolérance 0 = strict
+        const markers = await detectMarkers(tempCanvas, { tolerance: 0 }); // Tolérance 0 = strict
 
         if (markers.length === 0) {
           toast.error("Aucun marker ArUco détecté", { id: "straighten" });
@@ -5965,8 +5965,8 @@ export function CADGabaritCanvas({
 
   // v7.45: Assembler toutes les images visibles en une seule
   const handleStitchImages = useCallback(() => {
-    // Filtrer les images visibles ET qui ont un element chargé
-    const visibleImages = backgroundImages.filter((img) => img.visible !== false && img.element);
+    // Filtrer les images visibles ET qui ont un image chargé
+    const visibleImages = backgroundImages.filter((img) => img.visible !== false && img.image);
 
     if (visibleImages.length < 2) {
       toast.error("Il faut au moins 2 images visibles et chargées");
@@ -5983,10 +5983,10 @@ export function CADGabaritCanvas({
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
       for (const img of visibleImages) {
-        if (!img.element) continue; // Double vérification
+        if (!img.image) continue; // Double vérification
         
-        const imgWidth = img.element.naturalWidth;
-        const imgHeight = img.element.naturalHeight;
+        const imgWidth = img.image.naturalWidth;
+        const imgHeight = img.image.naturalHeight;
         
         if (!imgWidth || !imgHeight) continue; // Image pas encore chargée
         
@@ -6039,8 +6039,8 @@ export function CADGabaritCanvas({
 
       // Dessiner chaque image
       for (const img of sortedImages) {
-        const imgWidth = img.element.naturalWidth;
-        const imgHeight = img.element.naturalHeight;
+        const imgWidth = img.image.naturalWidth;
+        const imgHeight = img.image.naturalHeight;
         
         // Taille dans l'espace canvas (mm)
         const scaledWidthMm = imgWidth * img.scale;
@@ -6068,7 +6068,7 @@ export function CADGabaritCanvas({
 
         // Dessiner l'image
         outputCtx.drawImage(
-          img.element,
+          img.image,
           relX,
           relY,
           drawWidth,
@@ -6088,8 +6088,9 @@ export function CADGabaritCanvas({
         // outputPixelsPerMm pixels = 1mm, donc scale = 1 / outputPixelsPerMm
         const newBackgroundImage: BackgroundImage = {
           id: newImageId,
-          url: newImageUrl,
-          element: newImg,
+          name: `Stitched-${new Date().toISOString().slice(11, 19)}`,
+          src: newImageUrl,
+          image: newImg,
           x: minX,
           y: minY,
           scale: 1 / outputPixelsPerMm,
@@ -16332,7 +16333,7 @@ export function CADGabaritCanvas({
         }
       } else if (geo.type === "spline") {
         // v7.53: Export des splines (courbes Catmull-Rom converties en Bézier)
-        const spline = geo as Spline;
+        const spline = geo as SplineType;
         const points: Point[] = [];
         for (const pointId of spline.points) {
           const pt = sketch.points.get(pointId);
@@ -16677,7 +16678,7 @@ export function CADGabaritCanvas({
           }
         } else if (geo.type === "spline") {
           // v7.53: Export des splines dans le PDF A4
-          const spline = geo as Spline;
+          const spline = geo as SplineType;
           const points: Point[] = [];
           for (const pointId of spline.points) {
             const pt = sketch.points.get(pointId);
@@ -20620,7 +20621,7 @@ export function CADGabaritCanvas({
                 order: backgroundImages.length + i,
                 rotation: stitchedImg.rotation || 0,
                 layerId: sketch.activeLayerId,
-                markers: stitchedImg.markers || [],
+                markers: [], // ArucoMarkers ne sont pas compatibles avec ImageMarker
               };
               addImageWithLayer(bgImage);
               addedCount++;
@@ -25649,7 +25650,7 @@ function exportToSVG(sketch: Sketch): string {
         maxY = Math.max(maxY, center.y + arc.radius);
       }
     } else if (geo.type === "spline") {
-      const spline = geo as Spline;
+      const spline = geo as SplineType;
       for (const pointId of spline.points) {
         const pt = sketch.points.get(pointId);
         if (pt) {
@@ -25761,7 +25762,7 @@ function exportToSVG(sketch: Sketch): string {
       }
     } else if (geo.type === "spline") {
       // Pour Fusion 360, convertir les splines en polylignes (approximation)
-      const spline = geo as Spline;
+      const spline = geo as SplineType;
       const points: Point[] = [];
       for (const pointId of spline.points) {
         const pt = sketch.points.get(pointId);
