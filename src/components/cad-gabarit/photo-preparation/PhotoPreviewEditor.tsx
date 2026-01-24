@@ -1,16 +1,16 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.0.16
+// VERSION: 1.0.19
 // ============================================
 //
 // Changelog (3 dernières versions) :
-// - v1.0.16 (2025-01-24) : FIX - Retour au fitToView automatique
-//   - L'image est adaptée au container au chargement (pas 100% forcé)
-//   - Les marqueurs et l'image utilisent le même zoom calculé
-// - v1.0.15 (2025-01-24) : FIX CRITIQUE - Synchronisation COMPLÈTE image/marqueurs
-//   - Formule: screenPos = containerCenter + pan + (pixel - naturalSize/2) * scale
-// - v1.0.14 (2025-01-24) : Tentative partielle (marqueurs seulement)
+// - v1.0.19 (2025-01-24) : FIX - Timer d'init plus robuste
+//   - Le timer n'est pas annulé si le containerSize change légèrement
+//   - Évite les annulations répétées du timer par ResizeObserver
+//   - fitToView n'est appelé qu'une seule fois par photo
+// - v1.0.17 (2025-01-24) : fitToViewRef stable pour éviter re-triggers
+// - v1.0.16 (2025-01-24) : Retour au fitToView automatique
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -256,46 +256,60 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     fitToViewRef.current();
   }, []);
 
-  // v1.0.17: Initialisation UNIQUE au chargement de la photo
-  // Évite les re-triggers causés par les changements de référence fitToView
+  // v1.0.19: Initialisation UNIQUE au chargement de la photo
+  // Évite les re-triggers causés par les changements de containerSize du ResizeObserver
   const fitDoneForPhotoRef = useRef<string | null>(null);
   const initTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const initStartedForPhotoRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Annuler tout timer précédent
-    if (initTimerRef.current) {
-      clearTimeout(initTimerRef.current);
-      initTimerRef.current = null;
-    }
-
-    // Ne faire l'init que si c'est une nouvelle photo
+    // Si on a déjà fait le fit pour cette photo, ne rien faire
     if (fitDoneForPhotoRef.current === photo.id) return;
     if (!photo.image) return;
+
     // Attendre que le container ait des dimensions valides
     if (containerSize.width < 200 || containerSize.height < 200) {
       console.log("[DEBUG] init useEffect - waiting for container size:", containerSize);
       return;
     }
 
-    console.log("[DEBUG] init useEffect - NEW photo:", photo.id, "calling fitToView");
+    // v1.0.19: Si on a déjà démarré l'init pour cette photo, ne pas réinitialiser le timer
+    // Cela évite que les petits changements de containerSize (ResizeObserver) annulent le timer
+    if (initStartedForPhotoRef.current === photo.id && initTimerRef.current) {
+      console.log("[DEBUG] init useEffect - timer already running for photo:", photo.id);
+      return;
+    }
+
+    console.log("[DEBUG] init useEffect - NEW photo:", photo.id, "scheduling fitToView");
+    initStartedForPhotoRef.current = photo.id;
 
     // Petit délai pour stabilisation finale
     initTimerRef.current = setTimeout(() => {
       // Vérifier à nouveau avant d'appliquer (évite race conditions)
       if (fitDoneForPhotoRef.current === photo.id) return;
-      
+
+      console.log("[DEBUG] init timer EXECUTING fitToView for photo:", photo.id);
       fitToViewRef.current();
       fitDoneForPhotoRef.current = photo.id;
       setInitialFitDone(true);
     }, 100);
 
     return () => {
+      // v1.0.19: Ne cleanup le timer que si on change vraiment de photo
+      // (pas si c'est juste containerSize qui change)
+    };
+  }, [photo.id, photo.image, containerSize.width, containerSize.height]);
+
+  // v1.0.19: Cleanup du timer quand on change de photo
+  useEffect(() => {
+    return () => {
       if (initTimerRef.current) {
         clearTimeout(initTimerRef.current);
         initTimerRef.current = null;
       }
+      initStartedForPhotoRef.current = null;
     };
-  }, [photo.id, photo.image, containerSize.width, containerSize.height]);
+  }, [photo.id]);
 
   // Reset initialFitDone quand on change de photo
   useEffect(() => {
