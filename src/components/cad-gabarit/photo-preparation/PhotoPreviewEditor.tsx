@@ -1,17 +1,16 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.0.2
+// VERSION: 1.0.4
 // ============================================
 //
 // Changelog (3 dernières versions) :
-// - v1.0.2 (2025-01-24) : Fix fitToView utilise maintenant containerSize du ResizeObserver
-//   - Attente que containerSize soit valide (>200px) avant de calculer le zoom
-//   - Suppression du MIN_ZOOM artificiel (15-20% est normal pour grandes images)
-// - v1.0.1 (2025-01-24) : Fix zoom minuscule + affichage marqueurs ArUco
-//   - Ajout affichage visuel des marqueurs ArUco détectés (contour vert + ID)
-//   - Utilisation de refs stables pour éviter les re-renders
-// - v1.0.0 (2025-01-23) : Création initiale
+// - v1.0.4 (2025-01-24) : Fix marqueurs ArUco mal positionnés
+//   - Zoom initial à 0.25 au lieu de 1 pour éviter le flash
+//   - Reset zoom à 0.25 quand on change de photo
+//   - Marqueurs non affichés tant que fitToView n'est pas fait
+// - v1.0.3 (2025-01-24) : Zoom minimum 25% pour images lisibles
+// - v1.0.2 (2025-01-24) : Fix fitToView utilise containerSize du ResizeObserver
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -120,7 +119,8 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
   // État local
-  const [zoom, setZoom] = useState(1);
+  // v1.0.4: Initialiser zoom à 0.25 (minimum) pour éviter le flash à 100% avant fitToView
+  const [zoom, setZoom] = useState(0.25);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
@@ -226,9 +226,14 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const scaleY = availableHeight / (naturalHeight * currentStretchY);
     let newZoom = Math.min(scaleX, scaleY);
 
-    // v1.0.2: Pas de minimum artificiel - laisser le zoom calculé même s'il est petit
-    // Car une image de 3000x4000px dans un container de 700x500 doit être à ~15-20%
+    // v1.0.3: Zoom minimum de 25% pour que l'image soit toujours visible
+    // Les grandes images (3000x4000px) seraient sinon à ~15% ce qui est trop petit
+    const MIN_ZOOM = 0.25;
     const MAX_ZOOM = 2;
+    if (newZoom < MIN_ZOOM) {
+      console.log("[DEBUG] fitToView CLAMPED from", (newZoom * 100).toFixed(1) + "% to", (MIN_ZOOM * 100) + "%");
+      newZoom = MIN_ZOOM;
+    }
     if (newZoom > MAX_ZOOM) {
       newZoom = MAX_ZOOM;
     }
@@ -272,6 +277,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     console.log("[DEBUG] Reset useEffect - photo.id changed:", photo.id);
     setInitialFitDone(false);
     setPan({ x: 0, y: 0 });
+    setZoom(0.25); // v1.0.4: Reset zoom au minimum pour éviter flash
   }, [photo.id]);
 
   // Détection ArUco - DOIT être défini AVANT le useEffect qui l'utilise
@@ -702,8 +708,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   };
 
   // v1.0.1: Render des marqueurs ArUco détectés
+  // v1.0.4: Ne pas afficher avant que le fitToView initial soit fait
   const renderArucoMarkers = () => {
-    if (detectedMarkers.length === 0 || !photo.image) return null;
+    if (detectedMarkers.length === 0 || !photo.image || !initialFitDone) return null;
 
     const elements: React.ReactNode[] = [];
 
