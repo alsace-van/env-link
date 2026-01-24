@@ -1,16 +1,16 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.0.19
+// VERSION: 1.0.18
 // ============================================
 //
 // Changelog (3 dernières versions) :
-// - v1.0.19 (2025-01-24) : FIX - Timer d'init plus robuste
-//   - Le timer n'est pas annulé si le containerSize change légèrement
-//   - Évite les annulations répétées du timer par ResizeObserver
-//   - fitToView n'est appelé qu'une seule fois par photo
-// - v1.0.17 (2025-01-24) : fitToViewRef stable pour éviter re-triggers
-// - v1.0.16 (2025-01-24) : Retour au fitToView automatique
+// - v1.0.18 (2025-01-24) : REFONTE CANVAS - Comme ImageCalibrationModal
+//   - Utilisation d'un Canvas 2D pour dessiner l'image ET les marqueurs
+//   - Plus de problèmes de synchronisation CSS/positions
+//   - Système viewport simple: scale + offsetX/Y
+// - v1.0.17 (2025-01-24) : Tentative SVG intégré (échec)
+// - v1.0.16 (2025-01-24) : FIX - Retour au fitToView automatique
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -24,7 +24,6 @@ import { Separator } from "@/components/ui/separator";
 import {
   RotateCcw,
   RotateCw,
-  Scissors,
   Ruler,
   ChevronLeft,
   ChevronRight,
@@ -48,8 +47,6 @@ import {
   STRETCH_INCREMENT_NORMAL,
   STRETCH_INCREMENT_FINE,
   STRETCH_INCREMENT_FAST,
-  generateId,
-  getNextMeasureColor,
 } from "./types";
 import { useOpenCVAruco } from "../useOpenCVAruco";
 
@@ -80,7 +77,7 @@ interface PhotoPreviewEditorProps {
   onValidate: () => void;
   onSkip: () => void;
   onBackToGrid: () => void;
-  onClose: () => void; // Fermer la modale
+  onClose: () => void;
 
   // Calculs
   getDimensionsMm: (photo: PhotoToProcess) => { widthMm: number; heightMm: number };
@@ -118,45 +115,35 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // État local
-  // v1.0.9: Zoom par défaut à 100% (1.0) - l'image s'affiche à sa taille réelle
-  const [zoom, setZoom] = useState(1.0);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+  // v1.0.18: Viewport simplifié comme ImageCalibrationModal
+  // scale = facteur de zoom, offsetX/Y = position du coin supérieur gauche de l'image
+  const [viewport, setViewport] = useState({
+    scale: 1,
+    offsetX: 0,
+    offsetY: 0,
+  });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [panStartOffset, setPanStartOffset] = useState({ x: 0, y: 0 });
+  const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
 
   // Inputs pour dimensions
   const { widthMm, heightMm } = getDimensionsMm(photo);
   const [targetWidthMm, setTargetWidthMm] = useState(widthMm.toFixed(1));
   const [targetHeightMm, setTargetHeightMm] = useState(heightMm.toFixed(1));
 
-  // ArUco - Utilise le détecteur JS existant qui fonctionne
+  // ArUco
   const { isLoaded: isArucoLoaded, detectMarkers } = useOpenCVAruco({ markerSizeCm: 5 });
   const [arucoProcessed, setArucoProcessed] = useState(false);
-  // v1.0.1: Stocker les marqueurs détectés pour les afficher
-  const [detectedMarkers, setDetectedMarkers] = useState<
-    Array<{
-      id: number;
-      corners: { x: number; y: number }[];
-      center: { x: number; y: number };
-    }>
-  >([]);
-
-  // État pour tracker si on a déjà fait le fit initial
+  const [detectedMarkers, setDetectedMarkers] = useState<Array<{
+    id: number;
+    corners: { x: number; y: number }[];
+    center: { x: number; y: number };
+  }>>([]);
   const [initialFitDone, setInitialFitDone] = useState(false);
 
-  // DEBUG: Log tous les changements d'état importants
-  useEffect(() => {
-    console.log("[DEBUG] Component state:", {
-      photoId: photo.id,
-      hasImage: !!photo.image,
-      initialFitDone,
-      zoom,
-      arucoProcessed,
-      arucoDetected: photo.arucoDetected,
-    });
-  });
+  // Taille des marqueurs ArUco en mm
+  const ARUCO_MARKER_SIZE_MM = 50;
 
   // Mettre à jour les inputs quand les dimensions changent
   useEffect(() => {
@@ -164,17 +151,18 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     setTargetHeightMm(heightMm.toFixed(1));
   }, [widthMm, heightMm]);
 
-  // Observer la taille du container
+  // Observer la taille du container pour le canvas
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        setContainerSize({
-          width: entry.contentRect.width,
-          height: entry.contentRect.height,
-        });
+        const width = Math.floor(entry.contentRect.width);
+        const height = Math.floor(entry.contentRect.height);
+        if (width > 0 && height > 0) {
+          setCanvasSize({ width, height });
+        }
       }
     });
 
@@ -182,198 +170,79 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     return () => resizeObserver.disconnect();
   }, []);
 
-  // v1.0.1: Référence stable pour l'image (évite les re-renders)
-  const imageRef = useRef<HTMLImageElement | null>(null);
-  useEffect(() => {
-    imageRef.current = photo.image;
-  }, [photo.image]);
-
-  // Fit to view - v1.0.17: Ref stable pour éviter les re-renders
-  const fitToViewRef = useRef<() => void>(() => {});
-  
-  fitToViewRef.current = () => {
-    const image = imageRef.current;
-    if (!image) {
-      console.log("[DEBUG] fitToView SKIP - no image");
-      return;
-    }
-
-    // v1.0.2: Utiliser containerSize de l'état (mis à jour par ResizeObserver)
-    const containerWidth = containerSize.width;
-    const containerHeight = containerSize.height;
-
-    // Vérifier que le container a des dimensions valides
-    if (containerWidth < 200 || containerHeight < 200) {
-      console.log("[DEBUG] fitToView SKIP - container too small:", containerWidth, containerHeight);
-      return;
-    }
+  // v1.0.18: Fit to view - calculer scale et offset pour centrer l'image
+  const fitToView = useCallback(() => {
+    if (!photo.image) return;
 
     const padding = 40;
-    const availableWidth = containerWidth - padding * 2;
-    const availableHeight = containerHeight - padding * 2;
+    const imgWidth = photo.image.naturalWidth || photo.image.width;
+    const imgHeight = photo.image.naturalHeight || photo.image.height;
 
-    // Dimensions naturelles de l'image
-    const naturalWidth = image.naturalWidth || image.width;
-    const naturalHeight = image.naturalHeight || image.height;
+    if (imgWidth === 0 || imgHeight === 0) return;
+    if (canvasSize.width < 200 || canvasSize.height < 200) return;
 
-    if (naturalWidth === 0 || naturalHeight === 0) {
-      console.log("[DEBUG] fitToView SKIP - image dimensions zero");
-      return;
-    }
+    // Prendre en compte le stretch
+    const effectiveWidth = imgWidth * photo.stretchX;
+    const effectiveHeight = imgHeight * photo.stretchY;
 
-    // Calculer le zoom pour que l'image tienne dans le container
-    const currentStretchX = photo.stretchX;
-    const currentStretchY = photo.stretchY;
+    const scaleX = (canvasSize.width - padding * 2) / effectiveWidth;
+    const scaleY = (canvasSize.height - padding * 2) / effectiveHeight;
+    const scale = Math.min(scaleX, scaleY, 2); // Max zoom 200%
 
-    const scaleX = availableWidth / (naturalWidth * currentStretchX);
-    const scaleY = availableHeight / (naturalHeight * currentStretchY);
-    let newZoom = Math.min(scaleX, scaleY);
+    // Centrer l'image
+    const offsetX = (canvasSize.width - effectiveWidth * scale) / 2;
+    const offsetY = (canvasSize.height - effectiveHeight * scale) / 2;
 
-    // v1.0.7: Pas de zoom minimum artificiel
-    const MAX_ZOOM = 2;
-    if (newZoom > MAX_ZOOM) {
-      newZoom = MAX_ZOOM;
-    }
+    setViewport({ scale, offsetX, offsetY });
+    setInitialFitDone(true);
+  }, [photo.image, photo.stretchX, photo.stretchY, canvasSize]);
 
-    console.log(
-      "[DEBUG] fitToView APPLYING zoom:",
-      (newZoom * 100).toFixed(1) + "%",
-      "container:",
-      containerWidth,
-      "x",
-      containerHeight,
-      "image:",
-      naturalWidth,
-      "x",
-      naturalHeight,
-    );
-    setZoom(newZoom);
-    setPan({ x: 0, y: 0 });
-  };
-
-  // Wrapper stable pour le callback
-  const fitToView = useCallback(() => {
-    fitToViewRef.current();
-  }, []);
-
-  // v1.0.19: Initialisation UNIQUE au chargement de la photo
-  // Évite les re-triggers causés par les changements de containerSize du ResizeObserver
+  // Fit initial au chargement
   const fitDoneForPhotoRef = useRef<string | null>(null);
-  const initTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const initStartedForPhotoRef = useRef<string | null>(null);
-
   useEffect(() => {
-    // Si on a déjà fait le fit pour cette photo, ne rien faire
     if (fitDoneForPhotoRef.current === photo.id) return;
     if (!photo.image) return;
+    if (canvasSize.width < 200 || canvasSize.height < 200) return;
 
-    // Attendre que le container ait des dimensions valides
-    if (containerSize.width < 200 || containerSize.height < 200) {
-      console.log("[DEBUG] init useEffect - waiting for container size:", containerSize);
-      return;
-    }
-
-    // v1.0.19: Si on a déjà démarré l'init pour cette photo, ne pas réinitialiser le timer
-    // Cela évite que les petits changements de containerSize (ResizeObserver) annulent le timer
-    if (initStartedForPhotoRef.current === photo.id && initTimerRef.current) {
-      console.log("[DEBUG] init useEffect - timer already running for photo:", photo.id);
-      return;
-    }
-
-    console.log("[DEBUG] init useEffect - NEW photo:", photo.id, "scheduling fitToView");
-    initStartedForPhotoRef.current = photo.id;
-
-    // Petit délai pour stabilisation finale
-    initTimerRef.current = setTimeout(() => {
-      // Vérifier à nouveau avant d'appliquer (évite race conditions)
-      if (fitDoneForPhotoRef.current === photo.id) return;
-
-      console.log("[DEBUG] init timer EXECUTING fitToView for photo:", photo.id);
-      fitToViewRef.current();
+    const timer = setTimeout(() => {
+      fitToView();
       fitDoneForPhotoRef.current = photo.id;
-      setInitialFitDone(true);
     }, 100);
 
-    return () => {
-      // v1.0.19: Ne cleanup le timer que si on change vraiment de photo
-      // (pas si c'est juste containerSize qui change)
-    };
-  }, [photo.id, photo.image, containerSize.width, containerSize.height]);
+    return () => clearTimeout(timer);
+  }, [photo.id, photo.image, canvasSize, fitToView]);
 
-  // v1.0.19: Cleanup du timer quand on change de photo
+  // Reset quand on change de photo
   useEffect(() => {
-    return () => {
-      if (initTimerRef.current) {
-        clearTimeout(initTimerRef.current);
-        initTimerRef.current = null;
-      }
-      initStartedForPhotoRef.current = null;
-    };
-  }, [photo.id]);
-
-  // Reset initialFitDone quand on change de photo
-  useEffect(() => {
-    console.log("[DEBUG] Reset useEffect - photo.id changed:", photo.id);
     setInitialFitDone(false);
-    setPan({ x: 0, y: 0 });
-    // v1.0.16: Ne pas forcer le zoom ici, laisser fitToView le calculer
+    setArucoProcessed(false);
+    setDetectedMarkers([]);
   }, [photo.id]);
 
-  // Détection ArUco - DOIT être défini AVANT le useEffect qui l'utilise
-  // Taille des marqueurs ArUco en mm
-  const ARUCO_MARKER_SIZE_MM = 50;
-
+  // Détection ArUco
   const runArucoDetection = useCallback(async () => {
     if (!photo.image) return;
-
     setArucoProcessed(true);
 
-    // DEBUG: Log image dimensions avant détection
-    console.log("[DEBUG runArucoDetection] Image passed to detectMarkers:", {
-      "photo.image.naturalWidth": photo.image.naturalWidth,
-      "photo.image.naturalHeight": photo.image.naturalHeight,
-      "photo.image.width": photo.image.width,
-      "photo.image.height": photo.image.height,
-    });
-
-    // useOpenCVAruco.detectMarkers retourne directement ArucoMarker[]
     const markers = await detectMarkers(photo.image);
-
     if (markers.length > 0) {
-      // DEBUG: Log first marker coordinates
-      console.log("[DEBUG runArucoDetection] First marker detected:", {
-        id: markers[0].id,
-        center: markers[0].center,
-        "corner[0]": markers[0].corners[0],
-        size: markers[0].size,
-      });
+      setDetectedMarkers(markers.map(m => ({
+        id: m.id,
+        corners: m.corners,
+        center: m.center,
+      })));
 
-      // v1.0.1: Stocker les marqueurs pour affichage visuel
-      setDetectedMarkers(
-        markers.map((m) => ({
-          id: m.id,
-          corners: m.corners,
-          center: m.center,
-        })),
-      );
-
-      // Calculer le scale X et Y séparément à partir des tailles des marqueurs
       let totalScaleX = 0;
       let totalScaleY = 0;
-
       for (const marker of markers) {
-        // marker.size.width et marker.size.height sont en pixels
         totalScaleX += marker.size.width / ARUCO_MARKER_SIZE_MM;
         totalScaleY += marker.size.height / ARUCO_MARKER_SIZE_MM;
       }
 
-      const scaleX = totalScaleX / markers.length;
-      const scaleY = totalScaleY / markers.length;
-
       onUpdatePhoto({
         arucoDetected: true,
-        arucoScaleX: scaleX,
-        arucoScaleY: scaleY,
+        arucoScaleX: totalScaleX / markers.length,
+        arucoScaleY: totalScaleY / markers.length,
       });
 
       toast.success(`${markers.length} marqueur(s) ArUco détecté(s)`, { duration: 2000 });
@@ -382,116 +251,252 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     }
   }, [photo.image, detectMarkers, onUpdatePhoto]);
 
-  // Détection ArUco automatique
   useEffect(() => {
     if (photo.image && isArucoLoaded && !arucoProcessed && !photo.arucoDetected && !photo.arucoScaleX) {
       runArucoDetection();
     }
   }, [photo.id, photo.image, isArucoLoaded, arucoProcessed, runArucoDetection]);
 
-  // Reset arucoProcessed et marqueurs quand on change de photo
-  useEffect(() => {
-    setArucoProcessed(false);
-    setDetectedMarkers([]); // v1.0.1: Reset les marqueurs aussi
-  }, [photo.id]);
+  // v1.0.18: Convertir coordonnées image -> écran (comme ImageCalibrationModal)
+  const imageToScreen = useCallback((imgX: number, imgY: number) => {
+    const { scale, offsetX, offsetY } = viewport;
+    // Prendre en compte le stretch
+    const effectiveScale = scale;
+    return {
+      x: imgX * photo.stretchX * effectiveScale + offsetX,
+      y: imgY * photo.stretchY * effectiveScale + offsetY,
+    };
+  }, [viewport, photo.stretchX, photo.stretchY]);
 
-  // Gestion du zoom - bloquer wheel sur tout le composant racine
+  // Convertir coordonnées écran -> image
+  const screenToImage = useCallback((screenX: number, screenY: number) => {
+    const { scale, offsetX, offsetY } = viewport;
+    return {
+      x: (screenX - offsetX) / (scale * photo.stretchX),
+      y: (screenY - offsetY) / (scale * photo.stretchY),
+    };
+  }, [viewport, photo.stretchX, photo.stretchY]);
+
+  // v1.0.18: Dessiner le canvas - IMAGE + MARQUEURS + MESURES
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !photo.image) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const { scale, offsetX, offsetY } = viewport;
+
+    // Clear
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Background
+    ctx.fillStyle = "#1a1a2e";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw image avec stretch
+    ctx.save();
+    ctx.translate(offsetX, offsetY);
+    ctx.scale(scale * photo.stretchX, scale * photo.stretchY);
+    ctx.drawImage(photo.image, 0, 0);
+    ctx.restore();
+
+    // Draw ArUco markers
+    if (detectedMarkers.length > 0 && initialFitDone) {
+      for (const marker of detectedMarkers) {
+        // Convertir les coins en coordonnées écran
+        const screenCorners = marker.corners.map(c => imageToScreen(c.x, c.y));
+
+        // Dessiner le polygone
+        ctx.beginPath();
+        ctx.moveTo(screenCorners[0].x, screenCorners[0].y);
+        for (let i = 1; i < screenCorners.length; i++) {
+          ctx.lineTo(screenCorners[i].x, screenCorners[i].y);
+        }
+        ctx.closePath();
+        ctx.fillStyle = "rgba(0, 255, 0, 0.15)";
+        ctx.fill();
+        ctx.strokeStyle = "#00FF00";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Dessiner les coins
+        for (let i = 0; i < screenCorners.length; i++) {
+          const corner = screenCorners[i];
+          ctx.beginPath();
+          ctx.arc(corner.x, corner.y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = i === 0 ? "#FF0000" : "#00FF00";
+          ctx.fill();
+          ctx.strokeStyle = "white";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+
+        // Label ID
+        const centerScreen = imageToScreen(marker.center.x, marker.center.y);
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.fillRect(centerScreen.x - 16, centerScreen.y - 10, 32, 20);
+        ctx.fillStyle = "#00FF00";
+        ctx.font = "bold 12px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(marker.id), centerScreen.x, centerScreen.y);
+      }
+    }
+
+    // Draw measurements
+    for (const measurement of measurements) {
+      if (!measurement.visible) continue;
+
+      const imgWidth = photo.image.naturalWidth || photo.image.width;
+      const imgHeight = photo.image.naturalHeight || photo.image.height;
+
+      const p1Img = {
+        x: (measurement.point1.xPercent / 100) * imgWidth,
+        y: (measurement.point1.yPercent / 100) * imgHeight,
+      };
+      const p2Img = {
+        x: (measurement.point2.xPercent / 100) * imgWidth,
+        y: (measurement.point2.yPercent / 100) * imgHeight,
+      };
+
+      const p1Screen = imageToScreen(p1Img.x, p1Img.y);
+      const p2Screen = imageToScreen(p2Img.x, p2Img.y);
+
+      // Ligne
+      ctx.beginPath();
+      ctx.moveTo(p1Screen.x, p1Screen.y);
+      ctx.lineTo(p2Screen.x, p2Screen.y);
+      ctx.strokeStyle = measurement.color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Points
+      for (const p of [p1Screen, p2Screen]) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+        ctx.fillStyle = measurement.color;
+        ctx.fill();
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      // Label distance
+      const midX = (p1Screen.x + p2Screen.x) / 2;
+      const midY = (p1Screen.y + p2Screen.y) / 2;
+      const distance = calculateDistanceMm(measurement.point1, measurement.point2);
+      const label = `${distance.toFixed(1)} mm`;
+
+      ctx.fillStyle = measurement.color;
+      ctx.fillRect(midX - 40, midY - 12, 80, 24);
+      ctx.fillStyle = "white";
+      ctx.font = "bold 14px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, midX, midY);
+    }
+
+    // Point en attente
+    if (pendingMeasurePoint && photo.image) {
+      const imgWidth = photo.image.naturalWidth || photo.image.width;
+      const imgHeight = photo.image.naturalHeight || photo.image.height;
+      const imgPos = {
+        x: (pendingMeasurePoint.xPercent / 100) * imgWidth,
+        y: (pendingMeasurePoint.yPercent / 100) * imgHeight,
+      };
+      const screenPos = imageToScreen(imgPos.x, imgPos.y);
+
+      ctx.beginPath();
+      ctx.arc(screenPos.x, screenPos.y, 8, 0, Math.PI * 2);
+      ctx.fillStyle = "#E74C3C";
+      ctx.fill();
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+  }, [photo.image, photo.stretchX, photo.stretchY, viewport, detectedMarkers, initialFitDone, measurements, pendingMeasurePoint, imageToScreen, calculateDistanceMm]);
+
+  // Gestion du zoom avec la molette
   useEffect(() => {
     const root = rootRef.current;
-    const container = containerRef.current;
-    if (!root) return;
+    const canvas = canvasRef.current;
+    if (!root || !canvas) return;
 
     const handleWheel = (e: WheelEvent) => {
-      // TOUJOURS bloquer le wheel
       e.preventDefault();
       e.stopPropagation();
-      e.stopImmediatePropagation();
 
-      // Si la souris est sur le canvas (container), faire le zoom
-      if (container && container.contains(e.target as Node)) {
+      if (canvas.contains(e.target as Node) || e.target === canvas) {
         const delta = e.deltaY > 0 ? 0.9 : 1.1;
-        setZoom((z) => Math.max(0.1, Math.min(5, z * delta)));
+        setViewport(v => {
+          const newScale = Math.max(0.05, Math.min(5, v.scale * delta));
+          // Zoom centré sur la position de la souris
+          const rect = canvas.getBoundingClientRect();
+          const mouseX = e.clientX - rect.left;
+          const mouseY = e.clientY - rect.top;
+
+          const scaleChange = newScale / v.scale;
+          const newOffsetX = mouseX - (mouseX - v.offsetX) * scaleChange;
+          const newOffsetY = mouseY - (mouseY - v.offsetY) * scaleChange;
+
+          return { scale: newScale, offsetX: newOffsetX, offsetY: newOffsetY };
+        });
       }
 
       return false;
     };
 
-    // Attacher sur le root avec capture pour intercepter en premier
     root.addEventListener("wheel", handleWheel, { passive: false, capture: true });
-
-    return () => {
-      root.removeEventListener("wheel", handleWheel, { capture: true });
-    };
+    return () => root.removeEventListener("wheel", handleWheel, { capture: true });
   }, []);
 
-  // v1.0.15: Gestion du pan et clic mesure
-  // DOIT correspondre EXACTEMENT au CSS de l'image (centre au milieu + pan, puis scale)
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      if (activeTool === "measure") {
-        // Mode mesure : ajouter un point
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (!rect || !photo.image) return;
+  // Gestion du pan et clic mesure
+  const handleCanvasMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-        // Dimensions naturelles
-        const naturalWidth = photo.image.naturalWidth || photo.image.width;
-        const naturalHeight = photo.image.naturalHeight || photo.image.height;
+    const rect = canvas.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
 
-        // Scale total
-        const scaleX = zoom * photo.stretchX;
-        const scaleY = zoom * photo.stretchY;
+    if (activeTool === "measure" && photo.image) {
+      // Convertir en coordonnées image
+      const imgPos = screenToImage(clickX, clickY);
+      const imgWidth = photo.image.naturalWidth || photo.image.width;
+      const imgHeight = photo.image.naturalHeight || photo.image.height;
 
-        // Le CENTRE de l'image est à: containerCenter + pan
-        const imageCenterX = containerSize.width / 2 + pan.x;
-        const imageCenterY = containerSize.height / 2 + pan.y;
-
-        // Position du clic dans le container
-        const clickX = e.clientX - rect.left;
-        const clickY = e.clientY - rect.top;
-
-        // Convertir position écran → position relative au centre de l'image (après scale)
-        const scaledRelativeX = clickX - imageCenterX;
-        const scaledRelativeY = clickY - imageCenterY;
-
-        // Convertir position relative scalée → position relative naturelle
-        const relativeX = scaledRelativeX / scaleX;
-        const relativeY = scaledRelativeY / scaleY;
-
-        // Convertir position relative → pixels dans l'image naturelle
-        const pixelX = relativeX + naturalWidth / 2;
-        const pixelY = relativeY + naturalHeight / 2;
-
-        // Vérifier si le clic est sur l'image
-        if (pixelX >= 0 && pixelX <= naturalWidth && pixelY >= 0 && pixelY <= naturalHeight) {
-          const xPercent = (pixelX / naturalWidth) * 100;
-          const yPercent = (pixelY / naturalHeight) * 100;
-          onAddMeasurePoint(xPercent, yPercent);
-        }
-        return;
+      // Vérifier si le clic est sur l'image
+      if (imgPos.x >= 0 && imgPos.x <= imgWidth && imgPos.y >= 0 && imgPos.y <= imgHeight) {
+        const xPercent = (imgPos.x / imgWidth) * 100;
+        const yPercent = (imgPos.y / imgHeight) * 100;
+        onAddMeasurePoint(xPercent, yPercent);
       }
+      return;
+    }
 
-      // Mode normal : pan
-      if (e.button === 0) {
-        setIsPanning(true);
-        setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-      }
-    },
-    [activeTool, zoom, pan, containerSize, photo, onAddMeasurePoint],
-  );
+    // Mode pan
+    if (e.button === 0) {
+      setIsPanning(true);
+      setPanStart({ x: e.clientX, y: e.clientY });
+      setPanStartOffset({ x: viewport.offsetX, y: viewport.offsetY });
+    }
+  }, [activeTool, photo.image, viewport, screenToImage, onAddMeasurePoint]);
 
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent) => {
-      if (isPanning) {
-        setPan({
-          x: e.clientX - panStart.x,
-          y: e.clientY - panStart.y,
-        });
-      }
-    },
-    [isPanning, panStart],
-  );
+  const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isPanning) {
+      const dx = e.clientX - panStart.x;
+      const dy = e.clientY - panStart.y;
+      setViewport(v => ({
+        ...v,
+        offsetX: panStartOffset.x + dx,
+        offsetY: panStartOffset.y + dy,
+      }));
+    }
+  }, [isPanning, panStart, panStartOffset]);
 
-  const handleMouseUp = useCallback(() => {
+  const handleCanvasMouseUp = useCallback(() => {
     setIsPanning(false);
   }, []);
 
@@ -569,321 +574,8 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [activeTool, onAdjustStretchX, onAdjustStretchY, onRotate, onSetActiveTool, onValidate]);
 
-  // v1.0.14: Calculer la position d'un point de mesure en pixels écran
-  // DOIT correspondre EXACTEMENT au CSS de l'image:
-  //   - Div: left:50%, top:50%, translate(-50%, -50%) translate(pan)
-  //   - Img: scale(zoom*stretch) avec transformOrigin:center
-  // Le CENTRE de l'image (après scaling) est au centre du container + pan
-  const getMeasurePointScreenPos = useCallback(
-    (point: MeasurePoint): { x: number; y: number } => {
-      if (!photo.image) return { x: 0, y: 0 };
-
-      // Dimensions naturelles de l'image
-      const naturalWidth = photo.image.naturalWidth || photo.image.width;
-      const naturalHeight = photo.image.naturalHeight || photo.image.height;
-
-      // Scale total appliqué par le CSS
-      const scaleX = zoom * photo.stretchX;
-      const scaleY = zoom * photo.stretchY;
-
-      // Le CENTRE de l'image est positionné à: containerCenter + pan
-      const imageCenterX = containerSize.width / 2 + pan.x;
-      const imageCenterY = containerSize.height / 2 + pan.y;
-
-      // Le point est à (xPercent%, yPercent%) de l'image
-      // En pixels naturels: (xPercent/100 * naturalWidth, yPercent/100 * naturalHeight)
-      // Position relative au centre de l'image naturelle:
-      const pixelX = (point.xPercent / 100) * naturalWidth;
-      const pixelY = (point.yPercent / 100) * naturalHeight;
-      const relativeX = pixelX - naturalWidth / 2;
-      const relativeY = pixelY - naturalHeight / 2;
-
-      // Après scale, la position relative devient:
-      const scaledRelativeX = relativeX * scaleX;
-      const scaledRelativeY = relativeY * scaleY;
-
-      // Position écran = centre de l'image + position relative scalée
-      return {
-        x: imageCenterX + scaledRelativeX,
-        y: imageCenterY + scaledRelativeY,
-      };
-    },
-    [photo, zoom, pan, containerSize],
-  );
-
-  // Render de l'image
-  const renderImage = () => {
-    if (!photo.image) {
-      return (
-        <div className="flex items-center justify-center h-full text-gray-400">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
-      );
-    }
-
-    // Calculer le scale total (zoom + stretch)
-    const totalScaleX = zoom * photo.stretchX;
-    const totalScaleY = zoom * photo.stretchY;
-
-    return (
-      <div
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: "50%",
-          transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px)`,
-          pointerEvents: "none",
-        }}
-      >
-        <img
-          src={photo.imageDataUrl || ""}
-          alt={photo.name}
-          style={{
-            // NE PAS définir width/height - laisser l'image à sa taille naturelle
-            // Appliquer zoom ET stretch via transform
-            transform: `scale(${totalScaleX}, ${totalScaleY}) rotate(${photo.rotation}deg)`,
-            transformOrigin: "center",
-          }}
-          draggable={false}
-        />
-      </div>
-    );
-  };
-
-  // Render des mesures
-  const renderMeasurements = () => {
-    const elements: React.ReactNode[] = [];
-
-    // Mesures existantes
-    for (const measurement of measurements) {
-      if (!measurement.visible) continue;
-
-      const p1Screen = getMeasurePointScreenPos(measurement.point1);
-      const p2Screen = getMeasurePointScreenPos(measurement.point2);
-      const distance = calculateDistanceMm(measurement.point1, measurement.point2);
-
-      // Ligne
-      elements.push(
-        <line
-          key={`line-${measurement.id}`}
-          x1={p1Screen.x}
-          y1={p1Screen.y}
-          x2={p2Screen.x}
-          y2={p2Screen.y}
-          stroke={measurement.color}
-          strokeWidth={2}
-        />,
-      );
-
-      // Points
-      elements.push(
-        <circle
-          key={`p1-${measurement.id}`}
-          cx={p1Screen.x}
-          cy={p1Screen.y}
-          r={6}
-          fill={measurement.color}
-          stroke="white"
-          strokeWidth={2}
-        />,
-      );
-      elements.push(
-        <circle
-          key={`p2-${measurement.id}`}
-          cx={p2Screen.x}
-          cy={p2Screen.y}
-          r={6}
-          fill={measurement.color}
-          stroke="white"
-          strokeWidth={2}
-        />,
-      );
-
-      // Label avec distance
-      const midX = (p1Screen.x + p2Screen.x) / 2;
-      const midY = (p1Screen.y + p2Screen.y) / 2;
-      elements.push(
-        <g key={`label-${measurement.id}`}>
-          <rect x={midX - 40} y={midY - 12} width={80} height={24} rx={4} fill={measurement.color} />
-          <text x={midX} y={midY + 5} textAnchor="middle" fill="white" fontSize={14} fontWeight="bold">
-            {distance.toFixed(1)} mm
-          </text>
-          {/* Bouton supprimer */}
-          <circle
-            cx={midX + 50}
-            cy={midY}
-            r={10}
-            fill="white"
-            stroke={measurement.color}
-            strokeWidth={2}
-            style={{ cursor: "pointer" }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemoveMeasurement(measurement.id);
-            }}
-          />
-          <text
-            x={midX + 50}
-            y={midY + 4}
-            textAnchor="middle"
-            fill={measurement.color}
-            fontSize={12}
-            fontWeight="bold"
-            style={{ cursor: "pointer", pointerEvents: "none" }}
-          >
-            ×
-          </text>
-        </g>,
-      );
-    }
-
-    // Point en attente
-    if (pendingMeasurePoint) {
-      const pos = getMeasurePointScreenPos(pendingMeasurePoint);
-      elements.push(
-        <circle
-          key="pending"
-          cx={pos.x}
-          cy={pos.y}
-          r={8}
-          fill="#E74C3C"
-          stroke="white"
-          strokeWidth={2}
-          className="animate-pulse"
-        />,
-      );
-    }
-
-    return (
-      <svg className="absolute inset-0 pointer-events-none" style={{ overflow: "visible" }}>
-        <g style={{ pointerEvents: "auto" }}>{elements}</g>
-      </svg>
-    );
-  };
-
-  // v1.0.15: Render des marqueurs ArUco - EXACTEMENT même logique que getMeasurePointScreenPos
-  // Le CSS de l'image utilise:
-  //   - Div: left:50%, top:50%, translate(-50%, -50%) translate(pan)
-  //   - Img: scale(zoom*stretch) avec transformOrigin:center
-  // Donc le CENTRE de l'image est à: containerCenter + pan
-  // Et un pixel à position (px, py) est à: center + (px - naturalWidth/2) * scaleX
-  const renderArucoMarkers = () => {
-    if (detectedMarkers.length === 0 || !photo.image || !initialFitDone) return null;
-
-    const elements: React.ReactNode[] = [];
-
-    // Dimensions naturelles de l'image
-    const naturalWidth = photo.image.naturalWidth || photo.image.width;
-    const naturalHeight = photo.image.naturalHeight || photo.image.height;
-
-    // Scale total appliqué par le CSS
-    const scaleX = zoom * photo.stretchX;
-    const scaleY = zoom * photo.stretchY;
-
-    // Le CENTRE de l'image est positionné à: containerCenter + pan
-    const imageCenterX = containerSize.width / 2 + pan.x;
-    const imageCenterY = containerSize.height / 2 + pan.y;
-
-    // DEBUG: Log les infos de calcul
-    console.log("[DEBUG renderArucoMarkers v1.0.19]", {
-      naturalWidth,
-      naturalHeight,
-      scaleX,
-      scaleY,
-      imageCenterX,
-      imageCenterY,
-      containerSize,
-      pan,
-      zoom,
-      stretchX: photo.stretchX,
-      stretchY: photo.stretchY,
-      firstMarkerCenter: detectedMarkers[0]?.center,
-    });
-
-    // Fonction helper: convertit coordonnées pixel image → coordonnées écran
-    // EXACTEMENT la même logique que getMeasurePointScreenPos
-    const pixelToScreenPos = (pixelX: number, pixelY: number): { x: number; y: number } => {
-      // Position relative au centre de l'image naturelle
-      const relativeX = pixelX - naturalWidth / 2;
-      const relativeY = pixelY - naturalHeight / 2;
-
-      // Après scale, la position relative devient:
-      const scaledRelativeX = relativeX * scaleX;
-      const scaledRelativeY = relativeY * scaleY;
-
-      // Position écran = centre de l'image + position relative scalée
-      return {
-        x: imageCenterX + scaledRelativeX,
-        y: imageCenterY + scaledRelativeY,
-      };
-    };
-
-    for (const marker of detectedMarkers) {
-      // Convertir chaque coin de pixel vers position écran
-      const screenCorners = marker.corners.map((corner) => pixelToScreenPos(corner.x, corner.y));
-
-      // Dessiner le contour du marqueur
-      const pathData = screenCorners.map((c, i) => `${i === 0 ? "M" : "L"} ${c.x} ${c.y}`).join(" ") + " Z";
-
-      elements.push(
-        <path
-          key={`marker-outline-${marker.id}`}
-          d={pathData}
-          fill="rgba(0, 255, 0, 0.15)"
-          stroke="#00FF00"
-          strokeWidth={2}
-        />,
-      );
-
-      // Dessiner les coins
-      for (let i = 0; i < screenCorners.length; i++) {
-        const corner = screenCorners[i];
-        elements.push(
-          <circle
-            key={`marker-${marker.id}-corner-${i}`}
-            cx={corner.x}
-            cy={corner.y}
-            r={4}
-            fill={i === 0 ? "#FF0000" : "#00FF00"} // Premier coin en rouge
-            stroke="white"
-            strokeWidth={1}
-          />,
-        );
-      }
-
-      // Afficher l'ID du marqueur au centre
-      const centerScreen = pixelToScreenPos(marker.center.x, marker.center.y);
-
-      elements.push(
-        <g key={`marker-label-${marker.id}`}>
-          <rect
-            x={centerScreen.x - 16}
-            y={centerScreen.y - 10}
-            width={32}
-            height={20}
-            rx={4}
-            fill="rgba(0, 0, 0, 0.7)"
-          />
-          <text
-            x={centerScreen.x}
-            y={centerScreen.y + 5}
-            textAnchor="middle"
-            fill="#00FF00"
-            fontSize={12}
-            fontWeight="bold"
-          >
-            {marker.id}
-          </text>
-        </g>,
-      );
-    }
-
-    return (
-      <svg className="absolute inset-0 pointer-events-none" style={{ overflow: "visible" }}>
-        {elements}
-      </svg>
-    );
-  };
+  // Zoom percentage pour l'affichage
+  const zoomPercent = Math.round(viewport.scale * 100);
 
   return (
     <div
@@ -894,7 +586,12 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between p-3 bg-gray-800 border-b border-gray-700">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={onBackToGrid} className="text-gray-300 hover:text-white">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onBackToGrid}
+            className="text-gray-300 hover:text-white"
+          >
             <ArrowLeft className="h-4 w-4 mr-1" />
             Grille
           </Button>
@@ -905,7 +602,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
             Photo {photoIndex + 1} / {totalPhotos}
           </span>
 
-          <span className="text-gray-400 text-sm truncate max-w-[200px]">{photo.name}</span>
+          <span className="text-gray-400 text-sm truncate max-w-[200px]">
+            {photo.name}
+          </span>
 
           {photo.arucoDetected && (
             <Badge variant="secondary" className="bg-green-600 text-white">
@@ -949,62 +648,73 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         </div>
       </div>
 
-      {/* Zone de preview - hauteur calculée pour remplir l'espace */}
+      {/* Zone de preview */}
       <div className="flex-1 relative" style={{ minHeight: 0 }}>
-        {/* Canvas principal - positionnement absolu pour contrôler la taille exacte */}
+        {/* Container du canvas */}
         <div
           ref={containerRef}
-          className={`absolute inset-0 ${
-            activeTool === "measure" ? "cursor-crosshair" : "cursor-grab"
-          } ${isPanning ? "cursor-grabbing" : ""}`}
-          style={{
-            touchAction: "none",
-            overflow: "hidden",
-            // Laisser de la place pour le panneau latéral
-            right: "288px", // w-72 = 18rem = 288px
-          }}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
+          className="absolute inset-0"
+          style={{ right: "288px" }}
         >
-          {renderImage()}
-          {renderArucoMarkers()} {/* v1.0.1: Affichage des marqueurs ArUco */}
-          {renderMeasurements()}
+          {!photo.image ? (
+            <div className="flex items-center justify-center h-full text-gray-400">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+          ) : (
+            <canvas
+              ref={canvasRef}
+              width={canvasSize.width}
+              height={canvasSize.height}
+              className={`${activeTool === "measure" ? "cursor-crosshair" : "cursor-grab"} ${isPanning ? "cursor-grabbing" : ""}`}
+              onMouseDown={handleCanvasMouseDown}
+              onMouseMove={handleCanvasMouseMove}
+              onMouseUp={handleCanvasMouseUp}
+              onMouseLeave={handleCanvasMouseUp}
+            />
+          )}
+
           {/* Indicateur de mode */}
           {activeTool === "measure" && (
             <div className="absolute top-4 left-4 bg-blue-500 text-white px-3 py-1.5 rounded-full text-sm font-medium flex items-center gap-2">
               <Ruler className="h-4 w-4" />
               Cliquez pour mesurer
-              {pendingMeasurePoint && " (2ème point)"}
+              {pendingMeasurePoint && " (2eme point)"}
             </div>
           )}
-          {/* Contrôles de zoom */}
+
+          {/* Controles de zoom */}
           <div className="absolute bottom-4 right-4 flex items-center gap-1 bg-black/50 rounded-lg p-1">
             <Button
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-white hover:bg-white/20"
-              onClick={() => setZoom((z) => Math.max(0.1, z * 0.8))}
+              onClick={() => setViewport(v => ({ ...v, scale: Math.max(0.05, v.scale * 0.8) }))}
             >
               <ZoomOut className="h-4 w-4" />
             </Button>
-            <span className="text-white text-xs w-12 text-center">{Math.round(zoom * 100)}%</span>
+            <span className="text-white text-xs w-12 text-center">
+              {zoomPercent}%
+            </span>
             <Button
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-white hover:bg-white/20"
-              onClick={() => setZoom((z) => Math.min(5, z * 1.2))}
+              onClick={() => setViewport(v => ({ ...v, scale: Math.min(5, v.scale * 1.2) }))}
             >
               <ZoomIn className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20" onClick={fitToView}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-white hover:bg-white/20"
+              onClick={fitToView}
+            >
               <Maximize className="h-4 w-4" />
             </Button>
           </div>
         </div>
 
-        {/* Panneau latéral - positionné en absolu à droite */}
+        {/* Panneau lateral */}
         <div
           className="absolute top-0 right-0 bottom-0 w-72 bg-gray-800 border-l border-gray-700 p-4 flex flex-col gap-4 overflow-y-auto"
           onWheel={(e) => e.stopPropagation()}
@@ -1019,7 +729,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                 onClick={() => onSetActiveTool("none")}
                 className="text-gray-300"
               >
-                Déplacer
+                Deplacer
               </Button>
               <Button
                 variant={activeTool === "measure" ? "secondary" : "ghost"}
@@ -1046,7 +756,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                 className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700"
               >
                 <RotateCcw className="h-4 w-4 mr-1" />
-                -90°
+                -90
               </Button>
               <Button
                 variant="outline"
@@ -1055,7 +765,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                 className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700"
               >
                 <RotateCw className="h-4 w-4 mr-1" />
-                +90°
+                +90
               </Button>
             </div>
           </div>
@@ -1064,10 +774,11 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
 
           {/* Dimensions */}
           <div>
-            <Label className="text-gray-400 text-xs mb-2 block">DIMENSIONS (mm)</Label>
+            <Label className="text-gray-400 text-xs mb-2 block">
+              DIMENSIONS (mm)
+            </Label>
 
             <div className="space-y-2">
-              {/* Largeur X */}
               <div className="flex items-center gap-2">
                 <Label className="text-gray-300 text-xs w-8">X:</Label>
                 <Input
@@ -1079,10 +790,11 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                   onWheel={(e) => e.currentTarget.blur()}
                   className="flex-1 h-8 bg-gray-700 border-gray-600 text-white text-sm"
                 />
-                <span className="text-gray-500 text-xs">(actuel: {widthMm.toFixed(1)})</span>
+                <span className="text-gray-500 text-xs">
+                  (actuel: {widthMm.toFixed(1)})
+                </span>
               </div>
 
-              {/* Hauteur Y */}
               <div className="flex items-center gap-2">
                 <Label className="text-gray-300 text-xs w-8">Y:</Label>
                 <Input
@@ -1094,22 +806,23 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                   onWheel={(e) => e.currentTarget.blur()}
                   className="flex-1 h-8 bg-gray-700 border-gray-600 text-white text-sm"
                 />
-                <span className="text-gray-500 text-xs">(actuel: {heightMm.toFixed(1)})</span>
+                <span className="text-gray-500 text-xs">
+                  (actuel: {heightMm.toFixed(1)})
+                </span>
               </div>
             </div>
 
-            {/* Delta */}
             {(photo.stretchX !== 1 || photo.stretchY !== 1) && (
               <div className="mt-2 p-2 bg-blue-900/30 rounded text-xs text-blue-300">
-                <p>Étirement X: ×{photo.stretchX.toFixed(4)}</p>
-                <p>Étirement Y: ×{photo.stretchY.toFixed(4)}</p>
+                <p>Etirement X: x{photo.stretchX.toFixed(4)}</p>
+                <p>Etirement Y: x{photo.stretchY.toFixed(4)}</p>
               </div>
             )}
 
             <p className="text-gray-500 text-[10px] mt-2">
-              Raccourcis: ←→ = X ±1mm, ↑↓ = Y ±1mm
+              Raccourcis: gauche/droite = X +/-1mm, haut/bas = Y +/-1mm
               <br />
-              SHIFT = ±0.1mm, CTRL = ±5mm
+              SHIFT = +/-0.1mm, CTRL = +/-5mm
             </p>
           </div>
 
@@ -1132,9 +845,15 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
               </div>
               <div className="space-y-1">
                 {measurements.map((m) => (
-                  <div key={m.id} className="flex items-center justify-between p-2 bg-gray-700 rounded text-sm">
+                  <div
+                    key={m.id}
+                    className="flex items-center justify-between p-2 bg-gray-700 rounded text-sm"
+                  >
                     <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: m.color }} />
+                      <div
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: m.color }}
+                      />
                       <span className="text-white font-medium">
                         {calculateDistanceMm(m.point1, m.point2).toFixed(1)} mm
                       </span>
@@ -1167,7 +886,10 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
               Passer cette photo
             </Button>
 
-            <Button className="w-full bg-green-600 hover:bg-green-700" onClick={onValidate}>
+            <Button
+              className="w-full bg-green-600 hover:bg-green-700"
+              onClick={onValidate}
+            >
               <Check className="h-4 w-4 mr-2" />
               Valider et continuer
             </Button>
