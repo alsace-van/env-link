@@ -496,7 +496,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
 
     root.addEventListener("wheel", handleWheel, { passive: false, capture: true });
     return () => root.removeEventListener("wheel", handleWheel, { capture: true });
-  }, []);
+  }, [photo.image]); // Re-attacher quand l'image change
 
   // v1.0.19: Trouver si un clic est proche d'une poignée de mesure
   const findHandleAtPosition = useCallback((clickX: number, clickY: number): { measurementId: string; pointIndex: 1 | 2 } | null => {
