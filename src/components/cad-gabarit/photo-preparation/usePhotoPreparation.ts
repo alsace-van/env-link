@@ -242,13 +242,16 @@ export interface UsePhotoPreparationReturn {
   // Calculs
   calculateDistanceMm: (p1: MeasurePoint, p2: MeasurePoint) => number;
   getDimensionsMm: (photo: PhotoToProcess) => { widthMm: number; heightMm: number };
-  
+
   // Export final
   getValidatedPhotos: () => PhotoToProcess[];
   prepareForExport: () => Promise<PreparedPhoto[]>;
-  
+
   // Raccourcis clavier
   handleKeyDown: (e: KeyboardEvent) => void;
+
+  // v1.0.1: ArUco
+  setArucoResult: (photoId: string, result: ArucoDetectionResult) => void;
 }
 
 export function usePhotoPreparation(): UsePhotoPreparationReturn {
@@ -466,7 +469,7 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
   // === ARUCO ===
 
   // v1.0.1: Ajout de setArucoResult pour permettre la mise à jour depuis PhotoPreviewEditor
-  const setArucoResult = useCallback((photoId: string, result: { markers: unknown[]; scaleX: number; scaleY: number }) => {
+  const setArucoResult = useCallback((photoId: string, result: ArucoDetectionResult) => {
     dispatch({
       type: "SET_ARUCO_RESULT",
       photoId,
