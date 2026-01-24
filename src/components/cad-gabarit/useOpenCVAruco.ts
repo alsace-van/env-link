@@ -1,14 +1,15 @@
 // ============================================
 // COMPONENT: useOpenCVAruco
 // Détection ArUco 100% JavaScript (sans OpenCV)
-// VERSION: 20
+// VERSION: 21
 // ============================================
+//
+// CHANGELOG v21 (24/01/2026):
+// - FIX: Utilise naturalWidth/Height en priorité pour HTMLImageElement
+//   - Évite les problèmes si image.width retourne une valeur différente
 //
 // CHANGELOG v20 (21/01/2026):
 // - FIX CRITIQUE: width et height calculés SÉPARÉMENT
-//   - width = moyenne(côté_haut + côté_bas) → horizontaux
-//   - height = moyenne(côté_gauche + côté_droite) → verticaux
-// - Corrige le décalage de 50-60mm lors de l'assemblage multi-photos
 //
 // CHANGELOG v19.1 (21/01/2026):
 // - Raffinement Harris corner detector (plus robuste)
@@ -153,7 +154,7 @@ export function useOpenCVAruco(
     const timer = setTimeout(() => {
       setIsLoaded(true);
       setIsLoading(false);
-      console.log("[ArUco v20] Pure JS detector ready - SEPARATE X/Y SCALE");
+      console.log("[ArUco v21] Pure JS detector ready - uses naturalWidth/Height");
     }, 100);
     return () => clearTimeout(timer);
   }, []);
@@ -167,10 +168,12 @@ export function useOpenCVAruco(
 
       const tolerance = options?.tolerance ?? 0; // v18.3: tolérance 0 par défaut (strict)
 
-      const w = image.width || (image as HTMLImageElement).naturalWidth;
-      const h = image.height || (image as HTMLImageElement).naturalHeight;
+      // v21: TOUJOURS utiliser naturalWidth/Height pour HTMLImageElement (taille réelle de l'image)
+      // image.width peut être différent si l'élément a des styles CSS appliqués
+      const w = (image as HTMLImageElement).naturalWidth || image.width;
+      const h = (image as HTMLImageElement).naturalHeight || image.height;
 
-      console.log(`[ArUco v20] Detecting in ${w}x${h} image (tolerance=${tolerance})`);
+      console.log(`[ArUco v21] Detecting in ${w}x${h} image (tolerance=${tolerance})`);
 
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -191,7 +194,7 @@ export function useOpenCVAruco(
 
       const markers = findMarkersInImage(gray, canvas.width, canvas.height, scale, tolerance);
 
-      console.log(`[ArUco v20] Found ${markers.length} markers`);
+      console.log(`[ArUco v21] Found ${markers.length} markers`);
       return markers;
     },
     [isLoaded]
@@ -627,7 +630,7 @@ function findMarkersInImage(
   const minArea = Math.pow(minDim * 0.018, 2);
   const maxArea = Math.pow(minDim * 0.38, 2);
 
-  console.log(`[ArUco v20] Area: ${minArea.toFixed(0)}-${maxArea.toFixed(0)}, conf>=${MIN_CONFIDENCE}, tolerance=${tolerance}`);
+  console.log(`[ArUco v21] Area: ${minArea.toFixed(0)}-${maxArea.toFixed(0)}, conf>=${MIN_CONFIDENCE}, tolerance=${tolerance}`);
 
   let rawDetections = 0;
   let rejectedLowConfidence = 0;
@@ -725,13 +728,13 @@ function findMarkersInImage(
           
           if (newConfidence > existingConfidence) {
             markersByID.set(result.id, newMarker);
-            console.log(`[ArUco v20] ↻ ID=${result.id} (${existingConfidence.toFixed(2)}→${newConfidence.toFixed(2)})`);
+            console.log(`[ArUco v21] ↻ ID=${result.id} (${existingConfidence.toFixed(2)}→${newConfidence.toFixed(2)})`);
           } else {
             duplicatesSkipped++;
           }
         } else {
           markersByID.set(result.id, newMarker);
-          console.log(`[ArUco v20] ✓ ID=${result.id} (conf=${result.confidence.toFixed(2)})`);
+          console.log(`[ArUco v21] ✓ ID=${result.id} (conf=${result.confidence.toFixed(2)})`);
         }
       }
     }
@@ -740,9 +743,9 @@ function findMarkersInImage(
   const markers = Array.from(markersByID.values());
   markers.sort((a, b) => a.id - b.id);
 
-  console.log(`[ArUco v20] === RÉSUMÉ ===`);
-  console.log(`[ArUco v20] Brut: ${rawDetections}, Rejetés: ${rejectedLowConfidence}, Doublons: ${duplicatesSkipped}`);
-  console.log(`[ArUco v20] Valides: ${markers.length} → IDs: [${markers.map(m => m.id).join(', ')}]`);
+  console.log(`[ArUco v21] === RÉSUMÉ ===`);
+  console.log(`[ArUco v21] Brut: ${rawDetections}, Rejetés: ${rejectedLowConfidence}, Doublons: ${duplicatesSkipped}`);
+  console.log(`[ArUco v21] Valides: ${markers.length} → IDs: [${markers.map(m => m.id).join(', ')}]`);
   
   return markers;
 }
