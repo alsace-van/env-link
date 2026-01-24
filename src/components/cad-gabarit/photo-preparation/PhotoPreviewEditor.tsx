@@ -188,8 +188,10 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     imageRef.current = photo.image;
   }, [photo.image]);
 
-  // Fit to view - v1.0.2: Corrigé pour utiliser containerSize du ResizeObserver
-  const fitToView = useCallback(() => {
+  // Fit to view - v1.0.17: Ref stable pour éviter les re-renders
+  const fitToViewRef = useRef<() => void>(() => {});
+  
+  fitToViewRef.current = () => {
     const image = imageRef.current;
     if (!image) {
       console.log("[DEBUG] fitToView SKIP - no image");
@@ -197,7 +199,6 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     }
 
     // v1.0.2: Utiliser containerSize de l'état (mis à jour par ResizeObserver)
-    // C'est plus fiable que getBoundingClientRect() qui peut retourner 0 au premier render
     const containerWidth = containerSize.width;
     const containerHeight = containerSize.height;
 
@@ -228,8 +229,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const scaleY = availableHeight / (naturalHeight * currentStretchY);
     let newZoom = Math.min(scaleX, scaleY);
 
-    // v1.0.7: Pas de zoom minimum artificiel - laisser le calcul naturel
-    // Sinon les marqueurs et l'image sont désynchronisés
+    // v1.0.7: Pas de zoom minimum artificiel
     const MAX_ZOOM = 2;
     if (newZoom > MAX_ZOOM) {
       newZoom = MAX_ZOOM;
@@ -249,13 +249,25 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     );
     setZoom(newZoom);
     setPan({ x: 0, y: 0 });
-  }, [photo.stretchX, photo.stretchY, containerSize]); // v1.0.2: Ajout containerSize
+  };
 
-  // v1.0.16: Initialisation au chargement de la photo - fitToView automatique
-  // Le fitToView calcule le zoom pour que l'image tienne dans le container
+  // Wrapper stable pour le callback
+  const fitToView = useCallback(() => {
+    fitToViewRef.current();
+  }, []);
+
+  // v1.0.17: Initialisation UNIQUE au chargement de la photo
+  // Évite les re-triggers causés par les changements de référence fitToView
   const fitDoneForPhotoRef = useRef<string | null>(null);
+  const initTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    // Annuler tout timer précédent
+    if (initTimerRef.current) {
+      clearTimeout(initTimerRef.current);
+      initTimerRef.current = null;
+    }
+
     // Ne faire l'init que si c'est une nouvelle photo
     if (fitDoneForPhotoRef.current === photo.id) return;
     if (!photo.image) return;
@@ -268,15 +280,22 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     console.log("[DEBUG] init useEffect - NEW photo:", photo.id, "calling fitToView");
 
     // Petit délai pour stabilisation finale
-    const timer = setTimeout(() => {
-      // v1.0.16: fitToView automatique pour adapter l'image au container
-      fitToView();
+    initTimerRef.current = setTimeout(() => {
+      // Vérifier à nouveau avant d'appliquer (évite race conditions)
+      if (fitDoneForPhotoRef.current === photo.id) return;
+      
+      fitToViewRef.current();
       fitDoneForPhotoRef.current = photo.id;
       setInitialFitDone(true);
     }, 100);
 
-    return () => clearTimeout(timer);
-  }, [photo.id, photo.image, containerSize, fitToView]);
+    return () => {
+      if (initTimerRef.current) {
+        clearTimeout(initTimerRef.current);
+        initTimerRef.current = null;
+      }
+    };
+  }, [photo.id, photo.image, containerSize.width, containerSize.height]);
 
   // Reset initialFitDone quand on change de photo
   useEffect(() => {
