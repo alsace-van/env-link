@@ -1,16 +1,13 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.1.0
+// VERSION: 1.1.1
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.1.1 (2025-01-25) : FIX centre de rotation stable (compensation bounding box)
 // - v1.1.0 (2025-01-25) : Rotation libre + grille de cadrage
-//   - Slider et input pour rotation précise (-180° à +180°)
-//   - Boutons d'incrément (±1°, ±0.1°, ±90°)
-//   - Grille de cadrage (tiers, grille, croix, diagonales)
 // - v1.0.19 (2025-01-24) : FIX - Guard contre onUpdateMeasurementPoint undefined
-// - v1.0.18 (2025-01-24) : REFONTE CANVAS - Comme ImageCalibrationModal
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -190,6 +187,49 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   useEffect(() => {
     setRotationInput(photo.rotation.toFixed(1));
   }, [photo.rotation]);
+
+  // v1.1.1: Compenser le changement de bounding box lors de la rotation
+  // pour garder le centre de l'image au même endroit
+  const prevRotationRef = useRef(photo.rotation);
+  useEffect(() => {
+    if (!photo.image) return;
+    if (prevRotationRef.current === photo.rotation) return;
+    
+    const imgWidth = photo.image.naturalWidth || photo.image.width;
+    const imgHeight = photo.image.naturalHeight || photo.image.height;
+    const stretchedWidth = imgWidth * photo.stretchX;
+    const stretchedHeight = imgHeight * photo.stretchY;
+    
+    // Calculer l'ancien et le nouveau bounding box
+    const oldRadians = (prevRotationRef.current * Math.PI) / 180;
+    const newRadians = (photo.rotation * Math.PI) / 180;
+    
+    const oldCos = Math.abs(Math.cos(oldRadians));
+    const oldSin = Math.abs(Math.sin(oldRadians));
+    const newCos = Math.abs(Math.cos(newRadians));
+    const newSin = Math.abs(Math.sin(newRadians));
+    
+    const oldBoundingWidth = stretchedWidth * oldCos + stretchedHeight * oldSin;
+    const oldBoundingHeight = stretchedWidth * oldSin + stretchedHeight * oldCos;
+    const newBoundingWidth = stretchedWidth * newCos + stretchedHeight * newSin;
+    const newBoundingHeight = stretchedWidth * newSin + stretchedHeight * newCos;
+    
+    // Ajuster le viewport pour garder le centre au même endroit
+    setViewport(v => {
+      // Centre actuel de l'image dans le canvas
+      const centerX = v.offsetX + (oldBoundingWidth * v.scale) / 2;
+      const centerY = v.offsetY + (oldBoundingHeight * v.scale) / 2;
+      
+      // Nouveaux offsets pour garder le même centre
+      return {
+        ...v,
+        offsetX: centerX - (newBoundingWidth * v.scale) / 2,
+        offsetY: centerY - (newBoundingHeight * v.scale) / 2,
+      };
+    });
+    
+    prevRotationRef.current = photo.rotation;
+  }, [photo.rotation, photo.image, photo.stretchX, photo.stretchY]);
 
   // Observer la taille du container pour le canvas
   useEffect(() => {
