@@ -1,13 +1,13 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.2.2a
+// VERSION: 1.2.2b
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.2.2b (2025-01-25) : Ajout bouton "Réinitialiser tout"
 // - v1.2.2a (2025-01-25) : FIX imageToScreen avec rotation+skewX (drag fonctionne à nouveau)
 // - v1.2.2 (2025-01-25) : FIX coordonnées avec skewX (screenToImage, imageToScreen, ArUco)
-// - v1.2.1 (2025-01-25) : Vraie correction perspective par cisaillement (skewX, dessin par bandes)
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -1672,6 +1672,23 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
 
           {/* Actions */}
           <div className="space-y-2">
+            {/* v1.2.2b: Bouton Réinitialiser tout */}
+            <Button
+              variant="outline"
+              className="w-full border-orange-600 text-orange-400 hover:bg-orange-900/30"
+              onClick={() => {
+                // Réinitialiser toutes les transformations
+                onSetRotation(0);
+                onSetStretch(1, 1);
+                onSetSkew(0, 0);
+                onClearMeasurements();
+                toast.success("Transformations réinitialisées");
+              }}
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Réinitialiser tout
+            </Button>
+
             <Button
               variant="outline"
               className="w-full border-gray-600 text-gray-300 hover:bg-gray-700"
