@@ -1,13 +1,13 @@
 // ============================================
 // HOOK: usePhotoPreparation
 // Gestion de l'état principal pour la préparation des photos
-// VERSION: 1.0.2
+// VERSION: 1.1.0
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.1.0 (2025-01-25) : Rotation libre (SET_ROTATION), ROTATE_PHOTO modifié pour +/-90°
 // - v1.0.2 (2025-01-25) : FIX scale dans prepareForExport - calcul basé sur canvas réel
 // - v1.0.1 (2025-01-24) : Ajout setArucoResult pour propagation depuis PhotoPreviewEditor
-// - v1.0.0 (2025-01-23) : Création initiale
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -99,17 +99,31 @@ function reducer(
       };
 
     case "ROTATE_PHOTO":
+      // v1.1.0: Rotation par pas de 90° (maintient la compatibilité)
       return {
         ...state,
         photos: state.photos.map((p) => {
           if (p.id !== action.photoId) return p;
-          const rotations: (0 | 90 | 180 | 270)[] = [0, 90, 180, 270];
-          const currentIndex = rotations.indexOf(p.rotation);
-          const newIndex =
-            action.direction === "cw"
-              ? (currentIndex + 1) % 4
-              : (currentIndex + 3) % 4;
-          return { ...p, rotation: rotations[newIndex] };
+          const delta = action.direction === "cw" ? 90 : -90;
+          // Normaliser entre -180 et 180
+          let newRotation = p.rotation + delta;
+          if (newRotation > 180) newRotation -= 360;
+          if (newRotation <= -180) newRotation += 360;
+          return { ...p, rotation: newRotation };
+        }),
+      };
+
+    // v1.1.0: Rotation libre à n'importe quel angle
+    case "SET_ROTATION":
+      return {
+        ...state,
+        photos: state.photos.map((p) => {
+          if (p.id !== action.photoId) return p;
+          // Normaliser entre -180 et 180
+          let rotation = action.rotation;
+          while (rotation > 180) rotation -= 360;
+          while (rotation <= -180) rotation += 360;
+          return { ...p, rotation };
         }),
       };
 
@@ -236,6 +250,7 @@ export interface UsePhotoPreparationReturn {
   
   // Transformations
   rotatePhoto: (direction: "cw" | "ccw") => void;
+  setRotation: (rotation: number) => void; // v1.1.0: Rotation libre
   setCrop: (crop: ImageCropData | null) => void;
   setStretch: (stretchX: number, stretchY: number) => void;
   adjustStretchX: (deltaMm: number) => void;
@@ -376,6 +391,13 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
     const photo = stateRef.current.photos[stateRef.current.currentPhotoIndex];
     if (!photo) return;
     dispatch({ type: "ROTATE_PHOTO", photoId: photo.id, direction });
+  }, []);
+
+  // v1.1.0: Rotation libre
+  const setRotation = useCallback((rotation: number) => {
+    const photo = stateRef.current.photos[stateRef.current.currentPhotoIndex];
+    if (!photo) return;
+    dispatch({ type: "SET_ROTATION", photoId: photo.id, rotation });
   }, []);
 
   const setCrop = useCallback((crop: ImageCropData | null) => {
@@ -540,12 +562,12 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
     return stateRef.current.photos.filter((p) => p.status === "validated");
   }, []);
 
-  // v1.0.2: FIX - Calcul du scale basé sur les dimensions réelles du canvas
+  // v1.1.0: FIX - Calcul du scale et rotation libre
   const prepareForExport = useCallback(async (): Promise<PreparedPhoto[]> => {
     const validatedPhotos = getValidatedPhotos();
     const results: PreparedPhoto[] = [];
 
-    console.log("[usePhotoPreparation v1.0.2] prepareForExport - photos:", validatedPhotos.length);
+    console.log("[usePhotoPreparation v1.1.0] prepareForExport - photos:", validatedPhotos.length);
 
     for (const photo of validatedPhotos) {
       if (!photo.image) continue;
@@ -555,64 +577,70 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
       const ctx = canvas.getContext("2d");
       if (!ctx) continue;
 
-      // Calculer les dimensions finales en pixels (avec stretch)
-      let widthPx = photo.currentWidth * photo.stretchX;
-      let heightPx = photo.currentHeight * photo.stretchY;
+      const imgWidth = photo.currentWidth;
+      const imgHeight = photo.currentHeight;
+      
+      // v1.1.0: Calculer les dimensions du canvas après rotation libre
+      // Pour une rotation quelconque, le bounding box change
+      const radians = (photo.rotation * Math.PI) / 180;
+      const cos = Math.abs(Math.cos(radians));
+      const sin = Math.abs(Math.sin(radians));
+      
+      // Dimensions avec stretch
+      const stretchedWidth = imgWidth * photo.stretchX;
+      const stretchedHeight = imgHeight * photo.stretchY;
+      
+      // Bounding box après rotation
+      const rotatedWidth = stretchedWidth * cos + stretchedHeight * sin;
+      const rotatedHeight = stretchedWidth * sin + stretchedHeight * cos;
 
-      // Gérer la rotation (swap largeur/hauteur pour 90° et 270°)
-      if (photo.rotation === 90 || photo.rotation === 270) {
-        [widthPx, heightPx] = [heightPx, widthPx];
-      }
-
-      canvas.width = Math.round(widthPx);
-      canvas.height = Math.round(heightPx);
+      canvas.width = Math.round(rotatedWidth);
+      canvas.height = Math.round(rotatedHeight);
 
       // Appliquer les transformations
       ctx.save();
       
-      if (photo.rotation !== 0) {
-        ctx.translate(canvas.width / 2, canvas.height / 2);
-        ctx.rotate((photo.rotation * Math.PI) / 180);
-        if (photo.rotation === 90 || photo.rotation === 270) {
-          ctx.translate(-canvas.height / 2, -canvas.width / 2);
-        } else {
-          ctx.translate(-canvas.width / 2, -canvas.height / 2);
-        }
-      }
-
-      // Dessiner l'image source avec étirement
+      // Translater au centre du canvas
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      
+      // Appliquer la rotation
+      ctx.rotate(radians);
+      
+      // Dessiner l'image centrée avec stretch
       ctx.drawImage(
         photo.image,
-        0,
-        0,
-        photo.currentWidth * photo.stretchX,
-        photo.currentHeight * photo.stretchY
+        -stretchedWidth / 2,
+        -stretchedHeight / 2,
+        stretchedWidth,
+        stretchedHeight
       );
       
       ctx.restore();
 
-      // v1.0.2: Calculer les dimensions en mm (avec stretch et rotation)
-      let { widthMm, heightMm } = getDimensionsMm(photo);
+      // v1.1.0: Calculer les dimensions en mm
+      // Les dimensions mm sont basées sur l'image après stretch, puis la rotation crée un bounding box plus grand
+      const scaleX = photo.arucoScaleX || stateRef.current.scaleFactor;
+      const scaleY = photo.arucoScaleY || stateRef.current.scaleFactor;
       
-      // Swap dimensions mm si rotation 90° ou 270°
-      if (photo.rotation === 90 || photo.rotation === 270) {
-        [widthMm, heightMm] = [heightMm, widthMm];
-      }
+      const stretchedWidthMm = stretchedWidth / scaleX;
+      const stretchedHeightMm = stretchedHeight / scaleY;
+      
+      // Bounding box en mm après rotation
+      const widthMm = stretchedWidthMm * cos + stretchedHeightMm * sin;
+      const heightMm = stretchedWidthMm * sin + stretchedHeightMm * cos;
 
-      // v1.0.2: FIX - Calculer le scale à partir des dimensions RÉELLES du canvas
-      // scale = px/mm pour ce canvas spécifique (après stretch et rotation)
-      // Utiliser la moyenne pour un scale uniforme
-      const scaleX = canvas.width / widthMm;
-      const scaleY = canvas.height / heightMm;
-      const scale = (scaleX + scaleY) / 2;
+      // Calculer le scale à partir des dimensions réelles du canvas
+      const finalScaleX = canvas.width / widthMm;
+      const finalScaleY = canvas.height / heightMm;
+      const scale = (finalScaleX + finalScaleY) / 2;
 
-      console.log(`[usePhotoPreparation v1.0.2] Photo "${photo.name}":`, {
-        originalPx: { w: photo.currentWidth, h: photo.currentHeight },
+      console.log(`[usePhotoPreparation v1.1.0] Photo "${photo.name}":`, {
+        originalPx: { w: imgWidth, h: imgHeight },
         stretch: { x: photo.stretchX, y: photo.stretchY },
         rotation: photo.rotation,
         canvasPx: { w: canvas.width, h: canvas.height },
         dimensionsMm: { w: widthMm, h: heightMm },
-        scale: { x: scaleX, y: scaleY, avg: scale },
+        scale: { x: finalScaleX, y: finalScaleY, avg: scale },
         arucoScale: { x: photo.arucoScaleX, y: photo.arucoScaleY },
       });
 
@@ -701,6 +729,7 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
     removePhoto,
     removeDuplicates,
     rotatePhoto,
+    setRotation, // v1.1.0: Rotation libre
     setCrop,
     setStretch,
     adjustStretchX,
