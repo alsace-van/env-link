@@ -6,6 +6,57 @@
 
 ## ✅ Tâches terminées
 
+### 2025-01-25 - Correction de perspective v1.2.0
+
+**Fonctionnalité:** Corriger la déformation trapézoïdale des photos en utilisant les mesures existantes.
+
+**Principe:**
+1. Placer 2 mesures sur des longueurs qui devraient être identiques en réalité
+2. Entrer la valeur réelle dans le champ "Réel" de chaque mesure
+3. Cliquer sur "Corriger perspective" → l'étirement X/Y est ajusté automatiquement
+
+**Fichiers modifiés:**
+- `types.ts` v1.2.0: 
+  - `Measurement.targetValueMm` (valeur cible)
+  - `PhotoToProcess.skewX/skewY` (prêt pour correction avancée)
+  - Actions `SET_SKEW`, `SET_MEASUREMENT_TARGET`
+- `usePhotoPreparation.ts` v1.2.0: setSkew, setMeasurementTarget
+- `PhotoPreviewEditor.tsx` v1.2.0: UI mesures avec input, bouton corriger
+- `PhotoPreparationModal.tsx` v1.2.0: passage des nouvelles props
+
+**Algorithme de correction:**
+```javascript
+// Pour chaque mesure avec valeur cible:
+ratio = targetValueMm / measuredValueMm
+
+// Si mesure horizontale (dx > dy*2) → correction X
+// Si mesure verticale (dy > dx*2) → correction Y
+// Si diagonale → correction X et Y
+
+stretchX *= avgRatioX
+stretchY *= avgRatioY
+```
+
+---
+
+### 2025-01-25 - Grille de taille fixe (PhotoPreviewEditor v1.1.3)
+
+**Problème:** Les cases de la grille grandissaient au fur et à mesure qu'on tournait l'image.
+
+**Cause:** La grille était basée sur le **bounding box** (rectangle englobant) qui change de taille selon l'angle. Une image rectangulaire tournée à 45° a un bounding box carré plus grand.
+
+**Solution:** Baser la grille sur les dimensions de l'image stretchée (`stretchedWidth × stretchedHeight`) au lieu du bounding box, et la centrer sur le centre de l'image:
+```javascript
+const gridWidth = stretchedWidth * scale;  // Taille fixe
+const gridHeight = stretchedHeight * scale;
+const gridLeft = centerX - gridWidth / 2;  // Centré sur l'image
+const gridTop = centerY - gridHeight / 2;
+```
+
+**Fichier modifié:** `PhotoPreviewEditor.tsx` v1.1.2 → v1.1.3
+
+---
+
 ### 2025-01-25 - Grille fixe pour alignement (PhotoPreviewEditor v1.1.2)
 
 **Demande:** La grille doit rester horizontale/verticale pendant que l'image tourne, pour servir de référence d'alignement.
@@ -87,18 +138,18 @@ offsetY = centerY - (newBoundingHeight * scale) / 2;
 
 ## 📝 Notes contextuelles
 
-### Système de préparation photo (v1.1.2)
+### Système de préparation photo (v1.2.0)
 
 ```
 src/components/cad-gabarit/photo-preparation/
-├── PhotoPreparationModal.tsx  # v1.1.0 - Modale principale
+├── PhotoPreparationModal.tsx  # v1.2.0 - Modale principale
 ├── PhotoGridView.tsx          # Vue grille + détection doublons
-├── PhotoPreviewEditor.tsx     # v1.1.2 - Éditeur rotation libre + grille fixe d'alignement
+├── PhotoPreviewEditor.tsx     # v1.2.0 - Rotation libre + grille + correction perspective
 ├── StretchHandles.tsx         # Poignées d'étirement
-├── usePhotoPreparation.ts     # v1.1.0 - Hook principal (rotation libre)
+├── usePhotoPreparation.ts     # v1.2.0 - Hook principal (setSkew, setMeasurementTarget)
 ├── useArucoDetection.ts       # Détection markers ArUco
 ├── useDuplicateDetection.ts   # Détection doublons par hash
-├── types.ts                   # v1.1.0 - Types (rotation: number, GridOverlayType)
+├── types.ts                   # v1.2.0 - Types (targetValueMm, skewX/Y)
 └── REFACTORING_PHOTO_PREPARATION.md
 ```
 
@@ -112,6 +163,21 @@ const sin = Math.abs(Math.sin(radians));
 const boundingWidth = width * cos + height * sin;
 const boundingHeight = width * sin + height * cos;
 ```
+
+### Correction de perspective (v1.2.0)
+
+La correction de perspective utilise les mesures avec valeur cible:
+```javascript
+// Ratio de correction
+ratio = targetValueMm / measuredValueMm
+
+// Déterminer l'axe de correction
+if (dx > dy * 2) → mesure horizontale → stretchX *= ratio
+if (dy > dx * 2) → mesure verticale → stretchY *= ratio
+sinon → diagonale → stretchX *= ratio ET stretchY *= ratio
+```
+
+Le champ `skewX/skewY` est préparé pour une future correction par cisaillement (transformation affine) qui serait plus précise pour les trapèzes asymétriques.
 
 ---
 
