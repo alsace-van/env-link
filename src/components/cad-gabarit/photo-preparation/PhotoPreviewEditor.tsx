@@ -1,16 +1,16 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.0.19
+// VERSION: 1.1.0
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.1.0 (2025-01-25) : Rotation libre + grille de cadrage
+//   - Slider et input pour rotation précise (-180° à +180°)
+//   - Boutons d'incrément (±1°, ±0.1°, ±90°)
+//   - Grille de cadrage (tiers, grille, croix, diagonales)
 // - v1.0.19 (2025-01-24) : FIX - Guard contre onUpdateMeasurementPoint undefined
 // - v1.0.18 (2025-01-24) : REFONTE CANVAS - Comme ImageCalibrationModal
-//   - Utilisation d'un Canvas 2D pour dessiner l'image ET les marqueurs
-//   - Plus de problèmes de synchronisation CSS/positions
-//   - Système viewport simple: scale + offsetX/Y
-// - v1.0.17 (2025-01-24) : Tentative SVG intégré (échec)
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -21,6 +21,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Slider } from "@/components/ui/slider";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   RotateCcw,
   RotateCw,
@@ -37,6 +45,8 @@ import {
   Loader2,
   X,
   Trash2,
+  Grid3X3,
+  RotateCcwSquare,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -44,6 +54,7 @@ import {
   Measurement,
   MeasurePoint,
   ImageCropData,
+  GridOverlayType,
   STRETCH_INCREMENT_NORMAL,
   STRETCH_INCREMENT_FINE,
   STRETCH_INCREMENT_FAST,
@@ -61,6 +72,7 @@ interface PhotoPreviewEditorProps {
 
   // Actions
   onRotate: (direction: "cw" | "ccw") => void;
+  onSetRotation: (rotation: number) => void; // v1.1.0: Rotation libre
   onSetCrop: (crop: ImageCropData | null) => void;
   onSetStretch: (stretchX: number, stretchY: number) => void;
   onAdjustStretchX: (deltaMm: number) => void;
@@ -94,6 +106,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   activeTool,
   scaleFactor,
   onRotate,
+  onSetRotation,
   onSetCrop,
   onSetStretch,
   onAdjustStretchX,
@@ -114,10 +127,11 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   calculateDistanceMm,
 }) => {
   // v1.0.19: Debug - vérifier que les callbacks sont bien reçus
-  console.log("[PhotoPreviewEditor] Props received:", {
+  console.log("[PhotoPreviewEditor v1.1.0] Props received:", {
     hasOnUpdateMeasurementPoint: typeof onUpdateMeasurementPoint === 'function',
     hasOnAddMeasurePoint: typeof onAddMeasurePoint === 'function',
     hasOnRemoveMeasurement: typeof onRemoveMeasurement === 'function',
+    hasOnSetRotation: typeof onSetRotation === 'function',
   });
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -160,11 +174,22 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   // Taille des marqueurs ArUco en mm
   const ARUCO_MARKER_SIZE_MM = 50;
 
+  // v1.1.0: Grille de cadrage
+  const [gridOverlay, setGridOverlay] = useState<GridOverlayType>("none");
+  
+  // v1.1.0: Input pour rotation (synchronisé avec photo.rotation)
+  const [rotationInput, setRotationInput] = useState(photo.rotation.toFixed(1));
+
   // Mettre à jour les inputs quand les dimensions changent
   useEffect(() => {
     setTargetWidthMm(widthMm.toFixed(1));
     setTargetHeightMm(heightMm.toFixed(1));
   }, [widthMm, heightMm]);
+
+  // v1.1.0: Synchroniser rotationInput avec photo.rotation
+  useEffect(() => {
+    setRotationInput(photo.rotation.toFixed(1));
+  }, [photo.rotation]);
 
   // Observer la taille du container pour le canvas
   useEffect(() => {
@@ -188,7 +213,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   // v1.0.20: Ref stable pour fitToView afin d'éviter les re-triggers
   const fitToViewRef = useRef<() => void>(() => { });
 
-  // v1.0.18: Fit to view - calculer scale et offset pour centrer l'image
+  // v1.1.0: Fit to view - calculer scale et offset pour centrer l'image (avec rotation)
   fitToViewRef.current = () => {
     if (!photo.image) return;
 
@@ -200,8 +225,15 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     if (canvasSize.width < 200 || canvasSize.height < 200) return;
 
     // Prendre en compte le stretch
-    const effectiveWidth = imgWidth * photo.stretchX;
-    const effectiveHeight = imgHeight * photo.stretchY;
+    const stretchedWidth = imgWidth * photo.stretchX;
+    const stretchedHeight = imgHeight * photo.stretchY;
+
+    // v1.1.0: Calculer le bounding box après rotation
+    const radians = (photo.rotation * Math.PI) / 180;
+    const cos = Math.abs(Math.cos(radians));
+    const sin = Math.abs(Math.sin(radians));
+    const effectiveWidth = stretchedWidth * cos + stretchedHeight * sin;
+    const effectiveHeight = stretchedWidth * sin + stretchedHeight * cos;
 
     const scaleX = (canvasSize.width - padding * 2) / effectiveWidth;
     const scaleY = (canvasSize.height - padding * 2) / effectiveHeight;
@@ -211,7 +243,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const offsetX = (canvasSize.width - effectiveWidth * scale) / 2;
     const offsetY = (canvasSize.height - effectiveHeight * scale) / 2;
 
-    console.log("[fitToView] Setting viewport:", { scale, offsetX, offsetY, effectiveWidth, effectiveHeight });
+    console.log("[fitToView v1.1.0] Setting viewport:", { scale, offsetX, offsetY, effectiveWidth, effectiveHeight, rotation: photo.rotation });
     setViewport({ scale, offsetX, offsetY });
     setInitialFitDone(true);
   };
@@ -310,7 +342,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     };
   }, [viewport, photo.stretchX, photo.stretchY]);
 
-  // v1.0.18: Dessiner le canvas - IMAGE + MARQUEURS + MESURES
+  // v1.1.0: Dessiner le canvas - IMAGE + ROTATION + GRILLE + MARQUEURS + MESURES
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !photo.image) return;
@@ -319,6 +351,19 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     if (!ctx) return;
 
     const { scale, offsetX, offsetY } = viewport;
+    const imgWidth = photo.image.naturalWidth || photo.image.width;
+    const imgHeight = photo.image.naturalHeight || photo.image.height;
+    
+    // Dimensions avec stretch
+    const stretchedWidth = imgWidth * photo.stretchX;
+    const stretchedHeight = imgHeight * photo.stretchY;
+
+    // v1.1.0: Calculer le bounding box après rotation
+    const radians = (photo.rotation * Math.PI) / 180;
+    const cos = Math.abs(Math.cos(radians));
+    const sin = Math.abs(Math.sin(radians));
+    const boundingWidth = stretchedWidth * cos + stretchedHeight * sin;
+    const boundingHeight = stretchedWidth * sin + stretchedHeight * cos;
 
     // Clear
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -327,18 +372,121 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     ctx.fillStyle = "#1a1a2e";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw image avec stretch
+    // v1.1.0: Draw image avec stretch ET rotation
     ctx.save();
-    ctx.translate(offsetX, offsetY);
-    ctx.scale(scale * photo.stretchX, scale * photo.stretchY);
-    ctx.drawImage(photo.image, 0, 0);
+    
+    // Translater au centre du bounding box dans le canvas
+    const centerX = offsetX + (boundingWidth * scale) / 2;
+    const centerY = offsetY + (boundingHeight * scale) / 2;
+    ctx.translate(centerX, centerY);
+    
+    // Appliquer la rotation
+    ctx.rotate(radians);
+    
+    // Dessiner l'image centrée
+    ctx.drawImage(
+      photo.image,
+      -(stretchedWidth * scale) / 2,
+      -(stretchedHeight * scale) / 2,
+      stretchedWidth * scale,
+      stretchedHeight * scale
+    );
+    
+    // v1.1.0: Dessiner la grille de cadrage (sur l'image, donc dans le contexte rotaté)
+    if (gridOverlay !== "none") {
+      const gridWidth = stretchedWidth * scale;
+      const gridHeight = stretchedHeight * scale;
+      const gridLeft = -gridWidth / 2;
+      const gridTop = -gridHeight / 2;
+      
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+      ctx.lineWidth = 1;
+      
+      if (gridOverlay === "thirds") {
+        // Règle des tiers
+        const thirdW = gridWidth / 3;
+        const thirdH = gridHeight / 3;
+        ctx.beginPath();
+        // Lignes verticales
+        ctx.moveTo(gridLeft + thirdW, gridTop);
+        ctx.lineTo(gridLeft + thirdW, gridTop + gridHeight);
+        ctx.moveTo(gridLeft + thirdW * 2, gridTop);
+        ctx.lineTo(gridLeft + thirdW * 2, gridTop + gridHeight);
+        // Lignes horizontales
+        ctx.moveTo(gridLeft, gridTop + thirdH);
+        ctx.lineTo(gridLeft + gridWidth, gridTop + thirdH);
+        ctx.moveTo(gridLeft, gridTop + thirdH * 2);
+        ctx.lineTo(gridLeft + gridWidth, gridTop + thirdH * 2);
+        ctx.stroke();
+        
+        // Points d'intersection
+        ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+        for (let i = 1; i <= 2; i++) {
+          for (let j = 1; j <= 2; j++) {
+            ctx.beginPath();
+            ctx.arc(gridLeft + thirdW * i, gridTop + thirdH * j, 4, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      } else if (gridOverlay === "grid") {
+        // Grille 6x6
+        ctx.beginPath();
+        const cellW = gridWidth / 6;
+        const cellH = gridHeight / 6;
+        for (let i = 1; i < 6; i++) {
+          ctx.moveTo(gridLeft + cellW * i, gridTop);
+          ctx.lineTo(gridLeft + cellW * i, gridTop + gridHeight);
+          ctx.moveTo(gridLeft, gridTop + cellH * i);
+          ctx.lineTo(gridLeft + gridWidth, gridTop + cellH * i);
+        }
+        ctx.stroke();
+      } else if (gridOverlay === "cross") {
+        // Croix centrale
+        ctx.beginPath();
+        ctx.moveTo(0, gridTop);
+        ctx.lineTo(0, gridTop + gridHeight);
+        ctx.moveTo(gridLeft, 0);
+        ctx.lineTo(gridLeft + gridWidth, 0);
+        ctx.stroke();
+        // Cercle central
+        ctx.beginPath();
+        ctx.arc(0, 0, Math.min(gridWidth, gridHeight) / 10, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (gridOverlay === "diagonal") {
+        // Diagonales
+        ctx.beginPath();
+        ctx.moveTo(gridLeft, gridTop);
+        ctx.lineTo(gridLeft + gridWidth, gridTop + gridHeight);
+        ctx.moveTo(gridLeft + gridWidth, gridTop);
+        ctx.lineTo(gridLeft, gridTop + gridHeight);
+        ctx.stroke();
+        // Centre
+        ctx.beginPath();
+        ctx.arc(0, 0, 5, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+        ctx.fill();
+      }
+    }
+    
     ctx.restore();
 
-    // Draw ArUco markers
+    // Draw ArUco markers (coordonnées de l'image source, sans rotation pour la preview)
     if (detectedMarkers.length > 0 && initialFitDone) {
       for (const marker of detectedMarkers) {
-        // Convertir les coins en coordonnées écran
-        const screenCorners = marker.corners.map(c => imageToScreen(c.x, c.y));
+        // Convertir les coins en coordonnées écran (avec rotation)
+        const screenCorners = marker.corners.map(c => {
+          // Position relative au centre de l'image source
+          const relX = (c.x - imgWidth / 2) * photo.stretchX * scale;
+          const relY = (c.y - imgHeight / 2) * photo.stretchY * scale;
+          // Appliquer la rotation
+          const rotX = relX * Math.cos(radians) - relY * Math.sin(radians);
+          const rotY = relX * Math.sin(radians) + relY * Math.cos(radians);
+          // Position finale dans le canvas
+          return {
+            x: centerX + rotX,
+            y: centerY + rotY,
+          };
+        });
 
         // Dessiner le polygone
         ctx.beginPath();
@@ -366,14 +514,15 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         }
 
         // Label ID
-        const centerScreen = imageToScreen(marker.center.x, marker.center.y);
+        const markerCenterX = screenCorners.reduce((sum, c) => sum + c.x, 0) / 4;
+        const markerCenterY = screenCorners.reduce((sum, c) => sum + c.y, 0) / 4;
         ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-        ctx.fillRect(centerScreen.x - 16, centerScreen.y - 10, 32, 20);
+        ctx.fillRect(markerCenterX - 16, markerCenterY - 10, 32, 20);
         ctx.fillStyle = "#00FF00";
         ctx.font = "bold 12px sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(String(marker.id), centerScreen.x, centerScreen.y);
+        ctx.fillText(String(marker.id), markerCenterX, markerCenterY);
       }
     }
 
@@ -381,9 +530,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     for (const measurement of measurements) {
       if (!measurement.visible) continue;
 
-      const imgWidth = photo.image.naturalWidth || photo.image.width;
-      const imgHeight = photo.image.naturalHeight || photo.image.height;
-
+      // v1.1.0: Conversion avec rotation
       const p1Img = {
         x: (measurement.point1.xPercent / 100) * imgWidth,
         y: (measurement.point1.yPercent / 100) * imgHeight,
@@ -393,8 +540,17 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         y: (measurement.point2.yPercent / 100) * imgHeight,
       };
 
-      const p1Screen = imageToScreen(p1Img.x, p1Img.y);
-      const p2Screen = imageToScreen(p2Img.x, p2Img.y);
+      // Conversion en coordonnées écran avec rotation
+      const imageToScreenWithRotation = (ix: number, iy: number) => {
+        const relX = (ix - imgWidth / 2) * photo.stretchX * scale;
+        const relY = (iy - imgHeight / 2) * photo.stretchY * scale;
+        const rotX = relX * Math.cos(radians) - relY * Math.sin(radians);
+        const rotY = relX * Math.sin(radians) + relY * Math.cos(radians);
+        return { x: centerX + rotX, y: centerY + rotY };
+      };
+
+      const p1Screen = imageToScreenWithRotation(p1Img.x, p1Img.y);
+      const p2Screen = imageToScreenWithRotation(p2Img.x, p2Img.y);
 
       // Ligne
       ctx.beginPath();
@@ -449,15 +605,19 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       ctx.fillText(label, midX, midY);
     }
 
-    // Point en attente - Croix de ciblage
+    // Point en attente - Croix de ciblage (avec rotation)
     if (pendingMeasurePoint && photo.image) {
-      const imgWidth = photo.image.naturalWidth || photo.image.width;
-      const imgHeight = photo.image.naturalHeight || photo.image.height;
       const imgPos = {
         x: (pendingMeasurePoint.xPercent / 100) * imgWidth,
         y: (pendingMeasurePoint.yPercent / 100) * imgHeight,
       };
-      const p = imageToScreen(imgPos.x, imgPos.y);
+      
+      // Conversion avec rotation
+      const relX = (imgPos.x - imgWidth / 2) * photo.stretchX * scale;
+      const relY = (imgPos.y - imgHeight / 2) * photo.stretchY * scale;
+      const rotX = relX * Math.cos(radians) - relY * Math.sin(radians);
+      const rotY = relX * Math.sin(radians) + relY * Math.cos(radians);
+      const p = { x: centerX + rotX, y: centerY + rotY };
 
       const crossSize = 14;
       const crossGap = 4;
@@ -487,7 +647,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       ctx.fill();
     }
 
-  }, [photo.image, photo.stretchX, photo.stretchY, viewport, detectedMarkers, initialFitDone, measurements, pendingMeasurePoint, imageToScreen, calculateDistanceMm]);
+  }, [photo.image, photo.stretchX, photo.stretchY, photo.rotation, viewport, detectedMarkers, initialFitDone, measurements, pendingMeasurePoint, calculateDistanceMm, gridOverlay]);
 
   // Gestion du zoom avec la molette - useEffect avec addEventListener pour pouvoir preventDefault
   useEffect(() => {
@@ -905,29 +1065,139 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
 
           <Separator className="bg-gray-700" />
 
-          {/* Rotation */}
+          {/* v1.1.0: Rotation précise */}
           <div>
             <Label className="text-gray-400 text-xs mb-2 block">ROTATION</Label>
-            <div className="flex gap-2">
+            
+            {/* Slider */}
+            <div className="mb-3">
+              <Slider
+                value={[photo.rotation]}
+                onValueChange={([value]) => onSetRotation(value)}
+                min={-180}
+                max={180}
+                step={0.1}
+                className="w-full"
+              />
+            </div>
+
+            {/* Input + Boutons ±90° */}
+            <div className="flex gap-2 mb-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => onRotate("ccw")}
-                className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700"
+                className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                title="-90°"
               >
-                <RotateCcw className="h-4 w-4 mr-1" />
-                -90
+                <RotateCcw className="h-4 w-4" />
               </Button>
+              
+              <div className="flex-1 relative">
+                <Input
+                  type="text"
+                  value={rotationInput}
+                  onChange={(e) => setRotationInput(e.target.value)}
+                  onBlur={() => {
+                    const value = parseFloat(rotationInput);
+                    if (!isNaN(value)) {
+                      onSetRotation(Math.max(-180, Math.min(180, value)));
+                    } else {
+                      setRotationInput(photo.rotation.toFixed(1));
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const value = parseFloat(rotationInput);
+                      if (!isNaN(value)) {
+                        onSetRotation(Math.max(-180, Math.min(180, value)));
+                      }
+                    }
+                  }}
+                  className="h-8 bg-gray-700 border-gray-600 text-white text-sm text-center pr-6"
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">°</span>
+              </div>
+              
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => onRotate("cw")}
-                className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700"
+                className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                title="+90°"
               >
-                <RotateCw className="h-4 w-4 mr-1" />
-                +90
+                <RotateCw className="h-4 w-4" />
               </Button>
             </div>
+
+            {/* Boutons d'incrément fin */}
+            <div className="flex gap-1 mb-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onSetRotation(photo.rotation - 1)}
+                className="flex-1 h-7 text-xs text-gray-400 hover:text-white hover:bg-gray-700"
+              >
+                -1°
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onSetRotation(photo.rotation - 0.1)}
+                className="flex-1 h-7 text-xs text-gray-400 hover:text-white hover:bg-gray-700"
+              >
+                -0.1°
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onSetRotation(0)}
+                className="flex-1 h-7 text-xs text-gray-400 hover:text-white hover:bg-gray-700"
+                title="Remettre à 0°"
+              >
+                <RotateCcwSquare className="h-3 w-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onSetRotation(photo.rotation + 0.1)}
+                className="flex-1 h-7 text-xs text-gray-400 hover:text-white hover:bg-gray-700"
+              >
+                +0.1°
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onSetRotation(photo.rotation + 1)}
+                className="flex-1 h-7 text-xs text-gray-400 hover:text-white hover:bg-gray-700"
+              >
+                +1°
+              </Button>
+            </div>
+
+            <p className="text-gray-500 text-[10px]">
+              Valeur actuelle: {photo.rotation.toFixed(1)}°
+            </p>
+          </div>
+
+          <Separator className="bg-gray-700" />
+
+          {/* v1.1.0: Grille de cadrage */}
+          <div>
+            <Label className="text-gray-400 text-xs mb-2 block">GRILLE DE CADRAGE</Label>
+            <Select value={gridOverlay} onValueChange={(value) => setGridOverlay(value as GridOverlayType)}>
+              <SelectTrigger className="h-8 bg-gray-700 border-gray-600 text-white text-sm">
+                <Grid3X3 className="h-4 w-4 mr-2 text-gray-400" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-gray-800 border-gray-600">
+                <SelectItem value="none" className="text-gray-300">Aucune</SelectItem>
+                <SelectItem value="thirds" className="text-gray-300">Règle des tiers</SelectItem>
+                <SelectItem value="grid" className="text-gray-300">Grille 6×6</SelectItem>
+                <SelectItem value="cross" className="text-gray-300">Croix centrale</SelectItem>
+                <SelectItem value="diagonal" className="text-gray-300">Diagonales</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <Separator className="bg-gray-700" />
