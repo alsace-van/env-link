@@ -1,13 +1,13 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.2.2
+// VERSION: 1.2.2a
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.2.2a (2025-01-25) : FIX imageToScreen avec rotation+skewX (drag fonctionne à nouveau)
 // - v1.2.2 (2025-01-25) : FIX coordonnées avec skewX (screenToImage, imageToScreen, ArUco)
 // - v1.2.1 (2025-01-25) : Vraie correction perspective par cisaillement (skewX, dessin par bandes)
-// - v1.2.0 (2025-01-25) : Correction perspective (input mesures, bouton corriger, skew)
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -367,16 +367,49 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     }
   }, [photo.id, photo.image, isArucoLoaded, arucoProcessed, runArucoDetection]);
 
-  // v1.0.18: Convertir coordonnées image -> écran (comme ImageCalibrationModal)
+  // v1.2.2a: Convertir coordonnées image -> écran (avec rotation et skewX)
   const imageToScreen = useCallback((imgX: number, imgY: number) => {
     const { scale, offsetX, offsetY } = viewport;
-    // Prendre en compte le stretch
-    const effectiveScale = scale;
+    
+    // Dimensions de l'image
+    const imgWidth = photo.image?.naturalWidth || photo.image?.width || 1;
+    const imgHeight = photo.image?.naturalHeight || photo.image?.height || 1;
+    
+    // Dimensions avec stretch
+    const stretchedWidth = imgWidth * photo.stretchX;
+    const stretchedHeight = imgHeight * photo.stretchY;
+    
+    // Bounding box après rotation
+    const radians = (photo.rotation * Math.PI) / 180;
+    const cos = Math.abs(Math.cos(radians));
+    const sin = Math.abs(Math.sin(radians));
+    const boundingWidth = stretchedWidth * cos + stretchedHeight * sin;
+    const boundingHeight = stretchedWidth * sin + stretchedHeight * cos;
+    
+    // Centre du bounding box
+    const centerX = offsetX + (boundingWidth * scale) / 2;
+    const centerY = offsetY + (boundingHeight * scale) / 2;
+    
+    // Prendre en compte le skewX (étirement local selon Y)
+    const skewX = photo.skewX || 0;
+    const yRel = imgY / imgHeight; // 0-1
+    const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
+    
+    // Position relative au centre avec rotation
+    const relX = (imgX - imgWidth / 2) * localStretchX * scale;
+    const relY = (imgY - imgHeight / 2) * photo.stretchY * scale;
+    
+    // Appliquer la rotation
+    const cosR = Math.cos(radians);
+    const sinR = Math.sin(radians);
+    const rotX = relX * cosR - relY * sinR;
+    const rotY = relX * sinR + relY * cosR;
+    
     return {
-      x: imgX * photo.stretchX * effectiveScale + offsetX,
-      y: imgY * photo.stretchY * effectiveScale + offsetY,
+      x: centerX + rotX,
+      y: centerY + rotY,
     };
-  }, [viewport, photo.stretchX, photo.stretchY]);
+  }, [viewport, photo.stretchX, photo.stretchY, photo.rotation, photo.skewX, photo.image]);
 
   // v1.2.2: Convertir coordonnées écran -> image (avec rotation et skewX)
   const screenToImage = useCallback((screenX: number, screenY: number) => {
