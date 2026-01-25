@@ -1,13 +1,13 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.2.4b
+// VERSION: 1.2.4c
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.2.4c (2025-01-25) : FIX rendu skewX+skewY avec 2 passes séquentielles (pas grille)
 // - v1.2.4b (2025-01-25) : FIX rendu grille skewX+skewY (formule position correcte)
 // - v1.2.4 (2025-01-25) : Support complet skewY (rendu, conversion coords, calcul, affichage)
-// - v1.2.3a (2025-01-25) : FIX calcul mesures brutes pour correction perspective
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -511,58 +511,75 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     // Appliquer la rotation
     ctx.rotate(radians);
     
-    // v1.2.4b: Dessiner avec correction de perspective
+    // v1.2.4c: Dessiner avec correction de perspective
     const skewX = photo.skewX || 0;
     const skewY = photo.skewY || 0;
     const hasSkewX = Math.abs(skewX) > 0.001;
     const hasSkewY = Math.abs(skewY) > 0.001;
     
     if (hasSkewX && hasSkewY) {
-      // v1.2.4b: Les deux skew → grille avec calcul de position correct
-      const numRows = 60;
-      const numCols = 60;
-      const cellWidth = imgWidth / numCols;
-      const cellHeight = imgHeight / numRows;
+      // v1.2.4c: Les deux skew → 2 passes séquentielles
+      // Passe 1: Appliquer skewX sur l'image source → canvas temporaire
+      const tempCanvas = document.createElement("canvas");
+      const tempCtx = tempCanvas.getContext("2d");
+      if (!tempCtx) return;
       
-      for (let row = 0; row < numRows; row++) {
-        for (let col = 0; col < numCols; col++) {
-          // Position relative du centre de la cellule (0-1)
-          const xRel = (col + 0.5) / numCols;
-          const yRel = (row + 0.5) / numRows;
-          
-          // Stretch local selon position
-          const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
-          const localStretchY = photo.stretchY * (1 + skewY * (xRel - 0.5));
-          
-          // Source
-          const srcX = col * cellWidth;
-          const srcY = row * cellHeight;
-          const srcW = cellWidth + 1;
-          const srcH = cellHeight + 1;
-          
-          // Dimensions destination
-          const destW = cellWidth * localStretchX * scale + 0.5;
-          const destH = cellHeight * localStretchY * scale + 0.5;
-          
-          // Position destination: 
-          // - Pour cette ligne (yRel fixe), localStretchX est constant
-          // - La largeur totale de cette ligne = imgWidth * localStretchX
-          // - Position X = (xRel - 0.5) * largeur_ligne
-          const lineWidth = imgWidth * localStretchX * scale;
-          const destX = (xRel - 0.5) * lineWidth;
-          
-          // - Pour cette colonne (xRel fixe), localStretchY est constant  
-          // - La hauteur totale de cette colonne = imgHeight * localStretchY
-          // - Position Y = (yRel - 0.5) * hauteur_colonne
-          const colHeight = imgHeight * localStretchY * scale;
-          const destY = (yRel - 0.5) * colHeight;
-          
-          ctx.drawImage(
-            photo.image,
-            srcX, srcY, srcW, srcH,
-            destX - destW / 2, destY - destH / 2, destW, destH
-          );
-        }
+      // Le canvas temporaire a la taille de l'image après skewX (stretch appliqué)
+      tempCanvas.width = Math.ceil(stretchedWidth * scale);
+      tempCanvas.height = Math.ceil(stretchedHeight * scale);
+      
+      // Dessiner avec skewX (bandes horizontales)
+      const numBandsX = 80;
+      const bandHeight = imgHeight / numBandsX;
+      
+      for (let i = 0; i < numBandsX; i++) {
+        const yRel = (i + 0.5) / numBandsX;
+        const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
+        
+        const srcY = i * bandHeight;
+        const srcHeight = bandHeight + 1;
+        
+        const destWidth = imgWidth * localStretchX * scale;
+        const destHeight = (bandHeight * photo.stretchY * scale) + 0.5;
+        
+        // Centrer horizontalement dans le canvas temp
+        const destX = (tempCanvas.width - destWidth) / 2;
+        const destY = i * bandHeight * photo.stretchY * scale;
+        
+        tempCtx.drawImage(
+          photo.image,
+          0, srcY, imgWidth, srcHeight,
+          destX, destY, destWidth, destHeight
+        );
+      }
+      
+      // Passe 2: Appliquer skewY sur le canvas temporaire → canvas final
+      const tempWidth = tempCanvas.width;
+      const tempHeight = tempCanvas.height;
+      const numBandsY = 80;
+      const bandWidth = tempWidth / numBandsY;
+      
+      for (let i = 0; i < numBandsY; i++) {
+        const xRel = (i + 0.5) / numBandsY;
+        // skewY appliqué comme ratio sur la hauteur
+        const localStretchYRatio = 1 + skewY * (xRel - 0.5);
+        
+        const srcX = i * bandWidth;
+        const srcWidth = bandWidth + 1;
+        
+        const destBandWidth = bandWidth + 0.5;
+        const destBandHeight = tempHeight * localStretchYRatio;
+        
+        // Position X: distribuer uniformément sur la largeur
+        const destX = -tempWidth / 2 + i * bandWidth;
+        // Position Y: centrer verticalement
+        const destY = -destBandHeight / 2;
+        
+        ctx.drawImage(
+          tempCanvas,
+          srcX, 0, srcWidth, tempHeight,
+          destX, destY, destBandWidth, destBandHeight
+        );
       }
     } else if (hasSkewX) {
       // Correction de perspective horizontale: dessiner par bandes horizontales
