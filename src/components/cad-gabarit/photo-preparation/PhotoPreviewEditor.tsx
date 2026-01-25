@@ -1,13 +1,13 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.2.4
+// VERSION: 1.2.4b
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.2.4b (2025-01-25) : FIX rendu grille skewX+skewY (formule position correcte)
 // - v1.2.4 (2025-01-25) : Support complet skewY (rendu, conversion coords, calcul, affichage)
 // - v1.2.3a (2025-01-25) : FIX calcul mesures brutes pour correction perspective
-// - v1.2.3 (2025-01-25) : FIX algorithme correction perspective (formule mathématique correcte)
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -511,29 +511,30 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     // Appliquer la rotation
     ctx.rotate(radians);
     
-    // v1.2.1: Si skewX != 0, dessiner par bandes pour correction de perspective
+    // v1.2.4b: Dessiner avec correction de perspective
     const skewX = photo.skewX || 0;
     const skewY = photo.skewY || 0;
     const hasSkewX = Math.abs(skewX) > 0.001;
     const hasSkewY = Math.abs(skewY) > 0.001;
     
     if (hasSkewX && hasSkewY) {
-      // v1.2.4: Les deux skew → dessiner par grille de cellules
-      const numCols = 40;
-      const numRows = 40;
+      // v1.2.4b: Les deux skew → grille avec calcul de position correct
+      const numRows = 60;
+      const numCols = 60;
       const cellWidth = imgWidth / numCols;
       const cellHeight = imgHeight / numRows;
       
       for (let row = 0; row < numRows; row++) {
         for (let col = 0; col < numCols; col++) {
-          const xRel = (col + 0.5) / numCols; // 0-1
-          const yRel = (row + 0.5) / numRows; // 0-1
+          // Position relative du centre de la cellule (0-1)
+          const xRel = (col + 0.5) / numCols;
+          const yRel = (row + 0.5) / numRows;
           
           // Stretch local selon position
           const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
           const localStretchY = photo.stretchY * (1 + skewY * (xRel - 0.5));
           
-          // Position source
+          // Source
           const srcX = col * cellWidth;
           const srcY = row * cellHeight;
           const srcW = cellWidth + 1;
@@ -543,35 +544,23 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
           const destW = cellWidth * localStretchX * scale + 0.5;
           const destH = cellHeight * localStretchY * scale + 0.5;
           
-          // Position destination (calculer depuis le coin supérieur gauche de l'image)
-          // On doit intégrer le stretch cumulatif
-          let destX = 0;
-          let destY = 0;
+          // Position destination: 
+          // - Pour cette ligne (yRel fixe), localStretchX est constant
+          // - La largeur totale de cette ligne = imgWidth * localStretchX
+          // - Position X = (xRel - 0.5) * largeur_ligne
+          const lineWidth = imgWidth * localStretchX * scale;
+          const destX = (xRel - 0.5) * lineWidth;
           
-          // Calculer la position X en intégrant le skewX variable
-          for (let c = 0; c < col; c++) {
-            const cYRel = yRel;
-            const cLocalStretchX = photo.stretchX * (1 + skewX * (cYRel - 0.5));
-            destX += cellWidth * cLocalStretchX * scale;
-          }
-          
-          // Calculer la position Y en intégrant le skewY variable
-          for (let r = 0; r < row; r++) {
-            const rXRel = xRel;
-            const rLocalStretchY = photo.stretchY * (1 + skewY * (rXRel - 0.5));
-            destY += cellHeight * rLocalStretchY * scale;
-          }
-          
-          // Centrer l'image
-          const totalWidth = imgWidth * photo.stretchX * scale;
-          const totalHeight = imgHeight * photo.stretchY * scale;
-          destX -= totalWidth / 2;
-          destY -= totalHeight / 2;
+          // - Pour cette colonne (xRel fixe), localStretchY est constant  
+          // - La hauteur totale de cette colonne = imgHeight * localStretchY
+          // - Position Y = (yRel - 0.5) * hauteur_colonne
+          const colHeight = imgHeight * localStretchY * scale;
+          const destY = (yRel - 0.5) * colHeight;
           
           ctx.drawImage(
             photo.image,
             srcX, srcY, srcW, srcH,
-            destX, destY, destW, destH
+            destX - destW / 2, destY - destH / 2, destW, destH
           );
         }
       }
