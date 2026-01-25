@@ -1,13 +1,13 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.1.3a
+// VERSION: 1.2.0
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.2.0 (2025-01-25) : Correction perspective (input mesures, bouton corriger, skew)
 // - v1.1.3a (2025-01-25) : Bouton Réinitialiser (0°) plus visible
 // - v1.1.3 (2025-01-25) : Grille de taille fixe (basée sur image, pas bounding box)
-// - v1.1.2 (2025-01-25) : Grille fixe (reste horizontale quand l'image tourne)
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -44,6 +44,7 @@ import {
   Trash2,
   Grid3X3,
   RotateCcwSquare,
+  Columns,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -72,12 +73,14 @@ interface PhotoPreviewEditorProps {
   onSetRotation: (rotation: number) => void; // v1.1.0: Rotation libre
   onSetCrop: (crop: ImageCropData | null) => void;
   onSetStretch: (stretchX: number, stretchY: number) => void;
+  onSetSkew: (skewX: number, skewY: number) => void; // v1.2.0: Correction perspective
   onAdjustStretchX: (deltaMm: number) => void;
   onAdjustStretchY: (deltaMm: number) => void;
   onSetActiveTool: (tool: "none" | "measure" | "crop") => void;
   onAddMeasurePoint: (xPercent: number, yPercent: number) => void;
   onRemoveMeasurement: (id: string) => void;
   onUpdateMeasurementPoint: (measurementId: string, pointIndex: 1 | 2, xPercent: number, yPercent: number) => void;
+  onSetMeasurementTarget: (measurementId: string, targetValueMm: number | undefined) => void; // v1.2.0
   onClearMeasurements: () => void;
   onUpdatePhoto: (updates: Partial<PhotoToProcess>) => void;
 
@@ -106,12 +109,14 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   onSetRotation,
   onSetCrop,
   onSetStretch,
+  onSetSkew,
   onAdjustStretchX,
   onAdjustStretchY,
   onSetActiveTool,
   onAddMeasurePoint,
   onRemoveMeasurement,
   onUpdateMeasurementPoint,
+  onSetMeasurementTarget,
   onClearMeasurements,
   onUpdatePhoto,
   onPrev,
@@ -123,12 +128,12 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
   getDimensionsMm,
   calculateDistanceMm,
 }) => {
-  // v1.0.19: Debug - vérifier que les callbacks sont bien reçus
-  console.log("[PhotoPreviewEditor v1.1.0] Props received:", {
-    hasOnUpdateMeasurementPoint: typeof onUpdateMeasurementPoint === 'function',
-    hasOnAddMeasurePoint: typeof onAddMeasurePoint === 'function',
-    hasOnRemoveMeasurement: typeof onRemoveMeasurement === 'function',
-    hasOnSetRotation: typeof onSetRotation === 'function',
+  // v1.2.0: Debug
+  console.log("[PhotoPreviewEditor v1.2.0] Props received:", {
+    hasOnSetSkew: typeof onSetSkew === 'function',
+    hasOnSetMeasurementTarget: typeof onSetMeasurementTarget === 'function',
+    skewX: photo.skewX,
+    skewY: photo.skewY,
   });
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -1314,7 +1319,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
 
           <Separator className="bg-gray-700" />
 
-          {/* Mesures */}
+          {/* Mesures + Correction de perspective */}
           {measurements.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -1329,32 +1334,124 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                   Effacer
                 </Button>
               </div>
-              <div className="space-y-1">
-                {measurements.map((m) => (
-                  <div
-                    key={m.id}
-                    className="flex items-center justify-between p-2 bg-gray-700 rounded text-sm"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: m.color }}
-                      />
-                      <span className="text-white font-medium">
-                        {calculateDistanceMm(m.point1, m.point2).toFixed(1)} mm
-                      </span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-gray-400 hover:text-red-400"
-                      onClick={() => onRemoveMeasurement(m.id)}
+              <div className="space-y-2">
+                {measurements.map((m) => {
+                  const measuredValue = calculateDistanceMm(m.point1, m.point2);
+                  return (
+                    <div
+                      key={m.id}
+                      className="p-2 bg-gray-700 rounded text-sm"
                     >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                ))}
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: m.color }}
+                          />
+                          <span className="text-gray-400 text-xs">Mesuré:</span>
+                          <span className="text-white font-medium">
+                            {measuredValue.toFixed(1)} mm
+                          </span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 text-gray-400 hover:text-red-400"
+                          onClick={() => onRemoveMeasurement(m.id)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      {/* v1.2.0: Input pour valeur réelle */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-400 text-xs">Réel:</span>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          value={m.targetValueMm ?? ""}
+                          placeholder={measuredValue.toFixed(1)}
+                          onChange={(e) => {
+                            const val = e.target.value ? parseFloat(e.target.value) : undefined;
+                            onSetMeasurementTarget(m.id, val);
+                          }}
+                          className="h-6 w-20 bg-gray-600 border-gray-500 text-white text-xs px-2"
+                        />
+                        <span className="text-gray-400 text-xs">mm</span>
+                        {m.targetValueMm && m.targetValueMm !== measuredValue && (
+                          <span className="text-yellow-400 text-xs">
+                            ({((m.targetValueMm / measuredValue - 1) * 100).toFixed(1)}%)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
+
+              {/* v1.2.0: Bouton Corriger perspective */}
+              {measurements.some(m => m.targetValueMm !== undefined) && (
+                <div className="mt-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      // Trouver les mesures avec valeur cible
+                      const measuresWithTarget = measurements.filter(m => m.targetValueMm !== undefined);
+                      if (measuresWithTarget.length === 0) return;
+
+                      // Calculer le facteur de correction moyen
+                      let totalRatioX = 0;
+                      let totalRatioY = 0;
+                      let countX = 0;
+                      let countY = 0;
+
+                      for (const m of measuresWithTarget) {
+                        const measured = calculateDistanceMm(m.point1, m.point2);
+                        const target = m.targetValueMm!;
+                        const ratio = target / measured;
+
+                        // Déterminer si c'est une mesure plutôt horizontale ou verticale
+                        const dx = Math.abs(m.point2.xPercent - m.point1.xPercent);
+                        const dy = Math.abs(m.point2.yPercent - m.point1.yPercent);
+
+                        if (dx > dy * 2) {
+                          // Mesure horizontale → correction sur X
+                          totalRatioX += ratio;
+                          countX++;
+                        } else if (dy > dx * 2) {
+                          // Mesure verticale → correction sur Y
+                          totalRatioY += ratio;
+                          countY++;
+                        } else {
+                          // Mesure diagonale → correction sur les deux
+                          totalRatioX += ratio;
+                          totalRatioY += ratio;
+                          countX++;
+                          countY++;
+                        }
+                      }
+
+                      const avgRatioX = countX > 0 ? totalRatioX / countX : 1;
+                      const avgRatioY = countY > 0 ? totalRatioY / countY : 1;
+
+                      // Appliquer la correction via stretchX/stretchY
+                      onSetStretch(
+                        photo.stretchX * avgRatioX,
+                        photo.stretchY * avgRatioY
+                      );
+
+                      toast.success(`Perspective corrigée: X×${avgRatioX.toFixed(3)}, Y×${avgRatioY.toFixed(3)}`);
+                    }}
+                    className="w-full border-yellow-600 text-yellow-400 hover:bg-yellow-900/30"
+                  >
+                    <Columns className="h-4 w-4 mr-2" />
+                    Corriger perspective
+                  </Button>
+                  <p className="text-gray-500 text-[10px] mt-1">
+                    Ajuste l'étirement pour que les mesures correspondent aux valeurs réelles
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
