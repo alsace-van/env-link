@@ -6,6 +6,16 @@
 
 ## ✅ Tâches terminées
 
+### 2025-01-25 - Grille fixe pour alignement (PhotoPreviewEditor v1.1.2)
+
+**Demande:** La grille doit rester horizontale/verticale pendant que l'image tourne, pour servir de référence d'alignement.
+
+**Solution:** Déplacer le code de dessin de la grille hors du contexte rotaté (`ctx.restore()` avant de dessiner la grille). La grille est maintenant basée sur le bounding box (qui reste fixe) au lieu de l'image (qui tourne).
+
+**Fichier modifié:** `PhotoPreviewEditor.tsx` v1.1.1 → v1.1.2
+
+---
+
 ### 2025-01-25 - Fix centre de rotation (PhotoPreviewEditor v1.1.1)
 
 **Problème:** Quand on utilisait le slider de rotation, le centre de l'image se déplaçait au fur et à mesure.
@@ -77,13 +87,13 @@ offsetY = centerY - (newBoundingHeight * scale) / 2;
 
 ## 📝 Notes contextuelles
 
-### Système de préparation photo (v1.1.1)
+### Système de préparation photo (v1.1.2)
 
 ```
 src/components/cad-gabarit/photo-preparation/
 ├── PhotoPreparationModal.tsx  # v1.1.0 - Modale principale
 ├── PhotoGridView.tsx          # Vue grille + détection doublons
-├── PhotoPreviewEditor.tsx     # v1.1.1 - Éditeur avec rotation libre + grille + fix centre
+├── PhotoPreviewEditor.tsx     # v1.1.2 - Éditeur rotation libre + grille fixe d'alignement
 ├── StretchHandles.tsx         # Poignées d'étirement
 ├── usePhotoPreparation.ts     # v1.1.0 - Hook principal (rotation libre)
 ├── useArucoDetection.ts       # Détection markers ArUco
