@@ -1,8 +1,13 @@
 // ============================================
 // EXPORT DXF: Export au format AutoCAD R12
 // Compatible Fusion 360, AutoCAD, LibreCAD
-// VERSION: 3.1 - Connexion par proximité de coordonnées
+// VERSION: 3.2 - FIX sens des arcs (congés)
 // ============================================
+//
+// CHANGELOG v3.2:
+// - FIX: Sens des arcs inversé lors de l'export
+// - Quand Y est inversé, le sens de l'arc doit être inversé aussi
+// - Les congés s'affichent maintenant correctement dans les logiciels CAD
 //
 // CHANGELOG v3.1:
 // - Détection des connexions par proximité (tolérance 0.5px)
@@ -655,10 +660,15 @@ function exportArc(arc: Arc, sketch: Sketch, scale: number): string {
   const endPt = sketch.points.get(arc.endPoint);
   if (!center || !startPt || !endPt) return "";
 
+  // v3.2: FIX - Calculer les angles dans le système DXF (Y inversé)
   let startAngle = (Math.atan2(-(startPt.y - center.y), startPt.x - center.x) * 180) / Math.PI;
   let endAngle = (Math.atan2(-(endPt.y - center.y), endPt.x - center.x) * 180) / Math.PI;
 
-  if (arc.counterClockwise === false) {
+  // v3.2: FIX - Quand on inverse Y pour le DXF, le sens de l'arc est automatiquement inversé
+  // Donc si l'arc était counterClockwise dans le canvas, il faut swap les angles
+  // pour qu'il reste dans le bon sens dans le DXF
+  if (arc.counterClockwise !== false) {
+    // Arc anti-horaire dans le canvas → swap pour corriger l'inversion Y
     const temp = startAngle;
     startAngle = endAngle;
     endAngle = temp;
