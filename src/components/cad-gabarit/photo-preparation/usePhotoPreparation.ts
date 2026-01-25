@@ -1,13 +1,13 @@
 // ============================================
 // HOOK: usePhotoPreparation
 // Gestion de l'état principal pour la préparation des photos
-// VERSION: 1.2.4c
+// VERSION: 1.2.5
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.2.5 (2025-01-25) : FIX calculateDistanceMm cohérent (horizontal=dx, vertical=dy)
 // - v1.2.4c (2025-01-25) : FIX export skewX+skewY avec 2 passes séquentielles
 // - v1.2.4b (2025-01-25) : FIX export grille skewX+skewY (formule position correcte)
-// - v1.2.4 (2025-01-25) : Export avec skewX ET skewY (bandes ou grille)
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -556,7 +556,10 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
 
   // === CALCULS ===
 
-  // v1.2.3: Calcul de distance avec skewX/skewY
+  // v1.2.5: Calcul de distance avec skewX/skewY
+  // Pour les mesures horizontales: utilise seulement dx (cohérent avec la correction)
+  // Pour les mesures verticales: utilise seulement dy (cohérent avec la correction)
+  // Pour les mesures diagonales: utilise sqrt(dx² + dy²) avec stretch au centre
   const calculateDistanceMm = useCallback(
     (p1: MeasurePoint, p2: MeasurePoint): number => {
       const photo = stateRef.current.photos[stateRef.current.currentPhotoIndex];
@@ -567,32 +570,52 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
       const skewX = photo.skewX || 0;
       const skewY = photo.skewY || 0;
 
-      // Position en pixels (0-1)
+      // Position relative (0-1)
       const x1Rel = p1.xPercent / 100;
       const y1Rel = p1.yPercent / 100;
       const x2Rel = p2.xPercent / 100;
       const y2Rel = p2.yPercent / 100;
 
-      // v1.2.3: StretchX local dépend de Y, stretchY local dépend de X
-      const localStretchX1 = photo.stretchX * (1 + skewX * (y1Rel - 0.5));
-      const localStretchY1 = photo.stretchY * (1 + skewY * (x1Rel - 0.5));
-      const localStretchX2 = photo.stretchX * (1 + skewX * (y2Rel - 0.5));
-      const localStretchY2 = photo.stretchY * (1 + skewY * (x2Rel - 0.5));
-
-      // Convertir en pixels avec le stretch local
-      const x1 = x1Rel * imgWidth * localStretchX1;
-      const y1 = y1Rel * imgHeight * localStretchY1;
-      const x2 = x2Rel * imgWidth * localStretchX2;
-      const y2 = y2Rel * imgHeight * localStretchY2;
-
-      const distancePx = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+      // Distance brute en pixels (sans stretch)
+      const dxRel = Math.abs(x2Rel - x1Rel);
+      const dyRel = Math.abs(y2Rel - y1Rel);
       
-      // Utiliser le scale ArUco si disponible, sinon le scale global
+      // Déterminer si c'est une mesure horizontale, verticale ou diagonale
+      const isHorizontal = dxRel > dyRel * 2;
+      const isVertical = dyRel > dxRel * 2;
+      
+      // Position Y/X moyenne pour le stretch local
+      const avgYRel = (y1Rel + y2Rel) / 2;
+      const avgXRel = (x1Rel + x2Rel) / 2;
+      
+      // Utiliser le scale ArUco si disponible
       const scaleX = photo.arucoScaleX || stateRef.current.scaleFactor;
       const scaleY = photo.arucoScaleY || stateRef.current.scaleFactor;
-      const avgScale = (scaleX + scaleY) / 2;
 
-      return distancePx / avgScale;
+      if (isHorizontal) {
+        // Mesure horizontale: utiliser seulement dx avec localStretchX
+        const localStretchX = photo.stretchX * (1 + skewX * (avgYRel - 0.5));
+        const dx = dxRel * imgWidth;
+        const stretchedDx = dx * localStretchX;
+        return stretchedDx / scaleX;
+      } else if (isVertical) {
+        // Mesure verticale: utiliser seulement dy avec localStretchY
+        const localStretchY = photo.stretchY * (1 + skewY * (avgXRel - 0.5));
+        const dy = dyRel * imgHeight;
+        const stretchedDy = dy * localStretchY;
+        return stretchedDy / scaleY;
+      } else {
+        // Mesure diagonale: utiliser les deux composantes
+        const localStretchX = photo.stretchX * (1 + skewX * (avgYRel - 0.5));
+        const localStretchY = photo.stretchY * (1 + skewY * (avgXRel - 0.5));
+        const dx = dxRel * imgWidth;
+        const dy = dyRel * imgHeight;
+        const stretchedDx = dx * localStretchX;
+        const stretchedDy = dy * localStretchY;
+        const distancePx = Math.sqrt(stretchedDx * stretchedDx + stretchedDy * stretchedDy);
+        const avgScale = (scaleX + scaleY) / 2;
+        return distancePx / avgScale;
+      }
     },
     []
   );
@@ -786,7 +809,7 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
       const finalScaleY = canvas.height / heightMm;
       const scale = (finalScaleX + finalScaleY) / 2;
 
-      console.log(`[usePhotoPreparation v1.2.4c] Photo "${photo.name}":`, {
+      console.log(`[usePhotoPreparation v1.2.5] Photo "${photo.name}":`, {
         originalPx: { w: imgWidth, h: imgHeight },
         stretch: { x: photo.stretchX, y: photo.stretchY },
         skew: { x: photo.skewX, y: photo.skewY },
