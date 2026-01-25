@@ -1,8 +1,12 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.55
+// VERSION: 7.55a
 // ============================================
+//
+// CHANGELOG v7.55a (25/01/2026):
+// - FIX: Import photos préparées - coordonnées et scale × scaleFactor
+// - Les images importées ont maintenant la bonne taille dans le canvas
 //
 // CHANGELOG v7.55 (23/01/2026):
 // - ADD: Nouvelle modale de préparation photo (photo-preparation/)
@@ -13,11 +17,6 @@
 //
 // CHANGELOG v7.54 (22/01/2026):
 // - MOD: Incrément SHIFT+flèches changé de 0.01% à 0.05%
-//
-// CHANGELOG v7.53 (22/01/2026):
-// - FIX: Crop utilise le canvas le plus récent (transformedCanvas si calibré)
-// - FIX: Efface transformedCanvas après crop pour utiliser croppedCanvas
-// - FIX: Ordre de priorité cohérent avec cad-renderer
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -5773,6 +5772,9 @@ export function CADGabaritCanvas({
   );
 
   // v7.55: Importer les photos depuis la modale de préparation
+  // v7.55a: FIX - Correction du scale pour import photos préparées
+  // Les coordonnées et scale doivent être multipliés par sketch.scaleFactor
+  // car le canvas CAD utilise des unités internes (unités = mm × scaleFactor)
   const handleImportPreparedPhotos = useCallback(
     (preparedPhotos: PreparedPhoto[]) => {
       if (preparedPhotos.length === 0) return;
@@ -5780,6 +5782,9 @@ export function CADGabaritCanvas({
       const layerColors = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4", "#84CC16", "#EF4444"];
       const newBackgroundImages: BackgroundImage[] = [];
       const newLayers: Array<{ id: string; layer: Layer }> = [];
+
+      // v7.55a: Facteur de conversion mm -> unités sketch
+      const sf = sketch.scaleFactor;
 
       preparedPhotos.forEach((photo, index) => {
         // Créer un calque pour chaque photo
@@ -5802,19 +5807,22 @@ export function CADGabaritCanvas({
         const img = new window.Image();
         img.src = photo.dataUrl;
 
-        // Position en ligne (espacées horizontalement)
-        const xOffset = index * (photo.widthMm + 50); // 50mm d'espacement
+        // Position en ligne (espacées horizontalement) - en mm
+        const xOffsetMm = index * (photo.widthMm + 50); // 50mm d'espacement
 
+        // v7.55a: FIX - Convertir mm en unités sketch (× scaleFactor)
+        // photo.scale est en px/mm, donc 1/photo.scale = mm/px
+        // Pour le canvas CAD: scale = unités/px = (mm/px) × scaleFactor
         const bgImage: BackgroundImage = {
           id: photo.id,
           name: photo.name,
           src: photo.dataUrl,
           image: img,
-          x: xOffset + photo.widthMm / 2, // Centre de l'image
-          y: photo.heightMm / 2,
-          scale: 1 / photo.scale, // scale = mm/px
-          scaleX: 1 / photo.scale,
-          scaleY: 1 / photo.scale,
+          x: (xOffsetMm + photo.widthMm / 2) * sf, // Centre de l'image en unités sketch
+          y: (photo.heightMm / 2) * sf,
+          scale: (1 / photo.scale) * sf, // unités sketch / px
+          scaleX: (1 / photo.scale) * sf,
+          scaleY: (1 / photo.scale) * sf,
           rotation: 0,
           opacity: imageOpacity,
           visible: true,
@@ -5849,7 +5857,7 @@ export function CADGabaritCanvas({
         autoBackupSave(true);
       }, 2000);
     },
-    [sketch.layers.size, imageOpacity, backgroundImages.length, autoBackupSave],
+    [sketch.layers.size, sketch.scaleFactor, imageOpacity, backgroundImages.length, autoBackupSave],
   );
 
   // v7.45: Redresser une image (correction de perspective via ArUco)
