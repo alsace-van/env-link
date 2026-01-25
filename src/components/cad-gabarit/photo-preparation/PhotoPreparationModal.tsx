@@ -1,13 +1,13 @@
 // ============================================
 // COMPOSANT: PhotoPreparationModal
 // Modale principale orchestrant la préparation des photos
-// VERSION: 1.0.2
+// VERSION: 1.1.0
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.1.0 (2025-01-25) : Ajout setRotation pour rotation libre
 // - v1.0.2 (2025-01-24) : Fix wheel zoom - ref attaché au DialogContent et suppression onWheel blocking
 // - v1.0.1 (2025-01-24) : Fix handleUpdatePhoto pour propager les données ArUco
-// - v1.0.0 (2025-01-23) : Création initiale
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -62,6 +62,7 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
     removePhoto,
     removeDuplicates,
     rotatePhoto,
+    setRotation, // v1.1.0: Rotation libre
     setCrop,
     setStretch,
     adjustStretchX,
@@ -208,6 +209,7 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
             activeTool={state.activeTool}
             scaleFactor={state.scaleFactor}
             onRotate={rotatePhoto}
+            onSetRotation={setRotation}
             onSetCrop={setCrop}
             onSetStretch={setStretch}
             onAdjustStretchX={adjustStretchX}
