@@ -1,13 +1,13 @@
 // ============================================
 // HOOK: usePhotoPreparation
 // Gestion de l'état principal pour la préparation des photos
-// VERSION: 1.2.4b
+// VERSION: 1.2.4c
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.2.4c (2025-01-25) : FIX export skewX+skewY avec 2 passes séquentielles
 // - v1.2.4b (2025-01-25) : FIX export grille skewX+skewY (formule position correcte)
 // - v1.2.4 (2025-01-25) : Export avec skewX ET skewY (bandes ou grille)
-// - v1.2.3 (2025-01-25) : FIX calculateDistanceMm avec skewX/skewY
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -667,37 +667,54 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
       const hasSkewY = Math.abs(skewY) > 0.001;
       
       if (hasSkewX && hasSkewY) {
-        // v1.2.4b: Les deux skew → grille avec calcul de position correct
-        const numRows = 80;
-        const numCols = 80;
-        const cellWidth = imgWidth / numCols;
-        const cellHeight = imgHeight / numRows;
+        // v1.2.4c: Les deux skew → 2 passes séquentielles
+        const tempCanvas = document.createElement("canvas");
+        const tempCtx = tempCanvas.getContext("2d");
+        if (!tempCtx) continue;
         
-        for (let row = 0; row < numRows; row++) {
-          for (let col = 0; col < numCols; col++) {
-            const xRel = (col + 0.5) / numCols;
-            const yRel = (row + 0.5) / numRows;
-            
-            const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
-            const localStretchY = photo.stretchY * (1 + skewY * (xRel - 0.5));
-            
-            const srcX = col * cellWidth;
-            const srcY = row * cellHeight;
-            const srcW = cellWidth + 1;
-            const srcH = cellHeight + 1;
-            
-            const destW = cellWidth * localStretchX + 0.5;
-            const destH = cellHeight * localStretchY + 0.5;
-            
-            // Position destination correcte
-            const lineWidth = imgWidth * localStretchX;
-            const destX = (xRel - 0.5) * lineWidth - destW / 2;
-            
-            const colHeight = imgHeight * localStretchY;
-            const destY = (yRel - 0.5) * colHeight - destH / 2;
-            
-            ctx.drawImage(photo.image, srcX, srcY, srcW, srcH, destX, destY, destW, destH);
-          }
+        tempCanvas.width = Math.ceil(stretchedWidth);
+        tempCanvas.height = Math.ceil(stretchedHeight);
+        
+        // Passe 1: skewX (bandes horizontales)
+        const numBandsX = 100;
+        const bandHeight = imgHeight / numBandsX;
+        
+        for (let i = 0; i < numBandsX; i++) {
+          const yRel = (i + 0.5) / numBandsX;
+          const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
+          
+          const srcY = i * bandHeight;
+          const srcHeight = bandHeight + 1;
+          
+          const destWidth = imgWidth * localStretchX;
+          const destHeight = bandHeight * photo.stretchY + 0.5;
+          
+          const destX = (tempCanvas.width - destWidth) / 2;
+          const destY = i * bandHeight * photo.stretchY;
+          
+          tempCtx.drawImage(photo.image, 0, srcY, imgWidth, srcHeight, destX, destY, destWidth, destHeight);
+        }
+        
+        // Passe 2: skewY (bandes verticales) sur le résultat
+        const tempWidth = tempCanvas.width;
+        const tempHeight = tempCanvas.height;
+        const numBandsY = 100;
+        const bandWidth = tempWidth / numBandsY;
+        
+        for (let i = 0; i < numBandsY; i++) {
+          const xRel = (i + 0.5) / numBandsY;
+          const localStretchYRatio = 1 + skewY * (xRel - 0.5);
+          
+          const srcX = i * bandWidth;
+          const srcWidth = bandWidth + 1;
+          
+          const destBandWidth = bandWidth + 0.5;
+          const destBandHeight = tempHeight * localStretchYRatio;
+          
+          const destX = -tempWidth / 2 + i * bandWidth;
+          const destY = -destBandHeight / 2;
+          
+          ctx.drawImage(tempCanvas, srcX, 0, srcWidth, tempHeight, destX, destY, destBandWidth, destBandHeight);
         }
       } else if (hasSkewX) {
         // Correction horizontale: dessiner par bandes horizontales
@@ -769,7 +786,7 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
       const finalScaleY = canvas.height / heightMm;
       const scale = (finalScaleX + finalScaleY) / 2;
 
-      console.log(`[usePhotoPreparation v1.2.4b] Photo "${photo.name}":`, {
+      console.log(`[usePhotoPreparation v1.2.4c] Photo "${photo.name}":`, {
         originalPx: { w: imgWidth, h: imgHeight },
         stretch: { x: photo.stretchX, y: photo.stretchY },
         skew: { x: photo.skewX, y: photo.skewY },
