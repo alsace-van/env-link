@@ -1,10 +1,11 @@
 // ============================================
 // TYPES: Photo Preparation System
 // Types pour la modale de préparation des photos
-// VERSION: 1.0.0
+// VERSION: 1.1.0
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.1.0 (2025-01-25) : Rotation libre (number), ajout GridOverlayType
 // - v1.0.0 (2025-01-23) : Création initiale
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
@@ -15,6 +16,10 @@
 export type PreparationStep = "grid" | "preview" | "summary";
 
 export type PreparationStatus = "pending" | "validated" | "skipped";
+
+// === GRILLE DE CADRAGE ===
+
+export type GridOverlayType = "none" | "thirds" | "grid" | "cross" | "diagonal";
 
 // === PHOTO EN PRÉPARATION ===
 
@@ -36,7 +41,8 @@ export interface PhotoToProcess {
   currentHeight: number;
   
   // Transformations appliquées
-  rotation: 0 | 90 | 180 | 270;
+  // v1.1.0: Rotation libre en degrés (était 0|90|180|270)
+  rotation: number;
   crop: ImageCropData | null;
   stretchX: number; // Ratio (1 = pas d'étirement)
   stretchY: number;
@@ -158,6 +164,7 @@ export type PhotoPreparationAction =
   | { type: "SET_CURRENT_INDEX"; index: number }
   | { type: "SET_PHOTO_STATUS"; photoId: string; status: PreparationStatus }
   | { type: "ROTATE_PHOTO"; photoId: string; direction: "cw" | "ccw" }
+  | { type: "SET_ROTATION"; photoId: string; rotation: number } // v1.1.0: Rotation libre
   | { type: "SET_CROP"; photoId: string; crop: ImageCropData | null }
   | { type: "SET_STRETCH"; photoId: string; stretchX: number; stretchY: number }
   | { type: "SET_ARUCO_RESULT"; photoId: string; result: ArucoDetectionResult }
