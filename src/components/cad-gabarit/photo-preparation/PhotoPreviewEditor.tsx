@@ -1,13 +1,13 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.1.3
+// VERSION: 1.1.3a
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.1.3a (2025-01-25) : Bouton Réinitialiser (0°) plus visible
 // - v1.1.3 (2025-01-25) : Grille de taille fixe (basée sur image, pas bounding box)
 // - v1.1.2 (2025-01-25) : Grille fixe (reste horizontale quand l'image tourne)
-// - v1.1.1 (2025-01-25) : FIX centre de rotation stable (compensation bounding box)
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -1196,10 +1196,10 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={() => onSetRotation(0)}
-                className="flex-1 h-7 text-xs text-gray-400 hover:text-white hover:bg-gray-700"
+                className="flex-1 h-7 text-xs text-gray-400 hover:text-white hover:bg-gray-700 font-bold"
                 title="Remettre à 0°"
               >
-                <RotateCcwSquare className="h-3 w-3" />
+                0°
               </Button>
               <Button
                 variant="ghost"
@@ -1218,6 +1218,18 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                 +1°
               </Button>
             </div>
+
+            {/* Bouton Réinitialiser */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onSetRotation(0)}
+              className="w-full h-7 text-xs border-gray-600 text-gray-300 hover:bg-gray-700"
+              disabled={photo.rotation === 0}
+            >
+              <RotateCcwSquare className="h-3 w-3 mr-1" />
+              Réinitialiser (0°)
+            </Button>
 
             <p className="text-gray-500 text-[10px]">
               Valeur actuelle: {photo.rotation.toFixed(1)}°
