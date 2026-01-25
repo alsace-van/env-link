@@ -1,13 +1,13 @@
 // ============================================
 // COMPOSANT: PhotoPreparationModal
 // Modale principale orchestrant la préparation des photos
-// VERSION: 1.2.0
+// VERSION: 1.2.1
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.2.1 (2025-01-25) : Fermeture au clic extérieur
 // - v1.2.0 (2025-01-25) : Ajout setSkew et setMeasurementTarget
 // - v1.1.0 (2025-01-25) : Ajout setRotation pour rotation libre
-// - v1.0.2 (2025-01-24) : Fix wheel zoom
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -260,7 +260,6 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
         ref={modalRef}
         className="max-w-[95vw] w-[1400px] p-0 flex flex-col overflow-hidden [&>button.absolute]:hidden"
         style={{ height: "90vh", minHeight: 0 }}
-        onPointerDownOutside={(e) => e.preventDefault()}
       >
         {/* Header minimal pour grid et summary */}
         {state.step !== "preview" && (
