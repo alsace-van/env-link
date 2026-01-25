@@ -1,13 +1,13 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.2.4c
+// VERSION: 1.2.5
 // ============================================
 //
 // Changelog (3 dernières versions) :
-// - v1.2.4c (2025-01-25) : FIX rendu skewX+skewY avec 2 passes séquentielles (pas grille)
+// - v1.2.5 (2025-01-25) : FIX formules cohérentes (horizontal=dx seul, vertical=dy seul)
+// - v1.2.4c (2025-01-25) : FIX rendu skewX+skewY avec 2 passes séquentielles
 // - v1.2.4b (2025-01-25) : FIX rendu grille skewX+skewY (formule position correcte)
-// - v1.2.4 (2025-01-25) : Support complet skewY (rendu, conversion coords, calcul, affichage)
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -1619,23 +1619,24 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      // Fonction locale pour calculer la distance BRUTE (sans stretch ni skew)
-                      const calculateRawDistanceMm = (p1: MeasurePoint, p2: MeasurePoint): number => {
+                      // v1.2.5: Fonctions de calcul de distance COHÉRENTES avec calculateDistanceMm
+                      // Pour une mesure horizontale: on utilise seulement la composante X
+                      // Pour une mesure verticale: on utilise seulement la composante Y
+                      
+                      const calculateHorizontalRawMm = (p1: MeasurePoint, p2: MeasurePoint): number => {
                         if (!photo.image) return 0;
                         const imgWidth = photo.image.naturalWidth || photo.image.width;
-                        const imgHeight = photo.image.naturalHeight || photo.image.height;
-                        
-                        const x1 = (p1.xPercent / 100) * imgWidth;
-                        const y1 = (p1.yPercent / 100) * imgHeight;
-                        const x2 = (p2.xPercent / 100) * imgWidth;
-                        const y2 = (p2.yPercent / 100) * imgHeight;
-                        
-                        const distancePx = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+                        const dx = Math.abs(p2.xPercent - p1.xPercent) / 100 * imgWidth;
                         const scaleX = photo.arucoScaleX || 1;
+                        return dx / scaleX;
+                      };
+                      
+                      const calculateVerticalRawMm = (p1: MeasurePoint, p2: MeasurePoint): number => {
+                        if (!photo.image) return 0;
+                        const imgHeight = photo.image.naturalHeight || photo.image.height;
+                        const dy = Math.abs(p2.yPercent - p1.yPercent) / 100 * imgHeight;
                         const scaleY = photo.arucoScaleY || 1;
-                        const avgScale = (scaleX + scaleY) / 2;
-                        
-                        return distancePx / avgScale;
+                        return dy / scaleY;
                       };
 
                       // Séparer les mesures horizontales et verticales
@@ -1673,8 +1674,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                         const topY = (topMeasure.point1.yPercent + topMeasure.point2.yPercent) / 200;
                         const bottomY = (bottomMeasure.point1.yPercent + bottomMeasure.point2.yPercent) / 200;
 
-                        const Mt = calculateRawDistanceMm(topMeasure.point1, topMeasure.point2);
-                        const Mb = calculateRawDistanceMm(bottomMeasure.point1, bottomMeasure.point2);
+                        // v1.2.5: Utiliser la mesure HORIZONTALE pure (seulement dx)
+                        const Mt = calculateHorizontalRawMm(topMeasure.point1, topMeasure.point2);
+                        const Mb = calculateHorizontalRawMm(bottomMeasure.point1, bottomMeasure.point2);
                         const Tt = topMeasure.targetValueMm!;
                         const Tb = bottomMeasure.targetValueMm!;
 
@@ -1709,8 +1711,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                         const leftX = (leftMeasure.point1.xPercent + leftMeasure.point2.xPercent) / 200;
                         const rightX = (rightMeasure.point1.xPercent + rightMeasure.point2.xPercent) / 200;
 
-                        const Ml = calculateRawDistanceMm(leftMeasure.point1, leftMeasure.point2);
-                        const Mr = calculateRawDistanceMm(rightMeasure.point1, rightMeasure.point2);
+                        // v1.2.5: Utiliser la mesure VERTICALE pure (seulement dy)
+                        const Ml = calculateVerticalRawMm(leftMeasure.point1, leftMeasure.point2);
+                        const Mr = calculateVerticalRawMm(rightMeasure.point1, rightMeasure.point2);
                         const Tl = leftMeasure.targetValueMm!;
                         const Tr = rightMeasure.targetValueMm!;
 
@@ -1741,7 +1744,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                         if (Math.abs(newSkewY) > 0.001) messages.push(`skewY=${newSkewY.toFixed(4)}`);
                         toast.success(`Perspective corrigée: ${messages.join(", ")}`);
                         
-                        console.log("[v1.2.4] Correction perspective:", {
+                        console.log("[v1.2.5] Correction perspective:", {
                           newSkewX, newStretchX, newSkewY, newStretchY
                         });
                       } else {
