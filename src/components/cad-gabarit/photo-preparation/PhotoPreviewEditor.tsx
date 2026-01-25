@@ -1,13 +1,13 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.2.1
+// VERSION: 1.2.2
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.2.2 (2025-01-25) : FIX coordonnées avec skewX (screenToImage, imageToScreen, ArUco)
 // - v1.2.1 (2025-01-25) : Vraie correction perspective par cisaillement (skewX, dessin par bandes)
 // - v1.2.0 (2025-01-25) : Correction perspective (input mesures, bouton corriger, skew)
-// - v1.1.3a (2025-01-25) : Bouton Réinitialiser (0°) plus visible
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -378,14 +378,54 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     };
   }, [viewport, photo.stretchX, photo.stretchY]);
 
-  // Convertir coordonnées écran -> image
+  // v1.2.2: Convertir coordonnées écran -> image (avec rotation et skewX)
   const screenToImage = useCallback((screenX: number, screenY: number) => {
     const { scale, offsetX, offsetY } = viewport;
-    return {
-      x: (screenX - offsetX) / (scale * photo.stretchX),
-      y: (screenY - offsetY) / (scale * photo.stretchY),
-    };
-  }, [viewport, photo.stretchX, photo.stretchY]);
+    
+    // Dimensions de l'image
+    const imgWidth = photo.image?.naturalWidth || photo.image?.width || 1;
+    const imgHeight = photo.image?.naturalHeight || photo.image?.height || 1;
+    
+    // Dimensions avec stretch
+    const stretchedWidth = imgWidth * photo.stretchX;
+    const stretchedHeight = imgHeight * photo.stretchY;
+    
+    // Bounding box après rotation
+    const radians = (photo.rotation * Math.PI) / 180;
+    const cos = Math.abs(Math.cos(radians));
+    const sin = Math.abs(Math.sin(radians));
+    const boundingWidth = stretchedWidth * cos + stretchedHeight * sin;
+    const boundingHeight = stretchedWidth * sin + stretchedHeight * cos;
+    
+    // Centre du bounding box
+    const centerX = offsetX + (boundingWidth * scale) / 2;
+    const centerY = offsetY + (boundingHeight * scale) / 2;
+    
+    // Position relative au centre (en pixels écran)
+    const relScreenX = screenX - centerX;
+    const relScreenY = screenY - centerY;
+    
+    // Rotation inverse
+    const cosR = Math.cos(-radians);
+    const sinR = Math.sin(-radians);
+    const unrotatedX = relScreenX * cosR - relScreenY * sinR;
+    const unrotatedY = relScreenX * sinR + relScreenY * cosR;
+    
+    // Convertir en coordonnées image (sans skew d'abord)
+    // unrotatedX = (imgX - imgWidth/2) * localStretchX * scale
+    // unrotatedY = (imgY - imgHeight/2) * stretchY * scale
+    
+    // Pour Y, c'est simple
+    const imgY = (unrotatedY / (scale * photo.stretchY)) + imgHeight / 2;
+    
+    // Pour X, on doit prendre en compte le skewX qui dépend de Y
+    const skewX = photo.skewX || 0;
+    const yRel = imgY / imgHeight; // 0-1
+    const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
+    const imgX = (unrotatedX / (scale * localStretchX)) + imgWidth / 2;
+    
+    return { x: imgX, y: imgY };
+  }, [viewport, photo.stretchX, photo.stretchY, photo.rotation, photo.skewX, photo.image]);
 
   // v1.1.0: Dessiner le canvas - IMAGE + ROTATION + GRILLE + MARQUEURS + MESURES
   useEffect(() => {
@@ -555,13 +595,19 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       }
     }
 
-    // Draw ArUco markers (coordonnées de l'image source, avec rotation)
+    // Draw ArUco markers (coordonnées de l'image source, avec rotation et skewX)
     if (detectedMarkers.length > 0 && initialFitDone) {
+      const skewX = photo.skewX || 0;
+      
       for (const marker of detectedMarkers) {
-        // Convertir les coins en coordonnées écran (avec rotation)
+        // Convertir les coins en coordonnées écran (avec rotation et skewX)
         const screenCorners = marker.corners.map(c => {
+          // v1.2.2: Prendre en compte le skewX
+          const yRel = c.y / imgHeight;
+          const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
+          
           // Position relative au centre de l'image source
-          const relX = (c.x - imgWidth / 2) * photo.stretchX * scale;
+          const relX = (c.x - imgWidth / 2) * localStretchX * scale;
           const relY = (c.y - imgHeight / 2) * photo.stretchY * scale;
           // Appliquer la rotation
           const rotX = relX * Math.cos(radians) - relY * Math.sin(radians);
@@ -625,9 +671,14 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         y: (measurement.point2.yPercent / 100) * imgHeight,
       };
 
-      // Conversion en coordonnées écran avec rotation
+      // v1.2.2: Conversion en coordonnées écran avec rotation ET skewX
       const imageToScreenWithRotation = (ix: number, iy: number) => {
-        const relX = (ix - imgWidth / 2) * photo.stretchX * scale;
+        // Prendre en compte le skewX (étirement local selon Y)
+        const skewX = photo.skewX || 0;
+        const yRel = iy / imgHeight; // 0-1
+        const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
+        
+        const relX = (ix - imgWidth / 2) * localStretchX * scale;
         const relY = (iy - imgHeight / 2) * photo.stretchY * scale;
         const rotX = relX * Math.cos(radians) - relY * Math.sin(radians);
         const rotY = relX * Math.sin(radians) + relY * Math.cos(radians);
@@ -690,15 +741,19 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       ctx.fillText(label, midX, midY);
     }
 
-    // Point en attente - Croix de ciblage (avec rotation)
+    // Point en attente - Croix de ciblage (avec rotation et skewX)
     if (pendingMeasurePoint && photo.image) {
       const imgPos = {
         x: (pendingMeasurePoint.xPercent / 100) * imgWidth,
         y: (pendingMeasurePoint.yPercent / 100) * imgHeight,
       };
       
-      // Conversion avec rotation
-      const relX = (imgPos.x - imgWidth / 2) * photo.stretchX * scale;
+      // v1.2.2: Conversion avec rotation ET skewX
+      const skewX = photo.skewX || 0;
+      const yRel = imgPos.y / imgHeight;
+      const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
+      
+      const relX = (imgPos.x - imgWidth / 2) * localStretchX * scale;
       const relY = (imgPos.y - imgHeight / 2) * photo.stretchY * scale;
       const rotX = relX * Math.cos(radians) - relY * Math.sin(radians);
       const rotY = relX * Math.sin(radians) + relY * Math.cos(radians);
@@ -732,7 +787,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       ctx.fill();
     }
 
-  }, [photo.image, photo.stretchX, photo.stretchY, photo.rotation, viewport, detectedMarkers, initialFitDone, measurements, pendingMeasurePoint, calculateDistanceMm, gridOverlay]);
+  }, [photo.image, photo.stretchX, photo.stretchY, photo.rotation, photo.skewX, viewport, detectedMarkers, initialFitDone, measurements, pendingMeasurePoint, calculateDistanceMm, gridOverlay]);
 
   // Gestion du zoom avec la molette - useEffect avec addEventListener pour pouvoir preventDefault
   useEffect(() => {
