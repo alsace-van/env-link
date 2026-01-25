@@ -285,6 +285,16 @@ interface MeasurePoint {
 - ✅ Mis à jour le header : VERSION 7.55, changelog réduit à 3 versions
 - Décision : Garder les anciens fichiers (CalibrationPanel, ManualStretch, ArucoStitcher) pour rétrocompatibilité
 
+### 2025-01-25 - Corrections bugs import (v7.55a, v1.0.2)
+- 🐛 **BUG 1**: Image importée ~2.5× plus petite que prévu
+  - Cause : Coordonnées et scale non multipliés par `sketch.scaleFactor`
+  - Fix : CADGabaritCanvas.tsx v7.55a - `handleImportPreparedPhotos` multiplie x, y, scale par sf
+- 🐛 **BUG 2**: Stretch non pris en compte après import
+  - Cause : `prepareForExport()` utilisait le scale ArUco original au lieu du scale du canvas
+  - Fix : usePhotoPreparation.ts v1.0.2 - Calcul `scale = canvas.width / widthMm`
+- ✅ Ajout de logs de debug dans prepareForExport pour faciliter le diagnostic
+- ✅ Gestion correcte de la rotation + stretch (swap des dimensions mm)
+
 ---
 
 ## 🔗 Fichiers liés
