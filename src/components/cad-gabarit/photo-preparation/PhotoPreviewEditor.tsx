@@ -1,13 +1,13 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.2.3a
+// VERSION: 1.2.4
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.2.4 (2025-01-25) : Support complet skewY (rendu, conversion coords, calcul, affichage)
 // - v1.2.3a (2025-01-25) : FIX calcul mesures brutes pour correction perspective
 // - v1.2.3 (2025-01-25) : FIX algorithme correction perspective (formule mathématique correcte)
-// - v1.2.2b (2025-01-25) : Ajout bouton "Réinitialiser tout"
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -367,7 +367,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     }
   }, [photo.id, photo.image, isArucoLoaded, arucoProcessed, runArucoDetection]);
 
-  // v1.2.2a: Convertir coordonnées image -> écran (avec rotation et skewX)
+  // v1.2.4: Convertir coordonnées image -> écran (avec rotation, skewX et skewY)
   const imageToScreen = useCallback((imgX: number, imgY: number) => {
     const { scale, offsetX, offsetY } = viewport;
     
@@ -390,14 +390,17 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const centerX = offsetX + (boundingWidth * scale) / 2;
     const centerY = offsetY + (boundingHeight * scale) / 2;
     
-    // Prendre en compte le skewX (étirement local selon Y)
+    // Prendre en compte le skewX et skewY (étirement local selon position)
     const skewX = photo.skewX || 0;
-    const yRel = imgY / imgHeight; // 0-1
+    const skewY = photo.skewY || 0;
+    const xRel = imgX / imgWidth;
+    const yRel = imgY / imgHeight;
     const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
+    const localStretchY = photo.stretchY * (1 + skewY * (xRel - 0.5));
     
     // Position relative au centre avec rotation
     const relX = (imgX - imgWidth / 2) * localStretchX * scale;
-    const relY = (imgY - imgHeight / 2) * photo.stretchY * scale;
+    const relY = (imgY - imgHeight / 2) * localStretchY * scale;
     
     // Appliquer la rotation
     const cosR = Math.cos(radians);
@@ -409,9 +412,9 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       x: centerX + rotX,
       y: centerY + rotY,
     };
-  }, [viewport, photo.stretchX, photo.stretchY, photo.rotation, photo.skewX, photo.image]);
+  }, [viewport, photo.stretchX, photo.stretchY, photo.rotation, photo.skewX, photo.skewY, photo.image]);
 
-  // v1.2.2: Convertir coordonnées écran -> image (avec rotation et skewX)
+  // v1.2.4: Convertir coordonnées écran -> image (avec rotation, skewX et skewY)
   const screenToImage = useCallback((screenX: number, screenY: number) => {
     const { scale, offsetX, offsetY } = viewport;
     
@@ -444,21 +447,28 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     const unrotatedX = relScreenX * cosR - relScreenY * sinR;
     const unrotatedY = relScreenX * sinR + relScreenY * cosR;
     
-    // Convertir en coordonnées image (sans skew d'abord)
-    // unrotatedX = (imgX - imgWidth/2) * localStretchX * scale
-    // unrotatedY = (imgY - imgHeight/2) * stretchY * scale
-    
-    // Pour Y, c'est simple
-    const imgY = (unrotatedY / (scale * photo.stretchY)) + imgHeight / 2;
-    
-    // Pour X, on doit prendre en compte le skewX qui dépend de Y
     const skewX = photo.skewX || 0;
-    const yRel = imgY / imgHeight; // 0-1
-    const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
-    const imgX = (unrotatedX / (scale * localStretchX)) + imgWidth / 2;
+    const skewY = photo.skewY || 0;
+    
+    // v1.2.4: Résolution itérative pour skewX et skewY
+    // Approximation initiale sans skew
+    let imgX = (unrotatedX / (scale * photo.stretchX)) + imgWidth / 2;
+    let imgY = (unrotatedY / (scale * photo.stretchY)) + imgHeight / 2;
+    
+    // Quelques itérations pour converger (skew crée une dépendance circulaire)
+    for (let iter = 0; iter < 3; iter++) {
+      const xRel = imgX / imgWidth;
+      const yRel = imgY / imgHeight;
+      
+      const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
+      const localStretchY = photo.stretchY * (1 + skewY * (xRel - 0.5));
+      
+      imgX = (unrotatedX / (scale * localStretchX)) + imgWidth / 2;
+      imgY = (unrotatedY / (scale * localStretchY)) + imgHeight / 2;
+    }
     
     return { x: imgX, y: imgY };
-  }, [viewport, photo.stretchX, photo.stretchY, photo.rotation, photo.skewX, photo.image]);
+  }, [viewport, photo.stretchX, photo.stretchY, photo.rotation, photo.skewX, photo.skewY, photo.image]);
 
   // v1.1.0: Dessiner le canvas - IMAGE + ROTATION + GRILLE + MARQUEURS + MESURES
   useEffect(() => {
@@ -503,36 +513,114 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     
     // v1.2.1: Si skewX != 0, dessiner par bandes pour correction de perspective
     const skewX = photo.skewX || 0;
+    const skewY = photo.skewY || 0;
+    const hasSkewX = Math.abs(skewX) > 0.001;
+    const hasSkewY = Math.abs(skewY) > 0.001;
     
-    if (Math.abs(skewX) > 0.001) {
-      // Correction de perspective: dessiner par bandes horizontales
-      const numBands = 80; // Nombre de bandes (plus = plus lisse, mais plus lent)
+    if (hasSkewX && hasSkewY) {
+      // v1.2.4: Les deux skew → dessiner par grille de cellules
+      const numCols = 40;
+      const numRows = 40;
+      const cellWidth = imgWidth / numCols;
+      const cellHeight = imgHeight / numRows;
+      
+      for (let row = 0; row < numRows; row++) {
+        for (let col = 0; col < numCols; col++) {
+          const xRel = (col + 0.5) / numCols; // 0-1
+          const yRel = (row + 0.5) / numRows; // 0-1
+          
+          // Stretch local selon position
+          const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
+          const localStretchY = photo.stretchY * (1 + skewY * (xRel - 0.5));
+          
+          // Position source
+          const srcX = col * cellWidth;
+          const srcY = row * cellHeight;
+          const srcW = cellWidth + 1;
+          const srcH = cellHeight + 1;
+          
+          // Dimensions destination
+          const destW = cellWidth * localStretchX * scale + 0.5;
+          const destH = cellHeight * localStretchY * scale + 0.5;
+          
+          // Position destination (calculer depuis le coin supérieur gauche de l'image)
+          // On doit intégrer le stretch cumulatif
+          let destX = 0;
+          let destY = 0;
+          
+          // Calculer la position X en intégrant le skewX variable
+          for (let c = 0; c < col; c++) {
+            const cYRel = yRel;
+            const cLocalStretchX = photo.stretchX * (1 + skewX * (cYRel - 0.5));
+            destX += cellWidth * cLocalStretchX * scale;
+          }
+          
+          // Calculer la position Y en intégrant le skewY variable
+          for (let r = 0; r < row; r++) {
+            const rXRel = xRel;
+            const rLocalStretchY = photo.stretchY * (1 + skewY * (rXRel - 0.5));
+            destY += cellHeight * rLocalStretchY * scale;
+          }
+          
+          // Centrer l'image
+          const totalWidth = imgWidth * photo.stretchX * scale;
+          const totalHeight = imgHeight * photo.stretchY * scale;
+          destX -= totalWidth / 2;
+          destY -= totalHeight / 2;
+          
+          ctx.drawImage(
+            photo.image,
+            srcX, srcY, srcW, srcH,
+            destX, destY, destW, destH
+          );
+        }
+      }
+    } else if (hasSkewX) {
+      // Correction de perspective horizontale: dessiner par bandes horizontales
+      const numBands = 80;
       const bandHeight = imgHeight / numBands;
       
       for (let i = 0; i < numBands; i++) {
-        const yRel = (i + 0.5) / numBands; // Position relative (0 = haut, 1 = bas)
-        
-        // Facteur d'étirement local basé sur la position Y
-        // skewX > 0 : le bas est plus large que le haut
-        // skewX < 0 : le haut est plus large que le bas
+        const yRel = (i + 0.5) / numBands;
         const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
         
-        // Position et dimensions de la bande source
         const srcY = i * bandHeight;
-        const srcHeight = bandHeight + 1; // +1 pour éviter les gaps
+        const srcHeight = bandHeight + 1;
         
-        // Dimensions de la bande destination
         const destWidth = imgWidth * localStretchX * scale;
-        const destHeight = (bandHeight * photo.stretchY * scale) + 0.5; // +0.5 pour éviter les gaps
+        const destHeight = (bandHeight * photo.stretchY * scale) + 0.5;
         
-        // Position de la bande (centrée horizontalement)
         const destX = -destWidth / 2;
         const destY = -stretchedHeight * scale / 2 + (i * bandHeight * photo.stretchY * scale);
         
         ctx.drawImage(
           photo.image,
-          0, srcY, imgWidth, srcHeight,  // Source
-          destX, destY, destWidth, destHeight  // Destination
+          0, srcY, imgWidth, srcHeight,
+          destX, destY, destWidth, destHeight
+        );
+      }
+    } else if (hasSkewY) {
+      // v1.2.4: Correction de perspective verticale: dessiner par bandes verticales
+      const numBands = 80;
+      const bandWidth = imgWidth / numBands;
+      
+      for (let i = 0; i < numBands; i++) {
+        const xRel = (i + 0.5) / numBands;
+        const localStretchY = photo.stretchY * (1 + skewY * (xRel - 0.5));
+        
+        const srcX = i * bandWidth;
+        const srcWidth = bandWidth + 1;
+        
+        const destWidth = (bandWidth * photo.stretchX * scale) + 0.5;
+        const destHeight = imgHeight * localStretchY * scale;
+        
+        const destX = -stretchedWidth * scale / 2 + (i * bandWidth * photo.stretchX * scale);
+        const destY = -destHeight / 2;
+        
+        ctx.drawImage(
+          photo.image,
+          srcX, 0, srcWidth, imgHeight,
+          destX, destY, destWidth, destHeight
         );
       }
     } else {
@@ -631,17 +719,19 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     // Draw ArUco markers (coordonnées de l'image source, avec rotation et skewX)
     if (detectedMarkers.length > 0 && initialFitDone) {
       const skewX = photo.skewX || 0;
+      const skewY = photo.skewY || 0;
       
       for (const marker of detectedMarkers) {
-        // Convertir les coins en coordonnées écran (avec rotation et skewX)
+        // v1.2.4: Convertir les coins en coordonnées écran (avec rotation, skewX et skewY)
         const screenCorners = marker.corners.map(c => {
-          // v1.2.2: Prendre en compte le skewX
+          const xRel = c.x / imgWidth;
           const yRel = c.y / imgHeight;
           const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
+          const localStretchY = photo.stretchY * (1 + skewY * (xRel - 0.5));
           
           // Position relative au centre de l'image source
           const relX = (c.x - imgWidth / 2) * localStretchX * scale;
-          const relY = (c.y - imgHeight / 2) * photo.stretchY * scale;
+          const relY = (c.y - imgHeight / 2) * localStretchY * scale;
           // Appliquer la rotation
           const rotX = relX * Math.cos(radians) - relY * Math.sin(radians);
           const rotY = relX * Math.sin(radians) + relY * Math.cos(radians);
@@ -704,15 +794,17 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         y: (measurement.point2.yPercent / 100) * imgHeight,
       };
 
-      // v1.2.2: Conversion en coordonnées écran avec rotation ET skewX
+      // v1.2.4: Conversion en coordonnées écran avec rotation, skewX ET skewY
       const imageToScreenWithRotation = (ix: number, iy: number) => {
-        // Prendre en compte le skewX (étirement local selon Y)
         const skewX = photo.skewX || 0;
-        const yRel = iy / imgHeight; // 0-1
+        const skewY = photo.skewY || 0;
+        const xRel = ix / imgWidth;
+        const yRel = iy / imgHeight;
         const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
+        const localStretchY = photo.stretchY * (1 + skewY * (xRel - 0.5));
         
         const relX = (ix - imgWidth / 2) * localStretchX * scale;
-        const relY = (iy - imgHeight / 2) * photo.stretchY * scale;
+        const relY = (iy - imgHeight / 2) * localStretchY * scale;
         const rotX = relX * Math.cos(radians) - relY * Math.sin(radians);
         const rotY = relX * Math.sin(radians) + relY * Math.cos(radians);
         return { x: centerX + rotX, y: centerY + rotY };
@@ -774,20 +866,22 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       ctx.fillText(label, midX, midY);
     }
 
-    // Point en attente - Croix de ciblage (avec rotation et skewX)
+    // v1.2.4: Point en attente - Croix de ciblage (avec rotation, skewX et skewY)
     if (pendingMeasurePoint && photo.image) {
       const imgPos = {
         x: (pendingMeasurePoint.xPercent / 100) * imgWidth,
         y: (pendingMeasurePoint.yPercent / 100) * imgHeight,
       };
       
-      // v1.2.2: Conversion avec rotation ET skewX
       const skewX = photo.skewX || 0;
+      const skewY = photo.skewY || 0;
+      const xRel = imgPos.x / imgWidth;
       const yRel = imgPos.y / imgHeight;
       const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
+      const localStretchY = photo.stretchY * (1 + skewY * (xRel - 0.5));
       
       const relX = (imgPos.x - imgWidth / 2) * localStretchX * scale;
-      const relY = (imgPos.y - imgHeight / 2) * photo.stretchY * scale;
+      const relY = (imgPos.y - imgHeight / 2) * localStretchY * scale;
       const rotX = relX * Math.cos(radians) - relY * Math.sin(radians);
       const rotY = relX * Math.sin(radians) + relY * Math.cos(radians);
       const p = { x: centerX + rotX, y: centerY + rotY };
@@ -820,7 +914,7 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       ctx.fill();
     }
 
-  }, [photo.image, photo.stretchX, photo.stretchY, photo.rotation, photo.skewX, viewport, detectedMarkers, initialFitDone, measurements, pendingMeasurePoint, calculateDistanceMm, gridOverlay]);
+  }, [photo.image, photo.stretchX, photo.stretchY, photo.rotation, photo.skewX, photo.skewY, viewport, detectedMarkers, initialFitDone, measurements, pendingMeasurePoint, calculateDistanceMm, gridOverlay]);
 
   // Gestion du zoom avec la molette - useEffect avec addEventListener pour pouvoir preventDefault
   useEffect(() => {
@@ -1512,21 +1606,19 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                 })}
               </div>
 
-              {/* v1.2.3a: Bouton Corriger perspective avec skewX */}
+              {/* v1.2.4: Bouton Corriger perspective avec skewX ET skewY */}
               {measurements.some(m => m.targetValueMm !== undefined) && (
                 <div className="mt-3 space-y-2">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      // v1.2.3a: Fonction locale pour calculer la distance BRUTE
-                      // (sans stretch ni skew - mesure de l'image source originale)
+                      // Fonction locale pour calculer la distance BRUTE (sans stretch ni skew)
                       const calculateRawDistanceMm = (p1: MeasurePoint, p2: MeasurePoint): number => {
                         if (!photo.image) return 0;
                         const imgWidth = photo.image.naturalWidth || photo.image.width;
                         const imgHeight = photo.image.naturalHeight || photo.image.height;
                         
-                        // Position en pixels de l'image source (sans transformation)
                         const x1 = (p1.xPercent / 100) * imgWidth;
                         const y1 = (p1.yPercent / 100) * imgHeight;
                         const x2 = (p2.xPercent / 100) * imgWidth;
@@ -1540,92 +1632,118 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                         return distancePx / avgScale;
                       };
 
-                      // Trouver les mesures horizontales avec valeur cible
+                      // Séparer les mesures horizontales et verticales
                       const horizontalMeasures = measurements.filter(m => {
                         if (m.targetValueMm === undefined) return false;
                         const dx = Math.abs(m.point2.xPercent - m.point1.xPercent);
                         const dy = Math.abs(m.point2.yPercent - m.point1.yPercent);
-                        return dx > dy * 2; // Mesure horizontale
+                        return dx > dy * 2;
                       });
 
+                      const verticalMeasures = measurements.filter(m => {
+                        if (m.targetValueMm === undefined) return false;
+                        const dx = Math.abs(m.point2.xPercent - m.point1.xPercent);
+                        const dy = Math.abs(m.point2.yPercent - m.point1.yPercent);
+                        return dy > dx * 2;
+                      });
+
+                      let newSkewX = 0;
+                      let newStretchX = photo.stretchX;
+                      let newSkewY = 0;
+                      let newStretchY = photo.stretchY;
+                      let correctionApplied = false;
+
+                      // === CORRECTION HORIZONTALE (skewX) ===
                       if (horizontalMeasures.length >= 2) {
-                        // === CORRECTION TRAPÈZE HORIZONTAL (2+ mesures horizontales) ===
-                        // Trier par position Y
                         const sorted = [...horizontalMeasures].sort((a, b) => {
                           const ya = (a.point1.yPercent + a.point2.yPercent) / 2;
                           const yb = (b.point1.yPercent + b.point2.yPercent) / 2;
                           return ya - yb;
                         });
 
-                        // Prendre la première (haut) et la dernière (bas)
                         const topMeasure = sorted[0];
                         const bottomMeasure = sorted[sorted.length - 1];
 
-                        const topY = (topMeasure.point1.yPercent + topMeasure.point2.yPercent) / 200; // 0-1
-                        const bottomY = (bottomMeasure.point1.yPercent + bottomMeasure.point2.yPercent) / 200; // 0-1
+                        const topY = (topMeasure.point1.yPercent + topMeasure.point2.yPercent) / 200;
+                        const bottomY = (bottomMeasure.point1.yPercent + bottomMeasure.point2.yPercent) / 200;
 
-                        // v1.2.3a: Utiliser les mesures BRUTES (sans stretchX ni skewX)
                         const Mt = calculateRawDistanceMm(topMeasure.point1, topMeasure.point2);
                         const Mb = calculateRawDistanceMm(bottomMeasure.point1, bottomMeasure.point2);
-
                         const Tt = topMeasure.targetValueMm!;
                         const Tb = bottomMeasure.targetValueMm!;
 
-                        // v1.2.3: Algorithme correct pour skewX
-                        // On veut: Mt × ratio × (1 + skewX × a) = Tt
-                        //          Mb × ratio × (1 + skewX × b) = Tb
-                        // Où a = topY - 0.5, b = bottomY - 0.5, ratio = newStretchX/oldStretchX
-                        
                         const a = topY - 0.5;
                         const b = bottomY - 0.5;
-                        
+
                         if (Math.abs(b - a) > 0.01) {
-                          // R = (Tt × Mb) / (Tb × Mt)
                           const R = (Tt * Mb) / (Tb * Mt);
-                          
-                          // skewX = (R - 1) / (a - R × b)
                           const denominator = a - R * b;
                           if (Math.abs(denominator) > 0.0001) {
-                            const newSkewX = (R - 1) / denominator;
-                            
-                            // v1.2.3a: newStretchX est ABSOLU (Mt est la mesure brute sans stretch)
-                            // Mt × newStretchX × (1 + skewX × a) = Tt
-                            // newStretchX = Tt / (Mt × (1 + skewX × a))
+                            newSkewX = (R - 1) / denominator;
                             const factor = 1 + newSkewX * a;
                             if (Math.abs(factor) > 0.0001) {
-                              const newStretchX = Tt / (Mt * factor);
-                              
-                              // Appliquer les corrections
-                              onSetSkew(newSkewX, photo.skewY);
-                              onSetStretch(newStretchX, photo.stretchY);
-                              
-                              console.log("[v1.2.3a] Correction perspective:", {
-                                Mt, Mb, Tt, Tb,
-                                topY, bottomY, a, b, R,
-                                newSkewX, newStretchX,
-                                oldStretchX: photo.stretchX
-                              });
-                              
-                              toast.success(`Perspective corrigée: skewX=${newSkewX.toFixed(4)}, stretchX=${newStretchX.toFixed(4)}`);
-                            } else {
-                              toast.error("Erreur de calcul (facteur nul)");
+                              newStretchX = Tt / (Mt * factor);
+                              correctionApplied = true;
                             }
-                          } else {
-                            toast.error("Erreur de calcul (dénominateur nul)");
                           }
-                        } else {
-                          toast.error("Les mesures sont trop proches verticalement");
                         }
+                      }
+
+                      // === CORRECTION VERTICALE (skewY) ===
+                      if (verticalMeasures.length >= 2) {
+                        const sorted = [...verticalMeasures].sort((a, b) => {
+                          const xa = (a.point1.xPercent + a.point2.xPercent) / 2;
+                          const xb = (b.point1.xPercent + b.point2.xPercent) / 2;
+                          return xa - xb;
+                        });
+
+                        const leftMeasure = sorted[0];
+                        const rightMeasure = sorted[sorted.length - 1];
+
+                        const leftX = (leftMeasure.point1.xPercent + leftMeasure.point2.xPercent) / 200;
+                        const rightX = (rightMeasure.point1.xPercent + rightMeasure.point2.xPercent) / 200;
+
+                        const Ml = calculateRawDistanceMm(leftMeasure.point1, leftMeasure.point2);
+                        const Mr = calculateRawDistanceMm(rightMeasure.point1, rightMeasure.point2);
+                        const Tl = leftMeasure.targetValueMm!;
+                        const Tr = rightMeasure.targetValueMm!;
+
+                        const a = leftX - 0.5;
+                        const b = rightX - 0.5;
+
+                        if (Math.abs(b - a) > 0.01) {
+                          const R = (Tl * Mr) / (Tr * Ml);
+                          const denominator = a - R * b;
+                          if (Math.abs(denominator) > 0.0001) {
+                            newSkewY = (R - 1) / denominator;
+                            const factor = 1 + newSkewY * a;
+                            if (Math.abs(factor) > 0.0001) {
+                              newStretchY = Tl / (Ml * factor);
+                              correctionApplied = true;
+                            }
+                          }
+                        }
+                      }
+
+                      // Appliquer les corrections
+                      if (correctionApplied) {
+                        onSetSkew(newSkewX, newSkewY);
+                        onSetStretch(newStretchX, newStretchY);
+                        
+                        const messages: string[] = [];
+                        if (Math.abs(newSkewX) > 0.001) messages.push(`skewX=${newSkewX.toFixed(4)}`);
+                        if (Math.abs(newSkewY) > 0.001) messages.push(`skewY=${newSkewY.toFixed(4)}`);
+                        toast.success(`Perspective corrigée: ${messages.join(", ")}`);
+                        
+                        console.log("[v1.2.4] Correction perspective:", {
+                          newSkewX, newStretchX, newSkewY, newStretchY
+                        });
                       } else {
-                        // === CORRECTION SIMPLE (pas assez de mesures pour le trapèze) ===
+                        // Fallback: correction simple par stretch
                         const measuresWithTarget = measurements.filter(m => m.targetValueMm !== undefined);
                         if (measuresWithTarget.length === 0) return;
 
-                        let totalRatioX = 0;
-                        let totalRatioY = 0;
-                        let countX = 0;
-                        let countY = 0;
-
+                        let totalRatioX = 0, totalRatioY = 0, countX = 0, countY = 0;
                         for (const m of measuresWithTarget) {
                           const measured = calculateDistanceMm(m.point1, m.point2);
                           const target = m.targetValueMm!;
@@ -1633,28 +1751,14 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                           const dx = Math.abs(m.point2.xPercent - m.point1.xPercent);
                           const dy = Math.abs(m.point2.yPercent - m.point1.yPercent);
 
-                          if (dx > dy * 2) {
-                            totalRatioX += ratio;
-                            countX++;
-                          } else if (dy > dx * 2) {
-                            totalRatioY += ratio;
-                            countY++;
-                          } else {
-                            totalRatioX += ratio;
-                            totalRatioY += ratio;
-                            countX++;
-                            countY++;
-                          }
+                          if (dx > dy * 2) { totalRatioX += ratio; countX++; }
+                          else if (dy > dx * 2) { totalRatioY += ratio; countY++; }
+                          else { totalRatioX += ratio; totalRatioY += ratio; countX++; countY++; }
                         }
 
                         const avgRatioX = countX > 0 ? totalRatioX / countX : 1;
                         const avgRatioY = countY > 0 ? totalRatioY / countY : 1;
-
-                        onSetStretch(
-                          photo.stretchX * avgRatioX,
-                          photo.stretchY * avgRatioY
-                        );
-
+                        onSetStretch(photo.stretchX * avgRatioX, photo.stretchY * avgRatioY);
                         toast.success(`Étirement corrigé: X×${avgRatioX.toFixed(3)}, Y×${avgRatioY.toFixed(3)}`);
                       }
                     }}
@@ -1664,23 +1768,40 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                     Corriger perspective
                   </Button>
                   
-                  {/* Afficher skewX actuel si != 0 */}
-                  {Math.abs(photo.skewX || 0) > 0.001 && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-400">Skew X: {(photo.skewX || 0).toFixed(4)}</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onSetSkew(0, photo.skewY)}
-                        className="h-5 text-xs text-gray-400 hover:text-white px-2"
-                      >
-                        Reset
-                      </Button>
+                  {/* Afficher skewX et skewY si != 0 */}
+                  {(Math.abs(photo.skewX || 0) > 0.001 || Math.abs(photo.skewY || 0) > 0.001) && (
+                    <div className="space-y-1">
+                      {Math.abs(photo.skewX || 0) > 0.001 && (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-gray-400">Skew X: {(photo.skewX || 0).toFixed(4)}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onSetSkew(0, photo.skewY)}
+                            className="h-5 text-xs text-gray-400 hover:text-white px-2"
+                          >
+                            Reset
+                          </Button>
+                        </div>
+                      )}
+                      {Math.abs(photo.skewY || 0) > 0.001 && (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-gray-400">Skew Y: {(photo.skewY || 0).toFixed(4)}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onSetSkew(photo.skewX, 0)}
+                            className="h-5 text-xs text-gray-400 hover:text-white px-2"
+                          >
+                            Reset
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   )}
                   
                   <p className="text-gray-500 text-[10px]">
-                    2 mesures horizontales → corrige le trapèze
+                    2 mesures horizontales → skewX | 2 verticales → skewY
                   </p>
                 </div>
               )}
