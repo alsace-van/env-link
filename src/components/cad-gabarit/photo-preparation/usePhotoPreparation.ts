@@ -1,13 +1,13 @@
 // ============================================
 // HOOK: usePhotoPreparation
 // Gestion de l'état principal pour la préparation des photos
-// VERSION: 1.2.1
+// VERSION: 1.2.3
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.2.3 (2025-01-25) : FIX calculateDistanceMm avec skewX/skewY
 // - v1.2.1 (2025-01-25) : Export avec correction perspective (skewX par bandes)
 // - v1.2.0 (2025-01-25) : Correction perspective (setSkew, setMeasurementTarget)
-// - v1.1.0 (2025-01-25) : Rotation libre (SET_ROTATION), ROTATE_PHOTO modifié pour +/-90°
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -556,16 +556,34 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
 
   // === CALCULS ===
 
+  // v1.2.3: Calcul de distance avec skewX/skewY
   const calculateDistanceMm = useCallback(
     (p1: MeasurePoint, p2: MeasurePoint): number => {
       const photo = stateRef.current.photos[stateRef.current.currentPhotoIndex];
       if (!photo) return 0;
 
-      // Convertir % en pixels
-      const x1 = (p1.xPercent / 100) * photo.currentWidth * photo.stretchX;
-      const y1 = (p1.yPercent / 100) * photo.currentHeight * photo.stretchY;
-      const x2 = (p2.xPercent / 100) * photo.currentWidth * photo.stretchX;
-      const y2 = (p2.yPercent / 100) * photo.currentHeight * photo.stretchY;
+      const imgWidth = photo.currentWidth;
+      const imgHeight = photo.currentHeight;
+      const skewX = photo.skewX || 0;
+      const skewY = photo.skewY || 0;
+
+      // Position en pixels (0-1)
+      const x1Rel = p1.xPercent / 100;
+      const y1Rel = p1.yPercent / 100;
+      const x2Rel = p2.xPercent / 100;
+      const y2Rel = p2.yPercent / 100;
+
+      // v1.2.3: StretchX local dépend de Y, stretchY local dépend de X
+      const localStretchX1 = photo.stretchX * (1 + skewX * (y1Rel - 0.5));
+      const localStretchY1 = photo.stretchY * (1 + skewY * (x1Rel - 0.5));
+      const localStretchX2 = photo.stretchX * (1 + skewX * (y2Rel - 0.5));
+      const localStretchY2 = photo.stretchY * (1 + skewY * (x2Rel - 0.5));
+
+      // Convertir en pixels avec le stretch local
+      const x1 = x1Rel * imgWidth * localStretchX1;
+      const y1 = y1Rel * imgHeight * localStretchY1;
+      const x2 = x2Rel * imgWidth * localStretchX2;
+      const y2 = y2Rel * imgHeight * localStretchY2;
 
       const distancePx = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
       
