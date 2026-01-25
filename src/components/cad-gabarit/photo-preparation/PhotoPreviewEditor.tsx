@@ -1,13 +1,13 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.1.2
+// VERSION: 1.1.3
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.1.3 (2025-01-25) : Grille de taille fixe (basée sur image, pas bounding box)
 // - v1.1.2 (2025-01-25) : Grille fixe (reste horizontale quand l'image tourne)
 // - v1.1.1 (2025-01-25) : FIX centre de rotation stable (compensation bounding box)
-// - v1.1.0 (2025-01-25) : Rotation libre + grille de cadrage
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -434,13 +434,16 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
     
     ctx.restore();
 
-    // v1.1.2: Dessiner la grille de cadrage FIXE (hors contexte rotaté)
-    // La grille reste horizontale/verticale pour servir de référence d'alignement
+    // v1.1.3: Dessiner la grille de cadrage FIXE
+    // - Reste horizontale/verticale (pas de rotation)
+    // - Taille fixe basée sur l'image (pas le bounding box qui grandit)
+    // - Centrée sur le centre de l'image
     if (gridOverlay !== "none") {
-      const gridWidth = boundingWidth * scale;
-      const gridHeight = boundingHeight * scale;
-      const gridLeft = offsetX;
-      const gridTop = offsetY;
+      // Dimensions fixes basées sur l'image stretchée (pas le bounding box)
+      const gridWidth = stretchedWidth * scale;
+      const gridHeight = stretchedHeight * scale;
+      const gridLeft = centerX - gridWidth / 2;
+      const gridTop = centerY - gridHeight / 2;
       
       ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
       ctx.lineWidth = 1;
