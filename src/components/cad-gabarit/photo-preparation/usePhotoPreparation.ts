@@ -1,13 +1,13 @@
 // ============================================
 // HOOK: usePhotoPreparation
 // Gestion de l'état principal pour la préparation des photos
-// VERSION: 1.1.0
+// VERSION: 1.2.0
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.2.0 (2025-01-25) : Correction perspective (setSkew, setMeasurementTarget)
 // - v1.1.0 (2025-01-25) : Rotation libre (SET_ROTATION), ROTATE_PHOTO modifié pour +/-90°
 // - v1.0.2 (2025-01-25) : FIX scale dans prepareForExport - calcul basé sur canvas réel
-// - v1.0.1 (2025-01-24) : Ajout setArucoResult pour propagation depuis PhotoPreviewEditor
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -145,6 +145,17 @@ function reducer(
         ),
       };
 
+    // v1.2.0: Correction de perspective (cisaillement)
+    case "SET_SKEW":
+      return {
+        ...state,
+        photos: state.photos.map((p) =>
+          p.id === action.photoId
+            ? { ...p, skewX: action.skewX, skewY: action.skewY }
+            : p
+        ),
+      };
+
     case "SET_ARUCO_RESULT":
       return {
         ...state,
@@ -193,6 +204,17 @@ function reducer(
             return { ...m, point2: { ...m.point2, xPercent: action.xPercent, yPercent: action.yPercent } };
           }
         }),
+      };
+
+    // v1.2.0: Définir la valeur cible d'une mesure (pour correction perspective)
+    case "SET_MEASUREMENT_TARGET":
+      return {
+        ...state,
+        currentMeasurements: state.currentMeasurements.map((m) =>
+          m.id === action.measurementId
+            ? { ...m, targetValueMm: action.targetValueMm }
+            : m
+        ),
       };
 
     case "CLEAR_MEASUREMENTS":
@@ -253,6 +275,7 @@ export interface UsePhotoPreparationReturn {
   setRotation: (rotation: number) => void; // v1.1.0: Rotation libre
   setCrop: (crop: ImageCropData | null) => void;
   setStretch: (stretchX: number, stretchY: number) => void;
+  setSkew: (skewX: number, skewY: number) => void; // v1.2.0: Correction perspective
   adjustStretchX: (deltaMm: number) => void;
   adjustStretchY: (deltaMm: number) => void;
   
@@ -267,6 +290,7 @@ export interface UsePhotoPreparationReturn {
   addMeasurePoint: (xPercent: number, yPercent: number) => void;
   removeMeasurement: (measurementId: string) => void;
   updateMeasurementPoint: (measurementId: string, pointIndex: 1 | 2, xPercent: number, yPercent: number) => void;
+  setMeasurementTarget: (measurementId: string, targetValueMm: number | undefined) => void; // v1.2.0
   clearMeasurements: () => void;
   
   // Calculs
@@ -412,6 +436,13 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
     dispatch({ type: "SET_STRETCH", photoId: photo.id, stretchX, stretchY });
   }, []);
 
+  // v1.2.0: Correction de perspective (cisaillement)
+  const setSkew = useCallback((skewX: number, skewY: number) => {
+    const photo = stateRef.current.photos[stateRef.current.currentPhotoIndex];
+    if (!photo) return;
+    dispatch({ type: "SET_SKEW", photoId: photo.id, skewX, skewY });
+  }, []);
+
   const adjustStretchX = useCallback((deltaMm: number) => {
     const photo = stateRef.current.photos[stateRef.current.currentPhotoIndex];
     if (!photo) return;
@@ -505,6 +536,11 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
 
   const clearMeasurements = useCallback(() => {
     dispatch({ type: "CLEAR_MEASUREMENTS" });
+  }, []);
+
+  // v1.2.0: Définir la valeur cible d'une mesure (pour correction perspective)
+  const setMeasurementTarget = useCallback((measurementId: string, targetValueMm: number | undefined) => {
+    dispatch({ type: "SET_MEASUREMENT_TARGET", measurementId, targetValueMm });
   }, []);
 
   // === ARUCO ===
@@ -732,6 +768,7 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
     setRotation, // v1.1.0: Rotation libre
     setCrop,
     setStretch,
+    setSkew, // v1.2.0: Correction perspective
     adjustStretchX,
     adjustStretchY,
     validatePhoto,
@@ -740,6 +777,7 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
     addMeasurePoint,
     removeMeasurement,
     updateMeasurementPoint,
+    setMeasurementTarget, // v1.2.0: Valeur cible mesure
     clearMeasurements,
     calculateDistanceMm,
     getDimensionsMm,
