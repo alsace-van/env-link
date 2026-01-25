@@ -1,13 +1,13 @@
 // ============================================
 // HOOK: usePhotoPreparation
 // Gestion de l'état principal pour la préparation des photos
-// VERSION: 1.2.4
+// VERSION: 1.2.4b
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.2.4b (2025-01-25) : FIX export grille skewX+skewY (formule position correcte)
 // - v1.2.4 (2025-01-25) : Export avec skewX ET skewY (bandes ou grille)
 // - v1.2.3 (2025-01-25) : FIX calculateDistanceMm avec skewX/skewY
-// - v1.2.1 (2025-01-25) : Export avec correction perspective (skewX par bandes)
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -667,9 +667,9 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
       const hasSkewY = Math.abs(skewY) > 0.001;
       
       if (hasSkewX && hasSkewY) {
-        // Les deux skew → dessiner par grille de cellules
-        const numCols = 50;
-        const numRows = 50;
+        // v1.2.4b: Les deux skew → grille avec calcul de position correct
+        const numRows = 80;
+        const numCols = 80;
         const cellWidth = imgWidth / numCols;
         const cellHeight = imgHeight / numRows;
         
@@ -689,23 +689,12 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
             const destW = cellWidth * localStretchX + 0.5;
             const destH = cellHeight * localStretchY + 0.5;
             
-            let destX = 0;
-            let destY = 0;
+            // Position destination correcte
+            const lineWidth = imgWidth * localStretchX;
+            const destX = (xRel - 0.5) * lineWidth - destW / 2;
             
-            for (let c = 0; c < col; c++) {
-              const cLocalStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
-              destX += cellWidth * cLocalStretchX;
-            }
-            
-            for (let r = 0; r < row; r++) {
-              const rLocalStretchY = photo.stretchY * (1 + skewY * (xRel - 0.5));
-              destY += cellHeight * rLocalStretchY;
-            }
-            
-            const totalWidth = imgWidth * photo.stretchX;
-            const totalHeight = imgHeight * photo.stretchY;
-            destX -= totalWidth / 2;
-            destY -= totalHeight / 2;
+            const colHeight = imgHeight * localStretchY;
+            const destY = (yRel - 0.5) * colHeight - destH / 2;
             
             ctx.drawImage(photo.image, srcX, srcY, srcW, srcH, destX, destY, destW, destH);
           }
@@ -780,7 +769,7 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
       const finalScaleY = canvas.height / heightMm;
       const scale = (finalScaleX + finalScaleY) / 2;
 
-      console.log(`[usePhotoPreparation v1.2.4] Photo "${photo.name}":`, {
+      console.log(`[usePhotoPreparation v1.2.4b] Photo "${photo.name}":`, {
         originalPx: { w: imgWidth, h: imgHeight },
         stretch: { x: photo.stretchX, y: photo.stretchY },
         skew: { x: photo.skewX, y: photo.skewY },
