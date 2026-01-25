@@ -6,6 +6,35 @@
 
 ## ✅ Tâches terminées
 
+### 2025-01-25 - FIX coordonnées avec skewX v1.2.2
+
+**Problème:** Après correction de perspective, les points de mesure "décrochaient" - décalage entre le clic et l'emplacement du point.
+
+**Cause:** Les fonctions de conversion de coordonnées (écran ↔ image) ne prenaient pas en compte le skewX.
+
+**Solution:** Mettre à jour toutes les fonctions de conversion :
+1. `screenToImage()` - conversion clic → coordonnées image (avec rotation inverse + skewX)
+2. `imageToScreenWithRotation()` - conversion coordonnées image → écran (avec skewX)
+3. Conversion des marqueurs ArUco (avec skewX)
+4. Conversion du point en attente (pendingMeasurePoint) (avec skewX)
+
+**Formule appliquée:**
+```javascript
+// Image → Screen : le stretchX local dépend de la position Y
+const yRel = imgY / imgHeight; // 0 = haut, 1 = bas
+const localStretchX = stretchX * (1 + skewX * (yRel - 0.5));
+
+// Screen → Image : calculer Y d'abord, puis utiliser le skewX pour X
+const imgY = (unrotatedY / (scale * stretchY)) + imgHeight / 2;
+const yRel = imgY / imgHeight;
+const localStretchX = stretchX * (1 + skewX * (yRel - 0.5));
+const imgX = (unrotatedX / (scale * localStretchX)) + imgWidth / 2;
+```
+
+**Fichier modifié:** `PhotoPreviewEditor.tsx` v1.2.1 → v1.2.2
+
+---
+
 ### 2025-01-25 - Vraie correction de perspective v1.2.1
 
 **Problème:** La v1.2.0 appliquait un étirement uniforme (stretchX identique sur toute l'image), mais pour corriger un trapèze il faut un étirement différentiel.
@@ -169,13 +198,13 @@ offsetY = centerY - (newBoundingHeight * scale) / 2;
 
 ## 📝 Notes contextuelles
 
-### Système de préparation photo (v1.2.1)
+### Système de préparation photo (v1.2.2)
 
 ```
 src/components/cad-gabarit/photo-preparation/
 ├── PhotoPreparationModal.tsx  # v1.2.0 - Modale principale
 ├── PhotoGridView.tsx          # Vue grille + détection doublons
-├── PhotoPreviewEditor.tsx     # v1.2.1 - Rotation + grille + correction perspective par bandes
+├── PhotoPreviewEditor.tsx     # v1.2.2 - Rotation + grille + correction perspective + FIX coords
 ├── StretchHandles.tsx         # Poignées d'étirement
 ├── usePhotoPreparation.ts     # v1.2.1 - Hook principal (export avec skewX)
 ├── useArucoDetection.ts       # Détection markers ArUco
