@@ -6,6 +6,26 @@
 
 ## ✅ Tâches terminées
 
+### 2025-01-25 - Fix centre de rotation (PhotoPreviewEditor v1.1.1)
+
+**Problème:** Quand on utilisait le slider de rotation, le centre de l'image se déplaçait au fur et à mesure.
+
+**Cause:** Le bounding box de l'image change de taille selon l'angle de rotation, mais le viewport (offsetX, offsetY) restait fixe. Le centre visuel se déplaçait donc.
+
+**Solution:** Ajouter un useEffect qui compense le changement de bounding box en ajustant le viewport pour garder le centre de l'image au même endroit:
+```javascript
+// Quand la rotation change, recalculer les offsets
+const centerX = offsetX + (oldBoundingWidth * scale) / 2;
+const centerY = offsetY + (oldBoundingHeight * scale) / 2;
+// Nouveaux offsets pour garder le même centre
+offsetX = centerX - (newBoundingWidth * scale) / 2;
+offsetY = centerY - (newBoundingHeight * scale) / 2;
+```
+
+**Fichier modifié:** `PhotoPreviewEditor.tsx` v1.1.0 → v1.1.1
+
+---
+
 ### 2025-01-25 - Rotation libre + Grille de cadrage (v1.1.0)
 
 **Nouvelles fonctionnalités:**
@@ -57,13 +77,13 @@
 
 ## 📝 Notes contextuelles
 
-### Système de préparation photo (v1.1.0)
+### Système de préparation photo (v1.1.1)
 
 ```
 src/components/cad-gabarit/photo-preparation/
 ├── PhotoPreparationModal.tsx  # v1.1.0 - Modale principale
 ├── PhotoGridView.tsx          # Vue grille + détection doublons
-├── PhotoPreviewEditor.tsx     # v1.1.0 - Éditeur avec rotation libre + grille
+├── PhotoPreviewEditor.tsx     # v1.1.1 - Éditeur avec rotation libre + grille + fix centre
 ├── StretchHandles.tsx         # Poignées d'étirement
 ├── usePhotoPreparation.ts     # v1.1.0 - Hook principal (rotation libre)
 ├── useArucoDetection.ts       # Détection markers ArUco
