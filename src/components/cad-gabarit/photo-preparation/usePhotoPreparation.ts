@@ -1,13 +1,13 @@
 // ============================================
 // HOOK: usePhotoPreparation
 // Gestion de l'état principal pour la préparation des photos
-// VERSION: 1.2.0
+// VERSION: 1.2.1
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.2.1 (2025-01-25) : Export avec correction perspective (skewX par bandes)
 // - v1.2.0 (2025-01-25) : Correction perspective (setSkew, setMeasurementTarget)
 // - v1.1.0 (2025-01-25) : Rotation libre (SET_ROTATION), ROTATE_PHOTO modifié pour +/-90°
-// - v1.0.2 (2025-01-25) : FIX scale dans prepareForExport - calcul basé sur canvas réel
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -642,14 +642,48 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
       // Appliquer la rotation
       ctx.rotate(radians);
       
-      // Dessiner l'image centrée avec stretch
-      ctx.drawImage(
-        photo.image,
-        -stretchedWidth / 2,
-        -stretchedHeight / 2,
-        stretchedWidth,
-        stretchedHeight
-      );
+      // v1.2.1: Dessiner avec correction de perspective (skewX) si nécessaire
+      const skewX = photo.skewX || 0;
+      
+      if (Math.abs(skewX) > 0.001) {
+        // Correction de perspective: dessiner par bandes horizontales
+        const numBands = 100; // Plus de bandes pour l'export (meilleure qualité)
+        const bandHeight = imgHeight / numBands;
+        
+        for (let i = 0; i < numBands; i++) {
+          const yRel = (i + 0.5) / numBands; // Position relative (0 = haut, 1 = bas)
+          
+          // Facteur d'étirement local basé sur la position Y
+          const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
+          
+          // Position et dimensions de la bande source
+          const srcY = i * bandHeight;
+          const srcHeight = bandHeight + 1; // +1 pour éviter les gaps
+          
+          // Dimensions de la bande destination
+          const destWidth = imgWidth * localStretchX;
+          const destHeight = bandHeight * photo.stretchY + 0.5;
+          
+          // Position de la bande (centrée horizontalement)
+          const destX = -destWidth / 2;
+          const destY = -stretchedHeight / 2 + (i * bandHeight * photo.stretchY);
+          
+          ctx.drawImage(
+            photo.image,
+            0, srcY, imgWidth, srcHeight,  // Source
+            destX, destY, destWidth, destHeight  // Destination
+          );
+        }
+      } else {
+        // Pas de correction de perspective: dessin normal
+        ctx.drawImage(
+          photo.image,
+          -stretchedWidth / 2,
+          -stretchedHeight / 2,
+          stretchedWidth,
+          stretchedHeight
+        );
+      }
       
       ctx.restore();
 
@@ -670,9 +704,10 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
       const finalScaleY = canvas.height / heightMm;
       const scale = (finalScaleX + finalScaleY) / 2;
 
-      console.log(`[usePhotoPreparation v1.1.0] Photo "${photo.name}":`, {
+      console.log(`[usePhotoPreparation v1.2.1] Photo "${photo.name}":`, {
         originalPx: { w: imgWidth, h: imgHeight },
         stretch: { x: photo.stretchX, y: photo.stretchY },
+        skewX: photo.skewX,
         rotation: photo.rotation,
         canvasPx: { w: canvas.width, h: canvas.height },
         dimensionsMm: { w: widthMm, h: heightMm },
