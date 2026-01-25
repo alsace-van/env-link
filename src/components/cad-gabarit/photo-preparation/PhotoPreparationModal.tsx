@@ -1,13 +1,13 @@
 // ============================================
 // COMPOSANT: PhotoPreparationModal
 // Modale principale orchestrant la préparation des photos
-// VERSION: 1.1.0
+// VERSION: 1.2.0
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.2.0 (2025-01-25) : Ajout setSkew et setMeasurementTarget
 // - v1.1.0 (2025-01-25) : Ajout setRotation pour rotation libre
-// - v1.0.2 (2025-01-24) : Fix wheel zoom - ref attaché au DialogContent et suppression onWheel blocking
-// - v1.0.1 (2025-01-24) : Fix handleUpdatePhoto pour propager les données ArUco
+// - v1.0.2 (2025-01-24) : Fix wheel zoom
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -65,6 +65,7 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
     setRotation, // v1.1.0: Rotation libre
     setCrop,
     setStretch,
+    setSkew, // v1.2.0: Correction perspective
     adjustStretchX,
     adjustStretchY,
     validatePhoto,
@@ -73,6 +74,7 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
     addMeasurePoint,
     removeMeasurement,
     updateMeasurementPoint,
+    setMeasurementTarget, // v1.2.0: Valeur cible mesure
     clearMeasurements,
     calculateDistanceMm,
     getDimensionsMm,
@@ -212,12 +214,14 @@ export const PhotoPreparationModal: React.FC<PhotoPreparationModalProps> = ({
             onSetRotation={setRotation}
             onSetCrop={setCrop}
             onSetStretch={setStretch}
+            onSetSkew={setSkew}
             onAdjustStretchX={adjustStretchX}
             onAdjustStretchY={adjustStretchY}
             onSetActiveTool={setActiveTool}
             onAddMeasurePoint={addMeasurePoint}
             onRemoveMeasurement={removeMeasurement}
             onUpdateMeasurementPoint={updateMeasurementPoint}
+            onSetMeasurementTarget={setMeasurementTarget}
             onClearMeasurements={clearMeasurements}
             onUpdatePhoto={handleUpdatePhoto}
             onPrev={prevPhoto}
