@@ -1,13 +1,13 @@
 // ============================================
 // HOOK: usePhotoPreparation
 // Gestion de l'état principal pour la préparation des photos
-// VERSION: 1.2.3
+// VERSION: 1.2.4
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.2.4 (2025-01-25) : Export avec skewX ET skewY (bandes ou grille)
 // - v1.2.3 (2025-01-25) : FIX calculateDistanceMm avec skewX/skewY
 // - v1.2.1 (2025-01-25) : Export avec correction perspective (skewX par bandes)
-// - v1.2.0 (2025-01-25) : Correction perspective (setSkew, setMeasurementTarget)
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -660,37 +660,95 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
       // Appliquer la rotation
       ctx.rotate(radians);
       
-      // v1.2.1: Dessiner avec correction de perspective (skewX) si nécessaire
+      // v1.2.4: Dessiner avec correction de perspective (skewX et skewY) si nécessaire
       const skewX = photo.skewX || 0;
+      const skewY = photo.skewY || 0;
+      const hasSkewX = Math.abs(skewX) > 0.001;
+      const hasSkewY = Math.abs(skewY) > 0.001;
       
-      if (Math.abs(skewX) > 0.001) {
-        // Correction de perspective: dessiner par bandes horizontales
-        const numBands = 100; // Plus de bandes pour l'export (meilleure qualité)
+      if (hasSkewX && hasSkewY) {
+        // Les deux skew → dessiner par grille de cellules
+        const numCols = 50;
+        const numRows = 50;
+        const cellWidth = imgWidth / numCols;
+        const cellHeight = imgHeight / numRows;
+        
+        for (let row = 0; row < numRows; row++) {
+          for (let col = 0; col < numCols; col++) {
+            const xRel = (col + 0.5) / numCols;
+            const yRel = (row + 0.5) / numRows;
+            
+            const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
+            const localStretchY = photo.stretchY * (1 + skewY * (xRel - 0.5));
+            
+            const srcX = col * cellWidth;
+            const srcY = row * cellHeight;
+            const srcW = cellWidth + 1;
+            const srcH = cellHeight + 1;
+            
+            const destW = cellWidth * localStretchX + 0.5;
+            const destH = cellHeight * localStretchY + 0.5;
+            
+            let destX = 0;
+            let destY = 0;
+            
+            for (let c = 0; c < col; c++) {
+              const cLocalStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
+              destX += cellWidth * cLocalStretchX;
+            }
+            
+            for (let r = 0; r < row; r++) {
+              const rLocalStretchY = photo.stretchY * (1 + skewY * (xRel - 0.5));
+              destY += cellHeight * rLocalStretchY;
+            }
+            
+            const totalWidth = imgWidth * photo.stretchX;
+            const totalHeight = imgHeight * photo.stretchY;
+            destX -= totalWidth / 2;
+            destY -= totalHeight / 2;
+            
+            ctx.drawImage(photo.image, srcX, srcY, srcW, srcH, destX, destY, destW, destH);
+          }
+        }
+      } else if (hasSkewX) {
+        // Correction horizontale: dessiner par bandes horizontales
+        const numBands = 100;
         const bandHeight = imgHeight / numBands;
         
         for (let i = 0; i < numBands; i++) {
-          const yRel = (i + 0.5) / numBands; // Position relative (0 = haut, 1 = bas)
-          
-          // Facteur d'étirement local basé sur la position Y
+          const yRel = (i + 0.5) / numBands;
           const localStretchX = photo.stretchX * (1 + skewX * (yRel - 0.5));
           
-          // Position et dimensions de la bande source
           const srcY = i * bandHeight;
-          const srcHeight = bandHeight + 1; // +1 pour éviter les gaps
+          const srcHeight = bandHeight + 1;
           
-          // Dimensions de la bande destination
           const destWidth = imgWidth * localStretchX;
           const destHeight = bandHeight * photo.stretchY + 0.5;
           
-          // Position de la bande (centrée horizontalement)
           const destX = -destWidth / 2;
           const destY = -stretchedHeight / 2 + (i * bandHeight * photo.stretchY);
           
-          ctx.drawImage(
-            photo.image,
-            0, srcY, imgWidth, srcHeight,  // Source
-            destX, destY, destWidth, destHeight  // Destination
-          );
+          ctx.drawImage(photo.image, 0, srcY, imgWidth, srcHeight, destX, destY, destWidth, destHeight);
+        }
+      } else if (hasSkewY) {
+        // Correction verticale: dessiner par bandes verticales
+        const numBands = 100;
+        const bandWidth = imgWidth / numBands;
+        
+        for (let i = 0; i < numBands; i++) {
+          const xRel = (i + 0.5) / numBands;
+          const localStretchY = photo.stretchY * (1 + skewY * (xRel - 0.5));
+          
+          const srcX = i * bandWidth;
+          const srcWidth = bandWidth + 1;
+          
+          const destWidth = bandWidth * photo.stretchX + 0.5;
+          const destHeight = imgHeight * localStretchY;
+          
+          const destX = -stretchedWidth / 2 + (i * bandWidth * photo.stretchX);
+          const destY = -destHeight / 2;
+          
+          ctx.drawImage(photo.image, srcX, 0, srcWidth, imgHeight, destX, destY, destWidth, destHeight);
         }
       } else {
         // Pas de correction de perspective: dessin normal
@@ -722,10 +780,10 @@ export function usePhotoPreparation(): UsePhotoPreparationReturn {
       const finalScaleY = canvas.height / heightMm;
       const scale = (finalScaleX + finalScaleY) / 2;
 
-      console.log(`[usePhotoPreparation v1.2.1] Photo "${photo.name}":`, {
+      console.log(`[usePhotoPreparation v1.2.4] Photo "${photo.name}":`, {
         originalPx: { w: imgWidth, h: imgHeight },
         stretch: { x: photo.stretchX, y: photo.stretchY },
-        skewX: photo.skewX,
+        skew: { x: photo.skewX, y: photo.skewY },
         rotation: photo.rotation,
         canvasPx: { w: canvas.width, h: canvas.height },
         dimensionsMm: { w: widthMm, h: heightMm },
