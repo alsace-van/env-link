@@ -1,13 +1,13 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.1.1
+// VERSION: 1.1.2
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.1.2 (2025-01-25) : Grille fixe (reste horizontale quand l'image tourne)
 // - v1.1.1 (2025-01-25) : FIX centre de rotation stable (compensation bounding box)
 // - v1.1.0 (2025-01-25) : Rotation libre + grille de cadrage
-// - v1.0.19 (2025-01-24) : FIX - Guard contre onUpdateMeasurementPoint undefined
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -432,12 +432,15 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       stretchedHeight * scale
     );
     
-    // v1.1.0: Dessiner la grille de cadrage (sur l'image, donc dans le contexte rotaté)
+    ctx.restore();
+
+    // v1.1.2: Dessiner la grille de cadrage FIXE (hors contexte rotaté)
+    // La grille reste horizontale/verticale pour servir de référence d'alignement
     if (gridOverlay !== "none") {
-      const gridWidth = stretchedWidth * scale;
-      const gridHeight = stretchedHeight * scale;
-      const gridLeft = -gridWidth / 2;
-      const gridTop = -gridHeight / 2;
+      const gridWidth = boundingWidth * scale;
+      const gridHeight = boundingHeight * scale;
+      const gridLeft = offsetX;
+      const gridTop = offsetY;
       
       ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
       ctx.lineWidth = 1;
@@ -483,14 +486,14 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
       } else if (gridOverlay === "cross") {
         // Croix centrale
         ctx.beginPath();
-        ctx.moveTo(0, gridTop);
-        ctx.lineTo(0, gridTop + gridHeight);
-        ctx.moveTo(gridLeft, 0);
-        ctx.lineTo(gridLeft + gridWidth, 0);
+        ctx.moveTo(centerX, gridTop);
+        ctx.lineTo(centerX, gridTop + gridHeight);
+        ctx.moveTo(gridLeft, centerY);
+        ctx.lineTo(gridLeft + gridWidth, centerY);
         ctx.stroke();
         // Cercle central
         ctx.beginPath();
-        ctx.arc(0, 0, Math.min(gridWidth, gridHeight) / 10, 0, Math.PI * 2);
+        ctx.arc(centerX, centerY, Math.min(gridWidth, gridHeight) / 10, 0, Math.PI * 2);
         ctx.stroke();
       } else if (gridOverlay === "diagonal") {
         // Diagonales
@@ -502,15 +505,13 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
         ctx.stroke();
         // Centre
         ctx.beginPath();
-        ctx.arc(0, 0, 5, 0, Math.PI * 2);
+        ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
         ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
         ctx.fill();
       }
     }
-    
-    ctx.restore();
 
-    // Draw ArUco markers (coordonnées de l'image source, sans rotation pour la preview)
+    // Draw ArUco markers (coordonnées de l'image source, avec rotation)
     if (detectedMarkers.length > 0 && initialFitDone) {
       for (const marker of detectedMarkers) {
         // Convertir les coins en coordonnées écran (avec rotation)
