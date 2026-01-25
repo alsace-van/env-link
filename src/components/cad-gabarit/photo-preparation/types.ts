@@ -1,10 +1,11 @@
 // ============================================
 // TYPES: Photo Preparation System
 // Types pour la modale de préparation des photos
-// VERSION: 1.1.0
+// VERSION: 1.2.0
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.2.0 (2025-01-25) : Correction perspective (targetValueMm, skewX/skewY)
 // - v1.1.0 (2025-01-25) : Rotation libre (number), ajout GridOverlayType
 // - v1.0.0 (2025-01-23) : Création initiale
 //
@@ -46,6 +47,11 @@ export interface PhotoToProcess {
   crop: ImageCropData | null;
   stretchX: number; // Ratio (1 = pas d'étirement)
   stretchY: number;
+  // v1.2.0: Correction de perspective (cisaillement)
+  // skewX: cisaillement horizontal (corrige trapèze vertical - haut/bas différents)
+  // skewY: cisaillement vertical (corrige trapèze horizontal - gauche/droite différents)
+  skewX: number;
+  skewY: number;
   
   // Calibration ArUco
   arucoDetected: boolean;
@@ -91,6 +97,8 @@ export interface Measurement {
   point2: MeasurePoint;
   // Distance calculée en mm (mise à jour en temps réel)
   distanceMm: number;
+  // v1.2.0: Valeur cible réelle pour correction de perspective
+  targetValueMm?: number;
   // Couleur pour différencier plusieurs mesures
   color: string;
   // Visible ou masquée
@@ -167,11 +175,13 @@ export type PhotoPreparationAction =
   | { type: "SET_ROTATION"; photoId: string; rotation: number } // v1.1.0: Rotation libre
   | { type: "SET_CROP"; photoId: string; crop: ImageCropData | null }
   | { type: "SET_STRETCH"; photoId: string; stretchX: number; stretchY: number }
+  | { type: "SET_SKEW"; photoId: string; skewX: number; skewY: number } // v1.2.0: Correction perspective
   | { type: "SET_ARUCO_RESULT"; photoId: string; result: ArucoDetectionResult }
   | { type: "SET_ACTIVE_TOOL"; tool: "none" | "measure" | "crop" }
   | { type: "ADD_MEASUREMENT"; measurement: Measurement }
   | { type: "REMOVE_MEASUREMENT"; measurementId: string }
   | { type: "UPDATE_MEASUREMENT_POINT"; measurementId: string; pointIndex: 1 | 2; xPercent: number; yPercent: number }
+  | { type: "SET_MEASUREMENT_TARGET"; measurementId: string; targetValueMm: number | undefined } // v1.2.0: Valeur cible
   | { type: "CLEAR_MEASUREMENTS" }
   | { type: "SET_PENDING_MEASURE_POINT"; point: MeasurePoint | null }
   | { type: "UPDATE_PHOTO"; photoId: string; updates: Partial<PhotoToProcess> }
@@ -242,6 +252,8 @@ export function createEmptyPhoto(file: File, id?: string): PhotoToProcess {
     crop: null,
     stretchX: 1,
     stretchY: 1,
+    skewX: 0, // v1.2.0: Correction perspective
+    skewY: 0,
     arucoDetected: false,
     arucoScaleX: null,
     arucoScaleY: null,
