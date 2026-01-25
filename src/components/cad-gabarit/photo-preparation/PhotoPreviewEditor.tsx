@@ -1,13 +1,13 @@
 // ============================================
 // COMPOSANT: PhotoPreviewEditor
 // Preview individuelle avec outils de transformation
-// VERSION: 1.2.2b
+// VERSION: 1.2.3a
 // ============================================
 //
 // Changelog (3 dernières versions) :
+// - v1.2.3a (2025-01-25) : FIX calcul mesures brutes pour correction perspective
+// - v1.2.3 (2025-01-25) : FIX algorithme correction perspective (formule mathématique correcte)
 // - v1.2.2b (2025-01-25) : Ajout bouton "Réinitialiser tout"
-// - v1.2.2a (2025-01-25) : FIX imageToScreen avec rotation+skewX (drag fonctionne à nouveau)
-// - v1.2.2 (2025-01-25) : FIX coordonnées avec skewX (screenToImage, imageToScreen, ArUco)
 //
 // Historique complet : voir REFACTORING_PHOTO_PREPARATION.md
 // ============================================
@@ -1512,13 +1512,34 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                 })}
               </div>
 
-              {/* v1.2.1: Bouton Corriger perspective avec skewX */}
+              {/* v1.2.3a: Bouton Corriger perspective avec skewX */}
               {measurements.some(m => m.targetValueMm !== undefined) && (
                 <div className="mt-3 space-y-2">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => {
+                      // v1.2.3a: Fonction locale pour calculer la distance BRUTE
+                      // (sans stretch ni skew - mesure de l'image source originale)
+                      const calculateRawDistanceMm = (p1: MeasurePoint, p2: MeasurePoint): number => {
+                        if (!photo.image) return 0;
+                        const imgWidth = photo.image.naturalWidth || photo.image.width;
+                        const imgHeight = photo.image.naturalHeight || photo.image.height;
+                        
+                        // Position en pixels de l'image source (sans transformation)
+                        const x1 = (p1.xPercent / 100) * imgWidth;
+                        const y1 = (p1.yPercent / 100) * imgHeight;
+                        const x2 = (p2.xPercent / 100) * imgWidth;
+                        const y2 = (p2.yPercent / 100) * imgHeight;
+                        
+                        const distancePx = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+                        const scaleX = photo.arucoScaleX || 1;
+                        const scaleY = photo.arucoScaleY || 1;
+                        const avgScale = (scaleX + scaleY) / 2;
+                        
+                        return distancePx / avgScale;
+                      };
+
                       // Trouver les mesures horizontales avec valeur cible
                       const horizontalMeasures = measurements.filter(m => {
                         if (m.targetValueMm === undefined) return false;
@@ -1543,56 +1564,55 @@ export const PhotoPreviewEditor: React.FC<PhotoPreviewEditorProps> = ({
                         const topY = (topMeasure.point1.yPercent + topMeasure.point2.yPercent) / 200; // 0-1
                         const bottomY = (bottomMeasure.point1.yPercent + bottomMeasure.point2.yPercent) / 200; // 0-1
 
-                        const topMeasured = calculateDistanceMm(topMeasure.point1, topMeasure.point2);
-                        const bottomMeasured = calculateDistanceMm(bottomMeasure.point1, bottomMeasure.point2);
+                        // v1.2.3a: Utiliser les mesures BRUTES (sans stretchX ni skewX)
+                        const Mt = calculateRawDistanceMm(topMeasure.point1, topMeasure.point2);
+                        const Mb = calculateRawDistanceMm(bottomMeasure.point1, bottomMeasure.point2);
 
-                        const topTarget = topMeasure.targetValueMm!;
-                        const bottomTarget = bottomMeasure.targetValueMm!;
+                        const Tt = topMeasure.targetValueMm!;
+                        const Tb = bottomMeasure.targetValueMm!;
 
-                        // Ratio de correction pour chaque mesure
-                        const topRatio = topTarget / topMeasured;
-                        const bottomRatio = bottomTarget / bottomMeasured;
-
-                        // Calculer le skewX
-                        // L'étirement à une position y est: stretchX * (1 + skewX * (y - 0.5))
-                        // Pour que topMeasured * stretchX * (1 + skewX * (topY - 0.5)) = topTarget
-                        // et bottomMeasured * stretchX * (1 + skewX * (bottomY - 0.5)) = bottomTarget
+                        // v1.2.3: Algorithme correct pour skewX
+                        // On veut: Mt × ratio × (1 + skewX × a) = Tt
+                        //          Mb × ratio × (1 + skewX × b) = Tb
+                        // Où a = topY - 0.5, b = bottomY - 0.5, ratio = newStretchX/oldStretchX
                         
-                        // Si les targets sont égaux, on veut égaliser les mesures:
-                        // topMeasured * (1 + skewX * (topY - 0.5)) = bottomMeasured * (1 + skewX * (bottomY - 0.5))
-                        // Résolution pour skewX:
-                        const deltaY = bottomY - topY;
-                        if (Math.abs(deltaY) > 0.01) {
-                          // skewX tel que les deux mesures deviennent égales à la moyenne des targets
-                          const avgTarget = (topTarget + bottomTarget) / 2;
+                        const a = topY - 0.5;
+                        const b = bottomY - 0.5;
+                        
+                        if (Math.abs(b - a) > 0.01) {
+                          // R = (Tt × Mb) / (Tb × Mt)
+                          const R = (Tt * Mb) / (Tb * Mt);
                           
-                          // On veut: measured * (1 + skewX * (y - 0.5)) * newStretchX = target
-                          // Avec newStretchX = avgTarget / avgMeasured (pour centrer)
-                          
-                          // Pour égaliser:
-                          // topMeasured * (1 + skewX * (topY - 0.5)) = bottomMeasured * (1 + skewX * (bottomY - 0.5))
-                          // Développons:
-                          // topMeasured + topMeasured * skewX * (topY - 0.5) = bottomMeasured + bottomMeasured * skewX * (bottomY - 0.5)
-                          // skewX * [topMeasured * (topY - 0.5) - bottomMeasured * (bottomY - 0.5)] = bottomMeasured - topMeasured
-                          
-                          const coefSkew = topMeasured * (topY - 0.5) - bottomMeasured * (bottomY - 0.5);
-                          const skewX = coefSkew !== 0 ? (bottomMeasured - topMeasured) / coefSkew : 0;
-
-                          // Calculer le nouveau stretchX pour atteindre la valeur cible moyenne
-                          // Après skew, la mesure au milieu (y=0.5) ne change pas
-                          // On ajuste stretchX pour que la moyenne des mesures = moyenne des targets
-                          const avgMeasuredAfterSkew = (
-                            topMeasured * (1 + skewX * (topY - 0.5)) +
-                            bottomMeasured * (1 + skewX * (bottomY - 0.5))
-                          ) / 2;
-                          
-                          const stretchXRatio = avgTarget / avgMeasuredAfterSkew;
-                          const newStretchX = photo.stretchX * stretchXRatio;
-
-                          onSetSkew(skewX, photo.skewY);
-                          onSetStretch(newStretchX, photo.stretchY);
-
-                          toast.success(`Perspective corrigée: skewX=${skewX.toFixed(4)}, stretchX×${stretchXRatio.toFixed(3)}`);
+                          // skewX = (R - 1) / (a - R × b)
+                          const denominator = a - R * b;
+                          if (Math.abs(denominator) > 0.0001) {
+                            const newSkewX = (R - 1) / denominator;
+                            
+                            // v1.2.3a: newStretchX est ABSOLU (Mt est la mesure brute sans stretch)
+                            // Mt × newStretchX × (1 + skewX × a) = Tt
+                            // newStretchX = Tt / (Mt × (1 + skewX × a))
+                            const factor = 1 + newSkewX * a;
+                            if (Math.abs(factor) > 0.0001) {
+                              const newStretchX = Tt / (Mt * factor);
+                              
+                              // Appliquer les corrections
+                              onSetSkew(newSkewX, photo.skewY);
+                              onSetStretch(newStretchX, photo.stretchY);
+                              
+                              console.log("[v1.2.3a] Correction perspective:", {
+                                Mt, Mb, Tt, Tb,
+                                topY, bottomY, a, b, R,
+                                newSkewX, newStretchX,
+                                oldStretchX: photo.stretchX
+                              });
+                              
+                              toast.success(`Perspective corrigée: skewX=${newSkewX.toFixed(4)}, stretchX=${newStretchX.toFixed(4)}`);
+                            } else {
+                              toast.error("Erreur de calcul (facteur nul)");
+                            }
+                          } else {
+                            toast.error("Erreur de calcul (dénominateur nul)");
+                          }
                         } else {
                           toast.error("Les mesures sont trop proches verticalement");
                         }
