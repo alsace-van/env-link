@@ -6,6 +6,37 @@
 
 ## ✅ Tâches terminées
 
+### 2025-01-25 - Vraie correction de perspective v1.2.1
+
+**Problème:** La v1.2.0 appliquait un étirement uniforme (stretchX identique sur toute l'image), mais pour corriger un trapèze il faut un étirement différentiel.
+
+**Solution:** Dessiner l'image par bandes horizontales, chaque bande ayant un étirement X différent basé sur sa position Y.
+
+**Principe:**
+```
+skewX > 0 : le bas est plus large que le haut
+skewX < 0 : le haut est plus large que le bas
+
+Pour une position Y (0=haut, 1=bas):
+localStretchX = stretchX * (1 + skewX * (yRel - 0.5))
+```
+
+**Algorithme de calcul du skewX:**
+1. Prendre 2 mesures horizontales avec valeurs cibles
+2. Trier par position Y (haut → bas)
+3. Calculer skewX pour que les deux mesures deviennent égales après correction:
+   ```javascript
+   coefSkew = topMeasured * (topY - 0.5) - bottomMeasured * (bottomY - 0.5)
+   skewX = (bottomMeasured - topMeasured) / coefSkew
+   ```
+4. Ajuster stretchX pour atteindre la valeur cible moyenne
+
+**Fichiers modifiés:**
+- `PhotoPreviewEditor.tsx` v1.2.1: Rendu par bandes + nouvel algorithme correction
+- `usePhotoPreparation.ts` v1.2.1: Export avec skewX par bandes
+
+---
+
 ### 2025-01-25 - Correction de perspective v1.2.0
 
 **Fonctionnalité:** Corriger la déformation trapézoïdale des photos en utilisant les mesures existantes.
@@ -138,15 +169,15 @@ offsetY = centerY - (newBoundingHeight * scale) / 2;
 
 ## 📝 Notes contextuelles
 
-### Système de préparation photo (v1.2.0)
+### Système de préparation photo (v1.2.1)
 
 ```
 src/components/cad-gabarit/photo-preparation/
 ├── PhotoPreparationModal.tsx  # v1.2.0 - Modale principale
 ├── PhotoGridView.tsx          # Vue grille + détection doublons
-├── PhotoPreviewEditor.tsx     # v1.2.0 - Rotation libre + grille + correction perspective
+├── PhotoPreviewEditor.tsx     # v1.2.1 - Rotation + grille + correction perspective par bandes
 ├── StretchHandles.tsx         # Poignées d'étirement
-├── usePhotoPreparation.ts     # v1.2.0 - Hook principal (setSkew, setMeasurementTarget)
+├── usePhotoPreparation.ts     # v1.2.1 - Hook principal (export avec skewX)
 ├── useArucoDetection.ts       # Détection markers ArUco
 ├── useDuplicateDetection.ts   # Détection doublons par hash
 ├── types.ts                   # v1.2.0 - Types (targetValueMm, skewX/Y)
@@ -164,20 +195,32 @@ const boundingWidth = width * cos + height * sin;
 const boundingHeight = width * sin + height * cos;
 ```
 
-### Correction de perspective (v1.2.0)
+### Correction de perspective (v1.2.1)
 
-La correction de perspective utilise les mesures avec valeur cible:
+La correction de perspective utilise un cisaillement (skewX) pour corriger les trapèzes:
+
 ```javascript
-// Ratio de correction
-ratio = targetValueMm / measuredValueMm
+// skewX > 0 : le bas est plus large que le haut
+// skewX < 0 : le haut est plus large que le bas
 
-// Déterminer l'axe de correction
-if (dx > dy * 2) → mesure horizontale → stretchX *= ratio
-if (dy > dx * 2) → mesure verticale → stretchY *= ratio
-sinon → diagonale → stretchX *= ratio ET stretchY *= ratio
+// L'étirement varie linéairement selon Y:
+// yRel = y / height (0 = haut, 1 = bas)
+localStretchX = stretchX * (1 + skewX * (yRel - 0.5))
+
+// Exemples avec skewX = 0.1, stretchX = 1.0:
+// - En haut (y=0): localStretchX = 1.0 * (1 + 0.1 * -0.5) = 0.95
+// - Au milieu (y=0.5): localStretchX = 1.0 * (1 + 0.1 * 0) = 1.0
+// - En bas (y=1): localStretchX = 1.0 * (1 + 0.1 * 0.5) = 1.05
 ```
 
-Le champ `skewX/skewY` est préparé pour une future correction par cisaillement (transformation affine) qui serait plus précise pour les trapèzes asymétriques.
+L'image est dessinée par bandes horizontales (80 en preview, 100 à l'export), chaque bande avec son propre étirement.
+
+**Calcul automatique du skewX depuis 2 mesures:**
+```javascript
+// Avec 2 mesures horizontales à positions Y différentes:
+coefSkew = topMeasured * (topY - 0.5) - bottomMeasured * (bottomY - 0.5)
+skewX = (bottomMeasured - topMeasured) / coefSkew
+```
 
 ---
 
