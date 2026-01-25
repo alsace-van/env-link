@@ -6,53 +6,46 @@
 
 ## ✅ Tâches terminées
 
+### 2025-01-25 - Rotation libre + Grille de cadrage (v1.1.0)
+
+**Nouvelles fonctionnalités:**
+1. **Rotation libre** (-180° à +180°)
+   - Slider pour rotation continue
+   - Input numérique pour valeur précise
+   - Boutons d'incrément: ±0.1°, ±1°, ±90°
+   - Bouton reset (remettre à 0°)
+   - L'export tient compte de la rotation avec calcul du bounding box
+
+2. **Grille de cadrage**
+   - Sélecteur avec 5 options: Aucune, Règle des tiers, Grille 6×6, Croix centrale, Diagonales
+   - Affichée sur l'image avec la rotation appliquée
+   - Points d'intersection visibles pour la règle des tiers
+
+**Fichiers modifiés:**
+- `types.ts` v1.1.0: `rotation: number` (au lieu de 0|90|180|270), ajout `GridOverlayType`
+- `usePhotoPreparation.ts` v1.1.0: Actions SET_ROTATION, prepareForExport avec rotation libre
+- `PhotoPreviewEditor.tsx` v1.1.0: UI rotation, grille, rendu canvas avec rotation
+- `PhotoPreparationModal.tsx` v1.1.0: Passage de setRotation au composant
+
+---
+
 ### 2025-01-25 - Fix Stretch non pris en compte (usePhotoPreparation v1.0.2)
 
-**Problème:** Quand on étirait une photo dans la modale de préparation (ex: de 945mm à 925mm) et qu'on l'importait dans le canvas, l'étirement n'était pas pris en compte - l'image gardait ses dimensions originales.
+**Problème:** Quand on étirait une photo dans la modale de préparation (ex: de 945mm à 925mm) et qu'on l'importait dans le canvas, l'étirement n'était pas pris en compte.
 
-**Cause:** Dans `prepareForExport()`, le `scale` retourné était le scale ArUco **original** (`photo.arucoScaleX`), qui ne tenait pas compte du stretch appliqué.
+**Cause:** Dans `prepareForExport()`, le `scale` retourné était le scale ArUco **original**.
 
-**Solution:** Calculer le `scale` directement à partir des dimensions réelles du canvas exporté:
-```javascript
-// AVANT (bug)
-const scale = photo.arucoScaleX || stateRef.current.scaleFactor;
-
-// APRÈS (corrigé)
-const scaleX = canvas.width / widthMm;
-const scaleY = canvas.height / heightMm;
-const scale = (scaleX + scaleY) / 2;
-```
-
-**Fichier modifié:** `src/components/cad-gabarit/photo-preparation/usePhotoPreparation.ts`
-- Fonction: `prepareForExport` 
-- Version: 1.0.1 → 1.0.2
-- Ajout de logs de debug pour faciliter le diagnostic
+**Solution:** Calculer le `scale` directement à partir des dimensions réelles du canvas exporté.
 
 ---
 
 ### 2025-01-25 - Fix Import Photos Préparées (v7.55a)
 
-**Problème:** Après avoir préparé une photo (déformation/étirement) et l'avoir importée dans le canvas CAD, l'image apparaissait ~2.5× plus petite que prévu.
+**Problème:** Images ~2.5× plus petites que prévu après import.
 
-**Cause:** Dans `handleImportPreparedPhotos`, les coordonnées (x, y) et le scale étaient passés directement en mm, mais le système de coordonnées du canvas CAD utilise des "unités internes" où: `unités = mm × sketch.scaleFactor` (scaleFactor = 2.5 par défaut).
+**Cause:** Coordonnées et scale non multipliés par `sketch.scaleFactor`.
 
-**Solution:** Multiplier les coordonnées et le scale par `sketch.scaleFactor`:
-```javascript
-// AVANT (bug)
-x: xOffset + photo.widthMm / 2,
-y: photo.heightMm / 2,
-scale: 1 / photo.scale,
-
-// APRÈS (corrigé)
-const sf = sketch.scaleFactor;
-x: (xOffset + photo.widthMm / 2) * sf,
-y: (photo.heightMm / 2) * sf,
-scale: (1 / photo.scale) * sf,
-```
-
-**Fichier modifié:** `src/components/cad-gabarit/CADGabaritCanvas.tsx`
-- Fonction: `handleImportPreparedPhotos` (ligne ~5776)
-- Version: 7.55 → 7.55a
+**Solution:** Multiplier x, y, scale par `sketch.scaleFactor` dans handleImportPreparedPhotos.
 
 ---
 
@@ -64,35 +57,31 @@ scale: (1 / photo.scale) * sf,
 
 ## 📝 Notes contextuelles
 
-### Système de préparation photo (v7.55)
+### Système de préparation photo (v1.1.0)
 
-Le nouveau système de préparation photo est situé dans:
 ```
 src/components/cad-gabarit/photo-preparation/
-├── PhotoPreparationModal.tsx  # Modale principale
+├── PhotoPreparationModal.tsx  # v1.1.0 - Modale principale
 ├── PhotoGridView.tsx          # Vue grille + détection doublons
-├── PhotoPreviewEditor.tsx     # Éditeur avec rotation/mesure/stretch
+├── PhotoPreviewEditor.tsx     # v1.1.0 - Éditeur avec rotation libre + grille
 ├── StretchHandles.tsx         # Poignées d'étirement
-├── usePhotoPreparation.ts     # Hook principal (état, logique)
+├── usePhotoPreparation.ts     # v1.1.0 - Hook principal (rotation libre)
 ├── useArucoDetection.ts       # Détection markers ArUco
 ├── useDuplicateDetection.ts   # Détection doublons par hash
-├── types.ts                   # Types TypeScript
-└── REFACTORING_PHOTO_PREPARATION.md  # Documentation détaillée
+├── types.ts                   # v1.1.0 - Types (rotation: number, GridOverlayType)
+└── REFACTORING_PHOTO_PREPARATION.md
 ```
 
-### Unités et scales dans le canvas CAD
+### Formules de rotation
 
-- `sketch.scaleFactor` = px/mm (défaut: 2.5)
-- `photo.scale` (depuis ArUco ou calculé) = px/mm du canvas exporté
-- `BackgroundImage.scale` = unités sketch / px = (mm/px) × scaleFactor
-
-Pour convertir des mm en unités sketch: `unités = mm × sketch.scaleFactor`
-
-### Calcul du scale après stretch
-
-Le scale doit être calculé à partir des dimensions réelles du canvas exporté:
-- `scale = canvas.width / widthMm` (px/mm)
-- Ce scale tient compte du stretch ET de la rotation
+Pour une rotation libre, le bounding box change:
+```javascript
+const radians = (rotation * Math.PI) / 180;
+const cos = Math.abs(Math.cos(radians));
+const sin = Math.abs(Math.sin(radians));
+const boundingWidth = width * cos + height * sin;
+const boundingHeight = width * sin + height * cos;
+```
 
 ---
 
