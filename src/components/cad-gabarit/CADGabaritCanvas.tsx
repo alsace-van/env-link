@@ -21243,12 +21243,68 @@ export function CADGabaritCanvas({
                       onKeyDown={(e) => {
                         e.stopPropagation();
                         if (e.key === "Enter") {
-                          // v7.54k: Déclencher le blur pour synchroniser la valeur, puis appliquer
-                          (e.target as HTMLInputElement).blur();
-                          // Utiliser setTimeout pour laisser le blur mettre à jour le state
-                          setTimeout(() => {
-                            applyFilletFromDialog();
-                          }, 10);
+                          // v7.54l: Lire la valeur de l'input et mettre à jour le state AVANT d'appliquer
+                          const parsed = parseFloat((e.target as HTMLInputElement).value);
+                          if (isNaN(parsed) || parsed < 0.1) return;
+                          
+                          const newRadius = parsed;
+                          const updatedCorners = filletDialog.corners.map((c) => ({
+                            ...c,
+                            radius: Math.min(newRadius, c.maxRadius),
+                            dist1: Math.min(newRadius, c.maxDist1),
+                            dist2: Math.min(newRadius, c.maxDist2),
+                          }));
+                          
+                          // Créer le dialog mis à jour et l'appliquer directement
+                          const updatedDialog = {
+                            ...filletDialog,
+                            globalRadius: newRadius,
+                            corners: updatedCorners,
+                          };
+                          setFilletDialog(updatedDialog);
+                          
+                          // Appliquer directement avec les valeurs mises à jour (pas via applyFilletFromDialog qui a l'ancienne closure)
+                          let currentSketch: Sketch = {
+                            ...sketch,
+                            points: new Map(sketch.points),
+                            geometries: new Map(sketch.geometries),
+                            layers: new Map(sketch.layers),
+                            constraints: new Map(sketch.constraints),
+                          };
+                          let successCount = 0;
+                          
+                          for (const corner of updatedCorners) {
+                            const connectedLines: Line[] = [];
+                            currentSketch.geometries.forEach((geo) => {
+                              if (geo.type === "line") {
+                                const line = geo as Line;
+                                if (!line.isConstruction && (line.p1 === corner.pointId || line.p2 === corner.pointId)) {
+                                  connectedLines.push(line);
+                                }
+                              }
+                            });
+                            
+                            if (connectedLines.length === 2 && corner.radius <= corner.maxRadius) {
+                              const radiusPx = corner.radius * sketch.scaleFactor;
+                              const newSketch = applyFilletToSketch(currentSketch, connectedLines[0].id, connectedLines[1].id, radiusPx, true);
+                              if (newSketch) {
+                                currentSketch = newSketch;
+                                successCount++;
+                              }
+                            }
+                          }
+                          
+                          if (successCount > 0) {
+                            setSketch(currentSketch);
+                            addToHistory(currentSketch);
+                            toast.success(successCount === 1 ? `Congé R${newRadius}mm appliqué` : `${successCount} congés appliqués`);
+                          }
+                          
+                          setFilletRadius(newRadius);
+                          if (!updatedDialog.repeatMode) {
+                            setFilletDialog(null);
+                          }
+                          setSelectedEntities(new Set());
                         }
                       }}
                     />
@@ -21298,11 +21354,57 @@ export function CADGabaritCanvas({
                             onKeyDown={(e) => {
                               e.stopPropagation();
                               if (e.key === "Enter") {
-                                // v7.54k: Déclencher le blur pour synchroniser la valeur, puis appliquer
-                                (e.target as HTMLInputElement).blur();
-                                setTimeout(() => {
-                                  applyFilletFromDialog();
-                                }, 10);
+                                // v7.54l: Lire la valeur et appliquer directement
+                                const parsed = parseFloat((e.target as HTMLInputElement).value);
+                                if (isNaN(parsed) || parsed < 0.1) return;
+                                
+                                const updatedCorners = [...filletDialog.corners];
+                                updatedCorners[idx] = { ...corner, radius: parsed };
+                                
+                                const updatedDialog = { ...filletDialog, corners: updatedCorners };
+                                setFilletDialog(updatedDialog);
+                                
+                                // Appliquer directement
+                                let currentSketch: Sketch = {
+                                  ...sketch,
+                                  points: new Map(sketch.points),
+                                  geometries: new Map(sketch.geometries),
+                                  layers: new Map(sketch.layers),
+                                  constraints: new Map(sketch.constraints),
+                                };
+                                let successCount = 0;
+                                
+                                for (const c of updatedCorners) {
+                                  const connectedLines: Line[] = [];
+                                  currentSketch.geometries.forEach((geo) => {
+                                    if (geo.type === "line") {
+                                      const line = geo as Line;
+                                      if (!line.isConstruction && (line.p1 === c.pointId || line.p2 === c.pointId)) {
+                                        connectedLines.push(line);
+                                      }
+                                    }
+                                  });
+                                  
+                                  if (connectedLines.length === 2 && c.radius <= c.maxRadius) {
+                                    const radiusPx = c.radius * sketch.scaleFactor;
+                                    const newSketch = applyFilletToSketch(currentSketch, connectedLines[0].id, connectedLines[1].id, radiusPx, true);
+                                    if (newSketch) {
+                                      currentSketch = newSketch;
+                                      successCount++;
+                                    }
+                                  }
+                                }
+                                
+                                if (successCount > 0) {
+                                  setSketch(currentSketch);
+                                  addToHistory(currentSketch);
+                                  toast.success(successCount === 1 ? `Congé R${parsed}mm appliqué` : `${successCount} congés appliqués`);
+                                }
+                                
+                                if (!updatedDialog.repeatMode) {
+                                  setFilletDialog(null);
+                                }
+                                setSelectedEntities(new Set());
                               }
                             }}
                             onClick={(e) => e.stopPropagation()}
