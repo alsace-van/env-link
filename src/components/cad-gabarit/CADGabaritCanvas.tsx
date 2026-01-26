@@ -20335,6 +20335,8 @@ export function CADGabaritCanvas({
                 const geo = sketch.geometries.get(entityId);
                 if (geo && geo.type === "arc") {
                   const arc = geo as Arc;
+                  // v7.54g: Convertir le rayon de pixels en mm
+                  const radiusMm = arc.radius / sketch.scaleFactor;
                   return (
                     <div
                       className="absolute bottom-4 right-4 bg-white/95 rounded-lg shadow-lg p-3 border border-blue-300 cursor-pointer hover:bg-blue-50"
@@ -20342,7 +20344,7 @@ export function CADGabaritCanvas({
                         setArcEditDialog({
                           open: true,
                           arcId: entityId,
-                          currentRadius: arc.radius,
+                          currentRadius: radiusMm, // v7.54g: Passer en mm
                         });
                       }}
                     >
@@ -20352,7 +20354,7 @@ export function CADGabaritCanvas({
                         </svg>
                         <span>Arc</span>
                       </div>
-                      <p className="text-lg font-bold text-blue-800 mt-1">R{arc.radius.toFixed(1)} mm</p>
+                      <p className="text-lg font-bold text-blue-800 mt-1">R{radiusMm.toFixed(1)} mm</p>
                       <p className="text-xs text-gray-400">Double-clic pour modifier</p>
                     </div>
                   );
@@ -21122,7 +21124,12 @@ export function CADGabaritCanvas({
                       type="number"
                       value={filletDialog.globalRadius}
                       onChange={(e) => {
-                        const newRadius = Math.max(0.1, parseFloat(e.target.value) || 0.1);
+                        // v7.54g: Permettre champ vide temporairement
+                        const val = e.target.value;
+                        if (val === "" || val === "-") return; // Ignorer vide pendant l'édition
+                        const parsed = parseFloat(val);
+                        if (isNaN(parsed) || parsed < 0.1) return;
+                        const newRadius = parsed;
                         setFilletDialog({
                           ...filletDialog,
                           globalRadius: newRadius,
@@ -21169,9 +21176,13 @@ export function CADGabaritCanvas({
                             type="number"
                             value={corner.radius}
                             onChange={(e) => {
-                              const newRadius = Math.max(0.1, parseFloat(e.target.value) || 0.1);
+                              // v7.54g: Permettre champ vide temporairement
+                              const val = e.target.value;
+                              if (val === "" || val === "-") return;
+                              const parsed = parseFloat(val);
+                              if (isNaN(parsed) || parsed < 0.1) return;
                               const newCorners = [...filletDialog.corners];
-                              newCorners[idx] = { ...corner, radius: newRadius };
+                              newCorners[idx] = { ...corner, radius: parsed };
                               setFilletDialog({ ...filletDialog, corners: newCorners });
                             }}
                             className={`h-6 w-14 text-xs ${!isValid ? "border-red-500" : ""}`}
