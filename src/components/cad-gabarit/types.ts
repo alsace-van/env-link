@@ -61,6 +61,7 @@ export interface Rectangle {
   strokeWidth?: number; // Épaisseur du trait
   strokeColor?: string; // Couleur du trait
   isConstruction?: boolean; // Ligne de construction
+  isVirtual?: boolean; // v7.54: Rectangle "virtuel" - ne pas dessiner (les lignes font le rendu)
 }
 
 export interface Bezier {
