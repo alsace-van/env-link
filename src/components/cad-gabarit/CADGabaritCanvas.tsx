@@ -20337,25 +20337,117 @@ export function CADGabaritCanvas({
                   const arc = geo as Arc;
                   // v7.54g: Convertir le rayon de pixels en mm
                   const radiusMm = arc.radius / sketch.scaleFactor;
+                  const isFillet = arc.isFillet === true;
                   return (
                     <div
-                      className="absolute bottom-4 right-4 bg-white/95 rounded-lg shadow-lg p-3 border border-blue-300 cursor-pointer hover:bg-blue-50"
-                      onDoubleClick={() => {
-                        setArcEditDialog({
-                          open: true,
-                          arcId: entityId,
-                          currentRadius: radiusMm, // v7.54g: Passer en mm
-                        });
-                      }}
+                      className="absolute bottom-4 right-4 bg-white/95 rounded-lg shadow-lg p-3 border border-blue-300"
                     >
-                      <div className="flex items-center gap-2 text-blue-700 font-medium">
-                        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
-                        </svg>
-                        <span>Arc</span>
+                      <div className="flex items-center justify-between gap-4">
+                        <div 
+                          className="cursor-pointer hover:bg-blue-50 rounded p-1 -m-1"
+                          onDoubleClick={() => {
+                            setArcEditDialog({
+                              open: true,
+                              arcId: entityId,
+                              currentRadius: radiusMm,
+                            });
+                          }}
+                        >
+                          <div className="flex items-center gap-2 text-blue-700 font-medium">
+                            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
+                            </svg>
+                            <span>{isFillet ? "Congé" : "Arc"}</span>
+                          </div>
+                          <p className="text-lg font-bold text-blue-800 mt-1">R{radiusMm.toFixed(1)} mm</p>
+                          <p className="text-xs text-gray-400">Double-clic pour modifier</p>
+                        </div>
+                        {/* v7.54j: Bouton supprimer (restaure le coin si c'est un congé) */}
+                        {isFillet && (
+                          <button
+                            className="flex flex-col items-center gap-1 px-2 py-1.5 text-red-600 hover:bg-red-50 rounded border border-red-200 hover:border-red-400 transition-colors"
+                            onClick={() => {
+                              // Utiliser la logique existante de suppression qui restaure le coin
+                              const newSketch = { ...sketch };
+                              newSketch.points = new Map(sketch.points);
+                              newSketch.geometries = new Map(sketch.geometries);
+                              newSketch.constraints = new Map(sketch.constraints);
+                              
+                              const startPt = newSketch.points.get(arc.startPoint);
+                              const endPt = newSketch.points.get(arc.endPoint);
+                              
+                              if (startPt && endPt) {
+                                // Trouver les lignes connectées
+                                const linesAtStart: Line[] = [];
+                                const linesAtEnd: Line[] = [];
+                                
+                                newSketch.geometries.forEach((g) => {
+                                  if (g.type === "line") {
+                                    const line = g as Line;
+                                    if (line.p1 === arc.startPoint || line.p2 === arc.startPoint) {
+                                      linesAtStart.push(line);
+                                    }
+                                    if (line.p1 === arc.endPoint || line.p2 === arc.endPoint) {
+                                      linesAtEnd.push(line);
+                                    }
+                                  }
+                                });
+                                
+                                if (linesAtStart.length === 1 && linesAtEnd.length === 1) {
+                                  const line1 = linesAtStart[0];
+                                  const line2 = linesAtEnd[0];
+                                  
+                                  const other1Id = line1.p1 === arc.startPoint ? line1.p2 : line1.p1;
+                                  const other2Id = line2.p1 === arc.endPoint ? line2.p2 : line2.p1;
+                                  
+                                  const other1 = newSketch.points.get(other1Id);
+                                  const other2 = newSketch.points.get(other2Id);
+                                  
+                                  if (other1 && other2) {
+                                    // Calculer l'intersection (le coin)
+                                    const corner = lineIntersection(startPt, other1, endPt, other2);
+                                    
+                                    if (corner) {
+                                      // Créer le point de coin
+                                      const cornerId = generateId();
+                                      newSketch.points.set(cornerId, { id: cornerId, x: corner.x, y: corner.y });
+                                      
+                                      // Modifier les lignes pour pointer vers le coin
+                                      newSketch.geometries.set(line1.id, {
+                                        ...line1,
+                                        p1: line1.p1 === arc.startPoint ? cornerId : line1.p1,
+                                        p2: line1.p2 === arc.startPoint ? cornerId : line1.p2,
+                                      });
+                                      newSketch.geometries.set(line2.id, {
+                                        ...line2,
+                                        p1: line2.p1 === arc.endPoint ? cornerId : line2.p1,
+                                        p2: line2.p2 === arc.endPoint ? cornerId : line2.p2,
+                                      });
+                                      
+                                      // Supprimer les points de l'arc
+                                      newSketch.points.delete(arc.startPoint);
+                                      newSketch.points.delete(arc.endPoint);
+                                      newSketch.points.delete(arc.center);
+                                    }
+                                  }
+                                }
+                              }
+                              
+                              // Supprimer l'arc
+                              newSketch.geometries.delete(entityId);
+                              
+                              setSketch(newSketch);
+                              addToHistory(newSketch, "Congé supprimé");
+                              setSelectedEntities(new Set());
+                              toast.success("Congé supprimé, coin restauré");
+                            }}
+                            title="Supprimer le congé et restaurer le coin"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span className="text-[10px]">Supprimer</span>
+                          </button>
+                        )}
                       </div>
-                      <p className="text-lg font-bold text-blue-800 mt-1">R{radiusMm.toFixed(1)} mm</p>
-                      <p className="text-xs text-gray-400">Double-clic pour modifier</p>
                     </div>
                   );
                 }
@@ -21151,21 +21243,12 @@ export function CADGabaritCanvas({
                       onKeyDown={(e) => {
                         e.stopPropagation();
                         if (e.key === "Enter") {
-                          const parsed = parseFloat((e.target as HTMLInputElement).value);
-                          if (!isNaN(parsed) && parsed >= 0.1) {
-                            const newRadius = parsed;
-                            setFilletDialog({
-                              ...filletDialog,
-                              globalRadius: newRadius,
-                              corners: filletDialog.corners.map((c) => ({
-                                ...c,
-                                radius: Math.min(newRadius, c.maxRadius),
-                                dist1: Math.min(newRadius, c.maxDist1),
-                                dist2: Math.min(newRadius, c.maxDist2),
-                              })),
-                            });
-                            if (allValid) applyFilletFromDialog();
-                          }
+                          // v7.54k: Déclencher le blur pour synchroniser la valeur, puis appliquer
+                          (e.target as HTMLInputElement).blur();
+                          // Utiliser setTimeout pour laisser le blur mettre à jour le state
+                          setTimeout(() => {
+                            applyFilletFromDialog();
+                          }, 10);
                         }
                       }}
                     />
@@ -21215,13 +21298,11 @@ export function CADGabaritCanvas({
                             onKeyDown={(e) => {
                               e.stopPropagation();
                               if (e.key === "Enter") {
-                                const parsed = parseFloat((e.target as HTMLInputElement).value);
-                                if (!isNaN(parsed) && parsed >= 0.1) {
-                                  const newCorners = [...filletDialog.corners];
-                                  newCorners[idx] = { ...corner, radius: parsed };
-                                  setFilletDialog({ ...filletDialog, corners: newCorners });
-                                  if (allValid) applyFilletFromDialog();
-                                }
+                                // v7.54k: Déclencher le blur pour synchroniser la valeur, puis appliquer
+                                (e.target as HTMLInputElement).blur();
+                                setTimeout(() => {
+                                  applyFilletFromDialog();
+                                }, 10);
                               }
                             }}
                             onClick={(e) => e.stopPropagation()}
