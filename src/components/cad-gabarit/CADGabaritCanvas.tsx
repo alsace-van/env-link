@@ -20670,27 +20670,26 @@ export function CADGabaritCanvas({
         />
 
         {/* v7.38: Modale de confirmation avant nouveau projet */}
+        {/* v7.54c: Fix largeur et layout des boutons */}
         <Dialog open={showCloseConfirmModal} onOpenChange={setShowCloseConfirmModal}>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>Modifications non sauvegardées</DialogTitle>
               <DialogDescription>
                 Vous avez des modifications non sauvegardées. Que souhaitez-vous faire ?
               </DialogDescription>
             </DialogHeader>
-            <DialogFooter className="flex gap-2 sm:justify-between">
+            <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:justify-end">
               <Button variant="outline" onClick={() => setShowCloseConfirmModal(false)}>
                 Annuler
               </Button>
-              <div className="flex gap-2">
-                <Button variant="destructive" onClick={performNewSketch}>
-                  Ne pas sauvegarder
-                </Button>
-                <Button variant="default" onClick={handleSaveAndNew}>
-                  <Save className="h-4 w-4 mr-2" />
-                  Sauvegarder et nouveau
-                </Button>
-              </div>
+              <Button variant="destructive" onClick={performNewSketch}>
+                Ne pas sauvegarder
+              </Button>
+              <Button variant="default" onClick={handleSaveAndNew}>
+                <Save className="h-4 w-4 mr-2" />
+                Sauvegarder et nouveau
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
