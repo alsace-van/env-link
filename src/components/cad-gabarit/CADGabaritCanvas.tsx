@@ -4304,18 +4304,25 @@ export function CADGabaritCanvas({
   }, [sketch, onSave, a4GridOrigin, a4GridOrientation, a4GridRows, a4GridCols, a4OverlapMm, a4CutMode, measurements]);
 
   // v7.38: Réinitialiser le sketch (Nouveau projet)
+  // v7.54d: Fix closure stale - vérifier directement sketchRef au lieu de hasUnsavedChanges
   const handleNewSketch = useCallback(() => {
-    console.log("[v7.54c] handleNewSketch called, hasUnsavedChanges:", hasUnsavedChanges);
-    // Si des modifications non sauvegardées, demander confirmation
-    if (hasUnsavedChanges) {
-      console.log("[v7.54c] Affichage modale de confirmation");
+    // Vérifier directement si le sketch a des modifications (évite problème de closure)
+    const currentSketch = sketchRef.current;
+    const hasChanges = currentSketch.geometries.size > 0 || currentSketch.points.size > 0;
+    
+    console.log("[v7.54d] handleNewSketch:", { 
+      geometries: currentSketch.geometries.size, 
+      points: currentSketch.points.size,
+      hasChanges 
+    });
+    
+    if (hasChanges) {
       setShowCloseConfirmModal(true);
       return;
     }
     // Réinitialiser directement
-    console.log("[v7.54c] Pas de modifications, nouveau projet direct");
     performNewSketch();
-  }, [hasUnsavedChanges]);
+  }, [performNewSketch]);
 
   // v7.38: Effectuer la réinitialisation du sketch
   const performNewSketch = useCallback(() => {
