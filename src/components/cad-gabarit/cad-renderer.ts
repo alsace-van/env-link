@@ -1825,6 +1825,9 @@ export class CADRenderer {
   }
 
   private drawRectangle(rect: Rectangle, sketch: Sketch): void {
+    // v7.54: Ne pas dessiner les rectangles virtuels (les lignes font déjà le rendu)
+    if ((rect as any).isVirtual) return;
+    
     const corners = [rect.p1, rect.p2, rect.p3, rect.p4].map((id) => sketch.points.get(id)).filter(Boolean) as Point[];
 
     if (corners.length !== 4) return;
