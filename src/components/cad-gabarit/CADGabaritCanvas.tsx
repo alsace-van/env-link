@@ -347,9 +347,16 @@ export function CADGabaritCanvas({
   useEffect(() => {
     // Ne pas marquer comme modifié si le sketch est vide (nouvel état initial)
     if (sketch.geometries.size === 0 && sketch.points.size === 0) {
+      console.log("[v7.54c] Sketch vide, pas de modifications non sauvegardées");
       return;
     }
     // Marquer comme modifié si différent de la dernière sauvegarde
+    console.log("[v7.54c] Modifications détectées:", { 
+      geometries: sketch.geometries.size, 
+      points: sketch.points.size,
+      constraints: sketch.constraints.size,
+      dimensions: sketch.dimensions.size 
+    });
     setHasUnsavedChanges(true);
   }, [sketch.geometries.size, sketch.points.size, sketch.constraints.size, sketch.dimensions.size]);
 
@@ -4298,12 +4305,15 @@ export function CADGabaritCanvas({
 
   // v7.38: Réinitialiser le sketch (Nouveau projet)
   const handleNewSketch = useCallback(() => {
+    console.log("[v7.54c] handleNewSketch called, hasUnsavedChanges:", hasUnsavedChanges);
     // Si des modifications non sauvegardées, demander confirmation
     if (hasUnsavedChanges) {
+      console.log("[v7.54c] Affichage modale de confirmation");
       setShowCloseConfirmModal(true);
       return;
     }
     // Réinitialiser directement
+    console.log("[v7.54c] Pas de modifications, nouveau projet direct");
     performNewSketch();
   }, [hasUnsavedChanges]);
 
