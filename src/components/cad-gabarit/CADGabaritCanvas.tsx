@@ -21122,13 +21122,15 @@ export function CADGabaritCanvas({
                     <span className="text-xs">Tous:</span>
                     <Input
                       type="number"
-                      value={filletDialog.globalRadius}
-                      onChange={(e) => {
-                        // v7.54g: Permettre champ vide temporairement
-                        const val = e.target.value;
-                        if (val === "" || val === "-") return; // Ignorer vide pendant l'édition
-                        const parsed = parseFloat(val);
-                        if (isNaN(parsed) || parsed < 0.1) return;
+                      key={`global-${filletDialog.globalRadius}`}
+                      defaultValue={filletDialog.globalRadius}
+                      onBlur={(e) => {
+                        // v7.54h: Appliquer la valeur au blur
+                        const parsed = parseFloat(e.target.value);
+                        if (isNaN(parsed) || parsed < 0.1) {
+                          e.target.value = String(filletDialog.globalRadius);
+                          return;
+                        }
                         const newRadius = parsed;
                         setFilletDialog({
                           ...filletDialog,
@@ -21146,7 +21148,23 @@ export function CADGabaritCanvas({
                       step="1"
                       onKeyDown={(e) => {
                         e.stopPropagation();
-                        if (e.key === "Enter" && allValid) applyFilletFromDialog();
+                        if (e.key === "Enter") {
+                          const parsed = parseFloat((e.target as HTMLInputElement).value);
+                          if (!isNaN(parsed) && parsed >= 0.1) {
+                            const newRadius = parsed;
+                            setFilletDialog({
+                              ...filletDialog,
+                              globalRadius: newRadius,
+                              corners: filletDialog.corners.map((c) => ({
+                                ...c,
+                                radius: Math.min(newRadius, c.maxRadius),
+                                dist1: Math.min(newRadius, c.maxDist1),
+                                dist2: Math.min(newRadius, c.maxDist2),
+                              })),
+                            });
+                            if (allValid) applyFilletFromDialog();
+                          }
+                        }
                       }}
                     />
                     <span className="text-xs text-gray-500">mm</span>
@@ -21174,13 +21192,15 @@ export function CADGabaritCanvas({
                         <div className="flex items-center gap-1 flex-1 justify-end">
                           <Input
                             type="number"
-                            value={corner.radius}
-                            onChange={(e) => {
-                              // v7.54g: Permettre champ vide temporairement
-                              const val = e.target.value;
-                              if (val === "" || val === "-") return;
-                              const parsed = parseFloat(val);
-                              if (isNaN(parsed) || parsed < 0.1) return;
+                            key={`corner-${idx}-${corner.radius}`}
+                            defaultValue={corner.radius}
+                            onBlur={(e) => {
+                              // v7.54h: Appliquer la valeur au blur
+                              const parsed = parseFloat(e.target.value);
+                              if (isNaN(parsed) || parsed < 0.1) {
+                                e.target.value = String(corner.radius);
+                                return;
+                              }
                               const newCorners = [...filletDialog.corners];
                               newCorners[idx] = { ...corner, radius: parsed };
                               setFilletDialog({ ...filletDialog, corners: newCorners });
@@ -21190,7 +21210,15 @@ export function CADGabaritCanvas({
                             step="1"
                             onKeyDown={(e) => {
                               e.stopPropagation();
-                              if (e.key === "Enter" && allValid) applyFilletFromDialog();
+                              if (e.key === "Enter") {
+                                const parsed = parseFloat((e.target as HTMLInputElement).value);
+                                if (!isNaN(parsed) && parsed >= 0.1) {
+                                  const newCorners = [...filletDialog.corners];
+                                  newCorners[idx] = { ...corner, radius: parsed };
+                                  setFilletDialog({ ...filletDialog, corners: newCorners });
+                                  if (allValid) applyFilletFromDialog();
+                                }
+                              }
                             }}
                             onClick={(e) => e.stopPropagation()}
                           />
