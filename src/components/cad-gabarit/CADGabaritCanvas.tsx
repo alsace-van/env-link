@@ -4079,6 +4079,10 @@ export function CADGabaritCanvas({
         offset: 0,
       });
     }
+    // v7.54m: Réinitialiser les géométries temporaires quand on change d'outil
+    // (évite de créer accidentellement un rectangle quand on passe à l'outil congé)
+    setTempPoints([]);
+    setTempGeometry(null);
   }, [activeTool]);
 
   // Focus sur l'input largeur quand on commence à tracer un rectangle
