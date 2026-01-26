@@ -9204,6 +9204,25 @@ export function CADGabaritCanvas({
 
       lines.forEach((l) => newSketch.geometries.set(l.id, l));
 
+      // v7.54: Créer aussi un objet Rectangle pour permettre le redimensionnement via cotation
+      // L'objet Rectangle garde la référence aux 4 coins sans les dessiner (les lignes font le rendu)
+      const rectangleId = generateId();
+      const rectangle: Rectangle = {
+        id: rectangleId,
+        type: "rectangle",
+        p1: corner1.id,
+        p2: corner2.id,
+        p3: corner3.id,
+        p4: corner4.id,
+        layerId: currentSketch.activeLayerId,
+        strokeWidth: defaultStrokeWidthRef.current,
+        strokeColor: defaultStrokeColorRef.current,
+        isConstruction: isConstructionModeRef.current,
+        // Marquer comme "virtuel" - ne pas dessiner car les lignes font déjà le rendu
+        isVirtual: true,
+      };
+      newSketch.geometries.set(rectangleId, rectangle);
+
       // Mode centre: ajouter le point central et les diagonales de construction
       if (isCenter) {
         // Calculer le centre exact à partir des 4 coins
