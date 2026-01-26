@@ -17909,7 +17909,7 @@ export function CADGabaritCanvas({
   return (
     <div
       ref={containerRef}
-      className={`flex flex-col overflow-hidden ${isFullscreen ? "fixed inset-0 z-50 bg-white" : "h-[700px]"}`}
+      className={`flex flex-col overflow-hidden ${isFullscreen ? "fixed inset-0 z-50 bg-white" : "h-full"}`}
     >
       {/* v7.55: Input caché pour l'import JSON - avec ID pour label */}
       <input
