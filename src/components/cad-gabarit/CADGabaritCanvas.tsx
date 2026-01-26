@@ -20688,9 +20688,9 @@ export function CADGabaritCanvas({
         />
 
         {/* v7.38: Modale de confirmation avant nouveau projet */}
-        {/* v7.54c: Fix largeur et layout des boutons */}
+        {/* v7.54f: Fix largeur modale - max-w-xl */}
         <Dialog open={showCloseConfirmModal} onOpenChange={setShowCloseConfirmModal}>
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent className="max-w-xl">
             <DialogHeader>
               <DialogTitle>Modifications non sauvegardées</DialogTitle>
               <DialogDescription>
