@@ -21124,6 +21124,8 @@ export function CADGabaritCanvas({
                       type="number"
                       key={`global-${filletDialog.globalRadius}`}
                       defaultValue={filletDialog.globalRadius}
+                      autoFocus
+                      onFocus={(e) => e.target.select()}
                       onBlur={(e) => {
                         // v7.54h: Appliquer la valeur au blur
                         const parsed = parseFloat(e.target.value);
@@ -21194,6 +21196,8 @@ export function CADGabaritCanvas({
                             type="number"
                             key={`corner-${idx}-${corner.radius}`}
                             defaultValue={corner.radius}
+                            autoFocus={cornerCount === 1 && idx === 0}
+                            onFocus={(e) => e.target.select()}
                             onBlur={(e) => {
                               // v7.54h: Appliquer la valeur au blur
                               const parsed = parseFloat(e.target.value);
