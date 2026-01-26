@@ -13199,53 +13199,54 @@ export function CADGabaritCanvas({
             screenY >= textScreenY - hitHeight / 2 &&
             screenY <= textScreenY + hitHeight / 2
           ) {
-            // Chercher d'abord une ligne qui utilise ces deux points
+            const dimP1 = dimension.entities[0];
+            const dimP2 = dimension.entities[1];
+            
+            // v7.54b: Chercher d'ABORD un rectangle qui contient ces points
+            // (car les lignes du rectangle partagent les mêmes points)
+            for (const [geoId, geo] of currentSketch.geometries) {
+              if (geo.type === "rectangle") {
+                const rect = geo as Rectangle;
+                const rectPoints = [rect.p1, rect.p2, rect.p3, rect.p4];
+
+                // Vérifier si les deux points de la dimension sont des coins adjacents du rectangle
+                if (rectPoints.includes(dimP1) && rectPoints.includes(dimP2)) {
+                  // Déterminer quel côté du rectangle (horizontal ou vertical)
+                  // Rectangle: p1 (haut-gauche), p2 (haut-droit), p3 (bas-droit), p4 (bas-gauche)
+                  // Côtés horizontaux: p1-p2 (haut) et p4-p3 (bas)
+                  // Côtés verticaux: p2-p3 (droite) et p1-p4 (gauche)
+                  const isHorizontalTop = (dimP1 === rect.p1 && dimP2 === rect.p2) || (dimP1 === rect.p2 && dimP2 === rect.p1);
+                  const isHorizontalBottom = (dimP1 === rect.p4 && dimP2 === rect.p3) || (dimP1 === rect.p3 && dimP2 === rect.p4);
+                  const isVerticalRight = (dimP1 === rect.p2 && dimP2 === rect.p3) || (dimP1 === rect.p3 && dimP2 === rect.p2);
+                  const isVerticalLeft = (dimP1 === rect.p1 && dimP2 === rect.p4) || (dimP1 === rect.p4 && dimP2 === rect.p1);
+
+                  if (isHorizontalTop || isHorizontalBottom || isVerticalRight || isVerticalLeft) {
+                    const side: "horizontal" | "vertical" = (isHorizontalTop || isHorizontalBottom) ? "horizontal" : "vertical";
+                    console.log("[v7.54b] Rectangle détecté:", geoId, "côté:", side);
+                    return {
+                      dimensionId: dimId,
+                      entityId: geoId,
+                      type: "rectangle",
+                      value: dimension.value,
+                      rectangleSide: side,
+                      rectanglePointIds: [dimP1, dimP2]
+                    };
+                  }
+                }
+              }
+            }
+            
+            // Si pas de rectangle, chercher une ligne qui utilise ces deux points
             let foundLineId = "";
             for (const [geoId, geo] of currentSketch.geometries) {
               if (geo.type === "line") {
                 const line = geo as Line;
                 if (
-                  (line.p1 === dimension.entities[0] && line.p2 === dimension.entities[1]) ||
-                  (line.p1 === dimension.entities[1] && line.p2 === dimension.entities[0])
+                  (line.p1 === dimP1 && line.p2 === dimP2) ||
+                  (line.p1 === dimP2 && line.p2 === dimP1)
                 ) {
                   foundLineId = geoId;
                   break;
-                }
-              }
-            }
-
-            // Si pas de ligne trouvée, chercher un rectangle qui contient ces points
-            if (!foundLineId) {
-              for (const [geoId, geo] of currentSketch.geometries) {
-                if (geo.type === "rectangle") {
-                  const rect = geo as Rectangle;
-                  const rectPoints = [rect.p1, rect.p2, rect.p3, rect.p4];
-                  const dimP1 = dimension.entities[0];
-                  const dimP2 = dimension.entities[1];
-
-                  // Vérifier si les deux points de la dimension sont des coins adjacents du rectangle
-                  if (rectPoints.includes(dimP1) && rectPoints.includes(dimP2)) {
-                    // Déterminer quel côté du rectangle (horizontal ou vertical)
-                    // Rectangle: p1 (haut-gauche), p2 (haut-droit), p3 (bas-droit), p4 (bas-gauche)
-                    // Côtés horizontaux: p1-p2 (haut) et p4-p3 (bas)
-                    // Côtés verticaux: p2-p3 (droite) et p1-p4 (gauche)
-                    const isHorizontalTop = (dimP1 === rect.p1 && dimP2 === rect.p2) || (dimP1 === rect.p2 && dimP2 === rect.p1);
-                    const isHorizontalBottom = (dimP1 === rect.p4 && dimP2 === rect.p3) || (dimP1 === rect.p3 && dimP2 === rect.p4);
-                    const isVerticalRight = (dimP1 === rect.p2 && dimP2 === rect.p3) || (dimP1 === rect.p3 && dimP2 === rect.p2);
-                    const isVerticalLeft = (dimP1 === rect.p1 && dimP2 === rect.p4) || (dimP1 === rect.p4 && dimP2 === rect.p1);
-
-                    if (isHorizontalTop || isHorizontalBottom || isVerticalRight || isVerticalLeft) {
-                      const side: "horizontal" | "vertical" = (isHorizontalTop || isHorizontalBottom) ? "horizontal" : "vertical";
-                      return {
-                        dimensionId: dimId,
-                        entityId: geoId,
-                        type: "rectangle",
-                        value: dimension.value,
-                        rectangleSide: side,
-                        rectanglePointIds: [dimP1, dimP2]
-                      };
-                    }
-                  }
                 }
               }
             }
