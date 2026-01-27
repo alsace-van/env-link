@@ -1,6 +1,6 @@
 // ============================================
 // PAGE: ProjectDetail
-// VERSION: 3.7 - Remplacement PhotoTemplatesContent par CADGabaritCanvas dans onglet Gabarits CNC
+// VERSION: 3.8 - Nettoyage: Suppression photo-templates, CADGabaritCanvas uniquement
 // ============================================
 
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -79,7 +79,6 @@ import { VehicleInspectionTab } from "@/components/vehicle-inspection/VehicleIns
 import { WorkTabMain } from "@/components/work/WorkTabMain";
 import { AllProjectsTasksSidebar } from "@/components/work/AllProjectsTasksSidebar";
 import WorkScenarioManager from "@/components/workScenarios/WorkScenarioManager";
-import { PhotoTemplatesContent } from "@/components/photo-templates/PhotoTemplatesContent";
 import { CADGabaritCanvas } from "@/components/cad-gabarit";
 import DailyNotesCanvas from "@/components/planning/DailyNotesCanvas";
 import ScenarioManager from "@/components/scenarios/ScenarioManager";
