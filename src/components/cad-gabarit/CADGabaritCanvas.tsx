@@ -22059,5 +22059,3 @@ function exportToSVG(sketch: Sketch): string {
 
   return svg;
 }
-
-export { CADGabaritCanvas };
