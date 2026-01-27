@@ -121,6 +121,5 @@ export {
 } from "./toolbar-defaults";
 
 export { ToolbarEditor } from "./ToolbarEditor";
-export { ToolbarRenderer, ToolbarGroupBadge } from "./ToolbarRenderer";
 export { useToolbarConfig } from "./useToolbarConfig";
 export type { UseToolbarConfigReturn, ResolvedToolbarItem, ResolvedTool, ResolvedLine } from "./useToolbarConfig";
