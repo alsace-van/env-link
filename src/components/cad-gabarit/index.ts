@@ -1,7 +1,7 @@
 // ============================================
 // CAD GABARIT - Index
 // Export de tous les modules
-// VERSION: 3.0 - Ajout système de toolbar configurable
+// VERSION: 3.1 - Ajout hooks de refactorisation
 // ============================================
 
 // Types
@@ -88,7 +88,78 @@ export type { DXFParseResult } from "./dxf-parser";
 // Composant principal
 export { CADGabaritCanvas } from "./CADGabaritCanvas";
 
-// Toolbar configurable
+// ============================================
+// HOOKS DE REFACTORISATION
+// ============================================
+
+// Hook historique et branches
+export { useSketchHistory } from "./useSketchHistory";
+export type {
+  HistoryEntry,
+  Branch,
+  ImageHistoryState,
+  UseSketchHistoryProps,
+  UseSketchHistoryReturn,
+} from "./useSketchHistory";
+
+// Hook outils de modification (fillet, chamfer, offset)
+export { useModificationTools } from "./useModificationTools";
+export type {
+  OffsetPreviewItem,
+  FilletPreviewItem,
+  ChamferPreviewItem,
+  FilletCorner,
+  FilletDialogState,
+  ChamferCorner,
+  ChamferDialogState,
+  OffsetDialogState,
+  SharedPointResult,
+  FilletGeometry,
+  ChamferGeometry,
+  UseModificationToolsProps,
+  UseModificationToolsReturn,
+} from "./useModificationTools";
+
+// Hook états de dessin
+export { useDrawingState } from "./useDrawingState";
+export type {
+  TempGeometry,
+  RectInputs,
+  PerpendicularInfo,
+  TextInputState,
+  UseDrawingStateProps,
+  UseDrawingStateReturn,
+} from "./useDrawingState";
+
+// Hook sélection
+export { useSelection } from "./useSelection";
+export type {
+  SelectionBounds,
+  SelectRectState,
+  TransformGizmoState,
+  UseSelectionProps,
+  UseSelectionReturn,
+} from "./useSelection";
+
+// Hook gestion des images
+export { useImageManagement } from "./useImageManagement";
+export type {
+  ImageDragState,
+  MarkerDragState,
+  LinkDistanceDialogState,
+  StretchingHandleState,
+  StretchKeyIndicator,
+  CropSelection,
+  CropDragHandle,
+  MarkerMode,
+  UseImageManagementProps,
+  UseImageManagementReturn,
+} from "./useImageManagement";
+
+// ============================================
+// TOOLBAR CONFIGURABLE
+// ============================================
+
 export type {
   ToolDefinition,
   ToolbarConfig,
