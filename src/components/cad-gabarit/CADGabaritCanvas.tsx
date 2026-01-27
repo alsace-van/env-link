@@ -17427,9 +17427,9 @@ export function CADGabaritCanvas({
               setMarkerMode("idle");
               setPendingLink(null);
             }}
-            className="h-9 w-9 p-0"
+            className="h-7 w-7 p-0"
           >
-            <Icon className="h-4 w-4" />
+            <Icon className="h-3.5 w-3.5" />
           </Button>
         </TooltipTrigger>
         <TooltipContent>
@@ -17661,9 +17661,9 @@ export function CADGabaritCanvas({
       return (
         <div
           className={`
-          relative flex items-center gap-1 bg-white rounded-md p-1 shadow-sm transition-all
+          relative flex items-center gap-0.5 transition-all
           ${isDragging ? "opacity-50 scale-95" : ""}
-          ${toolbarEditMode ? "cursor-grab active:cursor-grabbing ring-1 ring-gray-200 hover:ring-blue-300" : ""}
+          ${toolbarEditMode ? "cursor-grab active:cursor-grabbing bg-gray-50 rounded px-1 ring-1 ring-gray-200 hover:ring-blue-300" : ""}
         `}
           style={{
             borderLeft: toolbarEditMode ? `3px solid ${groupColor}` : undefined,
@@ -17930,8 +17930,8 @@ export function CADGabaritCanvas({
           opacity: 0,
         }}
       />
-      {/* Toolbar Ligne 1 - Fichiers */}
-      <div className="flex items-center gap-0 p-2 bg-gray-100 border-b flex-shrink-0">
+      {/* Toolbar Ligne 1 - Fichiers - v7.54q: Design allégé */}
+      <div className="flex items-center gap-1 px-2 py-1 bg-gray-50 border-b flex-shrink-0">
         {/* Zone de drop au début */}
         <DropZoneBetweenGroups targetIndex={0} lineIndex={0} />
 
@@ -17941,8 +17941,8 @@ export function CADGabaritCanvas({
             <ToolbarGroupWrapper groupId="grp_file" groupName="Fichier" groupColor="#3B82F6" lineIndex={0}>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-9 px-3 gap-1">
-                    <Save className="h-4 w-4" />
+                  <Button variant="outline" size="sm" className="h-7 px-2 gap-1">
+                    <Save className="h-3.5 w-3.5" />
                     <span className="text-xs">Fichier</span>
                     <ChevronDown className="h-3 w-3" />
                     {hasUnsavedChanges && (
@@ -18152,8 +18152,8 @@ export function CADGabaritCanvas({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" onClick={() => setShowPrintDialog(true)} className="h-9 w-9 p-0">
-                  <Printer className="h-4 w-4" />
+                <Button variant="outline" size="sm" onClick={() => setShowPrintDialog(true)} className="h-7 w-7 p-0">
+                  <Printer className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -18164,7 +18164,7 @@ export function CADGabaritCanvas({
 
           {/* Bibliothèque de templates */}
           {toolbarConfig.line1.templates && (
-            <Button variant="outline" size="sm" onClick={() => setShowTemplateLibrary(true)} className="h-9 px-2">
+            <Button variant="outline" size="sm" onClick={() => setShowTemplateLibrary(true)} className="h-7 px-1.5">
               <Library className="h-4 w-4 mr-1" />
               <span className="text-xs">Templates</span>
             </Button>
@@ -18177,24 +18177,24 @@ export function CADGabaritCanvas({
         {/* v7.54o: Undo/Redo + Branches déplacés sur la ligne 0 */}
         <Separator orientation="vertical" className="h-6 mx-1" />
         
-        <Button variant="ghost" size="sm" onClick={undo} disabled={historyIndex <= 0} className="h-8 w-8 p-0">
-          <Undo className="h-4 w-4" />
+        <Button variant="ghost" size="sm" onClick={undo} disabled={historyIndex <= 0} className="h-7 w-7 p-0">
+          <Undo className="h-3.5 w-3.5" />
         </Button>
         <Button
           variant="ghost"
           size="sm"
           onClick={redo}
           disabled={historyIndex >= history.length - 1}
-          className="h-8 w-8 p-0"
+          className="h-7 w-7 p-0"
         >
-          <Redo className="h-4 w-4" />
+          <Redo className="h-3.5 w-3.5" />
         </Button>
 
         {/* Sélecteur de branche active + Nouvelle branche */}
         <div className="flex items-center gap-0.5 ml-1">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-8 px-2 gap-1.5" title="Branche active">
+              <Button variant="outline" size="sm" className="h-7 px-1.5 gap-1.5" title="Branche active">
                 <div
                   className="w-2.5 h-2.5 rounded-full"
                   style={{ backgroundColor: branches.find((b) => b.id === activeBranchId)?.color || "#3B82F6" }}
@@ -18246,9 +18246,9 @@ export function CADGabaritCanvas({
                   size="sm"
                   onClick={() => createBranchFromHistoryIndex(historyIndex)}
                   disabled={branches.length >= 10}
-                  className="h-8 w-8 p-0"
+                  className="h-7 w-7 p-0"
                 >
-                  <Plus className="h-4 w-4" />
+                  <Plus className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -18263,15 +18263,15 @@ export function CADGabaritCanvas({
               <Button
                 variant={showHistoryPanel || comparisonMode ? "default" : "ghost"}
                 size="sm"
-                className="h-8 w-8 p-0"
+                className="h-7 w-7 p-0"
                 title="Historique et branches"
               >
-                <History className="h-4 w-4" />
+                <History className="h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuItem onClick={() => setShowHistoryPanel(true)} className="gap-2">
-                <History className="h-4 w-4" />
+                <History className="h-3.5 w-3.5" />
                 <span>Historique des états</span>
                 {showHistoryPanel && <Check className="h-4 w-4 ml-auto text-blue-500" />}
               </DropdownMenuItem>
@@ -18286,7 +18286,7 @@ export function CADGabaritCanvas({
                 className="gap-2"
                 disabled={branches.length <= 1}
               >
-                <Layers className="h-4 w-4" />
+                <Layers className="h-3.5 w-3.5" />
                 <span>Mode Superposition</span>
               </DropdownMenuItem>
               <DropdownMenuItem
@@ -18300,12 +18300,12 @@ export function CADGabaritCanvas({
                 className="gap-2"
                 disabled={branches.length <= 1}
               >
-                <SplitSquareVertical className="h-4 w-4" />
+                <SplitSquareVertical className="h-3.5 w-3.5" />
                 <span>Mode Rideau</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setShowOverviewModal(true)} className="gap-2">
-                <GitBranch className="h-4 w-4" />
+                <GitBranch className="h-3.5 w-3.5" />
                 <span>Vue d'ensemble</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -18322,9 +18322,9 @@ export function CADGabaritCanvas({
                 variant={showGrid ? "default" : "ghost"}
                 size="sm"
                 onClick={() => setShowGrid(!showGrid)}
-                className="h-8 w-8 p-0"
+                className="h-7 w-7 p-0"
               >
-                <Grid3X3 className="h-4 w-4" />
+                <Grid3X3 className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -18340,9 +18340,9 @@ export function CADGabaritCanvas({
                 variant={showA4Grid ? "default" : "ghost"}
                 size="sm"
                 onClick={() => setShowA4Grid(!showA4Grid)}
-                className={`h-8 w-8 p-0 ${showA4Grid ? "bg-blue-500 hover:bg-blue-600" : ""}`}
+                className={`h-7 w-7 p-0 ${showA4Grid ? "bg-blue-500 hover:bg-blue-600" : ""}`}
               >
-                <FileDown className="h-4 w-4" />
+                <FileDown className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -18358,9 +18358,9 @@ export function CADGabaritCanvas({
                 variant={snapEnabled ? "default" : "ghost"}
                 size="sm"
                 onClick={() => setSnapEnabled(!snapEnabled)}
-                className="h-8 w-8 p-0"
+                className="h-7 w-7 p-0"
               >
-                <Magnet className="h-4 w-4" />
+                <Magnet className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -18376,9 +18376,9 @@ export function CADGabaritCanvas({
                 variant={snapToActiveLayerOnly ? "default" : "ghost"}
                 size="sm"
                 onClick={() => setSnapToActiveLayerOnly(!snapToActiveLayerOnly)}
-                className={`h-8 w-8 p-0 ${snapToActiveLayerOnly ? "bg-purple-500 hover:bg-purple-600" : ""}`}
+                className={`h-7 w-7 p-0 ${snapToActiveLayerOnly ? "bg-purple-500 hover:bg-purple-600" : ""}`}
               >
-                <Layers className="h-4 w-4" />
+                <Layers className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -18392,8 +18392,8 @@ export function CADGabaritCanvas({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="sm" onClick={() => setShowShortcutsPanel(true)} className="h-9 w-9 p-0">
-                  <HelpCircle className="h-4 w-4" />
+                <Button variant="ghost" size="sm" onClick={() => setShowShortcutsPanel(true)} className="h-7 w-7 p-0">
+                  <HelpCircle className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -18422,7 +18422,7 @@ export function CADGabaritCanvas({
         </Badge>
 
         <Button variant="ghost" size="sm" onClick={() => setIsFullscreen(!isFullscreen)}>
-          {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+          {isFullscreen ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />}
         </Button>
 
         {/* Bouton configuration toolbar (mode édition inline) */}
@@ -18432,7 +18432,7 @@ export function CADGabaritCanvas({
               <Button
                 variant={toolbarEditMode ? "default" : "ghost"}
                 size="sm"
-                className={`h-9 w-9 p-0 ${toolbarEditMode ? "bg-blue-600 hover:bg-blue-700" : ""}`}
+                className={`h-7 w-7 p-0 ${toolbarEditMode ? "bg-blue-600 hover:bg-blue-700" : ""}`}
                 onClick={() => setToolbarEditMode(!toolbarEditMode)}
               >
                 <Settings
@@ -18451,7 +18451,7 @@ export function CADGabaritCanvas({
       {/* Bandeau mode édition */}
       {toolbarEditMode && (
         <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-100 border-b border-blue-300 text-blue-800 text-sm">
-          <Settings className="h-4 w-4" />
+          <Settings className="h-3.5 w-3.5" />
           <span className="font-medium">Mode édition</span>
           <span className="text-blue-600">
             — Glissez les groupes pour les réorganiser, cliquez sur ⋮ pour gérer les outils
@@ -18471,8 +18471,8 @@ export function CADGabaritCanvas({
         </div>
       )}
 
-      {/* Toolbar Ligne 2 - Outils */}
-      <div className="flex items-center gap-0 p-2 bg-gray-100 border-b flex-wrap flex-shrink-0">
+      {/* Toolbar Ligne 2 - Outils - v7.54q: Design allégé */}
+      <div className="flex items-center gap-1 px-2 py-1 bg-gray-50 border-b flex-wrap flex-shrink-0">
         {/* Zone de drop au début */}
         <DropZoneBetweenGroups targetIndex={0} lineIndex={1} />
 
@@ -18506,9 +18506,9 @@ export function CADGabaritCanvas({
                         }
                         setShowTransformGizmo(!showTransformGizmo);
                       }}
-                      className={`h-9 w-9 p-0 ${showTransformGizmo ? "bg-orange-500 hover:bg-orange-600 text-white" : ""}`}
+                      className={`h-7 w-7 p-0 ${showTransformGizmo ? "bg-orange-500 hover:bg-orange-600 text-white" : ""}`}
                     >
-                      <Move className="h-4 w-4" />
+                      <Move className="h-3.5 w-3.5" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -18535,9 +18535,9 @@ export function CADGabaritCanvas({
                 <Button
                   variant={activeTool === "rectangle" ? "default" : "outline"}
                   size="sm"
-                  className="h-9 w-9 p-0 relative"
+                  className="h-7 w-7 p-0 relative"
                 >
-                  <Square className="h-4 w-4" />
+                  <Square className="h-3.5 w-3.5" />
                   {rectangleMode === "center" && (
                     <div className="absolute bottom-0.5 right-0.5 w-1.5 h-1.5 bg-green-500 rounded-full" />
                   )}
@@ -18554,7 +18554,7 @@ export function CADGabaritCanvas({
                   }}
                   className="flex items-center gap-2"
                 >
-                  <Square className="h-4 w-4" />
+                  <Square className="h-3.5 w-3.5" />
                   <span>Depuis le coin</span>
                   {rectangleMode === "corner" && <Check className="h-4 w-4 ml-auto text-green-600" />}
                 </DropdownMenuItem>
@@ -18568,7 +18568,7 @@ export function CADGabaritCanvas({
                   }}
                   className="flex items-center gap-2"
                 >
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <rect x="3" y="5" width="18" height="14" rx="1" />
                     <circle cx="12" cy="12" r="2" fill="currentColor" />
                   </svg>
@@ -18593,11 +18593,11 @@ export function CADGabaritCanvas({
                       setTempGeometry(null);
                       setFilletFirstLine(null);
                     }}
-                    className="h-9 w-9 p-0"
+                    className="h-7 w-7 p-0"
                   >
                     {/* Icône spline: courbe passant par plusieurs points */}
                     <svg
-                      className="h-4 w-4"
+                      className="h-3.5 w-3.5"
                       viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
@@ -18630,11 +18630,11 @@ export function CADGabaritCanvas({
                       setTempGeometry(null);
                       setFilletFirstLine(null);
                     }}
-                    className="h-9 w-9 p-0"
+                    className="h-7 w-7 p-0"
                   >
                     {/* Icône polygone: hexagone */}
                     <svg
-                      className="h-4 w-4"
+                      className="h-3.5 w-3.5"
                       viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
@@ -18954,7 +18954,7 @@ export function CADGabaritCanvas({
                     variant="outline"
                     size="sm"
                     onClick={() => fileInputRef.current?.click()}
-                    className="h-9 px-2 relative"
+                    className="h-7 px-1.5 relative"
                   >
                     <ImageIcon className="h-4 w-4 mr-1" />
                     <span className="text-xs">Photo</span>
@@ -18977,10 +18977,10 @@ export function CADGabaritCanvas({
                 variant={showBackgroundImage ? "default" : "outline"}
                 size="sm"
                 onClick={() => setShowBackgroundImage(!showBackgroundImage)}
-                className="h-9 w-9 p-0"
+                className="h-7 w-7 p-0"
                 title={showBackgroundImage ? "Masquer photos" : "Afficher photos"}
               >
-                {showBackgroundImage ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                {showBackgroundImage ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
               </Button>
             )}
 
@@ -18988,7 +18988,7 @@ export function CADGabaritCanvas({
             {backgroundImages.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-9 px-2 relative">
+                  <Button variant="outline" size="sm" className="h-7 px-1.5 relative">
                     <Settings className="h-4 w-4 mr-1" />
                     <span className="text-xs">Outils</span>
                     <ChevronDown className="h-3 w-3 ml-1" />
@@ -19255,11 +19255,11 @@ export function CADGabaritCanvas({
                     setTempGeometry(null);
                     setFilletFirstLine(null);
                   }}
-                  className="h-9 w-9 p-0"
+                  className="h-7 w-7 p-0"
                 >
                   {/* Icône cotation: trait horizontal avec traits verticaux aux extrémités */}
                   <svg
-                    className="h-4 w-4"
+                    className="h-3.5 w-3.5"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -19295,9 +19295,9 @@ export function CADGabaritCanvas({
                       // Ouvrir automatiquement le panneau de mesure
                       setShowMeasurePanel(true);
                     }}
-                    className="h-9 w-9 p-0 rounded-r-none border-r-0"
+                    className="h-7 w-7 p-0 rounded-r-none border-r-0"
                   >
-                    <Ruler className="h-4 w-4" />
+                    <Ruler className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -19319,7 +19319,7 @@ export function CADGabaritCanvas({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 px-2">
+              <Button variant="outline" size="sm" className="h-7 px-1.5">
                 <Link className="h-4 w-4 mr-1" />
                 <span className="text-xs">Contraintes</span>
               </Button>
@@ -19428,11 +19428,11 @@ export function CADGabaritCanvas({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 px-2"
+                  className="h-7 px-1.5"
                   onClick={handleGroupSelection}
                   disabled={selectedEntities.size < 2}
                 >
-                  <Group className="h-4 w-4" />
+                  <Group className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -19447,11 +19447,11 @@ export function CADGabaritCanvas({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 px-2"
+                  className="h-7 px-1.5"
                   onClick={handleUngroupSelection}
                   disabled={selectedEntities.size === 0}
                 >
-                  <Ungroup className="h-4 w-4" />
+                  <Ungroup className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -19464,8 +19464,8 @@ export function CADGabaritCanvas({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 px-2" onClick={() => openArrayDialog()}>
-                  <Grid3X3 className="h-4 w-4" />
+                <Button variant="outline" size="sm" className="h-7 px-1.5" onClick={() => openArrayDialog()}>
+                  <Grid3X3 className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -19484,7 +19484,7 @@ export function CADGabaritCanvas({
           {/* Menu déroulant Congé/Chanfrein */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 px-2">
+              <Button variant="outline" size="sm" className="h-7 px-1.5">
                 {/* Icône combinée congé/chanfrein */}
                 <svg className="h-4 w-4 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M4 20 L4 12 Q4 4 12 4 L20 4" strokeLinecap="round" />
@@ -19560,7 +19560,7 @@ export function CADGabaritCanvas({
                 <Button
                   variant={offsetDialog?.open ? "default" : "outline"}
                   size="sm"
-                  className="h-9 px-2"
+                  className="h-7 px-1.5"
                   onClick={openOffsetDialog}
                 >
                   {/* Icône offset: deux rectangles décalés */}
@@ -19586,9 +19586,9 @@ export function CADGabaritCanvas({
                 <div className="flex items-center">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-9 px-2 gap-1">
+                      <Button variant="outline" size="sm" className="h-7 px-1.5 gap-1">
                         <svg
-                          className="h-4 w-4"
+                          className="h-3.5 w-3.5"
                           viewBox="0 0 24 24"
                           fill="none"
                           stroke="currentColor"
@@ -19715,9 +19715,9 @@ export function CADGabaritCanvas({
             variant="ghost"
             size="sm"
             onClick={() => setViewport((v) => ({ ...v, scale: v.scale * 0.8 }))}
-            className="h-8 w-8 p-0"
+            className="h-7 w-7 p-0"
           >
-            <ZoomOut className="h-4 w-4" />
+            <ZoomOut className="h-3.5 w-3.5" />
           </Button>
           <span className="text-xs font-mono w-14 text-center" title={`1mm = ${viewport.scale.toFixed(1)}px`}>
             {viewport.scale >= 10 ? `${Math.round(viewport.scale)}x` : `${viewport.scale.toFixed(1)}x`}
@@ -19726,15 +19726,15 @@ export function CADGabaritCanvas({
             variant="ghost"
             size="sm"
             onClick={() => setViewport((v) => ({ ...v, scale: v.scale * 1.2 }))}
-            className="h-8 w-8 p-0"
+            className="h-7 w-7 p-0"
           >
-            <ZoomIn className="h-4 w-4" />
+            <ZoomIn className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={fitToContent} title="Ajuster au contenu" className="h-8 w-8 p-0">
-            <Scan className="h-4 w-4" />
+          <Button variant="ghost" size="sm" onClick={fitToContent} title="Ajuster au contenu" className="h-7 w-7 p-0">
+            <Scan className="h-3.5 w-3.5" />
           </Button>
           <Button variant="ghost" size="sm" onClick={resetView} title="Reset vue">
-            <RotateCcw className="h-4 w-4" />
+            <RotateCcw className="h-3.5 w-3.5" />
           </Button>
         </ToolbarGroupWrapper>
 
@@ -19752,10 +19752,10 @@ export function CADGabaritCanvas({
                   variant={isConstructionMode ? "default" : "outline"}
                   size="sm"
                   onClick={() => setIsConstructionMode(!isConstructionMode)}
-                  className={`h-8 px-2 ${isConstructionMode ? "bg-amber-500 hover:bg-amber-600" : ""}`}
+                  className={`h-7 px-1.5 ${isConstructionMode ? "bg-amber-500 hover:bg-amber-600" : ""}`}
                 >
                   <svg
-                    className="h-4 w-4"
+                    className="h-3.5 w-3.5"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -19780,9 +19780,9 @@ export function CADGabaritCanvas({
                   variant={showConstruction ? "default" : "outline"}
                   size="sm"
                   onClick={() => setShowConstruction(!showConstruction)}
-                  className="h-8 px-2"
+                  className="h-7 px-1.5"
                 >
-                  {showConstruction ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                  {showConstruction ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -19799,9 +19799,9 @@ export function CADGabaritCanvas({
                   variant={autoDimensionsEnabled ? "default" : "outline"}
                   size="sm"
                   onClick={() => setAutoDimensionsEnabled(!autoDimensionsEnabled)}
-                  className={`h-8 px-2 ${autoDimensionsEnabled ? "bg-cyan-500 hover:bg-cyan-600" : ""}`}
+                  className={`h-7 px-1.5 ${autoDimensionsEnabled ? "bg-cyan-500 hover:bg-cyan-600" : ""}`}
                 >
-                  <Sliders className="h-4 w-4" />
+                  <Sliders className="h-3.5 w-3.5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
@@ -20243,7 +20243,7 @@ export function CADGabaritCanvas({
                     }
                     e.stopPropagation();
                   }}
-                  className={`w-20 h-8 px-2 text-center text-sm font-bold rounded border-2 shadow-lg outline-none ${
+                  className={`w-20 h-7 px-1.5 text-center text-sm font-bold rounded border-2 shadow-lg outline-none ${
                     transformGizmo.mode === "translateX"
                       ? "border-red-500 bg-red-50 text-red-700"
                       : transformGizmo.mode === "translateY"
@@ -20417,7 +20417,7 @@ export function CADGabaritCanvas({
                             }}
                             title="Supprimer le congé et restaurer le coin"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-3.5 w-3.5" />
                             <span className="text-[10px]">Supprimer</span>
                           </button>
                         )}
@@ -21154,7 +21154,7 @@ export function CADGabaritCanvas({
                   </button>
                 </div>
                 <button className="text-gray-500 hover:text-gray-700" onClick={() => setFilletDialog(null)}>
-                  <X className="h-4 w-4" />
+                  <X className="h-3.5 w-3.5" />
                 </button>
               </div>
 
@@ -21449,7 +21449,7 @@ export function CADGabaritCanvas({
                   </button>
                 </div>
                 <button className="text-gray-500 hover:text-gray-700" onClick={() => setChamferDialog(null)}>
-                  <X className="h-4 w-4" />
+                  <X className="h-3.5 w-3.5" />
                 </button>
               </div>
 
@@ -21649,7 +21649,7 @@ export function CADGabaritCanvas({
                 setActiveTool("select");
               }}
             >
-              <X className="h-4 w-4" />
+              <X className="h-3.5 w-3.5" />
             </button>
           </div>
 
@@ -21677,11 +21677,11 @@ export function CADGabaritCanvas({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 px-2 ml-auto"
+                className="h-7 px-1.5 ml-auto"
                 onClick={() => setOffsetDirection(offsetDirection === "outside" ? "inside" : "outside")}
                 title={offsetDirection === "outside" ? "Extérieur" : "Intérieur"}
               >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   {offsetDirection === "outside" ? (
                     <>
                       <path d="M7 12 L4 12 M4 9 L4 15" strokeLinecap="round" />
@@ -21751,7 +21751,7 @@ export function CADGabaritCanvas({
           <div className="flex items-center justify-between px-3 py-2 bg-blue-50 rounded-t-lg cursor-move border-b">
             <span className="text-sm font-medium">Export DXF</span>
             <button className="text-gray-500 hover:text-gray-700" onClick={() => setDxfExportDialog(null)}>
-              <X className="h-4 w-4" />
+              <X className="h-3.5 w-3.5" />
             </button>
           </div>
 
@@ -21845,7 +21845,7 @@ export function CADGabaritCanvas({
                 }}
                 className="w-full"
               >
-                <Check className="h-4 w-4" />
+                <Check className="h-3.5 w-3.5" />
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -22125,7 +22125,7 @@ export function CADGabaritCanvas({
                 Raccourcis clavier
               </h2>
               <Button variant="ghost" size="sm" onClick={() => setShowShortcutsPanel(false)}>
-                <X className="h-4 w-4" />
+                <X className="h-3.5 w-3.5" />
               </Button>
             </div>
             <div className="p-4 overflow-y-auto max-h-[60vh]">
@@ -22133,7 +22133,7 @@ export function CADGabaritCanvas({
                 {/* Outils */}
                 <div>
                   <h3 className="font-semibold text-sm text-gray-700 mb-2 flex items-center gap-1">
-                    <MousePointer className="h-4 w-4" /> Outils
+                    <MousePointer className="h-3.5 w-3.5" /> Outils
                   </h3>
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
@@ -22186,7 +22186,7 @@ export function CADGabaritCanvas({
                 {/* Actions */}
                 <div>
                   <h3 className="font-semibold text-sm text-gray-700 mb-2 flex items-center gap-1">
-                    <Settings className="h-4 w-4" /> Actions
+                    <Settings className="h-3.5 w-3.5" /> Actions
                   </h3>
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
@@ -22235,7 +22235,7 @@ export function CADGabaritCanvas({
                 {/* Navigation */}
                 <div>
                   <h3 className="font-semibold text-sm text-gray-700 mb-2 flex items-center gap-1">
-                    <ZoomIn className="h-4 w-4" /> Navigation
+                    <ZoomIn className="h-3.5 w-3.5" /> Navigation
                   </h3>
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
@@ -22264,7 +22264,7 @@ export function CADGabaritCanvas({
                 {/* Modificateurs */}
                 <div>
                   <h3 className="font-semibold text-sm text-gray-700 mb-2 flex items-center gap-1">
-                    <Grid3X3 className="h-4 w-4" /> Modificateurs
+                    <Grid3X3 className="h-3.5 w-3.5" /> Modificateurs
                   </h3>
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
@@ -22326,11 +22326,11 @@ export function CADGabaritCanvas({
           {/* Header draggable - violet pour ajustements */}
           <div className="flex items-center justify-between px-3 py-2 bg-purple-500 text-white rounded-t-lg cursor-move">
             <div className="flex items-center gap-2">
-              <Sliders className="h-4 w-4" />
+              <Sliders className="h-3.5 w-3.5" />
               <span className="text-sm font-medium">Ajustements image</span>
             </div>
             <button className="text-white/80 hover:text-white" onClick={() => setShowAdjustmentsDialog(false)}>
-              <X className="h-4 w-4" />
+              <X className="h-3.5 w-3.5" />
             </button>
           </div>
 
@@ -22526,11 +22526,11 @@ export function CADGabaritCanvas({
           {/* Header draggable - vert pour crop */}
           <div className="flex items-center justify-between px-3 py-2 bg-green-600 text-white rounded-t-lg cursor-move">
             <div className="flex items-center gap-2">
-              <Crop className="h-4 w-4" />
+              <Crop className="h-3.5 w-3.5" />
               <span className="text-sm font-medium">Recadrer l'image</span>
             </div>
             <button className="text-white/80 hover:text-white" onClick={() => setShowCropDialog(false)}>
-              <X className="h-4 w-4" />
+              <X className="h-3.5 w-3.5" />
             </button>
           </div>
 
@@ -22883,7 +22883,7 @@ export function CADGabaritCanvas({
                     setLineLengthDialog(null);
                   }}
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-3.5 w-3.5" />
                 </button>
               </div>
 
@@ -23064,7 +23064,7 @@ export function CADGabaritCanvas({
                 setAngleEditDialog(null);
               }}
             >
-              <X className="h-4 w-4" />
+              <X className="h-3.5 w-3.5" />
             </button>
           </div>
 
@@ -23272,7 +23272,7 @@ export function CADGabaritCanvas({
               Répétition / Array
             </span>
             <button onClick={() => setArrayDialog(null)}>
-              <X className="h-4 w-4" />
+              <X className="h-3.5 w-3.5" />
             </button>
           </div>
 
@@ -23894,7 +23894,7 @@ export function CADGabaritCanvas({
                           setContextMenu(null);
                         }}
                       >
-                        <MousePointer className="h-4 w-4" />
+                        <MousePointer className="h-3.5 w-3.5" />
                         Sélectionner
                       </button>
                       <button
@@ -23932,7 +23932,7 @@ export function CADGabaritCanvas({
                           setContextMenu(null);
                         }}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-3.5 w-3.5" />
                         Supprimer
                       </button>
                     </>
@@ -23947,7 +23947,7 @@ export function CADGabaritCanvas({
                     setContextMenu(null);
                   }}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-3.5 w-3.5" />
                   Supprimer
                 </button>
               )}
@@ -24493,7 +24493,7 @@ export function CADGabaritCanvas({
                 setComparisonMode(false);
               }}
             >
-              <X className="h-4 w-4" />
+              <X className="h-3.5 w-3.5" />
             </button>
           </div>
 
@@ -24762,16 +24762,16 @@ export function CADGabaritCanvas({
             >
               <div className="flex items-center gap-2">
                 {comparisonStyle === "overlay" ? (
-                  <Layers className="h-4 w-4" />
+                  <Layers className="h-3.5 w-3.5" />
                 ) : (
-                  <SplitSquareVertical className="h-4 w-4" />
+                  <SplitSquareVertical className="h-3.5 w-3.5" />
                 )}
                 <span className="font-medium text-sm">
                   {comparisonStyle === "overlay" ? "Superposition" : "Rideau"}
                 </span>
               </div>
               <button className="p-1 hover:bg-white/20 rounded" onClick={() => setShowComparisonModal(false)}>
-                <X className="h-4 w-4" />
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
 
@@ -25511,7 +25511,7 @@ export function CADGabaritCanvas({
               Grille A4 Export
             </h3>
             <Button variant="ghost" size="sm" onClick={() => setShowA4Grid(false)} className="h-6 w-6 p-0">
-              <X className="h-4 w-4" />
+              <X className="h-3.5 w-3.5" />
             </Button>
           </div>
 
@@ -25553,10 +25553,10 @@ export function CADGabaritCanvas({
               variant="outline"
               size="sm"
               onClick={autoFitA4Grid}
-              className="h-8 px-2"
+              className="h-7 px-1.5"
               title="Ajuster automatiquement au contenu"
             >
-              <Target className="h-4 w-4" />
+              <Target className="h-3.5 w-3.5" />
             </Button>
           </div>
 
