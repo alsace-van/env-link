@@ -18174,6 +18174,144 @@ export function CADGabaritCanvas({
         {/* Zone de drop après Import/Export */}
         <DropZoneBetweenGroups targetIndex={2} lineIndex={0} />
 
+        {/* v7.54o: Undo/Redo + Branches déplacés sur la ligne 0 */}
+        <Separator orientation="vertical" className="h-6 mx-1" />
+        
+        <Button variant="ghost" size="sm" onClick={undo} disabled={historyIndex <= 0} className="h-8 w-8 p-0">
+          <Undo className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={redo}
+          disabled={historyIndex >= history.length - 1}
+          className="h-8 w-8 p-0"
+        >
+          <Redo className="h-4 w-4" />
+        </Button>
+
+        {/* Sélecteur de branche active + Nouvelle branche */}
+        <div className="flex items-center gap-0.5 ml-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-8 px-2 gap-1.5" title="Branche active">
+                <div
+                  className="w-2.5 h-2.5 rounded-full"
+                  style={{ backgroundColor: branches.find((b) => b.id === activeBranchId)?.color || "#3B82F6" }}
+                />
+                <span className="text-xs font-medium max-w-[80px] truncate">
+                  {branches.find((b) => b.id === activeBranchId)?.name || "Principal"}
+                </span>
+                <ChevronDown className="h-3 w-3 opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
+                Branches ({branches.length}/10)
+              </div>
+              <DropdownMenuSeparator />
+              {branches.map((branch, index) => (
+                <DropdownMenuItem key={branch.id} onClick={() => setActiveBranchId(branch.id)} className="gap-2 pr-1">
+                  <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: branch.color }} />
+                  <span className="truncate flex-1">{branch.name}</span>
+                  {branch.id === activeBranchId && <Check className="h-4 w-4 text-blue-500 flex-shrink-0" />}
+                  {index > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 ml-1 hover:bg-red-100 hover:text-red-600 flex-shrink-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (branch.id === activeBranchId) {
+                          setActiveBranchId(branches[0].id);
+                        }
+                        setBranches((prev) => prev.filter((b) => b.id !== branch.id));
+                        toast.success(`Branche "${branch.name}" supprimée`);
+                      }}
+                      title={`Supprimer "${branch.name}"`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  )}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => createBranchFromHistoryIndex(historyIndex)}
+                  disabled={branches.length >= 10}
+                  className="h-8 w-8 p-0"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Nouvelle branche ({branches.length}/10)</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {/* Dropdown Historique */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant={showHistoryPanel || comparisonMode ? "default" : "ghost"}
+                size="sm"
+                className="h-8 w-8 p-0"
+                title="Historique et branches"
+              >
+                <History className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem onClick={() => setShowHistoryPanel(true)} className="gap-2">
+                <History className="h-4 w-4" />
+                <span>Historique des états</span>
+                {showHistoryPanel && <Check className="h-4 w-4 ml-auto text-blue-500" />}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => {
+                  setShowComparisonModal(true);
+                  setComparisonMode(true);
+                  setComparisonStyle("overlay");
+                  setVisibleBranches(new Set(branches.map((b) => b.id)));
+                }}
+                className="gap-2"
+                disabled={branches.length <= 1}
+              >
+                <Layers className="h-4 w-4" />
+                <span>Mode Superposition</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  setShowComparisonModal(true);
+                  setComparisonMode(true);
+                  setComparisonStyle("reveal");
+                  const otherBranch = branches.find((b) => b.id !== activeBranchId);
+                  if (otherBranch) setRevealBranchId(otherBranch.id);
+                }}
+                className="gap-2"
+                disabled={branches.length <= 1}
+              >
+                <SplitSquareVertical className="h-4 w-4" />
+                <span>Mode Rideau</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setShowOverviewModal(true)} className="gap-2">
+                <GitBranch className="h-4 w-4" />
+                <span>Vue d'ensemble</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
         {/* Bouton raccourcis clavier */}
         {toolbarConfig.line1.help && (
           <TooltipProvider>
@@ -19526,173 +19664,6 @@ export function CADGabaritCanvas({
         </ToolbarGroupWrapper>
 
         <DropZoneBetweenGroups targetIndex={7} lineIndex={1} />
-
-        <Separator orientation="vertical" className="h-6" />
-
-        {/* Undo/Redo + Dropdown Historique */}
-        <ToolbarGroupWrapper groupId="grp_history" groupName="Historique" groupColor="#F59E0B" lineIndex={1}>
-          <Button variant="ghost" size="sm" onClick={undo} disabled={historyIndex <= 0} className="h-8 w-8 p-0">
-            <Undo className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={redo}
-            disabled={historyIndex >= history.length - 1}
-            className="h-8 w-8 p-0"
-          >
-            <Redo className="h-4 w-4" />
-          </Button>
-
-          {/* Sélecteur de branche active + Nouvelle branche */}
-          <div className="flex items-center gap-0.5 ml-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 px-2 gap-1.5" title="Branche active">
-                  <div
-                    className="w-2.5 h-2.5 rounded-full"
-                    style={{ backgroundColor: branches.find((b) => b.id === activeBranchId)?.color || "#3B82F6" }}
-                  />
-                  <span className="text-xs font-medium max-w-[100px] truncate">
-                    {branches.find((b) => b.id === activeBranchId)?.name || "Principal"}
-                  </span>
-                  <ChevronDown className="h-3 w-3 opacity-50" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
-                  Branches ({branches.length}/10)
-                </div>
-                <DropdownMenuSeparator />
-                {branches.map((branch, index) => (
-                  <DropdownMenuItem key={branch.id} onClick={() => setActiveBranchId(branch.id)} className="gap-2 pr-1">
-                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: branch.color }} />
-                    <span className="truncate flex-1">{branch.name}</span>
-                    {branch.id === activeBranchId && <Check className="h-4 w-4 text-blue-500 flex-shrink-0" />}
-                    {/* Bouton supprimer - pas sur la branche Principal (index 0) */}
-                    {index > 0 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0 ml-1 hover:bg-red-100 hover:text-red-600 flex-shrink-0"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          // Si on supprime la branche active, basculer sur Principal
-                          if (branch.id === activeBranchId) {
-                            setActiveBranchId(branches[0].id);
-                          }
-                          setBranches((prev) => prev.filter((b) => b.id !== branch.id));
-                          toast.success(`Branche "${branch.name}" supprimée`);
-                        }}
-                        title={`Supprimer "${branch.name}"`}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    )}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => createBranchFromHistoryIndex(historyIndex)}
-                    disabled={branches.length >= 10}
-                    className="h-8 w-8 p-0"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Nouvelle branche ({branches.length}/10)</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-
-          {/* Dropdown Historique & Branches */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant={showHistoryPanel || comparisonMode ? "default" : "outline"}
-                size="sm"
-                className="h-8 px-2 gap-1"
-                title="Historique et branches"
-              >
-                <History className="h-4 w-4" />
-                <ChevronDown className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              {/* Historique */}
-              <DropdownMenuItem onClick={() => setShowHistoryPanel(true)} className="gap-2">
-                <History className="h-4 w-4" />
-                <span>Historique des états</span>
-                {showHistoryPanel && <Check className="h-4 w-4 ml-auto text-blue-500" />}
-              </DropdownMenuItem>
-
-              <DropdownMenuSeparator />
-
-              {/* Mode Superposition */}
-              <DropdownMenuItem
-                onClick={() => {
-                  setShowComparisonModal(true);
-                  setComparisonMode(true);
-                  setComparisonStyle("overlay");
-                  setVisibleBranches(new Set(branches.map((b) => b.id)));
-                }}
-                className="gap-2"
-                disabled={branches.length <= 1}
-              >
-                <Layers className="h-4 w-4" />
-                <span>Mode Superposition</span>
-                {comparisonMode && comparisonStyle === "overlay" && <Check className="h-4 w-4 ml-auto text-blue-500" />}
-              </DropdownMenuItem>
-
-              {/* Mode Rideau */}
-              <DropdownMenuItem
-                onClick={() => {
-                  setShowComparisonModal(true);
-                  setComparisonMode(true);
-                  setComparisonStyle("reveal");
-                  const otherBranch = branches.find((b) => b.id !== activeBranchId);
-                  if (otherBranch) setRevealBranchId(otherBranch.id);
-                }}
-                className="gap-2"
-                disabled={branches.length <= 1}
-              >
-                <SplitSquareVertical className="h-4 w-4" />
-                <span>Mode Rideau</span>
-                {comparisonMode && comparisonStyle === "reveal" && <Check className="h-4 w-4 ml-auto text-blue-500" />}
-              </DropdownMenuItem>
-
-              <DropdownMenuSeparator />
-
-              {/* Nouvelle branche */}
-              <DropdownMenuItem
-                onClick={() => createBranchFromHistoryIndex(historyIndex)}
-                className="gap-2"
-                disabled={branches.length >= 10}
-              >
-                <Plus className="h-4 w-4" />
-                <span>Nouvelle branche</span>
-                <span className="text-xs text-gray-400 ml-auto">{branches.length}/10</span>
-              </DropdownMenuItem>
-
-              {/* Vue d'ensemble */}
-              <DropdownMenuItem onClick={() => setShowOverviewModal(true)} className="gap-2">
-                <GitBranch className="h-4 w-4" />
-                <span>Vue d'ensemble</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </ToolbarGroupWrapper>
-
-        <DropZoneBetweenGroups targetIndex={8} lineIndex={1} />
 
         <Separator orientation="vertical" className="h-6" />
 
