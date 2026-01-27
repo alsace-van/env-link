@@ -18943,50 +18943,27 @@ export function CADGabaritCanvas({
           className="hidden"
         />
 
-        {/* v7.32: Outils photos - TOUJOURS VISIBLE avec bouton charger + menu outils si photos */}
-        {toolbarConfig.line2.photoTools && (
+        {/* v7.54r: Outils photos - seulement si photos chargées (bouton Photo supprimé - doublon menu Fichier) */}
+        {toolbarConfig.line2.photoTools && backgroundImages.length > 0 && (
           <ToolbarGroupWrapper groupId="grp_photo" groupName="Photos" groupColor="#EC4899" lineIndex={1}>
-            {/* Bouton charger photo - toujours visible */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="h-7 px-1.5 relative"
-                  >
-                    <ImageIcon className="h-4 w-4 mr-1" />
-                    <span className="text-xs">Photo</span>
-                    {backgroundImages.length > 0 && (
-                      <Badge variant="secondary" className="absolute -top-1 -right-1 h-4 min-w-4 px-1 text-xs">
-                        {backgroundImages.length}
-                      </Badge>
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Charger une photo de référence</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            {/* Toggle afficher/masquer */}
+            <Button
+              variant={showBackgroundImage ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowBackgroundImage(!showBackgroundImage)}
+              className="h-7 w-7 p-0"
+              title={showBackgroundImage ? "Masquer photos" : "Afficher photos"}
+            >
+              {showBackgroundImage ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+            </Button>
 
-            {/* Toggle afficher/masquer - seulement si photos chargées */}
-            {backgroundImages.length > 0 && (
-              <Button
-                variant={showBackgroundImage ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowBackgroundImage(!showBackgroundImage)}
-                className="h-7 w-7 p-0"
-                title={showBackgroundImage ? "Masquer photos" : "Afficher photos"}
-              >
-                {showBackgroundImage ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-              </Button>
-            )}
+            {/* Badge nombre de photos */}
+            <Badge variant="secondary" className="h-5 px-1.5 text-xs">
+              {backgroundImages.length}
+            </Badge>
 
-            {/* Menu déroulant avec tous les outils photos - seulement si photos chargées */}
-            {backgroundImages.length > 0 && (
-              <DropdownMenu>
+            {/* Menu déroulant avec tous les outils photos */}
+            <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="h-7 px-1.5 relative">
                     <Settings className="h-4 w-4 mr-1" />
@@ -19232,7 +19209,6 @@ export function CADGabaritCanvas({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            )}
           </ToolbarGroupWrapper>
         )}
 
