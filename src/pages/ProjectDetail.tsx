@@ -1,6 +1,6 @@
 // ============================================
 // PAGE: ProjectDetail
-// VERSION: 3.6 - Fix TypeScript: parseProjectData pour vasp_rangees_sieges, loadProject -> reloadProject
+// VERSION: 3.7 - Remplacement PhotoTemplatesContent par CADGabaritCanvas dans onglet Gabarits CNC
 // ============================================
 
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -80,6 +80,7 @@ import { WorkTabMain } from "@/components/work/WorkTabMain";
 import { AllProjectsTasksSidebar } from "@/components/work/AllProjectsTasksSidebar";
 import WorkScenarioManager from "@/components/workScenarios/WorkScenarioManager";
 import { PhotoTemplatesContent } from "@/components/photo-templates/PhotoTemplatesContent";
+import { CADGabaritCanvas } from "@/components/cad-gabarit";
 import DailyNotesCanvas from "@/components/planning/DailyNotesCanvas";
 import ScenarioManager from "@/components/scenarios/ScenarioManager";
 import OrderTrackingSidebar from "@/components/OrderTrackingSidebar";
@@ -1934,7 +1935,10 @@ const ProjectDetail = () => {
                   </TabsContent>
 
                   <TabsContent value="templates" className="mt-6">
-                    <PhotoTemplatesContent projectId={project.id} />
+                    {/* v7.55d: Remplacé PhotoTemplatesContent par CADGabaritCanvas directement */}
+                    <div className="h-[calc(100vh-200px)] border rounded-lg overflow-hidden">
+                      <CADGabaritCanvas />
+                    </div>
                   </TabsContent>
 
                   <TabsContent value="downloads" className="mt-6">
