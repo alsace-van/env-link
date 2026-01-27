@@ -17,15 +17,11 @@ import AccessoriesCatalog from "./pages/AccessoriesCatalog";
 import ShopPublic from "./pages/ShopPublic";
 import ShopAdmin from "./pages/ShopAdmin";
 import BilanComptable from "./pages/BilanComptable";
-import PhotoTemplates from "./pages/PhotoTemplates";
-import PhotoTemplateDetail from "./pages/PhotoTemplateDetail";
 import Downloads from "./pages/Downloads";
 // Evoliz Integration
 import EvolizSettingsPage from "./pages/EvolizSettingsPage";
 import EvolizQuotesPage from "./pages/EvolizQuotesPage";
 import EvolizClientsPage from "./pages/EvolizClientsPage";
-// Tldraw Demo
-import TldrawDemo from "./pages/TldrawDemo";
 // CAD Gabarit Demo
 import CADDemo from "./pages/CADDemo";
 
@@ -45,8 +41,6 @@ const App = () => (
                 <Route path="/auth" element={<AuthPage />} />
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/project/:id" element={<ProjectDetail />} />
-                <Route path="/project/:id/templates" element={<PhotoTemplates />} />
-                <Route path="/project/:id/template/:templateId" element={<PhotoTemplateDetail />} />
                 <Route path="/account" element={<Account />} />
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/catalog" element={<AccessoriesCatalog />} />
@@ -63,9 +57,6 @@ const App = () => (
                 <Route path="/settings/evoliz" element={<EvolizSettingsPage />} />
                 <Route path="/evoliz/quotes" element={<EvolizQuotesPage />} />
                 <Route path="/evoliz/clients" element={<EvolizClientsPage />} />
-
-                {/* Route démo tldraw */}
-                <Route path="/tldraw-demo" element={<TldrawDemo />} />
 
                 {/* Route démo CAD Gabarit */}
                 <Route path="/cad-demo" element={<CADDemo />} />
