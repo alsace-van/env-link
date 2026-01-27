@@ -1,7 +1,7 @@
 // ============================================
 // CAD GABARIT - Index
 // Export de tous les modules
-// VERSION: 3.1 - Ajout hooks de refactorisation
+// VERSION: 3.2 - Ajout useMeasurement et useContextMenu
 // ============================================
 
 // Types
@@ -155,6 +155,25 @@ export type {
   UseImageManagementProps,
   UseImageManagementReturn,
 } from "./useImageManagement";
+
+// Hook mesures et cotations
+export { useMeasurement } from "./useMeasurement";
+export type {
+  Measurement,
+  MeasureState,
+  DraggingMeasurePoint,
+  UseMeasurementProps,
+  UseMeasurementReturn,
+} from "./useMeasurement";
+
+// Hook menu contextuel
+export { useContextMenu } from "./useContextMenu";
+export type {
+  ContextMenuState,
+  ArcEditDialogState,
+  LineLengthDialogState,
+  UseContextMenuReturn,
+} from "./useContextMenu";
 
 // ============================================
 // TOOLBAR CONFIGURABLE
