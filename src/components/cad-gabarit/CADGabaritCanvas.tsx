@@ -9,7 +9,10 @@
 //   - FilletPanel.tsx (congés)
 //   - ChamferPanel.tsx (chanfreins)
 //   - OffsetPanel.tsx (décalage)
-// - Réduction du fichier de ~560 lignes
+//   - DxfExportPanel.tsx (export DXF)
+//   - LineLengthPanel.tsx (modification longueur ligne)
+//   - AngleEditPanel.tsx (modification angle)
+// - Réduction du fichier de ~995 lignes (25973 → 24978)
 //
 // CHANGELOG v7.55a (25/01/2026):
 // - FIX: Import photos préparées - coordonnées et scale × scaleFactor
@@ -255,6 +258,9 @@ import { ImageCalibrationModal } from "./ImageCalibrationModal";
 import { FilletPanel } from "./FilletPanel";
 import { ChamferPanel } from "./ChamferPanel";
 import { OffsetPanel } from "./OffsetPanel";
+import { DxfExportPanel } from "./DxfExportPanel";
+import { LineLengthPanel } from "./LineLengthPanel";
+import { AngleEditPanel } from "./AngleEditPanel";
 
 // MOD v7.39: Modale de génération ArUco (gardé - utile pour imprimer)
 import { ArucoMarkerGenerator } from "./ArucoMarkerGenerator";
@@ -20988,86 +20994,13 @@ export function CADGabaritCanvas({
         />
       )}
 
-      {/* MOD v7.12: Modale d'export DXF avec nom de fichier */}
+      {/* MOD v7.12: Modale d'export DXF - v7.55b: Extrait en composant */}
       {dxfExportDialog?.open && (
-        <div
-          className="fixed bg-white rounded-lg shadow-xl border z-50 select-none"
-          style={{
-            left: dxfExportDialog.position.x,
-            top: dxfExportDialog.position.y,
-            width: 300,
-          }}
-          onMouseDown={(e) => {
-            if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "BUTTON") return;
-            const startX = e.clientX - dxfExportDialog.position.x;
-            const startY = e.clientY - dxfExportDialog.position.y;
-            const onMouseMove = (ev: MouseEvent) => {
-              setDxfExportDialog({
-                ...dxfExportDialog,
-                position: { x: ev.clientX - startX, y: ev.clientY - startY },
-              });
-            };
-            const onMouseUp = () => {
-              document.removeEventListener("mousemove", onMouseMove);
-              document.removeEventListener("mouseup", onMouseUp);
-            };
-            document.addEventListener("mousemove", onMouseMove);
-            document.addEventListener("mouseup", onMouseUp);
-          }}
-        >
-          {/* Header draggable */}
-          <div className="flex items-center justify-between px-3 py-2 bg-blue-50 rounded-t-lg cursor-move border-b">
-            <span className="text-sm font-medium">Export DXF</span>
-            <button className="text-gray-500 hover:text-gray-700" onClick={() => setDxfExportDialog(null)}>
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
-          {/* Contenu */}
-          <div className="p-3 space-y-3">
-            <div className="space-y-1">
-              <label className="text-xs text-gray-600">Nom du fichier</label>
-              <Input
-                type="text"
-                value={dxfExportDialog.filename}
-                onChange={(e) => setDxfExportDialog({ ...dxfExportDialog, filename: e.target.value })}
-                className="h-8 text-sm"
-                placeholder="nom-du-fichier"
-                autoFocus
-                onKeyDown={(e) => {
-                  e.stopPropagation();
-                  if (e.key === "Enter" && dxfExportDialog.filename.trim()) {
-                    confirmExportDXF();
-                  }
-                  if (e.key === "Escape") {
-                    setDxfExportDialog(null);
-                  }
-                }}
-              />
-              <p className="text-[10px] text-gray-400">.dxf sera ajouté automatiquement</p>
-            </div>
-
-            <div className="text-[10px] text-gray-500 bg-gray-50 px-2 py-1.5 rounded">
-              📁 Le fichier sera téléchargé dans votre dossier de téléchargements
-            </div>
-
-            {/* Boutons */}
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="flex-1 h-8" onClick={() => setDxfExportDialog(null)}>
-                Annuler
-              </Button>
-              <Button
-                size="sm"
-                className="flex-1 h-8"
-                onClick={confirmExportDXF}
-                disabled={!dxfExportDialog.filename.trim()}
-              >
-                <Check className="h-3 w-3 mr-1" />
-                Exporter
-              </Button>
-            </div>
-          </div>
-        </div>
+        <DxfExportPanel
+          dxfExportDialog={dxfExportDialog}
+          setDxfExportDialog={setDxfExportDialog}
+          confirmExportDXF={confirmExportDXF}
+        />
       )}
 
       {/* Dialogue modification arc */}
@@ -22104,403 +22037,32 @@ export function CADGabaritCanvas({
         </div>
       )}
 
-      {/* Panneau modifier longueur - draggable */}
-      {lineLengthDialog?.open &&
-        (() => {
-          const line = sketch.geometries.get(lineLengthDialog.lineId) as Line | undefined;
-          const p1 = line ? sketch.points.get(line.p1) : undefined;
-          const p2 = line ? sketch.points.get(line.p2) : undefined;
+      {/* Panneau modifier longueur - v7.55b: Extrait en composant */}
+      {lineLengthDialog?.open && (
+        <LineLengthPanel
+          lineLengthDialog={lineLengthDialog}
+          setLineLengthDialog={setLineLengthDialog}
+          position={lineLengthPanelPos}
+          setPosition={setLineLengthPanelPos}
+          setSketch={setSketch}
+          sketchRef={sketchRef}
+          applyLineLengthChange={applyLineLengthChange}
+          addToHistory={addToHistory}
+        />
+      )}
 
-          return (
-            <div
-              className="fixed bg-white rounded-lg shadow-xl border z-50 select-none"
-              style={{
-                left: lineLengthPanelPos.x,
-                top: lineLengthPanelPos.y,
-                width: 220,
-              }}
-              onMouseDown={(e) => {
-                if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "BUTTON")
-                  return;
-                setLineLengthPanelDragging(true);
-                setLineLengthPanelDragStart({
-                  x: e.clientX - lineLengthPanelPos.x,
-                  y: e.clientY - lineLengthPanelPos.y,
-                });
-              }}
-              onMouseMove={(e) => {
-                if (lineLengthPanelDragging) {
-                  setLineLengthPanelPos({
-                    x: e.clientX - lineLengthPanelDragStart.x,
-                    y: e.clientY - lineLengthPanelDragStart.y,
-                  });
-                }
-              }}
-              onMouseUp={() => setLineLengthPanelDragging(false)}
-              onMouseLeave={() => setLineLengthPanelDragging(false)}
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between px-3 py-1.5 bg-blue-500 text-white rounded-t-lg cursor-move">
-                <span className="text-sm font-medium">📏 Longueur</span>
-                <button
-                  onClick={() => {
-                    // Restaurer le sketch original
-                    if (lineLengthDialog.originalSketch) {
-                      setSketch(lineLengthDialog.originalSketch);
-                    }
-                    setLineLengthDialog(null);
-                  }}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-
-              {/* Contenu */}
-              <div className="p-2 space-y-2">
-                {/* Longueur actuelle */}
-                <div className="text-xs text-gray-500">Actuel: {lineLengthDialog.currentLength.toFixed(1)} mm</div>
-
-                {/* Input nouvelle longueur */}
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    value={lineLengthDialog.newLength}
-                    onChange={(e) => {
-                      const newValue = e.target.value;
-                      const value = parseFloat(newValue);
-                      // Appliquer en temps réel si valeur valide
-                      if (!isNaN(value) && value > 0) {
-                        applyLineLengthChange(lineLengthDialog.lineId, value, lineLengthDialog.anchorMode, false);
-                      }
-                      setLineLengthDialog({ ...lineLengthDialog, newLength: newValue });
-                    }}
-                    className="h-8 flex-1 text-sm"
-                    min="0.1"
-                    step="0.1"
-                    autoFocus
-                    onKeyDown={(e) => {
-                      e.stopPropagation();
-                      if (e.key === "Enter") {
-                        const value = parseFloat(lineLengthDialog.newLength);
-                        if (!isNaN(value) && value > 0) {
-                          // Valider: ajouter à l'historique (utiliser sketchRef pour éviter closure stale)
-                          addToHistory(sketchRef.current);
-                          toast.success(`Longueur modifiée: ${value.toFixed(1)} mm`);
-                          setLineLengthDialog(null);
-                        }
-                      }
-                      if (e.key === "Escape") {
-                        // Restaurer le sketch original
-                        if (lineLengthDialog.originalSketch) {
-                          setSketch(lineLengthDialog.originalSketch);
-                        }
-                        setLineLengthDialog(null);
-                      }
-                    }}
-                  />
-                  <span className="text-xs text-gray-500">mm</span>
-                </div>
-
-                {/* Boutons P1 / Centre / P2 */}
-                <div className="flex gap-1">
-                  <Button
-                    variant={lineLengthDialog.anchorMode === "p1" ? "default" : "outline"}
-                    size="sm"
-                    className="flex-1 h-7 text-xs px-1"
-                    style={
-                      lineLengthDialog.anchorMode === "p1"
-                        ? { backgroundColor: "#10B981", borderColor: "#10B981" }
-                        : { borderColor: "#10B981", color: "#10B981" }
-                    }
-                    onClick={() => {
-                      const value = parseFloat(lineLengthDialog.newLength);
-                      // Restaurer puis appliquer avec le nouveau mode
-                      if (lineLengthDialog.originalSketch) {
-                        setSketch(lineLengthDialog.originalSketch);
-                        if (!isNaN(value) && value > 0) {
-                          setTimeout(() => {
-                            applyLineLengthChange(lineLengthDialog.lineId, value, "p1", false);
-                          }, 0);
-                        }
-                      }
-                      setLineLengthDialog({ ...lineLengthDialog, anchorMode: "p1" });
-                    }}
-                  >
-                    P1 fixe
-                  </Button>
-                  <Button
-                    variant={lineLengthDialog.anchorMode === "center" ? "default" : "outline"}
-                    size="sm"
-                    className="flex-1 h-7 text-xs px-1"
-                    onClick={() => {
-                      const value = parseFloat(lineLengthDialog.newLength);
-                      if (lineLengthDialog.originalSketch) {
-                        setSketch(lineLengthDialog.originalSketch);
-                        if (!isNaN(value) && value > 0) {
-                          setTimeout(() => {
-                            applyLineLengthChange(lineLengthDialog.lineId, value, "center", false);
-                          }, 0);
-                        }
-                      }
-                      setLineLengthDialog({ ...lineLengthDialog, anchorMode: "center" });
-                    }}
-                  >
-                    Centre
-                  </Button>
-                  <Button
-                    variant={lineLengthDialog.anchorMode === "p2" ? "default" : "outline"}
-                    size="sm"
-                    className="flex-1 h-7 text-xs px-1"
-                    style={
-                      lineLengthDialog.anchorMode === "p2"
-                        ? { backgroundColor: "#8B5CF6", borderColor: "#8B5CF6" }
-                        : { borderColor: "#8B5CF6", color: "#8B5CF6" }
-                    }
-                    onClick={() => {
-                      const value = parseFloat(lineLengthDialog.newLength);
-                      if (lineLengthDialog.originalSketch) {
-                        setSketch(lineLengthDialog.originalSketch);
-                        if (!isNaN(value) && value > 0) {
-                          setTimeout(() => {
-                            applyLineLengthChange(lineLengthDialog.lineId, value, "p2", false);
-                          }, 0);
-                        }
-                      }
-                      setLineLengthDialog({ ...lineLengthDialog, anchorMode: "p2" });
-                    }}
-                  >
-                    P2 fixe
-                  </Button>
-                </div>
-
-                {/* Bouton valider */}
-                <Button
-                  size="sm"
-                  className="w-full h-7"
-                  onClick={() => {
-                    const value = parseFloat(lineLengthDialog.newLength);
-                    if (!isNaN(value) && value > 0) {
-                      // Valider: ajouter à l'historique (utiliser sketchRef pour éviter closure stale)
-                      addToHistory(sketchRef.current);
-                      toast.success(`Longueur modifiée: ${value.toFixed(1)} mm`);
-                      setLineLengthDialog(null);
-                    }
-                  }}
-                >
-                  <Check className="h-3 w-3 mr-1" />
-                  Appliquer
-                </Button>
-              </div>
-            </div>
-          );
-        })()}
-
-      {/* Panneau modifier angle - draggable */}
+      {/* Panneau modifier angle - v7.55b: Extrait en composant */}
       {angleEditDialog?.open && (
-        <div
-          className="fixed bg-white rounded-lg shadow-xl border z-50 select-none"
-          style={{
-            left: anglePanelPos.x,
-            top: anglePanelPos.y,
-            width: 220,
-          }}
-          onMouseDown={(e) => {
-            if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "BUTTON") return;
-            setAnglePanelDragging(true);
-            setAnglePanelDragStart({ x: e.clientX - anglePanelPos.x, y: e.clientY - anglePanelPos.y });
-          }}
-          onMouseMove={(e) => {
-            if (anglePanelDragging) {
-              setAnglePanelPos({
-                x: e.clientX - anglePanelDragStart.x,
-                y: e.clientY - anglePanelDragStart.y,
-              });
-            }
-          }}
-          onMouseUp={() => setAnglePanelDragging(false)}
-          onMouseLeave={() => setAnglePanelDragging(false)}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-3 py-1.5 bg-orange-500 text-white rounded-t-lg cursor-move">
-            <span className="text-sm font-medium">📐 Angle</span>
-            <button
-              onClick={() => {
-                // Restaurer le sketch original
-                if (angleEditDialog.originalSketch) {
-                  setSketch(angleEditDialog.originalSketch);
-                }
-                setAngleEditDialog(null);
-              }}
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
-          {/* Contenu */}
-          <div className="p-2 space-y-2">
-            {/* Angle actuel */}
-            <div className="text-xs text-gray-500">Actuel: {angleEditDialog.currentAngle.toFixed(1)}°</div>
-
-            {/* Input nouvel angle */}
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                value={angleEditDialog.newAngle}
-                onChange={(e) => {
-                  const newValue = e.target.value;
-                  const value = parseFloat(newValue);
-                  // Appliquer en temps réel si valeur valide
-                  if (!isNaN(value) && value > 0 && value < 180) {
-                    applyAngleChange(
-                      angleEditDialog.pointId,
-                      angleEditDialog.line1Id,
-                      angleEditDialog.line2Id,
-                      value,
-                      angleEditDialog.anchorMode,
-                      false,
-                    );
-                  }
-                  setAngleEditDialog({ ...angleEditDialog, newAngle: newValue });
-                }}
-                className="h-8 flex-1 text-sm"
-                min="1"
-                max="179"
-                step="0.1"
-                autoFocus
-                onKeyDown={(e) => {
-                  e.stopPropagation();
-                  if (e.key === "Enter") {
-                    const value = parseFloat(angleEditDialog.newAngle);
-                    if (!isNaN(value) && value > 0 && value < 180) {
-                      // Valider: ajouter à l'historique (utiliser sketchRef pour éviter closure stale)
-                      addToHistory(sketchRef.current);
-                      toast.success(`Angle modifié: ${value.toFixed(1)}°`);
-                      setAngleEditDialog(null);
-                    }
-                  }
-                  if (e.key === "Escape") {
-                    // Restaurer le sketch original
-                    if (angleEditDialog.originalSketch) {
-                      setSketch(angleEditDialog.originalSketch);
-                    }
-                    setAngleEditDialog(null);
-                  }
-                }}
-              />
-              <span className="text-xs text-gray-500">°</span>
-            </div>
-
-            {/* Boutons S1 / Sym / S2 */}
-            <div className="flex gap-1">
-              <Button
-                variant={angleEditDialog.anchorMode === "line1" ? "default" : "outline"}
-                size="sm"
-                className="flex-1 h-7 text-xs px-1"
-                style={
-                  angleEditDialog.anchorMode === "line1"
-                    ? { backgroundColor: "#10B981", borderColor: "#10B981" }
-                    : { borderColor: "#10B981", color: "#10B981" }
-                }
-                onClick={() => {
-                  const value = parseFloat(angleEditDialog.newAngle);
-                  if (angleEditDialog.originalSketch) {
-                    setSketch(angleEditDialog.originalSketch);
-                    if (!isNaN(value) && value > 0 && value < 180) {
-                      setTimeout(() => {
-                        applyAngleChange(
-                          angleEditDialog.pointId,
-                          angleEditDialog.line1Id,
-                          angleEditDialog.line2Id,
-                          value,
-                          "line1",
-                          false,
-                        );
-                      }, 0);
-                    }
-                  }
-                  setAngleEditDialog({ ...angleEditDialog, anchorMode: "line1" });
-                }}
-              >
-                S1 fixe
-              </Button>
-              <Button
-                variant={angleEditDialog.anchorMode === "symmetric" ? "default" : "outline"}
-                size="sm"
-                className="flex-1 h-7 text-xs px-1"
-                onClick={() => {
-                  const value = parseFloat(angleEditDialog.newAngle);
-                  if (angleEditDialog.originalSketch) {
-                    setSketch(angleEditDialog.originalSketch);
-                    if (!isNaN(value) && value > 0 && value < 180) {
-                      setTimeout(() => {
-                        applyAngleChange(
-                          angleEditDialog.pointId,
-                          angleEditDialog.line1Id,
-                          angleEditDialog.line2Id,
-                          value,
-                          "symmetric",
-                          false,
-                        );
-                      }, 0);
-                    }
-                  }
-                  setAngleEditDialog({ ...angleEditDialog, anchorMode: "symmetric" });
-                }}
-              >
-                Sym
-              </Button>
-              <Button
-                variant={angleEditDialog.anchorMode === "line2" ? "default" : "outline"}
-                size="sm"
-                className="flex-1 h-7 text-xs px-1"
-                style={
-                  angleEditDialog.anchorMode === "line2"
-                    ? { backgroundColor: "#8B5CF6", borderColor: "#8B5CF6" }
-                    : { borderColor: "#8B5CF6", color: "#8B5CF6" }
-                }
-                onClick={() => {
-                  const value = parseFloat(angleEditDialog.newAngle);
-                  if (angleEditDialog.originalSketch) {
-                    setSketch(angleEditDialog.originalSketch);
-                    if (!isNaN(value) && value > 0 && value < 180) {
-                      setTimeout(() => {
-                        applyAngleChange(
-                          angleEditDialog.pointId,
-                          angleEditDialog.line1Id,
-                          angleEditDialog.line2Id,
-                          value,
-                          "line2",
-                          false,
-                        );
-                      }, 0);
-                    }
-                  }
-                  setAngleEditDialog({ ...angleEditDialog, anchorMode: "line2" });
-                }}
-              >
-                S2 fixe
-              </Button>
-            </div>
-
-            {/* Bouton valider */}
-            <Button
-              size="sm"
-              className="w-full h-7"
-              onClick={() => {
-                const value = parseFloat(angleEditDialog.newAngle);
-                if (!isNaN(value) && value > 0 && value < 180) {
-                  // Valider: ajouter à l'historique (utiliser sketchRef pour éviter closure stale)
-                  addToHistory(sketchRef.current);
-                  toast.success(`Angle modifié: ${value.toFixed(1)}°`);
-                  setAngleEditDialog(null);
-                }
-              }}
-            >
-              <Check className="h-3 w-3 mr-1" />
-              Appliquer
-            </Button>
-          </div>
-        </div>
+        <AngleEditPanel
+          angleEditDialog={angleEditDialog}
+          setAngleEditDialog={setAngleEditDialog}
+          position={anglePanelPos}
+          setPosition={setAnglePanelPos}
+          setSketch={setSketch}
+          sketchRef={sketchRef}
+          applyAngleChange={applyAngleChange}
+          addToHistory={addToHistory}
+        />
       )}
 
       {/* Panneau Répétition / Array - draggable */}
