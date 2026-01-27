@@ -16,7 +16,9 @@
 //   - ArrayPanel.tsx (répétition/array)
 //   - FillDialog.tsx (remplissage/hachures)
 //   - ShortcutsPanel.tsx (raccourcis clavier)
-// - Réduction totale: ~2455 lignes (25973 → 23518)
+//   - AdjustmentsPanel.tsx (ajustements image)
+//   - CropDialog.tsx (recadrage image)
+// - Réduction totale: ~2965 lignes (25973 → 23008)
 //
 // CHANGELOG v7.55a (25/01/2026):
 // - FIX: Import photos préparées - coordonnées et scale × scaleFactor
@@ -258,7 +260,7 @@ import { ImageToolsModal } from "./ImageToolsModal";
 // MOD v7.37: Modale de calibration au drop d'image
 import { ImageCalibrationModal } from "./ImageCalibrationModal";
 
-// v7.55b: Panneaux flottants extraits
+// v7.55c: Panneaux flottants extraits
 import { FilletPanel } from "./FilletPanel";
 import { ChamferPanel } from "./ChamferPanel";
 import { OffsetPanel } from "./OffsetPanel";
@@ -269,6 +271,8 @@ import { ContextMenuCAD } from "./ContextMenuCAD";
 import { ArrayPanel } from "./ArrayPanel";
 import { FillDialog } from "./FillDialog";
 import { ShortcutsPanel } from "./ShortcutsPanel";
+import { AdjustmentsPanel } from "./AdjustmentsPanel";
+import { CropDialog } from "./CropDialog";
 
 // MOD v7.39: Modale de génération ArUco (gardé - utile pour imprimer)
 import { ArucoMarkerGenerator } from "./ArucoMarkerGenerator";
@@ -21165,549 +21169,33 @@ export function CADGabaritCanvas({
         showShortcutsPanel={showShortcutsPanel}
         setShowShortcutsPanel={setShowShortcutsPanel}
       />
-
-      {/* Panneau flottant ajustements d'image */}
-      {/* Panneau flottant ajustements d'image */}
+      {/* Panneau flottant ajustements d'image - v7.55c: Extrait en composant */}
       {showAdjustmentsDialog && selectedImageData && (
-        <div
-          className="fixed bg-white rounded-lg shadow-xl border z-50 select-none"
-          style={{
-            left: adjustmentsPanelPos.x,
-            top: adjustmentsPanelPos.y,
-            width: 280,
-          }}
-          onMouseDown={(e) => {
-            if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "BUTTON") return;
-            setAdjustmentsPanelDragging(true);
-            setAdjustmentsPanelDragStart({
-              x: e.clientX - adjustmentsPanelPos.x,
-              y: e.clientY - adjustmentsPanelPos.y,
-            });
-          }}
-          onMouseMove={(e) => {
-            if (adjustmentsPanelDragging) {
-              setAdjustmentsPanelPos({
-                x: e.clientX - adjustmentsPanelDragStart.x,
-                y: e.clientY - adjustmentsPanelDragStart.y,
-              });
-            }
-          }}
-          onMouseUp={() => setAdjustmentsPanelDragging(false)}
-          onMouseLeave={() => setAdjustmentsPanelDragging(false)}
-        >
-          {/* Header draggable - violet pour ajustements */}
-          <div className="flex items-center justify-between px-3 py-2 bg-purple-500 text-white rounded-t-lg cursor-move">
-            <div className="flex items-center gap-2">
-              <Sliders className="h-3.5 w-3.5" />
-              <span className="text-sm font-medium">Ajustements image</span>
-            </div>
-            <button className="text-white/80 hover:text-white" onClick={() => setShowAdjustmentsDialog(false)}>
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
-          {/* Contenu - utiliser selectedImageData */}
-          <div className="p-3 space-y-3 max-h-[400px] overflow-y-auto">
-            {/* Contraste */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">Contraste</Label>
-                <span className="text-xs text-muted-foreground">{selectedImageData.adjustments.contrast}%</span>
-              </div>
-              <input
-                type="range"
-                min="50"
-                max="200"
-                value={selectedImageData.adjustments.contrast}
-                onChange={(e) => updateSelectedImageAdjustments({ contrast: parseInt(e.target.value) })}
-                className="w-full h-1.5 accent-purple-500"
-                onMouseDown={(e) => e.stopPropagation()}
-              />
-            </div>
-
-            {/* Luminosité */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">Luminosité</Label>
-                <span className="text-xs text-muted-foreground">{selectedImageData.adjustments.brightness}%</span>
-              </div>
-              <input
-                type="range"
-                min="50"
-                max="200"
-                value={selectedImageData.adjustments.brightness}
-                onChange={(e) => updateSelectedImageAdjustments({ brightness: parseInt(e.target.value) })}
-                className="w-full h-1.5 accent-purple-500"
-                onMouseDown={(e) => e.stopPropagation()}
-              />
-            </div>
-
-            {/* Netteté */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">Netteté</Label>
-                <span className="text-xs text-muted-foreground">{selectedImageData.adjustments.sharpen}%</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={selectedImageData.adjustments.sharpen}
-                onChange={(e) => updateSelectedImageAdjustments({ sharpen: parseInt(e.target.value) })}
-                className="w-full h-1.5 accent-purple-500"
-                onMouseDown={(e) => e.stopPropagation()}
-              />
-            </div>
-
-            {/* Saturation */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">Saturation</Label>
-                <span className="text-xs text-muted-foreground">{selectedImageData.adjustments.saturate}%</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="200"
-                value={selectedImageData.adjustments.saturate}
-                onChange={(e) => updateSelectedImageAdjustments({ saturate: parseInt(e.target.value) })}
-                className="w-full h-1.5 accent-purple-500"
-                onMouseDown={(e) => e.stopPropagation()}
-              />
-            </div>
-
-            <Separator className="my-2" />
-
-            {/* Options binaires compactes */}
-            <div className="flex items-center justify-between">
-              <Label className="text-xs">Noir et blanc</Label>
-              <Switch
-                checked={selectedImageData.adjustments.grayscale}
-                onCheckedChange={(checked) => updateSelectedImageAdjustments({ grayscale: checked })}
-                className="scale-75"
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <Label className="text-xs">Négatif</Label>
-              <Switch
-                checked={selectedImageData.adjustments.invert}
-                onCheckedChange={(checked) => updateSelectedImageAdjustments({ invert: checked })}
-                className="scale-75"
-              />
-            </div>
-
-            <Separator className="my-2" />
-
-            {/* Presets rapides */}
-            <div className="space-y-2">
-              <Label className="text-xs text-muted-foreground">Presets</Label>
-              <div className="grid grid-cols-3 gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs px-2"
-                  onClick={() =>
-                    updateSelectedImageAdjustments({
-                      contrast: 140,
-                      brightness: 110,
-                      sharpen: 30,
-                      saturate: 100,
-                      grayscale: false,
-                      invert: false,
-                    })
-                  }
-                >
-                  Contours+
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs px-2"
-                  onClick={() =>
-                    updateSelectedImageAdjustments({
-                      contrast: 180,
-                      brightness: 100,
-                      sharpen: 50,
-                      saturate: 0,
-                      grayscale: true,
-                      invert: false,
-                    })
-                  }
-                >
-                  N&B
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs px-2"
-                  onClick={() =>
-                    updateSelectedImageAdjustments({
-                      contrast: 150,
-                      brightness: 120,
-                      sharpen: 40,
-                      saturate: 100,
-                      grayscale: false,
-                      invert: true,
-                    })
-                  }
-                >
-                  Négatif
-                </Button>
-              </div>
-            </div>
-
-            {/* Bouton reset */}
-            <Button variant="outline" size="sm" className="w-full h-7 text-xs" onClick={resetImageAdjustments}>
-              <RotateCw className="h-3 w-3 mr-1" />
-              Réinitialiser
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Dialogue de crop - draggable */}
+        <AdjustmentsPanel
+          showAdjustmentsDialog={showAdjustmentsDialog}
+          setShowAdjustmentsDialog={setShowAdjustmentsDialog}
+          selectedImageData={selectedImageData}
+          position={adjustmentsPanelPos}
+          setPosition={setAdjustmentsPanelPos}
+          updateSelectedImageAdjustments={updateSelectedImageAdjustments}
+          resetImageAdjustments={resetImageAdjustments}
+        />
+      {/* Dialogue de crop - v7.55c: Extrait en composant */}
       {showCropDialog && selectedImageData && (
-        <div
-          className="fixed bg-white rounded-lg shadow-xl border z-50 select-none"
-          style={{
-            left: cropPanelPos.x,
-            top: cropPanelPos.y,
-            width: 400,
-          }}
-          onMouseDown={(e) => {
-            if ((e.target as HTMLElement).closest(".crop-canvas-container")) return;
-            if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "BUTTON") return;
-            setCropPanelDragging(true);
-            setCropPanelDragStart({
-              x: e.clientX - cropPanelPos.x,
-              y: e.clientY - cropPanelPos.y,
-            });
-          }}
-          onMouseMove={(e) => {
-            if (cropPanelDragging) {
-              setCropPanelPos({
-                x: e.clientX - cropPanelDragStart.x,
-                y: e.clientY - cropPanelDragStart.y,
-              });
-            }
-          }}
-          onMouseUp={() => setCropPanelDragging(false)}
-          onMouseLeave={() => setCropPanelDragging(false)}
-        >
-          {/* Header draggable - vert pour crop */}
-          <div className="flex items-center justify-between px-3 py-2 bg-green-600 text-white rounded-t-lg cursor-move">
-            <div className="flex items-center gap-2">
-              <Crop className="h-3.5 w-3.5" />
-              <span className="text-sm font-medium">Recadrer l'image</span>
-            </div>
-            <button className="text-white/80 hover:text-white" onClick={() => setShowCropDialog(false)}>
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
-          {/* Contenu */}
-          <div className="p-3 space-y-3">
-            {/* Canvas de preview avec zone de crop */}
-            <div className="crop-canvas-container relative bg-gray-100 rounded overflow-hidden" style={{ height: 280 }}>
-              <canvas
-                ref={(canvas) => {
-                  if (!canvas || !selectedImageData) return;
-                  const ctx = canvas.getContext("2d");
-                  if (!ctx) return;
-
-                  // selectedImageData.image est un BackgroundImage, .image.image est le HTMLImageElement
-                  const sourceImage = selectedImageData.image.image;
-                  if (!sourceImage || !sourceImage.complete || sourceImage.naturalWidth === 0) {
-                    console.warn("Image not loaded yet");
-                    return;
-                  }
-
-                  const aspectRatio = sourceImage.width / sourceImage.height;
-
-                  // Calculer la taille du canvas pour afficher l'image
-                  const maxWidth = 376;
-                  const maxHeight = 260;
-                  let canvasWidth, canvasHeight;
-
-                  if (aspectRatio > maxWidth / maxHeight) {
-                    canvasWidth = maxWidth;
-                    canvasHeight = maxWidth / aspectRatio;
-                  } else {
-                    canvasHeight = maxHeight;
-                    canvasWidth = maxHeight * aspectRatio;
-                  }
-
-                  canvas.width = canvasWidth;
-                  canvas.height = canvasHeight;
-
-                  // Dessiner l'image avec overlay sombre
-                  ctx.drawImage(sourceImage, 0, 0, canvasWidth, canvasHeight);
-
-                  // Overlay sombre sur toute l'image
-                  ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-                  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-
-                  // Zone de crop (claire)
-                  const cropX = (cropSelection.x / 100) * canvasWidth;
-                  const cropY = (cropSelection.y / 100) * canvasHeight;
-                  const cropW = (cropSelection.width / 100) * canvasWidth;
-                  const cropH = (cropSelection.height / 100) * canvasHeight;
-
-                  // Effacer la zone de crop pour montrer l'image originale
-                  ctx.save();
-                  ctx.beginPath();
-                  ctx.rect(cropX, cropY, cropW, cropH);
-                  ctx.clip();
-                  ctx.drawImage(sourceImage, 0, 0, canvasWidth, canvasHeight);
-                  ctx.restore();
-
-                  // Bordure de la zone de crop
-                  ctx.strokeStyle = "#22c55e";
-                  ctx.lineWidth = 2;
-                  ctx.setLineDash([]);
-                  ctx.strokeRect(cropX, cropY, cropW, cropH);
-
-                  // Poignées de redimensionnement
-                  const handleSize = 8;
-                  ctx.fillStyle = "#22c55e";
-
-                  // Coins
-                  ctx.fillRect(cropX - handleSize / 2, cropY - handleSize / 2, handleSize, handleSize); // NW
-                  ctx.fillRect(cropX + cropW - handleSize / 2, cropY - handleSize / 2, handleSize, handleSize); // NE
-                  ctx.fillRect(cropX - handleSize / 2, cropY + cropH - handleSize / 2, handleSize, handleSize); // SW
-                  ctx.fillRect(cropX + cropW - handleSize / 2, cropY + cropH - handleSize / 2, handleSize, handleSize); // SE
-
-                  // Milieux
-                  ctx.fillRect(cropX + cropW / 2 - handleSize / 2, cropY - handleSize / 2, handleSize, handleSize); // N
-                  ctx.fillRect(
-                    cropX + cropW / 2 - handleSize / 2,
-                    cropY + cropH - handleSize / 2,
-                    handleSize,
-                    handleSize,
-                  ); // S
-                  ctx.fillRect(cropX - handleSize / 2, cropY + cropH / 2 - handleSize / 2, handleSize, handleSize); // W
-                  ctx.fillRect(
-                    cropX + cropW - handleSize / 2,
-                    cropY + cropH / 2 - handleSize / 2,
-                    handleSize,
-                    handleSize,
-                  ); // E
-                }}
-                onMouseDown={(e) => {
-                  const canvas = e.currentTarget;
-                  const rect = canvas.getBoundingClientRect();
-                  const x = e.clientX - rect.left;
-                  const y = e.clientY - rect.top;
-                  const canvasWidth = canvas.width;
-                  const canvasHeight = canvas.height;
-
-                  // Convertir en coordonnées de crop (%)
-                  const cropX = (cropSelection.x / 100) * canvasWidth;
-                  const cropY = (cropSelection.y / 100) * canvasHeight;
-                  const cropW = (cropSelection.width / 100) * canvasWidth;
-                  const cropH = (cropSelection.height / 100) * canvasHeight;
-
-                  const handleSize = 12;
-
-                  // Déterminer quelle partie est cliquée
-                  let handle: typeof cropDragging = null;
-
-                  // Coins
-                  if (Math.abs(x - cropX) < handleSize && Math.abs(y - cropY) < handleSize) handle = "nw";
-                  else if (Math.abs(x - (cropX + cropW)) < handleSize && Math.abs(y - cropY) < handleSize)
-                    handle = "ne";
-                  else if (Math.abs(x - cropX) < handleSize && Math.abs(y - (cropY + cropH)) < handleSize)
-                    handle = "sw";
-                  else if (Math.abs(x - (cropX + cropW)) < handleSize && Math.abs(y - (cropY + cropH)) < handleSize)
-                    handle = "se";
-                  // Milieux
-                  else if (Math.abs(x - (cropX + cropW / 2)) < handleSize && Math.abs(y - cropY) < handleSize)
-                    handle = "n";
-                  else if (Math.abs(x - (cropX + cropW / 2)) < handleSize && Math.abs(y - (cropY + cropH)) < handleSize)
-                    handle = "s";
-                  else if (Math.abs(x - cropX) < handleSize && Math.abs(y - (cropY + cropH / 2)) < handleSize)
-                    handle = "w";
-                  else if (Math.abs(x - (cropX + cropW)) < handleSize && Math.abs(y - (cropY + cropH / 2)) < handleSize)
-                    handle = "e";
-                  // Déplacement
-                  else if (x >= cropX && x <= cropX + cropW && y >= cropY && y <= cropY + cropH) handle = "move";
-
-                  if (handle) {
-                    setCropDragging(handle);
-                    setCropDragStart({ x, y, crop: { ...cropSelection } });
-                  }
-                }}
-                onMouseMove={(e) => {
-                  if (!cropDragging) return;
-
-                  const canvas = e.currentTarget;
-                  const rect = canvas.getBoundingClientRect();
-                  const x = e.clientX - rect.left;
-                  const y = e.clientY - rect.top;
-                  const canvasWidth = canvas.width;
-                  const canvasHeight = canvas.height;
-
-                  const dx = ((x - cropDragStart.x) / canvasWidth) * 100;
-                  const dy = ((y - cropDragStart.y) / canvasHeight) * 100;
-
-                  let newCrop = { ...cropDragStart.crop };
-
-                  switch (cropDragging) {
-                    case "move":
-                      newCrop.x = Math.max(0, Math.min(100 - newCrop.width, cropDragStart.crop.x + dx));
-                      newCrop.y = Math.max(0, Math.min(100 - newCrop.height, cropDragStart.crop.y + dy));
-                      break;
-                    case "nw":
-                      newCrop.x = Math.max(
-                        0,
-                        Math.min(cropDragStart.crop.x + cropDragStart.crop.width - 5, cropDragStart.crop.x + dx),
-                      );
-                      newCrop.y = Math.max(
-                        0,
-                        Math.min(cropDragStart.crop.y + cropDragStart.crop.height - 5, cropDragStart.crop.y + dy),
-                      );
-                      newCrop.width = cropDragStart.crop.width - (newCrop.x - cropDragStart.crop.x);
-                      newCrop.height = cropDragStart.crop.height - (newCrop.y - cropDragStart.crop.y);
-                      break;
-                    case "ne":
-                      newCrop.y = Math.max(
-                        0,
-                        Math.min(cropDragStart.crop.y + cropDragStart.crop.height - 5, cropDragStart.crop.y + dy),
-                      );
-                      newCrop.width = Math.max(5, Math.min(100 - newCrop.x, cropDragStart.crop.width + dx));
-                      newCrop.height = cropDragStart.crop.height - (newCrop.y - cropDragStart.crop.y);
-                      break;
-                    case "sw":
-                      newCrop.x = Math.max(
-                        0,
-                        Math.min(cropDragStart.crop.x + cropDragStart.crop.width - 5, cropDragStart.crop.x + dx),
-                      );
-                      newCrop.width = cropDragStart.crop.width - (newCrop.x - cropDragStart.crop.x);
-                      newCrop.height = Math.max(5, Math.min(100 - newCrop.y, cropDragStart.crop.height + dy));
-                      break;
-                    case "se":
-                      newCrop.width = Math.max(5, Math.min(100 - newCrop.x, cropDragStart.crop.width + dx));
-                      newCrop.height = Math.max(5, Math.min(100 - newCrop.y, cropDragStart.crop.height + dy));
-                      break;
-                    case "n":
-                      newCrop.y = Math.max(
-                        0,
-                        Math.min(cropDragStart.crop.y + cropDragStart.crop.height - 5, cropDragStart.crop.y + dy),
-                      );
-                      newCrop.height = cropDragStart.crop.height - (newCrop.y - cropDragStart.crop.y);
-                      break;
-                    case "s":
-                      newCrop.height = Math.max(5, Math.min(100 - newCrop.y, cropDragStart.crop.height + dy));
-                      break;
-                    case "w":
-                      newCrop.x = Math.max(
-                        0,
-                        Math.min(cropDragStart.crop.x + cropDragStart.crop.width - 5, cropDragStart.crop.x + dx),
-                      );
-                      newCrop.width = cropDragStart.crop.width - (newCrop.x - cropDragStart.crop.x);
-                      break;
-                    case "e":
-                      newCrop.width = Math.max(5, Math.min(100 - newCrop.x, cropDragStart.crop.width + dx));
-                      break;
-                  }
-
-                  setCropSelection(newCrop);
-                }}
-                onMouseUp={() => setCropDragging(null)}
-                onMouseLeave={() => setCropDragging(null)}
-                style={{ display: "block", margin: "auto", cursor: cropDragging ? "grabbing" : "crosshair" }}
-              />
-            </div>
-
-            {/* Valeurs numériques */}
-            <div className="grid grid-cols-4 gap-2 text-xs">
-              <div>
-                <Label className="text-xs text-muted-foreground">X</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="95"
-                  value={cropSelection.x.toFixed(0)}
-                  onChange={(e) => {
-                    const val = Math.max(0, Math.min(100 - cropSelection.width, parseFloat(e.target.value) || 0));
-                    setCropSelection((c) => ({ ...c, x: val }));
-                  }}
-                  className="h-7 text-xs"
-                  onMouseDown={(e) => e.stopPropagation()}
-                />
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">Y</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="95"
-                  value={cropSelection.y.toFixed(0)}
-                  onChange={(e) => {
-                    const val = Math.max(0, Math.min(100 - cropSelection.height, parseFloat(e.target.value) || 0));
-                    setCropSelection((c) => ({ ...c, y: val }));
-                  }}
-                  className="h-7 text-xs"
-                  onMouseDown={(e) => e.stopPropagation()}
-                />
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">Largeur %</Label>
-                <Input
-                  type="number"
-                  min="5"
-                  max="100"
-                  value={cropSelection.width.toFixed(0)}
-                  onChange={(e) => {
-                    const val = Math.max(5, Math.min(100 - cropSelection.x, parseFloat(e.target.value) || 5));
-                    setCropSelection((c) => ({ ...c, width: val }));
-                  }}
-                  className="h-7 text-xs"
-                  onMouseDown={(e) => e.stopPropagation()}
-                />
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">Hauteur %</Label>
-                <Input
-                  type="number"
-                  min="5"
-                  max="100"
-                  value={cropSelection.height.toFixed(0)}
-                  onChange={(e) => {
-                    const val = Math.max(5, Math.min(100 - cropSelection.y, parseFloat(e.target.value) || 5));
-                    setCropSelection((c) => ({ ...c, height: val }));
-                  }}
-                  className="h-7 text-xs"
-                  onMouseDown={(e) => e.stopPropagation()}
-                />
-              </div>
-            </div>
-
-            {/* Boutons d'action */}
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1 h-8 text-xs"
-                onClick={() => setCropSelection({ x: 0, y: 0, width: 100, height: 100 })}
-              >
-                <Maximize2 className="h-3 w-3 mr-1" />
-                100%
-              </Button>
-              <Button variant="outline" size="sm" className="flex-1 h-8 text-xs" onClick={resetCrop}>
-                <RotateCw className="h-3 w-3 mr-1" />
-                Reset
-              </Button>
-              <Button size="sm" className="flex-1 h-8 text-xs bg-green-600 hover:bg-green-700" onClick={applyCrop}>
-                <Check className="h-3 w-3 mr-1" />
-                Appliquer
-              </Button>
-            </div>
-          </div>
-        </div>
+        <CropDialog
+          showCropDialog={showCropDialog}
+          setShowCropDialog={setShowCropDialog}
+          selectedImageData={selectedImageData}
+          cropSelection={cropSelection}
+          setCropSelection={setCropSelection}
+          position={cropPanelPos}
+          setPosition={setCropPanelPos}
+          applyCrop={applyCrop}
+          resetCrop={resetCrop}
+        />
       )}
 
+      {/* Panneau modifier longueur - v7.55b: Extrait en composant */}
       {/* Panneau modifier longueur - v7.55b: Extrait en composant */}
       {lineLengthDialog?.open && (
         <LineLengthPanel
