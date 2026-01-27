@@ -18312,6 +18312,81 @@ export function CADGabaritCanvas({
           </DropdownMenu>
         </div>
 
+        <Separator orientation="vertical" className="h-6 mx-1" />
+
+        {/* v7.54p: Boutons affichage déplacés sur ligne 0 */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={showGrid ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setShowGrid(!showGrid)}
+                className="h-8 w-8 p-0"
+              >
+                <Grid3X3 className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Grille</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={showA4Grid ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setShowA4Grid(!showA4Grid)}
+                className={`h-8 w-8 p-0 ${showA4Grid ? "bg-blue-500 hover:bg-blue-600" : ""}`}
+              >
+                <FileDown className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Grille A4 (export PDF)</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={snapEnabled ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setSnapEnabled(!snapEnabled)}
+                className="h-8 w-8 p-0"
+              >
+                <Magnet className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Snap (aimantation)</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={snapToActiveLayerOnly ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setSnapToActiveLayerOnly(!snapToActiveLayerOnly)}
+                className={`h-8 w-8 p-0 ${snapToActiveLayerOnly ? "bg-purple-500 hover:bg-purple-600" : ""}`}
+              >
+                <Layers className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Snap calque actif uniquement</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
         {/* Bouton raccourcis clavier */}
         {toolbarConfig.line1.help && (
           <TooltipProvider>
@@ -19667,84 +19742,8 @@ export function CADGabaritCanvas({
 
         <Separator orientation="vertical" className="h-6" />
 
-        {/* Toggles */}
+        {/* Toggles - v7.54p: Réduit - les 4 premiers boutons sont sur ligne 0 */}
         <ToolbarGroupWrapper groupId="grp_display" groupName="Affichage" groupColor="#06B6D4" lineIndex={1}>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={showGrid ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setShowGrid(!showGrid)}
-                  className="h-8 px-2"
-                >
-                  <Grid3X3 className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Grille</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Grille A4 pour export panoramique */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={showA4Grid ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setShowA4Grid(!showA4Grid)}
-                  className={`h-8 px-2 ${showA4Grid ? "bg-blue-500 hover:bg-blue-600" : ""}`}
-                >
-                  <FileDown className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Grille A4 (export PDF)</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={snapEnabled ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSnapEnabled(!snapEnabled)}
-                  className="h-8 px-2"
-                >
-                  <Magnet className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Snap (aimantation)</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {/* Toggle snap calque actif uniquement */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={snapToActiveLayerOnly ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSnapToActiveLayerOnly(!snapToActiveLayerOnly)}
-                  className={`h-8 px-2 ${snapToActiveLayerOnly ? "bg-purple-500 hover:bg-purple-600" : ""}`}
-                >
-                  <Layers className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Snap calque actif uniquement</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <Separator orientation="vertical" className="h-6 mx-1" />
-
           {/* Toggle mode construction */}
           <TooltipProvider>
             <Tooltip>
