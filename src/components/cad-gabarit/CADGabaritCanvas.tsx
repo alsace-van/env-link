@@ -235,9 +235,6 @@ import { MeasurePanel, type Measurement } from "./MeasurePanel";
 // v7.34: Générateur d'équerre de calibration
 import { CalibrationRulerGenerator } from "./CalibrationRulerGenerator";
 
-// MOD v7.15: Contrôles d'étirement manuel
-import { ManualStretchControls } from "./ManualStretchControls";
-
 // MOD v7.29: Gestion avancée des calques
 import { LayerTabs } from "./LayerTabs";
 
