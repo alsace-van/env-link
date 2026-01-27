@@ -247,10 +247,9 @@ import { ImageToolsModal } from "./ImageToolsModal";
 // MOD v7.37: Modale de calibration au drop d'image
 import { ImageCalibrationModal } from "./ImageCalibrationModal";
 
-// MOD v7.39: Modale de calibration ArUco (OpenCV)
-import { ArucoCalibrationModal } from "./ArucoCalibrationModal";
+// MOD v7.39: Modale de génération ArUco (gardé - utile pour imprimer)
 import { ArucoMarkerGenerator } from "./ArucoMarkerGenerator";
-import { ArucoStitcher } from "./ArucoStitcher";
+// v7.54s: ArucoCalibrationModal et ArucoStitcher supprimés - remplacés par PhotoPreparationModal
 import { useOpenCVAruco } from "./useOpenCVAruco";
 import type { ArucoMarker } from "./useOpenCVAruco";
 
@@ -906,22 +905,12 @@ export function CADGabaritCanvas({
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const lastSavedSketchRef = useRef<string>(""); // Hash ou JSON du dernier sketch sauvegardé
 
-  // v7.39: Modale de calibration ArUco
-  const [showArucoModal, setShowArucoModal] = useState(false);
-  const [pendingArucoImage, setPendingArucoImage] = useState<BackgroundImage | null>(null);
+  // v7.39: Modale de génération ArUco (garde - utile pour imprimer)
   const [showArucoGenerator, setShowArucoGenerator] = useState(false);
-  const [showArucoStitcher, setShowArucoStitcher] = useState(false);
   
-  // v7.55: Nouvelle modale de préparation photo
+  // v7.55: Nouvelle modale de préparation photo (remplace les anciennes modales ArUco)
   const [showPhotoPreparationModal, setShowPhotoPreparationModal] = useState(false);
   
-  // v7.50: Images existantes à réassembler (markers re-détectés par ArucoStitcher)
-  const [imagesToReassemble, setImagesToReassemble] = useState<Array<{
-    id: string;
-    name: string;
-    image: HTMLImageElement;
-  }> | undefined>(undefined);
-
   // ============================================
   // NOUVEAU SYSTÈME DE TOOLBAR CONFIGURABLE (v7.11)
   // Remplace l'ancien système de booléens par drag & drop
@@ -18014,7 +18003,7 @@ export function CADGabaritCanvas({
                       )}
                     </DropdownMenuSubTrigger>
                     <DropdownMenuSubContent className="w-56">
-                      {/* v7.55: Nouveau système de préparation photo */}
+                      {/* v7.55: Système complet de préparation photo */}
                       <DropdownMenuItem onClick={() => setShowPhotoPreparationModal(true)}>
                         <ImageIcon className="h-4 w-4 mr-2 text-green-600" />
                         Préparer photos...
@@ -18023,54 +18012,14 @@ export function CADGabaritCanvas({
                       
                       <DropdownMenuSeparator />
                       
+                      {/* v7.54s: Simplifié - DXF seulement */}
                       <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
                         <FileUp className="h-4 w-4 mr-2" />
-                        DXF, images...
+                        DXF, SVG...
                       </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => {
-                          // Créer un input file temporaire pour ArUco
-                          const input = document.createElement("input");
-                          input.type = "file";
-                          input.accept = "image/*";
-                          input.onchange = async (e) => {
-                            const file = (e.target as HTMLInputElement).files?.[0];
-                            if (!file) return;
-
-                            const img = new window.Image();
-                            img.onload = () => {
-                              const bgImage: BackgroundImage = {
-                                id: `aruco-${Date.now()}`,
-                                name: `aruco-${Date.now()}`,
-                                image: img,
-                                x: 0,
-                                y: 0,
-                                scale: 1,
-                                opacity: imageOpacity,
-                                visible: true,
-                                locked: false,
-                                order: backgroundImages.length,
-                                rotation: 0,
-                                layerId: sketch.activeLayerId,
-                                markers: [],
-                              };
-                              setPendingArucoImage(bgImage);
-                              setShowArucoModal(true);
-                            };
-                            img.src = URL.createObjectURL(file);
-                          };
-                          input.click();
-                        }}
-                      >
-                        <QrCode className="h-4 w-4 mr-2" />
-                        Image avec markers ArUco
-                        <span className="ml-auto text-xs text-muted-foreground">Auto</span>
-                      </DropdownMenuItem>
+                      
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => setShowArucoStitcher(true)}>
-                        <Images className="h-4 w-4 mr-2" />
-                        Assembler photos (ArUco)...
-                      </DropdownMenuItem>
+                      
                       <DropdownMenuItem onClick={() => setShowArucoGenerator(true)}>
                         <Printer className="h-4 w-4 mr-2" />
                         Générer markers ArUco...
@@ -20616,114 +20565,10 @@ export function CADGabaritCanvas({
           }}
         />
 
-        {/* v7.39: Modale de calibration ArUco */}
-        <ArucoCalibrationModal
-          isOpen={showArucoModal}
-          onClose={() => {
-            setShowArucoModal(false);
-            setPendingArucoImage(null);
-          }}
-          image={pendingArucoImage}
-          onSkip={() => {
-            // Ajouter l'image sans calibration ArUco
-            if (pendingArucoImage) {
-              addImageWithLayer(pendingArucoImage);
-              toast.success("Image ajoutée sans calibration ArUco");
-            }
-            setShowArucoModal(false);
-            setPendingArucoImage(null);
-          }}
-          onCalibrated={(pixelsPerCm, markers) => {
-            // Ajouter l'image avec l'échelle calculée
-            if (pendingArucoImage) {
-              const calibratedImage: BackgroundImage = {
-                ...pendingArucoImage,
-                calibrationData: {
-                  points: new Map(),
-                  pairs: new Map(),
-                  applied: true,
-                  mode: "simple",
-                },
-                // FIX v7.46: Appliquer l'échelle correcte
-                // pixelsPerCm = pixels image pour 1 cm réel
-                // scaleFactor = pixels canvas pour 1 mm réel
-                // Donc: 1 cm réel = pixelsPerCm px image = 10 * scaleFactor px canvas
-                // scale = (10 * scaleFactor) / pixelsPerCm
-                scale: (scaleFactor * 10) / pixelsPerCm,
-              };
-              addImageWithLayer(calibratedImage);
-              toast.success(`Calibration ArUco appliquée (${markers.length} markers, ${pixelsPerCm.toFixed(1)} px/cm)`);
-            }
-            setShowArucoModal(false);
-            setPendingArucoImage(null);
-          }}
-        />
-
-        {/* v7.39: Générateur de markers ArUco */}
+        {/* v7.39: Générateur de markers ArUco (gardé - utile pour imprimer) */}
         <ArucoMarkerGenerator isOpen={showArucoGenerator} onClose={() => setShowArucoGenerator(false)} />
 
-        {/* v7.40: Assemblage de photos par markers ArUco */}
-        {/* v7.44: Support scaleX et scaleY séparés */}
-        {/* v7.50: Support réassemblage d'images existantes */}
-        <ArucoStitcher
-          isOpen={showArucoStitcher}
-          onClose={() => {
-            setShowArucoStitcher(false);
-            setImagesToReassemble(undefined);
-          }}
-          markerSizeMm={100}
-          initialImages={imagesToReassemble}
-          onStitched={(stitchedImages, pxPerCm) => {
-            // v7.44: Calcul corrigé avec scaleX et scaleY
-            // pxPerCm = pixels/cm des images sources
-            // scaleFactor = pixels/mm du canvas (ex: 2.5)
-            
-            const photoPixelsPerMm = pxPerCm / 10;
-            
-            let addedCount = 0;
-            for (let i = 0; i < stitchedImages.length; i++) {
-              const stitchedImg = stitchedImages[i];
-              
-              // Position mm → pixels canvas
-              const posXpx = stitchedImg.position.x * scaleFactor;
-              const posYpx = stitchedImg.position.y * scaleFactor;
-              
-              // v7.44: Scales X et Y séparés
-              // stitchedImg.scaleX/Y normalise les photos entre elles
-              // scaleFactor/photoPixelsPerMm adapte photo→canvas
-              const baseScale = scaleFactor / photoPixelsPerMm;
-              const finalScaleX = (stitchedImg.scaleX ?? stitchedImg.scale) * baseScale;
-              const finalScaleY = (stitchedImg.scaleY ?? stitchedImg.scale) * baseScale;
-              const finalScale = (finalScaleX + finalScaleY) / 2; // Rétrocompatibilité
-              
-              const bgImage: BackgroundImage = {
-                id: `stitched-${Date.now()}-${i}`,
-                name: stitchedImg.originalFile?.name || `photo-${i + 1}`,
-                image: stitchedImg.image,
-                x: posXpx,
-                y: posYpx,
-                scale: finalScale,
-                scaleX: finalScaleX,
-                scaleY: finalScaleY,
-                opacity: imageOpacity,
-                visible: true,
-                locked: false,
-                order: backgroundImages.length + i,
-                rotation: stitchedImg.rotation || 0,
-                layerId: sketch.activeLayerId,
-                markers: [], // ArucoMarkers ne sont pas compatibles avec ImageMarker
-              };
-              addImageWithLayer(bgImage);
-              addedCount++;
-            }
-            
-            console.log(`[ArucoStitcher] Import: ${addedCount} images, scaleFactor=${scaleFactor}px/mm, pxPerCm=${pxPerCm}px/cm`);
-            toast.success(`${addedCount} image(s) assemblée(s) ajoutée(s) au canvas !`);
-            setShowArucoStitcher(false);
-          }}
-        />
-
-        {/* v7.55: Nouvelle modale de préparation photo */}
+        {/* v7.55: Nouvelle modale de préparation photo (remplace ArucoCalibrationModal et ArucoStitcher) */}
         <PhotoPreparationModal
           isOpen={showPhotoPreparationModal}
           onClose={() => setShowPhotoPreparationModal(false)}
@@ -24196,27 +24041,13 @@ export function CADGabaritCanvas({
                       <button
                         className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 flex items-center gap-1.5 text-green-600"
                         onClick={() => {
-                          // v7.50: Si plusieurs images sélectionnées, les réassembler
-                          if (multiCount >= 2) {
-                            const selectedImages = backgroundImages
-                              .filter(img => imagesToUpdate.has(img.id) && img.image)
-                              .map(img => ({
-                                id: img.id,
-                                name: img.name || `image-${img.id}`,
-                                image: img.image!,
-                                // Note: on ne passe pas les markers car ImageMarker ≠ ArucoMarker
-                                // ArucoStitcher les re-détectera
-                              }));
-                            setImagesToReassemble(selectedImages);
-                          } else {
-                            setImagesToReassemble(undefined);
-                          }
-                          setShowArucoStitcher(true);
+                          // v7.54s: Redirige vers PhotoPreparationModal
+                          setShowPhotoPreparationModal(true);
                           setContextMenu(null);
                         }}
                       >
                         <GitMerge className="h-3 w-3" />
-                        {multiCount >= 2 ? `Réassembler (${multiCount} photos)` : "Assembler des photos"}
+                        Préparer photos...
                       </button>
                       {/* v7.47: Mode étiré pour ajuster scaleX/scaleY */}
                       <button
