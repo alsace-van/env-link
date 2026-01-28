@@ -4,6 +4,10 @@
 // VERSION: 7.55b
 // ============================================
 //
+// CHANGELOG v7.55e (28/01/2026):
+// - FIX: Snap amélioré pour cercle, rectangle, arc3points, polygone
+//   - Le centre du cercle peut maintenant être snappé sur un point existant (coin, endpoint)
+//   - Utilise getOrCreatePoint() au lieu de créer systématiquement un nouveau point
 // CHANGELOG v7.55d (27/01/2026):
 // - REFACTOR: Extraction des panneaux flottants en composants
 //   - FilletPanel.tsx (congés)
@@ -11118,8 +11122,8 @@ export function CADGabaritCanvas({
 
         case "circle": {
           if (tempPoints.length === 0) {
-            // Centre
-            const center: Point = { id: generateId(), x: targetPos.x, y: targetPos.y };
+            // Centre - utiliser getOrCreatePoint pour réutiliser un point existant si snap
+            const center = getOrCreatePoint(targetPos, currentSnapPoint);
             setTempPoints([center]);
             setTempGeometry({ type: "circle", center, radius: 0 });
           } else {
@@ -11133,7 +11137,10 @@ export function CADGabaritCanvas({
             newSketch.points = new Map(currentSketch.points);
             newSketch.geometries = new Map(currentSketch.geometries);
 
-            newSketch.points.set(center.id, center);
+            // Ajouter le centre seulement s'il n'existe pas déjà (nouveau point)
+            if (!currentSketch.points.has(center.id)) {
+              newSketch.points.set(center.id, center);
+            }
 
             const circle: CircleType = {
               id: generateId(),
@@ -11164,7 +11171,7 @@ export function CADGabaritCanvas({
 
         case "arc3points": {
           // Arc par 3 points: cliquer 3 points, l'arc passe par ces 3 points
-          const newPoint: Point = { id: generateId(), x: targetPos.x, y: targetPos.y };
+          const newPoint = getOrCreatePoint(targetPos, currentSnapPoint);
           const newArc3Points = [...arc3Points, newPoint];
           setArc3Points(newArc3Points);
 
@@ -11264,7 +11271,8 @@ export function CADGabaritCanvas({
 
         case "rectangle": {
           if (tempPoints.length === 0) {
-            const p1: Point = { id: generateId(), x: targetPos.x, y: targetPos.y };
+            // Premier coin - utiliser getOrCreatePoint pour snap
+            const p1 = getOrCreatePoint(targetPos, currentSnapPoint);
             setTempPoints([p1]);
             // Stocker le mode dans tempGeometry pour le rendu
             setTempGeometry({ type: "rectangle", p1, mode: rectangleMode });
@@ -11359,8 +11367,8 @@ export function CADGabaritCanvas({
         case "polygon": {
           // Outil polygone régulier : centre puis rayon
           if (tempPoints.length === 0) {
-            // Premier clic : définir le centre
-            const center: Point = { id: generateId(), x: targetPos.x, y: targetPos.y };
+            // Premier clic : définir le centre - utiliser getOrCreatePoint pour snap
+            const center = getOrCreatePoint(targetPos, currentSnapPoint);
             setTempPoints([center]);
             setTempGeometry({ type: "polygon", center, radius: 0, sides: polygonSides });
           } else {
