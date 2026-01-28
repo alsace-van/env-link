@@ -4,12 +4,20 @@
 // VERSION: 7.55b
 // ============================================
 //
+// CHANGELOG v7.55f (28/01/2026):
+// - FEATURE: Mesures liées aux géométries
+//   - Les points de mesure snappés sur des géométries suivent lors des déplacements
+//   - Les valeurs de mesure (px/mm) se recalculent en temps réel
+//   - Stockage des références (pointId ou segmentId+t) dans Measurement
 // CHANGELOG v7.55e (28/01/2026):
 // - FIX: Snap amélioré pour cercle, rectangle, arc3points, polygone
 //   - Le centre du cercle peut maintenant être snappé sur un point existant (coin, endpoint)
 //   - Utilise getOrCreatePoint() au lieu de créer systématiquement un nouveau point
 // - UI: Nouvelle icône pour Arc 3 points (arc courbé avec 3 carrés)
 // - FIX: Clic droit ne supprime plus les mesures - utiliser les boutons de la modale
+// - FIX: Outil Mesure - snap amélioré sur les géométries:
+//   - Snap sur endpoints, midpoints via le système de snap global
+//   - Snap "nearest" sur les segments (projection sur la ligne)
 // CHANGELOG v7.55d (27/01/2026):
 // - REFACTOR: Extraction des panneaux flottants en composants
 //   - FilletPanel.tsx (congés)
@@ -1112,6 +1120,79 @@ export function CADGabaritCanvas({
   // Tableau des mesures persistantes - MOD v7.16: Type importé depuis MeasurePanel
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
 
+  // v7.55f: Recalculer les positions et valeurs des mesures quand le sketch change
+  const computedMeasurements = useMemo(() => {
+    return measurements.map((m) => {
+      let newStart = m.start;
+      let newEnd = m.end;
+      let needsUpdate = false;
+
+      // Recalculer start si référence existe
+      if (m.startRef) {
+        if (m.startRef.type === "point" && m.startRef.pointId) {
+          const point = sketch.points.get(m.startRef.pointId);
+          if (point) {
+            newStart = { x: point.x, y: point.y };
+            needsUpdate = true;
+          }
+        } else if (m.startRef.type === "nearest" && m.startRef.segmentId && m.startRef.t !== undefined) {
+          const geo = sketch.geometries.get(m.startRef.segmentId);
+          if (geo?.type === "line") {
+            const line = geo as Line;
+            const p1 = sketch.points.get(line.p1);
+            const p2 = sketch.points.get(line.p2);
+            if (p1 && p2) {
+              newStart = {
+                x: p1.x + m.startRef.t * (p2.x - p1.x),
+                y: p1.y + m.startRef.t * (p2.y - p1.y),
+              };
+              needsUpdate = true;
+            }
+          }
+        }
+      }
+
+      // Recalculer end si référence existe
+      if (m.endRef) {
+        if (m.endRef.type === "point" && m.endRef.pointId) {
+          const point = sketch.points.get(m.endRef.pointId);
+          if (point) {
+            newEnd = { x: point.x, y: point.y };
+            needsUpdate = true;
+          }
+        } else if (m.endRef.type === "nearest" && m.endRef.segmentId && m.endRef.t !== undefined) {
+          const geo = sketch.geometries.get(m.endRef.segmentId);
+          if (geo?.type === "line") {
+            const line = geo as Line;
+            const p1 = sketch.points.get(line.p1);
+            const p2 = sketch.points.get(line.p2);
+            if (p1 && p2) {
+              newEnd = {
+                x: p1.x + m.endRef.t * (p2.x - p1.x),
+                y: p1.y + m.endRef.t * (p2.y - p1.y),
+              };
+              needsUpdate = true;
+            }
+          }
+        }
+      }
+
+      if (!needsUpdate) return m;
+
+      // Recalculer la distance
+      const distPx = distance(newStart, newEnd);
+      const distMm = calibrationData.scale ? distPx * calibrationData.scale : distPx / sketch.scaleFactor;
+
+      return {
+        ...m,
+        start: newStart,
+        end: newEnd,
+        px: distPx,
+        mm: distMm,
+      };
+    });
+  }, [measurements, sketch.points, sketch.geometries, sketch.scaleFactor, calibrationData.scale]);
+
   // État pour le déplacement d'un point de mesure
   const [draggingMeasurePoint, setDraggingMeasurePoint] = useState<{
     measureId: string;
@@ -2042,7 +2123,8 @@ export function CADGabaritCanvas({
           }
         : null,
       // Tableau des mesures terminées - MOD v7.16: Afficher seulement si panneau ouvert ou outil actif
-      measurements: showMeasurePanel || activeTool === "measure" ? measurements.filter((m) => m.visible !== false) : [],
+      // v7.55f: Utiliser computedMeasurements pour les positions recalculées
+      measurements: showMeasurePanel || activeTool === "measure" ? computedMeasurements.filter((m) => m.visible !== false) : [],
       // measureScale en mm/px pour le renderer
       measureScale: calibrationData.scale || 1 / sketch.scaleFactor,
       // scaleFactor en px/mm pour les règles
@@ -10790,10 +10872,11 @@ export function CADGabaritCanvas({
       }
 
       // Vérifier si on clique sur un point de mesure pour le déplacer (outil mesure actif)
-      if (activeTool === "measure" && measurements.length > 0) {
+      // v7.55f: Utiliser computedMeasurements pour les positions à jour
+      if (activeTool === "measure" && computedMeasurements.length > 0) {
         const tolerance = 12 / viewport.scale;
 
-        for (const m of measurements) {
+        for (const m of computedMeasurements) {
           const distToStart = distance(worldPos, m.start);
           const distToEnd = distance(worldPos, m.end);
 
@@ -11480,15 +11563,20 @@ export function CADGabaritCanvas({
         }
 
         case "measure": {
-          // Chercher un point de calibration proche pour snap
+          // v7.55f: Snap amélioré avec références pour suivi lors des déplacements
           let snapPos = worldPos;
-          const snapTolerance = 25 / viewport.scale; // Augmenté pour meilleur snap
+          const snapTolerance = 25 / viewport.scale;
 
-          // MOD UX: Snap sur les points de calibration de l'image sélectionnée
+          // Structure pour stocker la référence au point
+          let pointRef: { type: "point" | "nearest"; pointId?: string; segmentId?: string; t?: number } | undefined;
+
+          // 1. Snap sur les points de calibration
           const imageCalibPoints = selectedImageId
             ? backgroundImages.find((img) => img.id === selectedImageId)?.calibrationData?.points
             : null;
           const calibPoints = imageCalibPoints || calibrationData.points;
+
+          let snapped = false;
 
           if (showCalibrationPanel || calibPoints.size > 0) {
             let closestCalibPoint: CalibrationPoint | null = null;
@@ -11504,10 +11592,56 @@ export function CADGabaritCanvas({
 
             if (closestCalibPoint) {
               snapPos = { x: closestCalibPoint.x, y: closestCalibPoint.y };
+              snapped = true;
+              // Les points de calibration ne bougent pas, pas de ref
             }
           }
 
-          // Détecter le segment sous le clic
+          // 2. Snap sur les points géométriques (endpoints, midpoints) si pas déjà snappé
+          if (!snapped && snapEnabled && currentSnapPoint) {
+            snapPos = { x: currentSnapPoint.x, y: currentSnapPoint.y };
+            snapped = true;
+            // Si c'est un endpoint, stocker la référence au point
+            if (currentSnapPoint.type === "endpoint" && currentSnapPoint.entityId) {
+              pointRef = { type: "point", pointId: currentSnapPoint.entityId };
+            }
+          }
+
+          // 3. Snap sur le point le plus proche d'un segment (nearest) si pas déjà snappé
+          let nearestSegmentId: string | null = null;
+          let nearestT: number | null = null;
+          
+          if (!snapped) {
+            const clickedSegmentId = findEntityAtPosition(worldPos.x, worldPos.y);
+            if (clickedSegmentId) {
+              const geo = sketch.geometries.get(clickedSegmentId);
+              if (geo?.type === "line") {
+                const line = geo as Line;
+                const p1 = sketch.points.get(line.p1);
+                const p2 = sketch.points.get(line.p2);
+                if (p1 && p2) {
+                  // Projeter le point sur le segment
+                  const dx = p2.x - p1.x;
+                  const dy = p2.y - p1.y;
+                  const lenSq = dx * dx + dy * dy;
+                  if (lenSq > 0) {
+                    let t = ((worldPos.x - p1.x) * dx + (worldPos.y - p1.y) * dy) / lenSq;
+                    t = Math.max(0, Math.min(1, t)); // Clamp sur le segment
+                    snapPos = {
+                      x: p1.x + t * dx,
+                      y: p1.y + t * dy,
+                    };
+                    snapped = true;
+                    nearestSegmentId = clickedSegmentId;
+                    nearestT = t;
+                    pointRef = { type: "nearest", segmentId: clickedSegmentId, t };
+                  }
+                }
+              }
+            }
+          }
+
+          // Détecter le segment sous le clic (pour l'angle entre segments)
           const clickedSegmentId = findEntityAtPosition(worldPos.x, worldPos.y);
           const clickedGeo = clickedSegmentId ? sketch.geometries.get(clickedSegmentId) : null;
           const isClickedLine = clickedGeo?.type === "line";
@@ -11520,7 +11654,9 @@ export function CADGabaritCanvas({
               end: null,
               result: null,
               segment1Id: isClickedLine ? clickedSegmentId : null,
-            });
+              // v7.55f: Stocker la référence du premier point
+              startRef: pointRef,
+            } as any);
             setMeasurePreviewEnd(null);
           } else if (measureState.phase === "waitingSecond" && measureState.start) {
             // Deuxième point - calculer, ajouter au tableau et permettre nouvelle mesure
@@ -11568,7 +11704,10 @@ export function CADGabaritCanvas({
               }
             }
 
-            // Ajouter la mesure au tableau
+            // v7.55f: Récupérer la référence du premier point depuis measureState
+            const startRef = (measureState as any).startRef;
+
+            // Ajouter la mesure au tableau avec les références
             setMeasurements((prev) => {
               const measureIndex = prev.length + 1;
               const newMeasure: Measurement = {
@@ -11582,6 +11721,9 @@ export function CADGabaritCanvas({
                 segment1Id: segment1Id || undefined,
                 segment2Id: segment2Id || undefined,
                 visible: true,
+                // v7.55f: Références pour suivi lors des déplacements
+                startRef: startRef,
+                endRef: pointRef,
               };
               return [...prev, newMeasure];
             });
