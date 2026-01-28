@@ -6,12 +6,13 @@
 
 ## ✅ Tâches terminées
 
-### 2025-01-28 - Cotation cercle + Fix TAB rectangle + Fix suppression v7.55h
+### 2025-01-28 - Cotation cercle + Fix TAB rectangle + Fix suppression + Fix notification v7.55h
 
 **Problèmes résolus:**
 1. **Cercle sans cotation** - Les cercles n'avaient pas de cotation automatique du rayon
 2. **TAB dans rectangle** - Quand on appuyait sur TAB pour passer de largeur à hauteur, le focus allait dans la toolbar
 3. **Cotations orphelines** - Quand on supprimait une figure, les cotations restaient affichées
+4. **Notification backup répétitive** - Le message "Sauvegarde automatique ignorée" apparaissait à chaque rechargement
 
 **Solutions:**
 
@@ -35,6 +36,11 @@
 - Après suppression des figures, parcours des dimensions pour supprimer les orphelines
 - Suppression automatique des contraintes associées
 
+**5. Fix notification backup ignoré (useCADAutoBackup v1.6):**
+- Stocke le timestamp du backup ignoré dans localStorage
+- Ne réaffiche le message que si c'est un backup différent
+- Efface le flag quand un nouveau backup est créé avec succès
+
 **Fichiers modifiés:**
 - `useAutoDimensions.ts` v1.2 → v1.3: Ajout `addCircleDimension()`
 - `CADGabaritCanvas.tsx` v7.55f → v7.55h: 
@@ -43,6 +49,8 @@
   - Focus auto input largeur
   - Support radius dans findDimensionAtScreenPos
   - Suppression des dimensions orphelines
+- `useCADAutoBackup.ts` v1.5 → v1.6:
+  - Fix notification répétitive backup ignoré
 
 ---
 
