@@ -54,6 +54,16 @@ export function useAutoDimensions({ enabled, sketchRef }: UseAutoDimensionsOptio
       const dist = distance(p1, p2);
       const distMm = dist / sketch.scaleFactor;
 
+      // v1.3 DEBUG: Log pour diagnostic
+      console.log("[AutoDimensions DEBUG] createLinearDimension:", {
+        type,
+        p1: { x: p1.x.toFixed(2), y: p1.y.toFixed(2) },
+        p2: { x: p2.x.toFixed(2), y: p2.y.toFixed(2) },
+        distPx: dist.toFixed(2),
+        scaleFactor: sketch.scaleFactor,
+        distMm: distMm.toFixed(2),
+      });
+
       // Position du texte (au milieu, légèrement décalé)
       const position = {
         x: (p1.x + p2.x) / 2,
@@ -127,6 +137,19 @@ export function useAutoDimensions({ enabled, sketchRef }: UseAutoDimensionsOptio
         console.warn("[AutoDimensions] Coins non trouvés dans le sketch");
         return [];
       }
+
+      // v1.3 DEBUG: Log des coins pour diagnostic
+      console.log("[AutoDimensions DEBUG] Rectangle corners:", {
+        c1: { x: c1.x.toFixed(2), y: c1.y.toFixed(2) },
+        c2: { x: c2.x.toFixed(2), y: c2.y.toFixed(2) },
+        c3: { x: c3.x.toFixed(2), y: c3.y.toFixed(2) },
+        c4: { x: c4.x.toFixed(2), y: c4.y.toFixed(2) },
+        scaleFactor: sketch.scaleFactor,
+        widthPx: Math.abs(c2.x - c1.x).toFixed(2),
+        heightPx: Math.abs(c3.y - c2.y).toFixed(2),
+        widthMm: (Math.abs(c2.x - c1.x) / sketch.scaleFactor).toFixed(2),
+        heightMm: (Math.abs(c3.y - c2.y) / sketch.scaleFactor).toFixed(2),
+      });
 
       console.log("[AutoDimensions] Création cotations pour rectangle");
 
