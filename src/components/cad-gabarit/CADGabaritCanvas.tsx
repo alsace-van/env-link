@@ -1,9 +1,15 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.55h
+// VERSION: 7.55i
 // ============================================
 //
+// CHANGELOG v7.55i (28/01/2026):
+// - FEATURE: Sauvegarde persistante liée au projet (useCADProjectSave)
+// - Ajout prop projectId pour lier le canvas à un projet
+// - Auto-save 3s après modification quand projectId fourni
+// - Chargement automatique au montage si données existantes
+// - Menu Fichier > "Sauvegarder projet" quand projectId présent
 // CHANGELOG v7.55h (28/01/2026):
 // - FIX: Suppression des cotations quand on supprime une figure
 // - Les dimensions orphelines sont automatiquement nettoyées
@@ -267,6 +273,7 @@ import { PrintPreviewModal } from "./PrintPreviewModal";
 
 // MOD v7.14: Auto-backup sur Supabase pour protection contre les pertes
 import { useCADAutoBackup } from "./useCADAutoBackup";
+import { useCADProjectSave } from "./useCADProjectSave";
 import { useCalibration } from "./useCalibration";
 // MOD v7.32: Drag & drop d'images sur le canvas
 import { useImageDragDrop } from "./useImageDragDrop";
@@ -327,6 +334,7 @@ interface CADGabaritCanvasProps {
   imageUrl?: string;
   scaleFactor?: number;
   templateId?: string;
+  projectId?: string | null; // v1.0: ID du projet pour sauvegarde persistante
   initialData?: any;
   onSave?: (data: any) => void;
 }
@@ -379,6 +387,7 @@ export function CADGabaritCanvas({
   imageUrl,
   scaleFactor = 2.5, // px per mm par défaut
   templateId = "default",
+  projectId = null, // v1.0: ID du projet pour sauvegarde persistante
   initialData,
   onSave,
 }: CADGabaritCanvasProps) {
@@ -4798,6 +4807,24 @@ export function CADGabaritCanvas({
     intervalMs: 120000, // FIX CPU: Sauvegarde toutes les 2 minutes (était 30s - trop fréquent)
     minGeometryCount: 1, // Sauvegarder dès qu'il y a au moins 1 géométrie
     templateId,
+  });
+
+  // ============================================
+  // v1.0: SAUVEGARDE PROJET PERSISTANTE
+  // Permet de quitter et revenir sans perdre le travail
+  // ============================================
+  const {
+    isLoading: projectSaveLoading,
+    isSaving: projectSaveSaving,
+    hasUnsavedChanges: projectHasUnsavedChanges,
+    lastSaveTime: projectLastSaveTime,
+    saveToProject,
+    loadFromProject,
+  } = useCADProjectSave(sketch, backgroundImages, markerLinks, loadSketchData, setBackgroundImages, setMarkerLinks, {
+    projectId,
+    enabled: !!projectId, // Actif seulement si un projectId est fourni
+    autoSaveEnabled: true, // Auto-save activé
+    autoSaveDelayMs: 3000, // Auto-save 3s après le dernier changement
   });
 
   // v7.37: Fonction pour ajouter une image avec son calque
@@ -18252,6 +18279,19 @@ export function CADGabaritCanvas({
                     Sauvegarder
                     <span className="ml-auto text-xs text-gray-400">Ctrl+S</span>
                   </DropdownMenuItem>
+
+                  {/* v1.0: Sauvegarder dans le projet (si projectId fourni) */}
+                  {projectId && (
+                    <DropdownMenuItem 
+                      onClick={() => saveToProject()}
+                      disabled={projectSaveSaving}
+                    >
+                      <Save className={`h-4 w-4 mr-2 text-green-600 ${projectSaveSaving ? "animate-pulse" : ""}`} />
+                      Sauvegarder projet
+                      {projectHasUnsavedChanges && <span className="ml-auto text-orange-500 text-xs">●</span>}
+                      {projectSaveSaving && <span className="ml-auto text-xs text-gray-400">...</span>}
+                    </DropdownMenuItem>
+                  )}
 
                   {/* Télécharger backup local */}
                   <DropdownMenuItem onClick={saveLocalBackup}>
