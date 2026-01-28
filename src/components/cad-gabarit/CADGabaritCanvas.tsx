@@ -8,6 +8,7 @@
 // - FIX: Snap amélioré pour cercle, rectangle, arc3points, polygone
 //   - Le centre du cercle peut maintenant être snappé sur un point existant (coin, endpoint)
 //   - Utilise getOrCreatePoint() au lieu de créer systématiquement un nouveau point
+// - UI: Nouvelle icône pour Arc 3 points (arc avec 3 points au lieu de CircleDot)
 // CHANGELOG v7.55d (27/01/2026):
 // - REFACTOR: Extraction des panneaux flottants en composants
 //   - FilletPanel.tsx (congés)
@@ -122,7 +123,6 @@ import {
   Lock,
   Unlock,
   FlipHorizontal2,
-  CircleDot,
   History,
   Clock,
   Scissors,
@@ -313,6 +313,24 @@ interface CADGabaritCanvasProps {
   initialData?: any;
   onSave?: (data: any) => void;
 }
+
+// Icône personnalisée pour Arc 3 points (arc avec 3 carrés comme poignées)
+const Arc3PointsIcon = ({ className }: { className?: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    className={className}
+  >
+    {/* Arc courbé */}
+    <path d="M4 20 Q 4 4, 20 4" strokeLinecap="round" />
+    {/* 3 carrés aux points */}
+    <rect x="2" y="18" width="4" height="4" fill="currentColor" stroke="none" />
+    <rect x="9" y="9" width="4" height="4" fill="currentColor" stroke="none" />
+    <rect x="18" y="2" width="4" height="4" fill="currentColor" stroke="none" />
+  </svg>
+);
 
 // Créer un sketch vide
 function createEmptySketch(scaleFactor: number = 1): Sketch {
@@ -18517,7 +18535,7 @@ export function CADGabaritCanvas({
           <ToolbarGroupWrapper groupId="grp_draw" groupName="Dessin" groupColor="#10B981" lineIndex={1}>
             <ToolButton tool="line" icon={Minus} label="Ligne" shortcut="L" />
             <ToolButton tool="circle" icon={Circle} label="Cercle" shortcut="C" />
-            <ToolButton tool="arc3points" icon={CircleDot} label="Arc 3 points" shortcut="A" />
+            <ToolButton tool="arc3points" icon={Arc3PointsIcon} label="Arc 3 points" shortcut="A" />
 
             {/* Rectangle avec dropdown pour le mode */}
             <DropdownMenu>
