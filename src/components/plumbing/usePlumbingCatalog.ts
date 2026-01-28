@@ -1,7 +1,7 @@
 // ============================================
 // HOOK: usePlumbingCatalog
 // Intégration catalogue et devis pour plomberie
-// VERSION: 1.0c - Debug complet devis
+// VERSION: 1.0e - Utilise project_expenses avec nom_accessoire
 // ============================================
 
 import { useCallback, useEffect, useState } from "react";
@@ -182,7 +182,7 @@ export function usePlumbingCatalog(options: { projectId?: string | null } = {}) 
 
   const loadCatalog = useCallback(async () => {
     setIsLoadingCatalog(true);
-    console.log("[PlumbingCatalog v1.0c] Chargement catalogue...");
+    console.log("[PlumbingCatalog v1.0e] Chargement catalogue...");
     try {
       const { data, error } = await supabase
         .from("accessories_catalog")
@@ -191,13 +191,13 @@ export function usePlumbingCatalog(options: { projectId?: string | null } = {}) 
         .limit(100);
 
       if (error) {
-        console.error("[PlumbingCatalog v1.0c] Erreur:", error);
+        console.error("[PlumbingCatalog v1.0e] Erreur:", error);
         toast.error("Erreur chargement catalogue");
         return;
       }
 
       setCatalogItems(data || []);
-      console.log(`[PlumbingCatalog v1.0c] ${data?.length || 0} articles catalogue chargés`);
+      console.log(`[PlumbingCatalog v1.0e] ${data?.length || 0} articles catalogue chargés`);
     } catch (err) {
       console.error("[PlumbingCatalog] Erreur:", err);
     } finally {
@@ -228,51 +228,71 @@ export function usePlumbingCatalog(options: { projectId?: string | null } = {}) 
 
   const loadQuote = useCallback(async () => {
     if (!projectId) {
-      console.log("[PlumbingCatalog v1.0c] Pas de projectId, skip loadQuote");
+      console.log("[PlumbingCatalog v1.0e] Pas de projectId, skip loadQuote");
       return;
     }
     setIsLoadingQuote(true);
-    console.log("[PlumbingCatalog v1.0c] loadQuote pour projet:", projectId);
+    console.log("[PlumbingCatalog v1.0e] loadQuote pour projet:", projectId);
 
     try {
-      // D'abord, vérifions si la table existe et a des données
-      const { data: rawData, error: rawError } = await supabase
-        .from("project_accessories")
-        .select("*")
-        .eq("project_id", projectId);
-      
-      console.log("[PlumbingCatalog v1.0c] Raw project_accessories:", rawData, "Error:", rawError);
-
-      const { data, error } = await (supabase as any)
-        .from("project_accessories")
-        .select(`
-          id, accessory_id, quantity, prix_unitaire,
-          accessories_catalog (nom, description, image_url, puissance_watts)
-        `)
-        .eq("project_id", projectId);
+      // Utiliser project_expenses avec nom_accessoire (pas de jointure car accessory_id est NULL)
+      const { data, error } = await supabase
+        .from("project_expenses")
+        .select("id, nom_accessoire, description, quantite, prix_vente_ttc, prix_unitaire, category, statut_livraison")
+        .eq("project_id", projectId)
+        .not("nom_accessoire", "is", null);
 
       if (error) {
-        console.error("[PlumbingCatalog v1.0c] Erreur devis:", error);
+        console.error("[PlumbingCatalog v1.0e] Erreur project_expenses:", error);
+        setQuoteItems([]);
         return;
       }
 
-      console.log("[PlumbingCatalog v1.0c] Devis avec join:", data);
+      console.log("[PlumbingCatalog v1.0e] project_expenses trouvés:", data?.length || 0);
 
-      const items: QuoteItem[] = (data || []).map((item: any) => ({
-        id: item.id,
-        accessory_id: item.accessory_id,
-        quantity: item.quantity,
-        prix_unitaire: item.prix_unitaire,
-        nom: item.accessories_catalog?.nom || "Article inconnu",
-        description: item.accessories_catalog?.description,
-        image_url: item.accessories_catalog?.image_url,
-        puissance_watts: item.accessories_catalog?.puissance_watts,
-      }));
+      // Si pas de résultats avec nom_accessoire, essayer avec description non vide
+      let items: QuoteItem[] = [];
+      
+      if (data && data.length > 0) {
+        items = data.map((item: any) => ({
+          id: item.id,
+          accessory_id: item.id, // Utiliser l'id comme référence
+          quantity: item.quantite || 1,
+          prix_unitaire: item.prix_unitaire || item.prix_vente_ttc,
+          nom: item.nom_accessoire || item.description || "Article",
+          description: item.description,
+          image_url: undefined,
+          puissance_watts: undefined,
+        }));
+      } else {
+        // Fallback: récupérer toutes les dépenses avec une description
+        const { data: data2, error: error2 } = await supabase
+          .from("project_expenses")
+          .select("id, nom_accessoire, description, quantite, prix_vente_ttc, prix_unitaire, category, statut_livraison")
+          .eq("project_id", projectId)
+          .not("description", "is", null)
+          .neq("description", "");
 
-      console.log("[PlumbingCatalog v1.0c] QuoteItems finaux:", items);
+        if (!error2 && data2) {
+          console.log("[PlumbingCatalog v1.0e] Fallback description:", data2.length);
+          items = data2.map((item: any) => ({
+            id: item.id,
+            accessory_id: item.id,
+            quantity: item.quantite || 1,
+            prix_unitaire: item.prix_unitaire || item.prix_vente_ttc,
+            nom: item.nom_accessoire || item.description || "Article",
+            description: item.description,
+            image_url: undefined,
+            puissance_watts: undefined,
+          }));
+        }
+      }
+
+      console.log("[PlumbingCatalog v1.0e] QuoteItems finaux:", items.length);
       setQuoteItems(items);
     } catch (err) {
-      console.error("[PlumbingCatalog v1.0c] Erreur:", err);
+      console.error("[PlumbingCatalog v1.0e] Erreur:", err);
+      setQuoteItems([]);
     } finally {
       setIsLoadingQuote(false);
     }
@@ -404,14 +424,14 @@ export function usePlumbingCatalog(options: { projectId?: string | null } = {}) 
   // Charger le devis au montage et quand projectId change
   useEffect(() => {
     if (projectId) {
-      console.log("[PlumbingCatalog v1.0c] Chargement devis pour projet:", projectId);
+      console.log("[PlumbingCatalog v1.0e] Chargement devis pour projet:", projectId);
       loadQuote();
     }
   }, [projectId]);
 
   // Charger le catalogue automatiquement au montage
   useEffect(() => {
-    console.log("[PlumbingCatalog v1.0c] Chargement catalogue auto");
+    console.log("[PlumbingCatalog v1.0e] Chargement catalogue auto");
     loadCatalog();
   }, []);
 
