@@ -6,13 +6,14 @@
 
 ## ✅ Tâches terminées
 
-### 2025-01-28 - Cotation cercle + Fix TAB rectangle + Fix suppression + Fix notification v7.55h
+### 2025-01-28 - Sauvegarde projet persistante v7.55i
 
 **Problèmes résolus:**
 1. **Cercle sans cotation** - Les cercles n'avaient pas de cotation automatique du rayon
 2. **TAB dans rectangle** - Quand on appuyait sur TAB pour passer de largeur à hauteur, le focus allait dans la toolbar
 3. **Cotations orphelines** - Quand on supprimait une figure, les cotations restaient affichées
 4. **Notification backup répétitive** - Le message "Sauvegarde automatique ignorée" apparaissait à chaque rechargement
+5. **Perte de données au rechargement** - Le gabarit n'était pas persistant contrairement au schéma électrique
 
 **Solutions:**
 
@@ -41,16 +42,62 @@
 - Ne réaffiche le message que si c'est un backup différent
 - Efface le flag quand un nouveau backup est créé avec succès
 
+**6. Sauvegarde projet persistante (v7.55i):**
+- Nouveau hook `useCADProjectSave.ts` v1.0
+- Table Supabase `cad_project_sketches` (à créer manuellement)
+- Chargement automatique au montage si projectId fourni
+- Auto-save 3s après modification
+- Sauvegarde avant fermeture de page
+- Fallback localStorage si Supabase échoue
+- Menu Fichier > "Sauvegarder projet" visible quand projectId présent
+
 **Fichiers modifiés:**
 - `useAutoDimensions.ts` v1.2 → v1.3: Ajout `addCircleDimension()`
-- `CADGabaritCanvas.tsx` v7.55f → v7.55h: 
+- `CADGabaritCanvas.tsx` v7.55f → v7.55i: 
   - Cotation auto cercle
   - Fix TAB inputs
   - Focus auto input largeur
   - Support radius dans findDimensionAtScreenPos
   - Suppression des dimensions orphelines
+  - Intégration useCADProjectSave
+  - Prop projectId
 - `useCADAutoBackup.ts` v1.5 → v1.6:
   - Fix notification répétitive backup ignoré
+- `useCADProjectSave.ts` v1.0: NOUVEAU
+  - Sauvegarde/chargement persistant par projet
+- `ProjectDetail.tsx`:
+  - Passe projectId au CADGabaritCanvas
+
+**SQL à exécuter dans Supabase:**
+```sql
+-- Table pour les sketches CAD liés aux projets
+CREATE TABLE cad_project_sketches (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  sketch_data JSONB NOT NULL DEFAULT '{}',
+  background_images JSONB DEFAULT '[]',
+  marker_links JSONB DEFAULT '[]',
+  geometry_count INTEGER DEFAULT 0,
+  point_count INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(project_id)
+);
+
+-- Index et RLS
+CREATE INDEX idx_cad_project_sketches_project ON cad_project_sketches(project_id);
+ALTER TABLE cad_project_sketches ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own sketches" ON cad_project_sketches
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own sketches" ON cad_project_sketches
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own sketches" ON cad_project_sketches
+  FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own sketches" ON cad_project_sketches
+  FOR DELETE USING (auth.uid() = user_id);
+```
 
 ---
 
