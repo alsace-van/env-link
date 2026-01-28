@@ -68,6 +68,19 @@ export interface Measurement {
   relativeEnd?: { x: number; y: number }; // Coordonnées relatives à l'image (en pixels image)
   baseScaleX?: number; // ScaleX de l'image au moment de la création
   baseScaleY?: number; // ScaleY de l'image au moment de la création
+  // v7.55f: Références aux géométries pour suivi lors des déplacements
+  startRef?: {
+    type: "point" | "nearest"; // point = snap sur un point existant, nearest = projection sur segment
+    pointId?: string; // ID du point si type="point"
+    segmentId?: string; // ID du segment si type="nearest"
+    t?: number; // Position sur le segment (0-1) si type="nearest"
+  };
+  endRef?: {
+    type: "point" | "nearest";
+    pointId?: string;
+    segmentId?: string;
+    t?: number;
+  };
 }
 
 interface MeasurePanelProps {
