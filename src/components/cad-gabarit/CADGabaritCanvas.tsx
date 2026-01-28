@@ -8,7 +8,8 @@
 // - FIX: Snap amélioré pour cercle, rectangle, arc3points, polygone
 //   - Le centre du cercle peut maintenant être snappé sur un point existant (coin, endpoint)
 //   - Utilise getOrCreatePoint() au lieu de créer systématiquement un nouveau point
-// - UI: Nouvelle icône pour Arc 3 points (arc avec 3 points au lieu de CircleDot)
+// - UI: Nouvelle icône pour Arc 3 points (arc courbé avec 3 carrés)
+// - FIX: Clic droit ne supprime plus les mesures - utiliser les boutons de la modale
 // CHANGELOG v7.55d (27/01/2026):
 // - REFACTOR: Extraction des panneaux flottants en composants
 //   - FilletPanel.tsx (congés)
@@ -10372,7 +10373,7 @@ export function CADGabaritCanvas({
       if (e.button === 2) {
         setTempPoints([]);
         setTempGeometry(null);
-        // Reset de la mesure en cours
+        // Reset de la mesure en cours (mais garder les mesures existantes)
         setMeasureState({
           phase: "idle",
           start: null,
@@ -10381,8 +10382,7 @@ export function CADGabaritCanvas({
           segment1Id: null,
         });
         setMeasurePreviewEnd(null);
-        // Effacer toutes les mesures
-        setMeasurements([]);
+        // v7.55e: Ne plus effacer les mesures sur clic droit - utiliser les boutons de la modale
         setActiveTool("select");
         return;
       }
