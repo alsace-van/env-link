@@ -1,6 +1,6 @@
 // ============================================
 // PAGE: ProjectDetail
-// VERSION: 3.8 - Nettoyage: Suppression photo-templates, CADGabaritCanvas uniquement
+// VERSION: 3.9 - Ajout onglet Circuit eau (PlumbingCanvas)
 // ============================================
 
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -50,6 +50,7 @@ import {
   LayoutGrid,
   Store,
   Car,
+  Droplets,
 } from "lucide-react";
 import { toast } from "sonner";
 import PhotosTab from "@/components/PhotosTab";
@@ -62,6 +63,7 @@ import { BilanComptable } from "@/components/BilanComptable";
 import { NoticeUploadDialog } from "@/components/NoticeUploadDialog";
 import { NoticesList } from "@/components/NoticesList";
 import { TechnicalCanvas } from "@/components/TechnicalCanvas";
+import { PlumbingCanvas } from "@/components/plumbing";
 import { CableSectionCalculator } from "@/components/CableSectionCalculator";
 import { EnergyBalance } from "@/components/EnergyBalance";
 import { LayoutCanvas } from "@/components/LayoutCanvas";
@@ -1841,8 +1843,12 @@ const ProjectDetail = () => {
 
               <TabsContent value="technical" className="mt-6">
                 <Tabs defaultValue="electrical" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
+                  <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7">
                     <TabsTrigger value="electrical">Schéma électrique</TabsTrigger>
+                    <TabsTrigger value="plumbing">
+                      <Droplets className="h-4 w-4 mr-2" />
+                      Circuit eau
+                    </TabsTrigger>
                     <TabsTrigger value="cable">Section de câble</TabsTrigger>
                     <TabsTrigger value="energy">Bilan énergétique</TabsTrigger>
                     <TabsTrigger value="layout">Aménagement</TabsTrigger>
@@ -1858,6 +1864,12 @@ const ProjectDetail = () => {
 
                   <TabsContent value="electrical" className="mt-6">
                     <TechnicalCanvas projectId={project.id} />
+                  </TabsContent>
+
+                  <TabsContent value="plumbing" className="mt-6">
+                    <div className="h-[calc(100vh-250px)] border rounded-lg overflow-hidden">
+                      <PlumbingCanvas projectId={project.id} />
+                    </div>
                   </TabsContent>
 
                   <TabsContent value="cable" className="mt-6">
