@@ -1,7 +1,7 @@
 // ============================================
 // HOOK: usePlumbingCatalog
 // Intégration catalogue et devis pour plomberie
-// VERSION: 1.0a - Chargement auto catalogue
+// VERSION: 1.0b - Fix chargement auto catalogue + devis
 // ============================================
 
 import { useCallback, useEffect, useState } from "react";
@@ -182,6 +182,7 @@ export function usePlumbingCatalog(options: { projectId?: string | null } = {}) 
 
   const loadCatalog = useCallback(async () => {
     setIsLoadingCatalog(true);
+    console.log("[PlumbingCatalog v1.0b] Chargement catalogue...");
     try {
       const { data, error } = await supabase
         .from("accessories_catalog")
@@ -190,13 +191,13 @@ export function usePlumbingCatalog(options: { projectId?: string | null } = {}) 
         .limit(100);
 
       if (error) {
-        console.error("[PlumbingCatalog] Erreur:", error);
+        console.error("[PlumbingCatalog v1.0b] Erreur:", error);
         toast.error("Erreur chargement catalogue");
         return;
       }
 
       setCatalogItems(data || []);
-      console.log(`[PlumbingCatalog] ${data?.length || 0} articles chargés`);
+      console.log(`[PlumbingCatalog v1.0b] ${data?.length || 0} articles catalogue chargés`);
     } catch (err) {
       console.error("[PlumbingCatalog] Erreur:", err);
     } finally {
@@ -226,8 +227,12 @@ export function usePlumbingCatalog(options: { projectId?: string | null } = {}) 
   // ============================================
 
   const loadQuote = useCallback(async () => {
-    if (!projectId) return;
+    if (!projectId) {
+      console.log("[PlumbingCatalog v1.0b] Pas de projectId, skip loadQuote");
+      return;
+    }
     setIsLoadingQuote(true);
+    console.log("[PlumbingCatalog v1.0b] loadQuote pour projet:", projectId);
 
     try {
       const { data, error } = await (supabase as any)
@@ -239,9 +244,11 @@ export function usePlumbingCatalog(options: { projectId?: string | null } = {}) 
         .eq("project_id", projectId);
 
       if (error) {
-        console.error("[PlumbingCatalog] Erreur devis:", error);
+        console.error("[PlumbingCatalog v1.0b] Erreur devis:", error);
         return;
       }
+
+      console.log("[PlumbingCatalog v1.0b] Devis chargé:", data?.length || 0, "articles");
 
       const items: QuoteItem[] = (data || []).map((item: any) => ({
         id: item.id,
@@ -256,7 +263,7 @@ export function usePlumbingCatalog(options: { projectId?: string | null } = {}) 
 
       setQuoteItems(items);
     } catch (err) {
-      console.error("[PlumbingCatalog] Erreur:", err);
+      console.error("[PlumbingCatalog v1.0b] Erreur:", err);
     } finally {
       setIsLoadingQuote(false);
     }
@@ -385,13 +392,17 @@ export function usePlumbingCatalog(options: { projectId?: string | null } = {}) 
     };
   }, []);
 
-  // Charger le devis au montage
+  // Charger le devis au montage et quand projectId change
   useEffect(() => {
-    if (projectId) loadQuote();
-  }, [projectId, loadQuote]);
+    if (projectId) {
+      console.log("[PlumbingCatalog v1.0b] Chargement devis pour projet:", projectId);
+      loadQuote();
+    }
+  }, [projectId]);
 
   // Charger le catalogue automatiquement au montage
   useEffect(() => {
+    console.log("[PlumbingCatalog v1.0b] Chargement catalogue auto");
     loadCatalog();
   }, []);
 
