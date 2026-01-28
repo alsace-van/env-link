@@ -1,7 +1,7 @@
 // ============================================
 // HOOK: usePlumbingSave
 // Sauvegarde persistante du schéma plomberie
-// VERSION: 1.0
+// VERSION: 1.0a - Fix erreur 406 avec maybeSingle()
 // ============================================
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -126,11 +126,12 @@ export function usePlumbingSave(
 
       console.log("[PlumbingSave] Chargement projet:", projectId);
 
+      // Utiliser maybeSingle pour éviter erreur 406 si pas de données
       const { data, error } = await (supabase as any)
         .from("plumbing_schemas")
         .select("schema_data, nodes_count, edges_count")
         .eq("project_id", projectId)
-        .single();
+        .maybeSingle();
 
       let schemaData: PlumbingSchemaState | null = null;
 
