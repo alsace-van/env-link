@@ -1,7 +1,7 @@
 // ============================================
 // HOOK: usePlumbingCatalog
 // Intégration catalogue et devis pour plomberie
-// VERSION: 1.0
+// VERSION: 1.0a - Chargement auto catalogue
 // ============================================
 
 import { useCallback, useEffect, useState } from "react";
@@ -389,6 +389,11 @@ export function usePlumbingCatalog(options: { projectId?: string | null } = {}) 
   useEffect(() => {
     if (projectId) loadQuote();
   }, [projectId, loadQuote]);
+
+  // Charger le catalogue automatiquement au montage
+  useEffect(() => {
+    loadCatalog();
+  }, []);
 
   return {
     catalogItems,
