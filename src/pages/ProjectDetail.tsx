@@ -1935,8 +1935,9 @@ const ProjectDetail = () => {
 
                   <TabsContent value="templates" className="mt-6">
                     {/* v7.55d: Remplacé PhotoTemplatesContent par CADGabaritCanvas directement */}
+                    {/* v1.0: Ajout projectId pour sauvegarde persistante */}
                     <div className="h-[calc(100vh-200px)] border rounded-lg overflow-hidden">
-                      <CADGabaritCanvas />
+                      <CADGabaritCanvas projectId={project?.id} />
                     </div>
                   </TabsContent>
 
