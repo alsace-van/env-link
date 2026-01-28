@@ -4080,7 +4080,7 @@ export function CADGabaritCanvas({
       // Désactiver le gizmo de transformation quand on change d'outil
       setShowTransformGizmo(false);
     }
-    // Réinitialiser la mesure quand on change d'outil
+    // Réinitialiser la mesure en cours quand on change d'outil (mais garder les mesures)
     if (activeTool !== "measure") {
       setMeasureState({
         phase: "idle",
@@ -4090,8 +4090,7 @@ export function CADGabaritCanvas({
         segment1Id: null,
       });
       setMeasurePreviewEnd(null);
-      // Effacer toutes les mesures quand on quitte l'outil
-      setMeasurements([]);
+      // v7.55e: Ne plus effacer les mesures - utiliser les boutons de la modale
     }
     // Réinitialiser l'offset quand on change d'outil
     if (activeTool !== "offset") {
