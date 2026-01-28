@@ -6,11 +6,12 @@
 
 ## ✅ Tâches terminées
 
-### 2025-01-28 - Cotation cercle + Fix TAB rectangle v7.55g
+### 2025-01-28 - Cotation cercle + Fix TAB rectangle + Fix suppression v7.55h
 
 **Problèmes résolus:**
 1. **Cercle sans cotation** - Les cercles n'avaient pas de cotation automatique du rayon
 2. **TAB dans rectangle** - Quand on appuyait sur TAB pour passer de largeur à hauteur, le focus allait dans la toolbar
+3. **Cotations orphelines** - Quand on supprimait une figure, les cotations restaient affichées
 
 **Solutions:**
 
@@ -22,18 +23,26 @@
 **2. Fix TAB rectangle:**
 - Ajout de `e.stopPropagation()` dans les handlers `onKeyDown` des inputs largeur/hauteur
 - Empêche l'événement de se propager au navigateur
+- Ajout `autoFocus` sur l'input largeur
 
 **3. Modification de la cotation du cercle:**
 - Extension de `findDimensionAtScreenPos()` pour gérer les dimensions "radius"
 - Double-clic sur la cotation du cercle → input inline pour modifier le rayon
 - Le rayon est mis à jour en temps réel ainsi que la dimension
 
+**4. Fix suppression des cotations (v7.55h):**
+- Dans `deleteSelectedEntities()`, ajout de la copie des dimensions
+- Après suppression des figures, parcours des dimensions pour supprimer les orphelines
+- Suppression automatique des contraintes associées
+
 **Fichiers modifiés:**
 - `useAutoDimensions.ts` v1.2 → v1.3: Ajout `addCircleDimension()`
-- `CADGabaritCanvas.tsx` v7.55f → v7.55g: 
+- `CADGabaritCanvas.tsx` v7.55f → v7.55h: 
   - Cotation auto cercle
   - Fix TAB inputs
+  - Focus auto input largeur
   - Support radius dans findDimensionAtScreenPos
+  - Suppression des dimensions orphelines
 
 ---
 
