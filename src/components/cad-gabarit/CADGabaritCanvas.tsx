@@ -4217,13 +4217,21 @@ export function CADGabaritCanvas({
   }, [activeTool]);
 
   // Focus sur l'input largeur quand on commence à tracer un rectangle
+  // v7.55g: Amélioration du timing avec requestAnimationFrame + délai
   useEffect(() => {
-    if (rectInputs.active && widthInputRef.current) {
-      // Petit délai pour s'assurer que le DOM est prêt
-      setTimeout(() => {
-        widthInputRef.current?.focus();
-        widthInputRef.current?.select();
-      }, 50);
+    if (rectInputs.active) {
+      // Utiliser requestAnimationFrame pour attendre le prochain rendu
+      const rafId = requestAnimationFrame(() => {
+        // Puis un petit délai pour s'assurer que le DOM est vraiment prêt
+        setTimeout(() => {
+          if (widthInputRef.current) {
+            widthInputRef.current.focus();
+            widthInputRef.current.select();
+            console.log("[v7.55g] Focus sur input largeur rectangle");
+          }
+        }, 10);
+      });
+      return () => cancelAnimationFrame(rafId);
     }
   }, [rectInputs.active]);
 
@@ -20274,6 +20282,7 @@ export function CADGabaritCanvas({
                       ref={widthInputRef}
                       type="text"
                       inputMode="decimal"
+                      autoFocus
                       value={rectInputs.editingWidth || lockedWidth ? rectInputs.widthValue : widthMm.toFixed(1)}
                       onChange={(e) => {
                         const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
