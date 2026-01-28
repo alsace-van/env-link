@@ -1,9 +1,13 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.55b
+// VERSION: 7.55g
 // ============================================
 //
+// CHANGELOG v7.55g (28/01/2026):
+// - FEATURE: Cotation automatique des cercles (rayon)
+// - FIX: TAB dans inputs rectangle - ajout e.stopPropagation()
+// - FEATURE: Double-clic sur cotation cercle pour modifier le rayon
 // CHANGELOG v7.55f (28/01/2026):
 // - FEATURE: Mesures liées aux géométries
 //   - Les points de mesure snappés sur des géométries suivent lors des déplacements
@@ -1096,7 +1100,8 @@ export function CADGabaritCanvas({
   });
 
   // MOD v7.31: Cotations automatiques lors de la création de géométries
-  const { addRectangleDimensions, addLineDimension } = useAutoDimensions({
+  // v7.55g: Ajout addCircleDimension pour les cercles
+  const { addRectangleDimensions, addLineDimension, addCircleDimension } = useAutoDimensions({
     enabled: autoDimensionsEnabled,
     sketchRef,
   });
@@ -11257,6 +11262,15 @@ export function CADGabaritCanvas({
             // Créer les intersections avec les segments existants (coupe le cercle en arcs si nécessaire)
             createCircleIntersections(circle.id, center, center.id, radius, currentSketch.activeLayerId, newSketch);
 
+            // v7.55g: Ajouter cotation automatique du rayon
+            const circleDimResult = addCircleDimension(circle.id, center.id, radius, newSketch);
+            if (circleDimResult) {
+              newSketch.dimensions = new Map(newSketch.dimensions || currentSketch.dimensions);
+              newSketch.constraints = new Map(newSketch.constraints || currentSketch.constraints);
+              newSketch.dimensions.set(circleDimResult.dimension.id, circleDimResult.dimension);
+              newSketch.constraints.set(circleDimResult.constraint.id, circleDimResult.constraint);
+            }
+
             setSketch(newSketch);
             // NE PAS appeler solveSketch - évite de "corriger" les contraintes
             // solveSketch(newSketch);
@@ -13463,6 +13477,39 @@ export function CADGabaritCanvas({
             }
 
             return { dimensionId: dimId, entityId: foundLineId, type: "line", value: dimension.value };
+          }
+        }
+        
+        // v7.55g: Gérer les dimensions de type "radius" pour les cercles
+        if (dimension.type === "radius" || dimension.type === "diameter") {
+          if (dimension.entities.length < 1) continue;
+          
+          const circleId = dimension.entities[0];
+          const circle = currentSketch.geometries.get(circleId) as CircleType | undefined;
+          if (!circle || circle.type !== "circle") continue;
+          
+          const center = currentSketch.points.get(circle.center);
+          if (!center) continue;
+          
+          const radius = circle.radius;
+          const ang = Math.PI / 4; // 45° - même angle que dans drawRadialDimension
+          
+          // Position du texte (comme dans drawRadialDimension)
+          const textWorldX = center.x + Math.cos(ang) * radius + 5 / viewport.scale;
+          const textWorldY = center.y + Math.sin(ang) * radius;
+          const textScreenX = textWorldX * viewport.scale + viewport.offsetX;
+          const textScreenY = textWorldY * viewport.scale + viewport.offsetY;
+          
+          // Zone de hit pour la cotation
+          const hitWidth = 70;
+          const hitHeight = 25;
+          if (
+            screenX >= textScreenX - hitWidth / 2 &&
+            screenX <= textScreenX + hitWidth / 2 &&
+            screenY >= textScreenY - hitHeight / 2 &&
+            screenY <= textScreenY + hitHeight / 2
+          ) {
+            return { dimensionId: dimId, entityId: circleId, type: "circle", value: dimension.value };
           }
         }
       }
@@ -20237,6 +20284,8 @@ export function CADGabaritCanvas({
                         e.target.select();
                       }}
                       onKeyDown={(e) => {
+                        // v7.55g: Ajout stopPropagation pour éviter que TAB aille dans la toolbar
+                        e.stopPropagation();
                         if (e.key === "Tab") {
                           e.preventDefault();
                           setRectInputs((prev) => ({ ...prev, activeField: "height" }));
@@ -20294,6 +20343,8 @@ export function CADGabaritCanvas({
                         e.target.select();
                       }}
                       onKeyDown={(e) => {
+                        // v7.55g: Ajout stopPropagation pour éviter que TAB aille dans la toolbar
+                        e.stopPropagation();
                         if (e.key === "Tab") {
                           e.preventDefault();
                           setRectInputs((prev) => ({ ...prev, activeField: "width" }));
