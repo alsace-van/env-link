@@ -2,9 +2,11 @@
 // HOOK: useCADAutoBackup
 // Sauvegarde automatique du canvas CAD sur Supabase
 // Protection contre les pertes de données spontanées
-// VERSION: 1.5 - Compression images + fallback localStorage + indicateurs erreur
+// VERSION: 1.6 - Fix notification répétitive backup ignoré
 // ============================================
 // CHANGELOG:
+// v1.6 - Fix: le message "Sauvegarde automatique ignorée" n'apparaît plus qu'une fois
+//      - Stocke le timestamp du backup ignoré pour ne pas réafficher le message
 // v1.5 - Compression auto images >500KB, fallback localStorage, indicateurs d'erreur UI
 //      - minGeometryCount = 0 par défaut (sauvegarder dès qu'il y a des images)
 //      - Nouveaux états: hasError, consecutiveFailures, lastError, isSupabaseDown
@@ -717,6 +719,10 @@ export function useCADAutoBackup(
           isSupabaseDown: false,
         }));
 
+        // v1.6: Effacer le flag "backup ignoré" car on a un nouveau backup
+        const ignoredBackupKey = `cad_ignored_backup_${templateId || "default"}`;
+        localStorage.removeItem(ignoredBackupKey);
+
         console.log(
           `[AutoBackup] ✓ Saved: ${geometryCount} geometries, ${pointCount} points, ${imageCount} images, ${calibrationPointCount} calib points`,
         );
@@ -1078,11 +1084,26 @@ export function useCADAutoBackup(
 
         // Ignorer les backups trop vieux (sauf localStorage qui peut être plus récent)
         if (ageHours > 24 && source !== "localStorage") {
+          // v7.55h: Vérifier si on a déjà ignoré ce backup spécifique (basé sur son timestamp)
+          const ignoredBackupKey = `cad_ignored_backup_${templateId || "default"}`;
+          const ignoredBackupTimestamp = localStorage.getItem(ignoredBackupKey);
+          const backupTimestamp = new Date(backup.created_at).getTime().toString();
+          
+          if (ignoredBackupTimestamp === backupTimestamp) {
+            // On a déjà affiché le message pour ce backup, ne pas le réafficher
+            console.log(`[AutoBackup] Backup already ignored (${ageHours.toFixed(1)}h), skipping notification`);
+            setState((prev) => ({ ...prev, hasRestoredThisSession: true }));
+            return;
+          }
+          
           console.log(`[AutoBackup] Backup too old (${ageHours.toFixed(1)}h), skipping auto-restore`);
           toast.info("Sauvegarde automatique ignorée", {
             description: `La sauvegarde date de ${Math.round(ageHours)}h. Utilisez le menu pour restaurer manuellement.`,
             duration: 8000,
           });
+          
+          // Marquer ce backup comme ignoré pour ne plus afficher le message
+          localStorage.setItem(ignoredBackupKey, backupTimestamp);
           localStorage.setItem(restoreKey, Date.now().toString());
           setState((prev) => ({ ...prev, hasRestoredThisSession: true }));
           return;
