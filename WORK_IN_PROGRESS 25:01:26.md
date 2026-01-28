@@ -1,354 +1,101 @@
-# 📋 WORK IN PROGRESS - Van Project Buddy
+# WORK IN PROGRESS - Van Project Buddy
 
-**Dernière mise à jour:** 2025-01-28
+## 📅 Dernière mise à jour: 2025-01-28 23:50
 
 ---
 
-## ✅ Tâches terminées
+## ✅ TÂCHE TERMINÉE: PlumbingCanvas v1.0e - Intégration complète
 
-### 2025-01-28 - Sauvegarde projet persistante v7.55i
+### Statut actuel
+- ✅ **Catalogue fonctionne**: 69 articles chargés depuis `accessories_catalog`
+- ✅ **Devis fonctionne**: 64 items chargés depuis `project_expenses`
+- ✅ **Table Supabase créée**: `plumbing_schemas`
+- ✅ **Intégration UI**: Onglet "Circuit eau" dans ProjectDetail
 
-**Problèmes résolus:**
-1. **Cercle sans cotation** - Les cercles n'avaient pas de cotation automatique du rayon
-2. **TAB dans rectangle** - Quand on appuyait sur TAB pour passer de largeur à hauteur, le focus allait dans la toolbar
-3. **Cotations orphelines** - Quand on supprimait une figure, les cotations restaient affichées
-4. **Notification backup répétitive** - Le message "Sauvegarde automatique ignorée" apparaissait à chaque rechargement
-5. **Perte de données au rechargement** - Le gabarit n'était pas persistant contrairement au schéma électrique
+### Fichiers créés
+```
+src/components/plumbing/
+├── types.ts                    # Types, constantes, éléments prédéfinis
+├── usePlumbingState.ts         # Hook gestion état nodes/edges + historique
+├── usePlumbingSave.ts          # v1.0a - Hook sauvegarde (fix 406)
+├── usePlumbingCatalog.ts       # v1.0e - Hook catalogue/devis
+├── PlumbingNode.tsx            # Composant node ReactFlow
+├── PlumbingEdge.tsx            # Composant edge (tuyaux/câbles)
+├── PlumbingToolbar.tsx         # Barre d'outils
+├── PlumbingPropertiesPanel.tsx # Panneau propriétés
+├── PlumbingCanvas.tsx          # Composant principal
+└── index.ts                    # Exports
 
-**Solutions:**
-
-**1. Cotation automatique des cercles:**
-- Ajout de `addCircleDimension()` dans `useAutoDimensions.ts` v1.3
-- Crée une dimension de type "radius" avec contrainte associée
-- Appel lors de la création du cercle dans `CADGabaritCanvas.tsx`
-
-**2. Fix TAB rectangle:**
-- Ajout de `e.stopPropagation()` dans les handlers `onKeyDown` des inputs largeur/hauteur
-- Empêche l'événement de se propager au navigateur
-- Ajout `autoFocus` sur l'input largeur
-
-**3. Modification de la cotation du cercle:**
-- Extension de `findDimensionAtScreenPos()` pour gérer les dimensions "radius"
-- Double-clic sur la cotation du cercle → input inline pour modifier le rayon
-- Le rayon est mis à jour en temps réel ainsi que la dimension
-
-**4. Fix suppression des cotations (v7.55h):**
-- Dans `deleteSelectedEntities()`, ajout de la copie des dimensions
-- Après suppression des figures, parcours des dimensions pour supprimer les orphelines
-- Suppression automatique des contraintes associées
-
-**5. Fix notification backup ignoré (useCADAutoBackup v1.6):**
-- Stocke le timestamp du backup ignoré dans localStorage
-- Ne réaffiche le message que si c'est un backup différent
-- Efface le flag quand un nouveau backup est créé avec succès
-
-**6. Sauvegarde projet persistante (v7.55i):**
-- Nouveau hook `useCADProjectSave.ts` v1.0
-- Table Supabase `cad_project_sketches` (à créer manuellement)
-- Chargement automatique au montage si projectId fourni
-- Auto-save 3s après modification
-- Sauvegarde avant fermeture de page
-- Fallback localStorage si Supabase échoue
-- Menu Fichier > "Sauvegarder projet" visible quand projectId présent
-
-**Fichiers modifiés:**
-- `useAutoDimensions.ts` v1.2 → v1.3: Ajout `addCircleDimension()`
-- `CADGabaritCanvas.tsx` v7.55f → v7.55i: 
-  - Cotation auto cercle
-  - Fix TAB inputs
-  - Focus auto input largeur
-  - Support radius dans findDimensionAtScreenPos
-  - Suppression des dimensions orphelines
-  - Intégration useCADProjectSave
-  - Prop projectId
-- `useCADAutoBackup.ts` v1.5 → v1.6:
-  - Fix notification répétitive backup ignoré
-- `useCADProjectSave.ts` v1.0: NOUVEAU
-  - Sauvegarde/chargement persistant par projet
-- `ProjectDetail.tsx`:
-  - Passe projectId au CADGabaritCanvas
-
-**SQL à exécuter dans Supabase:**
-```sql
--- Table pour les sketches CAD liés aux projets
-CREATE TABLE cad_project_sketches (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  sketch_data JSONB NOT NULL DEFAULT '{}',
-  background_images JSONB DEFAULT '[]',
-  marker_links JSONB DEFAULT '[]',
-  geometry_count INTEGER DEFAULT 0,
-  point_count INTEGER DEFAULT 0,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(project_id)
-);
-
--- Index et RLS
-CREATE INDEX idx_cad_project_sketches_project ON cad_project_sketches(project_id);
-ALTER TABLE cad_project_sketches ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view own sketches" ON cad_project_sketches
-  FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can insert own sketches" ON cad_project_sketches
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Users can update own sketches" ON cad_project_sketches
-  FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY "Users can delete own sketches" ON cad_project_sketches
-  FOR DELETE USING (auth.uid() = user_id);
+sql/
+└── plumbing_schemas.sql        # Table Supabase ✅ EXÉCUTÉ
 ```
 
----
-
-### 2025-01-25 - FIX coordonnées avec skewX v1.2.2
-
-**Problème:** Après correction de perspective, les points de mesure "décrochaient" - décalage entre le clic et l'emplacement du point.
-
-**Cause:** Les fonctions de conversion de coordonnées (écran ↔ image) ne prenaient pas en compte le skewX.
-
-**Solution:** Mettre à jour toutes les fonctions de conversion :
-1. `screenToImage()` - conversion clic → coordonnées image (avec rotation inverse + skewX)
-2. `imageToScreenWithRotation()` - conversion coordonnées image → écran (avec skewX)
-3. Conversion des marqueurs ArUco (avec skewX)
-4. Conversion du point en attente (pendingMeasurePoint) (avec skewX)
-
-**Formule appliquée:**
-```javascript
-// Image → Screen : le stretchX local dépend de la position Y
-const yRel = imgY / imgHeight; // 0 = haut, 1 = bas
-const localStretchX = stretchX * (1 + skewX * (yRel - 0.5));
-
-// Screen → Image : calculer Y d'abord, puis utiliser le skewX pour X
-const imgY = (unrotatedY / (scale * stretchY)) + imgHeight / 2;
-const yRel = imgY / imgHeight;
-const localStretchX = stretchX * (1 + skewX * (yRel - 0.5));
-const imgX = (unrotatedX / (scale * localStretchX)) + imgWidth / 2;
+### Fichiers modifiés
+```
+src/pages/ProjectDetail.tsx     # v3.9 - Ajout onglet "Circuit eau"
 ```
 
-**Fichier modifié:** `PhotoPreviewEditor.tsx` v1.2.1 → v1.2.2
+### Historique debug catalogue/devis
 
----
+#### Problème initial
+- La table `project_accessories` n'existe pas
+- Le champ `accessory_id` est NULL pour toutes les lignes dans `project_expenses`
 
-### 2025-01-25 - Vraie correction de perspective v1.2.1
-
-**Problème:** La v1.2.0 appliquait un étirement uniforme (stretchX identique sur toute l'image), mais pour corriger un trapèze il faut un étirement différentiel.
-
-**Solution:** Dessiner l'image par bandes horizontales, chaque bande ayant un étirement X différent basé sur sa position Y.
-
-**Principe:**
-```
-skewX > 0 : le bas est plus large que le haut
-skewX < 0 : le haut est plus large que le bas
-
-Pour une position Y (0=haut, 1=bas):
-localStretchX = stretchX * (1 + skewX * (yRel - 0.5))
+#### Solution (v1.0e)
+Utiliser `project_expenses` avec `nom_accessoire` au lieu d'une jointure sur `accessory_id`:
+```typescript
+const { data, error } = await supabase
+  .from("project_expenses")
+  .select("id, nom_accessoire, description, quantite, prix_vente_ttc, prix_unitaire")
+  .eq("project_id", projectId)
+  .not("nom_accessoire", "is", null);
 ```
 
-**Algorithme de calcul du skewX:**
-1. Prendre 2 mesures horizontales avec valeurs cibles
-2. Trier par position Y (haut → bas)
-3. Calculer skewX pour que les deux mesures deviennent égales après correction:
-   ```javascript
-   coefSkew = topMeasured * (topY - 0.5) - bottomMeasured * (bottomY - 0.5)
-   skewX = (bottomMeasured - topMeasured) / coefSkew
-   ```
-4. Ajuster stretchX pour atteindre la valeur cible moyenne
-
-**Fichiers modifiés:**
-- `PhotoPreviewEditor.tsx` v1.2.1: Rendu par bandes + nouvel algorithme correction
-- `usePhotoPreparation.ts` v1.2.1: Export avec skewX par bandes
-
----
-
-### 2025-01-25 - Correction de perspective v1.2.0
-
-**Fonctionnalité:** Corriger la déformation trapézoïdale des photos en utilisant les mesures existantes.
-
-**Principe:**
-1. Placer 2 mesures sur des longueurs qui devraient être identiques en réalité
-2. Entrer la valeur réelle dans le champ "Réel" de chaque mesure
-3. Cliquer sur "Corriger perspective" → l'étirement X/Y est ajusté automatiquement
-
-**Fichiers modifiés:**
-- `types.ts` v1.2.0: 
-  - `Measurement.targetValueMm` (valeur cible)
-  - `PhotoToProcess.skewX/skewY` (prêt pour correction avancée)
-  - Actions `SET_SKEW`, `SET_MEASUREMENT_TARGET`
-- `usePhotoPreparation.ts` v1.2.0: setSkew, setMeasurementTarget
-- `PhotoPreviewEditor.tsx` v1.2.0: UI mesures avec input, bouton corriger
-- `PhotoPreparationModal.tsx` v1.2.0: passage des nouvelles props
-
-**Algorithme de correction:**
-```javascript
-// Pour chaque mesure avec valeur cible:
-ratio = targetValueMm / measuredValueMm
-
-// Si mesure horizontale (dx > dy*2) → correction X
-// Si mesure verticale (dy > dx*2) → correction Y
-// Si diagonale → correction X et Y
-
-stretchX *= avgRatioX
-stretchY *= avgRatioY
+#### Résultat console
+```
+[PlumbingCatalog v1.0e] 69 articles catalogue chargés
+[PlumbingCatalog v1.0e] project_expenses trouvés: 64
+[PlumbingCatalog v1.0e] QuoteItems finaux: 64
 ```
 
----
+### Spécifications techniques
 
-### 2025-01-25 - Grille de taille fixe (PhotoPreviewEditor v1.1.3)
+#### Connexions eau (traits ÉPAIS 6px)
+- Eau froide: `#60A5FA` (bleu clair)
+- Eau chaude: `#F87171` (rouge clair)
+- Eau usée: `#9CA3AF` (gris clair)
 
-**Problème:** Les cases de la grille grandissaient au fur et à mesure qu'on tournait l'image.
+#### Connexions électriques (traits fins 2px)
+- 12V +: `#DC2626` (rouge)
+- 12V -: `#171717` (noir)
+- 230V Phase L: `#92400E` (marron)
+- 230V Neutre N: `#1D4ED8` (bleu)
+- 230V Terre PE: `#84CC16` (jaune/vert)
 
-**Cause:** La grille était basée sur le **bounding box** (rectangle englobant) qui change de taille selon l'angle. Une image rectangulaire tournée à 45° a un bounding box carré plus grand.
-
-**Solution:** Baser la grille sur les dimensions de l'image stretchée (`stretchedWidth × stretchedHeight`) au lieu du bounding box, et la centrer sur le centre de l'image:
-```javascript
-const gridWidth = stretchedWidth * scale;  // Taille fixe
-const gridHeight = stretchedHeight * scale;
-const gridLeft = centerX - gridWidth / 2;  // Centré sur l'image
-const gridTop = centerY - gridHeight / 2;
-```
-
-**Fichier modifié:** `PhotoPreviewEditor.tsx` v1.1.2 → v1.1.3
-
----
-
-### 2025-01-25 - Grille fixe pour alignement (PhotoPreviewEditor v1.1.2)
-
-**Demande:** La grille doit rester horizontale/verticale pendant que l'image tourne, pour servir de référence d'alignement.
-
-**Solution:** Déplacer le code de dessin de la grille hors du contexte rotaté (`ctx.restore()` avant de dessiner la grille). La grille est maintenant basée sur le bounding box (qui reste fixe) au lieu de l'image (qui tourne).
-
-**Fichier modifié:** `PhotoPreviewEditor.tsx` v1.1.1 → v1.1.2
-
----
-
-### 2025-01-25 - Fix centre de rotation (PhotoPreviewEditor v1.1.1)
-
-**Problème:** Quand on utilisait le slider de rotation, le centre de l'image se déplaçait au fur et à mesure.
-
-**Cause:** Le bounding box de l'image change de taille selon l'angle de rotation, mais le viewport (offsetX, offsetY) restait fixe. Le centre visuel se déplaçait donc.
-
-**Solution:** Ajouter un useEffect qui compense le changement de bounding box en ajustant le viewport pour garder le centre de l'image au même endroit:
-```javascript
-// Quand la rotation change, recalculer les offsets
-const centerX = offsetX + (oldBoundingWidth * scale) / 2;
-const centerY = offsetY + (oldBoundingHeight * scale) / 2;
-// Nouveaux offsets pour garder le même centre
-offsetX = centerX - (newBoundingWidth * scale) / 2;
-offsetY = centerY - (newBoundingHeight * scale) / 2;
-```
-
-**Fichier modifié:** `PhotoPreviewEditor.tsx` v1.1.0 → v1.1.1
+### Features implémentées
+- ✅ Drag & drop éléments prédéfinis
+- ✅ Connexions automatiques eau/électrique
+- ✅ Panneau propriétés éditable
+- ✅ Calculs automatiques (capacité totale, puissance)
+- ✅ Import depuis catalogue Supabase
+- ✅ Export vers devis projet
+- ✅ Sauvegarde auto (3s debounce)
+- ✅ Historique undo/redo
+- ✅ Export JSON
+- ✅ Raccourcis clavier (Ctrl+S, Ctrl+Z, Ctrl+D, Delete)
+- ✅ Intégration dans ProjectDetail.tsx (onglet "Circuit eau")
 
 ---
 
-### 2025-01-25 - Rotation libre + Grille de cadrage (v1.1.0)
+## 📝 Notes contexte
 
-**Nouvelles fonctionnalités:**
-1. **Rotation libre** (-180° à +180°)
-   - Slider pour rotation continue
-   - Input numérique pour valeur précise
-   - Boutons d'incrément: ±0.1°, ±1°, ±90°
-   - Bouton reset (remettre à 0°)
-   - L'export tient compte de la rotation avec calcul du bounding box
+### Structure base de données
+- `accessories_catalog`: 69 articles (pompes, vannes, réservoirs...)
+- `project_expenses`: 179 lignes mixtes (accessoires + transactions bancaires)
+  - Accessoires identifiés par `nom_accessoire` non NULL
+  - `accessory_id` toujours NULL (pas de liaison FK)
 
-2. **Grille de cadrage**
-   - Sélecteur avec 5 options: Aucune, Règle des tiers, Grille 6×6, Croix centrale, Diagonales
-   - Affichée sur l'image avec la rotation appliquée
-   - Points d'intersection visibles pour la règle des tiers
-
-**Fichiers modifiés:**
-- `types.ts` v1.1.0: `rotation: number` (au lieu de 0|90|180|270), ajout `GridOverlayType`
-- `usePhotoPreparation.ts` v1.1.0: Actions SET_ROTATION, prepareForExport avec rotation libre
-- `PhotoPreviewEditor.tsx` v1.1.0: UI rotation, grille, rendu canvas avec rotation
-- `PhotoPreparationModal.tsx` v1.1.0: Passage de setRotation au composant
-
----
-
-### 2025-01-25 - Fix Stretch non pris en compte (usePhotoPreparation v1.0.2)
-
-**Problème:** Quand on étirait une photo dans la modale de préparation (ex: de 945mm à 925mm) et qu'on l'importait dans le canvas, l'étirement n'était pas pris en compte.
-
-**Cause:** Dans `prepareForExport()`, le `scale` retourné était le scale ArUco **original**.
-
-**Solution:** Calculer le `scale` directement à partir des dimensions réelles du canvas exporté.
-
----
-
-### 2025-01-25 - Fix Import Photos Préparées (v7.55a)
-
-**Problème:** Images ~2.5× plus petites que prévu après import.
-
-**Cause:** Coordonnées et scale non multipliés par `sketch.scaleFactor`.
-
-**Solution:** Multiplier x, y, scale par `sketch.scaleFactor` dans handleImportPreparedPhotos.
-
----
-
-## 🔄 Tâches en cours
-
-*(Aucune)*
-
----
-
-## 📝 Notes contextuelles
-
-### Système de préparation photo (v1.2.2)
-
-```
-src/components/cad-gabarit/photo-preparation/
-├── PhotoPreparationModal.tsx  # v1.2.0 - Modale principale
-├── PhotoGridView.tsx          # Vue grille + détection doublons
-├── PhotoPreviewEditor.tsx     # v1.2.2 - Rotation + grille + correction perspective + FIX coords
-├── StretchHandles.tsx         # Poignées d'étirement
-├── usePhotoPreparation.ts     # v1.2.1 - Hook principal (export avec skewX)
-├── useArucoDetection.ts       # Détection markers ArUco
-├── useDuplicateDetection.ts   # Détection doublons par hash
-├── types.ts                   # v1.2.0 - Types (targetValueMm, skewX/Y)
-└── REFACTORING_PHOTO_PREPARATION.md
-```
-
-### Formules de rotation
-
-Pour une rotation libre, le bounding box change:
-```javascript
-const radians = (rotation * Math.PI) / 180;
-const cos = Math.abs(Math.cos(radians));
-const sin = Math.abs(Math.sin(radians));
-const boundingWidth = width * cos + height * sin;
-const boundingHeight = width * sin + height * cos;
-```
-
-### Correction de perspective (v1.2.1)
-
-La correction de perspective utilise un cisaillement (skewX) pour corriger les trapèzes:
-
-```javascript
-// skewX > 0 : le bas est plus large que le haut
-// skewX < 0 : le haut est plus large que le bas
-
-// L'étirement varie linéairement selon Y:
-// yRel = y / height (0 = haut, 1 = bas)
-localStretchX = stretchX * (1 + skewX * (yRel - 0.5))
-
-// Exemples avec skewX = 0.1, stretchX = 1.0:
-// - En haut (y=0): localStretchX = 1.0 * (1 + 0.1 * -0.5) = 0.95
-// - Au milieu (y=0.5): localStretchX = 1.0 * (1 + 0.1 * 0) = 1.0
-// - En bas (y=1): localStretchX = 1.0 * (1 + 0.1 * 0.5) = 1.05
-```
-
-L'image est dessinée par bandes horizontales (80 en preview, 100 à l'export), chaque bande avec son propre étirement.
-
-**Calcul automatique du skewX depuis 2 mesures:**
-```javascript
-// Avec 2 mesures horizontales à positions Y différentes:
-coefSkew = topMeasured * (topY - 0.5) - bottomMeasured * (bottomY - 0.5)
-skewX = (bottomMeasured - topMeasured) / coefSkew
-```
-
----
-
-## 🔗 Fichiers liés
-
-- `REFACTORING_PHOTO_PREPARATION.md` - Documentation du refactoring photo
-- `CLAUDE_INSTRUCTIONS.md` - Règles de développement
+### Architecture similaire à TechnicalCanvas
+- Utilise ReactFlow pour le canvas
+- Sauvegarde par projet avec `project_id`
+- Fallback localStorage si Supabase échoue 
