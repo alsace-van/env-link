@@ -1,10 +1,41 @@
 # 📋 WORK IN PROGRESS - Van Project Buddy
 
-**Dernière mise à jour:** 2025-01-25
+**Dernière mise à jour:** 2025-01-28
 
 ---
 
 ## ✅ Tâches terminées
+
+### 2025-01-28 - Cotation cercle + Fix TAB rectangle v7.55g
+
+**Problèmes résolus:**
+1. **Cercle sans cotation** - Les cercles n'avaient pas de cotation automatique du rayon
+2. **TAB dans rectangle** - Quand on appuyait sur TAB pour passer de largeur à hauteur, le focus allait dans la toolbar
+
+**Solutions:**
+
+**1. Cotation automatique des cercles:**
+- Ajout de `addCircleDimension()` dans `useAutoDimensions.ts` v1.3
+- Crée une dimension de type "radius" avec contrainte associée
+- Appel lors de la création du cercle dans `CADGabaritCanvas.tsx`
+
+**2. Fix TAB rectangle:**
+- Ajout de `e.stopPropagation()` dans les handlers `onKeyDown` des inputs largeur/hauteur
+- Empêche l'événement de se propager au navigateur
+
+**3. Modification de la cotation du cercle:**
+- Extension de `findDimensionAtScreenPos()` pour gérer les dimensions "radius"
+- Double-clic sur la cotation du cercle → input inline pour modifier le rayon
+- Le rayon est mis à jour en temps réel ainsi que la dimension
+
+**Fichiers modifiés:**
+- `useAutoDimensions.ts` v1.2 → v1.3: Ajout `addCircleDimension()`
+- `CADGabaritCanvas.tsx` v7.55f → v7.55g: 
+  - Cotation auto cercle
+  - Fix TAB inputs
+  - Support radius dans findDimensionAtScreenPos
+
+---
 
 ### 2025-01-25 - FIX coordonnées avec skewX v1.2.2
 
