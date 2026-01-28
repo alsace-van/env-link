@@ -1,16 +1,17 @@
 // ============================================
 // HOOK: useAutoDimensions
 // Cotations automatiques lors de la création de géométries
-// VERSION: 1.2
+// VERSION: 1.3
 // ============================================
 // CHANGELOG:
+// v1.3 - Ajout addCircleDimension pour cotation rayon des cercles
 // v1.2 - Fix: création de contraintes associées pour rendre les cotations interactives
 // v1.1 - Fix: passer le sketch en paramètre pour utiliser le bon contexte
 // v1.0 - Cotations automatiques pour rectangles et lignes
 // ============================================
 
 import { useCallback, useRef } from "react";
-import type { Sketch, Dimension, Constraint, Point, Line, Rectangle } from "./types";
+import type { Sketch, Dimension, Constraint, Point, Line, Rectangle, Circle } from "./types";
 import { generateId, distance } from "./types";
 
 interface UseAutoDimensionsOptions {
@@ -196,6 +197,63 @@ export function useAutoDimensions({ enabled, sketchRef }: UseAutoDimensionsOptio
   }, []);
 
   /**
+   * Ajouter une cotation de rayon pour un cercle
+   * v1.3: Nouvelle fonction pour coter les cercles
+   */
+  const addCircleDimension = useCallback(
+    (circleId: string, centerId: string, radius: number, sketchOverride?: Sketch): DimensionWithConstraint | null => {
+      if (!enabled) return null;
+
+      // Éviter les doublons
+      if (dimensionedGeometriesRef.current.has(circleId)) {
+        return null;
+      }
+      dimensionedGeometriesRef.current.add(circleId);
+
+      const sketch = sketchOverride || sketchRef.current;
+      const center = sketch.points.get(centerId);
+      if (!center) {
+        console.warn("[AutoDimensions] Centre du cercle non trouvé:", centerId);
+        return null;
+      }
+
+      // Calculer le rayon en mm
+      const radiusMm = radius / sketch.scaleFactor;
+
+      // Position du texte de la cotation (à 45° du centre)
+      const ang = Math.PI / 4; // 45°
+      const position = {
+        x: center.x + Math.cos(ang) * radius + 10 / sketch.scaleFactor,
+        y: center.y + Math.sin(ang) * radius,
+      };
+
+      // Créer la contrainte de rayon (pour l'interactivité)
+      const constraint: Constraint = {
+        id: generateId(),
+        type: "radius",
+        entities: [circleId],
+        value: radius, // En px
+        driving: true,
+      };
+
+      // Créer la dimension de rayon
+      const dimension: Dimension = {
+        id: generateId(),
+        type: "radius",
+        entities: [circleId], // L'entité est le cercle lui-même
+        value: radiusMm,
+        position,
+        constraintId: constraint.id,
+      };
+
+      console.log("[AutoDimensions] Dimension cercle créée: R", radiusMm.toFixed(2), "mm");
+
+      return { dimension, constraint };
+    },
+    [enabled, sketchRef],
+  );
+
+  /**
    * Réinitialiser le suivi des géométries cotées
    */
   const reset = useCallback(() => {
@@ -205,6 +263,7 @@ export function useAutoDimensions({ enabled, sketchRef }: UseAutoDimensionsOptio
   return {
     addRectangleDimensions,
     addLineDimension,
+    addCircleDimension,
     removeDimensionsForGeometry,
     reset,
     createLinearDimension,
