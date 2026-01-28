@@ -1,12 +1,16 @@
 // ============================================
 // COMPOSANT: CADGabaritCanvas
 // Canvas CAO professionnel pour gabarits CNC
-// VERSION: 7.55g
+// VERSION: 7.55h
 // ============================================
 //
+// CHANGELOG v7.55h (28/01/2026):
+// - FIX: Suppression des cotations quand on supprime une figure
+// - Les dimensions orphelines sont automatiquement nettoyées
 // CHANGELOG v7.55g (28/01/2026):
 // - FEATURE: Cotation automatique des cercles (rayon)
 // - FIX: TAB dans inputs rectangle - ajout e.stopPropagation()
+// - FIX: Focus auto sur input largeur rectangle (autoFocus + RAF)
 // - FEATURE: Double-clic sur cotation cercle pour modifier le rayon
 // CHANGELOG v7.55f (28/01/2026):
 // - FEATURE: Mesures liées aux géométries
@@ -9237,6 +9241,17 @@ export function CADGabaritCanvas({
       const inputWidth = parseFloat(widthStr.replace(",", "."));
       const inputHeight = parseFloat(heightStr.replace(",", "."));
 
+      // v7.55g DEBUG: Log des valeurs pour diagnostic
+      console.log("[v7.55g DEBUG] Rectangle creation:", {
+        widthStr,
+        heightStr,
+        inputWidth,
+        inputHeight,
+        scaleFactor: currentSketch.scaleFactor,
+        widthPx: inputWidth * currentSketch.scaleFactor,
+        heightPx: inputHeight * currentSketch.scaleFactor,
+      });
+
       if (!isNaN(inputWidth) && inputWidth > 0) {
         width = inputWidth * currentSketch.scaleFactor; // Convertir mm en px
       } else if (cursorPos) {
@@ -13741,6 +13756,7 @@ export function CADGabaritCanvas({
     newSketch.points = new Map(sketch.points);
     newSketch.geometries = new Map(sketch.geometries);
     newSketch.constraints = new Map(sketch.constraints);
+    newSketch.dimensions = new Map(sketch.dimensions); // v7.55h: Copier aussi les dimensions
 
     // Traiter chaque entité sélectionnée
     selectedEntities.forEach((id) => {
@@ -13864,6 +13880,32 @@ export function CADGabaritCanvas({
       }
     });
     orphanPoints.forEach((id) => newSketch.points.delete(id));
+
+    // v7.55h: Supprimer les dimensions orphelines (dont les entités ont été supprimées)
+    const dimensionsToDelete: string[] = [];
+    newSketch.dimensions.forEach((dim, dimId) => {
+      // Vérifier si toutes les entités de la dimension existent encore
+      const allEntitiesExist = dim.entities.every((entityId) => {
+        // L'entité peut être un point, une géométrie, ou un cercle
+        return (
+          newSketch.points.has(entityId) ||
+          newSketch.geometries.has(entityId)
+        );
+      });
+      
+      if (!allEntitiesExist) {
+        dimensionsToDelete.push(dimId);
+        // Supprimer aussi la contrainte associée si elle existe
+        if (dim.constraintId) {
+          newSketch.constraints.delete(dim.constraintId);
+        }
+      }
+    });
+    dimensionsToDelete.forEach((id) => newSketch.dimensions.delete(id));
+    
+    if (dimensionsToDelete.length > 0) {
+      console.log("[v7.55h] Dimensions supprimées:", dimensionsToDelete.length);
+    }
 
     setSketch(newSketch);
     setSelectedEntities(new Set());
