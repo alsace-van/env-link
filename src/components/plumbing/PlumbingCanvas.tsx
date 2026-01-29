@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingCanvas
 // Schéma circuit d'eau interactif avec ReactFlow
-// VERSION: 1.2 - Fix modal et Popover en fullscreen
+// VERSION: 1.3 - Menu contextuel, dérivations, regroupement câbles
 // ============================================
 
 import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
@@ -23,8 +23,13 @@ import {
   PlumbingNodeType,
   PlumbingEdgeType,
   PlumbingBlockData,
+  PlumbingEdgeData,
   CATEGORY_COLORS,
   WATER_COLORS,
+  ELECTRICAL_CONNECTOR_COLORS,
+  ElectricalConnectorType,
+  WaterType,
+  ConnectorConfig,
   calculateTotalCapacity,
   calculateTotalPower,
   countFittings,
@@ -38,6 +43,7 @@ import PlumbingNodeComponent from "./PlumbingNode";
 import PlumbingEdgeComponent from "./PlumbingEdge";
 import { PlumbingToolbar } from "./PlumbingToolbar";
 import { PlumbingPropertiesPanel } from "./PlumbingPropertiesPanel";
+import { PlumbingContextMenu, ContextMenuType } from "./PlumbingContextMenu";
 
 import { Badge } from "@/components/ui/badge";
 import { Droplets, Zap, Package } from "lucide-react";
@@ -118,6 +124,19 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
   const [showProperties, setShowProperties] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // État du menu contextuel
+  const [contextMenu, setContextMenu] = useState<{
+    type: ContextMenuType;
+    position: { x: number; y: number };
+    edgeId?: string;
+    nodeId?: string;
+    flowPosition?: { x: number; y: number };
+  } | null>(null);
+
+  // Générer un ID unique
+  const generateId = useCallback(() => `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, []);
+  const generateEdgeId = useCallback(() => `edge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, []);
 
   // Gestion plein écran
   const toggleFullscreen = useCallback(() => {
@@ -254,6 +273,301 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
     [setSelectedNodes, setSelectedEdges]
   );
 
+  // ============================================
+  // MENU CONTEXTUEL - Handlers
+  // ============================================
+
+  // Clic droit sur un edge
+  const handleEdgeContextMenu = useCallback(
+    (event: React.MouseEvent, edge: PlumbingEdgeType) => {
+      event.preventDefault();
+      event.stopPropagation();
+      
+      const flowPosition = reactFlowInstance.screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+
+      setContextMenu({
+        type: edge.data?.isGrouped ? "grouped-edge" : "edge",
+        position: { x: event.clientX, y: event.clientY },
+        edgeId: edge.id,
+        flowPosition,
+      });
+    },
+    [reactFlowInstance]
+  );
+
+  // Clic droit sur un nœud (pour les jonctions)
+  const handleNodeContextMenu = useCallback(
+    (event: React.MouseEvent, node: PlumbingNodeType) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const isJunction = node.data.label?.startsWith("Jonction");
+      
+      if (isJunction) {
+        setContextMenu({
+          type: "junction",
+          position: { x: event.clientX, y: event.clientY },
+          nodeId: node.id,
+        });
+      }
+    },
+    []
+  );
+
+  // Fermer le menu contextuel
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
+  // Ajouter un point de dérivation
+  const handleAddDerivation = useCallback(
+    (connectorType: ElectricalConnectorType | WaterType) => {
+      if (!contextMenu?.edgeId || !contextMenu?.flowPosition) return;
+
+      const edge = getEdgeById(contextMenu.edgeId);
+      if (!edge) return;
+
+      const isElectrical = edge.data?.connectionType === "electrical";
+      const position = contextMenu.flowPosition;
+
+      // Créer la configuration des connecteurs pour la jonction
+      let connectorConfig: ConnectorConfig;
+      let junctionLabel: string;
+      let junctionColor: string;
+
+      if (isElectrical) {
+        const elecType = connectorType as ElectricalConnectorType;
+        junctionLabel = `Jonction ${elecType}`;
+        junctionColor = ELECTRICAL_CONNECTOR_COLORS[elecType];
+        connectorConfig = {
+          water: [],
+          electrical: [
+            { id: "e1", type: elecType, side: "left", direction: "bidirectional" },
+            { id: "e2", type: elecType, side: "right", direction: "bidirectional" },
+            { id: "e3", type: elecType, side: "bottom", direction: "bidirectional" },
+          ],
+        };
+      } else {
+        const waterType = connectorType as WaterType;
+        junctionLabel = `Jonction ${waterType}`;
+        junctionColor = WATER_COLORS[waterType];
+        connectorConfig = {
+          water: [
+            { id: "w1", waterType, side: "left", direction: "bidirectional" },
+            { id: "w2", waterType, side: "right", direction: "bidirectional" },
+            { id: "w3", waterType, side: "bottom", direction: "bidirectional" },
+          ],
+          electrical: [],
+        };
+      }
+
+      // Créer le nœud jonction
+      const junctionId = generateId();
+      const junctionNode: PlumbingNodeType = {
+        id: junctionId,
+        type: "plumbingBlock",
+        position: { x: position.x - 12, y: position.y - 12 },
+        data: {
+          label: junctionLabel,
+          category: "electrical",
+          icon: "●",
+          description: "Point de dérivation",
+          connectorConfig,
+          electricalType: "none",
+        },
+      };
+
+      // Créer les 2 nouveaux edges (avant et après la jonction)
+      const handlePrefix = isElectrical ? "elec" : "water";
+      const sourceHandle = edge.sourceHandle;
+      const targetHandle = edge.targetHandle;
+
+      // Edge 1: source → jonction (entrée gauche)
+      const edge1Id = generateEdgeId();
+      const edge1: PlumbingEdgeType = {
+        id: edge1Id,
+        source: edge.source,
+        target: junctionId,
+        sourceHandle: sourceHandle,
+        targetHandle: isElectrical 
+          ? `elec_${connectorType}_bidirectional_0`
+          : `water_bidirectional_${connectorType}_0`,
+        type: "plumbingEdge",
+        data: { ...edge.data },
+      };
+
+      // Edge 2: jonction (sortie droite) → target
+      const edge2Id = generateEdgeId();
+      const edge2: PlumbingEdgeType = {
+        id: edge2Id,
+        source: junctionId,
+        target: edge.target,
+        sourceHandle: isElectrical
+          ? `elec_${connectorType}_bidirectional_1`
+          : `water_bidirectional_${connectorType}_1`,
+        targetHandle: targetHandle,
+        type: "plumbingEdge",
+        data: { ...edge.data },
+      };
+
+      // Mettre à jour les nodes et edges
+      setNodes((nds) => [...nds, junctionNode]);
+      setEdges((eds) => {
+        return [...eds.filter((e) => e.id !== edge.id), edge1, edge2];
+      });
+
+      markAsChanged();
+      toast.success(`Point de dérivation ${junctionLabel} ajouté`);
+      closeContextMenu();
+    },
+    [contextMenu, getEdgeById, generateId, generateEdgeId, setNodes, setEdges, markAsChanged, closeContextMenu]
+  );
+
+  // Supprimer une jonction et reconnecter les edges
+  const handleDeleteJunction = useCallback(() => {
+    if (!contextMenu?.nodeId) return;
+
+    const junctionId = contextMenu.nodeId;
+    
+    // Trouver tous les edges connectés à cette jonction
+    const connectedEdges = edges.filter(
+      (e) => e.source === junctionId || e.target === junctionId
+    );
+
+    if (connectedEdges.length === 2) {
+      // Cas simple: 2 edges, on les fusionne
+      const incomingEdge = connectedEdges.find((e) => e.target === junctionId);
+      const outgoingEdge = connectedEdges.find((e) => e.source === junctionId);
+
+      if (incomingEdge && outgoingEdge) {
+        // Créer un nouvel edge qui connecte directement source → target
+        const newEdgeId = generateEdgeId();
+        const newEdge: PlumbingEdgeType = {
+          id: newEdgeId,
+          source: incomingEdge.source,
+          target: outgoingEdge.target,
+          sourceHandle: incomingEdge.sourceHandle,
+          targetHandle: outgoingEdge.targetHandle,
+          type: "plumbingEdge",
+          data: { ...incomingEdge.data },
+        };
+
+        setEdges((eds) => [
+          ...eds.filter((e) => !connectedEdges.some((ce) => ce.id === e.id)),
+          newEdge,
+        ]);
+      }
+    } else {
+      // Plus de 2 edges ou moins: supprimer tous les edges connectés
+      setEdges((eds) => eds.filter((e) => e.source !== junctionId && e.target !== junctionId));
+    }
+
+    // Supprimer le nœud jonction
+    setNodes((nds) => nds.filter((n) => n.id !== junctionId));
+    
+    markAsChanged();
+    toast.success("Jonction supprimée");
+    closeContextMenu();
+  }, [contextMenu, edges, generateEdgeId, setNodes, setEdges, markAsChanged, closeContextMenu]);
+
+  // Supprimer un edge depuis le menu contextuel
+  const handleDeleteEdgeFromMenu = useCallback(() => {
+    if (!contextMenu?.edgeId) return;
+    deleteEdge(contextMenu.edgeId);
+    closeContextMenu();
+  }, [contextMenu, deleteEdge, closeContextMenu]);
+
+  // Regrouper les edges sélectionnés
+  const handleGroupEdges = useCallback(() => {
+    if (selectedEdges.length < 2) {
+      toast.error("Sélectionnez au moins 2 câbles à regrouper");
+      return;
+    }
+
+    const selectedEdgeObjs = edges.filter((e) => selectedEdges.includes(e.id));
+    
+    // Vérifier que tous les edges vont entre les mêmes nœuds
+    const sources = new Set(selectedEdgeObjs.map((e) => e.source));
+    const targets = new Set(selectedEdgeObjs.map((e) => e.target));
+    
+    if (sources.size !== 1 || targets.size !== 1) {
+      toast.error("Les câbles doivent connecter les mêmes blocs");
+      return;
+    }
+
+    const sourceId = selectedEdgeObjs[0].source;
+    const targetId = selectedEdgeObjs[0].target;
+
+    // Créer un edge groupé
+    const groupedEdgeId = generateEdgeId();
+    const groupedEdge: PlumbingEdgeType = {
+      id: groupedEdgeId,
+      source: sourceId,
+      target: targetId,
+      type: "plumbingEdge",
+      data: {
+        connectionType: selectedEdgeObjs[0].data?.connectionType || "electrical",
+        isGrouped: true,
+        groupedEdges: selectedEdgeObjs.map((e) => ({
+          id: e.id,
+          sourceHandle: e.sourceHandle,
+          targetHandle: e.targetHandle,
+          data: e.data,
+        })),
+        cable_section: Math.max(...selectedEdgeObjs.map((e) => e.data?.cable_section || 1.5)),
+      },
+    };
+
+    // Remplacer les edges individuels par l'edge groupé
+    setEdges((eds) => [
+      ...eds.filter((e) => !selectedEdges.includes(e.id)),
+      groupedEdge,
+    ]);
+
+    markAsChanged();
+    toast.success(`${selectedEdges.length} câbles regroupés`);
+    closeContextMenu();
+    clearSelection();
+  }, [selectedEdges, edges, generateEdgeId, setEdges, markAsChanged, closeContextMenu, clearSelection]);
+
+  // Dégrouper un câble
+  const handleUngroupEdge = useCallback(() => {
+    if (!contextMenu?.edgeId) return;
+
+    const groupedEdge = getEdgeById(contextMenu.edgeId);
+    if (!groupedEdge || !groupedEdge.data?.isGrouped) return;
+
+    const storedEdges = groupedEdge.data.groupedEdges || [];
+
+    // Restaurer les edges individuels
+    const restoredEdges: PlumbingEdgeType[] = storedEdges.map((stored: any) => ({
+      id: stored.id || generateEdgeId(),
+      source: groupedEdge.source,
+      target: groupedEdge.target,
+      sourceHandle: stored.sourceHandle,
+      targetHandle: stored.targetHandle,
+      type: "plumbingEdge",
+      data: stored.data,
+    }));
+
+    // Remplacer l'edge groupé par les edges individuels
+    setEdges((eds) => [
+      ...eds.filter((e) => e.id !== groupedEdge.id),
+      ...restoredEdges,
+    ]);
+
+    markAsChanged();
+    toast.success(`Câble dégroupé en ${restoredEdges.length} fils`);
+    closeContextMenu();
+  }, [contextMenu, getEdgeById, generateEdgeId, setEdges, markAsChanged, closeContextMenu]);
+
+  // Infos pour le menu contextuel
+  const contextEdge = contextMenu?.edgeId ? getEdgeById(contextMenu.edgeId) : null;
+  const canGroupSelected = selectedEdges.length >= 2;
+
   // Raccourcis clavier
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -311,6 +625,9 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onSelectionChange={handleSelectionChange}
+            onEdgeContextMenu={handleEdgeContextMenu}
+            onNodeContextMenu={handleNodeContextMenu}
+            onPaneClick={closeContextMenu}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             connectionMode={ConnectionMode.Loose}
@@ -323,6 +640,7 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
             snapGrid={[10, 10]}
             deleteKeyCode={null}
             multiSelectionKeyCode="Shift"
+            nodesDraggable={true}
           >
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#E5E7EB" />
             <Controls />
@@ -382,6 +700,23 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
             isInQuote={isInQuote}
             onClose={() => setShowProperties(false)}
             containerRef={containerRef}
+          />
+        )}
+
+        {/* Menu contextuel */}
+        {contextMenu && (
+          <PlumbingContextMenu
+            type={contextMenu.type}
+            position={contextMenu.position}
+            onClose={closeContextMenu}
+            onAddDerivation={handleAddDerivation}
+            onDeleteEdge={handleDeleteEdgeFromMenu}
+            onGroupEdges={handleGroupEdges}
+            onUngroupEdge={handleUngroupEdge}
+            onDeleteJunction={handleDeleteJunction}
+            edgeType={contextEdge?.data?.connectionType || "electrical"}
+            canGroup={canGroupSelected}
+            isGrouped={contextEdge?.data?.isGrouped || false}
           />
         )}
       </div>
