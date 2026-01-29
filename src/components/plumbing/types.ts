@@ -1,7 +1,7 @@
 // ============================================
 // TYPES & CONSTANTES - PlumbingCanvas
 // Circuit d'eau pour fourgon aménagé
-// VERSION: 1.2 - Ajout catégorie electrical + composants distribution
+// VERSION: 1.3 - Ajout isGrouped/groupedEdges pour regroupement câbles
 // ============================================
 
 import { Node, Edge } from "@xyflow/react";
@@ -254,6 +254,14 @@ export interface PlumbingEdgeData {
   cable_section?: CableSection;
   label?: string;
   length_m?: number;
+  // Regroupement de câbles
+  isGrouped?: boolean;
+  groupedEdges?: Array<{
+    id: string;
+    sourceHandle?: string | null;
+    targetHandle?: string | null;
+    data?: PlumbingEdgeData;
+  }>;
 }
 
 export interface PlumbingSchemaState {
