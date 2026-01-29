@@ -98,4 +98,4 @@ const { data, error } = await supabase
 ### Architecture similaire à TechnicalCanvas
 - Utilise ReactFlow pour le canvas
 - Sauvegarde par projet avec `project_id`
-- Fallback localStorage si Supabase échoue 
+- Fallback localStorage si Supabase échoue
