@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingPropertiesPanel
 // Panneau de propriétés pour élément sélectionné
-// VERSION: 1.0a - Fix SelectItem value="" crash
+// VERSION: 1.1 - Ajout config connecteurs
 // ============================================
 
 import React, { useState } from "react";
@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { X, ChevronDown, ChevronRight, Droplets, Zap, Settings, Package, ShoppingCart, Trash2, Copy } from "lucide-react";
+import { X, ChevronDown, ChevronRight, Droplets, Zap, Settings, Package, ShoppingCart, Trash2, Copy, Plug } from "lucide-react";
 import {
   PlumbingBlockData,
   PlumbingEdgeData,
@@ -31,7 +31,10 @@ import {
   ThreadType,
   WaterType,
   ElectricalType,
+  ConnectorConfig,
+  getConnectorConfig,
 } from "./types";
+import { PlumbingConnectorConfigModal } from "./PlumbingConnectorConfigModal";
 
 interface PlumbingPropertiesPanelProps {
   selectedNode: PlumbingNodeType | null;
@@ -60,10 +63,12 @@ export function PlumbingPropertiesPanel({
 }: PlumbingPropertiesPanelProps) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     general: true,
-    water: true,
-    electrical: true,
+    connectors: true,
+    water: false,
+    electrical: false,
     catalog: false,
   });
+  const [connectorModalOpen, setConnectorModalOpen] = useState(false);
 
   const toggleSection = (section: string) => {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
@@ -237,12 +242,95 @@ export function PlumbingPropertiesPanel({
 
             <Separator />
 
-            {/* Plomberie */}
+            {/* Connecteurs - Configuration flexible */}
+            <Collapsible open={expandedSections.connectors}>
+              <CollapsibleTrigger className="flex items-center gap-2 w-full text-sm font-medium" onClick={() => toggleSection("connectors")}>
+                {expandedSections.connectors ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <Plug className="h-4 w-4 text-purple-500" />
+                Connecteurs
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-2 space-y-2">
+                {/* Bouton configuration */}
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full h-8 text-xs"
+                  onClick={() => setConnectorModalOpen(true)}
+                >
+                  <Settings className="h-3 w-3 mr-2" />
+                  Configurer les connecteurs
+                </Button>
+
+                {/* Résumé des connecteurs actuels */}
+                {(() => {
+                  const config = getConnectorConfig(data);
+                  return (
+                    <div className="space-y-2">
+                      {/* Eau */}
+                      {config.water.length > 0 && (
+                        <div>
+                          <Label className="text-xs flex items-center gap-1">
+                            <Droplets className="h-3 w-3 text-blue-500" />
+                            Eau ({config.water.length})
+                          </Label>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {config.water.map((conn, idx) => (
+                              <Badge 
+                                key={idx} 
+                                variant="outline" 
+                                className="text-[10px]" 
+                                style={{ borderColor: WATER_COLORS[conn.waterType] }}
+                              >
+                                {conn.direction === "in" ? "→" : conn.direction === "out" ? "←" : "↔"} {conn.waterType} ({conn.side[0].toUpperCase()})
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Électrique */}
+                      {config.electrical.length > 0 && (
+                        <div>
+                          <Label className="text-xs flex items-center gap-1">
+                            <Zap className="h-3 w-3 text-yellow-500" />
+                            Électrique ({config.electrical.length})
+                          </Label>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {config.electrical.map((conn, idx) => (
+                              <Badge 
+                                key={idx} 
+                                variant="outline" 
+                                className="text-[10px]"
+                                style={{ 
+                                  borderColor: conn.type.startsWith("12v") 
+                                    ? (conn.type === "12v+" ? "#DC2626" : "#171717")
+                                    : (conn.type === "230v-L" ? "#92400E" : conn.type === "230v-N" ? "#1D4ED8" : "#84CC16")
+                                }}
+                              >
+                                {conn.type} ({conn.side[0].toUpperCase()})
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {config.water.length === 0 && config.electrical.length === 0 && (
+                        <p className="text-xs text-gray-400 italic">Aucun connecteur configuré</p>
+                      )}
+                    </div>
+                  );
+                })()}
+              </CollapsibleContent>
+            </Collapsible>
+
+            <Separator />
+
+            {/* Plomberie - Propriétés supplémentaires */}
             <Collapsible open={expandedSections.water}>
               <CollapsibleTrigger className="flex items-center gap-2 w-full text-sm font-medium" onClick={() => toggleSection("water")}>
                 {expandedSections.water ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 <Droplets className="h-4 w-4 text-blue-500" />
-                Plomberie
+                Tuyauterie
               </CollapsibleTrigger>
               <CollapsibleContent className="pt-2 space-y-2">
                 <div>
@@ -264,64 +352,33 @@ export function PlumbingPropertiesPanel({
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label className="text-xs">Connexions</Label>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {data.waterConnections.inputs.map((input, idx) => (
-                      <Badge key={`in-${idx}`} variant="outline" className="text-[10px]" style={{ borderColor: WATER_COLORS[input.waterType] }}>
-                        ← {input.waterType}
-                      </Badge>
-                    ))}
-                    {data.waterConnections.outputs.map((output, idx) => (
-                      <Badge key={`out-${idx}`} variant="outline" className="text-[10px]" style={{ borderColor: WATER_COLORS[output.waterType] }}>
-                        → {output.waterType}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
               </CollapsibleContent>
             </Collapsible>
 
-            {/* Électrique */}
-            {data.electricalType !== "none" && (
-              <>
-                <Separator />
-                <Collapsible open={expandedSections.electrical}>
-                  <CollapsibleTrigger className="flex items-center gap-2 w-full text-sm font-medium" onClick={() => toggleSection("electrical")}>
-                    {expandedSections.electrical ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                    <Zap className="h-4 w-4 text-yellow-500" />
-                    Électrique
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="pt-2 space-y-2">
-                    <div>
-                      <Label className="text-xs">Tension</Label>
-                      <Select value={data.electricalType} onValueChange={(v) => onUpdateNode(selectedNode.id, { electricalType: v as ElectricalType })}>
-                        <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Aucun</SelectItem>
-                          <SelectItem value="12v">12V DC</SelectItem>
-                          <SelectItem value="230v">230V AC</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Puissance (W)</Label>
-                      <Input type="number" value={data.power_watts || ""} onChange={(e) => onUpdateNode(selectedNode.id, { power_watts: e.target.value ? Number(e.target.value) : undefined })} className="h-8 text-sm" />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Section câble (mm²)</Label>
-                      <Select value={data.cable_section?.toString() || "unset"} onValueChange={(v) => onUpdateNode(selectedNode.id, { cable_section: v === "unset" ? undefined : Number(v) as CableSection })}>
-                        <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Non défini" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="unset">Non défini</SelectItem>
-                          {CABLE_SECTIONS.map((s) => <SelectItem key={s} value={s.toString()}>{s} mm²</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              </>
-            )}
+            {/* Électrique - Propriétés supplémentaires */}
+            <Collapsible open={expandedSections.electrical}>
+              <CollapsibleTrigger className="flex items-center gap-2 w-full text-sm font-medium" onClick={() => toggleSection("electrical")}>
+                {expandedSections.electrical ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                <Zap className="h-4 w-4 text-yellow-500" />
+                Électrique
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-2 space-y-2">
+                <div>
+                  <Label className="text-xs">Puissance (W)</Label>
+                  <Input type="number" value={data.power_watts || ""} onChange={(e) => onUpdateNode(selectedNode.id, { power_watts: e.target.value ? Number(e.target.value) : undefined })} className="h-8 text-sm" />
+                </div>
+                <div>
+                  <Label className="text-xs">Section câble (mm²)</Label>
+                  <Select value={data.cable_section?.toString() || "unset"} onValueChange={(v) => onUpdateNode(selectedNode.id, { cable_section: v === "unset" ? undefined : Number(v) as CableSection })}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Non défini" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unset">Non défini</SelectItem>
+                      {CABLE_SECTIONS.map((s) => <SelectItem key={s} value={s.toString()}>{s} mm²</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
 
             {/* Catalogue */}
             {(data.accessory_id || data.marque || data.prix_unitaire) && (
@@ -360,6 +417,17 @@ export function PlumbingPropertiesPanel({
             <Trash2 className="h-3 w-3" />
           </Button>
         </div>
+
+        {/* Modale de configuration des connecteurs */}
+        <PlumbingConnectorConfigModal
+          open={connectorModalOpen}
+          onClose={() => setConnectorModalOpen(false)}
+          config={getConnectorConfig(data)}
+          nodeLabel={data.label}
+          onSave={(newConfig) => {
+            onUpdateNode(selectedNode.id, { connectorConfig: newConfig });
+          }}
+        />
       </div>
     );
   }
