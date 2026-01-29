@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingCanvas
 // Schéma circuit d'eau interactif avec ReactFlow
-// VERSION: 1.1a - Fix Popover en mode plein écran
+// VERSION: 1.2 - Fix modal et Popover en fullscreen
 // ============================================
 
 import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
@@ -381,6 +381,7 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
             onAddToQuote={handleAddToQuote}
             isInQuote={isInQuote}
             onClose={() => setShowProperties(false)}
+            containerRef={containerRef}
           />
         )}
       </div>
