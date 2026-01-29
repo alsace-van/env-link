@@ -185,16 +185,18 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
       const indexInSide = sideConnectors.findIndex((c) => c.type === "electrical" && c.index === idx);
       const totalInSide = sideConnectors.length;
 
-      const handleType = conn.direction === "out" ? "source" : "target";
       const color = ELECTRICAL_CONNECTOR_COLORS[conn.type];
       const label = ELECTRICAL_CONNECTOR_LABELS[conn.type];
 
+      // Utiliser un seul handle bidirectionnel pour permettre les connexions dans les deux sens
       handles.push(
         <Handle
           key={`elec_${conn.id}`}
-          type={handleType}
+          type="source"
           position={positionMap[conn.side]}
-          id={`elec_${conn.type}_${idx}`}
+          id={`elec_${conn.type}_${conn.direction}_${idx}`}
+          isConnectableStart={true}
+          isConnectableEnd={true}
           style={{
             ...getHandleStyle(color, false),
             ...getPositionStyle(conn.side, indexInSide, totalInSide),
@@ -202,24 +204,6 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
           title={label}
         />
       );
-
-      // Pour bidirectionnel
-      if (conn.direction === "bidirectional") {
-        handles.push(
-          <Handle
-            key={`elec_${conn.id}_source`}
-            type="source"
-            position={positionMap[conn.side]}
-            id={`elec_${conn.type}_out_${idx}`}
-            style={{
-              ...getHandleStyle(color, false),
-              ...getPositionStyle(conn.side, indexInSide, totalInSide),
-              opacity: 0.5,
-            }}
-            title={label}
-          />
-        );
-      }
     });
 
     return handles;
