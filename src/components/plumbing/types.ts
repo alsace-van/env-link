@@ -1,7 +1,7 @@
 // ============================================
 // TYPES & CONSTANTES - PlumbingCanvas
 // Circuit d'eau pour fourgon aménagé
-// VERSION: 1.0
+// VERSION: 1.1 - Configuration flexible des connecteurs
 // ============================================
 
 import { Node, Edge } from "@xyflow/react";
@@ -14,6 +14,16 @@ export type WaterType = "cold" | "hot" | "waste";
 export type ElectricalType = "12v" | "230v" | "none";
 export type Polarity12V = "positive" | "negative";
 export type Wire230V = "phase" | "neutral" | "earth";
+export type ConnectorSide = "left" | "right" | "top" | "bottom";
+export type ConnectorDirection = "in" | "out" | "bidirectional";
+
+// Types de connecteurs électriques unifiés
+export type ElectricalConnectorType = 
+  | "12v+" 
+  | "12v-" 
+  | "230v-L" 
+  | "230v-N" 
+  | "230v-PE";
 
 export type PlumbingCategory =
   | "source"
@@ -26,6 +36,57 @@ export type PlumbingCategory =
 export type ThreadType = "3/8" | "1/2" | "3/4" | "1" | "none";
 export type PipeDiameter = 8 | 10 | 12 | 15 | 20 | 30 | 40;
 export type CableSection = 0.5 | 0.75 | 1 | 1.5 | 2.5 | 4 | 6 | 10;
+
+// ============================================
+// CONFIGURATION DES CONNECTEURS
+// ============================================
+
+export interface WaterConnector {
+  id: string;
+  waterType: WaterType;
+  side: ConnectorSide;
+  direction: ConnectorDirection;
+}
+
+export interface ElectricalConnector {
+  id: string;
+  type: ElectricalConnectorType;
+  side: ConnectorSide;
+  direction: ConnectorDirection;
+}
+
+export interface ConnectorConfig {
+  water: WaterConnector[];
+  electrical: ElectricalConnector[];
+}
+
+// Labels pour l'UI
+export const WATER_TYPE_LABELS: Record<WaterType, string> = {
+  cold: "Eau froide",
+  hot: "Eau chaude",
+  waste: "Eau usée",
+};
+
+export const ELECTRICAL_CONNECTOR_LABELS: Record<ElectricalConnectorType, string> = {
+  "12v+": "12V +",
+  "12v-": "12V -",
+  "230v-L": "230V Phase (L)",
+  "230v-N": "230V Neutre (N)",
+  "230v-PE": "230V Terre (PE)",
+};
+
+export const SIDE_LABELS: Record<ConnectorSide, string> = {
+  left: "Gauche",
+  right: "Droite",
+  top: "Haut",
+  bottom: "Bas",
+};
+
+export const DIRECTION_LABELS: Record<ConnectorDirection, string> = {
+  in: "Entrée",
+  out: "Sortie",
+  bidirectional: "Bidirectionnel",
+};
 
 // ============================================
 // COULEURS
@@ -92,7 +153,10 @@ export interface PlumbingBlockData {
   description?: string;
   capacity_liters?: number;
   flow_rate_lpm?: number;
-  waterConnections: {
+  // Nouveau système de configuration des connecteurs
+  connectorConfig: ConnectorConfig;
+  // Legacy - pour rétrocompatibilité (sera converti en connectorConfig)
+  waterConnections?: {
     inputs: Array<{ id: string; waterType: WaterType; position: "top" | "bottom" | "left" | "right" }>;
     outputs: Array<{ id: string; waterType: WaterType; position: "top" | "bottom" | "left" | "right" }>;
   };
@@ -112,6 +176,69 @@ export interface PlumbingBlockData {
   width?: number;
   height?: number;
 }
+
+// Fonction utilitaire pour convertir l'ancien format vers le nouveau
+export function convertLegacyConnections(data: Partial<PlumbingBlockData>): ConnectorConfig {
+  const config: ConnectorConfig = {
+    water: [],
+    electrical: [],
+  };
+
+  // Convertir les connexions eau legacy
+  if (data.waterConnections) {
+    data.waterConnections.inputs.forEach((input) => {
+      config.water.push({
+        id: input.id,
+        waterType: input.waterType,
+        side: input.position,
+        direction: "in",
+      });
+    });
+    data.waterConnections.outputs.forEach((output) => {
+      config.water.push({
+        id: output.id,
+        waterType: output.waterType,
+        side: output.position,
+        direction: "out",
+      });
+    });
+  }
+
+  // Convertir les connexions électriques legacy
+  if (data.electricalType && data.electricalType !== "none") {
+    if (data.electricalType === "12v") {
+      config.electrical.push(
+        { id: "elec-12v-pos", type: "12v+", side: "left", direction: "in" },
+        { id: "elec-12v-neg", type: "12v-", side: "left", direction: "in" }
+      );
+    } else if (data.electricalType === "230v") {
+      config.electrical.push(
+        { id: "elec-230v-L", type: "230v-L", side: "left", direction: "in" },
+        { id: "elec-230v-N", type: "230v-N", side: "left", direction: "in" },
+        { id: "elec-230v-PE", type: "230v-PE", side: "left", direction: "in" }
+      );
+    }
+  }
+
+  return config;
+}
+
+// Fonction pour obtenir la config (avec fallback legacy)
+export function getConnectorConfig(data: PlumbingBlockData): ConnectorConfig {
+  if (data.connectorConfig && (data.connectorConfig.water.length > 0 || data.connectorConfig.electrical.length > 0)) {
+    return data.connectorConfig;
+  }
+  return convertLegacyConnections(data);
+}
+
+// Couleurs des connecteurs électriques
+export const ELECTRICAL_CONNECTOR_COLORS: Record<ElectricalConnectorType, string> = {
+  "12v+": "#DC2626", // Rouge
+  "12v-": "#171717", // Noir
+  "230v-L": "#92400E", // Marron
+  "230v-N": "#1D4ED8", // Bleu
+  "230v-PE": "#84CC16", // Vert/Jaune
+};
 
 export interface PlumbingEdgeData {
   connectionType: "water" | "electrical";
