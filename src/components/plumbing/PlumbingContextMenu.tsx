@@ -1,214 +1,278 @@
 // ============================================
-// COMPOSANT: PlumbingEdge
-// Connexion plomberie (tuyau ou câble) pour ReactFlow
-// VERSION: 1.1 - Support câbles groupés
+// COMPOSANT: PlumbingContextMenu
+// Menu contextuel pour edges et nœuds
+// VERSION: 1.0
 // ============================================
 
-import React, { memo, useMemo } from "react";
-import { EdgeProps, getSmoothStepPath, BaseEdge, EdgeLabelRenderer } from "@xyflow/react";
-import { Badge } from "@/components/ui/badge";
-import { Cable } from "lucide-react";
+import React from "react";
+import { Button } from "@/components/ui/button";
 import {
-  PlumbingEdgeData,
-  getConnectionColor,
-  getConnectionStrokeWidth,
+  GitBranch,
+  Trash2,
+  Ungroup,
+  Group,
+  Scissors,
+  CircleDot,
+  Cable,
+} from "lucide-react";
+import {
+  ElectricalConnectorType,
+  ELECTRICAL_CONNECTOR_LABELS,
   ELECTRICAL_CONNECTOR_COLORS,
+  WaterType,
+  WATER_TYPE_LABELS,
   WATER_COLORS,
 } from "./types";
 
-const PlumbingEdge = memo(
-  ({
-    id,
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-    data,
-    selected,
-    style,
-  }: EdgeProps<PlumbingEdgeData>) => {
-    const [edgePath, labelX, labelY] = getSmoothStepPath({
-      sourceX,
-      sourceY,
-      sourcePosition,
-      targetX,
-      targetY,
-      targetPosition,
-      borderRadius: 8,
-    });
+export type ContextMenuType = "edge" | "node" | "junction" | "grouped-edge" | "canvas";
 
-    // Vérifier si c'est un câble groupé
-    const isGrouped = data?.isGrouped || false;
-    const groupedCount = data?.groupedEdges?.length || 0;
+interface ContextMenuPosition {
+  x: number;
+  y: number;
+}
 
-    const strokeColor = useMemo(() => {
-      if (!data) return "#9CA3AF";
-      // Pour les câbles groupés, on utilise une couleur neutre
-      if (isGrouped) return "#374151";
-      return getConnectionColor(data);
-    }, [data, isGrouped]);
+interface PlumbingContextMenuProps {
+  type: ContextMenuType;
+  position: ContextMenuPosition;
+  onClose: () => void;
+  // Actions pour edges
+  onAddDerivation?: (connectorType: ElectricalConnectorType | WaterType) => void;
+  onDeleteEdge?: () => void;
+  onGroupEdges?: () => void;
+  onUngroupEdge?: () => void;
+  // Actions pour jonctions
+  onDeleteJunction?: () => void;
+  // Infos contextuelles
+  edgeType?: "electrical" | "water";
+  availableConnectorTypes?: (ElectricalConnectorType | WaterType)[];
+  canGroup?: boolean;
+  isGrouped?: boolean;
+}
 
-    const strokeWidth = useMemo(() => {
-      if (!data) return 2;
-      // Câbles groupés = plus épais
-      if (isGrouped) return 6 + groupedCount;
-      return getConnectionStrokeWidth(data);
-    }, [data, isGrouped, groupedCount]);
+export function PlumbingContextMenu({
+  type,
+  position,
+  onClose,
+  onAddDerivation,
+  onDeleteEdge,
+  onGroupEdges,
+  onUngroupEdge,
+  onDeleteJunction,
+  edgeType,
+  availableConnectorTypes = [],
+  canGroup = false,
+  isGrouped = false,
+}: PlumbingContextMenuProps) {
+  const [showDerivationSubmenu, setShowDerivationSubmenu] = React.useState(false);
 
-    const edgeStyle = useMemo(
-      () => ({
-        stroke: strokeColor,
-        strokeWidth: selected ? strokeWidth + 2 : strokeWidth,
-        strokeLinecap: "round" as const,
-        strokeLinejoin: "round" as const,
-        filter: selected ? "drop-shadow(0 0 3px rgba(59, 130, 246, 0.5))" : undefined,
-        ...style,
-      }),
-      [strokeColor, strokeWidth, selected, style]
-    );
+  // Fermer le menu quand on clique ailleurs
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      onClose();
+    };
+    // Petit délai pour éviter de fermer immédiatement
+    const timeout = setTimeout(() => {
+      window.addEventListener("click", handleClickOutside);
+    }, 100);
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener("click", handleClickOutside);
+    };
+  }, [onClose]);
 
-    const edgeLabel = useMemo(() => {
-      if (!data) return null;
-      
-      // Pour les câbles groupés, afficher le nombre de fils
-      if (isGrouped && groupedCount > 0) {
-        return `${groupedCount} fils`;
-      }
+  // Fermer avec Escape
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
 
-      const parts: string[] = [];
+  const menuStyle: React.CSSProperties = {
+    position: "absolute",
+    left: position.x,
+    top: position.y,
+    zIndex: 100,
+    minWidth: "200px",
+  };
 
-      if (data.connectionType === "water") {
-        if (data.pipe_diameter) parts.push(`Ø${data.pipe_diameter}`);
-        if (data.thread_type && data.thread_type !== "none") parts.push(`${data.thread_type}"`);
-      } else if (data.connectionType === "electrical") {
-        if (data.cable_section) parts.push(`${data.cable_section}mm²`);
-        if (data.electricalType === "12v" && data.polarity) parts.push(data.polarity === "positive" ? "+" : "-");
-        if (data.electricalType === "230v" && data.wire) {
-          parts.push({ phase: "L", neutral: "N", earth: "PE" }[data.wire]);
-        }
-      }
-      if (data.label) parts.unshift(data.label);
-      return parts.length > 0 ? parts.join(" ") : null;
-    }, [data, isGrouped, groupedCount]);
-
-    // Couleurs des fils groupés (pour l'affichage décoratif)
-    const groupedColors = useMemo(() => {
-      if (!isGrouped || !data?.groupedEdges) return [];
-      return data.groupedEdges.map((ge) => {
-        if (ge.data?.electricalType === "230v" && ge.data?.wire) {
-          const wireColors: Record<string, string> = {
-            phase: ELECTRICAL_CONNECTOR_COLORS["230v-L"],
-            neutral: ELECTRICAL_CONNECTOR_COLORS["230v-N"],
-            earth: ELECTRICAL_CONNECTOR_COLORS["pe"],
-          };
-          return wireColors[ge.data.wire] || "#6B7280";
-        }
-        if (ge.data?.electricalType === "12v" && ge.data?.polarity) {
-          return ge.data.polarity === "positive" 
-            ? ELECTRICAL_CONNECTOR_COLORS["12v+"] 
-            : ELECTRICAL_CONNECTOR_COLORS["12v-"];
-        }
-        if (ge.data?.waterType) {
-          return WATER_COLORS[ge.data.waterType];
-        }
-        return "#6B7280";
-      });
-    }, [isGrouped, data]);
-
+  // Menu pour un edge (câble/tuyau)
+  if (type === "edge") {
     return (
-      <>
-        {/* Zone de clic élargie */}
-        <path
-          d={edgePath}
-          fill="none"
-          stroke="transparent"
-          strokeWidth={Math.max(strokeWidth + 10, 20)}
-          style={{ cursor: "pointer" }}
-        />
+      <div
+        style={menuStyle}
+        className="bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 py-1 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Ajouter dérivation */}
+        <div className="relative">
+          <button
+            className="w-full px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+            onMouseEnter={() => setShowDerivationSubmenu(true)}
+            onMouseLeave={() => setShowDerivationSubmenu(false)}
+          >
+            <GitBranch className="h-4 w-4" />
+            Ajouter point de dérivation
+            <span className="ml-auto text-slate-400">▶</span>
+          </button>
 
-        {/* Câble groupé : gaine externe */}
-        {isGrouped && (
-          <path
-            d={edgePath}
-            fill="none"
-            stroke="#1F2937"
-            strokeWidth={strokeWidth + 4}
-            strokeLinecap="round"
-            style={{ pointerEvents: "none" }}
-          />
-        )}
-
-        {/* Ligne principale */}
-        <BaseEdge id={id} path={edgePath} style={edgeStyle} />
-
-        {/* Câble groupé : fils internes (décoratifs) */}
-        {isGrouped && groupedColors.length > 0 && (
-          <>
-            {groupedColors.map((color, idx) => {
-              const offset = (idx - (groupedColors.length - 1) / 2) * 2;
-              return (
-                <path
-                  key={idx}
-                  d={edgePath}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth={1.5}
-                  strokeLinecap="round"
-                  style={{ 
-                    pointerEvents: "none",
-                    transform: `translate(0, ${offset}px)`,
-                  }}
-                />
-              );
-            })}
-          </>
-        )}
-
-        {/* Pointillés pour 230V (non groupé) */}
-        {!isGrouped && data?.connectionType === "electrical" && data.electricalType === "230v" && (
-          <path
-            d={edgePath}
-            fill="none"
-            stroke={strokeColor}
-            strokeWidth={strokeWidth}
-            strokeDasharray="8 4"
-            style={{ pointerEvents: "none" }}
-          />
-        )}
-
-        {/* Label */}
-        {edgeLabel && (
-          <EdgeLabelRenderer>
+          {/* Sous-menu types de connecteurs */}
+          {showDerivationSubmenu && (
             <div
-              style={{
-                position: "absolute",
-                transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-                pointerEvents: "all",
-                cursor: "pointer",
-              }}
+              className="absolute left-full top-0 ml-1 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 py-1 min-w-[180px]"
+              onMouseEnter={() => setShowDerivationSubmenu(true)}
+              onMouseLeave={() => setShowDerivationSubmenu(false)}
             >
-              <Badge
-                variant={selected ? "default" : "outline"}
-                className="text-[10px] px-1.5 py-0.5 shadow-sm flex items-center gap-1"
-                style={{
-                  background: selected ? strokeColor : "white",
-                  color: selected ? "white" : strokeColor,
-                  borderColor: strokeColor,
-                }}
-              >
-                {isGrouped && <Cable className="h-3 w-3" />}
-                {edgeLabel}
-              </Badge>
+              {edgeType === "electrical" ? (
+                <>
+                  <div className="px-3 py-1 text-xs text-slate-500 font-medium">Type de fil</div>
+                  {(Object.keys(ELECTRICAL_CONNECTOR_LABELS) as ElectricalConnectorType[]).map((connType) => (
+                    <button
+                      key={connType}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+                      onClick={() => {
+                        onAddDerivation?.(connType);
+                        onClose();
+                      }}
+                    >
+                      <div
+                        className="w-3 h-3 rounded-sm"
+                        style={{ backgroundColor: ELECTRICAL_CONNECTOR_COLORS[connType] }}
+                      />
+                      {ELECTRICAL_CONNECTOR_LABELS[connType]}
+                    </button>
+                  ))}
+                </>
+              ) : (
+                <>
+                  <div className="px-3 py-1 text-xs text-slate-500 font-medium">Type d'eau</div>
+                  {(Object.keys(WATER_TYPE_LABELS) as WaterType[]).map((waterType) => (
+                    <button
+                      key={waterType}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+                      onClick={() => {
+                        onAddDerivation?.(waterType);
+                        onClose();
+                      }}
+                    >
+                      <div
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: WATER_COLORS[waterType] }}
+                      />
+                      {WATER_TYPE_LABELS[waterType]}
+                    </button>
+                  ))}
+                </>
+              )}
             </div>
-          </EdgeLabelRenderer>
+          )}
+        </div>
+
+        {/* Séparateur */}
+        <div className="h-px bg-slate-200 dark:bg-slate-700 my-1" />
+
+        {/* Regrouper (si plusieurs edges sélectionnés) */}
+        {canGroup && (
+          <button
+            className="w-full px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+            onClick={() => {
+              onGroupEdges?.();
+              onClose();
+            }}
+          >
+            <Group className="h-4 w-4" />
+            Regrouper en câble
+          </button>
         )}
-      </>
+
+        {/* Dégrouper (si edge groupé) */}
+        {isGrouped && (
+          <button
+            className="w-full px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+            onClick={() => {
+              onUngroupEdge?.();
+              onClose();
+            }}
+          >
+            <Ungroup className="h-4 w-4" />
+            Dégrouper le câble
+          </button>
+        )}
+
+        {/* Supprimer */}
+        <button
+          className="w-full px-3 py-2 text-left text-sm hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 flex items-center gap-2"
+          onClick={() => {
+            onDeleteEdge?.();
+            onClose();
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+          Supprimer
+        </button>
+      </div>
     );
   }
-);
 
-PlumbingEdge.displayName = "PlumbingEdge";
+  // Menu pour une jonction
+  if (type === "junction") {
+    return (
+      <div
+        style={menuStyle}
+        className="bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 py-1"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          className="w-full px-3 py-2 text-left text-sm hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 flex items-center gap-2"
+          onClick={() => {
+            onDeleteJunction?.();
+            onClose();
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+          Supprimer la jonction
+        </button>
+      </div>
+    );
+  }
 
-export default PlumbingEdge;
+  // Menu pour edge groupé
+  if (type === "grouped-edge") {
+    return (
+      <div
+        style={menuStyle}
+        className="bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 py-1"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          className="w-full px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+          onClick={() => {
+            onUngroupEdge?.();
+            onClose();
+          }}
+        >
+          <Ungroup className="h-4 w-4" />
+          Dégrouper le câble
+        </button>
+
+        <div className="h-px bg-slate-200 dark:bg-slate-700 my-1" />
+
+        <button
+          className="w-full px-3 py-2 text-left text-sm hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 flex items-center gap-2"
+          onClick={() => {
+            onDeleteEdge?.();
+            onClose();
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+          Supprimer le câble
+        </button>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+export default PlumbingContextMenu;
