@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingToolbar
 // Barre d'outils pour le schéma plomberie
-// VERSION: 1.0
+// VERSION: 1.1 - Ajout bouton plein écran
 // ============================================
 
 import React, { useState, useMemo } from "react";
@@ -16,6 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   Save, Download, Trash2, Undo, Redo, Plus, Search, Package,
   ShoppingCart, Droplets, ChevronDown, RefreshCw, Copy, FilePlus,
+  Maximize, Minimize,
 } from "lucide-react";
 import {
   PlumbingBlockData,
@@ -49,6 +50,8 @@ interface PlumbingToolbarProps {
   onAddFromQuote: (item: QuoteItem) => void;
   catalogToBlockData: (item: CatalogItem) => PlumbingBlockData;
   quoteToBlockData: (item: QuoteItem) => PlumbingBlockData;
+  isFullscreen: boolean;
+  onToggleFullscreen: () => void;
 }
 
 export function PlumbingToolbar({
@@ -72,6 +75,8 @@ export function PlumbingToolbar({
   onSearchCatalog,
   onAddFromCatalog,
   onAddFromQuote,
+  isFullscreen,
+  onToggleFullscreen,
 }: PlumbingToolbarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CatalogItem[]>([]);
@@ -375,6 +380,24 @@ export function PlumbingToolbar({
             </Tabs>
           </PopoverContent>
         </Popover>
+
+        {/* Spacer pour pousser le bouton fullscreen à droite */}
+        <div className="flex-1" />
+
+        {/* Plein écran */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={onToggleFullscreen} 
+              className="h-8"
+            >
+              {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{isFullscreen ? "Quitter plein écran" : "Plein écran"}</TooltipContent>
+        </Tooltip>
       </div>
     </TooltipProvider>
   );
