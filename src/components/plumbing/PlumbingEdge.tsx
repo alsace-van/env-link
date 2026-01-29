@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingEdge
 // Connexion plomberie (tuyau ou câble) pour ReactFlow
-// VERSION: 1.4 - Effet éventail aux extrémités + couleurs connecteurs
+// VERSION: 1.5 - Debug couleurs + éventail visible
 // ============================================
 
 import React, { memo, useMemo } from "react";
@@ -16,37 +16,57 @@ import {
   WATER_COLORS,
 } from "./types";
 
-// Fonction pour obtenir la couleur d'un fil depuis son handle ou ses données
+// Fonction pour obtenir la couleur d'un fil depuis son handle
 function getWireColor(wireData: any): string {
-  // Essayer d'extraire le type depuis le sourceHandle
-  const handle = wireData.sourceHandle || wireData.targetHandle || "";
+  const sourceHandle = wireData.sourceHandle || "";
+  const targetHandle = wireData.targetHandle || "";
+  const handle = sourceHandle + targetHandle;
   
-  // 230V
-  if (handle.includes("230v-L") || wireData.data?.wire === "phase") {
-    return ELECTRICAL_CONNECTOR_COLORS["230v-L"]; // Marron
+  console.log("[PlumbingEdge v1.5] getWireColor handle:", handle, "data:", wireData.data);
+  
+  // Chercher dans le handle (format: elec_TYPE_direction_index)
+  if (handle.includes("230v-L") || handle.includes("230v_L")) {
+    return ELECTRICAL_CONNECTOR_COLORS["230v-L"] || "#8B4513";
   }
-  if (handle.includes("230v-N") || wireData.data?.wire === "neutral") {
-    return ELECTRICAL_CONNECTOR_COLORS["230v-N"]; // Bleu
+  if (handle.includes("230v-N") || handle.includes("230v_N")) {
+    return ELECTRICAL_CONNECTOR_COLORS["230v-N"] || "#3B82F6";
   }
-  if (handle.includes("pe") || wireData.data?.wire === "earth") {
-    return ELECTRICAL_CONNECTOR_COLORS["pe"]; // Vert/Jaune
+  if (handle.includes("_pe_") || handle.includes("_pe")) {
+    return ELECTRICAL_CONNECTOR_COLORS["pe"] || "#22C55E";
+  }
+  if (handle.includes("12v+") || handle.includes("12v_plus")) {
+    return ELECTRICAL_CONNECTOR_COLORS["12v+"] || "#EF4444";
+  }
+  if (handle.includes("12v-") || handle.includes("12v_minus")) {
+    return ELECTRICAL_CONNECTOR_COLORS["12v-"] || "#1F2937";
   }
   
-  // 12V
-  if (handle.includes("12v+") || wireData.data?.polarity === "positive") {
-    return ELECTRICAL_CONNECTOR_COLORS["12v+"]; // Rouge
-  }
-  if (handle.includes("12v-") || wireData.data?.polarity === "negative") {
-    return ELECTRICAL_CONNECTOR_COLORS["12v-"]; // Noir
-  }
+  // Fallback sur les données de l'edge
+  if (wireData.data?.wire === "phase") return "#8B4513";
+  if (wireData.data?.wire === "neutral") return "#3B82F6";
+  if (wireData.data?.wire === "earth") return "#22C55E";
+  if (wireData.data?.polarity === "positive") return "#EF4444";
+  if (wireData.data?.polarity === "negative") return "#1F2937";
   
   // Eau
   if (wireData.data?.waterType) {
-    return WATER_COLORS[wireData.data.waterType];
+    return WATER_COLORS[wireData.data.waterType] || "#6B7280";
   }
   
-  // Fallback
   return "#6B7280";
+}
+
+// Fonction pour obtenir le label court d'un fil
+function getWireLabel(wireData: any): string {
+  const handle = (wireData.sourceHandle || "") + (wireData.targetHandle || "");
+  
+  if (handle.includes("230v-L") || handle.includes("230v_L") || wireData.data?.wire === "phase") return "L";
+  if (handle.includes("230v-N") || handle.includes("230v_N") || wireData.data?.wire === "neutral") return "N";
+  if (handle.includes("_pe") || wireData.data?.wire === "earth") return "PE";
+  if (handle.includes("12v+") || wireData.data?.polarity === "positive") return "+";
+  if (handle.includes("12v-") || wireData.data?.polarity === "negative") return "-";
+  
+  return "?";
 }
 
 const PlumbingEdge = memo(
@@ -72,7 +92,6 @@ const PlumbingEdge = memo(
       borderRadius: 8,
     });
 
-    // Vérifier si c'est un câble groupé
     const isGrouped = data?.isGrouped || false;
     const groupedEdges = data?.groupedEdges || [];
     const groupedCount = groupedEdges.length;
@@ -101,20 +120,27 @@ const PlumbingEdge = memo(
       [strokeColor, strokeWidth, selected, style]
     );
 
+    // Données des fils groupés avec couleurs
+    const groupedWires = useMemo(() => {
+      if (!isGrouped || !groupedEdges.length) return [];
+      
+      const wires = groupedEdges.map((ge: any, idx: number) => ({
+        ...ge,
+        color: getWireColor(ge),
+        label: getWireLabel(ge),
+        index: idx,
+      }));
+      
+      console.log("[PlumbingEdge v1.5] groupedWires:", wires);
+      return wires;
+    }, [isGrouped, groupedEdges]);
+
     const edgeLabel = useMemo(() => {
       if (!data) return null;
       
-      if (isGrouped && groupedCount > 0) {
-        const wireTypes: string[] = [];
-        groupedEdges.forEach((ge: any) => {
-          const handle = ge.sourceHandle || "";
-          if (handle.includes("230v-L") || ge.data?.wire === "phase") wireTypes.push("L");
-          else if (handle.includes("230v-N") || ge.data?.wire === "neutral") wireTypes.push("N");
-          else if (handle.includes("pe") || ge.data?.wire === "earth") wireTypes.push("PE");
-          else if (handle.includes("12v+") || ge.data?.polarity === "positive") wireTypes.push("+");
-          else if (handle.includes("12v-") || ge.data?.polarity === "negative") wireTypes.push("-");
-        });
-        if (wireTypes.length > 0) return wireTypes.join("+");
+      if (isGrouped && groupedWires.length > 0) {
+        const labels = groupedWires.map((w: any) => w.label).filter((l: string) => l !== "?");
+        if (labels.length > 0) return labels.join("+");
         return `${groupedCount} fils`;
       }
 
@@ -130,178 +156,92 @@ const PlumbingEdge = memo(
       }
       if (data.label) parts.unshift(data.label);
       return parts.length > 0 ? parts.join(" ") : null;
-    }, [data, isGrouped, groupedCount, groupedEdges]);
+    }, [data, isGrouped, groupedCount, groupedWires]);
 
-    // Données des fils groupés avec couleurs
-    const groupedWires = useMemo(() => {
-      if (!isGrouped || !groupedEdges.length) return [];
-      return groupedEdges.map((ge: any, idx: number) => ({
-        ...ge,
-        color: getWireColor(ge),
-        index: idx,
-      }));
-    }, [isGrouped, groupedEdges]);
-
-    // Générer les chemins en éventail pour chaque fil
-    const fanPaths = useMemo(() => {
-      if (!isGrouped || groupedWires.length === 0) return [];
-      
+    // Rendu pour câble groupé avec éventail
+    if (isGrouped && groupedWires.length > 0) {
       const total = groupedWires.length;
-      const spacing = 6; // Espacement entre les fils
-      const fanLength = 30; // Longueur de l'éventail
+      const spacing = 8;
+      const fanLength = 50;
+      const gaineWidth = total * 4 + 6;
       
-      return groupedWires.map((wire: any, idx: number) => {
+      // Calculer les chemins en éventail
+      const fanPaths = groupedWires.map((wire: any, idx: number) => {
         const offset = (idx - (total - 1) / 2) * spacing;
         
-        // Calculer les points de l'éventail côté source
-        let srcFanX = sourceX;
-        let srcFanY = sourceY + offset;
+        let srcStartX = sourceX;
+        let srcStartY = sourceY;
         let srcMergeX = sourceX;
         let srcMergeY = sourceY;
-        
-        if (sourcePosition === Position.Right) {
-          srcFanY = sourceY + offset;
-          srcMergeX = sourceX + fanLength;
-          srcMergeY = sourceY;
-        } else if (sourcePosition === Position.Left) {
-          srcFanY = sourceY + offset;
-          srcMergeX = sourceX - fanLength;
-          srcMergeY = sourceY;
-        } else if (sourcePosition === Position.Bottom) {
-          srcFanX = sourceX + offset;
-          srcFanY = sourceY;
-          srcMergeX = sourceX;
-          srcMergeY = sourceY + fanLength;
-        } else if (sourcePosition === Position.Top) {
-          srcFanX = sourceX + offset;
-          srcFanY = sourceY;
-          srcMergeX = sourceX;
-          srcMergeY = sourceY - fanLength;
-        }
-        
-        // Calculer les points de l'éventail côté target
-        let tgtFanX = targetX;
-        let tgtFanY = targetY + offset;
+        let tgtEndX = targetX;
+        let tgtEndY = targetY;
         let tgtMergeX = targetX;
         let tgtMergeY = targetY;
         
-        if (targetPosition === Position.Left) {
-          tgtFanY = targetY + offset;
-          tgtMergeX = targetX - fanLength;
-          tgtMergeY = targetY;
-        } else if (targetPosition === Position.Right) {
-          tgtFanY = targetY + offset;
-          tgtMergeX = targetX + fanLength;
-          tgtMergeY = targetY;
-        } else if (targetPosition === Position.Top) {
-          tgtFanX = targetX + offset;
-          tgtFanY = targetY;
-          tgtMergeX = targetX;
-          tgtMergeY = targetY - fanLength;
-        } else if (targetPosition === Position.Bottom) {
-          tgtFanX = targetX + offset;
-          tgtFanY = targetY;
-          tgtMergeX = targetX;
-          tgtMergeY = targetY + fanLength;
+        // Offset selon direction source
+        if (sourcePosition === Position.Right || sourcePosition === Position.Left) {
+          srcStartY = sourceY + offset;
+          srcMergeX = sourcePosition === Position.Right ? sourceX + fanLength : sourceX - fanLength;
+        } else {
+          srcStartX = sourceX + offset;
+          srcMergeY = sourcePosition === Position.Bottom ? sourceY + fanLength : sourceY - fanLength;
         }
         
-        // Chemin complet : source fan → source merge → target merge → target fan
-        // Utiliser des courbes de Bézier pour un rendu fluide
-        const path = `
-          M ${srcFanX} ${srcFanY}
-          Q ${srcMergeX} ${srcFanY}, ${srcMergeX} ${srcMergeY}
-          L ${tgtMergeX} ${tgtMergeY}
-          Q ${tgtMergeX} ${tgtFanY}, ${tgtFanX} ${tgtFanY}
-        `;
+        // Offset selon direction target
+        if (targetPosition === Position.Left || targetPosition === Position.Right) {
+          tgtEndY = targetY + offset;
+          tgtMergeX = targetPosition === Position.Left ? targetX - fanLength : targetX + fanLength;
+        } else {
+          tgtEndX = targetX + offset;
+          tgtMergeY = targetPosition === Position.Top ? targetY - fanLength : targetY + fanLength;
+        }
         
-        return {
-          ...wire,
-          path: path.trim(),
-        };
+        const path = `M ${srcStartX} ${srcStartY} L ${srcMergeX} ${srcMergeY} L ${tgtMergeX} ${tgtMergeY} L ${tgtEndX} ${tgtEndY}`;
+        
+        return { ...wire, path };
       });
-    }, [isGrouped, groupedWires, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition]);
-
-    // Rendu pour câble groupé avec éventail
-    if (isGrouped && fanPaths.length > 0) {
-      const gaineWidth = groupedCount * 3 + 8;
       
       return (
         <>
-          {/* Zone de clic élargie */}
-          <path
-            d={edgePath}
-            fill="none"
-            stroke="transparent"
-            strokeWidth={gaineWidth + 20}
-            style={{ cursor: "pointer" }}
-          />
+          {/* Zone de clic */}
+          <path d={edgePath} fill="none" stroke="transparent" strokeWidth={gaineWidth + 30} style={{ cursor: "pointer" }} />
 
-          {/* Gaine centrale (entre les zones d'éventail) */}
-          <path
-            d={edgePath}
-            fill="none"
-            stroke="#1F2937"
-            strokeWidth={gaineWidth}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ pointerEvents: "none" }}
-          />
+          {/* Gaine centrale */}
+          <path d={edgePath} fill="none" stroke="#1F2937" strokeWidth={gaineWidth} strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }} />
+          <path d={edgePath} fill="none" stroke="#374151" strokeWidth={gaineWidth - 4} strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }} />
 
-          {/* Fils individuels en éventail */}
+          {/* Fils en éventail */}
           {fanPaths.map((wire: any) => (
             <path
               key={wire.id || wire.index}
               d={wire.path}
               fill="none"
               stroke={wire.color}
-              strokeWidth={2.5}
+              strokeWidth={3}
               strokeLinecap="round"
               strokeLinejoin="round"
               style={{ pointerEvents: "none" }}
             />
           ))}
 
-          {/* Sélection highlight */}
+          {/* Sélection */}
           {selected && (
-            <path
-              d={edgePath}
-              fill="none"
-              stroke="#3B82F6"
-              strokeWidth={gaineWidth + 6}
-              strokeLinecap="round"
-              strokeOpacity={0.3}
-              style={{ pointerEvents: "none" }}
-            />
+            <path d={edgePath} fill="none" stroke="#3B82F6" strokeWidth={gaineWidth + 8} strokeLinecap="round" strokeOpacity={0.3} style={{ pointerEvents: "none" }} />
           )}
 
           {/* Label */}
           <EdgeLabelRenderer>
-            <div
-              style={{
-                position: "absolute",
-                transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-                pointerEvents: "all",
-                cursor: "pointer",
-              }}
-            >
+            <div style={{ position: "absolute", transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`, pointerEvents: "all", cursor: "pointer" }}>
               <Badge
                 variant={selected ? "default" : "outline"}
                 className="text-[10px] px-1.5 py-0.5 shadow-sm flex items-center gap-1"
-                style={{
-                  background: selected ? "#1F2937" : "white",
-                  color: selected ? "white" : "#1F2937",
-                  borderColor: "#1F2937",
-                }}
+                style={{ background: selected ? "#1F2937" : "white", color: selected ? "white" : "#1F2937", borderColor: "#1F2937" }}
               >
                 <Cable className="h-3 w-3" />
                 {edgeLabel}
                 <span className="flex gap-0.5 ml-1">
                   {fanPaths.map((wire: any) => (
-                    <span
-                      key={wire.id || wire.index}
-                      className="w-2 h-2 rounded-full border border-white/50"
-                      style={{ backgroundColor: wire.color }}
-                    />
+                    <span key={wire.id || wire.index} className="w-2.5 h-2.5 rounded-full border border-white/50" style={{ backgroundColor: wire.color }} title={wire.label} />
                   ))}
                 </span>
               </Badge>
@@ -311,53 +251,18 @@ const PlumbingEdge = memo(
       );
     }
 
-    // Rendu standard pour câble simple
+    // Rendu standard
     return (
       <>
-        {/* Zone de clic élargie */}
-        <path
-          d={edgePath}
-          fill="none"
-          stroke="transparent"
-          strokeWidth={Math.max(strokeWidth + 10, 20)}
-          style={{ cursor: "pointer" }}
-        />
-
-        {/* Ligne principale */}
+        <path d={edgePath} fill="none" stroke="transparent" strokeWidth={Math.max(strokeWidth + 10, 20)} style={{ cursor: "pointer" }} />
         <BaseEdge id={id} path={edgePath} style={edgeStyle} />
-
-        {/* Pointillés pour 230V */}
         {data?.connectionType === "electrical" && data.electricalType === "230v" && (
-          <path
-            d={edgePath}
-            fill="none"
-            stroke={strokeColor}
-            strokeWidth={strokeWidth}
-            strokeDasharray="8 4"
-            style={{ pointerEvents: "none" }}
-          />
+          <path d={edgePath} fill="none" stroke={strokeColor} strokeWidth={strokeWidth} strokeDasharray="8 4" style={{ pointerEvents: "none" }} />
         )}
-
-        {/* Label */}
         {edgeLabel && (
           <EdgeLabelRenderer>
-            <div
-              style={{
-                position: "absolute",
-                transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-                pointerEvents: "all",
-                cursor: "pointer",
-              }}
-            >
-              <Badge
-                variant={selected ? "default" : "outline"}
-                className="text-[10px] px-1.5 py-0.5 shadow-sm"
-                style={{
-                  background: selected ? strokeColor : "white",
-                  color: selected ? "white" : strokeColor,
-                  borderColor: strokeColor,
-                }}
-              >
+            <div style={{ position: "absolute", transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`, pointerEvents: "all", cursor: "pointer" }}>
+              <Badge variant={selected ? "default" : "outline"} className="text-[10px] px-1.5 py-0.5 shadow-sm" style={{ background: selected ? strokeColor : "white", color: selected ? "white" : strokeColor, borderColor: strokeColor }}>
                 {edgeLabel}
               </Badge>
             </div>
