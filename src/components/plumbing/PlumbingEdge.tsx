@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingEdge
 // Connexion plomberie (tuyau ou câble) pour ReactFlow
-// VERSION: 1.2 - Effet éventail pour câbles groupés
+// VERSION: 1.3 - Câbles groupés avec fils parallèles
 // ============================================
 
 import React, { memo, useMemo } from "react";
@@ -15,76 +15,6 @@ import {
   ELECTRICAL_CONNECTOR_COLORS,
   WATER_COLORS,
 } from "./types";
-
-// Générer un chemin en éventail pour les câbles groupés
-function generateFanPath(
-  sourceX: number,
-  sourceY: number,
-  targetX: number,
-  targetY: number,
-  sourcePosition: Position,
-  targetPosition: Position,
-  groupedEdges: any[],
-  index: number,
-  total: number
-): string {
-  // Offset pour chaque fil dans l'éventail
-  const spacing = 8;
-  const offset = (index - (total - 1) / 2) * spacing;
-  
-  // Points de convergence (où les fils se rejoignent)
-  const convergenceDistance = 40;
-  
-  let sourceConvergeX = sourceX;
-  let sourceConvergeY = sourceY;
-  let targetConvergeX = targetX;
-  let targetConvergeY = targetY;
-  
-  // Calculer les points de convergence selon la direction
-  if (sourcePosition === Position.Right) {
-    sourceConvergeX = sourceX + convergenceDistance;
-  } else if (sourcePosition === Position.Left) {
-    sourceConvergeX = sourceX - convergenceDistance;
-  } else if (sourcePosition === Position.Bottom) {
-    sourceConvergeY = sourceY + convergenceDistance;
-  } else if (sourcePosition === Position.Top) {
-    sourceConvergeY = sourceY - convergenceDistance;
-  }
-  
-  if (targetPosition === Position.Left) {
-    targetConvergeX = targetX - convergenceDistance;
-  } else if (targetPosition === Position.Right) {
-    targetConvergeX = targetX + convergenceDistance;
-  } else if (targetPosition === Position.Top) {
-    targetConvergeY = targetY - convergenceDistance;
-  } else if (targetPosition === Position.Bottom) {
-    targetConvergeY = targetY + convergenceDistance;
-  }
-  
-  // Point de départ avec offset (éventail source)
-  let startX = sourceX;
-  let startY = sourceY + offset;
-  if (sourcePosition === Position.Top || sourcePosition === Position.Bottom) {
-    startX = sourceX + offset;
-    startY = sourceY;
-  }
-  
-  // Point d'arrivée avec offset (éventail target)
-  let endX = targetX;
-  let endY = targetY + offset;
-  if (targetPosition === Position.Top || targetPosition === Position.Bottom) {
-    endX = targetX + offset;
-    endY = targetY;
-  }
-  
-  // Générer le chemin : départ → convergence source → convergence target → arrivée
-  const midX = (sourceConvergeX + targetConvergeX) / 2;
-  const midY = (sourceConvergeY + targetConvergeY) / 2;
-  
-  return `M ${startX} ${startY} 
-          C ${sourceConvergeX} ${startY}, ${sourceConvergeX} ${midY}, ${midX} ${midY}
-          C ${targetConvergeX} ${midY}, ${targetConvergeX} ${endY}, ${endX} ${endY}`;
-}
 
 const PlumbingEdge = memo(
   ({
@@ -142,6 +72,18 @@ const PlumbingEdge = memo(
       if (!data) return null;
       
       if (isGrouped && groupedCount > 0) {
+        // Afficher les types de fils
+        const wireTypes: string[] = [];
+        groupedEdges.forEach((ge: any) => {
+          if (ge.data?.electricalType === "230v" && ge.data?.wire) {
+            wireTypes.push({ phase: "L", neutral: "N", earth: "PE" }[ge.data.wire] || "");
+          } else if (ge.data?.electricalType === "12v" && ge.data?.polarity) {
+            wireTypes.push(ge.data.polarity === "positive" ? "+" : "-");
+          }
+        });
+        if (wireTypes.length > 0) {
+          return wireTypes.join("+");
+        }
         return `${groupedCount} fils`;
       }
 
@@ -159,33 +101,34 @@ const PlumbingEdge = memo(
       }
       if (data.label) parts.unshift(data.label);
       return parts.length > 0 ? parts.join(" ") : null;
-    }, [data, isGrouped, groupedCount]);
+    }, [data, isGrouped, groupedCount, groupedEdges]);
 
     // Couleurs des fils groupés
-    const groupedWireData = useMemo(() => {
+    const groupedWireColors = useMemo(() => {
       if (!isGrouped || !groupedEdges.length) return [];
       return groupedEdges.map((ge: any) => {
-        let color = "#6B7280";
         if (ge.data?.electricalType === "230v" && ge.data?.wire) {
           const wireColors: Record<string, string> = {
             phase: ELECTRICAL_CONNECTOR_COLORS["230v-L"],
             neutral: ELECTRICAL_CONNECTOR_COLORS["230v-N"],
             earth: ELECTRICAL_CONNECTOR_COLORS["pe"],
           };
-          color = wireColors[ge.data.wire] || "#6B7280";
+          return wireColors[ge.data.wire] || "#6B7280";
         } else if (ge.data?.electricalType === "12v" && ge.data?.polarity) {
-          color = ge.data.polarity === "positive" 
+          return ge.data.polarity === "positive" 
             ? ELECTRICAL_CONNECTOR_COLORS["12v+"] 
             : ELECTRICAL_CONNECTOR_COLORS["12v-"];
         } else if (ge.data?.waterType) {
-          color = WATER_COLORS[ge.data.waterType];
+          return WATER_COLORS[ge.data.waterType];
         }
-        return { ...ge, color };
+        return "#6B7280";
       });
     }, [isGrouped, groupedEdges]);
 
-    // Rendu pour câble groupé avec éventail
-    if (isGrouped && groupedWireData.length > 0) {
+    // Rendu pour câble groupé
+    if (isGrouped && groupedWireColors.length > 0) {
+      const gaineWidth = groupedCount * 4 + 8;
+      
       return (
         <>
           {/* Zone de clic élargie */}
@@ -193,46 +136,59 @@ const PlumbingEdge = memo(
             d={edgePath}
             fill="none"
             stroke="transparent"
-            strokeWidth={30}
+            strokeWidth={gaineWidth + 20}
             style={{ cursor: "pointer" }}
           />
 
-          {/* Gaine centrale (fond sombre) */}
+          {/* Gaine externe (noir) */}
           <path
             d={edgePath}
             fill="none"
             stroke="#1F2937"
-            strokeWidth={groupedCount * 3 + 6}
+            strokeWidth={gaineWidth}
             strokeLinecap="round"
+            strokeLinejoin="round"
             style={{ pointerEvents: "none" }}
           />
 
-          {/* Fils individuels en éventail */}
-          {groupedWireData.map((wire: any, idx: number) => {
-            const fanPath = generateFanPath(
-              sourceX,
-              sourceY,
-              targetX,
-              targetY,
-              sourcePosition,
-              targetPosition,
-              groupedWireData,
-              idx,
-              groupedWireData.length
-            );
-            
-            return (
-              <path
-                key={wire.id || idx}
-                d={fanPath}
-                fill="none"
-                stroke={wire.color}
-                strokeWidth={2.5}
-                strokeLinecap="round"
-                style={{ pointerEvents: "none" }}
-              />
-            );
-          })}
+          {/* Gaine interne (gris foncé) */}
+          <path
+            d={edgePath}
+            fill="none"
+            stroke="#374151"
+            strokeWidth={gaineWidth - 4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ pointerEvents: "none" }}
+          />
+
+          {/* Fils colorés côte à côte */}
+          {groupedWireColors.map((color: string, idx: number) => (
+            <path
+              key={idx}
+              d={edgePath}
+              fill="none"
+              stroke={color}
+              strokeWidth={3}
+              strokeLinecap="round"
+              strokeDasharray={idx === 0 ? "none" : `${8 + idx * 4} ${4 + idx * 2}`}
+              strokeDashoffset={idx * 6}
+              style={{ pointerEvents: "none" }}
+            />
+          ))}
+
+          {/* Sélection highlight */}
+          {selected && (
+            <path
+              d={edgePath}
+              fill="none"
+              stroke="#3B82F6"
+              strokeWidth={gaineWidth + 4}
+              strokeLinecap="round"
+              strokeOpacity={0.3}
+              style={{ pointerEvents: "none" }}
+            />
+          )}
 
           {/* Label */}
           <EdgeLabelRenderer>
@@ -248,13 +204,23 @@ const PlumbingEdge = memo(
                 variant={selected ? "default" : "outline"}
                 className="text-[10px] px-1.5 py-0.5 shadow-sm flex items-center gap-1"
                 style={{
-                  background: selected ? "#374151" : "white",
-                  color: selected ? "white" : "#374151",
-                  borderColor: "#374151",
+                  background: selected ? "#1F2937" : "white",
+                  color: selected ? "white" : "#1F2937",
+                  borderColor: "#1F2937",
                 }}
               >
                 <Cable className="h-3 w-3" />
                 {edgeLabel}
+                {/* Indicateurs de couleur des fils */}
+                <span className="flex gap-0.5 ml-1">
+                  {groupedWireColors.map((color: string, idx: number) => (
+                    <span
+                      key={idx}
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                </span>
               </Badge>
             </div>
           </EdgeLabelRenderer>
