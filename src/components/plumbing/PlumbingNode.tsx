@@ -239,10 +239,19 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
   
   // Couleur de la jonction selon le type de connecteur
   const junctionColor = useMemo(() => {
-    if (!isJunction || config.electrical.length === 0) return "#6B7280";
-    const connType = config.electrical[0]?.type;
-    return ELECTRICAL_CONNECTOR_COLORS[connType] || "#6B7280";
-  }, [isJunction, config.electrical]);
+    if (!isJunction) return "#6B7280";
+    // Électrique
+    if (config.electrical.length > 0) {
+      const connType = config.electrical[0]?.type;
+      return ELECTRICAL_CONNECTOR_COLORS[connType] || "#6B7280";
+    }
+    // Eau
+    if (config.water.length > 0) {
+      const waterType = config.water[0]?.waterType;
+      return WATER_COLORS[waterType] || "#6B7280";
+    }
+    return "#6B7280";
+  }, [isJunction, config.electrical, config.water]);
 
   // Rendu compact pour les jonctions
   if (isJunction) {
@@ -270,7 +279,8 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
             {data.description && <p className="text-xs text-gray-500">{data.description}</p>}
           </TooltipContent>
         </Tooltip>
-        {/* Handles pour jonctions - positionnés autour du cercle */}
+        
+        {/* Handles électriques pour jonctions */}
         {config.electrical.map((conn, idx) => {
           const positions: Record<string, React.CSSProperties> = {
             left: { left: "-4px", top: "50%", transform: "translateY(-50%)" },
@@ -279,34 +289,51 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
             bottom: { bottom: "-4px", left: "50%", transform: "translateX(-50%)" },
           };
           return (
-            <React.Fragment key={conn.id}>
-              <Handle
-                type="source"
-                position={positionMap[conn.side]}
-                id={`elec_${conn.type}_${idx}`}
-                style={{
-                  ...getHandleStyle(ELECTRICAL_CONNECTOR_COLORS[conn.type], false),
-                  ...positions[conn.side],
-                  background: "transparent",
-                  border: "none",
-                  width: 10,
-                  height: 10,
-                }}
-              />
-              <Handle
-                type="target"
-                position={positionMap[conn.side]}
-                id={`elec_${conn.type}_in_${idx}`}
-                style={{
-                  ...getHandleStyle(ELECTRICAL_CONNECTOR_COLORS[conn.type], false),
-                  ...positions[conn.side],
-                  background: "transparent",
-                  border: "none",
-                  width: 10,
-                  height: 10,
-                }}
-              />
-            </React.Fragment>
+            <Handle
+              key={`elec_${conn.id}`}
+              type="source"
+              position={positionMap[conn.side]}
+              id={`elec_${conn.type}_bidirectional_${idx}`}
+              isConnectableStart={true}
+              isConnectableEnd={true}
+              style={{
+                ...getHandleStyle(ELECTRICAL_CONNECTOR_COLORS[conn.type], false),
+                ...positions[conn.side],
+                background: "transparent",
+                border: "none",
+                width: 10,
+                height: 10,
+              }}
+            />
+          );
+        })}
+        
+        {/* Handles eau pour jonctions */}
+        {config.water.map((conn, idx) => {
+          const positions: Record<string, React.CSSProperties> = {
+            left: { left: "-4px", top: "50%", transform: "translateY(-50%)" },
+            right: { right: "-4px", top: "50%", transform: "translateY(-50%)" },
+            top: { top: "-4px", left: "50%", transform: "translateX(-50%)" },
+            bottom: { bottom: "-4px", left: "50%", transform: "translateX(-50%)" },
+          };
+          console.log("[PlumbingNode v1.3] Junction handle eau:", `water_bidirectional_${conn.waterType}_${idx}`, "side:", conn.side);
+          return (
+            <Handle
+              key={`water_${conn.id}`}
+              type="source"
+              position={positionMap[conn.side]}
+              id={`water_bidirectional_${conn.waterType}_${idx}`}
+              isConnectableStart={true}
+              isConnectableEnd={true}
+              style={{
+                ...getHandleStyle(WATER_COLORS[conn.waterType], true),
+                ...positions[conn.side],
+                background: "transparent",
+                border: "none",
+                width: 10,
+                height: 10,
+              }}
+            />
           );
         })}
       </TooltipProvider>
