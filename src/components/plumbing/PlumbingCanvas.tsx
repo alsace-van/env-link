@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingCanvas
 // Schéma circuit d'eau interactif avec ReactFlow
-// VERSION: 1.1 - Ajout plein écran
+// VERSION: 1.1a - Fix Popover en mode plein écran
 // ============================================
 
 import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
@@ -299,6 +299,7 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
         quoteToBlockData={quoteToBlockData}
         isFullscreen={isFullscreen}
         onToggleFullscreen={toggleFullscreen}
+        containerRef={containerRef}
       />
 
       <div className="flex-1 flex overflow-hidden">
