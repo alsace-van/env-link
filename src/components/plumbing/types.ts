@@ -1,7 +1,7 @@
 // ============================================
 // TYPES & CONSTANTES - PlumbingCanvas
 // Circuit d'eau pour fourgon aménagé
-// VERSION: 1.1 - Configuration flexible des connecteurs
+// VERSION: 1.2 - Ajout catégorie electrical + composants distribution
 // ============================================
 
 import { Node, Edge } from "@xyflow/react";
@@ -31,6 +31,7 @@ export type PlumbingCategory =
   | "distribution"
   | "fitting"
   | "filter"
+  | "electrical"
   | "other";
 
 export type ThreadType = "3/8" | "1/2" | "3/4" | "1" | "none";
@@ -115,6 +116,7 @@ export const CATEGORY_COLORS: Record<PlumbingCategory, string> = {
   distribution: "#F59E0B",
   fitting: "#6B7280",
   filter: "#8B5CF6",
+  electrical: "#EF4444",
   other: "#EC4899",
 };
 
@@ -124,6 +126,7 @@ export const CATEGORY_ICONS: Record<PlumbingCategory, string> = {
   distribution: "🚰",
   fitting: "🔧",
   filter: "🔬",
+  electrical: "⚡",
   other: "📦",
 };
 
@@ -504,6 +507,317 @@ export const PLUMBING_ELEMENTS: Omit<PlumbingBlockData, "width" | "height">[] = 
     electricalType: "12v",
     power_watts: 1,
     cable_section: 0.5,
+  },
+  // DISTRIBUTION ÉLECTRIQUE
+  {
+    label: "Jonction 12V+",
+    category: "electrical",
+    icon: "●",
+    description: "Point de dérivation 12V positif",
+    waterConnections: { inputs: [], outputs: [] },
+    electricalType: "none",
+    connectorConfig: {
+      water: [],
+      electrical: [
+        { id: "p1", type: "12v+", side: "left", direction: "bidirectional" },
+        { id: "p2", type: "12v+", side: "top", direction: "bidirectional" },
+        { id: "p3", type: "12v+", side: "right", direction: "bidirectional" },
+        { id: "p4", type: "12v+", side: "bottom", direction: "bidirectional" },
+      ],
+    },
+    cable_section: 2.5,
+  },
+  {
+    label: "Jonction 12V-",
+    category: "electrical",
+    icon: "●",
+    description: "Point de dérivation 12V négatif (masse)",
+    waterConnections: { inputs: [], outputs: [] },
+    electricalType: "none",
+    connectorConfig: {
+      water: [],
+      electrical: [
+        { id: "p1", type: "12v-", side: "left", direction: "bidirectional" },
+        { id: "p2", type: "12v-", side: "top", direction: "bidirectional" },
+        { id: "p3", type: "12v-", side: "right", direction: "bidirectional" },
+        { id: "p4", type: "12v-", side: "bottom", direction: "bidirectional" },
+      ],
+    },
+    cable_section: 2.5,
+  },
+  {
+    label: "Jonction 230V-L",
+    category: "electrical",
+    icon: "●",
+    description: "Point de dérivation Phase",
+    waterConnections: { inputs: [], outputs: [] },
+    electricalType: "none",
+    connectorConfig: {
+      water: [],
+      electrical: [
+        { id: "p1", type: "230v-L", side: "left", direction: "bidirectional" },
+        { id: "p2", type: "230v-L", side: "top", direction: "bidirectional" },
+        { id: "p3", type: "230v-L", side: "right", direction: "bidirectional" },
+        { id: "p4", type: "230v-L", side: "bottom", direction: "bidirectional" },
+      ],
+    },
+    cable_section: 2.5,
+  },
+  {
+    label: "Jonction 230V-N",
+    category: "electrical",
+    icon: "●",
+    description: "Point de dérivation Neutre",
+    waterConnections: { inputs: [], outputs: [] },
+    electricalType: "none",
+    connectorConfig: {
+      water: [],
+      electrical: [
+        { id: "p1", type: "230v-N", side: "left", direction: "bidirectional" },
+        { id: "p2", type: "230v-N", side: "top", direction: "bidirectional" },
+        { id: "p3", type: "230v-N", side: "right", direction: "bidirectional" },
+        { id: "p4", type: "230v-N", side: "bottom", direction: "bidirectional" },
+      ],
+    },
+    cable_section: 2.5,
+  },
+  {
+    label: "Jonction PE",
+    category: "electrical",
+    icon: "●",
+    description: "Point de dérivation Terre",
+    waterConnections: { inputs: [], outputs: [] },
+    electricalType: "none",
+    connectorConfig: {
+      water: [],
+      electrical: [
+        { id: "p1", type: "230v-PE", side: "left", direction: "bidirectional" },
+        { id: "p2", type: "230v-PE", side: "top", direction: "bidirectional" },
+        { id: "p3", type: "230v-PE", side: "right", direction: "bidirectional" },
+        { id: "p4", type: "230v-PE", side: "bottom", direction: "bidirectional" },
+      ],
+    },
+    cable_section: 2.5,
+  },
+  {
+    label: "Busbar + (12V)",
+    category: "electrical",
+    icon: "➕",
+    description: "Barre de distribution positive 12V - 6 sorties",
+    waterConnections: { inputs: [], outputs: [] },
+    electricalType: "none",
+    connectorConfig: {
+      water: [],
+      electrical: [
+        { id: "in1", type: "12v+", side: "left", direction: "in" },
+        { id: "out1", type: "12v+", side: "right", direction: "out" },
+        { id: "out2", type: "12v+", side: "right", direction: "out" },
+        { id: "out3", type: "12v+", side: "right", direction: "out" },
+        { id: "out4", type: "12v+", side: "right", direction: "out" },
+        { id: "out5", type: "12v+", side: "right", direction: "out" },
+        { id: "out6", type: "12v+", side: "right", direction: "out" },
+      ],
+    },
+    cable_section: 6,
+  },
+  {
+    label: "Busbar - (12V)",
+    category: "electrical",
+    icon: "➖",
+    description: "Barre de distribution négative 12V (masse) - 6 sorties",
+    waterConnections: { inputs: [], outputs: [] },
+    electricalType: "none",
+    connectorConfig: {
+      water: [],
+      electrical: [
+        { id: "in1", type: "12v-", side: "left", direction: "in" },
+        { id: "out1", type: "12v-", side: "right", direction: "out" },
+        { id: "out2", type: "12v-", side: "right", direction: "out" },
+        { id: "out3", type: "12v-", side: "right", direction: "out" },
+        { id: "out4", type: "12v-", side: "right", direction: "out" },
+        { id: "out5", type: "12v-", side: "right", direction: "out" },
+        { id: "out6", type: "12v-", side: "right", direction: "out" },
+      ],
+    },
+    cable_section: 6,
+  },
+  {
+    label: "Bornier 230V",
+    category: "electrical",
+    icon: "🔌",
+    description: "Bornier de raccordement 230V tripôle",
+    waterConnections: { inputs: [], outputs: [] },
+    electricalType: "none",
+    connectorConfig: {
+      water: [],
+      electrical: [
+        // Entrées
+        { id: "inL", type: "230v-L", side: "left", direction: "in" },
+        { id: "inN", type: "230v-N", side: "left", direction: "in" },
+        { id: "inPE", type: "230v-PE", side: "left", direction: "in" },
+        // Sorties
+        { id: "outL", type: "230v-L", side: "right", direction: "out" },
+        { id: "outN", type: "230v-N", side: "right", direction: "out" },
+        { id: "outPE", type: "230v-PE", side: "right", direction: "out" },
+      ],
+    },
+    cable_section: 2.5,
+  },
+  {
+    label: "Wago 3 entrées",
+    category: "electrical",
+    icon: "🟧",
+    description: "Connecteur rapide Wago - 3 positions",
+    waterConnections: { inputs: [], outputs: [] },
+    electricalType: "none",
+    connectorConfig: {
+      water: [],
+      electrical: [
+        { id: "p1", type: "12v+", side: "left", direction: "bidirectional" },
+        { id: "p2", type: "12v+", side: "top", direction: "bidirectional" },
+        { id: "p3", type: "12v+", side: "right", direction: "bidirectional" },
+      ],
+    },
+    cable_section: 2.5,
+  },
+  {
+    label: "Wago 5 entrées",
+    category: "electrical",
+    icon: "🟧",
+    description: "Connecteur rapide Wago - 5 positions",
+    waterConnections: { inputs: [], outputs: [] },
+    electricalType: "none",
+    connectorConfig: {
+      water: [],
+      electrical: [
+        { id: "p1", type: "12v+", side: "left", direction: "bidirectional" },
+        { id: "p2", type: "12v+", side: "left", direction: "bidirectional" },
+        { id: "p3", type: "12v+", side: "top", direction: "bidirectional" },
+        { id: "p4", type: "12v+", side: "right", direction: "bidirectional" },
+        { id: "p5", type: "12v+", side: "right", direction: "bidirectional" },
+      ],
+    },
+    cable_section: 2.5,
+  },
+  {
+    label: "Barre de terre",
+    category: "electrical",
+    icon: "🌍",
+    description: "Barre de terre (PE) - 4 connexions",
+    waterConnections: { inputs: [], outputs: [] },
+    electricalType: "none",
+    connectorConfig: {
+      water: [],
+      electrical: [
+        { id: "pe1", type: "230v-PE", side: "left", direction: "bidirectional" },
+        { id: "pe2", type: "230v-PE", side: "top", direction: "bidirectional" },
+        { id: "pe3", type: "230v-PE", side: "right", direction: "bidirectional" },
+        { id: "pe4", type: "230v-PE", side: "bottom", direction: "bidirectional" },
+      ],
+    },
+    cable_section: 4,
+  },
+  {
+    label: "Fusible 12V",
+    category: "electrical",
+    icon: "🔒",
+    description: "Porte-fusible 12V",
+    waterConnections: { inputs: [], outputs: [] },
+    electricalType: "none",
+    connectorConfig: {
+      water: [],
+      electrical: [
+        { id: "in", type: "12v+", side: "left", direction: "in" },
+        { id: "out", type: "12v+", side: "right", direction: "out" },
+      ],
+    },
+    cable_section: 2.5,
+  },
+  {
+    label: "Disjoncteur 230V",
+    category: "electrical",
+    icon: "🔲",
+    description: "Disjoncteur modulaire 230V",
+    waterConnections: { inputs: [], outputs: [] },
+    electricalType: "none",
+    connectorConfig: {
+      water: [],
+      electrical: [
+        { id: "inL", type: "230v-L", side: "top", direction: "in" },
+        { id: "inN", type: "230v-N", side: "top", direction: "in" },
+        { id: "outL", type: "230v-L", side: "bottom", direction: "out" },
+        { id: "outN", type: "230v-N", side: "bottom", direction: "out" },
+      ],
+    },
+    cable_section: 2.5,
+  },
+  {
+    label: "Différentiel 30mA",
+    category: "electrical",
+    icon: "🛡️",
+    description: "Interrupteur différentiel 30mA",
+    waterConnections: { inputs: [], outputs: [] },
+    electricalType: "none",
+    connectorConfig: {
+      water: [],
+      electrical: [
+        { id: "inL", type: "230v-L", side: "top", direction: "in" },
+        { id: "inN", type: "230v-N", side: "top", direction: "in" },
+        { id: "outL", type: "230v-L", side: "bottom", direction: "out" },
+        { id: "outN", type: "230v-N", side: "bottom", direction: "out" },
+      ],
+    },
+    cable_section: 2.5,
+  },
+  {
+    label: "Batterie 12V",
+    category: "electrical",
+    icon: "🔋",
+    description: "Batterie auxiliaire 12V",
+    waterConnections: { inputs: [], outputs: [] },
+    electricalType: "none",
+    connectorConfig: {
+      water: [],
+      electrical: [
+        { id: "plus", type: "12v+", side: "right", direction: "out" },
+        { id: "minus", type: "12v-", side: "right", direction: "out" },
+      ],
+    },
+    cable_section: 10,
+  },
+  {
+    label: "Prise 230V",
+    category: "electrical",
+    icon: "🔌",
+    description: "Prise de courant 230V",
+    waterConnections: { inputs: [], outputs: [] },
+    electricalType: "none",
+    connectorConfig: {
+      water: [],
+      electrical: [
+        { id: "L", type: "230v-L", side: "left", direction: "in" },
+        { id: "N", type: "230v-N", side: "left", direction: "in" },
+        { id: "PE", type: "230v-PE", side: "left", direction: "in" },
+      ],
+    },
+    cable_section: 2.5,
+  },
+  {
+    label: "Prise extérieure CEE",
+    category: "electrical",
+    icon: "🔵",
+    description: "Prise camping 230V (entrée secteur)",
+    waterConnections: { inputs: [], outputs: [] },
+    electricalType: "none",
+    connectorConfig: {
+      water: [],
+      electrical: [
+        { id: "L", type: "230v-L", side: "right", direction: "out" },
+        { id: "N", type: "230v-N", side: "right", direction: "out" },
+        { id: "PE", type: "230v-PE", side: "right", direction: "out" },
+      ],
+    },
+    cable_section: 2.5,
   },
 ];
 
