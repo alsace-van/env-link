@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingNode
 // Bloc plomberie pour ReactFlow
-// VERSION: 1.2 - Taille dynamique selon nombre de connecteurs
+// VERSION: 1.3 - Rendu compact pour jonctions
 // ============================================
 
 import React, { memo, useMemo } from "react";
@@ -226,6 +226,85 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
     if (has12v && has230v) return "mixed";
     return has12v ? "12v" : has230v ? "230v" : "none";
   }, [config.electrical]);
+
+  // Détecter si c'est une jonction (point de dérivation compact)
+  const isJunction = data.label.startsWith("Jonction");
+  
+  // Couleur de la jonction selon le type de connecteur
+  const junctionColor = useMemo(() => {
+    if (!isJunction || config.electrical.length === 0) return "#6B7280";
+    const connType = config.electrical[0]?.type;
+    return ELECTRICAL_CONNECTOR_COLORS[connType] || "#6B7280";
+  }, [isJunction, config.electrical]);
+
+  // Rendu compact pour les jonctions
+  if (isJunction) {
+    const junctionSize = 24;
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              style={{
+                width: `${junctionSize}px`,
+                height: `${junctionSize}px`,
+                background: junctionColor,
+                border: `2px solid ${selected ? "#3B82F6" : "white"}`,
+                borderRadius: "50%",
+                boxShadow: selected
+                  ? "0 0 0 2px rgba(59, 130, 246, 0.5), 0 2px 4px rgba(0,0,0,0.2)"
+                  : "0 1px 3px rgba(0,0,0,0.3)",
+                cursor: "pointer",
+              }}
+            />
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="font-medium">{data.label}</p>
+            {data.description && <p className="text-xs text-gray-500">{data.description}</p>}
+          </TooltipContent>
+        </Tooltip>
+        {/* Handles pour jonctions - positionnés autour du cercle */}
+        {config.electrical.map((conn, idx) => {
+          const positions: Record<string, React.CSSProperties> = {
+            left: { left: "-4px", top: "50%", transform: "translateY(-50%)" },
+            right: { right: "-4px", top: "50%", transform: "translateY(-50%)" },
+            top: { top: "-4px", left: "50%", transform: "translateX(-50%)" },
+            bottom: { bottom: "-4px", left: "50%", transform: "translateX(-50%)" },
+          };
+          return (
+            <React.Fragment key={conn.id}>
+              <Handle
+                type="source"
+                position={positionMap[conn.side]}
+                id={`elec_${conn.type}_${idx}`}
+                style={{
+                  ...getHandleStyle(ELECTRICAL_CONNECTOR_COLORS[conn.type], false),
+                  ...positions[conn.side],
+                  background: "transparent",
+                  border: "none",
+                  width: 10,
+                  height: 10,
+                }}
+              />
+              <Handle
+                type="target"
+                position={positionMap[conn.side]}
+                id={`elec_${conn.type}_in_${idx}`}
+                style={{
+                  ...getHandleStyle(ELECTRICAL_CONNECTOR_COLORS[conn.type], false),
+                  ...positions[conn.side],
+                  background: "transparent",
+                  border: "none",
+                  width: 10,
+                  height: 10,
+                }}
+              />
+            </React.Fragment>
+          );
+        })}
+      </TooltipProvider>
+    );
+  }
 
   return (
     <TooltipProvider>
