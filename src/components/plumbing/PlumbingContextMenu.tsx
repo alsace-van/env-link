@@ -102,16 +102,15 @@ export function PlumbingContextMenu({
     return (
       <div
         style={menuStyle}
-        className="bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 py-1 overflow-hidden"
+        className="bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 py-1 overflow-visible"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Ajouter dérivation */}
-        <div className="relative">
+        <div>
           <button
             className="w-full px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
             onClick={(e) => {
               e.stopPropagation();
-              console.log("[PlumbingContextMenu v1.3] Toggle submenu, actuel:", showDerivationSubmenu);
               setShowDerivationSubmenu(!showDerivationSubmenu);
             }}
           >
@@ -120,21 +119,18 @@ export function PlumbingContextMenu({
             <span className="ml-auto text-slate-400">{showDerivationSubmenu ? "▼" : "▶"}</span>
           </button>
 
-          {/* Sous-menu types de connecteurs */}
+          {/* Options affichées en dessous */}
           {showDerivationSubmenu && (
-            <div
-              className="absolute left-full top-0 ml-1 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 py-1 min-w-[180px] z-50"
-            >
+            <div className="bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 py-1">
               {edgeType === "electrical" ? (
                 <>
-                  <div className="px-3 py-1 text-xs text-slate-500 font-medium">Type de fil</div>
+                  <div className="px-4 py-1 text-xs text-slate-500 font-medium">Type de fil</div>
                   {(Object.keys(ELECTRICAL_CONNECTOR_LABELS) as ElectricalConnectorType[]).map((connType) => (
                     <button
                       key={connType}
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center gap-2"
                       onClick={(e) => {
                         e.stopPropagation();
-                        console.log("[PlumbingContextMenu v1.3] Click électrique:", connType);
                         onAddDerivation?.(connType);
                         onClose();
                       }}
@@ -149,14 +145,14 @@ export function PlumbingContextMenu({
                 </>
               ) : (
                 <>
-                  <div className="px-3 py-1 text-xs text-slate-500 font-medium">Type d'eau</div>
+                  <div className="px-4 py-1 text-xs text-slate-500 font-medium">Type d'eau</div>
                   {(Object.keys(WATER_TYPE_LABELS) as WaterType[]).map((waterType) => (
                     <button
                       key={waterType}
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+                      className="w-full px-4 py-2 text-left text-sm hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center gap-2"
                       onClick={(e) => {
                         e.stopPropagation();
-                        console.log("[PlumbingContextMenu v1.3] Click eau:", waterType);
+                        console.log("[PlumbingContextMenu v1.4] Click eau:", waterType);
                         onAddDerivation?.(waterType);
                         onClose();
                       }}
