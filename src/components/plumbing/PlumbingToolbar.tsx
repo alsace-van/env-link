@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingToolbar
 // Barre d'outils pour le schéma plomberie
-// VERSION: 1.1 - Ajout bouton plein écran
+// VERSION: 1.2 - Fix Popover en mode plein écran
 // ============================================
 
 import React, { useState, useMemo } from "react";
@@ -52,6 +52,7 @@ interface PlumbingToolbarProps {
   quoteToBlockData: (item: QuoteItem) => PlumbingBlockData;
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
+  containerRef?: React.RefObject<HTMLDivElement>;
 }
 
 export function PlumbingToolbar({
@@ -77,6 +78,7 @@ export function PlumbingToolbar({
   onAddFromQuote,
   isFullscreen,
   onToggleFullscreen,
+  containerRef,
 }: PlumbingToolbarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CatalogItem[]>([]);
@@ -110,6 +112,7 @@ export function PlumbingToolbar({
     { id: "distribution", label: "Distribution", count: PLUMBING_ELEMENTS.filter((e) => e.category === "distribution").length },
     { id: "fitting", label: "Raccords", count: PLUMBING_ELEMENTS.filter((e) => e.category === "fitting").length },
     { id: "filter", label: "Filtration", count: PLUMBING_ELEMENTS.filter((e) => e.category === "filter").length },
+    { id: "electrical", label: "Électrique", count: PLUMBING_ELEMENTS.filter((e) => e.category === "electrical").length },
     { id: "other", label: "Autres", count: PLUMBING_ELEMENTS.filter((e) => e.category === "other").length },
   ];
 
@@ -204,7 +207,11 @@ export function PlumbingToolbar({
               <ChevronDown className="h-3 w-3" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-80 p-0" align="start">
+          <PopoverContent 
+            className="w-80 p-0" 
+            align="start"
+            container={containerRef?.current || undefined}
+          >
             <Tabs defaultValue="elements" className="w-full">
               <TabsList className="w-full grid grid-cols-3">
                 <TabsTrigger value="elements" className="text-xs">
