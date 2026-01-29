@@ -325,13 +325,26 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
   // Ajouter un point de dérivation
   const handleAddDerivation = useCallback(
     (connectorType: ElectricalConnectorType | WaterType) => {
-      if (!contextMenu?.edgeId || !contextMenu?.flowPosition) return;
+      console.log("[PlumbingCanvas v1.6] handleAddDerivation appelé avec:", connectorType);
+      console.log("[PlumbingCanvas v1.6] contextMenu:", contextMenu);
+      
+      if (!contextMenu?.edgeId || !contextMenu?.flowPosition) {
+        console.log("[PlumbingCanvas v1.6] ERREUR: contextMenu incomplet");
+        return;
+      }
 
       const edge = getEdgeById(contextMenu.edgeId);
-      if (!edge) return;
+      console.log("[PlumbingCanvas v1.6] Edge trouvé:", edge);
+      
+      if (!edge) {
+        console.log("[PlumbingCanvas v1.6] ERREUR: edge non trouvé");
+        return;
+      }
 
       const isElectrical = edge.data?.connectionType === "electrical";
       const position = contextMenu.flowPosition;
+      
+      console.log("[PlumbingCanvas v1.6] isElectrical:", isElectrical, "position:", position);
 
       // Créer la configuration des connecteurs pour la jonction
       let connectorConfig: ConnectorConfig;
