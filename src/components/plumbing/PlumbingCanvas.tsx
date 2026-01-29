@@ -1,10 +1,10 @@
 // ============================================
 // COMPOSANT: PlumbingCanvas
 // Schéma circuit d'eau interactif avec ReactFlow
-// VERSION: 1.0
+// VERSION: 1.1 - Ajout plein écran
 // ============================================
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -116,6 +116,33 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
   } = usePlumbingCatalog({ projectId });
 
   const [showProperties, setShowProperties] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Gestion plein écran
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen().then(() => {
+        setIsFullscreen(true);
+      }).catch((err) => {
+        console.error("[PlumbingCanvas] Erreur fullscreen:", err);
+        toast.error("Impossible d'activer le plein écran");
+      });
+    } else {
+      document.exitFullscreen().then(() => {
+        setIsFullscreen(false);
+      });
+    }
+  }, []);
+
+  // Écouter les changements de fullscreen (ex: touche Escape)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
 
   const selectedNode = useMemo(() => {
     if (selectedNodes.length === 1) return getNodeById(selectedNodes[0]) || null;
@@ -148,6 +175,8 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
         if (schema) importSchema(schema);
       });
     }
+    // Charger le catalogue automatiquement
+    loadCatalog();
   }, [projectId]);
 
   useEffect(() => {
@@ -244,7 +273,7 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
   }, [handleSave, undo, redo, handleDuplicateSelected, selectAll, deleteSelected, clearSelection]);
 
   return (
-    <div className="flex flex-col h-full w-full bg-white">
+    <div ref={containerRef} className="flex flex-col h-full w-full bg-white">
       <PlumbingToolbar
         onAddElement={handleAddElement}
         onSave={handleSave}
@@ -268,6 +297,8 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
         onAddFromQuote={handleAddFromQuote}
         catalogToBlockData={catalogToBlockData}
         quoteToBlockData={quoteToBlockData}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={toggleFullscreen}
       />
 
       <div className="flex-1 flex overflow-hidden">
