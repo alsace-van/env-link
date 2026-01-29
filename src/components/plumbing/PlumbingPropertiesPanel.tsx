@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingPropertiesPanel
 // Panneau de propriétés pour élément sélectionné
-// VERSION: 1.1 - Ajout config connecteurs
+// VERSION: 1.2 - Support containerRef pour modal en fullscreen
 // ============================================
 
 import React, { useState } from "react";
@@ -47,6 +47,7 @@ interface PlumbingPropertiesPanelProps {
   onAddToQuote: (node: PlumbingNodeType) => void;
   isInQuote: (accessoryId: string) => boolean;
   onClose: () => void;
+  containerRef?: React.RefObject<HTMLDivElement>;
 }
 
 export function PlumbingPropertiesPanel({
@@ -60,6 +61,7 @@ export function PlumbingPropertiesPanel({
   onAddToQuote,
   isInQuote,
   onClose,
+  containerRef,
 }: PlumbingPropertiesPanelProps) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     general: true,
@@ -427,6 +429,7 @@ export function PlumbingPropertiesPanel({
           onSave={(newConfig) => {
             onUpdateNode(selectedNode.id, { connectorConfig: newConfig });
           }}
+          containerRef={containerRef}
         />
       </div>
     );
