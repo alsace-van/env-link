@@ -382,7 +382,7 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
       const junctionNode: PlumbingNodeType = {
         id: junctionId,
         type: "plumbingBlock",
-        position: { x: position.x - 12, y: position.y - 12 },
+        position: { x: position.x - 20, y: position.y - 20 },
         data: {
           label: junctionLabel,
           category: isElectrical ? "electrical" : "fitting",
@@ -390,6 +390,9 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
           description: "Point de dérivation",
           connectorConfig,
           electricalType: "none",
+          isJunction: true,
+          width: 40,
+          height: 40,
         },
       };
 
