@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingEdge
 // Connexion plomberie (tuyau ou câble) pour ReactFlow
-// VERSION: 1.3 - Câbles groupés avec fils parallèles
+// VERSION: 1.4 - Effet éventail aux extrémités + couleurs connecteurs
 // ============================================
 
 import React, { memo, useMemo } from "react";
@@ -15,6 +15,39 @@ import {
   ELECTRICAL_CONNECTOR_COLORS,
   WATER_COLORS,
 } from "./types";
+
+// Fonction pour obtenir la couleur d'un fil depuis son handle ou ses données
+function getWireColor(wireData: any): string {
+  // Essayer d'extraire le type depuis le sourceHandle
+  const handle = wireData.sourceHandle || wireData.targetHandle || "";
+  
+  // 230V
+  if (handle.includes("230v-L") || wireData.data?.wire === "phase") {
+    return ELECTRICAL_CONNECTOR_COLORS["230v-L"]; // Marron
+  }
+  if (handle.includes("230v-N") || wireData.data?.wire === "neutral") {
+    return ELECTRICAL_CONNECTOR_COLORS["230v-N"]; // Bleu
+  }
+  if (handle.includes("pe") || wireData.data?.wire === "earth") {
+    return ELECTRICAL_CONNECTOR_COLORS["pe"]; // Vert/Jaune
+  }
+  
+  // 12V
+  if (handle.includes("12v+") || wireData.data?.polarity === "positive") {
+    return ELECTRICAL_CONNECTOR_COLORS["12v+"]; // Rouge
+  }
+  if (handle.includes("12v-") || wireData.data?.polarity === "negative") {
+    return ELECTRICAL_CONNECTOR_COLORS["12v-"]; // Noir
+  }
+  
+  // Eau
+  if (wireData.data?.waterType) {
+    return WATER_COLORS[wireData.data.waterType];
+  }
+  
+  // Fallback
+  return "#6B7280";
+}
 
 const PlumbingEdge = memo(
   ({
@@ -72,26 +105,22 @@ const PlumbingEdge = memo(
       if (!data) return null;
       
       if (isGrouped && groupedCount > 0) {
-        // Afficher les types de fils
         const wireTypes: string[] = [];
         groupedEdges.forEach((ge: any) => {
-          if (ge.data?.electricalType === "230v" && ge.data?.wire) {
-            wireTypes.push({ phase: "L", neutral: "N", earth: "PE" }[ge.data.wire] || "");
-          } else if (ge.data?.electricalType === "12v" && ge.data?.polarity) {
-            wireTypes.push(ge.data.polarity === "positive" ? "+" : "-");
-          }
+          const handle = ge.sourceHandle || "";
+          if (handle.includes("230v-L") || ge.data?.wire === "phase") wireTypes.push("L");
+          else if (handle.includes("230v-N") || ge.data?.wire === "neutral") wireTypes.push("N");
+          else if (handle.includes("pe") || ge.data?.wire === "earth") wireTypes.push("PE");
+          else if (handle.includes("12v+") || ge.data?.polarity === "positive") wireTypes.push("+");
+          else if (handle.includes("12v-") || ge.data?.polarity === "negative") wireTypes.push("-");
         });
-        if (wireTypes.length > 0) {
-          return wireTypes.join("+");
-        }
+        if (wireTypes.length > 0) return wireTypes.join("+");
         return `${groupedCount} fils`;
       }
 
       const parts: string[] = [];
-
       if (data.connectionType === "water") {
         if (data.pipe_diameter) parts.push(`Ø${data.pipe_diameter}`);
-        if (data.thread_type && data.thread_type !== "none") parts.push(`${data.thread_type}"`);
       } else if (data.connectionType === "electrical") {
         if (data.cable_section) parts.push(`${data.cable_section}mm²`);
         if (data.electricalType === "12v" && data.polarity) parts.push(data.polarity === "positive" ? "+" : "-");
@@ -103,31 +132,98 @@ const PlumbingEdge = memo(
       return parts.length > 0 ? parts.join(" ") : null;
     }, [data, isGrouped, groupedCount, groupedEdges]);
 
-    // Couleurs des fils groupés
-    const groupedWireColors = useMemo(() => {
+    // Données des fils groupés avec couleurs
+    const groupedWires = useMemo(() => {
       if (!isGrouped || !groupedEdges.length) return [];
-      return groupedEdges.map((ge: any) => {
-        if (ge.data?.electricalType === "230v" && ge.data?.wire) {
-          const wireColors: Record<string, string> = {
-            phase: ELECTRICAL_CONNECTOR_COLORS["230v-L"],
-            neutral: ELECTRICAL_CONNECTOR_COLORS["230v-N"],
-            earth: ELECTRICAL_CONNECTOR_COLORS["pe"],
-          };
-          return wireColors[ge.data.wire] || "#6B7280";
-        } else if (ge.data?.electricalType === "12v" && ge.data?.polarity) {
-          return ge.data.polarity === "positive" 
-            ? ELECTRICAL_CONNECTOR_COLORS["12v+"] 
-            : ELECTRICAL_CONNECTOR_COLORS["12v-"];
-        } else if (ge.data?.waterType) {
-          return WATER_COLORS[ge.data.waterType];
-        }
-        return "#6B7280";
-      });
+      return groupedEdges.map((ge: any, idx: number) => ({
+        ...ge,
+        color: getWireColor(ge),
+        index: idx,
+      }));
     }, [isGrouped, groupedEdges]);
 
-    // Rendu pour câble groupé
-    if (isGrouped && groupedWireColors.length > 0) {
-      const gaineWidth = groupedCount * 4 + 8;
+    // Générer les chemins en éventail pour chaque fil
+    const fanPaths = useMemo(() => {
+      if (!isGrouped || groupedWires.length === 0) return [];
+      
+      const total = groupedWires.length;
+      const spacing = 6; // Espacement entre les fils
+      const fanLength = 30; // Longueur de l'éventail
+      
+      return groupedWires.map((wire: any, idx: number) => {
+        const offset = (idx - (total - 1) / 2) * spacing;
+        
+        // Calculer les points de l'éventail côté source
+        let srcFanX = sourceX;
+        let srcFanY = sourceY + offset;
+        let srcMergeX = sourceX;
+        let srcMergeY = sourceY;
+        
+        if (sourcePosition === Position.Right) {
+          srcFanY = sourceY + offset;
+          srcMergeX = sourceX + fanLength;
+          srcMergeY = sourceY;
+        } else if (sourcePosition === Position.Left) {
+          srcFanY = sourceY + offset;
+          srcMergeX = sourceX - fanLength;
+          srcMergeY = sourceY;
+        } else if (sourcePosition === Position.Bottom) {
+          srcFanX = sourceX + offset;
+          srcFanY = sourceY;
+          srcMergeX = sourceX;
+          srcMergeY = sourceY + fanLength;
+        } else if (sourcePosition === Position.Top) {
+          srcFanX = sourceX + offset;
+          srcFanY = sourceY;
+          srcMergeX = sourceX;
+          srcMergeY = sourceY - fanLength;
+        }
+        
+        // Calculer les points de l'éventail côté target
+        let tgtFanX = targetX;
+        let tgtFanY = targetY + offset;
+        let tgtMergeX = targetX;
+        let tgtMergeY = targetY;
+        
+        if (targetPosition === Position.Left) {
+          tgtFanY = targetY + offset;
+          tgtMergeX = targetX - fanLength;
+          tgtMergeY = targetY;
+        } else if (targetPosition === Position.Right) {
+          tgtFanY = targetY + offset;
+          tgtMergeX = targetX + fanLength;
+          tgtMergeY = targetY;
+        } else if (targetPosition === Position.Top) {
+          tgtFanX = targetX + offset;
+          tgtFanY = targetY;
+          tgtMergeX = targetX;
+          tgtMergeY = targetY - fanLength;
+        } else if (targetPosition === Position.Bottom) {
+          tgtFanX = targetX + offset;
+          tgtFanY = targetY;
+          tgtMergeX = targetX;
+          tgtMergeY = targetY + fanLength;
+        }
+        
+        // Chemin complet : source fan → source merge → target merge → target fan
+        // Utiliser des courbes de Bézier pour un rendu fluide
+        const path = `
+          M ${srcFanX} ${srcFanY}
+          Q ${srcMergeX} ${srcFanY}, ${srcMergeX} ${srcMergeY}
+          L ${tgtMergeX} ${tgtMergeY}
+          Q ${tgtMergeX} ${tgtFanY}, ${tgtFanX} ${tgtFanY}
+        `;
+        
+        return {
+          ...wire,
+          path: path.trim(),
+        };
+      });
+    }, [isGrouped, groupedWires, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition]);
+
+    // Rendu pour câble groupé avec éventail
+    if (isGrouped && fanPaths.length > 0) {
+      const gaineWidth = groupedCount * 3 + 8;
       
       return (
         <>
@@ -140,7 +236,7 @@ const PlumbingEdge = memo(
             style={{ cursor: "pointer" }}
           />
 
-          {/* Gaine externe (noir) */}
+          {/* Gaine centrale (entre les zones d'éventail) */}
           <path
             d={edgePath}
             fill="none"
@@ -151,28 +247,16 @@ const PlumbingEdge = memo(
             style={{ pointerEvents: "none" }}
           />
 
-          {/* Gaine interne (gris foncé) */}
-          <path
-            d={edgePath}
-            fill="none"
-            stroke="#374151"
-            strokeWidth={gaineWidth - 4}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ pointerEvents: "none" }}
-          />
-
-          {/* Fils colorés côte à côte */}
-          {groupedWireColors.map((color: string, idx: number) => (
+          {/* Fils individuels en éventail */}
+          {fanPaths.map((wire: any) => (
             <path
-              key={idx}
-              d={edgePath}
+              key={wire.id || wire.index}
+              d={wire.path}
               fill="none"
-              stroke={color}
-              strokeWidth={3}
+              stroke={wire.color}
+              strokeWidth={2.5}
               strokeLinecap="round"
-              strokeDasharray={idx === 0 ? "none" : `${8 + idx * 4} ${4 + idx * 2}`}
-              strokeDashoffset={idx * 6}
+              strokeLinejoin="round"
               style={{ pointerEvents: "none" }}
             />
           ))}
@@ -183,7 +267,7 @@ const PlumbingEdge = memo(
               d={edgePath}
               fill="none"
               stroke="#3B82F6"
-              strokeWidth={gaineWidth + 4}
+              strokeWidth={gaineWidth + 6}
               strokeLinecap="round"
               strokeOpacity={0.3}
               style={{ pointerEvents: "none" }}
@@ -211,13 +295,12 @@ const PlumbingEdge = memo(
               >
                 <Cable className="h-3 w-3" />
                 {edgeLabel}
-                {/* Indicateurs de couleur des fils */}
                 <span className="flex gap-0.5 ml-1">
-                  {groupedWireColors.map((color: string, idx: number) => (
+                  {fanPaths.map((wire: any) => (
                     <span
-                      key={idx}
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: color }}
+                      key={wire.id || wire.index}
+                      className="w-2 h-2 rounded-full border border-white/50"
+                      style={{ backgroundColor: wire.color }}
                     />
                   ))}
                 </span>
