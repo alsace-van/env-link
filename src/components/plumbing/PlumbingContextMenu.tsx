@@ -106,23 +106,24 @@ export function PlumbingContextMenu({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Ajouter dérivation */}
-        <div 
-          className="relative"
-          onMouseEnter={() => setShowDerivationSubmenu(true)}
-          onMouseLeave={() => setShowDerivationSubmenu(false)}
-        >
+        <div className="relative">
           <button
             className="w-full px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+            onClick={(e) => {
+              e.stopPropagation();
+              console.log("[PlumbingContextMenu v1.3] Toggle submenu, actuel:", showDerivationSubmenu);
+              setShowDerivationSubmenu(!showDerivationSubmenu);
+            }}
           >
             <GitBranch className="h-4 w-4" />
             Ajouter point de dérivation
-            <span className="ml-auto text-slate-400">▶</span>
+            <span className="ml-auto text-slate-400">{showDerivationSubmenu ? "▼" : "▶"}</span>
           </button>
 
           {/* Sous-menu types de connecteurs */}
           {showDerivationSubmenu && (
             <div
-              className="absolute left-full top-0 ml-0 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 py-1 min-w-[180px]"
+              className="absolute left-full top-0 ml-1 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 py-1 min-w-[180px] z-50"
             >
               {edgeType === "electrical" ? (
                 <>
@@ -131,7 +132,9 @@ export function PlumbingContextMenu({
                     <button
                       key={connType}
                       className="w-full px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        console.log("[PlumbingContextMenu v1.3] Click électrique:", connType);
                         onAddDerivation?.(connType);
                         onClose();
                       }}
@@ -153,8 +156,7 @@ export function PlumbingContextMenu({
                       className="w-full px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
                       onClick={(e) => {
                         e.stopPropagation();
-                        console.log("[PlumbingContextMenu v1.2] Click eau:", waterType);
-                        console.log("[PlumbingContextMenu v1.2] onAddDerivation existe:", !!onAddDerivation);
+                        console.log("[PlumbingContextMenu v1.3] Click eau:", waterType);
                         onAddDerivation?.(waterType);
                         onClose();
                       }}
