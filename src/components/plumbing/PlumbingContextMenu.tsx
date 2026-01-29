@@ -106,11 +106,13 @@ export function PlumbingContextMenu({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Ajouter dérivation */}
-        <div className="relative">
+        <div 
+          className="relative"
+          onMouseEnter={() => setShowDerivationSubmenu(true)}
+          onMouseLeave={() => setShowDerivationSubmenu(false)}
+        >
           <button
             className="w-full px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
-            onMouseEnter={() => setShowDerivationSubmenu(true)}
-            onMouseLeave={() => setShowDerivationSubmenu(false)}
           >
             <GitBranch className="h-4 w-4" />
             Ajouter point de dérivation
@@ -120,9 +122,7 @@ export function PlumbingContextMenu({
           {/* Sous-menu types de connecteurs */}
           {showDerivationSubmenu && (
             <div
-              className="absolute left-full top-0 ml-1 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 py-1 min-w-[180px]"
-              onMouseEnter={() => setShowDerivationSubmenu(true)}
-              onMouseLeave={() => setShowDerivationSubmenu(false)}
+              className="absolute left-full top-0 ml-0 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 py-1 min-w-[180px]"
             >
               {edgeType === "electrical" ? (
                 <>
