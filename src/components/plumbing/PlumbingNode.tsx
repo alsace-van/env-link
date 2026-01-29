@@ -129,42 +129,43 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
       const indexInSide = sideConnectors.findIndex((c) => c.type === "water" && c.index === idx);
       const totalInSide = sideConnectors.length;
 
-      // Déterminer le type de handle selon direction
-      const handleType = conn.direction === "out" ? "source" : conn.direction === "in" ? "target" : "source";
       const dirLabel = conn.direction === "in" ? "Entrée" : conn.direction === "out" ? "Sortie" : "↔";
       
-      const handleId = `water_${conn.direction}_${conn.waterType}_${idx}`;
-      console.log("[PlumbingNode v1.1] Handle eau créé:", handleId, "type:", handleType, "side:", conn.side);
-
-      handles.push(
-        <Handle
-          key={`water_${conn.id}`}
-          type={handleType}
-          position={positionMap[conn.side]}
-          id={handleId}
-          style={{
-            ...getHandleStyle(WATER_COLORS[conn.waterType], true),
-            ...getPositionStyle(conn.side, indexInSide, totalInSide),
-          }}
-          title={`${dirLabel} ${getWaterLabel(conn.waterType)}`}
-        />
-      );
-
-      // Pour bidirectionnel, ajouter aussi un handle target
       if (conn.direction === "bidirectional") {
-        const targetHandleId = `water_in_${conn.waterType}_${idx}`;
-        console.log("[PlumbingNode v1.1] Handle eau target créé:", targetHandleId);
-        
+        // Pour bidirectionnel : UN SEUL handle source qui accepte aussi les connexions entrantes
+        const handleId = `water_${conn.direction}_${conn.waterType}_${idx}`;
+        console.log("[PlumbingNode v1.2] Handle eau bidirectionnel:", handleId, "side:", conn.side);
+
         handles.push(
           <Handle
-            key={`water_${conn.id}_target`}
-            type="target"
+            key={`water_${conn.id}`}
+            type="source"
             position={positionMap[conn.side]}
-            id={targetHandleId}
+            id={handleId}
+            isConnectableStart={true}
+            isConnectableEnd={true}
             style={{
               ...getHandleStyle(WATER_COLORS[conn.waterType], true),
               ...getPositionStyle(conn.side, indexInSide, totalInSide),
-              opacity: 0.5,
+            }}
+            title={`${dirLabel} ${getWaterLabel(conn.waterType)}`}
+          />
+        );
+      } else {
+        // Pour in/out : handle simple
+        const handleType = conn.direction === "out" ? "source" : "target";
+        const handleId = `water_${conn.direction}_${conn.waterType}_${idx}`;
+        console.log("[PlumbingNode v1.2] Handle eau:", handleId, "type:", handleType, "side:", conn.side);
+
+        handles.push(
+          <Handle
+            key={`water_${conn.id}`}
+            type={handleType}
+            position={positionMap[conn.side]}
+            id={handleId}
+            style={{
+              ...getHandleStyle(WATER_COLORS[conn.waterType], true),
+              ...getPositionStyle(conn.side, indexInSide, totalInSide),
             }}
             title={`${dirLabel} ${getWaterLabel(conn.waterType)}`}
           />
