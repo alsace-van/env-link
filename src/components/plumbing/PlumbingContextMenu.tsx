@@ -151,7 +151,10 @@ export function PlumbingContextMenu({
                     <button
                       key={waterType}
                       className="w-full px-3 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        console.log("[PlumbingContextMenu v1.2] Click eau:", waterType);
+                        console.log("[PlumbingContextMenu v1.2] onAddDerivation existe:", !!onAddDerivation);
                         onAddDerivation?.(waterType);
                         onClose();
                       }}
