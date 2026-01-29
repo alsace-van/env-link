@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingEdge
 // Connexion plomberie (tuyau ou câble) pour ReactFlow
-// VERSION: 1.6 - Fils suivent la gaine + éventail aux extrémités
+// VERSION: 1.7 - Gaine raccourcie + éventail visible
 // ============================================
 
 import React, { memo, useMemo } from "react";
@@ -16,27 +16,19 @@ import {
   WATER_COLORS,
 } from "./types";
 
-// Fonction pour obtenir la couleur d'un fil depuis son handle
 function getWireColor(wireData: any): string {
-  const sourceHandle = wireData.sourceHandle || "";
-  const targetHandle = wireData.targetHandle || "";
-  const handle = sourceHandle + targetHandle;
-  
-  // Chercher dans le handle
+  const handle = (wireData.sourceHandle || "") + (wireData.targetHandle || "");
   if (handle.includes("230v-L") || handle.includes("230v_L")) return ELECTRICAL_CONNECTOR_COLORS["230v-L"] || "#8B4513";
   if (handle.includes("230v-N") || handle.includes("230v_N")) return ELECTRICAL_CONNECTOR_COLORS["230v-N"] || "#3B82F6";
-  if (handle.includes("_pe_") || handle.includes("_pe") || handle.includes("-pe")) return ELECTRICAL_CONNECTOR_COLORS["pe"] || "#22C55E";
-  if (handle.includes("12v+") || handle.includes("12v_plus")) return ELECTRICAL_CONNECTOR_COLORS["12v+"] || "#EF4444";
-  if (handle.includes("12v-") || handle.includes("12v_minus")) return ELECTRICAL_CONNECTOR_COLORS["12v-"] || "#1F2937";
-  
-  // Fallback sur les données
+  if (handle.includes("_pe") || handle.includes("-pe")) return ELECTRICAL_CONNECTOR_COLORS["pe"] || "#22C55E";
+  if (handle.includes("12v+")) return ELECTRICAL_CONNECTOR_COLORS["12v+"] || "#EF4444";
+  if (handle.includes("12v-")) return ELECTRICAL_CONNECTOR_COLORS["12v-"] || "#1F2937";
   if (wireData.data?.wire === "phase") return "#8B4513";
   if (wireData.data?.wire === "neutral") return "#3B82F6";
   if (wireData.data?.wire === "earth") return "#22C55E";
   if (wireData.data?.polarity === "positive") return "#EF4444";
   if (wireData.data?.polarity === "negative") return "#1F2937";
   if (wireData.data?.waterType) return WATER_COLORS[wireData.data.waterType] || "#6B7280";
-  
   return "#6B7280";
 }
 
@@ -101,7 +93,6 @@ const PlumbingEdge = memo(
       [strokeColor, strokeWidth, selected, style]
     );
 
-    // Données des fils groupés
     const groupedWires = useMemo(() => {
       if (!isGrouped || !groupedEdges.length) return [];
       return groupedEdges.map((ge: any, idx: number) => ({
@@ -133,87 +124,108 @@ const PlumbingEdge = memo(
     // Rendu pour câble groupé
     if (isGrouped && groupedWires.length > 0) {
       const total = groupedWires.length;
-      const spacing = 6;
-      const fanLength = 25;
-      const gaineWidth = total * 3 + 8;
+      const spacing = 5; // Espacement entre fils
+      const fanLength = 30; // Longueur de l'éventail
+      const gaineWidth = 8; // Gaine fine
       
-      // Générer les chemins d'éventail pour source et target
+      // Calculer le point de convergence (où les fils rejoignent la gaine)
+      let srcMergeX = sourceX, srcMergeY = sourceY;
+      let tgtMergeX = targetX, tgtMergeY = targetY;
+      
+      if (sourcePosition === Position.Right) srcMergeX = sourceX + fanLength;
+      else if (sourcePosition === Position.Left) srcMergeX = sourceX - fanLength;
+      else if (sourcePosition === Position.Bottom) srcMergeY = sourceY + fanLength;
+      else srcMergeY = sourceY - fanLength;
+      
+      if (targetPosition === Position.Left) tgtMergeX = targetX - fanLength;
+      else if (targetPosition === Position.Right) tgtMergeX = targetX + fanLength;
+      else if (targetPosition === Position.Top) tgtMergeY = targetY - fanLength;
+      else tgtMergeY = targetY + fanLength;
+      
+      // Chemin de la gaine RACCOURCI (du point de merge source au point de merge target)
+      const [shortenedPath] = getSmoothStepPath({
+        sourceX: srcMergeX,
+        sourceY: srcMergeY,
+        sourcePosition,
+        targetX: tgtMergeX,
+        targetY: tgtMergeY,
+        targetPosition,
+        borderRadius: 8,
+      });
+      
+      // Générer les éventails
       const fanElements = groupedWires.map((wire: any, idx: number) => {
         const offset = (idx - (total - 1) / 2) * spacing;
         
-        // Éventail côté source
+        // Point de départ sur le bloc (avec offset)
         let srcX = sourceX, srcY = sourceY;
-        let srcFanEndX = sourceX, srcFanEndY = sourceY;
-        
-        if (sourcePosition === Position.Right) {
+        if (sourcePosition === Position.Right || sourcePosition === Position.Left) {
           srcY += offset;
-          srcFanEndX = sourceX + fanLength;
-        } else if (sourcePosition === Position.Left) {
-          srcY += offset;
-          srcFanEndX = sourceX - fanLength;
-        } else if (sourcePosition === Position.Bottom) {
-          srcX += offset;
-          srcFanEndY = sourceY + fanLength;
         } else {
           srcX += offset;
-          srcFanEndY = sourceY - fanLength;
         }
         
-        // Éventail côté target
+        // Point d'arrivée sur le bloc (avec offset)
         let tgtX = targetX, tgtY = targetY;
-        let tgtFanStartX = targetX, tgtFanStartY = targetY;
-        
-        if (targetPosition === Position.Left) {
+        if (targetPosition === Position.Left || targetPosition === Position.Right) {
           tgtY += offset;
-          tgtFanStartX = targetX - fanLength;
-        } else if (targetPosition === Position.Right) {
-          tgtY += offset;
-          tgtFanStartX = targetX + fanLength;
-        } else if (targetPosition === Position.Top) {
-          tgtX += offset;
-          tgtFanStartY = targetY - fanLength;
         } else {
           tgtX += offset;
-          tgtFanStartY = targetY + fanLength;
         }
         
         return {
           ...wire,
-          srcPath: `M ${srcX} ${srcY} L ${srcFanEndX} ${srcFanEndY}`,
-          tgtPath: `M ${tgtFanStartX} ${tgtFanStartY} L ${tgtX} ${tgtY}`,
+          srcPath: `M ${srcX} ${srcY} L ${srcMergeX} ${srcMergeY}`,
+          tgtPath: `M ${tgtMergeX} ${tgtMergeY} L ${tgtX} ${tgtY}`,
         };
       });
       
       return (
         <>
-          {/* Zone de clic */}
-          <path d={edgePath} fill="none" stroke="transparent" strokeWidth={gaineWidth + 30} style={{ cursor: "pointer" }} />
+          {/* Zone de clic (sur le chemin complet) */}
+          <path d={edgePath} fill="none" stroke="transparent" strokeWidth={40} style={{ cursor: "pointer" }} />
 
-          {/* Gaine principale (suit le chemin complet) */}
-          <path d={edgePath} fill="none" stroke="#1F2937" strokeWidth={gaineWidth} strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }} />
-          <path d={edgePath} fill="none" stroke="#4B5563" strokeWidth={gaineWidth - 4} strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }} />
+          {/* Gaine RACCOURCIE (ne va pas jusqu'aux blocs) */}
+          <path 
+            d={shortenedPath} 
+            fill="none" 
+            stroke="#1F2937" 
+            strokeWidth={gaineWidth} 
+            strokeLinecap="round" 
+            strokeLinejoin="round" 
+            style={{ pointerEvents: "none" }} 
+          />
+          <path 
+            d={shortenedPath} 
+            fill="none" 
+            stroke="#4B5563" 
+            strokeWidth={gaineWidth - 3} 
+            strokeLinecap="round" 
+            strokeLinejoin="round" 
+            style={{ pointerEvents: "none" }} 
+          />
 
-          {/* Éventail source - fils qui sortent */}
+          {/* Éventail source - fils qui sortent du bloc vers la gaine */}
           {fanElements.map((wire: any) => (
             <path
               key={`src-${wire.id || wire.index}`}
               d={wire.srcPath}
               fill="none"
               stroke={wire.color}
-              strokeWidth={2.5}
+              strokeWidth={2}
               strokeLinecap="round"
               style={{ pointerEvents: "none" }}
             />
           ))}
           
-          {/* Éventail target - fils qui entrent */}
+          {/* Éventail target - fils qui vont de la gaine vers le bloc */}
           {fanElements.map((wire: any) => (
             <path
               key={`tgt-${wire.id || wire.index}`}
               d={wire.tgtPath}
               fill="none"
               stroke={wire.color}
-              strokeWidth={2.5}
+              strokeWidth={2}
               strokeLinecap="round"
               style={{ pointerEvents: "none" }}
             />
@@ -221,7 +233,7 @@ const PlumbingEdge = memo(
 
           {/* Sélection */}
           {selected && (
-            <path d={edgePath} fill="none" stroke="#3B82F6" strokeWidth={gaineWidth + 8} strokeLinecap="round" strokeOpacity={0.3} style={{ pointerEvents: "none" }} />
+            <path d={edgePath} fill="none" stroke="#3B82F6" strokeWidth={gaineWidth + 6} strokeLinecap="round" strokeOpacity={0.3} style={{ pointerEvents: "none" }} />
           )}
 
           {/* Label */}
@@ -236,7 +248,7 @@ const PlumbingEdge = memo(
                 {edgeLabel}
                 <span className="flex gap-0.5 ml-1">
                   {fanElements.map((wire: any) => (
-                    <span key={wire.id || wire.index} className="w-2.5 h-2.5 rounded-full border border-white/50" style={{ backgroundColor: wire.color }} title={wire.label} />
+                    <span key={wire.id || wire.index} className="w-2 h-2 rounded-full border border-white/50" style={{ backgroundColor: wire.color }} title={wire.label} />
                   ))}
                 </span>
               </Badge>
