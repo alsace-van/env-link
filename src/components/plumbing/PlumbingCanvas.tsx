@@ -515,13 +515,37 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
     // Prendre le fil du MILIEU comme référence
     const middleIndex = Math.floor(sortedEdges.length / 2);
     const middleEdge = sortedEdges[middleIndex];
+    const middleSrcIndex = extractIndex(middleEdge.sourceHandle || "");
+    const middleTgtIndex = extractIndex(middleEdge.targetHandle || "");
     
-    console.log("[PlumbingCanvas v1.4] Edges triés:", sortedEdges.map(e => ({
-      id: e.id,
-      srcHandle: e.sourceHandle,
-      srcIdx: extractIndex(e.sourceHandle || "")
-    })));
-    console.log("[PlumbingCanvas v1.4] Edge du milieu:", middleEdge.sourceHandle);
+    // Calculer l'espacement réel des connecteurs sur les blocs
+    // Constantes de PlumbingNode
+    const PADDING_EDGE = 16;
+    const BASE_HEIGHT = 80;
+    
+    // Récupérer les infos des nodes source et target
+    const sourceNode = nodes.find(n => n.id === sourceId);
+    const targetNode = nodes.find(n => n.id === targetId);
+    
+    // Compter le nombre de connecteurs électriques sur le côté concerné
+    const countElecConnectors = (node: typeof sourceNode) => {
+      if (!node?.data?.electrical) return 3; // Défaut
+      return node.data.electrical.length;
+    };
+    
+    const srcTotalConnectors = countElecConnectors(sourceNode);
+    const tgtTotalConnectors = countElecConnectors(targetNode);
+    
+    // Calculer l'espacement (formule de PlumbingNode)
+    const srcDimension = sourceNode?.measured?.height || BASE_HEIGHT;
+    const tgtDimension = targetNode?.measured?.height || BASE_HEIGHT;
+    
+    const srcSpacing = (srcDimension - PADDING_EDGE * 2) / (srcTotalConnectors + 1);
+    const tgtSpacing = (tgtDimension - PADDING_EDGE * 2) / (tgtTotalConnectors + 1);
+    
+    console.log("[PlumbingCanvas v1.5] Espacement calculé - source:", srcSpacing, "target:", tgtSpacing);
+    console.log("[PlumbingCanvas v1.5] Dimensions - source:", srcDimension, "target:", tgtDimension);
+    console.log("[PlumbingCanvas v1.5] Total connecteurs - source:", srcTotalConnectors, "target:", tgtTotalConnectors);
 
     // Créer un edge groupé - utiliser le handle du MILIEU comme référence
     const groupedEdgeId = generateEdgeId();
@@ -529,7 +553,7 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
       id: groupedEdgeId,
       source: sourceId,
       target: targetId,
-      sourceHandle: middleEdge.sourceHandle, // Handle du fil du MILIEU
+      sourceHandle: middleEdge.sourceHandle,
       targetHandle: middleEdge.targetHandle,
       type: "plumbingEdge",
       data: {
@@ -542,10 +566,15 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
           data: { ...e.data },
         })),
         cable_section: Math.max(...selectedEdgeObjs.map((e) => e.data?.cable_section || 1.5)),
+        // Nouvelles données pour l'espacement
+        srcSpacing,
+        tgtSpacing,
+        middleSrcIndex,
+        middleTgtIndex,
       },
     };
 
-    console.log("[PlumbingCanvas v1.4] Regroupement de", selectedEdgeObjs.length, "câbles centré sur:", middleEdge.sourceHandle);
+    console.log("[PlumbingCanvas v1.5] Regroupement avec espacement:", { srcSpacing, tgtSpacing });
 
     // Remplacer les edges individuels par l'edge groupé
     setEdges((eds) => [
@@ -557,7 +586,7 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
     toast.success(`${selectedEdges.length} câbles regroupés`);
     closeContextMenu();
     clearSelection();
-  }, [selectedEdges, edges, generateEdgeId, setEdges, markAsChanged, closeContextMenu, clearSelection]);
+  }, [selectedEdges, edges, nodes, generateEdgeId, setEdges, markAsChanged, closeContextMenu, clearSelection]);
 
   // Dégrouper un câble
   const handleUngroupEdge = useCallback(() => {
