@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingEdge
 // Connexion plomberie (tuyau ou câble) pour ReactFlow
-// VERSION: 2.0 - Tri des fils par index du handle
+// VERSION: 2.1 - Espacement réel depuis data
 // ============================================
 
 import React, { memo, useMemo } from "react";
@@ -113,7 +113,7 @@ const PlumbingEdge = memo(
         originalIndex: idx,
       }));
       
-      // Trier par index source pour que l'ordre visuel corresponde
+      // Trier par index source
       wires.sort((a, b) => a.srcIndex - b.srcIndex);
       
       return wires;
@@ -139,12 +139,16 @@ const PlumbingEdge = memo(
 
     // Rendu pour câble groupé
     if (isGrouped && groupedWires.length > 0) {
-      const total = groupedWires.length;
       const fanLength = 30;
       const gaineWidth = 6;
       
-      // Espacement visuel entre les fils dans l'éventail
-      const VISUAL_SPACING = 10;
+      // Récupérer l'espacement RÉEL depuis les données stockées
+      const srcSpacing = (data as any)?.srcSpacing || 12;
+      const tgtSpacing = (data as any)?.tgtSpacing || 12;
+      const middleSrcIndex = (data as any)?.middleSrcIndex ?? groupedWires[Math.floor(groupedWires.length / 2)]?.srcIndex ?? 0;
+      const middleTgtIndex = (data as any)?.middleTgtIndex ?? groupedWires[Math.floor(groupedWires.length / 2)]?.tgtIndex ?? 0;
+      
+      console.log("[PlumbingEdge v2.1] Espacement reçu:", { srcSpacing, tgtSpacing, middleSrcIndex, middleTgtIndex });
       
       // Point de convergence (où les fils rejoignent la gaine)
       let srcMergeX = sourceX, srcMergeY = sourceY;
@@ -171,30 +175,30 @@ const PlumbingEdge = memo(
         borderRadius: 8,
       });
       
-      // Générer les éventails - position basée sur l'ORDRE dans le tableau trié
-      const fanElements = groupedWires.map((wire: any, visualIdx: number) => {
-        // Offset visuel basé sur la position dans le tableau trié
-        const visualOffset = (visualIdx - (total - 1) / 2) * VISUAL_SPACING;
+      // Générer les éventails avec l'espacement RÉEL
+      const fanElements = groupedWires.map((wire: any) => {
+        // Offset basé sur la DIFFÉRENCE d'index par rapport au milieu × espacement réel
+        const srcOffset = (wire.srcIndex - middleSrcIndex) * srcSpacing;
+        const tgtOffset = (wire.tgtIndex - middleTgtIndex) * tgtSpacing;
         
         // Position source (éventail)
         let srcConnX = sourceX, srcConnY = sourceY;
         if (sourcePosition === Position.Right || sourcePosition === Position.Left) {
-          srcConnY = sourceY + visualOffset;
+          srcConnY = sourceY + srcOffset;
         } else {
-          srcConnX = sourceX + visualOffset;
+          srcConnX = sourceX + srcOffset;
         }
         
-        // Position target - utiliser le même offset visuel (les fils sont parallèles)
+        // Position target
         let tgtConnX = targetX, tgtConnY = targetY;
         if (targetPosition === Position.Left || targetPosition === Position.Right) {
-          tgtConnY = targetY + visualOffset;
+          tgtConnY = targetY + tgtOffset;
         } else {
-          tgtConnX = targetX + visualOffset;
+          tgtConnX = targetX + tgtOffset;
         }
         
         return {
           ...wire,
-          visualIdx,
           srcPath: `M ${srcConnX} ${srcConnY} L ${srcMergeX} ${srcMergeY}`,
           tgtPath: `M ${tgtMergeX} ${tgtMergeY} L ${tgtConnX} ${tgtConnY}`,
         };
@@ -212,7 +216,7 @@ const PlumbingEdge = memo(
           {/* Éventail source */}
           {fanElements.map((wire: any) => (
             <path
-              key={`src-${wire.id || wire.visualIdx}`}
+              key={`src-${wire.id || wire.srcIndex}`}
               d={wire.srcPath}
               fill="none"
               stroke={wire.color}
@@ -225,7 +229,7 @@ const PlumbingEdge = memo(
           {/* Éventail target */}
           {fanElements.map((wire: any) => (
             <path
-              key={`tgt-${wire.id || wire.visualIdx}`}
+              key={`tgt-${wire.id || wire.tgtIndex}`}
               d={wire.tgtPath}
               fill="none"
               stroke={wire.color}
@@ -252,7 +256,7 @@ const PlumbingEdge = memo(
                 {edgeLabel}
                 <span className="flex gap-0.5 ml-1">
                   {fanElements.map((wire: any) => (
-                    <span key={wire.id || wire.visualIdx} className="w-2 h-2 rounded-full border border-white/50" style={{ backgroundColor: wire.color }} title={wire.label} />
+                    <span key={wire.id || wire.srcIndex} className="w-2 h-2 rounded-full border border-white/50" style={{ backgroundColor: wire.color }} title={wire.label} />
                   ))}
                 </span>
               </Badge>
