@@ -394,12 +394,12 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
       };
 
       // Créer les 2 nouveaux edges (avant et après la jonction)
-      // Format handles eau: source = water_bidirectional_${type}_${idx}, target = water_in_${type}_${idx}
-      // Format handles elec: source = elec_${type}_bidirectional_${idx}, target = elec_${type}_in_${idx}
+      // Format handles eau bidirectionnel: water_bidirectional_${type}_${idx}
+      // Format handles elec bidirectionnel: elec_${type}_bidirectional_${idx}
       const sourceHandle = edge.sourceHandle;
       const targetHandle = edge.targetHandle;
 
-      // Edge 1: source originale → jonction (entrée gauche, index 0)
+      // Edge 1: source originale → jonction (connecteur gauche, index 0)
       const edge1Id = generateEdgeId();
       const edge1: PlumbingEdgeType = {
         id: edge1Id,
@@ -407,13 +407,13 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
         target: junctionId,
         sourceHandle: sourceHandle,
         targetHandle: isElectrical 
-          ? `elec_${connectorType}_in_0`
-          : `water_in_${connectorType}_0`,
+          ? `elec_${connectorType}_bidirectional_0`
+          : `water_bidirectional_${connectorType}_0`,
         type: "plumbingEdge",
         data: { ...edge.data },
       };
 
-      // Edge 2: jonction (sortie droite, index 1) → target originale
+      // Edge 2: jonction (connecteur droite, index 1) → target originale
       const edge2Id = generateEdgeId();
       const edge2: PlumbingEdgeType = {
         id: edge2Id,
@@ -427,7 +427,7 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
         data: { ...edge.data },
       };
       
-      console.log("[PlumbingCanvas v1.7] Dérivation eau créée:", {
+      console.log("[PlumbingCanvas v1.8] Dérivation créée:", {
         junctionId,
         edge1: { source: edge1.source, target: edge1.target, sourceHandle: edge1.sourceHandle, targetHandle: edge1.targetHandle },
         edge2: { source: edge2.source, target: edge2.target, sourceHandle: edge2.sourceHandle, targetHandle: edge2.targetHandle },
