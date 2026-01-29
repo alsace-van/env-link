@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingPropertiesPanel
 // Panneau de propriétés pour élément sélectionné
-// VERSION: 1.0
+// VERSION: 1.0a - Fix SelectItem value="" crash
 // ============================================
 
 import React, { useState } from "react";
@@ -247,10 +247,10 @@ export function PlumbingPropertiesPanel({
               <CollapsibleContent className="pt-2 space-y-2">
                 <div>
                   <Label className="text-xs">Diamètre tuyau (mm)</Label>
-                  <Select value={data.pipe_diameter?.toString() || ""} onValueChange={(v) => onUpdateNode(selectedNode.id, { pipe_diameter: v ? Number(v) as PipeDiameter : undefined })}>
+                  <Select value={data.pipe_diameter?.toString() || "unset"} onValueChange={(v) => onUpdateNode(selectedNode.id, { pipe_diameter: v === "unset" ? undefined : Number(v) as PipeDiameter })}>
                     <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Non défini" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Non défini</SelectItem>
+                      <SelectItem value="unset">Non défini</SelectItem>
                       {PIPE_DIAMETERS.map((d) => <SelectItem key={d} value={d.toString()}>Ø{d} mm</SelectItem>)}
                     </SelectContent>
                   </Select>
@@ -310,10 +310,10 @@ export function PlumbingPropertiesPanel({
                     </div>
                     <div>
                       <Label className="text-xs">Section câble (mm²)</Label>
-                      <Select value={data.cable_section?.toString() || ""} onValueChange={(v) => onUpdateNode(selectedNode.id, { cable_section: v ? Number(v) as CableSection : undefined })}>
+                      <Select value={data.cable_section?.toString() || "unset"} onValueChange={(v) => onUpdateNode(selectedNode.id, { cable_section: v === "unset" ? undefined : Number(v) as CableSection })}>
                         <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Non défini" /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Non défini</SelectItem>
+                          <SelectItem value="unset">Non défini</SelectItem>
                           {CABLE_SECTIONS.map((s) => <SelectItem key={s} value={s.toString()}>{s} mm²</SelectItem>)}
                         </SelectContent>
                       </Select>
