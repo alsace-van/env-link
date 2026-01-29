@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingNode
 // Bloc plomberie pour ReactFlow
-// VERSION: 1.0
+// VERSION: 1.1 - Connecteurs dynamiques via connectorConfig
 // ============================================
 
 import React, { memo, useMemo } from "react";
@@ -11,13 +11,16 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/comp
 import {
   PlumbingBlockData,
   WATER_COLORS,
-  COLORS_12V,
-  COLORS_230V,
   CATEGORY_COLORS,
   WaterType,
+  ConnectorSide,
+  getConnectorConfig,
+  ELECTRICAL_CONNECTOR_COLORS,
+  WATER_TYPE_LABELS,
+  ELECTRICAL_CONNECTOR_LABELS,
 } from "./types";
 
-const positionMap: Record<string, Position> = {
+const positionMap: Record<ConnectorSide, Position> = {
   top: Position.Top,
   bottom: Position.Bottom,
   left: Position.Left,
@@ -25,21 +28,24 @@ const positionMap: Record<string, Position> = {
 };
 
 function getWaterLabel(type: WaterType): string {
-  return { cold: "froide", hot: "chaude", waste: "usée" }[type];
+  return WATER_TYPE_LABELS[type] || type;
 }
 
+// Calcul de l'offset pour répartir les handles sur un côté
 function calculateOffset(index: number, total: number): number {
   if (total === 1) return 50;
-  const spacing = 60 / (total + 1);
-  return 20 + spacing * index;
+  const spacing = 70 / (total + 1);
+  return 15 + spacing * (index + 1);
 }
 
-function getPositionOffset(position: string, percent: number): Record<string, string> {
-  if (position === "top" || position === "bottom") return { left: `${percent}%` };
-  return { top: `${percent}%` };
+function getPositionOffset(side: ConnectorSide, percent: number): React.CSSProperties {
+  if (side === "top" || side === "bottom") {
+    return { left: `${percent}%`, transform: "translateX(-50%)" };
+  }
+  return { top: `${percent}%`, transform: "translateY(-50%)" };
 }
 
-const getHandleStyle = (color: string, isWater: boolean) => ({
+const getHandleStyle = (color: string, isWater: boolean): React.CSSProperties => ({
   width: isWater ? 12 : 8,
   height: isWater ? 12 : 8,
   background: color,
@@ -49,110 +55,138 @@ const getHandleStyle = (color: string, isWater: boolean) => ({
 
 const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => {
   const categoryColor = CATEGORY_COLORS[data.category] || "#6B7280";
+  
+  // Obtenir la configuration des connecteurs (nouveau ou legacy)
+  const config = useMemo(() => getConnectorConfig(data), [data]);
 
-  // Handles eau
+  // Grouper les connecteurs par côté pour calculer les offsets
+  const connectorsBySide = useMemo(() => {
+    const sides: Record<ConnectorSide, Array<{ type: "water" | "electrical"; index: number }>> = {
+      top: [],
+      bottom: [],
+      left: [],
+      right: [],
+    };
+
+    config.water.forEach((conn, idx) => {
+      sides[conn.side].push({ type: "water", index: idx });
+    });
+
+    config.electrical.forEach((conn, idx) => {
+      sides[conn.side].push({ type: "electrical", index: idx });
+    });
+
+    return sides;
+  }, [config]);
+
+  // Handles eau - dynamiques selon config
   const waterHandles = useMemo(() => {
     const handles: JSX.Element[] = [];
-    const inputsByPos: Record<string, number> = {};
-    const outputsByPos: Record<string, number> = {};
 
-    data.waterConnections.inputs.forEach((input, idx) => {
-      inputsByPos[input.position] = (inputsByPos[input.position] || 0) + 1;
-      const count = inputsByPos[input.position];
-      const total = data.waterConnections.inputs.filter((i) => i.position === input.position).length;
+    config.water.forEach((conn, idx) => {
+      const sideConnectors = connectorsBySide[conn.side];
+      const indexInSide = sideConnectors.findIndex((c) => c.type === "water" && c.index === idx);
+      const totalInSide = sideConnectors.length;
+      const offset = calculateOffset(indexInSide, totalInSide);
 
-      handles.push(
-        <Handle
-          key={`water_in_${input.id}`}
-          type="target"
-          position={positionMap[input.position]}
-          id={`water_in_${input.waterType}_${idx}`}
-          style={{
-            ...getHandleStyle(WATER_COLORS[input.waterType], true),
-            ...getPositionOffset(input.position, calculateOffset(count, total)),
-          }}
-          title={`Entrée eau ${getWaterLabel(input.waterType)}`}
-        />
-      );
-    });
-
-    data.waterConnections.outputs.forEach((output, idx) => {
-      outputsByPos[output.position] = (outputsByPos[output.position] || 0) + 1;
-      const count = outputsByPos[output.position];
-      const total = data.waterConnections.outputs.filter((o) => o.position === output.position).length;
+      // Déterminer le type de handle selon direction
+      const handleType = conn.direction === "out" ? "source" : conn.direction === "in" ? "target" : "source";
+      const dirLabel = conn.direction === "in" ? "Entrée" : conn.direction === "out" ? "Sortie" : "↔";
 
       handles.push(
         <Handle
-          key={`water_out_${output.id}`}
-          type="source"
-          position={positionMap[output.position]}
-          id={`water_out_${output.waterType}_${idx}`}
+          key={`water_${conn.id}`}
+          type={handleType}
+          position={positionMap[conn.side]}
+          id={`water_${conn.direction}_${conn.waterType}_${idx}`}
           style={{
-            ...getHandleStyle(WATER_COLORS[output.waterType], true),
-            ...getPositionOffset(output.position, calculateOffset(count, total)),
+            ...getHandleStyle(WATER_COLORS[conn.waterType], true),
+            ...getPositionOffset(conn.side, offset),
           }}
-          title={`Sortie eau ${getWaterLabel(output.waterType)}`}
+          title={`${dirLabel} ${getWaterLabel(conn.waterType)}`}
         />
       );
+
+      // Pour bidirectionnel, ajouter aussi un handle target
+      if (conn.direction === "bidirectional") {
+        handles.push(
+          <Handle
+            key={`water_${conn.id}_target`}
+            type="target"
+            position={positionMap[conn.side]}
+            id={`water_in_${conn.waterType}_${idx}`}
+            style={{
+              ...getHandleStyle(WATER_COLORS[conn.waterType], true),
+              ...getPositionOffset(conn.side, offset),
+              opacity: 0.5,
+            }}
+            title={`${dirLabel} ${getWaterLabel(conn.waterType)}`}
+          />
+        );
+      }
     });
 
     return handles;
-  }, [data.waterConnections]);
+  }, [config.water, connectorsBySide]);
 
-  // Handles électriques
+  // Handles électriques - dynamiques selon config
   const electricalHandles = useMemo(() => {
-    if (data.electricalType === "none") return null;
     const handles: JSX.Element[] = [];
 
-    if (data.electricalType === "12v") {
+    config.electrical.forEach((conn, idx) => {
+      const sideConnectors = connectorsBySide[conn.side];
+      const indexInSide = sideConnectors.findIndex((c) => c.type === "electrical" && c.index === idx);
+      const totalInSide = sideConnectors.length;
+      const offset = calculateOffset(indexInSide, totalInSide);
+
+      const handleType = conn.direction === "out" ? "source" : "target";
+      const color = ELECTRICAL_CONNECTOR_COLORS[conn.type];
+      const label = ELECTRICAL_CONNECTOR_LABELS[conn.type];
+
       handles.push(
         <Handle
-          key="elec_12v_pos"
-          type="target"
-          position={Position.Bottom}
-          id="elec_12v_positive"
-          style={{ ...getHandleStyle(COLORS_12V.positive, false), left: "30%" }}
-          title="12V + (Rouge)"
-        />,
-        <Handle
-          key="elec_12v_neg"
-          type="target"
-          position={Position.Bottom}
-          id="elec_12v_negative"
-          style={{ ...getHandleStyle(COLORS_12V.negative, false), left: "70%" }}
-          title="12V - (Noir)"
+          key={`elec_${conn.id}`}
+          type={handleType}
+          position={positionMap[conn.side]}
+          id={`elec_${conn.type}_${idx}`}
+          style={{
+            ...getHandleStyle(color, false),
+            ...getPositionOffset(conn.side, offset),
+          }}
+          title={label}
         />
       );
-    } else if (data.electricalType === "230v") {
-      handles.push(
-        <Handle
-          key="elec_230v_phase"
-          type="target"
-          position={Position.Bottom}
-          id="elec_230v_phase"
-          style={{ ...getHandleStyle(COLORS_230V.phase, false), left: "25%" }}
-          title="Phase L (Marron)"
-        />,
-        <Handle
-          key="elec_230v_neutral"
-          type="target"
-          position={Position.Bottom}
-          id="elec_230v_neutral"
-          style={{ ...getHandleStyle(COLORS_230V.neutral, false), left: "50%" }}
-          title="Neutre N (Bleu)"
-        />,
-        <Handle
-          key="elec_230v_earth"
-          type="target"
-          position={Position.Bottom}
-          id="elec_230v_earth"
-          style={{ ...getHandleStyle(COLORS_230V.earth, false), left: "75%" }}
-          title="Terre PE (J/V)"
-        />
-      );
-    }
+
+      // Pour bidirectionnel
+      if (conn.direction === "bidirectional") {
+        handles.push(
+          <Handle
+            key={`elec_${conn.id}_source`}
+            type="source"
+            position={positionMap[conn.side]}
+            id={`elec_${conn.type}_out_${idx}`}
+            style={{
+              ...getHandleStyle(color, false),
+              ...getPositionOffset(conn.side, offset),
+              opacity: 0.5,
+            }}
+            title={label}
+          />
+        );
+      }
+    });
+
     return handles;
-  }, [data.electricalType]);
+  }, [config.electrical, connectorsBySide]);
+
+  // Indicateurs de type électrique (pour affichage)
+  const electricalType = useMemo(() => {
+    if (config.electrical.length === 0) return "none";
+    const has12v = config.electrical.some((c) => c.type.startsWith("12v"));
+    const has230v = config.electrical.some((c) => c.type.startsWith("230v"));
+    if (has12v && has230v) return "mixed";
+    return has12v ? "12v" : has230v ? "230v" : "none";
+  }, [config.electrical]);
 
   return (
     <TooltipProvider>
@@ -214,16 +248,16 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
           {data.flow_rate_lpm && (
             <Badge variant="outline" className="text-[9px] px-1 h-4">{data.flow_rate_lpm}L/min</Badge>
           )}
-          {data.power_watts && (
+          {data.power_watts && electricalType !== "none" && (
             <Badge
               variant="outline"
               className="text-[9px] px-1 h-4"
               style={{
-                borderColor: data.electricalType === "230v" ? COLORS_230V.phase : COLORS_12V.positive,
-                color: data.electricalType === "230v" ? COLORS_230V.phase : COLORS_12V.positive,
+                borderColor: electricalType === "230v" ? "#92400E" : "#DC2626",
+                color: electricalType === "230v" ? "#92400E" : "#DC2626",
               }}
             >
-              {data.power_watts}W {data.electricalType?.toUpperCase()}
+              {data.power_watts}W {electricalType.toUpperCase()}
             </Badge>
           )}
           {data.pipe_diameter && (
@@ -242,6 +276,14 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
           )}
           {data.in_quote && (
             <Badge className="text-[9px] px-1 h-4 bg-green-500">Devis</Badge>
+          )}
+          {/* Indicateur nombre de connecteurs */}
+          {(config.water.length > 0 || config.electrical.length > 0) && (
+            <Badge variant="outline" className="text-[9px] px-1 h-4">
+              {config.water.length > 0 && `💧${config.water.length}`}
+              {config.water.length > 0 && config.electrical.length > 0 && " "}
+              {config.electrical.length > 0 && `⚡${config.electrical.length}`}
+            </Badge>
           )}
         </div>
 
