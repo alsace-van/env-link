@@ -172,26 +172,28 @@ export function usePlumbingState(maxHistorySize = 50) {
         };
       } else {
         // Analyser le handle ID pour extraire le type électrique et le fil
-        // Format: elec_TYPE_direction_index (ex: elec_230v-L_out_0, elec_pe_in_1, elec_12v+_out_0)
+        // Format: elec_TYPE_direction_index (ex: elec_230v-L_out_0, elec_pe_0, elec_12v+_out_0)
         const handleLower = sourceHandleId.toLowerCase();
         
         let elecType: ElectricalType = "12v";
         let wire: Wire230V | undefined;
         let polarity: Polarity12V | undefined;
         
-        // Détection 230V
-        if (handleLower.includes("230v")) {
-          elecType = "230v";
-          if (handleLower.includes("230v-l") || handleLower.includes("230v_l")) {
-            wire = "phase";
-          } else if (handleLower.includes("230v-n") || handleLower.includes("230v_n")) {
-            wire = "neutral";
-          }
-        }
-        // Détection terre (PE)
-        else if (handleLower.includes("_pe") || handleLower.includes("-pe")) {
+        // Détection terre (PE) - doit être avant 230V car pe peut être seul
+        // Format: elec_pe_0 ou elec_pe_in_0 ou elec_pe_out_0
+        if (handleLower.includes("elec_pe") || handleLower.includes("_pe_")) {
           elecType = "230v";
           wire = "earth";
+        }
+        // Détection 230V Phase
+        else if (handleLower.includes("230v-l") || handleLower.includes("230v_l")) {
+          elecType = "230v";
+          wire = "phase";
+        }
+        // Détection 230V Neutre
+        else if (handleLower.includes("230v-n") || handleLower.includes("230v_n")) {
+          elecType = "230v";
+          wire = "neutral";
         }
         // Détection 12V
         else if (handleLower.includes("12v")) {
@@ -205,7 +207,7 @@ export function usePlumbingState(maxHistorySize = 50) {
           }
         }
         
-        console.log("[usePlumbingState v1.1] Connexion électrique:", {
+        console.log("[usePlumbingState v1.2] Connexion électrique:", {
           handleId: sourceHandleId,
           elecType,
           wire,
