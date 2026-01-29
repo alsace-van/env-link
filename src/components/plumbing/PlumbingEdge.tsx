@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingEdge
 // Connexion plomberie (tuyau ou câble) pour ReactFlow
-// VERSION: 1.7 - Gaine raccourcie + éventail visible
+// VERSION: 1.8 - Espacement éventail corrigé
 // ============================================
 
 import React, { memo, useMemo } from "react";
@@ -124,11 +124,12 @@ const PlumbingEdge = memo(
     // Rendu pour câble groupé
     if (isGrouped && groupedWires.length > 0) {
       const total = groupedWires.length;
-      const spacing = 5; // Espacement entre fils
-      const fanLength = 30; // Longueur de l'éventail
-      const gaineWidth = 8; // Gaine fine
+      // Espacement entre connecteurs sur le bloc (environ 12px entre chaque)
+      const connectorSpacing = 12;
+      const fanLength = 35;
+      const gaineWidth = 6;
       
-      // Calculer le point de convergence (où les fils rejoignent la gaine)
+      // Point de convergence (où les fils rejoignent la gaine)
       let srcMergeX = sourceX, srcMergeY = sourceY;
       let tgtMergeX = targetX, tgtMergeY = targetY;
       
@@ -142,7 +143,7 @@ const PlumbingEdge = memo(
       else if (targetPosition === Position.Top) tgtMergeY = targetY - fanLength;
       else tgtMergeY = targetY + fanLength;
       
-      // Chemin de la gaine RACCOURCI (du point de merge source au point de merge target)
+      // Chemin de la gaine RACCOURCI
       const [shortenedPath] = getSmoothStepPath({
         sourceX: srcMergeX,
         sourceY: srcMergeY,
@@ -153,59 +154,47 @@ const PlumbingEdge = memo(
         borderRadius: 8,
       });
       
-      // Générer les éventails
+      // Générer les éventails - chaque fil part de son connecteur
       const fanElements = groupedWires.map((wire: any, idx: number) => {
-        const offset = (idx - (total - 1) / 2) * spacing;
+        // Offset depuis le centre pour atteindre chaque connecteur
+        // Les connecteurs sont espacés verticalement (ou horizontalement selon le côté)
+        const offset = (idx - (total - 1) / 2) * connectorSpacing;
         
-        // Point de départ sur le bloc (avec offset)
-        let srcX = sourceX, srcY = sourceY;
+        // Position du connecteur source (sur le bloc)
+        let srcConnX = sourceX, srcConnY = sourceY;
         if (sourcePosition === Position.Right || sourcePosition === Position.Left) {
-          srcY += offset;
+          srcConnY = sourceY + offset; // Connecteurs empilés verticalement
         } else {
-          srcX += offset;
+          srcConnX = sourceX + offset; // Connecteurs empilés horizontalement
         }
         
-        // Point d'arrivée sur le bloc (avec offset)
-        let tgtX = targetX, tgtY = targetY;
+        // Position du connecteur target (sur le bloc)
+        let tgtConnX = targetX, tgtConnY = targetY;
         if (targetPosition === Position.Left || targetPosition === Position.Right) {
-          tgtY += offset;
+          tgtConnY = targetY + offset;
         } else {
-          tgtX += offset;
+          tgtConnX = targetX + offset;
         }
         
         return {
           ...wire,
-          srcPath: `M ${srcX} ${srcY} L ${srcMergeX} ${srcMergeY}`,
-          tgtPath: `M ${tgtMergeX} ${tgtMergeY} L ${tgtX} ${tgtY}`,
+          // Fil source : du connecteur vers le point de merge
+          srcPath: `M ${srcConnX} ${srcConnY} L ${srcMergeX} ${srcMergeY}`,
+          // Fil target : du point de merge vers le connecteur
+          tgtPath: `M ${tgtMergeX} ${tgtMergeY} L ${tgtConnX} ${tgtConnY}`,
         };
       });
       
       return (
         <>
-          {/* Zone de clic (sur le chemin complet) */}
+          {/* Zone de clic */}
           <path d={edgePath} fill="none" stroke="transparent" strokeWidth={40} style={{ cursor: "pointer" }} />
 
-          {/* Gaine RACCOURCIE (ne va pas jusqu'aux blocs) */}
-          <path 
-            d={shortenedPath} 
-            fill="none" 
-            stroke="#1F2937" 
-            strokeWidth={gaineWidth} 
-            strokeLinecap="round" 
-            strokeLinejoin="round" 
-            style={{ pointerEvents: "none" }} 
-          />
-          <path 
-            d={shortenedPath} 
-            fill="none" 
-            stroke="#4B5563" 
-            strokeWidth={gaineWidth - 3} 
-            strokeLinecap="round" 
-            strokeLinejoin="round" 
-            style={{ pointerEvents: "none" }} 
-          />
+          {/* Gaine RACCOURCIE */}
+          <path d={shortenedPath} fill="none" stroke="#1F2937" strokeWidth={gaineWidth} strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }} />
+          <path d={shortenedPath} fill="none" stroke="#4B5563" strokeWidth={gaineWidth - 2} strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }} />
 
-          {/* Éventail source - fils qui sortent du bloc vers la gaine */}
+          {/* Éventail source - chaque fil part de son connecteur */}
           {fanElements.map((wire: any) => (
             <path
               key={`src-${wire.id || wire.index}`}
@@ -218,7 +207,7 @@ const PlumbingEdge = memo(
             />
           ))}
           
-          {/* Éventail target - fils qui vont de la gaine vers le bloc */}
+          {/* Éventail target - chaque fil va vers son connecteur */}
           {fanElements.map((wire: any) => (
             <path
               key={`tgt-${wire.id || wire.index}`}
