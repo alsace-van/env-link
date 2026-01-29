@@ -1,13 +1,13 @@
 // ============================================
 // COMPOSANT: PlumbingEdge
 // Connexion plomberie (tuyau ou câble) pour ReactFlow
-// VERSION: 2.1 - Espacement réel depuis data
+// VERSION: 2.2 - Flèche de direction pour l'eau
 // ============================================
 
 import React, { memo, useMemo } from "react";
 import { EdgeProps, getSmoothStepPath, BaseEdge, EdgeLabelRenderer, Position } from "@xyflow/react";
 import { Badge } from "@/components/ui/badge";
-import { Cable } from "lucide-react";
+import { Cable, Droplets } from "lucide-react";
 import {
   PlumbingEdgeData,
   getConnectionColor,
@@ -267,17 +267,52 @@ const PlumbingEdge = memo(
     }
 
     // Rendu standard
+    const isWater = data?.connectionType === "water";
+    
+    // Calculer l'angle de la flèche basé sur la direction source → target
+    const angle = useMemo(() => {
+      const dx = targetX - sourceX;
+      const dy = targetY - sourceY;
+      return Math.atan2(dy, dx) * (180 / Math.PI);
+    }, [sourceX, sourceY, targetX, targetY]);
+    
     return (
       <>
         <path d={edgePath} fill="none" stroke="transparent" strokeWidth={Math.max(strokeWidth + 10, 20)} style={{ cursor: "pointer" }} />
         <BaseEdge id={id} path={edgePath} style={edgeStyle} />
+        
+        {/* Flèche de direction pour l'eau - positionnée au milieu */}
+        {isWater && (
+          <g transform={`translate(${labelX}, ${labelY})`}>
+            <g transform={`rotate(${angle})`}>
+              {/* Fond blanc pour contraste */}
+              <polygon
+                points="-6,-5 6,0 -6,5"
+                fill="white"
+                stroke="white"
+                strokeWidth="3"
+                strokeLinejoin="round"
+              />
+              {/* Flèche colorée */}
+              <polygon
+                points="-5,-4 5,0 -5,4"
+                fill={strokeColor}
+                stroke={strokeColor}
+                strokeWidth="1"
+                strokeLinejoin="round"
+              />
+            </g>
+          </g>
+        )}
+        
         {data?.connectionType === "electrical" && data.electricalType === "230v" && (
           <path d={edgePath} fill="none" stroke={strokeColor} strokeWidth={strokeWidth} strokeDasharray="8 4" style={{ pointerEvents: "none" }} />
         )}
         {edgeLabel && (
           <EdgeLabelRenderer>
-            <div style={{ position: "absolute", transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`, pointerEvents: "all", cursor: "pointer" }}>
-              <Badge variant={selected ? "default" : "outline"} className="text-[10px] px-1.5 py-0.5 shadow-sm" style={{ background: selected ? strokeColor : "white", color: selected ? "white" : strokeColor, borderColor: strokeColor }}>
+            <div style={{ position: "absolute", transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY - 15}px)`, pointerEvents: "all", cursor: "pointer" }}>
+              <Badge variant={selected ? "default" : "outline"} className="text-[10px] px-1.5 py-0.5 shadow-sm flex items-center gap-1" style={{ background: selected ? strokeColor : "white", color: selected ? "white" : strokeColor, borderColor: strokeColor }}>
+                {isWater && <Droplets className="h-3 w-3" />}
                 {edgeLabel}
               </Badge>
             </div>
