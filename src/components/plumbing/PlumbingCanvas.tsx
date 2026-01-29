@@ -501,12 +501,14 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
     const sourceId = selectedEdgeObjs[0].source;
     const targetId = selectedEdgeObjs[0].target;
 
-    // Créer un edge groupé
+    // Créer un edge groupé - utiliser le premier handle comme référence
     const groupedEdgeId = generateEdgeId();
     const groupedEdge: PlumbingEdgeType = {
       id: groupedEdgeId,
       source: sourceId,
       target: targetId,
+      sourceHandle: selectedEdgeObjs[0].sourceHandle, // Garder un handle de référence
+      targetHandle: selectedEdgeObjs[0].targetHandle,
       type: "plumbingEdge",
       data: {
         connectionType: selectedEdgeObjs[0].data?.connectionType || "electrical",
@@ -515,11 +517,13 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
           id: e.id,
           sourceHandle: e.sourceHandle,
           targetHandle: e.targetHandle,
-          data: e.data,
+          data: { ...e.data }, // Copie profonde des données
         })),
         cable_section: Math.max(...selectedEdgeObjs.map((e) => e.data?.cable_section || 1.5)),
       },
     };
+
+    console.log("[PlumbingCanvas v1.3] Regroupement de", selectedEdgeObjs.length, "câbles:", groupedEdge);
 
     // Remplacer les edges individuels par l'edge groupé
     setEdges((eds) => [
