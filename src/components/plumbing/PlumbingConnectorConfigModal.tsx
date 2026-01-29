@@ -1,16 +1,15 @@
 // ============================================
 // COMPOSANT: PlumbingConnectorConfigModal
 // Modale de configuration des connecteurs
-// VERSION: 1.0
+// VERSION: 1.1 - Modal flottante draggable compatible fullscreen
 // ============================================
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Trash2, Droplets, Zap, MoveHorizontal, MoveVertical } from "lucide-react";
+import { Plus, Trash2, Droplets, Zap, MoveHorizontal, MoveVertical, X, GripHorizontal } from "lucide-react";
 import {
   ConnectorConfig,
   WaterConnector,
@@ -33,6 +32,7 @@ interface PlumbingConnectorConfigModalProps {
   config: ConnectorConfig;
   onSave: (config: ConnectorConfig) => void;
   nodeLabel: string;
+  containerRef?: React.RefObject<HTMLDivElement>;
 }
 
 // Générer un ID unique
@@ -44,16 +44,66 @@ export function PlumbingConnectorConfigModal({
   config,
   onSave,
   nodeLabel,
+  containerRef,
 }: PlumbingConnectorConfigModalProps) {
   const [localConfig, setLocalConfig] = useState<ConnectorConfig>(config);
   const [activeTab, setActiveTab] = useState<"water" | "electrical">("water");
+  
+  // Drag state
+  const [position, setPosition] = useState({ x: 100, y: 100 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+  const modalRef = useRef<HTMLDivElement>(null);
 
-  // Reset local config when modal opens
+  // Reset local config and position when modal opens
   useEffect(() => {
     if (open) {
       setLocalConfig(JSON.parse(JSON.stringify(config)));
+      // Centrer la modale
+      const container = containerRef?.current || document.body;
+      const rect = container.getBoundingClientRect();
+      setPosition({
+        x: Math.max(50, (rect.width - 600) / 2),
+        y: Math.max(50, (rect.height - 500) / 2),
+      });
     }
-  }, [open, config]);
+  }, [open, config, containerRef]);
+
+  // Drag handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (modalRef.current) {
+      setIsDragging(true);
+      dragOffset.current = {
+        x: e.clientX - position.x,
+        y: e.clientY - position.y,
+      };
+    }
+  }, [position]);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (isDragging) {
+      const container = containerRef?.current || document.body;
+      const rect = container.getBoundingClientRect();
+      const newX = Math.max(0, Math.min(e.clientX - dragOffset.current.x, rect.width - 100));
+      const newY = Math.max(0, Math.min(e.clientY - dragOffset.current.y, rect.height - 50));
+      setPosition({ x: newX, y: newY });
+    }
+  }, [isDragging, containerRef]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+      return () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+      };
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp]);
 
   // ============================================
   // HANDLERS EAU
@@ -254,231 +304,261 @@ export function PlumbingConnectorConfigModal({
     );
   };
 
+  if (!open) return null;
+
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <span>⚙️</span>
-            Configuration des connecteurs - {nodeLabel}
-          </DialogTitle>
-        </DialogHeader>
-
-        {/* Preview */}
-        <div className="border rounded-lg p-4 bg-slate-50 dark:bg-slate-900">
-          <Label className="text-sm font-medium">Aperçu</Label>
-          {renderPreview()}
-          <div className="flex justify-center gap-4 text-xs text-slate-500 mt-2">
-            <span className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-full bg-blue-400" /> Eau
-            </span>
-            <span className="flex items-center gap-1">
-              <div className="w-2.5 h-2.5 rounded-sm bg-red-600" /> Électrique
-            </span>
+    <>
+      {/* Overlay */}
+      <div 
+        className="absolute inset-0 bg-black/50 z-40"
+        onClick={onClose}
+      />
+      
+      {/* Modal flottante draggable */}
+      <div
+        ref={modalRef}
+        className="absolute z-50 bg-white dark:bg-slate-900 rounded-lg shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col"
+        style={{
+          left: position.x,
+          top: position.y,
+          width: "620px",
+          maxWidth: "calc(100% - 40px)",
+          maxHeight: "calc(100% - 40px)",
+        }}
+      >
+        {/* Header draggable */}
+        <div 
+          className="flex items-center justify-between p-3 border-b bg-slate-50 dark:bg-slate-800 rounded-t-lg cursor-move select-none flex-shrink-0"
+          onMouseDown={handleMouseDown}
+        >
+          <div className="flex items-center gap-2">
+            <GripHorizontal className="h-4 w-4 text-slate-400" />
+            <h2 className="text-base font-semibold">⚙️ Connecteurs - {nodeLabel}</h2>
           </div>
-        </div>
-
-        {/* Presets */}
-        <div className="flex flex-wrap gap-2">
-          <Label className="w-full text-sm">Presets rapides :</Label>
-          <Button variant="outline" size="sm" onClick={() => applyPreset("pump-12v")}>
-            Pompe 12V
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => applyPreset("heater-230v")}>
-            Chauffe-eau 230V
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => applyPreset("tank")}>
-            Réservoir
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => applyPreset("faucet")}>
-            Robinet mitigeur
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => applyPreset("tee")}>
-            Té
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => applyPreset("clear")}>
-            Vider tout
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={onClose}>
+            <X className="h-4 w-4" />
           </Button>
         </div>
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "water" | "electrical")}>
-          <TabsList className="grid grid-cols-2">
-            <TabsTrigger value="water" className="flex items-center gap-2">
-              <Droplets className="w-4 h-4" />
-              Eau ({localConfig.water.length})
-            </TabsTrigger>
-            <TabsTrigger value="electrical" className="flex items-center gap-2">
-              <Zap className="w-4 h-4" />
-              Électrique ({localConfig.electrical.length})
-            </TabsTrigger>
-          </TabsList>
+        {/* Content scrollable */}
+        <div className="p-4 overflow-y-auto flex-1">
+          {/* Preview */}
+          <div className="border rounded-lg p-4 bg-slate-50 dark:bg-slate-900 mb-4">
+            <Label className="text-sm font-medium">Aperçu</Label>
+            {renderPreview()}
+            <div className="flex justify-center gap-4 text-xs text-slate-500 mt-2">
+              <span className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-full bg-blue-400" /> Eau
+              </span>
+              <span className="flex items-center gap-1">
+                <div className="w-2.5 h-2.5 rounded-sm bg-red-600" /> Électrique
+              </span>
+            </div>
+          </div>
 
-          {/* Tab Eau */}
-          <TabsContent value="water" className="space-y-3">
-            {localConfig.water.map((conn, index) => (
-              <div key={conn.id} className="flex items-center gap-2 p-2 border rounded-lg bg-white dark:bg-slate-800">
-                <div
-                  className="w-4 h-4 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: WATER_COLORS[conn.waterType] }}
-                />
-
-                {/* Type d'eau */}
-                <Select
-                  value={conn.waterType}
-                  onValueChange={(v) => updateWaterConnector(index, "waterType", v as WaterType)}
-                >
-                  <SelectTrigger className="w-28 h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(WATER_TYPE_LABELS) as WaterType[]).map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {WATER_TYPE_LABELS[type]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {/* Côté */}
-                <Select
-                  value={conn.side}
-                  onValueChange={(v) => updateWaterConnector(index, "side", v as ConnectorSide)}
-                >
-                  <SelectTrigger className="w-24 h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(SIDE_LABELS) as ConnectorSide[]).map((side) => (
-                      <SelectItem key={side} value={side}>
-                        {SIDE_LABELS[side]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {/* Direction */}
-                <Select
-                  value={conn.direction}
-                  onValueChange={(v) => updateWaterConnector(index, "direction", v as ConnectorDirection)}
-                >
-                  <SelectTrigger className="w-28 h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(DIRECTION_LABELS) as ConnectorDirection[]).map((dir) => (
-                      <SelectItem key={dir} value={dir}>
-                        {DIRECTION_LABELS[dir]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                  onClick={() => removeWaterConnector(index)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            ))}
-
-            <Button variant="outline" size="sm" onClick={addWaterConnector} className="w-full">
-              <Plus className="w-4 h-4 mr-2" />
-              Ajouter connecteur eau
+          {/* Presets */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            <Label className="w-full text-sm">Presets rapides :</Label>
+            <Button variant="outline" size="sm" onClick={() => applyPreset("pump-12v")}>
+              Pompe 12V
             </Button>
-          </TabsContent>
-
-          {/* Tab Électrique */}
-          <TabsContent value="electrical" className="space-y-3">
-            {localConfig.electrical.map((conn, index) => (
-              <div key={conn.id} className="flex items-center gap-2 p-2 border rounded-lg bg-white dark:bg-slate-800">
-                <div
-                  className="w-4 h-4 rounded-sm flex-shrink-0"
-                  style={{ backgroundColor: ELECTRICAL_CONNECTOR_COLORS[conn.type] }}
-                />
-
-                {/* Type électrique */}
-                <Select
-                  value={conn.type}
-                  onValueChange={(v) => updateElectricalConnector(index, "type", v as ElectricalConnectorType)}
-                >
-                  <SelectTrigger className="w-32 h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(ELECTRICAL_CONNECTOR_LABELS) as ElectricalConnectorType[]).map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {ELECTRICAL_CONNECTOR_LABELS[type]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {/* Côté */}
-                <Select
-                  value={conn.side}
-                  onValueChange={(v) => updateElectricalConnector(index, "side", v as ConnectorSide)}
-                >
-                  <SelectTrigger className="w-24 h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(SIDE_LABELS) as ConnectorSide[]).map((side) => (
-                      <SelectItem key={side} value={side}>
-                        {SIDE_LABELS[side]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {/* Direction */}
-                <Select
-                  value={conn.direction}
-                  onValueChange={(v) => updateElectricalConnector(index, "direction", v as ConnectorDirection)}
-                >
-                  <SelectTrigger className="w-28 h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(DIRECTION_LABELS) as ConnectorDirection[]).map((dir) => (
-                      <SelectItem key={dir} value={dir}>
-                        {DIRECTION_LABELS[dir]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
-                  onClick={() => removeElectricalConnector(index)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            ))}
-
-            <Button variant="outline" size="sm" onClick={addElectricalConnector} className="w-full">
-              <Plus className="w-4 h-4 mr-2" />
-              Ajouter connecteur électrique
+            <Button variant="outline" size="sm" onClick={() => applyPreset("heater-230v")}>
+              Chauffe-eau 230V
             </Button>
-          </TabsContent>
-        </Tabs>
+            <Button variant="outline" size="sm" onClick={() => applyPreset("tank")}>
+              Réservoir
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => applyPreset("faucet")}>
+              Robinet mitigeur
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => applyPreset("tee")}>
+              Té
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => applyPreset("clear")}>
+              Vider tout
+            </Button>
+          </div>
 
-        <DialogFooter>
+          {/* Tabs */}
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "water" | "electrical")}>
+            <TabsList className="grid grid-cols-2">
+              <TabsTrigger value="water" className="flex items-center gap-2">
+                <Droplets className="w-4 h-4" />
+                Eau ({localConfig.water.length})
+              </TabsTrigger>
+              <TabsTrigger value="electrical" className="flex items-center gap-2">
+                <Zap className="w-4 h-4" />
+                Électrique ({localConfig.electrical.length})
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Tab Eau */}
+            <TabsContent value="water" className="space-y-3">
+              {localConfig.water.map((conn, index) => (
+                <div key={conn.id} className="flex items-center gap-2 p-2 border rounded-lg bg-white dark:bg-slate-800">
+                  <div
+                    className="w-4 h-4 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: WATER_COLORS[conn.waterType] }}
+                  />
+
+                  {/* Type d'eau */}
+                  <Select
+                    value={conn.waterType}
+                    onValueChange={(v) => updateWaterConnector(index, "waterType", v as WaterType)}
+                  >
+                    <SelectTrigger className="w-28 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(WATER_TYPE_LABELS) as WaterType[]).map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {WATER_TYPE_LABELS[type]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Côté */}
+                  <Select
+                    value={conn.side}
+                    onValueChange={(v) => updateWaterConnector(index, "side", v as ConnectorSide)}
+                  >
+                    <SelectTrigger className="w-24 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(SIDE_LABELS) as ConnectorSide[]).map((side) => (
+                        <SelectItem key={side} value={side}>
+                          {SIDE_LABELS[side]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Direction */}
+                  <Select
+                    value={conn.direction}
+                    onValueChange={(v) => updateWaterConnector(index, "direction", v as ConnectorDirection)}
+                  >
+                    <SelectTrigger className="w-28 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(DIRECTION_LABELS) as ConnectorDirection[]).map((dir) => (
+                        <SelectItem key={dir} value={dir}>
+                          {DIRECTION_LABELS[dir]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                    onClick={() => removeWaterConnector(index)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+
+              <Button variant="outline" size="sm" onClick={addWaterConnector} className="w-full">
+                <Plus className="w-4 h-4 mr-2" />
+                Ajouter connecteur eau
+              </Button>
+            </TabsContent>
+
+            {/* Tab Électrique */}
+            <TabsContent value="electrical" className="space-y-3">
+              {localConfig.electrical.map((conn, index) => (
+                <div key={conn.id} className="flex items-center gap-2 p-2 border rounded-lg bg-white dark:bg-slate-800">
+                  <div
+                    className="w-4 h-4 rounded-sm flex-shrink-0"
+                    style={{ backgroundColor: ELECTRICAL_CONNECTOR_COLORS[conn.type] }}
+                  />
+
+                  {/* Type électrique */}
+                  <Select
+                    value={conn.type}
+                    onValueChange={(v) => updateElectricalConnector(index, "type", v as ElectricalConnectorType)}
+                  >
+                    <SelectTrigger className="w-32 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(ELECTRICAL_CONNECTOR_LABELS) as ElectricalConnectorType[]).map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {ELECTRICAL_CONNECTOR_LABELS[type]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Côté */}
+                  <Select
+                    value={conn.side}
+                    onValueChange={(v) => updateElectricalConnector(index, "side", v as ConnectorSide)}
+                  >
+                    <SelectTrigger className="w-24 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(SIDE_LABELS) as ConnectorSide[]).map((side) => (
+                        <SelectItem key={side} value={side}>
+                          {SIDE_LABELS[side]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Direction */}
+                  <Select
+                    value={conn.direction}
+                    onValueChange={(v) => updateElectricalConnector(index, "direction", v as ConnectorDirection)}
+                  >
+                    <SelectTrigger className="w-28 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(DIRECTION_LABELS) as ConnectorDirection[]).map((dir) => (
+                        <SelectItem key={dir} value={dir}>
+                          {DIRECTION_LABELS[dir]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                    onClick={() => removeElectricalConnector(index)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+
+              <Button variant="outline" size="sm" onClick={addElectricalConnector} className="w-full">
+                <Plus className="w-4 h-4 mr-2" />
+                Ajouter connecteur électrique
+              </Button>
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2 p-3 border-t bg-slate-50 dark:bg-slate-800 rounded-b-lg flex-shrink-0">
           <Button variant="outline" onClick={onClose}>
             Annuler
           </Button>
           <Button onClick={handleSave}>
             Enregistrer
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </div>
+    </>
   );
 }
 
