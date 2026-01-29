@@ -171,13 +171,52 @@ export function usePlumbingState(maxHistorySize = 50) {
           thread_type: sourceNode.data.thread_type,
         };
       } else {
-        const parts = sourceHandleId.split("_");
-        const elecType = parts[1] as ElectricalType;
+        // Analyser le handle ID pour extraire le type électrique et le fil
+        // Format: elec_TYPE_direction_index (ex: elec_230v-L_out_0, elec_pe_in_1, elec_12v+_out_0)
+        const handleLower = sourceHandleId.toLowerCase();
+        
+        let elecType: ElectricalType = "12v";
+        let wire: Wire230V | undefined;
+        let polarity: Polarity12V | undefined;
+        
+        // Détection 230V
+        if (handleLower.includes("230v")) {
+          elecType = "230v";
+          if (handleLower.includes("230v-l") || handleLower.includes("230v_l")) {
+            wire = "phase";
+          } else if (handleLower.includes("230v-n") || handleLower.includes("230v_n")) {
+            wire = "neutral";
+          }
+        }
+        // Détection terre (PE)
+        else if (handleLower.includes("_pe") || handleLower.includes("-pe")) {
+          elecType = "230v";
+          wire = "earth";
+        }
+        // Détection 12V
+        else if (handleLower.includes("12v")) {
+          elecType = "12v";
+          if (handleLower.includes("12v+")) {
+            polarity = "positive";
+          } else if (handleLower.includes("12v-")) {
+            polarity = "negative";
+          } else {
+            polarity = "positive"; // Défaut
+          }
+        }
+        
+        console.log("[usePlumbingState v1.1] Connexion électrique:", {
+          handleId: sourceHandleId,
+          elecType,
+          wire,
+          polarity
+        });
+        
         edgeData = {
           connectionType: "electrical",
-          electricalType: elecType || "12v",
-          polarity: elecType === "12v" ? "positive" : undefined,
-          wire: elecType === "230v" ? "phase" : undefined,
+          electricalType: elecType,
+          polarity,
+          wire,
           cable_section: sourceNode.data.cable_section || 1.5,
         };
       }
