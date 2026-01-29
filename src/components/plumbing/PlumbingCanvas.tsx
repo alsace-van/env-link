@@ -501,29 +501,51 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
     const sourceId = selectedEdgeObjs[0].source;
     const targetId = selectedEdgeObjs[0].target;
 
-    // Créer un edge groupé - utiliser le premier handle comme référence
+    // TRIER les edges par index du handle source pour trouver celui du milieu
+    const extractIndex = (handleId: string): number => {
+      if (!handleId) return 0;
+      const match = handleId.match(/_(\d+)$/);
+      return match ? parseInt(match[1], 10) : 0;
+    };
+    
+    const sortedEdges = [...selectedEdgeObjs].sort((a, b) => 
+      extractIndex(a.sourceHandle || "") - extractIndex(b.sourceHandle || "")
+    );
+    
+    // Prendre le fil du MILIEU comme référence
+    const middleIndex = Math.floor(sortedEdges.length / 2);
+    const middleEdge = sortedEdges[middleIndex];
+    
+    console.log("[PlumbingCanvas v1.4] Edges triés:", sortedEdges.map(e => ({
+      id: e.id,
+      srcHandle: e.sourceHandle,
+      srcIdx: extractIndex(e.sourceHandle || "")
+    })));
+    console.log("[PlumbingCanvas v1.4] Edge du milieu:", middleEdge.sourceHandle);
+
+    // Créer un edge groupé - utiliser le handle du MILIEU comme référence
     const groupedEdgeId = generateEdgeId();
     const groupedEdge: PlumbingEdgeType = {
       id: groupedEdgeId,
       source: sourceId,
       target: targetId,
-      sourceHandle: selectedEdgeObjs[0].sourceHandle, // Garder un handle de référence
-      targetHandle: selectedEdgeObjs[0].targetHandle,
+      sourceHandle: middleEdge.sourceHandle, // Handle du fil du MILIEU
+      targetHandle: middleEdge.targetHandle,
       type: "plumbingEdge",
       data: {
         connectionType: selectedEdgeObjs[0].data?.connectionType || "electrical",
         isGrouped: true,
-        groupedEdges: selectedEdgeObjs.map((e) => ({
+        groupedEdges: sortedEdges.map((e) => ({
           id: e.id,
           sourceHandle: e.sourceHandle,
           targetHandle: e.targetHandle,
-          data: { ...e.data }, // Copie profonde des données
+          data: { ...e.data },
         })),
         cable_section: Math.max(...selectedEdgeObjs.map((e) => e.data?.cable_section || 1.5)),
       },
     };
 
-    console.log("[PlumbingCanvas v1.3] Regroupement de", selectedEdgeObjs.length, "câbles:", groupedEdge);
+    console.log("[PlumbingCanvas v1.4] Regroupement de", selectedEdgeObjs.length, "câbles centré sur:", middleEdge.sourceHandle);
 
     // Remplacer les edges individuels par l'edge groupé
     setEdges((eds) => [
