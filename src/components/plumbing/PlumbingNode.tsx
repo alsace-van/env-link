@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingNode
 // Bloc plomberie pour ReactFlow
-// VERSION: 1.1 - Connecteurs dynamiques via connectorConfig
+// VERSION: 1.2 - Taille dynamique selon nombre de connecteurs
 // ============================================
 
 import React, { memo, useMemo } from "react";
@@ -31,23 +31,27 @@ function getWaterLabel(type: WaterType): string {
   return WATER_TYPE_LABELS[type] || type;
 }
 
-// Calcul de l'offset pour répartir les handles sur un côté
-function calculateOffset(index: number, total: number): number {
-  if (total === 1) return 50;
-  const spacing = 70 / (total + 1);
-  return 15 + spacing * (index + 1);
-}
+// Constantes pour le calcul des dimensions
+const MIN_CONNECTOR_SPACING = 20; // Espacement minimum entre connecteurs en px
+const CONNECTOR_SIZE_WATER = 12;
+const CONNECTOR_SIZE_ELEC = 8;
+const PADDING_EDGE = 16; // Padding depuis le bord du bloc
+const BASE_WIDTH = 160;
+const BASE_HEIGHT = 80;
+const MIN_WIDTH = 140;
+const MIN_HEIGHT = 60;
 
-function getPositionOffset(side: ConnectorSide, percent: number): React.CSSProperties {
-  if (side === "top" || side === "bottom") {
-    return { left: `${percent}%`, transform: "translateX(-50%)" };
-  }
-  return { top: `${percent}%`, transform: "translateY(-50%)" };
+// Calcul de l'offset en pixels pour répartir les handles sur un côté
+function calculatePixelOffset(index: number, total: number, dimension: number): number {
+  if (total === 1) return dimension / 2;
+  const availableSpace = dimension - (PADDING_EDGE * 2);
+  const spacing = availableSpace / (total + 1);
+  return PADDING_EDGE + spacing * (index + 1);
 }
 
 const getHandleStyle = (color: string, isWater: boolean): React.CSSProperties => ({
-  width: isWater ? 12 : 8,
-  height: isWater ? 12 : 8,
+  width: isWater ? CONNECTOR_SIZE_WATER : CONNECTOR_SIZE_ELEC,
+  height: isWater ? CONNECTOR_SIZE_WATER : CONNECTOR_SIZE_ELEC,
   background: color,
   border: `2px solid ${isWater ? "#FFF" : "#374151"}`,
   borderRadius: isWater ? "50%" : "2px",
@@ -79,6 +83,43 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
     return sides;
   }, [config]);
 
+  // Calculer les dimensions du bloc selon le nombre de connecteurs
+  const dimensions = useMemo(() => {
+    const topCount = connectorsBySide.top.length;
+    const bottomCount = connectorsBySide.bottom.length;
+    const leftCount = connectorsBySide.left.length;
+    const rightCount = connectorsBySide.right.length;
+
+    // Calculer la largeur minimale nécessaire (basé sur top/bottom)
+    const maxHorizontal = Math.max(topCount, bottomCount);
+    const neededWidth = maxHorizontal > 0 
+      ? PADDING_EDGE * 2 + (maxHorizontal - 1) * MIN_CONNECTOR_SPACING + maxHorizontal * CONNECTOR_SIZE_WATER
+      : MIN_WIDTH;
+
+    // Calculer la hauteur minimale nécessaire (basé sur left/right)
+    const maxVertical = Math.max(leftCount, rightCount);
+    const neededHeight = maxVertical > 0
+      ? PADDING_EDGE * 2 + (maxVertical - 1) * MIN_CONNECTOR_SPACING + maxVertical * CONNECTOR_SIZE_WATER
+      : MIN_HEIGHT;
+
+    return {
+      width: Math.max(BASE_WIDTH, neededWidth),
+      height: Math.max(BASE_HEIGHT, neededHeight),
+    };
+  }, [connectorsBySide]);
+
+  // Fonction pour obtenir le style de position en pixels
+  const getPositionStyle = (side: ConnectorSide, index: number, total: number): React.CSSProperties => {
+    const isHorizontal = side === "top" || side === "bottom";
+    const dimension = isHorizontal ? dimensions.width : dimensions.height;
+    const pixelOffset = calculatePixelOffset(index, total, dimension);
+    
+    if (isHorizontal) {
+      return { left: `${pixelOffset}px`, transform: "translateX(-50%)" };
+    }
+    return { top: `${pixelOffset}px`, transform: "translateY(-50%)" };
+  };
+
   // Handles eau - dynamiques selon config
   const waterHandles = useMemo(() => {
     const handles: JSX.Element[] = [];
@@ -87,7 +128,6 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
       const sideConnectors = connectorsBySide[conn.side];
       const indexInSide = sideConnectors.findIndex((c) => c.type === "water" && c.index === idx);
       const totalInSide = sideConnectors.length;
-      const offset = calculateOffset(indexInSide, totalInSide);
 
       // Déterminer le type de handle selon direction
       const handleType = conn.direction === "out" ? "source" : conn.direction === "in" ? "target" : "source";
@@ -101,7 +141,7 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
           id={`water_${conn.direction}_${conn.waterType}_${idx}`}
           style={{
             ...getHandleStyle(WATER_COLORS[conn.waterType], true),
-            ...getPositionOffset(conn.side, offset),
+            ...getPositionStyle(conn.side, indexInSide, totalInSide),
           }}
           title={`${dirLabel} ${getWaterLabel(conn.waterType)}`}
         />
@@ -117,7 +157,7 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
             id={`water_in_${conn.waterType}_${idx}`}
             style={{
               ...getHandleStyle(WATER_COLORS[conn.waterType], true),
-              ...getPositionOffset(conn.side, offset),
+              ...getPositionStyle(conn.side, indexInSide, totalInSide),
               opacity: 0.5,
             }}
             title={`${dirLabel} ${getWaterLabel(conn.waterType)}`}
@@ -127,7 +167,7 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
     });
 
     return handles;
-  }, [config.water, connectorsBySide]);
+  }, [config.water, connectorsBySide, dimensions]);
 
   // Handles électriques - dynamiques selon config
   const electricalHandles = useMemo(() => {
@@ -137,7 +177,6 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
       const sideConnectors = connectorsBySide[conn.side];
       const indexInSide = sideConnectors.findIndex((c) => c.type === "electrical" && c.index === idx);
       const totalInSide = sideConnectors.length;
-      const offset = calculateOffset(indexInSide, totalInSide);
 
       const handleType = conn.direction === "out" ? "source" : "target";
       const color = ELECTRICAL_CONNECTOR_COLORS[conn.type];
@@ -151,7 +190,7 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
           id={`elec_${conn.type}_${idx}`}
           style={{
             ...getHandleStyle(color, false),
-            ...getPositionOffset(conn.side, offset),
+            ...getPositionStyle(conn.side, indexInSide, totalInSide),
           }}
           title={label}
         />
@@ -167,7 +206,7 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
             id={`elec_${conn.type}_out_${idx}`}
             style={{
               ...getHandleStyle(color, false),
-              ...getPositionOffset(conn.side, offset),
+              ...getPositionStyle(conn.side, indexInSide, totalInSide),
               opacity: 0.5,
             }}
             title={label}
@@ -177,7 +216,7 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
     });
 
     return handles;
-  }, [config.electrical, connectorsBySide]);
+  }, [config.electrical, connectorsBySide, dimensions]);
 
   // Indicateurs de type électrique (pour affichage)
   const electricalType = useMemo(() => {
@@ -196,8 +235,8 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
           border: `2px solid ${selected ? "#3B82F6" : categoryColor}`,
           borderRadius: "8px",
           padding: "8px",
-          minWidth: "160px",
-          maxWidth: "200px",
+          width: `${dimensions.width}px`,
+          minHeight: `${dimensions.height}px`,
           boxShadow: selected
             ? "0 0 0 2px rgba(59, 130, 246, 0.3), 0 4px 6px -1px rgba(0, 0, 0, 0.1)"
             : "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
