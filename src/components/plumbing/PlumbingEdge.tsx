@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingEdge
 // Connexion plomberie (tuyau ou câble) pour ReactFlow
-// VERSION: 1.8 - Espacement éventail corrigé
+// VERSION: 1.9 - Position basée sur l'index du handle
 // ============================================
 
 import React, { memo, useMemo } from "react";
@@ -40,6 +40,13 @@ function getWireLabel(wireData: any): string {
   if (handle.includes("12v+") || wireData.data?.polarity === "positive") return "+";
   if (handle.includes("12v-") || wireData.data?.polarity === "negative") return "-";
   return "?";
+}
+
+// Extraire l'index depuis le handle ID (ex: "elec_230v-L_out_2" -> 2)
+function extractHandleIndex(handleId: string): number {
+  if (!handleId) return 0;
+  const match = handleId.match(/_(\d+)$/);
+  return match ? parseInt(match[1], 10) : 0;
 }
 
 const PlumbingEdge = memo(
@@ -99,6 +106,8 @@ const PlumbingEdge = memo(
         ...ge,
         color: getWireColor(ge),
         label: getWireLabel(ge),
+        srcIndex: extractHandleIndex(ge.sourceHandle),
+        tgtIndex: extractHandleIndex(ge.targetHandle),
         index: idx,
       }));
     }, [isGrouped, groupedEdges]);
@@ -123,13 +132,23 @@ const PlumbingEdge = memo(
 
     // Rendu pour câble groupé
     if (isGrouped && groupedWires.length > 0) {
-      const total = groupedWires.length;
-      // Espacement entre connecteurs sur le bloc (environ 12px entre chaque)
-      const connectorSpacing = 12;
       const fanLength = 35;
       const gaineWidth = 6;
       
-      // Point de convergence (où les fils rejoignent la gaine)
+      // Espacement entre connecteurs (basé sur la vraie config du bloc)
+      const CONNECTOR_SPACING = 12;
+      
+      // Trouver les min/max index pour centrer
+      const srcIndices = groupedWires.map((w: any) => w.srcIndex);
+      const tgtIndices = groupedWires.map((w: any) => w.tgtIndex);
+      const srcMinIdx = Math.min(...srcIndices);
+      const srcMaxIdx = Math.max(...srcIndices);
+      const tgtMinIdx = Math.min(...tgtIndices);
+      const tgtMaxIdx = Math.max(...tgtIndices);
+      const srcCenter = (srcMinIdx + srcMaxIdx) / 2;
+      const tgtCenter = (tgtMinIdx + tgtMaxIdx) / 2;
+      
+      // Point de convergence
       let srcMergeX = sourceX, srcMergeY = sourceY;
       let tgtMergeX = targetX, tgtMergeY = targetY;
       
@@ -143,7 +162,7 @@ const PlumbingEdge = memo(
       else if (targetPosition === Position.Top) tgtMergeY = targetY - fanLength;
       else tgtMergeY = targetY + fanLength;
       
-      // Chemin de la gaine RACCOURCI
+      // Chemin de la gaine raccourci
       const [shortenedPath] = getSmoothStepPath({
         sourceX: srcMergeX,
         sourceY: srcMergeY,
@@ -154,33 +173,31 @@ const PlumbingEdge = memo(
         borderRadius: 8,
       });
       
-      // Générer les éventails - chaque fil part de son connecteur
-      const fanElements = groupedWires.map((wire: any, idx: number) => {
-        // Offset depuis le centre pour atteindre chaque connecteur
-        // Les connecteurs sont espacés verticalement (ou horizontalement selon le côté)
-        const offset = (idx - (total - 1) / 2) * connectorSpacing;
+      // Générer les éventails basés sur l'index réel du handle
+      const fanElements = groupedWires.map((wire: any) => {
+        // Offset depuis le centre basé sur l'index réel
+        const srcOffset = (wire.srcIndex - srcCenter) * CONNECTOR_SPACING;
+        const tgtOffset = (wire.tgtIndex - tgtCenter) * CONNECTOR_SPACING;
         
-        // Position du connecteur source (sur le bloc)
+        // Position du connecteur source
         let srcConnX = sourceX, srcConnY = sourceY;
         if (sourcePosition === Position.Right || sourcePosition === Position.Left) {
-          srcConnY = sourceY + offset; // Connecteurs empilés verticalement
+          srcConnY = sourceY + srcOffset;
         } else {
-          srcConnX = sourceX + offset; // Connecteurs empilés horizontalement
+          srcConnX = sourceX + srcOffset;
         }
         
-        // Position du connecteur target (sur le bloc)
+        // Position du connecteur target
         let tgtConnX = targetX, tgtConnY = targetY;
         if (targetPosition === Position.Left || targetPosition === Position.Right) {
-          tgtConnY = targetY + offset;
+          tgtConnY = targetY + tgtOffset;
         } else {
-          tgtConnX = targetX + offset;
+          tgtConnX = targetX + tgtOffset;
         }
         
         return {
           ...wire,
-          // Fil source : du connecteur vers le point de merge
           srcPath: `M ${srcConnX} ${srcConnY} L ${srcMergeX} ${srcMergeY}`,
-          // Fil target : du point de merge vers le connecteur
           tgtPath: `M ${tgtMergeX} ${tgtMergeY} L ${tgtConnX} ${tgtConnY}`,
         };
       });
@@ -190,11 +207,11 @@ const PlumbingEdge = memo(
           {/* Zone de clic */}
           <path d={edgePath} fill="none" stroke="transparent" strokeWidth={40} style={{ cursor: "pointer" }} />
 
-          {/* Gaine RACCOURCIE */}
+          {/* Gaine raccourcie */}
           <path d={shortenedPath} fill="none" stroke="#1F2937" strokeWidth={gaineWidth} strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }} />
           <path d={shortenedPath} fill="none" stroke="#4B5563" strokeWidth={gaineWidth - 2} strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: "none" }} />
 
-          {/* Éventail source - chaque fil part de son connecteur */}
+          {/* Éventail source */}
           {fanElements.map((wire: any) => (
             <path
               key={`src-${wire.id || wire.index}`}
@@ -207,7 +224,7 @@ const PlumbingEdge = memo(
             />
           ))}
           
-          {/* Éventail target - chaque fil va vers son connecteur */}
+          {/* Éventail target */}
           {fanElements.map((wire: any) => (
             <path
               key={`tgt-${wire.id || wire.index}`}
