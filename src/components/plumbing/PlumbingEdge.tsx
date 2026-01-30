@@ -58,10 +58,29 @@ const PlumbingEdge = memo(
     targetY,
     sourcePosition,
     targetPosition,
+    sourceHandleId,
+    targetHandleId,
     data,
     selected,
     style,
   }: EdgeProps<PlumbingEdgeData>) => {
+    // Déterminer la direction logique du flux basée sur les handles (in/out)
+    // Par défaut: source → target, mais si source est "in" et target est "out", inverser
+    const flowDirection = useMemo(() => {
+      const sourceIsOutput = sourceHandleId?.includes("_out_") || sourceHandleId?.includes("_out");
+      const targetIsInput = targetHandleId?.includes("_in_") || targetHandleId?.includes("_in");
+      const sourceIsInput = sourceHandleId?.includes("_in_") || sourceHandleId?.includes("_in");
+      const targetIsOutput = targetHandleId?.includes("_out_") || targetHandleId?.includes("_out");
+      
+      // Si source=out et target=in → flux normal (source vers target)
+      // Si source=in et target=out → flux inversé (target vers source)
+      // Sinon garder la direction par défaut (source vers target)
+      if (sourceIsInput && targetIsOutput) {
+        return "reversed";
+      }
+      return "normal";
+    }, [sourceHandleId, targetHandleId]);
+    
     // Déterminer l'orientation principale de la connexion
     const deltaX = Math.abs(targetX - sourceX);
     const deltaY = Math.abs(targetY - sourceY);
@@ -301,12 +320,19 @@ const PlumbingEdge = memo(
     // Rendu standard
     const isWater = data?.connectionType === "water";
     
-    // Calculer l'angle de la flèche basé sur la direction source → target
+    // Calculer l'angle de la flèche basé sur la direction logique du flux
     const angle = useMemo(() => {
-      const dx = targetX - sourceX;
-      const dy = targetY - sourceY;
+      let dx = targetX - sourceX;
+      let dy = targetY - sourceY;
+      
+      // Si la direction est inversée, inverser le vecteur
+      if (flowDirection === "reversed") {
+        dx = -dx;
+        dy = -dy;
+      }
+      
       return Math.atan2(dy, dx) * (180 / Math.PI);
-    }, [sourceX, sourceY, targetX, targetY]);
+    }, [sourceX, sourceY, targetX, targetY, flowDirection]);
     
     return (
       <>
