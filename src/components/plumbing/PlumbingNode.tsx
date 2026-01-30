@@ -239,15 +239,16 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
     const junctionHeight = Math.max(minSize, maxVertical * handleSpacing + padding);
     
     // Fonction pour calculer la position d'un handle selon son index sur un côté
-    // Le handle doit être centré exactement sur le bord de la jonction
+    // Le handle doit être centré exactement sur le bord EXTÉRIEUR de la jonction (incluant la bordure)
     const handleSize = 14;
+    const borderWidth = 3; // Bordure de la jonction
     const getHandlePosition = (side: string, index: number, total: number): React.CSSProperties => {
       const offset = total > 1 
         ? (index - (total - 1) / 2) * handleSpacing
         : 0;
       
-      // Position = -(handleSize/2) pour que le centre soit sur le bord
-      const edgeOffset = -(handleSize / 2);
+      // Position = -(handleSize/2 + borderWidth) pour que le centre soit sur le bord extérieur
+      const edgeOffset = -(handleSize / 2) - borderWidth;
       
       switch (side) {
         case "left":
