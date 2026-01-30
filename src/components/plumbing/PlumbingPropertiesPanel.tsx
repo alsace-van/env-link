@@ -226,7 +226,27 @@ export function PlumbingPropertiesPanel({
       <div className="w-72 bg-white border-l flex flex-col h-full">
         <div className="p-3 border-b flex items-center justify-between bg-gray-50">
           <div className="flex items-center gap-2">
-            <span className="text-xl">{data.icon}</span>
+            {/* Icône cliquable pour changer */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="text-xl hover:bg-gray-200 rounded p-1 transition-colors cursor-pointer" title="Changer l'icône">
+                  {data.icon}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-2" align="start">
+                <div className="grid grid-cols-10 gap-1 max-h-60 overflow-y-auto">
+                  {AVAILABLE_ICONS.map((icon, idx) => (
+                    <button
+                      key={idx}
+                      className={`w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-lg ${data.icon === icon ? 'bg-blue-100 ring-2 ring-blue-500' : ''}`}
+                      onClick={() => onUpdateNode(selectedNode.id, { icon })}
+                    >
+                      {icon}
+                    </button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
             <div>
               <h3 className="font-medium text-sm truncate max-w-[180px]">{data.label}</h3>
               <Badge variant="outline" className="text-[10px] mt-0.5" style={{ borderColor: CATEGORY_COLORS[data.category] }}>
@@ -252,32 +272,6 @@ export function PlumbingPropertiesPanel({
                 <div>
                   <Label className="text-xs">Nom</Label>
                   <Input value={data.label} onChange={(e) => onUpdateNode(selectedNode.id, { label: e.target.value })} className="h-8 text-sm" />
-                </div>
-                
-                {/* Sélecteur d'icône */}
-                <div>
-                  <Label className="text-xs">Icône</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full h-8 justify-start text-sm">
-                        <span className="text-xl mr-2">{data.icon}</span>
-                        <span className="text-gray-500 text-xs">Changer l'icône</span>
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-80 p-2" align="start">
-                      <div className="grid grid-cols-10 gap-1">
-                        {AVAILABLE_ICONS.map((icon, idx) => (
-                          <button
-                            key={idx}
-                            className={`w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-lg ${data.icon === icon ? 'bg-blue-100 ring-2 ring-blue-500' : ''}`}
-                            onClick={() => onUpdateNode(selectedNode.id, { icon })}
-                          >
-                            {icon}
-                          </button>
-                        ))}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
                 </div>
 
                 {/* Miniature accessoire du catalogue */}
