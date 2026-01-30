@@ -53,6 +53,7 @@ interface PlumbingToolbarProps {
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
   containerRef?: React.RefObject<HTMLDivElement>;
+  placedAccessoryIds?: string[]; // IDs des accessoires déjà sur le schéma
 }
 
 export function PlumbingToolbar({
@@ -79,6 +80,7 @@ export function PlumbingToolbar({
   isFullscreen,
   onToggleFullscreen,
   containerRef,
+  placedAccessoryIds = [],
 }: PlumbingToolbarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CatalogItem[]>([]);
@@ -378,25 +380,34 @@ export function PlumbingToolbar({
                     
                     return filteredQuoteItems.length > 0 ? (
                       <div className="space-y-1">
-                        {filteredQuoteItems.map((item) => (
-                          <Button
-                            key={item.id}
-                            variant="outline"
-                            size="sm"
-                            className="w-full h-auto py-2 px-2 flex items-center gap-2 text-left justify-start"
-                            onClick={() => onAddFromQuote(item)}
-                          >
-                            {item.image_url && <img src={item.image_url} alt="" className="w-8 h-8 object-cover rounded" />}
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs font-medium truncate">{item.nom}</div>
-                              <div className="flex items-center gap-1 mt-0.5">
-                                <Badge variant="secondary" className="text-[9px] px-1 h-4">x{item.quantity}</Badge>
-                                <Badge variant="outline" className="text-[9px] px-1 h-4">{item.prix_unitaire?.toFixed(2)}€</Badge>
+                        {filteredQuoteItems.map((item) => {
+                          const isPlaced = placedAccessoryIds.includes(item.accessory_id);
+                          return (
+                            <Button
+                              key={item.id}
+                              variant="outline"
+                              size="sm"
+                              className={`w-full h-auto py-2 px-2 flex items-center gap-2 text-left justify-start ${
+                                isPlaced ? "bg-green-50 border-green-300 hover:bg-green-100" : ""
+                              }`}
+                              onClick={() => onAddFromQuote(item)}
+                            >
+                              {item.image_url && <img src={item.image_url} alt="" className="w-8 h-8 object-cover rounded" />}
+                              <div className="flex-1 min-w-0">
+                                <div className={`text-xs font-medium truncate ${isPlaced ? "text-green-700" : ""}`}>{item.nom}</div>
+                                <div className="flex items-center gap-1 mt-0.5">
+                                  <Badge variant="secondary" className="text-[9px] px-1 h-4">x{item.quantity}</Badge>
+                                  <Badge variant="outline" className="text-[9px] px-1 h-4">{item.prix_unitaire?.toFixed(2)}€</Badge>
+                                </div>
                               </div>
-                            </div>
-                            <Badge className="bg-green-500 text-[9px] px-1 h-4">Devis</Badge>
-                          </Button>
-                        ))}
+                              {isPlaced ? (
+                                <Badge className="bg-green-600 text-[9px] px-1 h-4">✓ Placé</Badge>
+                              ) : (
+                                <Badge className="bg-blue-500 text-[9px] px-1 h-4">Devis</Badge>
+                              )}
+                            </Button>
+                          );
+                        })}
                       </div>
                     ) : (
                       <div className="text-center text-sm text-gray-500 py-8">
