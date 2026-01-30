@@ -692,6 +692,7 @@ function PlumbingCanvasInner({ projectId, onSave }: PlumbingCanvasProps) {
         isFullscreen={isFullscreen}
         onToggleFullscreen={toggleFullscreen}
         containerRef={containerRef}
+        placedAccessoryIds={nodes.map(n => n.data.accessory_id).filter(Boolean) as string[]}
       />
 
       <div className="flex-1 flex overflow-hidden">
