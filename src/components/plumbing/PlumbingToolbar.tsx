@@ -84,6 +84,7 @@ export function PlumbingToolbar({
   const [searchResults, setSearchResults] = useState<CatalogItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [activeCategory, setActiveCategory] = useState<PlumbingCategory | "all">("all");
+  const [quoteSearchQuery, setQuoteSearchQuery] = useState("");
 
   const filteredElements = useMemo(() => {
     if (activeCategory === "all") return PLUMBING_ELEMENTS;
@@ -356,32 +357,53 @@ export function PlumbingToolbar({
 
               {/* Devis */}
               <TabsContent value="quote" className="p-2 m-0">
-                <ScrollArea className="h-64">
-                  {quoteItems.length > 0 ? (
-                    <div className="space-y-1">
-                      {quoteItems.map((item) => (
-                        <Button
-                          key={item.id}
-                          variant="outline"
-                          size="sm"
-                          className="w-full h-auto py-2 px-2 flex items-center gap-2 text-left justify-start"
-                          onClick={() => onAddFromQuote(item)}
-                        >
-                          {item.image_url && <img src={item.image_url} alt="" className="w-8 h-8 object-cover rounded" />}
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs font-medium truncate">{item.nom}</div>
-                            <div className="flex items-center gap-1 mt-0.5">
-                              <Badge variant="secondary" className="text-[9px] px-1 h-4">x{item.quantity}</Badge>
-                              <Badge variant="outline" className="text-[9px] px-1 h-4">{item.prix_unitaire?.toFixed(2)}€</Badge>
+                {/* Barre de recherche devis */}
+                <div className="relative mb-2">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400" />
+                  <Input
+                    placeholder="Rechercher dans le devis..."
+                    value={quoteSearchQuery}
+                    onChange={(e) => setQuoteSearchQuery(e.target.value)}
+                    className="h-7 pl-7 text-xs"
+                  />
+                </div>
+                <ScrollArea className="h-56">
+                  {(() => {
+                    // Filtrer les éléments du devis selon la recherche
+                    const filteredQuoteItems = quoteItems.filter((item) =>
+                      quoteSearchQuery.length < 2 ||
+                      item.nom.toLowerCase().includes(quoteSearchQuery.toLowerCase()) ||
+                      item.reference?.toLowerCase().includes(quoteSearchQuery.toLowerCase())
+                    );
+                    
+                    return filteredQuoteItems.length > 0 ? (
+                      <div className="space-y-1">
+                        {filteredQuoteItems.map((item) => (
+                          <Button
+                            key={item.id}
+                            variant="outline"
+                            size="sm"
+                            className="w-full h-auto py-2 px-2 flex items-center gap-2 text-left justify-start"
+                            onClick={() => onAddFromQuote(item)}
+                          >
+                            {item.image_url && <img src={item.image_url} alt="" className="w-8 h-8 object-cover rounded" />}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-medium truncate">{item.nom}</div>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <Badge variant="secondary" className="text-[9px] px-1 h-4">x{item.quantity}</Badge>
+                                <Badge variant="outline" className="text-[9px] px-1 h-4">{item.prix_unitaire?.toFixed(2)}€</Badge>
+                              </div>
                             </div>
-                          </div>
-                          <Badge className="bg-green-500 text-[9px] px-1 h-4">Devis</Badge>
-                        </Button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center text-sm text-gray-500 py-8">Aucun article dans le devis</div>
-                  )}
+                            <Badge className="bg-green-500 text-[9px] px-1 h-4">Devis</Badge>
+                          </Button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center text-sm text-gray-500 py-8">
+                        {quoteSearchQuery.length >= 2 ? "Aucun résultat" : "Aucun article dans le devis"}
+                      </div>
+                    );
+                  })()}
                 </ScrollArea>
               </TabsContent>
             </Tabs>
