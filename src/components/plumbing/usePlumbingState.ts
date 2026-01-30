@@ -1,11 +1,11 @@
 // ============================================
 // HOOK: usePlumbingState
 // Gestion de l'état du schéma plomberie
-// VERSION: 1.0
+// VERSION: 1.1 - Fix re-rendu handles avec useUpdateNodeInternals
 // ============================================
 
 import { useCallback, useState, useRef } from "react";
-import { useNodesState, useEdgesState, Connection, addEdge } from "@xyflow/react";
+import { useNodesState, useEdgesState, Connection, addEdge, useUpdateNodeInternals } from "@xyflow/react";
 import {
   PlumbingNodeType,
   PlumbingEdgeType,
@@ -28,6 +28,9 @@ export function usePlumbingState(maxHistorySize = 50) {
   const [edges, setEdges, onEdgesChange] = useEdgesState<PlumbingEdgeType>([]);
   const [selectedNodes, setSelectedNodes] = useState<string[]>([]);
   const [selectedEdges, setSelectedEdges] = useState<string[]>([]);
+  
+  // Hook pour forcer le recalcul des handles après modification
+  const updateNodeInternals = useUpdateNodeInternals();
 
   const historyRef = useRef<HistoryEntry[]>([]);
   const historyIndexRef = useRef<number>(-1);
@@ -109,12 +112,17 @@ export function usePlumbingState(maxHistorySize = 50) {
     (nodeId: string, data: Partial<PlumbingBlockData>) => {
       setNodes((prev) =>
         prev.map((node) =>
-          node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node
+          node.id === nodeId 
+            ? { ...node, data: { ...node.data, ...data } }
+            : node
         )
       );
+      // Forcer ReactFlow à recalculer les handles (important pour connectorConfig)
+      // Utiliser setTimeout pour s'assurer que le state est mis à jour avant
+      setTimeout(() => updateNodeInternals(nodeId), 0);
       saveToHistory();
     },
-    [setNodes, saveToHistory]
+    [setNodes, saveToHistory, updateNodeInternals]
   );
 
   const deleteNode = useCallback(
