@@ -62,20 +62,33 @@ const PlumbingEdge = memo(
     selected,
     style,
   }: EdgeProps<PlumbingEdgeData>) => {
-    // Calculer si c'est une ligne quasi-droite (même axe horizontal ou vertical)
-    const isHorizontalLine = Math.abs(targetY - sourceY) < 15;
-    const isVerticalLine = Math.abs(targetX - sourceX) < 15;
-    const isStraightLine = isHorizontalLine || isVerticalLine;
+    // Déterminer l'orientation principale de la connexion
+    const deltaX = Math.abs(targetX - sourceX);
+    const deltaY = Math.abs(targetY - sourceY);
     
-    // Utiliser un path droit si les points sont alignés, sinon smooth step
+    // Si principalement horizontal (deltaX > deltaY), forcer une ligne horizontale
+    // Si principalement vertical (deltaY > deltaX), forcer une ligne verticale
+    const isMainlyHorizontal = deltaX > deltaY;
+    const isMainlyVertical = deltaY > deltaX;
+    
     let edgePath: string;
     let labelX: number;
     let labelY: number;
     
-    if (isStraightLine) {
-      // Ligne droite simple
-      edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
+    // Tolérance pour considérer comme "aligné"
+    const tolerance = 30;
+    
+    if (isMainlyHorizontal && deltaY < tolerance) {
+      // Connexion horizontale : forcer Y au milieu
+      const midY = (sourceY + targetY) / 2;
+      edgePath = `M ${sourceX} ${midY} L ${targetX} ${midY}`;
       labelX = (sourceX + targetX) / 2;
+      labelY = midY;
+    } else if (isMainlyVertical && deltaX < tolerance) {
+      // Connexion verticale : forcer X au milieu
+      const midX = (sourceX + targetX) / 2;
+      edgePath = `M ${midX} ${sourceY} L ${midX} ${targetY}`;
+      labelX = midX;
       labelY = (sourceY + targetY) / 2;
     } else {
       // Chemin avec coudes pour les connexions non-alignées
