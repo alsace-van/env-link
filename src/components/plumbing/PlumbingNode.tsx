@@ -300,7 +300,7 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
           </TooltipContent>
         </Tooltip>
         
-        {/* Handles électriques pour jonctions */}
+        {/* Handles électriques pour jonctions - transparents, seule la jonction est visible */}
         {config.electrical.map((conn, idx) => {
           const sideConnectors = connectorsBySideJunction[conn.side].filter(c => 'type' in c);
           const indexInSide = sideConnectors.findIndex(c => 'type' in c && c.type === conn.type && config.electrical.indexOf(c as any) === idx);
@@ -315,16 +315,17 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
               isConnectableStart={true}
               isConnectableEnd={true}
               style={{
-                ...getHandleStyle(ELECTRICAL_CONNECTOR_COLORS[conn.type], false),
                 ...getHandlePosition(conn.side, indexInSide >= 0 ? indexInSide : 0, totalInSide),
-                width: 12,
-                height: 12,
+                width: 14,
+                height: 14,
+                background: "transparent",
+                border: "none",
               }}
             />
           );
         })}
         
-        {/* Handles eau pour jonctions */}
+        {/* Handles eau pour jonctions - transparents */}
         {config.water.map((conn, idx) => {
           const sideConnectors = connectorsBySideJunction[conn.side].filter(c => 'waterType' in c);
           const indexInSide = sideConnectors.findIndex(c => 'waterType' in c && c.waterType === conn.waterType && config.water.indexOf(c as any) === idx);
@@ -339,10 +340,11 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
               isConnectableStart={true}
               isConnectableEnd={true}
               style={{
-                ...getHandleStyle(WATER_COLORS[conn.waterType], true),
                 ...getHandlePosition(conn.side, indexInSide >= 0 ? indexInSide : 0, totalInSide),
-                width: 12,
-                height: 12,
+                width: 14,
+                height: 14,
+                background: "transparent",
+                border: "none",
               }}
             />
           );
