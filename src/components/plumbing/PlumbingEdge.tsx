@@ -63,21 +63,33 @@ const PlumbingEdge = memo(
     style,
   }: EdgeProps<PlumbingEdgeData>) => {
     // Calculer si c'est une ligne quasi-droite (même axe horizontal ou vertical)
-    const isHorizontalLine = Math.abs(targetY - sourceY) < 5;
-    const isVerticalLine = Math.abs(targetX - sourceX) < 5;
+    const isHorizontalLine = Math.abs(targetY - sourceY) < 15;
+    const isVerticalLine = Math.abs(targetX - sourceX) < 15;
     const isStraightLine = isHorizontalLine || isVerticalLine;
     
-    // Utiliser un offset très petit pour minimiser les coudes inutiles
-    const [edgePath, labelX, labelY] = getSmoothStepPath({
-      sourceX,
-      sourceY,
-      sourcePosition,
-      targetX,
-      targetY,
-      targetPosition,
-      borderRadius: 8,
-      offset: isStraightLine ? 0 : 10, // Pas d'offset si ligne droite
-    });
+    // Utiliser un path droit si les points sont alignés, sinon smooth step
+    let edgePath: string;
+    let labelX: number;
+    let labelY: number;
+    
+    if (isStraightLine) {
+      // Ligne droite simple
+      edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
+      labelX = (sourceX + targetX) / 2;
+      labelY = (sourceY + targetY) / 2;
+    } else {
+      // Chemin avec coudes pour les connexions non-alignées
+      [edgePath, labelX, labelY] = getSmoothStepPath({
+        sourceX,
+        sourceY,
+        sourcePosition,
+        targetX,
+        targetY,
+        targetPosition,
+        borderRadius: 8,
+        offset: 15,
+      });
+    }
 
     const isGrouped = data?.isGrouped || false;
     const groupedEdges = data?.groupedEdges || [];
