@@ -237,41 +237,96 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
     return "#6B7280";
   }, [isJunction, config.electrical, config.water]);
 
-  // Rendu compact pour les jonctions
+  // Rendu style collecteur/distributeur pour les jonctions
   if (isJunction) {
-    const junctionSize = 24;
+    // Compter les connecteurs par côté
+    const allConnectors = [...config.water, ...config.electrical];
+    const connectorsBySideJunction = {
+      left: allConnectors.filter(c => c.side === "left"),
+      right: allConnectors.filter(c => c.side === "right"),
+      top: allConnectors.filter(c => c.side === "top"),
+      bottom: allConnectors.filter(c => c.side === "bottom"),
+    };
+    
+    // Calculer la taille dynamique selon le nombre de connecteurs
+    const maxHorizontal = Math.max(connectorsBySideJunction.top.length, connectorsBySideJunction.bottom.length, 1);
+    const maxVertical = Math.max(connectorsBySideJunction.left.length, connectorsBySideJunction.right.length, 1);
+    
+    const handleSpacing = 20; // Espacement entre handles
+    const minSize = 24;
+    const padding = 8;
+    
+    const junctionWidth = Math.max(minSize, maxHorizontal * handleSpacing + padding);
+    const junctionHeight = Math.max(minSize, maxVertical * handleSpacing + padding);
+    
+    // Fonction pour calculer la position d'un handle selon son index sur un côté
+    const getHandlePosition = (side: string, index: number, total: number): React.CSSProperties => {
+      const offset = total > 1 
+        ? (index - (total - 1) / 2) * handleSpacing
+        : 0;
+      
+      switch (side) {
+        case "left":
+          return { 
+            left: "-6px", 
+            top: `calc(50% + ${offset}px)`,
+            transform: "translateY(-50%)",
+          };
+        case "right":
+          return { 
+            right: "-6px", 
+            top: `calc(50% + ${offset}px)`,
+            transform: "translateY(-50%)",
+          };
+        case "top":
+          return { 
+            top: "-6px", 
+            left: `calc(50% + ${offset}px)`,
+            transform: "translateX(-50%)",
+          };
+        case "bottom":
+          return { 
+            bottom: "-6px", 
+            left: `calc(50% + ${offset}px)`,
+            transform: "translateX(-50%)",
+          };
+        default:
+          return {};
+      }
+    };
+
     return (
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
             <div
               style={{
-                width: `${junctionSize}px`,
-                height: `${junctionSize}px`,
+                width: `${junctionWidth}px`,
+                height: `${junctionHeight}px`,
                 background: junctionColor,
-                border: `2px solid ${selected ? "#3B82F6" : "white"}`,
-                borderRadius: "50%",
+                border: `3px solid ${selected ? "#3B82F6" : "white"}`,
+                borderRadius: junctionWidth > 30 ? "12px" : "50%",
                 boxShadow: selected
                   ? "0 0 0 2px rgba(59, 130, 246, 0.5), 0 2px 4px rgba(0,0,0,0.2)"
-                  : "0 1px 3px rgba(0,0,0,0.3)",
+                  : "0 2px 4px rgba(0,0,0,0.3)",
                 cursor: "pointer",
+                position: "relative",
               }}
             />
           </TooltipTrigger>
           <TooltipContent>
             <p className="font-medium">{data.label}</p>
             {data.description && <p className="text-xs text-gray-500">{data.description}</p>}
+            <p className="text-xs text-gray-400">{allConnectors.length} connexions</p>
           </TooltipContent>
         </Tooltip>
         
         {/* Handles électriques pour jonctions */}
         {config.electrical.map((conn, idx) => {
-          const positions: Record<string, React.CSSProperties> = {
-            left: { left: "-4px", top: "50%", transform: "translateY(-50%)" },
-            right: { right: "-4px", top: "50%", transform: "translateY(-50%)" },
-            top: { top: "-4px", left: "50%", transform: "translateX(-50%)" },
-            bottom: { bottom: "-4px", left: "50%", transform: "translateX(-50%)" },
-          };
+          const sideConnectors = connectorsBySideJunction[conn.side].filter(c => 'type' in c);
+          const indexInSide = sideConnectors.findIndex(c => 'type' in c && c.type === conn.type && config.electrical.indexOf(c as any) === idx);
+          const totalInSide = sideConnectors.length;
+          
           return (
             <Handle
               key={`elec_${conn.id}`}
@@ -282,11 +337,9 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
               isConnectableEnd={true}
               style={{
                 ...getHandleStyle(ELECTRICAL_CONNECTOR_COLORS[conn.type], false),
-                ...positions[conn.side],
-                background: "transparent",
-                border: "none",
-                width: 10,
-                height: 10,
+                ...getHandlePosition(conn.side, indexInSide >= 0 ? indexInSide : 0, totalInSide),
+                width: 12,
+                height: 12,
               }}
             />
           );
@@ -294,13 +347,10 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
         
         {/* Handles eau pour jonctions */}
         {config.water.map((conn, idx) => {
-          const positions: Record<string, React.CSSProperties> = {
-            left: { left: "-4px", top: "50%", transform: "translateY(-50%)" },
-            right: { right: "-4px", top: "50%", transform: "translateY(-50%)" },
-            top: { top: "-4px", left: "50%", transform: "translateX(-50%)" },
-            bottom: { bottom: "-4px", left: "50%", transform: "translateX(-50%)" },
-          };
-          console.log("[PlumbingNode v1.3] Junction handle eau:", `water_bidirectional_${conn.waterType}_${idx}`, "side:", conn.side);
+          const sideConnectors = connectorsBySideJunction[conn.side].filter(c => 'waterType' in c);
+          const indexInSide = sideConnectors.findIndex(c => 'waterType' in c && c.waterType === conn.waterType && config.water.indexOf(c as any) === idx);
+          const totalInSide = sideConnectors.length;
+          
           return (
             <Handle
               key={`water_${conn.id}`}
@@ -311,11 +361,9 @@ const PlumbingNode = memo(({ data, selected }: NodeProps<PlumbingBlockData>) => 
               isConnectableEnd={true}
               style={{
                 ...getHandleStyle(WATER_COLORS[conn.waterType], true),
-                ...positions[conn.side],
-                background: "transparent",
-                border: "none",
-                width: 10,
-                height: 10,
+                ...getHandlePosition(conn.side, indexInSide >= 0 ? indexInSide : 0, totalInSide),
+                width: 12,
+                height: 12,
               }}
             />
           );
