@@ -85,29 +85,22 @@ const PlumbingEdge = memo(
     const deltaX = Math.abs(targetX - sourceX);
     const deltaY = Math.abs(targetY - sourceY);
     
-    // Si principalement horizontal (deltaX > deltaY), forcer une ligne horizontale
-    // Si principalement vertical (deltaY > deltaX), forcer une ligne verticale
-    const isMainlyHorizontal = deltaX > deltaY;
-    const isMainlyVertical = deltaY > deltaX;
-    
     let edgePath: string;
     let labelX: number;
     let labelY: number;
     
-    // Tolérance pour considérer comme "aligné"
-    const tolerance = 30;
+    // Tolérance pour considérer comme "quasi-aligné"
+    const tolerance = 15;
     
-    if (isMainlyHorizontal && deltaY < tolerance) {
-      // Connexion horizontale : forcer Y au milieu
-      const midY = (sourceY + targetY) / 2;
-      edgePath = `M ${sourceX} ${midY} L ${targetX} ${midY}`;
+    if (deltaY < tolerance && deltaX > tolerance) {
+      // Quasi-horizontal : ligne droite entre les vrais points
+      edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
       labelX = (sourceX + targetX) / 2;
-      labelY = midY;
-    } else if (isMainlyVertical && deltaX < tolerance) {
-      // Connexion verticale : forcer X au milieu
-      const midX = (sourceX + targetX) / 2;
-      edgePath = `M ${midX} ${sourceY} L ${midX} ${targetY}`;
-      labelX = midX;
+      labelY = (sourceY + targetY) / 2;
+    } else if (deltaX < tolerance && deltaY > tolerance) {
+      // Quasi-vertical : ligne droite entre les vrais points
+      edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
+      labelX = (sourceX + targetX) / 2;
       labelY = (sourceY + targetY) / 2;
     } else {
       // Chemin avec coudes pour les connexions non-alignées
