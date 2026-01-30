@@ -849,7 +849,23 @@ export function getConnectionColor(data: PlumbingEdgeData): string {
 }
 
 export function getConnectionStrokeWidth(data: PlumbingEdgeData): number {
-  return data.connectionType === "water" ? WATER_STROKE_WIDTH : ELECTRICAL_STROKE_WIDTH;
+  if (data.connectionType === "water") {
+    // Épaisseur proportionnelle au diamètre du tuyau
+    // Diamètres: 10, 12, 15, 16, 18, 20, 22, 25, 28, 32mm
+    const diameter = data.pipe_diameter || 12;
+    // Échelle: 10mm → 4px, 32mm → 12px
+    return Math.max(4, Math.min(12, Math.round(diameter / 3)));
+  } else {
+    // Épaisseur proportionnelle à la section du câble
+    // Sections: 0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25mm²
+    const section = data.cable_section || 1.5;
+    // Échelle: 0.5mm² → 1px, 25mm² → 6px
+    if (section <= 1) return 1;
+    if (section <= 2.5) return 2;
+    if (section <= 6) return 3;
+    if (section <= 16) return 4;
+    return 5;
+  }
 }
 
 export function calculateTotalCapacity(nodes: PlumbingNodeType[]): {
