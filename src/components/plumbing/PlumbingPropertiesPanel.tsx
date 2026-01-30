@@ -1,7 +1,7 @@
 // ============================================
 // COMPOSANT: PlumbingPropertiesPanel
 // Panneau de propriétés pour élément sélectionné
-// VERSION: 1.2 - Support containerRef pour modal en fullscreen
+// VERSION: 1.3 - Sélecteur d'icône et miniature accessoire
 // ============================================
 
 import React, { useState } from "react";
@@ -13,7 +13,8 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { X, ChevronDown, ChevronRight, Droplets, Zap, Settings, Package, ShoppingCart, Trash2, Copy, Plug } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { X, ChevronDown, ChevronRight, Droplets, Zap, Settings, Package, ShoppingCart, Trash2, Copy, Plug, Smile } from "lucide-react";
 import {
   PlumbingBlockData,
   PlumbingEdgeData,
@@ -35,6 +36,31 @@ import {
   getConnectorConfig,
 } from "./types";
 import { PlumbingConnectorConfigModal } from "./PlumbingConnectorConfigModal";
+
+// Réserve d'icônes disponibles
+const AVAILABLE_ICONS = [
+  // Eau & Plomberie
+  "💧", "🚰", "🚿", "🛁", "🧴", "🪣", "🌊", "💦", "🏊", "🧊",
+  // Stockage
+  "🛢️", "🗑️", "📦", "🧰", "🗃️", "💼",
+  // Électrique
+  "⚡", "🔌", "🔋", "💡", "🔦", "🪫", "🔧", "⚙️", "🛠️",
+  // Chauffage
+  "🔥", "🌡️", "☀️", "❄️", "🌬️", "♨️",
+  // Appareils
+  "📟", "🖥️", "📱", "🎛️", "📡", "🔊", "📺", "🖨️",
+  // Sécurité
+  "🔒", "🔓", "🛡️", "🚨", "⚠️", "🚫",
+  // Symboles techniques
+  "●", "○", "◉", "◎", "⊕", "⊗", "⊤", "◄", "►", "▲", "▼",
+  "➕", "➖", "✓", "✗", "★", "☆",
+  // Connecteurs
+  "🟠", "🟡", "🟢", "🔵", "🟣", "🟤", "⚫", "⚪", "🟧", "🟨", "🟩", "🟦", "🟪",
+  // Divers
+  "🏠", "🚗", "🚐", "🏕️", "⛺", "🌍", "🔬", "📊", "📈",
+  // Cuisine
+  "🍽️", "🍳", "🥘", "☕", "🧊",
+];
 
 interface PlumbingPropertiesPanelProps {
   selectedNode: PlumbingNodeType | null;
@@ -227,6 +253,48 @@ export function PlumbingPropertiesPanel({
                   <Label className="text-xs">Nom</Label>
                   <Input value={data.label} onChange={(e) => onUpdateNode(selectedNode.id, { label: e.target.value })} className="h-8 text-sm" />
                 </div>
+                
+                {/* Sélecteur d'icône */}
+                <div>
+                  <Label className="text-xs">Icône</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full h-8 justify-start text-sm">
+                        <span className="text-xl mr-2">{data.icon}</span>
+                        <span className="text-gray-500 text-xs">Changer l'icône</span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 p-2" align="start">
+                      <div className="grid grid-cols-10 gap-1">
+                        {AVAILABLE_ICONS.map((icon, idx) => (
+                          <button
+                            key={idx}
+                            className={`w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 text-lg ${data.icon === icon ? 'bg-blue-100 ring-2 ring-blue-500' : ''}`}
+                            onClick={() => onUpdateNode(selectedNode.id, { icon })}
+                          >
+                            {icon}
+                          </button>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Miniature accessoire du catalogue */}
+                {data.image_url && (
+                  <div>
+                    <Label className="text-xs">Image catalogue</Label>
+                    <div className="mt-1 rounded border overflow-hidden">
+                      <img 
+                        src={data.image_url} 
+                        alt={data.label}
+                        className="w-full h-20 object-contain bg-gray-50"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 {(data.category === "storage" || data.capacity_liters !== undefined) && (
                   <div>
                     <Label className="text-xs">Capacité (L)</Label>
