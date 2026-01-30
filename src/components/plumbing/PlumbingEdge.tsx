@@ -62,6 +62,12 @@ const PlumbingEdge = memo(
     selected,
     style,
   }: EdgeProps<PlumbingEdgeData>) => {
+    // Calculer si c'est une ligne quasi-droite (même axe horizontal ou vertical)
+    const isHorizontalLine = Math.abs(targetY - sourceY) < 5;
+    const isVerticalLine = Math.abs(targetX - sourceX) < 5;
+    const isStraightLine = isHorizontalLine || isVerticalLine;
+    
+    // Utiliser un offset très petit pour minimiser les coudes inutiles
     const [edgePath, labelX, labelY] = getSmoothStepPath({
       sourceX,
       sourceY,
@@ -70,6 +76,7 @@ const PlumbingEdge = memo(
       targetY,
       targetPosition,
       borderRadius: 8,
+      offset: isStraightLine ? 0 : 10, // Pas d'offset si ligne droite
     });
 
     const isGrouped = data?.isGrouped || false;
