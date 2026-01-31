@@ -90,30 +90,47 @@ const PlumbingEdge = memo(
     let labelY: number;
     
     // Tolérance pour considérer comme "quasi-aligné"
-    const tolerance = 15;
+    const tolerance = 20;
     
     if (deltaY < tolerance && deltaX > tolerance) {
-      // Quasi-horizontal : ligne droite entre les vrais points
+      // Quasi-horizontal : ligne droite
       edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
       labelX = (sourceX + targetX) / 2;
       labelY = (sourceY + targetY) / 2;
     } else if (deltaX < tolerance && deltaY > tolerance) {
-      // Quasi-vertical : ligne droite entre les vrais points
+      // Quasi-vertical : ligne droite
       edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
       labelX = (sourceX + targetX) / 2;
       labelY = (sourceY + targetY) / 2;
     } else {
-      // Chemin avec coudes pour les connexions non-alignées
-      [edgePath, labelX, labelY] = getSmoothStepPath({
-        sourceX,
-        sourceY,
-        sourcePosition,
-        targetX,
-        targetY,
-        targetPosition,
-        borderRadius: 8,
-        offset: 15,
-      });
+      // Chemin avec UN SEUL coude (pas de boucle)
+      // Déterminer le sens du coude selon les positions des handles
+      const sourceIsHorizontal = sourcePosition === Position.Left || sourcePosition === Position.Right;
+      const targetIsHorizontal = targetPosition === Position.Left || targetPosition === Position.Right;
+      
+      if (sourceIsHorizontal && !targetIsHorizontal) {
+        // Source horizontal, target vertical : coude horizontal d'abord
+        edgePath = `M ${sourceX} ${sourceY} L ${targetX} ${sourceY} L ${targetX} ${targetY}`;
+        labelX = (sourceX + targetX) / 2;
+        labelY = sourceY;
+      } else if (!sourceIsHorizontal && targetIsHorizontal) {
+        // Source vertical, target horizontal : coude vertical d'abord
+        edgePath = `M ${sourceX} ${sourceY} L ${sourceX} ${targetY} L ${targetX} ${targetY}`;
+        labelX = sourceX;
+        labelY = (sourceY + targetY) / 2;
+      } else if (sourceIsHorizontal && targetIsHorizontal) {
+        // Les deux horizontaux : coude au milieu vertical
+        const midX = (sourceX + targetX) / 2;
+        edgePath = `M ${sourceX} ${sourceY} L ${midX} ${sourceY} L ${midX} ${targetY} L ${targetX} ${targetY}`;
+        labelX = midX;
+        labelY = (sourceY + targetY) / 2;
+      } else {
+        // Les deux verticaux : coude au milieu horizontal
+        const midY = (sourceY + targetY) / 2;
+        edgePath = `M ${sourceX} ${sourceY} L ${sourceX} ${midY} L ${targetX} ${midY} L ${targetX} ${targetY}`;
+        labelX = (sourceX + targetX) / 2;
+        labelY = midY;
+      }
     }
 
     const isGrouped = data?.isGrouped || false;
