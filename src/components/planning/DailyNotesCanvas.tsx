@@ -2,7 +2,7 @@
 // COMPOSANT: DailyNotesCanvas
 // Outil de prise de notes journalières complet
 // ReactFlow pour les blocs et connexions + Paper.js pour le dessin libre
-// VERSION: 3.2 - Fix propriétés source_block_id/target_block_id
+// VERSION: 3.2a - Fix perte de focus inputs (refs stables + anti-blur)
 // ============================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
@@ -375,6 +375,9 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
   } = data as CustomBlockData;
 
   const [isEditing, setIsEditing] = useState(false);
+  // 🔥 v3.2a - Ref pour protéger contre les faux blur causés par re-render ReactFlow
+  const isEditingRef = useRef(false);
+  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showProjectPicker, setShowProjectPicker] = useState(false);
   const [showTaskSearch, setShowTaskSearch] = useState(false);
@@ -406,7 +409,21 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
           <Textarea
             value={block.content || ""}
             onChange={(e) => onUpdate({ content: e.target.value })}
-            onBlur={() => setIsEditing(false)}
+            onFocus={() => {
+              // v3.2a - Annuler tout blur en attente quand on récupère le focus
+              if (blurTimeoutRef.current) {
+                clearTimeout(blurTimeoutRef.current);
+                blurTimeoutRef.current = null;
+              }
+              isEditingRef.current = true;
+            }}
+            onBlur={() => {
+              // v3.2a - Délai pour distinguer un vrai blur d'un re-render ReactFlow
+              blurTimeoutRef.current = setTimeout(() => {
+                isEditingRef.current = false;
+                setIsEditing(false);
+              }, 200);
+            }}
             autoFocus
             className="w-full min-h-[60px] border-0 focus:ring-0 resize-none p-2"
             style={{
@@ -1665,7 +1682,17 @@ const CustomBlockNode = ({ data, selected }: NodeProps) => {
                   <Input
                     value={block.content?.title || ""}
                     onChange={(e) => onUpdate({ content: { ...block.content, title: e.target.value } })}
-                    onBlur={() => setIsEditing(false)}
+                    onFocus={() => {
+                      // v3.2a - Annuler blur en attente
+                      if (blurTimeoutRef.current) {
+                        clearTimeout(blurTimeoutRef.current);
+                        blurTimeoutRef.current = null;
+                      }
+                    }}
+                    onBlur={() => {
+                      // v3.2a - Délai anti-rerender
+                      blurTimeoutRef.current = setTimeout(() => setIsEditing(false), 200);
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") setIsEditing(false);
                     }}
@@ -2647,6 +2674,25 @@ export default function DailyNotesCanvas({
 
   // 🔥 Ref pour stocker le viewport actuel (pour centrer les nouveaux blocs)
   const viewportRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
+
+  // 🔥 v3.2a - Refs stables pour tous les callbacks passés aux nodes
+  // Empêche la re-création des nodes ReactFlow à chaque frappe de clavier
+  const stableCallbacksRef = useRef<{
+    updateBlockWithSync: (blockId: string, updates: Partial<NoteBlock>) => void;
+    deleteBlock: (blockId: string) => void;
+    handleImageUpload: (blockId: string, file: File) => void;
+    moveBlockToDate: (blockId: string, targetDate: string) => void;
+    moveTaskToDate: (task: LinkedTask, targetDate: string) => void;
+    searchTasks: (query: string, linkedProjectId?: string) => Promise<AvailableTask[]>;
+    linkTask: (blockId: string, task: AvailableTask) => void;
+    updateTaskStatus: (taskId: string, status: "pending" | "in_progress" | "completed", actualHours?: number) => void;
+    sendToSidebarTask: (blockId: string) => void;
+    sendToSidebarNote: (blockId: string) => void;
+    searchExpenses: (query: string, linkedProjectId?: string) => Promise<LinkedExpense[]>;
+    linkExpense: (blockId: string, expense: LinkedExpense) => void;
+    updateExpense: (expenseId: string, updates: Partial<LinkedExpense>) => void;
+    setSelectedDate: (date: Date) => void;
+  }>({} as any);
 
   // États dessin Paper.js
   const [activeTool, setActiveTool] = useState<DrawTool>("select");
@@ -4158,29 +4204,54 @@ export default function DailyNotesCanvas({
     return used;
   }, [blocks]);
 
+  // 🔥 v3.2a - Sync refs stables avec les callbacks actuels (à chaque render)
+  // Ceci ne déclenche PAS de re-render, les refs sont synchrones
+  stableCallbacksRef.current = {
+    updateBlockWithSync,
+    deleteBlock,
+    handleImageUpload,
+    moveBlockToDate,
+    moveTaskToDate,
+    searchTasks,
+    linkTask,
+    updateTaskStatus,
+    sendToSidebarTask,
+    sendToSidebarNote,
+    searchExpenses,
+    linkExpense,
+    updateExpense,
+    setSelectedDate,
+  };
+
+  // 🔥 v3.2a - Recréer les nodes UNIQUEMENT quand blocks/données changent
+  // Les callbacks sont accédés via stableCallbacksRef pour ne PAS être des dépendances
   useEffect(() => {
-    // Toujours recréer les nodes (plus de comparaison qui peut bugger)
+    console.log("[DailyNotesCanvas v3.2a] Sync nodes:", blocks.length, "blocs");
+    const cbs = stableCallbacksRef.current;
+
     const newNodes = blocks.map((block) => ({
       id: block.id,
       type: "customBlock",
       position: { x: block.x, y: block.y },
       data: {
         block: { ...block },
-        onUpdate: (updates: Partial<NoteBlock>) => updateBlockWithSync(block.id, updates),
-        onDelete: () => deleteBlock(block.id),
-        onImageUpload: (file: File) => handleImageUpload(block.id, file),
-        onMoveToDate: (targetDate: string) => moveBlockToDate(block.id, targetDate),
-        onMoveTaskToDate: (task: LinkedTask, targetDate: string) => moveTaskToDate(task, targetDate),
-        onNavigateToDate: (date: string) => setSelectedDate(parseISO(date)),
-        onSearchTasks: searchTasks,
-        onLinkTask: (task: AvailableTask) => linkTask(block.id, task),
-        onUpdateTaskStatus: updateTaskStatus,
-        onSendToSidebarTask: () => sendToSidebarTask(block.id),
-        onSendToSidebarNote: () => sendToSidebarNote(block.id),
+        onUpdate: (updates: Partial<NoteBlock>) => cbs.updateBlockWithSync(block.id, updates),
+        onDelete: () => cbs.deleteBlock(block.id),
+        onImageUpload: (file: File) => cbs.handleImageUpload(block.id, file),
+        onMoveToDate: (targetDate: string) => cbs.moveBlockToDate(block.id, targetDate),
+        onMoveTaskToDate: (task: LinkedTask, targetDate: string) => cbs.moveTaskToDate(task, targetDate),
+        onNavigateToDate: (date: string) => cbs.setSelectedDate(parseISO(date)),
+        onSearchTasks: (query: string, linkedProjectId?: string) => cbs.searchTasks(query, linkedProjectId),
+        onLinkTask: (task: AvailableTask) => cbs.linkTask(block.id, task),
+        onUpdateTaskStatus: (taskId: string, status: "pending" | "in_progress" | "completed", actualHours?: number) =>
+          cbs.updateTaskStatus(taskId, status, actualHours),
+        onSendToSidebarTask: () => cbs.sendToSidebarTask(block.id),
+        onSendToSidebarNote: () => cbs.sendToSidebarNote(block.id),
         // 🔥 Props pour les dépenses/commandes
-        onSearchExpenses: searchExpenses,
-        onLinkExpense: (expense: LinkedExpense) => linkExpense(block.id, expense),
-        onUpdateExpense: updateExpense,
+        onSearchExpenses: (query: string, linkedProjectId?: string) => cbs.searchExpenses(query, linkedProjectId),
+        onLinkExpense: (expense: LinkedExpense) => cbs.linkExpense(block.id, expense),
+        onUpdateExpense: (expenseId: string, updates: Partial<LinkedExpense>) =>
+          cbs.updateExpense(expenseId, updates),
         globalUsedQuantities, // 🔥 Passer les quantités globales
         suppliers,
         projects,
@@ -4206,25 +4277,10 @@ export default function DailyNotesCanvas({
   }, [
     blocks,
     setNodes,
-    updateBlockWithSync,
-    deleteBlock,
-    handleImageUpload,
-    moveBlockToDate,
-    moveTaskToDate,
-    setSelectedDate,
-    searchTasks,
-    linkTask,
-    updateTaskStatus,
-    sendToSidebarTask,
-    sendToSidebarNote,
-    searchExpenses,
-    linkExpense,
-    updateExpense,
     globalUsedQuantities,
     suppliers,
     projects,
     projectId,
-    selectedBlockId,
   ]);
 
   // Sync edges
